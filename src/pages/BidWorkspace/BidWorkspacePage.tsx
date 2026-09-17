@@ -4,6 +4,7 @@ import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
 import { PageHeader } from "@/components/shell/PageHeader"
 import { ArchivePanel } from "@/components/bid-workspace/ArchivePanel"
 import { BidProjectList } from "@/components/bid-workspace/BidProjectList"
+import { BidReviewSummary } from "@/components/bid-workspace/BidReviewSummary"
 import { BidToolbar } from "@/components/bid-workspace/BidToolbar"
 import { ComplianceMatrixPanel } from "@/components/bid-workspace/ComplianceMatrixPanel"
 import { ComposeStep } from "@/components/bid-workspace/ComposeStep"
@@ -411,6 +412,8 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
             title="标书工作"
             desc="标书生成、查重与废标项检查，全流程覆盖投标关键节点"
           />
+          {/* R006（B-3 阶段一）：投标复盘汇总——纯统计零 AI */}
+          <BidReviewSummary projects={p.projects} />
           <BidProjectList
             projects={p.projects}
             projectsCapped={p.projectsCapped}

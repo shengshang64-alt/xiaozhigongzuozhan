@@ -242,7 +242,12 @@
       }
     },
     { "id": "B-2", "title": "产品backlog：评分表/表格化条款结构化解析（RAGFlow 式深度文档理解）", "level": "P2", "status": "open", "category": "flow", "module": "bid-workspace", "source": "PRODUCT_BENCHMARK.md 高优 #2；是 B-1 矩阵的数据源增强" },
-    { "id": "B-3", "title": "产品backlog：投标复盘与胜率分析（bid_result 数据已有，纯统计）", "level": "P2", "status": "open", "category": "flow", "module": "bid-workspace / 首页", "source": "PRODUCT_BENCHMARK.md 高优 #3；一个修复轮可出 MVP" },
+    { "id": "B-3", "title": "产品backlog：投标复盘与胜率分析（bid_result 数据已有，纯统计）", "level": "P2", "status": "in_progress", "category": "flow", "module": "bid-workspace / 首页", "source": "PRODUCT_BENCHMARK.md 高优 #3；一个修复轮可出 MVP",
+      "progress": {
+        "阶段一(R006)": "done——BidReviewSummary 组件挂标书列表页上方：总数/已结束/中标率(样本<5 提示)/中标金额合计(万元)/待回填数/落标原因 Top3；6 条种子数字全对",
+        "阶段二(backlog)": "落标原因结构化表单（枚举+自由文本）；趋势对比（按月/按客户）；首页聚合入口"
+      }
+    },
     { "id": "B-4", "title": "产品backlog：公司模板中心（标书 Word 样式/封面/盖章页；PPT VI 模板 defineSlideMaster）", "level": "P2", "status": "open", "category": "ui", "module": "solution-studio / bid-workspace / ppt-quote", "source": "PRODUCT_BENCHMARK.md 高优 #4" }
   ]
 }
