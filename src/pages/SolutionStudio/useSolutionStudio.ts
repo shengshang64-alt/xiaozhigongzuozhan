@@ -968,6 +968,7 @@ export function useSolutionStudio() {
     const initialDone = startRec.chapters.filter((c) => c.gen_status === "done").length
     let okCount = 0
     let failedCount = 0
+    let firstError = ""
     for (let i = 0; i < total; i++) {
       if (cancelBulkRef.current) break
       const cur = activeSolutionRef.current
@@ -1001,8 +1002,9 @@ export function useSolutionStudio() {
           editingContentRef.current = text.trim()
           setEditingContentState(text.trim())
         }
-      } catch {
+      } catch (e) {
         failedCount += 1
+        if (!firstError) firstError = e instanceof Error ? e.message : String(e)
         updateChapter(ch.node_id, { gen_status: "failed" })
       }
     }
@@ -1025,7 +1027,10 @@ export function useSolutionStudio() {
     setBulkGenerating(false)
     setGenProgress({ current: 0, total: 0 })
     if (cancelBulkRef.current) toast.info("已暂停，可继续生成剩余章节")
-    else if (failedCount) toast.error(`生成结束，${failedCount} 个章节失败，可单独重试`)
+    else if (failedCount)
+      toast.error(
+        `生成结束，${failedCount} 个章节失败：${firstError.slice(0, 80) || "原因未知"}；可稍后单独重试失败章节`,
+      )
     else toast.success("全部章节正文生成完毕")
   }, [activeChapterId, flushEditingContent, updateChapter, updateSolution])
 

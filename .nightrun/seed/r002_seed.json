@@ -1,0 +1,50 @@
+{
+  "rh_user_id": "local-user",
+  "solution_name": "[NIGHTTEST] R002 D8复验 · 互联网医院平台建设",
+  "solution_type": "custom",
+  "hospital": "市中心医院",
+  "hospital_info": {
+    "hospital_level": "三级甲等",
+    "bed_scale": "1800 张",
+    "outpatient_scale": "日均 6500 人次",
+    "demand_departments": "信息科、门诊部、医保办",
+    "systems": ["互联网医院", "移动护理"],
+    "budget_range": "500-1000 万",
+    "special_requirements": "NIGHTRUN 回归数据，验证后删除"
+  },
+  "outline": [
+    { "id": "r2-c1", "title": "建设背景与需求理解", "children": [
+      { "id": "r2-c1s1", "title": "政策与业务驱动", "children": [] }
+    ] },
+    { "id": "r2-c2", "title": "互联网医院平台总体设计", "children": [
+      { "id": "r2-c2s1", "title": "业务架构", "children": [] }
+    ] },
+    { "id": "r2-c3", "title": "实施与运维保障", "children": [
+      { "id": "r2-c3s1", "title": "实施计划", "children": [] }
+    ] }
+  ],
+  "chapters": [
+    {
+      "node_id": "r2-c1",
+      "title": "建设背景与需求理解",
+      "sections": ["政策与业务驱动"],
+      "content": "1.1 政策与业务驱动\n按照《关于深入推进「互联网+医疗健康」发展的行动计》，医院需在两年内建成覆盖在线复诊、处方流转、报告查询的互联网医院平台。市中心医院日均门诊 6500 人次，其中复诊占比约 40%，线上分流可显著降低现场压力。\n\n本章逐条回应招标文件对建设背景与需求理解的要求，结合医院三甲等级与现有 HIS/EMR 现状给出定制化设计。",
+      "gen_status": "done"
+    },
+    {
+      "node_id": "r2-c2",
+      "title": "互联网医院平台总体设计",
+      "sections": ["业务架构"],
+      "content": "",
+      "gen_status": "pending"
+    },
+    {
+      "node_id": "r2-c3",
+      "title": "实施与运维保障",
+      "sections": ["实施计划"],
+      "content": "",
+      "gen_status": "pending"
+    }
+  ],
+  "doc_status": "outline"
+}

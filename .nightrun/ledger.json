@@ -24,14 +24,14 @@
       "id": "D-8",
       "title": "方案阶段标识与实际完成度不同步（三态不足 + 并发 PATCH 丢字段）",
       "level": "P2",
-      "status": "fixed_pending_verify",
+      "status": "done",
       "category": "logic",
       "module": "solution-studio",
       "found_in_round": "R001",
       "found_at": "2026-09-18T00:20:00+08:00",
       "symptom": "批量生成中止/部分失败后徽标回落「大纲中」但正文 X/Y 章有内容；实测成功路径 3/3 done 后卡死「生成中」不收敛",
       "root_cause": "① DocStatus 仅 outline/generating/done，终态三元无「部分完成」值；② 循环末尾 doc_status PATCH 与章节 PATCH 并发，后端 /api/solutions/{id} PATCH 读整行-改-存整行，交错时旧快照整行覆盖丢字段",
-      "evidence": ["evidence/R001_dom_list_before.txt", "evidence/R001_dom_editor_before.txt", "evidence/R001_api_after_repro.json", "evidence/R001_api_after_repro2.json"],
+      "evidence": ["evidence/R001_api_after_repro.json", "evidence/R002_api_after_stop.json", "evidence/R002_api_after_resume.json", "evidence/R002_dom_editor_done.txt", "evidence/R002_dom_list_after.txt"],
       "fix": {
         "round": "R001",
         "files": [
@@ -40,18 +40,19 @@
           "src/pages/CustomerManagement/useCustomerManagement.ts"
         ],
         "summary": "+partial(部分成稿)；lastPersistRef 串行化阶段写入；批量终态改计数器推算并在离开页面时按 id 补写；客户管理映射同步",
-        "commit": "<R001 commit sha>"
+        "commit": "3c4294f"
       },
       "verify": {
-        "method": "tsc+vite 构建；PATCH 种子记录为 partial 后 DOM 快照（列表+编辑器）；终态真值表；九路由；协议扫描；金额抽检",
-        "expected": "部分完成显示「部分成稿」；全完成 done；构建零错误；回归全绿",
-        "actual": "除「真实 AI 批量端到端」未重跑（避免再耗余额）外全部通过",
-        "result": "pending"
+        "method": "R002 真实 AI 批量生成端到端：种子(1/3 done)→确认运行→立即停止→查库；再继续生成→跑完→查库+DOM",
+        "expected": "早停后 partial 且正文计数一致；续跑完 done；无卡死",
+        "actual": "早停→doc_status=partial, chapters=[done,done,pending]；续跑→done, [done,done,done]，页面「已完成 · 正文 3/3 章」",
+        "result": "pass",
+        "verified_at": "2026-09-18T00:58:00+08:00"
       },
       "risk": {
         "impact_scope": "方案编制列表/编辑器、客户管理链资产标签",
         "side_effects": "statusTone 走既有中性档分支；usePptQuote 仅判 done 天然兼容",
-        "remaining": "①真实批量 E2E 待一次付费验证 ②章节间 PATCH 竞态窗口未串行化（概率极低） ③后端整行覆写机制全局存在，建议后续乐观锁/字段级更新专项"
+        "remaining": "①章节间 PATCH 相互的竞态窗口未串行化（毫秒级，概率极低） ②后端整行覆写机制全局存在（bid-workspace 等），建议专项"
       }
     },
     {
@@ -78,11 +79,23 @@
       "id": "D-11",
       "title": "批量生成章节失败 toast 不含原因",
       "level": "P3",
-      "status": "open",
+      "status": "fixed_pending_verify",
       "category": "copy",
       "module": "solution-studio",
       "found_in_round": "R001",
-      "note": "runBulkGenerate catch 吞掉 e.message，仅报「N 个章节失败」；单章路径有原因（不一致）"
+      "note": "runBulkGenerate catch 吞掉 e.message，仅报「N 个章节失败」；单章路径有原因（不一致）",
+      "fix": {
+        "round": "R002",
+        "files": ["src/pages/SolutionStudio/useSolutionStudio.ts"],
+        "summary": "catch 记录首个错误 message（截 80 字），失败 toast 改为「N 个章节失败：<原因>；可稍后单独重试失败章节」",
+        "commit": "<R002 commit>"
+      },
+      "verify": {
+        "method": "需观察到一次真实章节失败",
+        "expected": "toast 含失败原因与下一步",
+        "actual": "R002 两次运行全部成功未出现失败路径；逻辑经构建验证",
+        "result": "pending"
+      }
     },
     {
       "id": "D-12",
@@ -98,23 +111,47 @@
       "id": "D-13",
       "title": "列表页脚「方案数据保存在本地」文案与实际不符",
       "level": "P3",
-      "status": "open",
+      "status": "done",
       "category": "copy",
       "module": "solution-studio",
       "found_in_round": "R001",
-      "note": "方案数据存服务端 PocketBase；仅导出页面格式存 localStorage"
+      "note": "方案数据存服务端 PocketBase；仅导出页面格式存 localStorage",
+      "fix": {
+        "round": "R002",
+        "files": ["src/components/solution-studio/SolutionListPanel.tsx"],
+        "summary": "页脚改为「方案数据保存在服务端，正文生成按实际 token 用量扣费」",
+        "commit": "<R002 commit>"
+      },
+      "verify": {
+        "method": "列表页 DOM 快照",
+        "expected": "不再声称「保存在本地」",
+        "actual": "evidence/R002_dom_list_after.txt：新文案已渲染",
+        "result": "pass",
+        "verified_at": "2026-09-18T01:00:00+08:00"
+      }
     },
     {
       "id": "E-1",
-      "title": "pnpm build 被 v10 依赖预检卡死（ERR_PNPM_IGNORED_BUILDS：@parcel/watcher、@swc/core、core-js、less、protobufjs）",
+      "title": "pnpm build 被 v10/11 依赖构建审批卡死（ERR_PNPM_IGNORED_BUILDS：@parcel/watcher、@swc/core、core-js、less、protobufjs）",
       "level": "P2",
-      "status": "open",
+      "status": "done",
       "category": "build",
       "module": "tooling",
       "found_in_round": "R000-startup",
-      "root_cause": "pnpm run 触发 verify-deps-before-run 自动 install，未批准构建脚本时以错误退出（dev 服务不受影响）",
-      "workaround": "npx tsc -b && npx vite build（tsc 11s 零错误 + vite 2.4s 成功）",
-      "needs_decision": "A: 项目 .npmrc 加 verify-deps-before-run=false；B: pnpm approve-builds 放行构建脚本（会执行第三方 postinstall）"
+      "root_cause": "pnpm 11.21 在 pnpm-workspace.yaml 写入 allowBuilds 占位符（set this to true or false），未决值导致运行前依赖校验里的自动 install 以错误退出",
+      "fix": {
+        "round": "R002",
+        "files": ["pnpm-workspace.yaml"],
+        "summary": "5 个包 allowBuilds 全部显式设为 false（拒绝执行第三方 postinstall，项目构建从不依赖这些脚本）；期间尝试的 .npmrc verify-deps-before-run 方案在 v11 无效已删除",
+        "commit": "<R002 commit>"
+      },
+      "verify": {
+        "method": "标准 pnpm build",
+        "expected": "exit 0",
+        "actual": "exit=0，12s（evidence/R002_pnpm_build.log）",
+        "result": "pass",
+        "verified_at": "2026-09-18T00:47:00+08:00"
+      }
     },
     {
       "id": "E-2",

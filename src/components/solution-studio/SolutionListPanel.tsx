@@ -165,7 +165,7 @@ export function SolutionListPanel(p: SolutionListPanelProps) {
       )}
 
       <footer className="mt-12 border-t border-border pt-6 text-center text-xs text-muted-foreground">
-        方案数据保存在本地，正文生成按实际 token 用量扣费
+        方案数据保存在服务端，正文生成按实际 token 用量扣费
       </footer>
     </section>
   )
