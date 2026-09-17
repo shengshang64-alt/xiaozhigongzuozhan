@@ -303,6 +303,8 @@ const FETCH_RE = /\[\[\s*FETCH\s*[:：]\s*([a-zA-Z_]+)\s*\]\]/g
 const MEMORY_BLOCK_RE = /\[\[\s*MEMORY\s*\]\]([\s\S]*?)\[\[\s*\/\s*MEMORY\s*\]\]/
 const MEMORY_LINE_RE = /^(preference|habit|fact)\s*[|｜]\s*(.+)$/
 const STRAY_MARKER_RE = /\[\[\s*\/?\s*(?:FETCH|MEMORY)\s*(?:[:：][^\]]*)?\]\]/g
+// R009（D-2）：一次性 fact 过滤护栏（协议 1.4「一次性状态禁止沉淀为 fact」的执行层）
+import { filterMemories, MEMORY_FACT_RULES } from "./memoryGuard.ts"
 
 export function parseAssistantReply(raw: string): ParsedReply {
   let text = typeof raw === "string" ? raw : ""
@@ -319,6 +321,12 @@ export function parseAssistantReply(raw: string): ParsedReply {
       }
     }
   }
+  // R009（D-2）：过滤一次性 fact（协议既有禁令的执行层，不影响 preference/habit）
+  const kept = filterMemories(memories)
+  const keptSet = new Set(kept)
+  const memoriesFiltered = memories.filter((m) => keptSet.has(m))
+  memories.length = 0
+  memories.push(...memoriesFiltered)
   // 去掉闭合块；未闭合的 [[MEMORY]] 起全部裁掉（防泄漏）
   text = text.replace(MEMORY_BLOCK_RE, "")
   text = text.replace(/\[\[\s*MEMORY\s*\]\][\s\S]*$/g, "")
@@ -374,7 +382,8 @@ preference|值得长期记住的用户偏好
 habit|值得长期记住的工作习惯
 fact|值得长期记住的事实备忘
 [[/MEMORY]]
-分组标识只能是 preference / habit / fact，每条一行、用竖线分隔；没有值得记住的内容时输出空块（只有首尾两行标记）。只沉淀长期有效的信息，不要把一次性任务细节写进去。取数指令回复中不要带记忆块。`
+分组标识只能是 preference / habit / fact，每条一行、用竖线分隔；没有值得记住的内容时输出空块（只有首尾两行标记）。只沉淀长期有效的信息，不要把一次性任务细节写进去。取数指令回复中不要带记忆块。
+${MEMORY_FACT_RULES}`
 }
 
 // ---------------------------------------------------------------------------

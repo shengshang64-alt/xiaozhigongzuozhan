@@ -33,7 +33,11 @@
         "remaining": "opportunities/bid_projects 后端补 q= 后可移除两处客户端兜底（代码内已留注释）"
     }
     },
-    { "id": "D-2", "title": "脏记忆：一次性状态被沉淀为长期 fact", "level": "P2", "status": "open", "category": "protocol", "module": "assistant/memory", "scope_note": "本轮不修" },
+    { "id": "D-2", "title": "脏记忆：一次性状态被沉淀为长期 fact", "level": "P2", "status": "fixed_pending_verify", "category": "protocol", "module": "assistant/memory", "found_in_round": "R009",
+      "root_cause": "提示词对 fact 仅一句模糊禁令无正反例；parseAssistantReply 对 fact 内容零过滤",
+      "fix": { "round": "R009", "files": ["src/lib/memoryGuard.ts", "src/lib/assistantCore.ts"], "summary": "memoryGuard.ts：MEMORY_FACT_RULES（时间无关测试+四类禁止+正反例）拼入协议提示词；isOneOffFact/filterMemories 确定性过滤（只动 fact，preference/habit 不变）", "commit": "<R009 commit>" },
+      "verify": { "method": "node 直验 verify_d2.mjs（可重放）+ 提示词效果需真实对话观察", "expected": "5 脏全滤 3 净全留 preference 不动；后续真实对话不再沉淀一次性 fact", "actual": "护栏 6 项断言 ALL PASS；模型行为效果待真实对话", "result": "pending" },
+      "risk": { "impact_scope": "小智记忆抽取", "side_effects": "只拦无争议信号；协议格式未变", "remaining": "半持续语境（正在准备五级评审）仍可能入库，规则随语料迭代；存量脏数据不回溯，建议用户在记忆面板手动清理" } },
     { "id": "D-3", "title": "公共模型标注「无需配置可直接使用」，未登录点测试却失败", "level": "P2", "status": "open", "category": "copy", "module": "model-config", "scope_note": "本轮不修" },
     { "id": "D-4", "title": "「测试失败」文案无原因", "level": "P3", "status": "open", "category": "copy", "module": "model-config", "scope_note": "本轮不修" },
     { "id": "D-5", "title": "选「只解析关键项」但落库 scope === \"full\"", "level": "P3", "status": "open", "category": "logic", "module": "bid-workspace", "scope_note": "本轮不修" },
