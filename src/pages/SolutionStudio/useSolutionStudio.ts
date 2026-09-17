@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
-import { AlignmentType, HeadingLevel, Paragraph, TextRun } from "docx"
+import { AlignmentType, HeadingLevel, Paragraph, TableOfContents, TextRun } from "docx"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, vibexAuthHeaders, type RhAccountInfo } from "@/lib/rhLogin"
 import { modelRefKey, resolveAvailableModels, type ModelRef } from "@/lib/modelGateway"
@@ -21,6 +21,7 @@ import { DEFAULT_FORMAT_SETTINGS, normalizeFormatSettings, type FormatSettings }
 import { useScopeSkills } from "@/hooks/useScopeSkills"
 import { skillCostSuffix } from "@/lib/skillCore"
 import { currentStudioCostText, llmGenerate, setStudioModelRef } from "./studioLlm"
+import { DEFAULT_EXPORT_TEMPLATE, buildExportFrontMatter, readSolutionExportTemplate, writeSolutionExportTemplate, type SolutionExportTemplate } from "./exportTemplate"
 import { useChecklist } from "./checklistLogic"
 import { snapshotFromChecklist, type ChecklistRecord } from "./checklistTypes"
 import {
@@ -254,6 +255,8 @@ export function useSolutionStudio() {
   // 循环 9 C2：当前方案的导出页面格式（纸张/边距/页码；随方案切换加载，防抖落 localStorage）
   const [ssFmt, setSsFmt] = useState<FormatSettings>(DEFAULT_FORMAT_SETTINGS)
   const ssFmtTimerRef = useRef<number | null>(null)
+  // R007（B-4 阶段一）：导出模板（封面/目录/页眉；随方案切换加载，即时落 localStorage）
+  const [expTpl, setExpTpl] = useState<SolutionExportTemplate>(DEFAULT_EXPORT_TEMPLATE)
 
   const applySolutionState = useCallback((next: SolutionRecord | null) => {
     activeSolutionRef.current = next
@@ -261,7 +264,18 @@ export function useSolutionStudio() {
     if (next) {
       setSolutions((prev) => prev.map((s) => (s.id === next.id ? next : s)))
       setSsFmt(readSsFmt(next.id))
+      setExpTpl(readSolutionExportTemplate(next.id))
     }
+  }, [])
+
+  /** R007（B-4 阶段一）：导出模板补丁——乐观更新 + 即时写 localStorage（序列化失败静默降级） */
+  const setExpTplPatch = useCallback((patch: Partial<SolutionExportTemplate>) => {
+    const id = activeSolutionRef.current?.id
+    setExpTpl((prev) => {
+      const next = { ...prev, ...patch }
+      if (id) writeSolutionExportTemplate(id, next)
+      return next
+    })
   }, [])
 
   /** 循环 9 C2：格式补丁——乐观更新 + 400ms 防抖写 localStorage（序列化失败静默降级） */
@@ -1094,7 +1108,8 @@ export function useSolutionStudio() {
     if (exportingWord) return
     setExportingWord(true)
     try {
-      const children: Paragraph[] = []
+      // R007（B-4 阶段一）：前置封面 + 目录（按模板开关），正文追加其后
+      const children: (Paragraph | TableOfContents)[] = [...buildExportFrontMatter(sol, expTpl)]
       children.push(
         new Paragraph({
           heading: HeadingLevel.TITLE,
@@ -1133,18 +1148,24 @@ export function useSolutionStudio() {
         }
       })
       // 循环 9 C2：页面级格式（纸张/边距/页码）按方案 localStorage 设置生效；正文样式保持现状
+      // R007（B-4 阶段一）：页眉文字与目录自动更新域按导出模板生效
+      const pageOpts = pageOptsFromFormatSettings(ssFmt, { pageNumber: ssFmt.pageNumber })
       await downloadDocx(
         `${sol.solution_name}.docx`,
         children,
-        pageOptsFromFormatSettings(ssFmt, { pageNumber: ssFmt.pageNumber }),
+        {
+          ...pageOpts,
+          headerText: expTpl.headerText || undefined,
+          updateFields: expTpl.toc || undefined,
+        },
       )
-      toast.success("Word 文档已导出，纸张与页边距按本页格式设置生效")
+      toast.success("Word 文档已导出，封面/目录/页眉按导出模板、纸张页边距按页面设置生效")
     } catch {
       toast.error("导出失败，请稍后重试")
     } finally {
       setExportingWord(false)
     }
-  }, [exportingWord, flushEditingContent, ssFmt])
+  }, [exportingWord, expTpl, flushEditingContent, ssFmt])
 
   // ------------------------------ 派生数据 ------------------------------
 
@@ -1246,6 +1267,9 @@ export function useSolutionStudio() {
     // 循环 9 C2：方案导出页面格式（按方案存 localStorage）
     ssFmt,
     setSsFmtPatch,
+    // R007（B-4 阶段一）：方案导出模板（封面/目录/页眉，按方案存 localStorage）
+    expTpl,
+    setExpTplPatch,
     // 计费确认
     costConfirm,
     // 模型选择（统一网关）

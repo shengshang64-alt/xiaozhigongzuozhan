@@ -248,6 +248,11 @@
         "阶段二(backlog)": "落标原因结构化表单（枚举+自由文本）；趋势对比（按月/按客户）；首页聚合入口"
       }
     },
-    { "id": "B-4", "title": "产品backlog：公司模板中心（标书 Word 样式/封面/盖章页；PPT VI 模板 defineSlideMaster）", "level": "P2", "status": "open", "category": "ui", "module": "solution-studio / bid-workspace / ppt-quote", "source": "PRODUCT_BENCHMARK.md 高优 #4" }
+    { "id": "B-4", "title": "产品backlog：公司模板中心（标书 Word 样式/封面/盖章页；PPT VI 模板 defineSlideMaster）", "level": "P2", "status": "in_progress", "category": "ui", "module": "solution-studio / bid-workspace / ppt-quote", "source": "PRODUCT_BENCHMARK.md 高优 #4",
+      "progress": {
+        "阶段一(R007)": "done——方案编制导出 Word 模板：封面（单位名/方案名/医院·类型/日期）+ 自动目录（updateFields 域）+ 页眉文字；ExportTemplateCard 按方案 localStorage；node 直验 8/8",
+        "阶段二(backlog)": "上传公司 docx 模板解析样式映射；PPT defineSlideMaster 母版；标书工作导出对齐"
+      }
+    }
   ]
 }

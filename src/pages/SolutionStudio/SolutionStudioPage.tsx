@@ -2,6 +2,7 @@ import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
 import { PageHeader } from "@/components/shell/PageHeader"
 import { ChecklistView } from "@/components/solution-studio/checklist/ChecklistView"
 import { EditorWorkspace } from "@/components/solution-studio/EditorWorkspace"
+import { ExportTemplateCard } from "@/components/solution-studio/ExportTemplateCard"
 import { SsFormatCard } from "@/components/solution-studio/SsFormatCard"
 import { NewSolutionWizard } from "@/components/solution-studio/NewSolutionWizard"
 import { SolutionListPanel } from "@/components/solution-studio/SolutionListPanel"
@@ -107,6 +108,10 @@ export function SolutionStudioPage(p: ReturnType<typeof useSolutionStudio>) {
           {/* 循环 9 C2：导出页面格式设置（按方案存 localStorage，导出 Word 生效） */}
           <div className="mt-4">
             <SsFormatCard fmt={p.ssFmt} onPatch={p.setSsFmtPatch} />
+          </div>
+          {/* R007（B-4 阶段一）：导出模板（封面/目录/页眉，按方案存 localStorage） */}
+          <div className="mt-4">
+            <ExportTemplateCard tpl={p.expTpl} onPatch={p.setExpTplPatch} />
           </div>
         </main>
       )}
