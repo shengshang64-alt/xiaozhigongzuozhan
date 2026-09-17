@@ -10,8 +10,8 @@
   "stop_rule": "先跑 1-2 轮给用户看产出；每轮必须落盘+commit",
 
   "phase": "round_end",
-  "current_round": 7,
-  "current_topic": "B-4 导出模板（阶段一：封面/目录/页眉）",
+  "current_round": 8,
+  "current_topic": "B-2 评分项交叉核对（阶段一：本地扫描）",
   "current_step": "done",
 
   "rotation": {
@@ -24,19 +24,19 @@
   },
 
   "counters": {
-    "rounds_done": 7,
-    "fixes_applied": 10,
+    "rounds_done": 8,
+    "fixes_applied": 11,
     "defects_found": 7,
     "defects_blocked": 0,
     "consecutive_blocked": 0,
-    "commits": 7
+    "commits": 8
   },
 
   "queue": {
-    "pending": ["D-12", "D-14", "B-2"],
+    "pending": ["D-12", "D-14"],
     "fixed_pending_verify": ["D-11"],
     "blocked": [],
-    "done": ["D-1", "D-8", "D-9", "D-10", "D-13", "E-1", "B-1阶段一", "B-3阶段一", "B-4阶段一"]
+    "done": ["D-1", "D-8", "D-9", "D-10", "D-13", "E-1", "B-1阶段一", "B-2阶段一", "B-3阶段一", "B-4阶段一"]
   },
 
   "blockers": [
@@ -75,6 +75,6 @@
     "dirty": false
   },
 
-  "resume_hint": "R007 完成（B-4 阶段一：方案导出封面/目录/页眉，node 直验 8/8）。剩余：B-2 表格解析、B-1/B-3/B-4 阶段二、D-12（等 A/B）、D-14；或深度轮",
-  "last_updated": "2026-09-18T05:05:00+08:00"
+  "resume_hint": "R008 完成（B-2 阶段一：评分项交叉核对上线）。剩余：B 系列阶段二（AI 自动归纳/PB 持久化/表格 OCR/母版模板）、D-12（等 A/B）、D-14（一行 a11y）、深度轮",
+  "last_updated": "2026-09-18T05:55:00+08:00"
 }

@@ -15,6 +15,7 @@ import { OpportunityLinkBar } from "@/components/bid-workspace/OpportunityLinkBa
 import { ParseConfigDialog } from "@/components/bid-workspace/ParseConfigDialog"
 import { ParseReportPanel } from "@/components/bid-workspace/ParseReportPanel"
 import { PipelineStepper } from "@/components/bid-workspace/PipelineStepper"
+import { ScoreCrossCheckPanel } from "@/components/bid-workspace/ScoreCrossCheckPanel"
 import { SkillPickerFor } from "@/components/common/SkillPicker"
 import { QuickToolsPanel } from "@/components/bid-workspace/QuickToolsPanel"
 import { StandardsPickerDialog } from "@/components/bid-workspace/StandardsPickerDialog"
@@ -133,6 +134,10 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                   report={p.activeProject.parse_report}
                   archived={p.isArchivedLocked}
                 />
+              </div>
+              {/* R008（B-2 阶段一）：评分项本地交叉核对（原文扫描 vs 解析报告），零 AI 费用 */}
+              <div className="mt-5">
+                <ScoreCrossCheckPanel tenderText={p.activeProject.tender_text} report={p.activeProject.parse_report} />
               </div>
             </section>
           )}

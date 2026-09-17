@@ -241,7 +241,12 @@
         "阶段二(backlog)": "AI 从招标文件自动归纳矩阵行（走 costConfirm）；进度迁 PB json 字段（localStorage 仅本机）；与偏离表联动自动判覆盖"
       }
     },
-    { "id": "B-2", "title": "产品backlog：评分表/表格化条款结构化解析（RAGFlow 式深度文档理解）", "level": "P2", "status": "open", "category": "flow", "module": "bid-workspace", "source": "PRODUCT_BENCHMARK.md 高优 #2；是 B-1 矩阵的数据源增强" },
+    { "id": "B-2", "title": "产品backlog：评分表/表格化条款结构化解析（RAGFlow 式深度文档理解）", "level": "P2", "status": "in_progress", "category": "flow", "module": "bid-workspace", "source": "PRODUCT_BENCHMARK.md 高优 #2；是 B-1 矩阵的数据源增强",
+      "progress": {
+        "阶段一(R008)": "done——scoreItemsScan.ts 本地评分项扫描（4 种分值写法启发式+类目跟踪+合计识别）+ 解析报告交叉比对（漏抽/分值不符/总分≠100 警告）+ ScoreCrossCheckPanel 挂第 2 步；node 直验+UI 验证全过，零 AI",
+        "阶段二(backlog)": "PDF 管线升级：表格感知抽取（pdfjs 表格结构恢复或表格 OCR），产出结构化评分表而非文本行；扫描启发式准确率随真实语料迭代"
+      }
+    },
     { "id": "B-3", "title": "产品backlog：投标复盘与胜率分析（bid_result 数据已有，纯统计）", "level": "P2", "status": "in_progress", "category": "flow", "module": "bid-workspace / 首页", "source": "PRODUCT_BENCHMARK.md 高优 #3；一个修复轮可出 MVP",
       "progress": {
         "阶段一(R006)": "done——BidReviewSummary 组件挂标书列表页上方：总数/已结束/中标率(样本<5 提示)/中标金额合计(万元)/待回填数/落标原因 Top3；6 条种子数字全对",
