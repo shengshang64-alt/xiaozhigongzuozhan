@@ -1,0 +1,52 @@
+{
+  "rh_user_id": "local-user",
+  "solution_name": "[NIGHTTEST] R001 状态回归 · 市一医院电子病历建设",
+  "solution_type": "planning",
+  "hospital": "市第一人民医院",
+  "hospital_info": {
+    "hospital_level": "三级甲等",
+    "bed_scale": "2200 张",
+    "outpatient_scale": "日均 8000 人次",
+    "demand_departments": "信息科、医务处、病案室",
+    "systems": ["EMR", "LIS", "数据中心"],
+    "budget_range": "1000 万以上",
+    "special_requirements": "NIGHTRUN 回归数据，验证后删除"
+  },
+  "outline": [
+    { "id": "nr-c1", "title": "项目背景与需求分析", "children": [
+      { "id": "nr-c1s1", "title": "现状与痛点", "children": [] },
+      { "id": "nr-c1s2", "title": "建设必要性", "children": [] }
+    ] },
+    { "id": "nr-c2", "title": "电子病历系统建设方案", "children": [
+      { "id": "nr-c2s1", "title": "总体架构", "children": [] },
+      { "id": "nr-c2s2", "title": "分级评价对标", "children": [] }
+    ] },
+    { "id": "nr-c3", "title": "保障体系与效益分析", "children": [
+      { "id": "nr-c3s1", "title": "安全保障", "children": [] }
+    ] }
+  ],
+  "chapters": [
+    {
+      "node_id": "nr-c1",
+      "title": "项目背景与需求分析",
+      "sections": ["现状与痛点", "建设必要性"],
+      "content": "1.1 现状与痛点\n市第一人民医院现有电子病历系统建于 2016 年，仅覆盖门诊与住院文书书写，尚未实现闭环医嘱管理与结构化病历。全院 2200 张床位日均产生病历文书约 1.2 万份，质控仍依赖人工抽查，抽查率不足 5%。\n\n1.2 建设必要性\n对照电子病历系统应用水平分级评价五级要求，医院在闭环管理、知识库辅助、数据追溯三个维度存在明显差距。本项目建成后可支撑病历内涵质控全覆盖，并满足互联互通四甲测评对病历数据的要求。",
+      "gen_status": "done"
+    },
+    {
+      "node_id": "nr-c2",
+      "title": "电子病历系统建设方案",
+      "sections": ["总体架构", "分级评价对标"],
+      "content": "2.1 总体架构\n本项目采用「一平台两中心」架构：以电子病历编辑平台为核心，建设临床数据中心（CDR）与病历质控中心。系统与 HIS、LIS、PACS 通过集成平台以视图与接口两种方式对接，不假设医院已具备数据中心机房以外的附加设施。\n\n2.2 分级评价对标\n方案按电子病历分级评价五级目标设计：四级实现全流程闭环，五级实现统一数据管理。各项功能点与评价条文逐一对应，详见响应对照表。",
+      "gen_status": "done"
+    },
+    {
+      "node_id": "nr-c3",
+      "title": "保障体系与效益分析",
+      "sections": ["安全保障"],
+      "content": "",
+      "gen_status": "pending"
+    }
+  ],
+  "doc_status": "outline"
+}

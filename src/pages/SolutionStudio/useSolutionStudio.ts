@@ -292,7 +292,11 @@ export function useSolutionStudio() {
       if (!cur) return
       const next: SolutionRecord = { ...cur, ...patch }
       applySolutionState(next)
-      if (opts?.persist !== false) void persistSolution(next, patch, opts?.quiet)
+      if (opts?.persist !== false) {
+        const p = persistSolution(next, patch, opts?.quiet)
+        lastPersistRef.current = p
+        void p
+      }
     },
     [applySolutionState, persistSolution],
   )
@@ -522,6 +526,9 @@ export function useSolutionStudio() {
   const [editingContent, setEditingContentState] = useState("")
   const editingContentRef = useRef("")
   const saveTimerRef = useRef<number | null>(null)
+  // 最近一次「本地→远端」持久化的 Promise（persistSolution 内部自捕获，永不 reject）。
+  // 写 doc_status 前先 await 它：后端 PATCH 是「读整行→改→存整行」，两笔并发会互相覆盖丢字段（R001 竞态根因）。
+  const lastPersistRef = useRef<Promise<void> | null>(null)
   const [chapterBusy, setChapterBusy] = useState<string | null>(null)
   const [bulkGenerating, setBulkGenerating] = useState(false)
   const [genProgress, setGenProgress] = useState({ current: 0, total: 0 })
@@ -671,9 +678,12 @@ export function useSolutionStudio() {
           editingContentRef.current = text.trim()
           setEditingContentState(text.trim())
         }
+        await lastPersistRef.current
         const all = activeSolutionRef.current?.chapters ?? []
         if (all.length && all.every((c) => c.gen_status === "done")) {
           updateSolution({ doc_status: "done" as DocStatus })
+        } else if (all.some((c) => c.gen_status === "done")) {
+          updateSolution({ doc_status: "partial" as DocStatus })
         }
         toast.success(`「${cur.chapters[idx].title}」正文已生成`)
       } catch (e) {
@@ -947,10 +957,16 @@ export function useSolutionStudio() {
     const startRec = activeSolutionRef.current
     if (!startRec) return
     cancelBulkRef.current = false
+    // 起跑前把挂起的编辑防抖落库并等它完成，再写 generating（避免并发 PATCH 丢字段，R001）
+    flushEditingContent()
+    await lastPersistRef.current
     setBulkGenerating(true)
     updateSolution({ doc_status: "generating" as DocStatus })
     const total = startRec.chapters.length
     setGenProgress({ current: 0, total })
+    // 终态用计数器推算而非读 ref：中途离开编辑器（ref 被清空）时也能把阶段补写正确
+    const initialDone = startRec.chapters.filter((c) => c.gen_status === "done").length
+    let okCount = 0
     let failedCount = 0
     for (let i = 0; i < total; i++) {
       if (cancelBulkRef.current) break
@@ -980,6 +996,7 @@ export function useSolutionStudio() {
           "solution-chapter",
         )
         updateChapter(ch.node_id, { content: text.trim(), gen_status: "done" })
+        okCount += 1
         if (activeChapterId === ch.node_id) {
           editingContentRef.current = text.trim()
           setEditingContentState(text.trim())
@@ -989,17 +1006,28 @@ export function useSolutionStudio() {
         updateChapter(ch.node_id, { gen_status: "failed" })
       }
     }
-    const finalRec = activeSolutionRef.current
-    if (finalRec) {
-      const allDone = finalRec.chapters.length > 0 && finalRec.chapters.every((c) => c.gen_status === "done")
-      updateSolution({ doc_status: (allDone ? "done" : "outline") as DocStatus })
+    const doneTotal = initialDone + okCount
+    const nextStatus: DocStatus = total > 0 && doneTotal >= total ? "done" : doneTotal > 0 ? "partial" : "outline"
+    // 等最后一笔章节 PATCH 落库后再写阶段，防止并发整行覆写把 doc_status 冲掉（R001 实测卡死「生成中」的根因）
+    await lastPersistRef.current
+    if (activeSolutionRef.current?.id === startRec.id) {
+      updateSolution({ doc_status: nextStatus })
+    } else {
+      try {
+        await apiFetch(`/api/solutions/${encodeURIComponent(startRec.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ doc_status: nextStatus }),
+        })
+      } catch {
+        toast.error("方案阶段状态同步失败，可重新打开该方案后重试")
+      }
     }
     setBulkGenerating(false)
     setGenProgress({ current: 0, total: 0 })
     if (cancelBulkRef.current) toast.info("已暂停，可继续生成剩余章节")
     else if (failedCount) toast.error(`生成结束，${failedCount} 个章节失败，可单独重试`)
     else toast.success("全部章节正文生成完毕")
-  }, [activeChapterId, updateChapter, updateSolution])
+  }, [activeChapterId, flushEditingContent, updateChapter, updateSolution])
 
   const startBulkGenerate = useCallback(() => {
     const cur = activeSolutionRef.current
@@ -1091,7 +1119,7 @@ export function useSolutionStudio() {
     () => activeSolution?.chapters.filter((c) => c.gen_status === "done").length ?? 0,
     [activeSolution],
   )
-  const docStatusLabel = activeSolution ? DOC_STATUS_LABEL[activeSolution.doc_status] : ""
+  const docStatusLabel = activeSolution ? (DOC_STATUS_LABEL[activeSolution.doc_status] ?? activeSolution.doc_status) : ""
 
   return {
     // 登录

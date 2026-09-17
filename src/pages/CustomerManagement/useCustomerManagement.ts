@@ -566,7 +566,7 @@ export function useCustomerManagement() {
     const fuzzy = (a: string, b: string) => Boolean(a && b && (a.includes(b) || b.includes(a)))
     const items: ChainAssetItem[] = []
     const customerOppIds = new Set(opportunities.filter((o) => o.customer_id === selectedCustomer.id).map((o) => o.id))
-    const docStatusLabel: Record<string, string> = { outline: "大纲中", generating: "生成中", done: "已完成" }
+    const docStatusLabel: Record<string, string> = { outline: "大纲中", generating: "生成中", partial: "部分成稿", done: "已完成" }
     for (const b of bidProjects) {
       const viaHospital = fuzzy(b.hospital, hosp)
       const viaOpp = Boolean(b.opportunity_id) && customerOppIds.has(b.opportunity_id)

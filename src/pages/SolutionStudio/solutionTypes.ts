@@ -131,7 +131,7 @@ export function parseChapterReview(text: string): Omit<ChapterSelfCheck, "checke
   }
 }
 
-export type DocStatus = "outline" | "generating" | "done"
+export type DocStatus = "outline" | "generating" | "partial" | "done"
 
 export type HospitalInfo = {
   hospital_level: string
@@ -265,6 +265,7 @@ export const BUDGET_RANGES = ["100 万以内", "100-300 万", "300-500 万", "50
 export const DOC_STATUS_LABEL: Record<DocStatus, string> = {
   outline: "大纲中",
   generating: "生成中",
+  partial: "部分成稿",
   done: "已完成",
 }
 

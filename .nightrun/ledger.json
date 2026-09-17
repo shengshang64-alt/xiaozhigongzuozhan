@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "project": "xiaozhigongzuozhan",
+  "last_updated": "2026-09-18T00:50:00+08:00",
+  "note": "D-1~D-7 为 2026-09-17 基线实测（总纲 1.8），本轮 scope=/solution-studio，全局项挂账暂不修；D-8~D-13 为 R001 产出。",
+  "items": [
+    {
+      "id": "D-1",
+      "title": "全局搜索服务端 q= 对 opportunities / bid_projects 失效",
+      "level": "P1",
+      "status": "open",
+      "category": "logic",
+      "module": "shell/useGlobalSearch",
+      "root_cause": "useGlobalSearch.ts 仅 bid 组保留客户端 matches() 兜底（:227），其余组无兜底且服务端 q= 过滤未生效",
+      "scope_note": "全局模块，本轮不修（R001 复核仍未修）"
+    },
+    { "id": "D-2", "title": "脏记忆：一次性状态被沉淀为长期 fact", "level": "P2", "status": "open", "category": "protocol", "module": "assistant/memory", "scope_note": "本轮不修" },
+    { "id": "D-3", "title": "公共模型标注「无需配置可直接使用」，未登录点测试却失败", "level": "P2", "status": "open", "category": "copy", "module": "model-config", "scope_note": "本轮不修" },
+    { "id": "D-4", "title": "「测试失败」文案无原因", "level": "P3", "status": "open", "category": "copy", "module": "model-config", "scope_note": "本轮不修" },
+    { "id": "D-5", "title": "选「只解析关键项」但落库 scope === \"full\"", "level": "P3", "status": "open", "category": "logic", "module": "bid-workspace", "scope_note": "本轮不修" },
+    { "id": "D-6", "title": "空态文案「登录后可创建」与实际不符", "level": "P3", "status": "open", "category": "copy", "module": "多处空态", "scope_note": "R001 已核实方案编制列表空态无此问题（该页排除）" },
+    { "id": "D-7", "title": "AI 解析成功后 stage 仍为 pending_parse", "level": "P3", "status": "open", "category": "logic", "module": "bid-workspace", "scope_note": "本轮不修；D-8 根因 B 的整行覆写机制可能同样适用，修时一并核查" },
+    {
+      "id": "D-8",
+      "title": "方案阶段标识与实际完成度不同步（三态不足 + 并发 PATCH 丢字段）",
+      "level": "P2",
+      "status": "fixed_pending_verify",
+      "category": "logic",
+      "module": "solution-studio",
+      "found_in_round": "R001",
+      "found_at": "2026-09-18T00:20:00+08:00",
+      "symptom": "批量生成中止/部分失败后徽标回落「大纲中」但正文 X/Y 章有内容；实测成功路径 3/3 done 后卡死「生成中」不收敛",
+      "root_cause": "① DocStatus 仅 outline/generating/done，终态三元无「部分完成」值；② 循环末尾 doc_status PATCH 与章节 PATCH 并发，后端 /api/solutions/{id} PATCH 读整行-改-存整行，交错时旧快照整行覆盖丢字段",
+      "evidence": ["evidence/R001_dom_list_before.txt", "evidence/R001_dom_editor_before.txt", "evidence/R001_api_after_repro.json", "evidence/R001_api_after_repro2.json"],
+      "fix": {
+        "round": "R001",
+        "files": [
+          "src/pages/SolutionStudio/solutionTypes.ts",
+          "src/pages/SolutionStudio/useSolutionStudio.ts",
+          "src/pages/CustomerManagement/useCustomerManagement.ts"
+        ],
+        "summary": "+partial(部分成稿)；lastPersistRef 串行化阶段写入；批量终态改计数器推算并在离开页面时按 id 补写；客户管理映射同步",
+        "commit": "<R001 commit sha>"
+      },
+      "verify": {
+        "method": "tsc+vite 构建；PATCH 种子记录为 partial 后 DOM 快照（列表+编辑器）；终态真值表；九路由；协议扫描；金额抽检",
+        "expected": "部分完成显示「部分成稿」；全完成 done；构建零错误；回归全绿",
+        "actual": "除「真实 AI 批量端到端」未重跑（避免再耗余额）外全部通过",
+        "result": "pending"
+      },
+      "risk": {
+        "impact_scope": "方案编制列表/编辑器、客户管理链资产标签",
+        "side_effects": "statusTone 走既有中性档分支；usePptQuote 仅判 done 天然兼容",
+        "remaining": "①真实批量 E2E 待一次付费验证 ②章节间 PATCH 竞态窗口未串行化（概率极低） ③后端整行覆写机制全局存在，建议后续乐观锁/字段级更新专项"
+      }
+    },
+    {
+      "id": "D-9",
+      "title": "solutions 列表接口 totalItems 恒等于返回条数 + perPage>200 静默截断",
+      "level": "P3",
+      "status": "open",
+      "category": "logic",
+      "module": "solution-studio / pb_hooks/solutions.pb.js",
+      "found_in_round": "R001",
+      "note": "list 路由 totalItems: items.length（非真总数）；前端 perPage=200 上限（B6 注释自认）超量无任何提示"
+    },
+    {
+      "id": "D-10",
+      "title": "删除方案后商机 ref_type/ref_id/ref_name 悬空",
+      "level": "P3",
+      "status": "open",
+      "category": "data",
+      "module": "solution-studio / customer-management",
+      "found_in_round": "R001",
+      "note": "confirmOutline 会把商机 ref 指向方案，deleteSolution 只删方案不清引用；当前库内无实例，属潜伏缺陷"
+    },
+    {
+      "id": "D-11",
+      "title": "批量生成章节失败 toast 不含原因",
+      "level": "P3",
+      "status": "open",
+      "category": "copy",
+      "module": "solution-studio",
+      "found_in_round": "R001",
+      "note": "runBulkGenerate catch 吞掉 e.message，仅报「N 个章节失败」；单章路径有原因（不一致）"
+    },
+    {
+      "id": "D-12",
+      "title": "导出 Word 对空正文章节静默生成光杆标题",
+      "level": "P3",
+      "status": "open",
+      "category": "flow",
+      "module": "solution-studio",
+      "found_in_round": "R001",
+      "note": "守卫只要求「任意一章有正文」；正式交付物出现空章节无警告。需产品决策：警告 / 跳过 / 占位标注"
+    },
+    {
+      "id": "D-13",
+      "title": "列表页脚「方案数据保存在本地」文案与实际不符",
+      "level": "P3",
+      "status": "open",
+      "category": "copy",
+      "module": "solution-studio",
+      "found_in_round": "R001",
+      "note": "方案数据存服务端 PocketBase；仅导出页面格式存 localStorage"
+    },
+    {
+      "id": "E-1",
+      "title": "pnpm build 被 v10 依赖预检卡死（ERR_PNPM_IGNORED_BUILDS：@parcel/watcher、@swc/core、core-js、less、protobufjs）",
+      "level": "P2",
+      "status": "open",
+      "category": "build",
+      "module": "tooling",
+      "found_in_round": "R000-startup",
+      "root_cause": "pnpm run 触发 verify-deps-before-run 自动 install，未批准构建脚本时以错误退出（dev 服务不受影响）",
+      "workaround": "npx tsc -b && npx vite build（tsc 11s 零错误 + vite 2.4s 成功）",
+      "needs_decision": "A: 项目 .npmrc 加 verify-deps-before-run=false；B: pnpm approve-builds 放行构建脚本（会执行第三方 postinstall）"
+    },
+    {
+      "id": "E-2",
+      "title": "solutions=0：方案编制页核心链路缺真实数据",
+      "level": "P2",
+      "status": "open",
+      "category": "data",
+      "module": "solution-studio",
+      "found_in_round": "R000-startup",
+      "note": "R001 已用 [NIGHTTEST] 种子（r001_seed.json，幂等可重放）临时解除并验证后删除；长期仍建议按 SOP 第六部分造最小数据集"
+    }
+  ]
+}

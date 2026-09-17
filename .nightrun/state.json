@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "project": "xiaozhigongzuozhan",
+  "project_root": "D:\\重要文件\\工作的小程序\\xiaozhigongzuozhan",
+  "night_id": "2026-09-18-solution-studio-1",
+  "started_at": "2026-09-18T00:05:00+08:00",
+  "mode": "interactive-focus",
+  "scope": "/solution-studio（方案编制页）；其他模块发现只记账不修",
+  "night_budget_hours": null,
+  "stop_rule": "先跑 1-2 轮给用户看产出；每轮必须落盘+commit",
+
+  "phase": "round_end",
+  "current_round": 1,
+  "current_topic": "D-8 方案阶段标识与完成度同步",
+  "current_step": "done",
+
+  "rotation": {
+    "type_cycle": ["fix", "experience", "fix", "deep"],
+    "next_type": "fix",
+    "lens_cycle": ["interface", "ui", "layout", "workflow", "interaction"],
+    "next_lens": "interface",
+    "role_cycle": ["pm", "qa", "presales", "hospital-it", "committee"],
+    "next_role": "pm"
+  },
+
+  "counters": {
+    "rounds_done": 1,
+    "fixes_applied": 1,
+    "defects_found": 6,
+    "defects_blocked": 0,
+    "consecutive_blocked": 0,
+    "commits": 1
+  },
+
+  "queue": {
+    "pending": ["D-9", "D-10", "D-11", "D-12", "D-13"],
+    "fixed_pending_verify": ["D-8"],
+    "blocked": [],
+    "done": []
+  },
+
+  "blockers": [
+    {
+      "id": "E-1",
+      "desc": "pnpm build 被 pnpm v10 依赖预检卡死（ERR_PNPM_IGNORED_BUILDS）；构建门禁临时改用 npx tsc -b && npx vite build（总纲允许）",
+      "since_round": 0,
+      "needs": "用户决定：.npmrc 关闭 verify-deps-before-run，或 pnpm approve-builds 放行 5 个包的构建脚本",
+      "affects": ["所有轮次的第 5 拍构建门禁"]
+    },
+    {
+      "id": "E-2",
+      "desc": "solutions=0（业务数据为空），方案编制页核心链路（列表/编辑/生成）无真实数据可回归",
+      "since_round": 0,
+      "needs": "按 SOP 第六部分造最小数据集（先备份、打 [NIGHTTEST] 标记）",
+      "affects": ["R001+ 的方案编制端到端验证"]
+    }
+  ],
+
+  "env": {
+    "service_up": true,
+    "service_url": "http://127.0.0.1:8000/",
+    "pb_direct_ok": true,
+    "build_ok": true,
+    "build_cmd": "npx tsc -b && npx vite build",
+    "build_seconds": 17,
+    "protocol_leaks": 0,
+    "rh_balance_ok": null,
+    "ai_tests_allowed": false
+  },
+
+  "git": {
+    "branch": "master",
+    "head_before_night": "023497e (baseline commit，仓库为本轮 git init 新建)",
+    "head_now": "023497e",
+    "dirty": false
+  },
+
+  "resume_hint": "R001 完成（D-8 fixed_pending_verify）。下一轮：先等用户拍板 E-1/D-12/AI 复验；修复轮优先回归 D-8，随后可扩 scope 修 D-1（P1）",
+  "last_updated": "2026-09-18T00:52:00+08:00"
+}
