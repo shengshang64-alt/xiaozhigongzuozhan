@@ -125,7 +125,16 @@ routerAdd("GET", "/api/solutions", function (e) {
     for (var i = 0; i < records.length; i++) {
       items.push(records[i].publicExport())
     }
-    return e.json(200, { items: items, page: page, perPage: perPage, totalItems: items.length })
+    // R004（D-9）：totalItems 返回过滤后的真总数（原恒等于 items.length，调用方无法得知还有更多页）。
+    // 注：PB v0.40 JSVM 无 countRecordsByFilter，用 findRecordsByFilter 大 limit 计数（本地单用户规模开销可忽略）
+    var totalItems = items.length
+    try {
+      var countRecords = filter
+        ? $app.findRecordsByFilter("solutions", filter, sort, 100000, 0, params)
+        : $app.findRecordsByFilter("solutions", "", sort, 100000, 0)
+      totalItems = countRecords.length
+    } catch (err2) {}
+    return e.json(200, { items: items, page: page, perPage: perPage, totalItems: totalItems })
   } catch (err) {
     var msg = String(err && err.message || err)
     try { $app.logger().error("solutions list: " + msg) } catch (_) {}

@@ -10,8 +10,8 @@
   "stop_rule": "先跑 1-2 轮给用户看产出；每轮必须落盘+commit",
 
   "phase": "round_end",
-  "current_round": 3,
-  "current_topic": "D-1 全局搜索商机组假阳性（P1）",
+  "current_round": 4,
+  "current_topic": "D-9 + D-10 列表/删除数据一致性",
   "current_step": "done",
 
   "rotation": {
@@ -24,19 +24,19 @@
   },
 
   "counters": {
-    "rounds_done": 3,
-    "fixes_applied": 5,
-    "defects_found": 6,
+    "rounds_done": 4,
+    "fixes_applied": 7,
+    "defects_found": 7,
     "defects_blocked": 0,
     "consecutive_blocked": 0,
-    "commits": 3
+    "commits": 4
   },
 
   "queue": {
-    "pending": ["D-9", "D-10", "D-12"],
+    "pending": ["D-12", "D-14"],
     "fixed_pending_verify": ["D-11"],
     "blocked": [],
-    "done": ["D-1", "D-8", "D-13", "E-1"]
+    "done": ["D-1", "D-8", "D-9", "D-10", "D-13", "E-1"]
   },
 
   "blockers": [
@@ -75,6 +75,6 @@
     "dirty": false
   },
 
-  "resume_hint": "R003 完成（D-1 done，唯一的 P1 清零）。下一轮按轮转应为深度轮（角色：产品经理）；用户若选修复轮则清 D-9/D-10，D-12 等 A/B 拍板",
-  "last_updated": "2026-09-18T01:20:00+08:00"
+  "resume_hint": "R004 完成（D-9/D-10 done）。下一轮按轮转为深度轮（角色：产品经理）审方案编制页；页内余 D-12（等 A/B 拍板）/D-14（a11y 一行改动）；D-11 等真实失败路径",
+  "last_updated": "2026-09-18T02:10:00+08:00"
 }

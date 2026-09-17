@@ -76,23 +76,69 @@
     },
     {
       "id": "D-9",
-      "title": "solutions 列表接口 totalItems 恒等于返回条数 + perPage>200 静默截断",
+      "title": "solutions 列表接口 totalItems 谎报 + perPage>200 静默截断",
       "level": "P3",
-      "status": "open",
+      "status": "done",
       "category": "logic",
       "module": "solution-studio / pb_hooks/solutions.pb.js",
       "found_in_round": "R001",
-      "note": "list 路由 totalItems: items.length（非真总数）；前端 perPage=200 上限（B6 注释自认）超量无任何提示"
+      "note": "list 路由 totalItems: items.length（非真总数）；前端 perPage=200 上限超量无任何提示",
+      "fix": {
+        "round": "R004",
+        "files": ["pocketbase/pb_hooks/solutions.pb.js", "src/pages/SolutionStudio/useSolutionStudio.ts"],
+        "summary": "后端 totalItems 改真总数（findRecordsByFilter 大 limit 计数；v0.40 JSVM 无 countRecordsByFilter）；前端 loadSolutions 按页拉全（10 页上限）",
+        "commit": "<R004 commit>"
+      },
+      "verify": {
+        "method": "201 条种子下 curl 分页/过滤计数 + 浏览器卡片计数",
+        "expected": "totalItems=201；q=zzzqqq 计 0；UI 201 卡片",
+        "actual": "全部符合（evidence/R004_api_totalitems_*.json）；种子已清理",
+        "result": "pass",
+        "verified_at": "2026-09-18T02:05:00+08:00"
+      },
+      "risk": {
+        "impact_scope": "solutions 列表页与 API 消费方",
+        "side_effects": "后端多一次大 limit 查询，本地规模可忽略",
+        "remaining": "方案数上万时应换 count(*) 方案"
+      }
     },
     {
       "id": "D-10",
       "title": "删除方案后商机 ref_type/ref_id/ref_name 悬空",
       "level": "P3",
-      "status": "open",
+      "status": "done",
       "category": "data",
       "module": "solution-studio / customer-management",
       "found_in_round": "R001",
-      "note": "confirmOutline 会把商机 ref 指向方案，deleteSolution 只删方案不清引用；当前库内无实例，属潜伏缺陷"
+      "note": "confirmOutline 会把商机 ref 指向方案，deleteSolution 只删方案不清引用",
+      "fix": {
+        "round": "R004",
+        "files": ["src/pages/SolutionStudio/useSolutionStudio.ts"],
+        "summary": "deleteSolution 删除成功后拉商机列表筛 ref_id===本方案，逐个 PATCH 清空 ref；失败给可操作 toast",
+        "commit": "<R004 commit>"
+      },
+      "verify": {
+        "method": "种子关联 → UI 删除 → 查商机字段",
+        "expected": "ref 三字段清空",
+        "actual": "全部为空串（evidence/R004_api_opp_ref_cleared_after.json）；改前悬空证据 evidence/R004_api_opp_dangling_before.json",
+        "result": "pass",
+        "verified_at": "2026-09-18T01:55:00+08:00"
+      },
+      "risk": {
+        "impact_scope": "删除方案的商机关联一致性",
+        "side_effects": "删除耗时略增（多一次列表查询）",
+        "remaining": "清理上限 200 商机（opportunities list 单页上限），超出极难触达"
+      }
+    },
+    {
+      "id": "D-14",
+      "title": "方案卡片删除按钮为纯图标无 aria-label",
+      "level": "P3",
+      "status": "open",
+      "category": "a11y",
+      "module": "solution-studio",
+      "found_in_round": "R004",
+      "note": "SolutionListPanel SolutionCard 的 Trash2 按钮无 aria-label，读屏/键盘用户不可感知用途"
     },
     {
       "id": "D-11",

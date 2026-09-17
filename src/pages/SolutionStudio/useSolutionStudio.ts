@@ -188,11 +188,21 @@ export function useSolutionStudio() {
   const loadSolutions = useCallback(async (uid: string) => {
     setListLoading(true)
     try {
-      const data = await apiFetch<ListResponse<SolutionRecord>>(
-        // B6：perPage 提到 200，避免服务端缺省 50 静默截断方案列表
-        `/api/solutions?rh_user_id=${encodeURIComponent(uid)}&page=1&perPage=200`,
+      // R004（D-9）：服务端单页上限 200，totalItems 已改为真总数；这里按页拉全（上限 10 页防失控）
+      const perPage = 200
+      const first = await apiFetch<ListResponse<SolutionRecord>>(
+        `/api/solutions?rh_user_id=${encodeURIComponent(uid)}&page=1&perPage=${perPage}`,
       )
-      setSolutions(data.items ?? [])
+      const items: SolutionRecord[] = [...(first.items ?? [])]
+      const total = first.totalItems ?? items.length
+      for (let page = 2; items.length < total && page <= 10; page++) {
+        const next = await apiFetch<ListResponse<SolutionRecord>>(
+          `/api/solutions?rh_user_id=${encodeURIComponent(uid)}&page=${page}&perPage=${perPage}`,
+        )
+        if (!next.items?.length) break
+        items.push(...next.items)
+      }
+      setSolutions(items)
     } catch {
       toast.error("方案列表加载失败，请稍后重试")
     } finally {
@@ -638,13 +648,31 @@ export function useSolutionStudio() {
     async (rec: SolutionRecord) => {
       try {
         await apiFetch(`/api/solutions/${rec.id}`, { method: "DELETE" })
-        setSolutions((prev) => prev.filter((s) => s.id !== rec.id))
-        toast.success("方案已删除")
       } catch {
-        toast.error("删除失败，请稍后重试")
+        toast.error("删除失败，请检查网络后重试")
+        return
+      }
+      setSolutions((prev) => prev.filter((s) => s.id !== rec.id))
+      toast.success("方案已删除")
+      if (!userId) return
+      // R004（D-10）：清理指向本方案的商机关联，避免商机详情出现死链。
+      // opportunities list 仅支持 rh_user_id 过滤，拉 200 条后客户端筛 ref_id（与全局搜索兜底同模式）。
+      try {
+        const opps = await apiFetch<
+          ListResponse<SolutionOppOption & { ref_type?: string; ref_id?: string }>
+        >(`/api/opportunities?rh_user_id=${encodeURIComponent(userId)}&perPage=200`)
+        const linked = (opps?.items ?? []).filter((o) => o.ref_type === "solution" && o.ref_id === rec.id)
+        for (const o of linked) {
+          await apiFetch(`/api/opportunities/${encodeURIComponent(o.id)}`, {
+            method: "PATCH",
+            body: JSON.stringify({ ref_type: "", ref_id: "", ref_name: "" }),
+          })
+        }
+      } catch {
+        toast.error("方案已删除，但商机关联清理失败，可在客户管理中手动处理")
       }
     },
-    [],
+    [userId],
   )
 
   // ------------------------------ 章节 AI 操作 ------------------------------
