@@ -202,7 +202,13 @@ export function ResultRegisterCard({
               <span>中标金额：<strong className="font-bold text-primary">{proj.bid_amount} 万元</strong></span>
             )}
             {result === "lost" && proj.lost_reason && (
-              <span className="text-muted-foreground">失单原因：{proj.lost_reason}</span>
+              <span className="text-muted-foreground">
+                失单原因：
+                {(() => {
+                  const { code, detail } = splitLostReason(proj.lost_reason)
+                  return code ? `${code}${detail ? ` · ${detail}` : ""}` : detail || proj.lost_reason
+                })()}
+              </span>
             )}
             {proj.result_synced_at && (
               <span className="text-xs text-muted-foreground">已同步到客户管理 · {fmtSyncedAt(proj.result_synced_at)}</span>
