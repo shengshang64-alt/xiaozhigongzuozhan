@@ -79,7 +79,7 @@ function SolutionCard({
           <Archive className="mr-1 h-3.5 w-3.5" />
           入素材库
         </Button>
-        <Button size="sm" variant="ghost" className="ml-auto text-muted-foreground hover:text-destructive" onClick={() => setConfirmingDelete(true)}>
+        <Button size="sm" variant="ghost" className="ml-auto text-muted-foreground hover:text-destructive" aria-label={`删除方案 ${rec.solution_name}`} title="删除方案" onClick={() => setConfirmingDelete(true)}>
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>

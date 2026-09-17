@@ -49,7 +49,7 @@ export function PlatformModelCard({ config, busy, onToggleModel, onSetDefault, o
         <span className="badge-neutral">
           平台内置 · 按 token 用量计费
         </span>
-        <p className="ml-auto text-xs text-muted-foreground">无需配置，可直接使用</p>
+        <p className="ml-auto text-xs text-muted-foreground">无需配置密钥，登录 RunningHub 账户后即可使用</p>
       </header>
       <div className="p-4 lg:p-5">
         {!config ? (

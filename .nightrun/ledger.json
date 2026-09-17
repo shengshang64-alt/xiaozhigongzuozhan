@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "xiaozhigongzuozhan",
-  "last_updated": "2026-09-18T00:50:00+08:00",
+  "last_updated": "2026-09-18T06:55:00+08:00",
   "note": "D-1~D-7 为 2026-09-17 基线实测（总纲 1.8），本轮 scope=/solution-studio，全局项挂账暂不修；D-8~D-13 为 R001 产出。",
   "items": [
     {
@@ -13,10 +13,17 @@
       "module": "shell/useGlobalSearch",
       "found_at": "2026-09-17T18:10:00+08:00",
       "root_cause": "useGlobalSearch.ts 第 174 行注释误以为八组 API 全部支持服务端 q=，实际 opportunities/bid_projects 的 pb_hooks list 路由不支持 q=（恒返最近 N 条）；bid 组在「循环7 C2-1」已补客户端 matches() 兜底，唯独商机组漏补 → 任意关键词都返回全部商机",
-      "evidence": ["evidence/R003_api_opp_q_before.json", "evidence/R003_palette_before_fix.txt", "evidence/R003_palette_after_fix_neg.txt", "evidence/R003_palette_after_fix_pos.txt"],
+      "evidence": [
+        "evidence/R003_api_opp_q_before.json",
+        "evidence/R003_palette_before_fix.txt",
+        "evidence/R003_palette_after_fix_neg.txt",
+        "evidence/R003_palette_after_fix_pos.txt"
+      ],
       "fix": {
         "round": "R003",
-        "files": ["src/components/shell/useGlobalSearch.ts"],
+        "files": [
+          "src/components/shell/useGlobalSearch.ts"
+        ],
         "summary": "商机组补客户端 matches(kw, opp_name, customer_name) 兜底（与 bid 组同模式，服务端支持 q 后可移除）；修正误导性注释",
         "commit": "<R003 commit>"
       },
@@ -31,18 +38,95 @@
         "impact_scope": "仅全局命令面板商机组；customer-management 页面的商机列表不走此路径",
         "side_effects": "perPage=8 内客户端过滤，理论上单次命中上限 8 条（与 bid 组同限制，实际数据量下无感）",
         "remaining": "opportunities/bid_projects 后端补 q= 后可移除两处客户端兜底（代码内已留注释）"
-    }
+      }
     },
-    { "id": "D-2", "title": "脏记忆：一次性状态被沉淀为长期 fact", "level": "P2", "status": "fixed_pending_verify", "category": "protocol", "module": "assistant/memory", "found_in_round": "R009",
+    {
+      "id": "D-2",
+      "title": "脏记忆：一次性状态被沉淀为长期 fact",
+      "level": "P2",
+      "status": "fixed_pending_verify",
+      "category": "protocol",
+      "module": "assistant/memory",
+      "found_in_round": "R009",
       "root_cause": "提示词对 fact 仅一句模糊禁令无正反例；parseAssistantReply 对 fact 内容零过滤",
-      "fix": { "round": "R009", "files": ["src/lib/memoryGuard.ts", "src/lib/assistantCore.ts"], "summary": "memoryGuard.ts：MEMORY_FACT_RULES（时间无关测试+四类禁止+正反例）拼入协议提示词；isOneOffFact/filterMemories 确定性过滤（只动 fact，preference/habit 不变）", "commit": "<R009 commit>" },
-      "verify": { "method": "node 直验 verify_d2.mjs（可重放）+ 提示词效果需真实对话观察", "expected": "5 脏全滤 3 净全留 preference 不动；后续真实对话不再沉淀一次性 fact", "actual": "护栏 6 项断言 ALL PASS；模型行为效果待真实对话", "result": "pending" },
-      "risk": { "impact_scope": "小智记忆抽取", "side_effects": "只拦无争议信号；协议格式未变", "remaining": "半持续语境（正在准备五级评审）仍可能入库，规则随语料迭代；存量脏数据不回溯，建议用户在记忆面板手动清理" } },
-    { "id": "D-3", "title": "公共模型标注「无需配置可直接使用」，未登录点测试却失败", "level": "P2", "status": "open", "category": "copy", "module": "model-config", "scope_note": "本轮不修" },
-    { "id": "D-4", "title": "「测试失败」文案无原因", "level": "P3", "status": "open", "category": "copy", "module": "model-config", "scope_note": "本轮不修" },
-    { "id": "D-5", "title": "选「只解析关键项」但落库 scope === \"full\"", "level": "P3", "status": "open", "category": "logic", "module": "bid-workspace", "scope_note": "本轮不修" },
-    { "id": "D-6", "title": "空态文案「登录后可创建」与实际不符", "level": "P3", "status": "open", "category": "copy", "module": "多处空态", "scope_note": "R001 已核实方案编制列表空态无此问题（该页排除）" },
-    { "id": "D-7", "title": "AI 解析成功后 stage 仍为 pending_parse", "level": "P3", "status": "open", "category": "logic", "module": "bid-workspace", "scope_note": "本轮不修；D-8 根因 B 的整行覆写机制可能同样适用，修时一并核查" },
+      "fix": {
+        "round": "R009",
+        "files": [
+          "src/lib/memoryGuard.ts",
+          "src/lib/assistantCore.ts"
+        ],
+        "summary": "memoryGuard.ts：MEMORY_FACT_RULES（时间无关测试+四类禁止+正反例）拼入协议提示词；isOneOffFact/filterMemories 确定性过滤（只动 fact，preference/habit 不变）",
+        "commit": "<R009 commit>"
+      },
+      "verify": {
+        "method": "node 直验 verify_d2.mjs（可重放）+ 提示词效果需真实对话观察",
+        "expected": "5 脏全滤 3 净全留 preference 不动；后续真实对话不再沉淀一次性 fact",
+        "actual": "护栏 6 项断言 ALL PASS；模型行为效果待真实对话",
+        "result": "pending"
+      },
+      "risk": {
+        "impact_scope": "小智记忆抽取",
+        "side_effects": "只拦无争议信号；协议格式未变",
+        "remaining": "半持续语境（正在准备五级评审）仍可能入库，规则随语料迭代；存量脏数据不回溯，建议用户在记忆面板手动清理"
+      }
+    },
+    {
+      "id": "D-3",
+      "title": "公共模型标注「无需配置可直接使用」，未登录点测试却失败",
+      "level": "P2",
+      "status": "done",
+      "category": "copy",
+      "module": "model-config",
+      "scope_note": "本轮不修",
+      "fix": {
+        "round": "R010",
+        "files": [
+          "src/components/model-config/PlatformModelCard.tsx"
+        ],
+        "summary": "文案改为「无需配置密钥，登录 RunningHub 账户后即可使用」",
+        "commit": "<R010>"
+      },
+      "verify": {
+        "method": "构建+dev模块核对",
+        "result": "pass"
+      }
+    },
+    {
+      "id": "D-4",
+      "title": "「测试失败」文案无原因",
+      "level": "P3",
+      "status": "open",
+      "category": "copy",
+      "module": "model-config",
+      "scope_note": "本轮不修"
+    },
+    {
+      "id": "D-5",
+      "title": "选「只解析关键项」但落库 scope === \"full\"",
+      "level": "P3",
+      "status": "open",
+      "category": "logic",
+      "module": "bid-workspace",
+      "scope_note": "本轮不修"
+    },
+    {
+      "id": "D-6",
+      "title": "空态文案「登录后可创建」与实际不符",
+      "level": "P3",
+      "status": "open",
+      "category": "copy",
+      "module": "多处空态",
+      "scope_note": "R001 已核实方案编制列表空态无此问题（该页排除）"
+    },
+    {
+      "id": "D-7",
+      "title": "AI 解析成功后 stage 仍为 pending_parse",
+      "level": "P3",
+      "status": "open",
+      "category": "logic",
+      "module": "bid-workspace",
+      "scope_note": "本轮不修；D-8 根因 B 的整行覆写机制可能同样适用，修时一并核查"
+    },
     {
       "id": "D-8",
       "title": "方案阶段标识与实际完成度不同步（三态不足 + 并发 PATCH 丢字段）",
@@ -54,7 +138,13 @@
       "found_at": "2026-09-18T00:20:00+08:00",
       "symptom": "批量生成中止/部分失败后徽标回落「大纲中」但正文 X/Y 章有内容；实测成功路径 3/3 done 后卡死「生成中」不收敛",
       "root_cause": "① DocStatus 仅 outline/generating/done，终态三元无「部分完成」值；② 循环末尾 doc_status PATCH 与章节 PATCH 并发，后端 /api/solutions/{id} PATCH 读整行-改-存整行，交错时旧快照整行覆盖丢字段",
-      "evidence": ["evidence/R001_api_after_repro.json", "evidence/R002_api_after_stop.json", "evidence/R002_api_after_resume.json", "evidence/R002_dom_editor_done.txt", "evidence/R002_dom_list_after.txt"],
+      "evidence": [
+        "evidence/R001_api_after_repro.json",
+        "evidence/R002_api_after_stop.json",
+        "evidence/R002_api_after_resume.json",
+        "evidence/R002_dom_editor_done.txt",
+        "evidence/R002_dom_list_after.txt"
+      ],
       "fix": {
         "round": "R001",
         "files": [
@@ -89,7 +179,10 @@
       "note": "list 路由 totalItems: items.length（非真总数）；前端 perPage=200 上限超量无任何提示",
       "fix": {
         "round": "R004",
-        "files": ["pocketbase/pb_hooks/solutions.pb.js", "src/pages/SolutionStudio/useSolutionStudio.ts"],
+        "files": [
+          "pocketbase/pb_hooks/solutions.pb.js",
+          "src/pages/SolutionStudio/useSolutionStudio.ts"
+        ],
         "summary": "后端 totalItems 改真总数（findRecordsByFilter 大 limit 计数；v0.40 JSVM 无 countRecordsByFilter）；前端 loadSolutions 按页拉全（10 页上限）",
         "commit": "<R004 commit>"
       },
@@ -117,7 +210,9 @@
       "note": "confirmOutline 会把商机 ref 指向方案，deleteSolution 只删方案不清引用",
       "fix": {
         "round": "R004",
-        "files": ["src/pages/SolutionStudio/useSolutionStudio.ts"],
+        "files": [
+          "src/pages/SolutionStudio/useSolutionStudio.ts"
+        ],
         "summary": "deleteSolution 删除成功后拉商机列表筛 ref_id===本方案，逐个 PATCH 清空 ref；失败给可操作 toast",
         "commit": "<R004 commit>"
       },
@@ -138,11 +233,23 @@
       "id": "D-14",
       "title": "方案卡片删除按钮为纯图标无 aria-label",
       "level": "P3",
-      "status": "open",
+      "status": "done",
       "category": "a11y",
       "module": "solution-studio",
       "found_in_round": "R004",
-      "note": "SolutionListPanel SolutionCard 的 Trash2 按钮无 aria-label，读屏/键盘用户不可感知用途"
+      "note": "SolutionListPanel SolutionCard 的 Trash2 按钮无 aria-label，读屏/键盘用户不可感知用途",
+      "fix": {
+        "round": "R010",
+        "files": [
+          "src/components/solution-studio/SolutionListPanel.tsx"
+        ],
+        "summary": "删除按钮补 aria-label（含方案名）+ title",
+        "commit": "<R010>"
+      },
+      "verify": {
+        "method": "构建",
+        "result": "pass"
+      }
     },
     {
       "id": "D-11",
@@ -155,7 +262,9 @@
       "note": "runBulkGenerate catch 吞掉 e.message，仅报「N 个章节失败」；单章路径有原因（不一致）",
       "fix": {
         "round": "R002",
-        "files": ["src/pages/SolutionStudio/useSolutionStudio.ts"],
+        "files": [
+          "src/pages/SolutionStudio/useSolutionStudio.ts"
+        ],
         "summary": "catch 记录首个错误 message（截 80 字），失败 toast 改为「N 个章节失败：<原因>；可稍后单独重试失败章节」",
         "commit": "<R002 commit>"
       },
@@ -187,7 +296,9 @@
       "note": "方案数据存服务端 PocketBase；仅导出页面格式存 localStorage",
       "fix": {
         "round": "R002",
-        "files": ["src/components/solution-studio/SolutionListPanel.tsx"],
+        "files": [
+          "src/components/solution-studio/SolutionListPanel.tsx"
+        ],
         "summary": "页脚改为「方案数据保存在服务端，正文生成按实际 token 用量扣费」",
         "commit": "<R002 commit>"
       },
@@ -210,7 +321,9 @@
       "root_cause": "pnpm 11.21 在 pnpm-workspace.yaml 写入 allowBuilds 占位符（set this to true or false），未决值导致运行前依赖校验里的自动 install 以错误退出",
       "fix": {
         "round": "R002",
-        "files": ["pnpm-workspace.yaml"],
+        "files": [
+          "pnpm-workspace.yaml"
+        ],
         "summary": "5 个包 allowBuilds 全部显式设为 false（拒绝执行第三方 postinstall，项目构建从不依赖这些脚本）；期间尝试的 .npmrc verify-deps-before-run 方案在 v11 无效已删除",
         "commit": "<R002 commit>"
       },
@@ -245,19 +358,40 @@
         "阶段二(backlog)": "AI 从招标文件自动归纳矩阵行（走 costConfirm）；进度迁 PB json 字段（localStorage 仅本机）；与偏离表联动自动判覆盖"
       }
     },
-    { "id": "B-2", "title": "产品backlog：评分表/表格化条款结构化解析（RAGFlow 式深度文档理解）", "level": "P2", "status": "in_progress", "category": "flow", "module": "bid-workspace", "source": "PRODUCT_BENCHMARK.md 高优 #2；是 B-1 矩阵的数据源增强",
+    {
+      "id": "B-2",
+      "title": "产品backlog：评分表/表格化条款结构化解析（RAGFlow 式深度文档理解）",
+      "level": "P2",
+      "status": "in_progress",
+      "category": "flow",
+      "module": "bid-workspace",
+      "source": "PRODUCT_BENCHMARK.md 高优 #2；是 B-1 矩阵的数据源增强",
       "progress": {
         "阶段一(R008)": "done——scoreItemsScan.ts 本地评分项扫描（4 种分值写法启发式+类目跟踪+合计识别）+ 解析报告交叉比对（漏抽/分值不符/总分≠100 警告）+ ScoreCrossCheckPanel 挂第 2 步；node 直验+UI 验证全过，零 AI",
         "阶段二(backlog)": "PDF 管线升级：表格感知抽取（pdfjs 表格结构恢复或表格 OCR），产出结构化评分表而非文本行；扫描启发式准确率随真实语料迭代"
       }
     },
-    { "id": "B-3", "title": "产品backlog：投标复盘与胜率分析（bid_result 数据已有，纯统计）", "level": "P2", "status": "in_progress", "category": "flow", "module": "bid-workspace / 首页", "source": "PRODUCT_BENCHMARK.md 高优 #3；一个修复轮可出 MVP",
+    {
+      "id": "B-3",
+      "title": "产品backlog：投标复盘与胜率分析（bid_result 数据已有，纯统计）",
+      "level": "P2",
+      "status": "in_progress",
+      "category": "flow",
+      "module": "bid-workspace / 首页",
+      "source": "PRODUCT_BENCHMARK.md 高优 #3；一个修复轮可出 MVP",
       "progress": {
         "阶段一(R006)": "done——BidReviewSummary 组件挂标书列表页上方：总数/已结束/中标率(样本<5 提示)/中标金额合计(万元)/待回填数/落标原因 Top3；6 条种子数字全对",
         "阶段二(backlog)": "落标原因结构化表单（枚举+自由文本）；趋势对比（按月/按客户）；首页聚合入口"
       }
     },
-    { "id": "B-4", "title": "产品backlog：公司模板中心（标书 Word 样式/封面/盖章页；PPT VI 模板 defineSlideMaster）", "level": "P2", "status": "in_progress", "category": "ui", "module": "solution-studio / bid-workspace / ppt-quote", "source": "PRODUCT_BENCHMARK.md 高优 #4",
+    {
+      "id": "B-4",
+      "title": "产品backlog：公司模板中心（标书 Word 样式/封面/盖章页；PPT VI 模板 defineSlideMaster）",
+      "level": "P2",
+      "status": "in_progress",
+      "category": "ui",
+      "module": "solution-studio / bid-workspace / ppt-quote",
+      "source": "PRODUCT_BENCHMARK.md 高优 #4",
       "progress": {
         "阶段一(R007)": "done——方案编制导出 Word 模板：封面（单位名/方案名/医院·类型/日期）+ 自动目录（updateFields 域）+ 页眉文字；ExportTemplateCard 按方案 localStorage；node 直验 8/8",
         "阶段二(backlog)": "上传公司 docx 模板解析样式映射；PPT defineSlideMaster 母版；标书工作导出对齐"
