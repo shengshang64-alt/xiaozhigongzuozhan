@@ -535,7 +535,10 @@ export function useHome() {
     const lost = lostRows.length
     const reasonCount = new Map<string, number>()
     for (const row of lostRows) {
-      const reason = row.lostReason || "未填写原因"
+      const rawReason = row.lostReason || "未填写原因"
+      // R012 对齐：结构化失单原因「【类别】明细」按类别聚合，无前缀旧数据回退原文
+      const coded = rawReason.match(/^【([^】]+)】/)
+      const reason = coded ? coded[1] : rawReason
       reasonCount.set(reason, (reasonCount.get(reason) ?? 0) + 1)
     }
     const lostReasonTop = [...reasonCount.entries()]
