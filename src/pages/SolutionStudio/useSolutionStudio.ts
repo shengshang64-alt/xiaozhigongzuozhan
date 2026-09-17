@@ -1105,6 +1105,11 @@ export function useSolutionStudio() {
       toast.error("还没有任何正文内容，无法导出")
       return
     }
+    // R011（D-12 方案 A）：空章节不阻断导出，但显式警告（正式交付物质量提示）
+    const emptyChapters = sol.chapters.filter((c) => !c.content.trim()).length
+    if (emptyChapters > 0) {
+      toast.warning(`有 ${emptyChapters} 章正文为空，将导出为空章节；正式交付前请补齐或删除这些章节`)
+    }
     if (exportingWord) return
     setExportingWord(true)
     try {

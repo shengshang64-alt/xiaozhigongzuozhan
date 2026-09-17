@@ -8,54 +8,86 @@
   "scope": "/solution-studio（方案编制页）；其他模块发现只记账不修",
   "night_budget_hours": null,
   "stop_rule": "先跑 1-2 轮给用户看产出；每轮必须落盘+commit",
-
   "phase": "round_end",
-  "current_round": 10,
-  "current_topic": "D-3 文案如实化 + D-14 a11y（小项收官）",
+  "current_round": 11,
+  "current_topic": "D-12 空章节导出警告（方案A）",
   "current_step": "done",
-
   "rotation": {
-    "type_cycle": ["fix", "experience", "fix", "deep"],
+    "type_cycle": [
+      "fix",
+      "experience",
+      "fix",
+      "deep"
+    ],
     "next_type": "deep",
-    "lens_cycle": ["interface", "ui", "layout", "workflow", "interaction"],
+    "lens_cycle": [
+      "interface",
+      "ui",
+      "layout",
+      "workflow",
+      "interaction"
+    ],
     "next_lens": "ui",
-    "role_cycle": ["pm", "qa", "presales", "hospital-it", "committee"],
+    "role_cycle": [
+      "pm",
+      "qa",
+      "presales",
+      "hospital-it",
+      "committee"
+    ],
     "next_role": "pm"
   },
-
   "counters": {
-    "rounds_done": 10,
-    "fixes_applied": 14,
+    "rounds_done": 11,
+    "fixes_applied": 15,
     "defects_found": 7,
     "defects_blocked": 0,
     "consecutive_blocked": 0,
-    "commits": 10
+    "commits": 13
   },
-
   "queue": {
     "pending": [],
-    "fixed_pending_verify": ["D-2", "D-11"],
+    "fixed_pending_verify": [
+      "D-2",
+      "D-11"
+    ],
     "blocked": [],
-    "done": ["D-1", "D-3", "D-8", "D-9", "D-10", "D-13", "D-14", "E-1", "B-1阶段一", "B-2阶段一", "B-3阶段一", "B-4阶段一"]
+    "done": [
+      "D-1",
+      "D-3",
+      "D-8",
+      "D-9",
+      "D-10",
+      "D-13",
+      "D-14",
+      "E-1",
+      "B-1阶段一",
+      "B-2阶段一",
+      "B-3阶段一",
+      "B-4阶段一",
+      "D-12"
+    ]
   },
-
   "blockers": [
     {
       "id": "E-1",
       "desc": "pnpm build 被 pnpm v10 依赖预检卡死（ERR_PNPM_IGNORED_BUILDS）；构建门禁临时改用 npx tsc -b && npx vite build（总纲允许）",
       "since_round": 0,
       "needs": "用户决定：.npmrc 关闭 verify-deps-before-run，或 pnpm approve-builds 放行 5 个包的构建脚本",
-      "affects": ["所有轮次的第 5 拍构建门禁"]
+      "affects": [
+        "所有轮次的第 5 拍构建门禁"
+      ]
     },
     {
       "id": "E-2",
       "desc": "solutions=0（业务数据为空），方案编制页核心链路（列表/编辑/生成）无真实数据可回归",
       "since_round": 0,
       "needs": "按 SOP 第六部分造最小数据集（先备份、打 [NIGHTTEST] 标记）",
-      "affects": ["R001+ 的方案编制端到端验证"]
+      "affects": [
+        "R001+ 的方案编制端到端验证"
+      ]
     }
   ],
-
   "env": {
     "service_up": true,
     "service_url": "http://127.0.0.1:8000/",
@@ -67,14 +99,12 @@
     "rh_balance_ok": null,
     "ai_tests_allowed": false
   },
-
   "git": {
     "branch": "master",
     "head_before_night": "023497e (baseline commit，仓库为本轮 git init 新建)",
     "head_now": "023497e",
     "dirty": false
   },
-
-  "resume_hint": "R010 完成（D-3/D-14 done，pending 队列清零）。剩余全是阶段二工程或需拍板项：B 系列阶段二、D-12（等 A/B）、D-2/D-11 待真实使用观察。账本无未决小项",
-  "last_updated": "2026-09-18T07:00:00+08:00"
+  "resume_hint": "R011 完成（D-12 done，全部小项清零）。剩余均为阶段二工程或需真实使用观察：B 系列阶段二、后端并发专项、D-2/D-11 观察",
+  "last_updated": "2026-09-18T07:15:00+08:00"
 }

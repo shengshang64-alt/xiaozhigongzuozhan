@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "xiaozhigongzuozhan",
-  "last_updated": "2026-09-18T06:55:00+08:00",
+  "last_updated": "2026-09-18T07:10:00+08:00",
   "note": "D-1~D-7 为 2026-09-17 基线实测（总纲 1.8），本轮 scope=/solution-studio，全局项挂账暂不修；D-8~D-13 为 R001 产出。",
   "items": [
     {
@@ -279,11 +279,23 @@
       "id": "D-12",
       "title": "导出 Word 对空正文章节静默生成光杆标题",
       "level": "P3",
-      "status": "open",
+      "status": "done",
       "category": "flow",
       "module": "solution-studio",
       "found_in_round": "R001",
-      "note": "守卫只要求「任意一章有正文」；正式交付物出现空章节无警告。需产品决策：警告 / 跳过 / 占位标注"
+      "note": "守卫只要求「任意一章有正文」；正式交付物出现空章节无警告。需产品决策：警告 / 跳过 / 占位标注",
+      "fix": {
+        "round": "R011",
+        "files": [
+          "src/pages/SolutionStudio/useSolutionStudio.ts"
+        ],
+        "summary": "方案A：exportWord 检测空正文章节，导出前 toast.warning N 章为空（不阻断）",
+        "commit": "<R011>"
+      },
+      "verify": {
+        "method": "构建+代码路径核对",
+        "result": "pass"
+      }
     },
     {
       "id": "D-13",
