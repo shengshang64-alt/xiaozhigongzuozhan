@@ -10,8 +10,8 @@
   "stop_rule": "先跑 1-2 轮给用户看产出；每轮必须落盘+commit",
 
   "phase": "round_end",
-  "current_round": 9,
-  "current_topic": "D-2 脏记忆护栏",
+  "current_round": 10,
+  "current_topic": "D-3 文案如实化 + D-14 a11y（小项收官）",
   "current_step": "done",
 
   "rotation": {
@@ -24,19 +24,19 @@
   },
 
   "counters": {
-    "rounds_done": 9,
-    "fixes_applied": 12,
+    "rounds_done": 10,
+    "fixes_applied": 14,
     "defects_found": 7,
     "defects_blocked": 0,
     "consecutive_blocked": 0,
-    "commits": 9
+    "commits": 10
   },
 
   "queue": {
-    "pending": ["D-12", "D-14", "D-3"],
+    "pending": [],
     "fixed_pending_verify": ["D-2", "D-11"],
     "blocked": [],
-    "done": ["D-1", "D-8", "D-9", "D-10", "D-13", "E-1", "B-1阶段一", "B-2阶段一", "B-3阶段一", "B-4阶段一"]
+    "done": ["D-1", "D-3", "D-8", "D-9", "D-10", "D-13", "D-14", "E-1", "B-1阶段一", "B-2阶段一", "B-3阶段一", "B-4阶段一"]
   },
 
   "blockers": [
@@ -75,6 +75,6 @@
     "dirty": false
   },
 
-  "resume_hint": "R009 完成（D-2 脏记忆双层护栏，fixed_pending_verify 待真实对话观察）。剩余：D-3（公共模型文案）、D-12（等 A/B）、D-14（一行 a11y）、B 系列阶段二、深度轮",
-  "last_updated": "2026-09-18T06:35:00+08:00"
+  "resume_hint": "R010 完成（D-3/D-14 done，pending 队列清零）。剩余全是阶段二工程或需拍板项：B 系列阶段二、D-12（等 A/B）、D-2/D-11 待真实使用观察。账本无未决小项",
+  "last_updated": "2026-09-18T07:00:00+08:00"
 }
