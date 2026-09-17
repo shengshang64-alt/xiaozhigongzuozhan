@@ -9,8 +9,8 @@
   "night_budget_hours": null,
   "stop_rule": "先跑 1-2 轮给用户看产出；每轮必须落盘+commit",
   "phase": "round_end",
-  "current_round": 11,
-  "current_topic": "D-12 空章节导出警告（方案A）",
+  "current_round": 12,
+  "current_topic": "B-3 阶段二：失单原因结构化",
   "current_step": "done",
   "rotation": {
     "type_cycle": [
@@ -38,12 +38,12 @@
     "next_role": "pm"
   },
   "counters": {
-    "rounds_done": 11,
-    "fixes_applied": 15,
+    "rounds_done": 12,
+    "fixes_applied": 16,
     "defects_found": 7,
     "defects_blocked": 0,
     "consecutive_blocked": 0,
-    "commits": 13
+    "commits": 14
   },
   "queue": {
     "pending": [],
@@ -65,7 +65,8 @@
       "B-2阶段一",
       "B-3阶段一",
       "B-4阶段一",
-      "D-12"
+      "D-12",
+      "B-3阶段二"
     ]
   },
   "blockers": [
@@ -105,6 +106,6 @@
     "head_now": "023497e",
     "dirty": false
   },
-  "resume_hint": "R011 完成（D-12 done，全部小项清零）。剩余均为阶段二工程或需真实使用观察：B 系列阶段二、后端并发专项、D-2/D-11 观察",
-  "last_updated": "2026-09-18T07:15:00+08:00"
+  "resume_hint": "R012 完成（B-3 全阶段 done）。剩余：B-1/B-2/B-4 阶段二（需 AI/工程）、D-2/D-11 待真实使用观察",
+  "last_updated": "2026-09-18T07:30:00+08:00"
 }

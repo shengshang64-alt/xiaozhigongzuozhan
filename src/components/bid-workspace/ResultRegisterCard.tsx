@@ -34,6 +34,15 @@ const RESULT_CHOICES: { value: Exclude<BidResult, "">; label: string; icon: type
   { value: "pending", label: "待定", icon: CheckCircle2 },
 ]
 
+// R012（B-3 阶段二）：失单原因结构化——类别前缀「【代码】明细」存入既有 lost_reason 字段，零 schema 变更
+export const LOST_REASON_CODES = ["价格因素", "技术方案", "资质业绩", "商务条款", "客户关系", "其他"] as const
+
+function splitLostReason(raw: string): { code: string; detail: string } {
+  const m = (raw ?? "").trim().match(/^【([^】]+)】([\s\S]*)$/)
+  if (!m) return { code: "", detail: (raw ?? "").trim() }
+  return { code: m[1], detail: m[2].trim() }
+}
+
 function fmtSyncedAt(iso: string): string {
   if (!iso) return ""
   const d = new Date(iso)
@@ -68,6 +77,7 @@ export function ResultRegisterCard({
   const registered = proj.bid_result !== "" && proj.bid_result !== null && proj.bid_result !== undefined
   const result = proj.bid_result as Exclude<BidResult, ""> | ""
   const linked = Boolean(proj.opportunity_id)
+  const { code: lostReasonCode, detail: lostReasonDetail } = splitLostReason(resultLostReasonDraft)
 
   return (
     <section className="rounded-lg border border-border bg-card p-5 shadow-md animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -136,16 +146,34 @@ export function ResultRegisterCard({
             </label>
           )}
           {resultDraft === "lost" && (
-            <label className="mt-3 grid gap-1.5 text-sm">
-              <span className="text-xs font-medium text-muted-foreground">失单原因（可留空）</span>
-              <textarea
-                value={resultLostReasonDraft}
-                onChange={(e) => setResultLostReasonDraft(e.target.value)}
-                rows={2}
-                placeholder="如：价格分落后 / 资质不满足，方便后续复盘"
-                className="rounded-md border border-border bg-background px-2.5 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              />
-            </label>
+            <>
+              <label className="mt-3 grid max-w-xs gap-1.5 text-sm">
+                <span className="text-xs font-medium text-muted-foreground">失单原因类别（R012 结构化，便于复盘聚合）</span>
+                <select
+                  value={lostReasonCode}
+                  onChange={(e) => {
+                    const code = e.target.value
+                    setResultLostReasonDraft(code ? `【${code}】${lostReasonDetail}` : lostReasonDetail)
+                  }}
+                  className="h-9 rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <option value="">未分类（仅填明细）</option>
+                  {LOST_REASON_CODES.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="mt-2 grid gap-1.5 text-sm">
+                <span className="text-xs font-medium text-muted-foreground">失单明细（可留空，如：价格分落后 8%）</span>
+                <textarea
+                  value={lostReasonDetail}
+                  onChange={(e) => setResultLostReasonDraft(lostReasonCode ? `【${lostReasonCode}】${e.target.value}` : e.target.value)}
+                  rows={2}
+                  placeholder="补充说明，方便后续复盘"
+                  className="rounded-md border border-border bg-background px-2.5 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                />
+              </label>
+            </>
           )}
           <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
             {linked

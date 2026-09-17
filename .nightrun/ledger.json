@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "xiaozhigongzuozhan",
-  "last_updated": "2026-09-18T07:10:00+08:00",
+  "last_updated": "2026-09-18T07:30:00+08:00",
   "note": "D-1~D-7 为 2026-09-17 基线实测（总纲 1.8），本轮 scope=/solution-studio，全局项挂账暂不修；D-8~D-13 为 R001 产出。",
   "items": [
     {
@@ -387,13 +387,15 @@
       "id": "B-3",
       "title": "产品backlog：投标复盘与胜率分析（bid_result 数据已有，纯统计）",
       "level": "P2",
-      "status": "in_progress",
+      "status": "done",
       "category": "flow",
       "module": "bid-workspace / 首页",
       "source": "PRODUCT_BENCHMARK.md 高优 #3；一个修复轮可出 MVP",
       "progress": {
         "阶段一(R006)": "done——BidReviewSummary 组件挂标书列表页上方：总数/已结束/中标率(样本<5 提示)/中标金额合计(万元)/待回填数/落标原因 Top3；6 条种子数字全对",
-        "阶段二(backlog)": "落标原因结构化表单（枚举+自由文本）；趋势对比（按月/按客户）；首页聚合入口"
+        "阶段二(backlog)": "落标原因结构化表单（枚举+自由文本）；趋势对比（按月/按客户）；首页聚合入口",
+        "阶段二(R012)": "done——失单原因类别下拉+明细，【类别】前缀写回 lost_reason；看板按类别聚合（旧数据回退原文）",
+        "剩余": "趋势对比（按月/按客户）与首页聚合入口留待数据积累后评估"
       }
     },
     {

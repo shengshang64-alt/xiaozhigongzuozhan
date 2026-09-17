@@ -28,7 +28,13 @@ export function summarizeBidResults(projects: BidProjectRecord[]): BidReviewStat
   for (const r of lost) {
     const reason = (r.lost_reason ?? "").trim()
     if (!reason) continue
-    const key = reason.length > 24 ? `${reason.slice(0, 24)}…` : reason
+    // R012（B-3 阶段二）：优先按「【类别】明细」前缀聚合；无前缀旧数据按原文截断回退
+    const coded = reason.match(/^【([^】]+)】/)
+    const key = coded
+      ? coded[1]
+      : reason.length > 24
+        ? `${reason.slice(0, 24)}…`
+        : reason
     reasonCounts.set(key, (reasonCounts.get(key) ?? 0) + 1)
   }
   const topReasons = [...reasonCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
