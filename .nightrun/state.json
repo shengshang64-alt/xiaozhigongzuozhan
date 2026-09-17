@@ -10,13 +10,13 @@
   "stop_rule": "先跑 1-2 轮给用户看产出；每轮必须落盘+commit",
 
   "phase": "round_end",
-  "current_round": 2,
-  "current_topic": "D-13/D-11 界面文案准确性（体验轮）+ D-8 复验 + E-1 修复",
+  "current_round": 3,
+  "current_topic": "D-1 全局搜索商机组假阳性（P1）",
   "current_step": "done",
 
   "rotation": {
     "type_cycle": ["fix", "experience", "fix", "deep"],
-    "next_type": "fix",
+    "next_type": "deep",
     "lens_cycle": ["interface", "ui", "layout", "workflow", "interaction"],
     "next_lens": "ui",
     "role_cycle": ["pm", "qa", "presales", "hospital-it", "committee"],
@@ -24,19 +24,19 @@
   },
 
   "counters": {
-    "rounds_done": 2,
-    "fixes_applied": 4,
+    "rounds_done": 3,
+    "fixes_applied": 5,
     "defects_found": 6,
     "defects_blocked": 0,
     "consecutive_blocked": 0,
-    "commits": 2
+    "commits": 3
   },
 
   "queue": {
     "pending": ["D-9", "D-10", "D-12"],
     "fixed_pending_verify": ["D-11"],
     "blocked": [],
-    "done": ["D-8", "D-13", "E-1"]
+    "done": ["D-1", "D-8", "D-13", "E-1"]
   },
 
   "blockers": [
@@ -75,6 +75,6 @@
     "dirty": false
   },
 
-  "resume_hint": "R002 完成（D-8/E-1/D-13 done，D-11 待验）。下一轮为修复轮：建议扩 scope 修 D-1（P1 全局搜索）；页内余量 D-9/D-10/D-12（D-12 等 A/B 拍板）",
-  "last_updated": "2026-09-18T01:05:00+08:00"
+  "resume_hint": "R003 完成（D-1 done，唯一的 P1 清零）。下一轮按轮转应为深度轮（角色：产品经理）；用户若选修复轮则清 D-9/D-10，D-12 等 A/B 拍板",
+  "last_updated": "2026-09-18T01:20:00+08:00"
 }

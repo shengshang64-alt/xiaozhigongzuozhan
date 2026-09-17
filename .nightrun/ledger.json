@@ -6,13 +6,32 @@
   "items": [
     {
       "id": "D-1",
-      "title": "全局搜索服务端 q= 对 opportunities / bid_projects 失效",
+      "title": "全局搜索服务端 q= 对 opportunities / bid_projects 失效（商机组假阳性）",
       "level": "P1",
-      "status": "open",
+      "status": "done",
       "category": "logic",
       "module": "shell/useGlobalSearch",
-      "root_cause": "useGlobalSearch.ts 仅 bid 组保留客户端 matches() 兜底（:227），其余组无兜底且服务端 q= 过滤未生效",
-      "scope_note": "全局模块，本轮不修（R001 复核仍未修）"
+      "found_at": "2026-09-17T18:10:00+08:00",
+      "root_cause": "useGlobalSearch.ts 第 174 行注释误以为八组 API 全部支持服务端 q=，实际 opportunities/bid_projects 的 pb_hooks list 路由不支持 q=（恒返最近 N 条）；bid 组在「循环7 C2-1」已补客户端 matches() 兜底，唯独商机组漏补 → 任意关键词都返回全部商机",
+      "evidence": ["evidence/R003_api_opp_q_before.json", "evidence/R003_palette_before_fix.txt", "evidence/R003_palette_after_fix_neg.txt", "evidence/R003_palette_after_fix_pos.txt"],
+      "fix": {
+        "round": "R003",
+        "files": ["src/components/shell/useGlobalSearch.ts"],
+        "summary": "商机组补客户端 matches(kw, opp_name, customer_name) 兜底（与 bid 组同模式，服务端支持 q 后可移除）；修正误导性注释",
+        "commit": "<R003 commit>"
+      },
+      "verify": {
+        "method": "服务端 curl 对照（opp q=zzzqqq 返 1 条 vs customers 返 0 条）+ 浏览器面板正反例",
+        "expected": "反例无商机组；正例正常命中",
+        "actual": "zzzqqq → 「没有找到相关内容」；电子病历 → 商机组命中「电子病历系统升级项目」",
+        "result": "pass",
+        "verified_at": "2026-09-18T01:15:00+08:00"
+      },
+      "risk": {
+        "impact_scope": "仅全局命令面板商机组；customer-management 页面的商机列表不走此路径",
+        "side_effects": "perPage=8 内客户端过滤，理论上单次命中上限 8 条（与 bid 组同限制，实际数据量下无感）",
+        "remaining": "opportunities/bid_projects 后端补 q= 后可移除两处客户端兜底（代码内已留注释）"
+    }
     },
     { "id": "D-2", "title": "脏记忆：一次性状态被沉淀为长期 fact", "level": "P2", "status": "open", "category": "protocol", "module": "assistant/memory", "scope_note": "本轮不修" },
     { "id": "D-3", "title": "公共模型标注「无需配置可直接使用」，未登录点测试却失败", "level": "P2", "status": "open", "category": "copy", "module": "model-config", "scope_note": "本轮不修" },

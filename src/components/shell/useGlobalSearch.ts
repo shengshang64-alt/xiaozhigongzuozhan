@@ -171,7 +171,8 @@ export function useGlobalSearch() {
       ])
       if (seq !== searchSeqRef.current) return
 
-      // 轮次 F 轨 1：q= 服务端模糊匹配已收敛结果，前端不再做 includes 二次过滤；请求失败该类静默空数组
+      // customers/intel/solutions/decks/quotes/kb 的服务端 q= 已收敛结果，前端不做二次过滤；
+      // opportunities / bid_projects 的服务端 list 路由不支持 q=（恒返最近 N 条），这两组保留客户端 matches() 兜底（D-1）
       const customers = (custRes?.items ?? []).slice(0, PER_GROUP_LIMIT)
       if (customers.length > 0) {
         nextGroups.push({
@@ -187,7 +188,10 @@ export function useGlobalSearch() {
         })
       }
 
-      const opps = (oppRes?.items ?? []).slice(0, PER_GROUP_LIMIT)
+      const opps = (oppRes?.items ?? [])
+        // R003（D-1）：opportunities 服务端不支持 q=，客户端兜底防假阳性（与 bid 组同模式）；服务端支持 q 后可移除
+        .filter((o) => matches(kw, o.opp_name, o.customer_name))
+        .slice(0, PER_GROUP_LIMIT)
       if (opps.length > 0) {
         nextGroups.push({
           key: "opportunity",
