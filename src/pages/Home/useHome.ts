@@ -1,0 +1,803 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { toast } from "sonner"
+import { getPocketBaseUrl } from "@/lib/pb"
+import { decodeRhToken, vibexAuthHeaders, type RhAccountInfo } from "@/lib/rhLogin"
+import type { CrmOppBrief, CrmStats } from "@/components/home/CustomerOverviewSection"
+import type { BidReview } from "@/components/home/BidReviewCard"
+import { useActivityFeed } from "@/hooks/useActivityFeed"
+
+// ---------------------------------------------------------------------------
+// 数据类型（字段名与 PocketBase collection 完全一致，snake_case，不做转换层）
+// ---------------------------------------------------------------------------
+
+export type TodoItem = {
+  id: string
+  rh_user_id: string
+  content: string
+  done: boolean
+  due_date?: string | null
+  // 轮次 F 轨 2：商机 next_action 自动登记的待办带来源元数据与深链
+  source_type?: string
+  source_id?: string
+  link?: string
+  created: string
+  updated: string
+}
+
+// 五桶分组（参考 atomic-crm tasksPredicate 纯函数）：逾期 / 今天 / 明天 / 本周内 / 更晚 / 无期限
+export type TodoBucketKey = "overdue" | "today" | "tomorrow" | "week" | "later" | "none"
+
+export type TodoBucketView = {
+  key: TodoBucketKey
+  label: string
+  defaultOpen: boolean
+  items: TodoItem[]
+}
+
+const TODO_BUCKET_META: { key: TodoBucketKey; label: string; defaultOpen: boolean }[] = [
+  { key: "overdue", label: "已逾期", defaultOpen: true },
+  { key: "today", label: "今天", defaultOpen: true },
+  { key: "tomorrow", label: "明天", defaultOpen: false },
+  { key: "week", label: "本周内", defaultOpen: false },
+  { key: "later", label: "更晚", defaultOpen: false },
+  { key: "none", label: "无期限", defaultOpen: false },
+]
+
+const DAY_MS = 86_400_000
+// 完成勾选后条目保留 5 分钟再消失（防闪烁，期间可撤销）
+const RECENT_DONE_WINDOW_MS = 5 * 60_000
+
+// B2：完成防闪烁窗口持久化到 localStorage（key 按 userId 隔离，换账号不串；登出不清）
+const TODOS_DONE_KEY_PREFIX = "todos_done_"
+
+function pruneDoneMap(map: Record<string, number>, now: number): Record<string, number> {
+  const fresh: Record<string, number> = {}
+  for (const [id, ts] of Object.entries(map)) {
+    if (typeof ts === "number" && now - ts < RECENT_DONE_WINDOW_MS) fresh[id] = ts
+  }
+  return fresh
+}
+
+/** 读回已完成时间戳表，过期条目顺手清理 */
+function readRecentDone(uid: string): Record<string, number> {
+  try {
+    const raw = window.localStorage.getItem(`${TODOS_DONE_KEY_PREFIX}${uid}`)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Record<string, number>
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {}
+    return pruneDoneMap(parsed, Date.now())
+  } catch {
+    return {}
+  }
+}
+
+function writeRecentDone(uid: string, map: Record<string, number>): void {
+  try {
+    const fresh = pruneDoneMap(map, Date.now())
+    const key = `${TODOS_DONE_KEY_PREFIX}${uid}`
+    if (Object.keys(fresh).length === 0) window.localStorage.removeItem(key)
+    else window.localStorage.setItem(key, JSON.stringify(fresh))
+  } catch {
+    /* 存储不可用时静默降级为纯内存行为 */
+  }
+}
+
+function startOfTodayMs(nowTick: number): number {
+  const d = new Date(nowTick)
+  d.setHours(0, 0, 0, 0)
+  return d.getTime()
+}
+
+export function todoBucketKeyOf(dueDate: string | null | undefined, todayStartMs: number): TodoBucketKey {
+  const raw = String(dueDate ?? "").slice(0, 10)
+  if (!raw) return "none"
+  const t = new Date(`${raw}T00:00:00`).getTime()
+  if (Number.isNaN(t)) return "none"
+  const days = Math.round((t - todayStartMs) / DAY_MS)
+  if (days < 0) return "overdue"
+  if (days === 0) return "today"
+  if (days === 1) return "tomorrow"
+  if (days <= 7) return "week"
+  return "later"
+}
+
+export type ProjectItem = {
+  id: string
+  rh_user_id: string
+  project_name: string
+  project_type: string
+  hospital: string
+  progress: number
+  deadline: string
+  notes: string
+  created: string
+  updated: string
+}
+
+export type IntelItem = {
+  id: string
+  title: string
+  source: string
+  publishedAt: string
+  tag: string
+  summary: string
+}
+
+export type ProjectForm = {
+  projectName: string
+  projectType: string
+  hospital: string
+  deadline: string
+  notes: string
+}
+
+const EMPTY_PROJECT_FORM: ProjectForm = {
+  projectName: "",
+  projectType: "方案",
+  hospital: "",
+  deadline: "",
+  notes: "",
+}
+
+export const PROJECT_TYPES = ["方案", "标书", "PPT", "报价"] as const
+
+// 情报摘要（真实数据来自情报中心 intel_items，首页取最新 5 条，按本人 my_status 已确认优先）
+type IntelItemRow = {
+  id: string
+  title: string
+  source_name: string
+  url: string
+  content_snippet: string
+  item_type: string
+  summary: string
+  item_status: string
+  my_status: string
+  visibility: string
+  published_at: string
+  created: string
+}
+
+const INTEL_TAG_BY_TYPE: Record<string, string> = {
+  policy: "政策",
+  competitor: "竞品",
+  bid: "中标",
+  media: "媒体",
+}
+
+function mapIntelRow(row: IntelItemRow): IntelItem {
+  const when = row.published_at || row.created || ""
+  const snippet = (row.content_snippet || "").replace(/\s+/g, " ").trim()
+  return {
+    id: row.id,
+    title: row.title,
+    source: row.source_name || "情报中心",
+    publishedAt: when.slice(0, 10),
+    tag: INTEL_TAG_BY_TYPE[row.item_type] ?? "情报",
+    summary: row.summary || (snippet ? `${snippet.slice(0, 120)}…` : "暂无摘要，进入情报中心用 AI 摘要打标"),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 数据请求（走 __pb 代理自定义路由，禁用 PB SDK 标准 REST）
+// ---------------------------------------------------------------------------
+
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${getPocketBaseUrl()}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...vibexAuthHeaders(),
+      ...(init?.headers ?? {}),
+    },
+  })
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`)
+  }
+  return (await res.json()) as T
+}
+
+type ListResponse<T> = { items: T[]; page: number; perPage: number; totalItems: number }
+
+// 胜负复盘聚合源行（opportunities collection 子集，snake_case 与 PB 一致）
+type OppReviewRow = CrmOppBrief & {
+  lost_reason?: string
+  // 循环 9 B1：首页待跟进提醒复用同一次拉取（零新增请求）
+  next_follow_date?: string
+}
+
+// 循环 9 B1：待跟进商机提醒行（今日到期 + 已逾期两组）
+export type FollowDueOpp = {
+  id: string
+  opp_name: string
+  customer_name: string
+  next_follow_date: string
+  overdue: boolean
+}
+
+// 深度项：胜负复盘第二聚合源（bid_projects 子集，投标结果回流前也能进胜率统计）
+type BidReviewRow = {
+  id: string
+  opportunity_id?: string
+  bid_result?: string
+  lost_reason?: string
+}
+
+// D1：hook 模板 perPage 上限 200，拉满 200 视为可能截断（统计卡显示「N+」）
+const HOME_STATS_PER_PAGE = 200
+// C2：待办同口径——hook 模板默认前 50 条会静默截断，改拉 200 条并设 capped 标志
+const HOME_TODOS_PER_PAGE = 200
+// T2.1：项目同口径——hook 模板默认前 50 条会静默截断，改拉 200 条并设 capped 标志
+const HOME_PROJECTS_PER_PAGE = 200
+
+const EMPTY_BID_REVIEW: BidReview = { won: 0, lost: 0, winRate: null, lostReasonTop: [], sourceCapped: false }
+
+export function useHome() {
+  // ------------------------------ 登录态 ------------------------------
+  const [userId, setUserId] = useState<string | null>(() => decodeRhToken()?.sub ?? null)
+  const [accountInfo, setAccountInfo] = useState<RhAccountInfo | null>(null)
+
+  const handleAccountChange = useCallback((account: RhAccountInfo | null) => {
+    setAccountInfo(account)
+    setUserId(account?.userId ?? decodeRhToken()?.sub ?? null)
+  }, [])
+
+  // ------------------------------ 活动流（B-3 跨实体聚合，零后端） ------------------------------
+  const { activityEvents, activityLoading } = useActivityFeed(userId)
+
+  // ------------------------------ 待办 ------------------------------
+  const [todos, setTodos] = useState<TodoItem[]>([])
+  const [todosLoading, setTodosLoading] = useState(false)
+  // C2：拉满 200 条即可能被截断，待办区底部显示提示行（与 bid 列表 capped 模式一致）
+  const [todosCapped, setTodosCapped] = useState(false)
+  const [todoInput, setTodoInput] = useState("")
+  const [todoDueDate, setTodoDueDate] = useState("")
+  const [todoAdding, setTodoAdding] = useState(false)
+  // 完成防闪烁：id → 勾选完成时刻（5 分钟内保留显示、可撤销）
+  const [recentDoneAt, setRecentDoneAt] = useState<Record<string, number>>({})
+  // B2：ref 镜像，供 toggleTodo 内取最新值并同步持久化
+  const recentDoneAtRef = useRef<Record<string, number>>({})
+  const [nowTick, setNowTick] = useState(() => Date.now())
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowTick(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  // B2：挂载 / 切换账号时读回完成窗口（过期条目顺手清理；按 userId 隔离换账号不串）
+  useEffect(() => {
+    if (!userId) {
+      recentDoneAtRef.current = {}
+      setRecentDoneAt({})
+      return
+    }
+    const fresh = readRecentDone(userId)
+    recentDoneAtRef.current = fresh
+    setRecentDoneAt(fresh)
+    writeRecentDone(userId, fresh)
+  }, [userId])
+
+  const loadTodos = useCallback(async (uid: string) => {
+    setTodosLoading(true)
+    try {
+      const data = await apiFetch<ListResponse<TodoItem>>(
+        `/api/todos?rh_user_id=${encodeURIComponent(uid)}&page=1&perPage=${HOME_TODOS_PER_PAGE}&sort=-created`,
+      )
+      const rows = data.items ?? []
+      setTodos(rows)
+      setTodosCapped(rows.length >= HOME_TODOS_PER_PAGE)
+    } catch {
+      toast.error("待办加载失败，请稍后重试")
+    } finally {
+      setTodosLoading(false)
+    }
+  }, [])
+
+  const addTodo = useCallback(async () => {
+    const content = todoInput.trim()
+    if (!content) return
+    if (todoAdding) return
+    if (!userId) {
+      toast.error("当前无法添加待办，请稍后重试")
+      return
+    }
+    setTodoInput("")
+    setTodoAdding(true)
+    const dueDate = todoDueDate
+    try {
+      const record = await apiFetch<TodoItem>("/api/todos", {
+        method: "POST",
+        body: JSON.stringify({
+          rh_user_id: userId,
+          content,
+          done: false,
+          ...(dueDate ? { due_date: dueDate } : {}),
+        }),
+      })
+      setTodos((prev) => [record, ...prev])
+      setTodoDueDate("")
+      toast.success("待办已添加")
+    } catch {
+      setTodoInput(content)
+      toast.error("待办保存失败，请稍后重试")
+    } finally {
+      setTodoAdding(false)
+    }
+  }, [todoAdding, todoDueDate, todoInput, userId])
+
+  const toggleTodo = useCallback(
+    async (item: TodoItem) => {
+      const nextDone = !item.done
+      // B2：操作前捕获原完成时刻，取消勾选失败时对称回补，条目不会凭空消失
+      const prevDoneAt = recentDoneAtRef.current[item.id]
+      setTodos((prev) => prev.map((t) => (t.id === item.id ? { ...t, done: nextDone } : t)))
+      // B2：完成时刻同步写 localStorage（撤销 / 失败回滚同步移除），刷新后 5 分钟内保持已完成展示态
+      const nextDoneMap = { ...recentDoneAtRef.current }
+      if (nextDone) nextDoneMap[item.id] = Date.now()
+      else delete nextDoneMap[item.id]
+      recentDoneAtRef.current = nextDoneMap
+      setRecentDoneAt(nextDoneMap)
+      if (userId) writeRecentDone(userId, nextDoneMap)
+      try {
+        await apiFetch<TodoItem>(`/api/todos/${item.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ done: nextDone }),
+        })
+      } catch {
+        setTodos((prev) => prev.map((t) => (t.id === item.id ? { ...t, done: !nextDone } : t)))
+        // B2：回滚按操作方向对称——勾选失败删时间戳；取消勾选失败回补原时间戳
+        const rollbackMap = { ...recentDoneAtRef.current }
+        if (nextDone) delete rollbackMap[item.id]
+        else if (typeof prevDoneAt === "number") rollbackMap[item.id] = prevDoneAt
+        recentDoneAtRef.current = rollbackMap
+        setRecentDoneAt(rollbackMap)
+        if (userId) writeRecentDone(userId, rollbackMap)
+        toast.error("待办更新失败，请稍后重试")
+      }
+    },
+    [userId],
+  )
+
+  const deleteTodo = useCallback(async (item: TodoItem) => {
+    // T2.3：删除前捕获原索引，失败回滚按原索引插回，不打乱 -created 排序
+    const prevIndex = todos.findIndex((t) => t.id === item.id)
+    setTodos((prev) => prev.filter((t) => t.id !== item.id))
+    try {
+      await apiFetch<{ ok: boolean }>(`/api/todos/${item.id}`, { method: "DELETE" })
+      toast.success("待办已删除")
+    } catch {
+      setTodos((prev) => {
+        if (prev.some((t) => t.id === item.id)) return prev
+        const next = [...prev]
+        const insertAt = prevIndex >= 0 && prevIndex <= next.length ? prevIndex : next.length
+        next.splice(insertAt, 0, item)
+        return next
+      })
+      toast.error("待办删除失败，请稍后重试")
+    }
+  }, [todos])
+
+  // ------------------------------ 项目 ------------------------------
+  const [projects, setProjects] = useState<ProjectItem[]>([])
+  const [projectsLoading, setProjectsLoading] = useState(false)
+  // T2.1：拉满 200 条即可能被截断，统计卡显示「N+」+ 项目区底部提示行（与 todos capped 同模式）
+  const [projectsCapped, setProjectsCapped] = useState(false)
+  const [newProjectOpen, setNewProjectOpen] = useState(false)
+  const [projectForm, setProjectForm] = useState<ProjectForm>(EMPTY_PROJECT_FORM)
+  const [savingProject, setSavingProject] = useState(false)
+  const [selectedProject, setSelectedProject] = useState<ProjectItem | null>(null)
+  const [progressDraft, setProgressDraft] = useState(0)
+  const [notesDraft, setNotesDraft] = useState("")
+  const [savingDetail, setSavingDetail] = useState(false)
+
+  const loadProjects = useCallback(async (uid: string) => {
+    setProjectsLoading(true)
+    try {
+      const data = await apiFetch<ListResponse<ProjectItem>>(
+        `/api/projects?rh_user_id=${encodeURIComponent(uid)}&page=1&perPage=${HOME_PROJECTS_PER_PAGE}&sort=-created`,
+      )
+      const rows = data.items ?? []
+      setProjects(rows)
+      setProjectsCapped(rows.length >= HOME_PROJECTS_PER_PAGE)
+    } catch {
+      toast.error("项目加载失败，请稍后重试")
+    } finally {
+      setProjectsLoading(false)
+    }
+  }, [])
+
+  // ------------------------------ 客户概览（客户管理真实数据） ------------------------------
+  const [crmStats, setCrmStats] = useState<CrmStats>({ customerCount: 0, activeOppCount: 0, monthFollowCount: 0 })
+  const [crmRecentOpps, setCrmRecentOpps] = useState<CrmOppBrief[]>([])
+  const [crmLoading, setCrmLoading] = useState(false)
+  // 轮次 F 轨 2：胜负复盘聚合源（当前用户全部商机的 stage/lost_reason，内存聚合零后端）
+  const [reviewOpps, setReviewOpps] = useState<OppReviewRow[]>([])
+  // 循环 9 B1：今日到期 + 已逾期商机（复用商机拉取客户端过滤，零新增请求）
+  const [followDueOpps, setFollowDueOpps] = useState<FollowDueOpp[]>([])
+  // 深度项：复盘第二聚合源 bid_projects（won/lost by bid_result）
+  const [reviewBids, setReviewBids] = useState<BidReviewRow[]>([])
+  // D1：拉满 200 条即可能被截断，统计卡显示「N+」、复盘卡加小字
+  const [statsCapped, setStatsCapped] = useState({ customers: false, opps: false, follows: false, bids: false })
+
+  const loadCrmOverview = useCallback(async (uid: string) => {
+    setCrmLoading(true)
+    try {
+      const enc = encodeURIComponent(uid)
+      const [cRes, oRes, fRes, bRes] = await Promise.all([
+        apiFetch<ListResponse<{ id: string }>>(`/api/customers?rh_user_id=${enc}&page=1&perPage=${HOME_STATS_PER_PAGE}`).catch(() => null),
+        apiFetch<ListResponse<OppReviewRow>>(`/api/opportunities?rh_user_id=${enc}&page=1&perPage=${HOME_STATS_PER_PAGE}`).catch(() => null),
+        apiFetch<ListResponse<{ id: string; created: string }>>(`/api/follow_records?rh_user_id=${enc}&page=1&perPage=${HOME_STATS_PER_PAGE}`).catch(() => null),
+        apiFetch<ListResponse<BidReviewRow>>(`/api/bid_projects?rh_user_id=${enc}&page=1&perPage=${HOME_STATS_PER_PAGE}`).catch(() => null),
+      ])
+      // D1：hook 模板 totalItems=页内条数不可信，客户数改用本页条数（perPage=200 上限，拉满显示 200+）
+      const customerRows = cRes?.items ?? []
+      const opps = oRes?.items ?? []
+      const followRows = fRes?.items ?? []
+      const bidRows = bRes?.items ?? []
+      const monthStart = new Date()
+      monthStart.setDate(1)
+      monthStart.setHours(0, 0, 0, 0)
+      // T2.2：PB created 是空格分隔（"2026-09-01 10:00:00.123Z"），toISOString 产 T 分隔串，
+      // 直接字典序比较会漏算每月 1 日（空格 0x20 < T）；统一 replace(" ", "T") 后再比较
+      const monthStartIso = monthStart.toISOString()
+      setCrmStats({
+        customerCount: customerRows.length,
+        customerCountCapped: customerRows.length >= HOME_STATS_PER_PAGE,
+        activeOppCount: opps.filter((o) => o.stage !== "won" && o.stage !== "lost").length,
+        activeOppCountCapped: opps.length >= HOME_STATS_PER_PAGE,
+        monthFollowCount: followRows.filter((r) => (r.created ?? "").replace(" ", "T") >= monthStartIso).length,
+        monthFollowCountCapped: followRows.length >= HOME_STATS_PER_PAGE,
+      })
+      setCrmRecentOpps(
+        [...opps].sort((a, b) => (b.updated ?? "").localeCompare(a.updated ?? "")).slice(0, 3),
+      )
+      setReviewOpps(opps)
+      setReviewBids(bidRows)
+      // 循环 9 B1：待跟进提醒——未终结商机按本地今天过滤今日到期/已逾期，日期升序取前 10
+      const d = new Date()
+      const pad = (n: number) => String(n).padStart(2, "0")
+      const todayStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+      setFollowDueOpps(
+        opps
+          .filter((o) => o.stage !== "won" && o.stage !== "lost" && (o.next_follow_date ?? "").trim())
+          .map((o) => ({
+            id: o.id,
+            opp_name: o.opp_name,
+            customer_name: o.customer_name,
+            next_follow_date: (o.next_follow_date ?? "").slice(0, 10),
+            overdue: (o.next_follow_date ?? "").slice(0, 10) < todayStr,
+          }))
+          .filter((o) => o.next_follow_date <= todayStr)
+          .sort((a, b) => a.next_follow_date.localeCompare(b.next_follow_date))
+          .slice(0, 10),
+      )
+      setStatsCapped({
+        customers: customerRows.length >= HOME_STATS_PER_PAGE,
+        opps: opps.length >= HOME_STATS_PER_PAGE,
+        follows: followRows.length >= HOME_STATS_PER_PAGE,
+        bids: bidRows.length >= HOME_STATS_PER_PAGE,
+      })
+    } catch {
+      /* 概览加载失败时保持空数据，不打扰首页 */
+    } finally {
+      setCrmLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!userId) {
+      setTodos([])
+      setTodosCapped(false)
+      setProjects([])
+      setProjectsCapped(false)
+      setCrmStats({ customerCount: 0, activeOppCount: 0, monthFollowCount: 0 })
+      setCrmRecentOpps([])
+      setReviewOpps([])
+      setReviewBids([])
+      setFollowDueOpps([])
+      setStatsCapped({ customers: false, opps: false, follows: false, bids: false })
+      return
+    }
+    void loadTodos(userId)
+    void loadProjects(userId)
+    void loadCrmOverview(userId)
+  }, [userId, loadTodos, loadProjects, loadCrmOverview])
+
+  // 轮次 F 轨 2 + 深度项：胜负复盘——胜率 won/(won+lost)、输单原因 Top 5（纯内存聚合）
+  // 聚合源 = 商机 stage 终态 + bid_projects.bid_result；按 opportunity_id 去重，
+  // 同商机既有 stage 终态又有 bid_result 时以 bid_result 为准，lost_reason 取 bid_projects 优先
+  const bidReview = useMemo<BidReview>(() => {
+    const sourceCapped = statsCapped.opps || statsCapped.bids
+    type Decided = { result: "won" | "lost"; lostReason: string }
+    const byOpportunity = new Map<string, Decided>()
+    const standalone: Decided[] = []
+    for (const o of reviewOpps) {
+      if (o.stage === "won") byOpportunity.set(o.id, { result: "won", lostReason: "" })
+      else if (o.stage === "lost") byOpportunity.set(o.id, { result: "lost", lostReason: (o.lost_reason ?? "").trim() })
+    }
+    for (const b of reviewBids) {
+      if (b.bid_result !== "won" && b.bid_result !== "lost") continue
+      const decided: Decided = { result: b.bid_result, lostReason: (b.lost_reason ?? "").trim() }
+      if (b.opportunity_id) {
+        const prev = byOpportunity.get(b.opportunity_id)
+        // bid_result 优先覆盖商机 stage 终态；失单原因以 bid_projects 为先、商机原因为兜底
+        byOpportunity.set(b.opportunity_id, {
+          result: decided.result,
+          lostReason: decided.lostReason || prev?.lostReason || "",
+        })
+      } else {
+        standalone.push(decided)
+      }
+    }
+    const decidedRows = [...byOpportunity.values(), ...standalone]
+    if (decidedRows.length === 0) return { ...EMPTY_BID_REVIEW, sourceCapped }
+    const won = decidedRows.filter((d) => d.result === "won").length
+    const lostRows = decidedRows.filter((d) => d.result === "lost")
+    const lost = lostRows.length
+    const reasonCount = new Map<string, number>()
+    for (const row of lostRows) {
+      const reason = row.lostReason || "未填写原因"
+      reasonCount.set(reason, (reasonCount.get(reason) ?? 0) + 1)
+    }
+    const lostReasonTop = [...reasonCount.entries()]
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason))
+      .slice(0, 5)
+    return {
+      won,
+      lost,
+      winRate: won + lost > 0 ? Math.round((won / (won + lost)) * 100) : null,
+      lostReasonTop,
+      sourceCapped,
+    }
+  }, [reviewOpps, reviewBids, statsCapped])
+
+  const setProjectField = useCallback(<K extends keyof ProjectForm>(key: K, value: ProjectForm[K]) => {
+    setProjectForm((prev) => ({ ...prev, [key]: value }))
+  }, [])
+
+  const openNewProject = useCallback(() => {
+    if (!userId) {
+      toast.error("当前无法新增项目，请稍后重试")
+      return
+    }
+    setProjectForm(EMPTY_PROJECT_FORM)
+    setNewProjectOpen(true)
+  }, [userId])
+
+  const closeNewProject = useCallback(() => setNewProjectOpen(false), [])
+
+  const submitProject = useCallback(async () => {
+    const projectName = projectForm.projectName.trim()
+    if (!projectName) {
+      toast.error("请填写项目名称")
+      return
+    }
+    if (!userId) return
+    setSavingProject(true)
+    try {
+      const record = await apiFetch<ProjectItem>("/api/projects", {
+        method: "POST",
+        body: JSON.stringify({
+          rh_user_id: userId,
+          project_name: projectName,
+          project_type: projectForm.projectType,
+          hospital: projectForm.hospital.trim(),
+          progress: 0,
+          deadline: projectForm.deadline,
+          notes: projectForm.notes.trim(),
+        }),
+      })
+      setProjects((prev) => [record, ...prev])
+      setNewProjectOpen(false)
+      toast.success("项目已创建")
+    } catch {
+      toast.error("项目创建失败，请稍后重试")
+    } finally {
+      setSavingProject(false)
+    }
+  }, [projectForm, userId])
+
+  const openProjectDetail = useCallback((item: ProjectItem) => {
+    setSelectedProject(item)
+    setProgressDraft(item.progress)
+    setNotesDraft(item.notes ?? "")
+  }, [])
+
+  const closeProjectDetail = useCallback(() => setSelectedProject(null), [])
+
+  const saveProjectDetail = useCallback(async () => {
+    if (!selectedProject) return
+    setSavingDetail(true)
+    try {
+      const record = await apiFetch<ProjectItem>(`/api/projects/${selectedProject.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ progress: progressDraft, notes: notesDraft }),
+      })
+      setProjects((prev) => prev.map((p) => (p.id === record.id ? record : p)))
+      setSelectedProject(record)
+      toast.success("项目已更新")
+    } catch {
+      toast.error("项目更新失败，请稍后重试")
+    } finally {
+      setSavingDetail(false)
+    }
+  }, [selectedProject, progressDraft, notesDraft])
+
+  // ------------------------------ 情报 ------------------------------
+  const [expandedIntelId, setExpandedIntelId] = useState<string | null>(null)
+  const [intelItems, setIntelItems] = useState<IntelItem[]>([])
+  const [intelLoading, setIntelLoading] = useState(false)
+
+  const loadIntelItems = useCallback(async () => {
+    setIntelLoading(true)
+    try {
+      const data = await apiFetch<ListResponse<IntelItemRow>>(
+        "/api/intel/items?item_status=pending,confirmed&page=1&per_page=20",
+      )
+      const rows = data.items ?? []
+      // 状态语义 = 本人 my_status（确认/忽略每人独立），已确认优先展示
+      const confirmed = rows.filter((r) => (r.my_status || "pending") === "confirmed")
+      const pending = rows.filter((r) => (r.my_status || "pending") !== "confirmed")
+      const picked = [...confirmed, ...pending].slice(0, 5)
+      setIntelItems(picked.map(mapIntelRow))
+    } catch {
+      setIntelItems([])
+    } finally {
+      setIntelLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadIntelItems()
+  }, [loadIntelItems])
+
+  const toggleIntel = useCallback((intelId: string) => {
+    setExpandedIntelId((prev) => (prev === intelId ? null : intelId))
+  }, [])
+
+  // ------------------------------ 占位入口 ------------------------------
+  const [assistantOpen, setAssistantOpen] = useState(false)
+  const [searchValue, setSearchValue] = useState("")
+
+  const toggleAssistant = useCallback(() => setAssistantOpen((prev) => !prev), [])
+
+  const handleSearchSubmit = useCallback(() => {
+    toast.info("全局搜索建设中，敬请期待")
+    setSearchValue("")
+  }, [])
+
+  const handleModuleClick = useCallback((label: string, built: boolean) => {
+    if (built) {
+      window.scrollTo({ top: 0, behavior: "smooth" })
+      return
+    }
+    toast.info(`「${label}」建设中，敬请期待`)
+  }, [])
+
+  // ------------------------------ 派生数据 ------------------------------
+  // 完成 5 分钟内保留显示（划线 + 可撤销），超时后从列表消失；存量已完成待办刷新后不再展示
+  const visibleTodos = useMemo(
+    () =>
+      todos.filter(
+        (t) => !t.done || (recentDoneAt[t.id] != null && nowTick - recentDoneAt[t.id] < RECENT_DONE_WINDOW_MS),
+      ),
+    [todos, recentDoneAt, nowTick],
+  )
+
+  const todoBuckets = useMemo<TodoBucketView[]>(() => {
+    const todayStart = startOfTodayMs(nowTick)
+    const byKey = new Map<TodoBucketKey, TodoItem[]>()
+    for (const item of visibleTodos) {
+      const key = todoBucketKeyOf(item.due_date, todayStart)
+      const list = byKey.get(key)
+      if (list) list.push(item)
+      else byKey.set(key, [item])
+    }
+    return TODO_BUCKET_META.map((meta) => ({
+      ...meta,
+      items: (byKey.get(meta.key) ?? []).sort((a, b) => {
+        if (a.done !== b.done) return a.done ? 1 : -1
+        return b.created.localeCompare(a.created)
+      }),
+    })).filter((bucket) => bucket.items.length > 0)
+  }, [visibleTodos, nowTick])
+
+  const sortedProjects = useMemo(() => {
+    return [...projects].sort((a, b) => {
+      const aDone = a.progress >= 100
+      const bDone = b.progress >= 100
+      if (aDone !== bDone) return aDone ? 1 : -1
+      const aDeadline = a.deadline || "9999-12-31"
+      const bDeadline = b.deadline || "9999-12-31"
+      return aDeadline.localeCompare(bDeadline)
+    })
+  }, [projects])
+
+  const activeProjectCount = useMemo(
+    () => projects.filter((p) => p.progress < 100).length,
+    [projects],
+  )
+  const pendingTodoCount = useMemo(() => todos.filter((t) => !t.done).length, [todos])
+  const doneTodoCount = useMemo(() => todos.filter((t) => t.done).length, [todos])
+  const overdueTodoCount = useMemo(() => {
+    const todayStart = startOfTodayMs(nowTick)
+    return todos.filter((t) => !t.done && todoBucketKeyOf(t.due_date, todayStart) === "overdue").length
+  }, [todos, nowTick])
+
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours()
+    if (hour < 6) return "夜深了"
+    if (hour < 12) return "早上好"
+    if (hour < 14) return "中午好"
+    if (hour < 18) return "下午好"
+    return "晚上好"
+  }, [])
+
+  return {
+    // 登录态
+    userId,
+    accountInfo,
+    handleAccountChange,
+    // 待办
+    todoBuckets,
+    todosLoading,
+    todosCapped,
+    todoInput,
+    setTodoInput,
+    todoDueDate,
+    setTodoDueDate,
+    addTodo,
+    todoAdding,
+    toggleTodo,
+    deleteTodo,
+    // 项目
+    projects: sortedProjects,
+    projectsLoading,
+    projectsCapped,
+    newProjectOpen,
+    openNewProject,
+    closeNewProject,
+    projectForm,
+    setProjectField,
+    submitProject,
+    savingProject,
+    selectedProject,
+    openProjectDetail,
+    closeProjectDetail,
+    progressDraft,
+    setProgressDraft,
+    notesDraft,
+    setNotesDraft,
+    saveProjectDetail,
+    savingDetail,
+    // 客户概览
+    crmStats,
+    // 循环 9 B1：待跟进商机提醒（今日到期 + 已逾期）
+    followDueOpps,
+    crmRecentOpps,
+    crmLoading,
+    // 胜负复盘（轮次 F 轨 2）
+    bidReview,
+    // 情报
+    intelItems,
+    intelLoading,
+    expandedIntelId,
+    toggleIntel,
+    // 占位入口
+    assistantOpen,
+    toggleAssistant,
+    searchValue,
+    setSearchValue,
+    handleSearchSubmit,
+    handleModuleClick,
+    // 活动流
+    activityEvents,
+    activityLoading,
+    // 派生
+    activeProjectCount,
+    pendingTodoCount,
+    doneTodoCount,
+    overdueTodoCount,
+    greeting,
+  }
+}

@@ -1,0 +1,35 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Local deploy artifacts
+_edgeprofile/
+_shots/
+pocketbase/pb_data/
+pocketbase/logs/
+
+# Night run（备份与大文件不入库，轮报/账本/基线入库留痕）
+.nightrun/backup/
+.nightrun/evidence/*.tmp
+.nightrun/seed/*.tmp

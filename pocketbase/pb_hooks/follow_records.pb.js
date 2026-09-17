@@ -1,0 +1,215 @@
+/// <reference path="../pb_data/types.d.ts" />
+// pb_hooks/follow_records.pb.js — 业务 collection + REST CRUD 路由 (self-contained)
+//
+// 由 mcp__rh-pb-hooks__install_business_collection 装. 不要直接 Read+Write 这个文件.
+// 业务字段: rh_user_id:text, customer_id:text, opportunity_id:text, record_type:text, content:text, stage_change:text
+// 路由: list,get,create,update,delete
+// list filter 字段: rh_user_id,customer_id,opportunity_id
+// list 默认排序: -created
+
+onBootstrap(function (e) {
+  e.next()
+  try {
+    var existing = null
+    try { existing = $app.findCollectionByNameOrId("follow_records") } catch (_) { existing = null }
+    if (existing) {
+      var changed = false
+      function hasField(name) {
+        try { return !!existing.fields.getByName(name) } catch (_) {}
+        try {
+          for (var i = 0; i < existing.fields.length; i++) {
+            if (String(existing.fields[i].name) === String(name)) return true
+          }
+        } catch (_) {}
+        return false
+      }
+      function addField(def) {
+        if (hasField(def.name)) return
+        try { existing.fields.add(new Field(def)); changed = true } catch (_) {}
+      }
+      addField({ name: 'rh_user_id', type: 'text', required: true })
+      addField({ name: 'customer_id', type: 'text', required: true })
+      addField({ name: 'opportunity_id', type: 'text', max: 40 })
+      addField({ name: 'record_type', type: 'text', required: true, max: 20 })
+      addField({ name: 'content', type: 'text', required: true })
+      addField({ name: 'stage_change', type: 'text', max: 60 })
+      addField({ name: "created", type: "autodate", onCreate: true })
+      addField({ name: "updated", type: "autodate", onCreate: true, onUpdate: true })
+      if (changed) {
+        $app.save(existing)
+        try { $app.logger().info("follow_records collection upgraded") } catch (_) {}
+      }
+    } else {
+      var col = new Collection({
+        type: "base",
+        name: "follow_records",
+        listRule: null, viewRule: null, createRule: null, updateRule: null, deleteRule: null,
+        fields: [
+          { name: 'rh_user_id', type: 'text', required: true },
+          { name: 'customer_id', type: 'text', required: true },
+          { name: 'opportunity_id', type: 'text', max: 40 },
+          { name: 'record_type', type: 'text', required: true, max: 20 },
+          { name: 'content', type: 'text', required: true },
+          { name: 'stage_change', type: 'text', max: 60 },
+          { name: "created", type: "autodate", onCreate: true },
+          { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
+        ],
+      })
+      $app.save(col)
+      try { $app.logger().info("follow_records collection created") } catch (_) {}
+    }
+  } catch (err) {
+    try { $app.logger().error("follow_records bootstrap: " + String(err && err.message || err)) } catch (_) {}
+  }
+})
+
+// GET /api/follow_records?page=1&perPage=50&sort=-created&rh_user_id=...&customer_id=...&opportunity_id=...
+routerAdd("GET", "/api/follow_records", function (e) {
+  function ensureCollLocal() {
+    try { return $app.findCollectionByNameOrId("follow_records") } catch (_) {}
+    var col = new Collection({
+      type: "base",
+      name: "follow_records",
+      listRule: null, viewRule: null, createRule: null, updateRule: null, deleteRule: null,
+      fields: [
+          { name: 'rh_user_id', type: 'text', required: true },
+          { name: 'customer_id', type: 'text', required: true },
+          { name: 'opportunity_id', type: 'text', max: 40 },
+          { name: 'record_type', type: 'text', required: true, max: 20 },
+          { name: 'content', type: 'text', required: true },
+          { name: 'stage_change', type: 'text', max: 60 },
+        { name: "created", type: "autodate", onCreate: true },
+        { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
+      ],
+    })
+    $app.save(col)
+    return $app.findCollectionByNameOrId("follow_records")
+  }
+  try {
+    ensureCollLocal()
+    var info = e.requestInfo()
+    var query = info.query || {}
+    var page = parseInt(String(query.page || "1"), 10) || 1
+    var perPage = parseInt(String(query.perPage || "50"), 10) || 50
+    if (perPage > 200) perPage = 200
+    var sort = String(query.sort || "-created")
+    var filterParts = []
+    var params = {}
+    if (query.rh_user_id !== undefined && query.rh_user_id !== "") {
+      filterParts.push("rh_user_id = {:rh_user_id}")
+      params.rh_user_id = String(query.rh_user_id)
+    }
+    if (query.customer_id !== undefined && query.customer_id !== "") {
+      filterParts.push("customer_id = {:customer_id}")
+      params.customer_id = String(query.customer_id)
+    }
+    if (query.opportunity_id !== undefined && query.opportunity_id !== "") {
+      filterParts.push("opportunity_id = {:opportunity_id}")
+      params.opportunity_id = String(query.opportunity_id)
+    }
+    var filter = filterParts.length > 0 ? filterParts.join(" && ") : ""
+    var records = filter
+      ? $app.findRecordsByFilter("follow_records", filter, sort, perPage, (page - 1) * perPage, params)
+      : $app.findRecordsByFilter("follow_records", "", sort, perPage, (page - 1) * perPage)
+    var items = []
+    for (var i = 0; i < records.length; i++) {
+      items.push(records[i].publicExport())
+    }
+    return e.json(200, { items: items, page: page, perPage: perPage, totalItems: items.length })
+  } catch (err) {
+    var msg = String(err && err.message || err)
+    try { $app.logger().error("follow_records list: " + msg) } catch (_) {}
+    return e.json(500, { error: "list_failed", message: msg, fingerprint: msg.substring(0, 80) })
+  }
+})
+// GET /api/follow_records/{id}
+routerAdd("GET", "/api/follow_records/{id}", function (e) {
+  try {
+    var id = e.request.pathValue("id")
+    if (!id) return e.json(400, { error: "id_required" })
+    var rec = null
+    try { rec = $app.findRecordById("follow_records", id) } catch (_) { rec = null }
+    if (!rec) return e.json(404, { error: "not_found" })
+    return e.json(200, rec.publicExport())
+  } catch (err) {
+    var msg = String(err && err.message || err)
+    return e.json(500, { error: "get_failed", message: msg, fingerprint: msg.substring(0, 80) })
+  }
+})
+// POST /api/follow_records  body 字段: rh_user_id, customer_id, opportunity_id, record_type, content, stage_change
+routerAdd("POST", "/api/follow_records", function (e) {
+  function ensureCollLocal() {
+    try { return $app.findCollectionByNameOrId("follow_records") } catch (_) {}
+    var col = new Collection({
+      type: "base",
+      name: "follow_records",
+      listRule: null, viewRule: null, createRule: null, updateRule: null, deleteRule: null,
+      fields: [
+          { name: 'rh_user_id', type: 'text', required: true },
+          { name: 'customer_id', type: 'text', required: true },
+          { name: 'opportunity_id', type: 'text', max: 40 },
+          { name: 'record_type', type: 'text', required: true, max: 20 },
+          { name: 'content', type: 'text', required: true },
+          { name: 'stage_change', type: 'text', max: 60 },
+        { name: "created", type: "autodate", onCreate: true },
+        { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
+      ],
+    })
+    $app.save(col)
+    return $app.findCollectionByNameOrId("follow_records")
+  }
+  try {
+    var coll = ensureCollLocal()
+    var body = e.requestInfo().body || {}
+    var rec = new Record(coll)
+    rec.set("rh_user_id", body.rh_user_id === undefined || body.rh_user_id === null ? "" : String(body.rh_user_id))
+    rec.set("customer_id", body.customer_id === undefined || body.customer_id === null ? "" : String(body.customer_id))
+    rec.set("opportunity_id", body.opportunity_id === undefined || body.opportunity_id === null ? "" : String(body.opportunity_id))
+    rec.set("record_type", body.record_type === undefined || body.record_type === null ? "" : String(body.record_type))
+    rec.set("content", body.content === undefined || body.content === null ? "" : String(body.content))
+    rec.set("stage_change", body.stage_change === undefined || body.stage_change === null ? "" : String(body.stage_change))
+    $app.save(rec)
+    return e.json(200, rec.publicExport())
+  } catch (err) {
+    var msg = String(err && err.message || err)
+    try { $app.logger().error("follow_records create: " + msg) } catch (_) {}
+    return e.json(500, { error: "create_failed", message: msg, fingerprint: msg.substring(0, 80) })
+  }
+})
+// PATCH /api/follow_records/{id}  body 字段同 POST, 只更新 body 里出现的字段
+routerAdd("PATCH", "/api/follow_records/{id}", function (e) {
+  try {
+    var id = e.request.pathValue("id")
+    if (!id) return e.json(400, { error: "id_required" })
+    var rec = null
+    try { rec = $app.findRecordById("follow_records", id) } catch (_) { rec = null }
+    if (!rec) return e.json(404, { error: "not_found" })
+    var body = e.requestInfo().body || {}
+    if ("rh_user_id" in body) rec.set("rh_user_id", body.rh_user_id === undefined || body.rh_user_id === null ? "" : String(body.rh_user_id))
+    if ("customer_id" in body) rec.set("customer_id", body.customer_id === undefined || body.customer_id === null ? "" : String(body.customer_id))
+    if ("opportunity_id" in body) rec.set("opportunity_id", body.opportunity_id === undefined || body.opportunity_id === null ? "" : String(body.opportunity_id))
+    if ("record_type" in body) rec.set("record_type", body.record_type === undefined || body.record_type === null ? "" : String(body.record_type))
+    if ("content" in body) rec.set("content", body.content === undefined || body.content === null ? "" : String(body.content))
+    if ("stage_change" in body) rec.set("stage_change", body.stage_change === undefined || body.stage_change === null ? "" : String(body.stage_change))
+    $app.save(rec)
+    return e.json(200, rec.publicExport())
+  } catch (err) {
+    var msg = String(err && err.message || err)
+    return e.json(500, { error: "update_failed", message: msg, fingerprint: msg.substring(0, 80) })
+  }
+})
+// DELETE /api/follow_records/{id}
+routerAdd("DELETE", "/api/follow_records/{id}", function (e) {
+  try {
+    var id = e.request.pathValue("id")
+    if (!id) return e.json(400, { error: "id_required" })
+    var rec = null
+    try { rec = $app.findRecordById("follow_records", id) } catch (_) { rec = null }
+    if (!rec) return e.json(404, { error: "not_found" })
+    $app.delete(rec)
+    return e.json(200, { ok: true })
+  } catch (err) {
+    var msg = String(err && err.message || err)
+    return e.json(500, { error: "delete_failed", message: msg, fingerprint: msg.substring(0, 80) })
+  }
+})

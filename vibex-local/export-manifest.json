@@ -1,0 +1,22 @@
+{
+  "app_id": "app-d61cf9ef4f3a43a9ac231816a7e5d501",
+  "name": "我是一个医疗软件信息化售前工程师对程序开发了解不是很高但",
+  "exported_at": "2026-09-17T08:50:04.199424+00:00",
+  "source": "dev-container",
+  "includes_pb_data": false,
+  "removed_sensitive_files": [
+    "templates/pb_hooks",
+    "src/_rh_inspect.ts"
+  ],
+  "entrypoints": {
+    "macos": "vibex-local/start-macos.sh",
+    "linux": "vibex-local/start-linux.sh",
+    "windows": "vibex-local/start-windows.bat"
+  },
+  "coding_agent_guidance": {
+    "skill": ".vibex/skills/vibex-app-source-roundtrip/SKILL.md",
+    "codex": "AGENTS.md",
+    "claude_code": "CLAUDE.md",
+    "cursor": ".cursor/rules/vibex-source-roundtrip.mdc"
+  }
+}

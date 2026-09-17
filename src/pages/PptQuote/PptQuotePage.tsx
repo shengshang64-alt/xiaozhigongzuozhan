@@ -1,0 +1,202 @@
+import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
+import { PageHeader } from "@/components/shell/PageHeader"
+import { DeckEditorWorkspace } from "@/components/ppt-quote/DeckEditorWorkspace"
+import { DeckListPanel } from "@/components/ppt-quote/DeckListPanel"
+import { NewDeckWizard } from "@/components/ppt-quote/NewDeckWizard"
+import { ProductPickerDialog } from "@/components/ppt-quote/ProductLibraryPanel"
+import { NewQuoteDialog, QuoteDraftDialog } from "@/components/ppt-quote/QuoteDialogs"
+import { QuoteEditor } from "@/components/ppt-quote/QuoteEditor"
+import { QuoteListPanel } from "@/components/ppt-quote/QuoteListPanel"
+import { QuoteToolbar } from "@/components/ppt-quote/QuoteToolbar"
+import { SkillPickerFor } from "@/components/common/SkillPicker"
+import { ConfirmDialog } from "@/components/common/ConfirmDialog"
+import type { usePptQuote } from "./usePptQuote"
+
+export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
+  const deckInDetail = p.deckMode !== "list"
+  const quoteInDetail = p.quoteMode === "editor"
+  const pickerGroupName =
+    p.activeQuote?.groups.find((g) => g.id === p.productPickerGroup)?.name ?? ""
+  const inListMode =
+    (p.activeView === "deck" && p.deckMode === "list") ||
+    (p.activeView === "quote" && p.quoteMode === "list")
+  return (
+    <div className="animate-in fade-in duration-500 text-foreground">
+      <QuoteToolbar
+        activeView={p.activeView}
+        onSwitchView={p.setActiveView}
+        inDetail={p.activeView === "deck" ? deckInDetail : quoteInDetail}
+        detailLabel={p.activeView === "deck" ? "PPT 列表" : "报价列表"}
+        onBackToList={p.activeView === "deck" ? p.backToDeckList : p.backToQuoteList}
+        modelOptions={p.modelOptions}
+        selectedModelKey={p.selectedModelKey}
+        onSelectModel={p.handleSelectModel}
+      />
+
+      {inListMode && (
+        <PageHeader
+          title="PPT 与报价"
+          desc="汇报 PPT 与报价清单整理，支持一键生成与版本管理"
+        />
+      )}
+
+      <main>
+        {p.activeView === "deck" ? (
+          p.deckMode === "list" ? (
+            <DeckListPanel
+              decks={p.filteredDecks}
+              listLoading={p.deckListLoading}
+              search={p.deckSearch}
+              setSearch={p.setDeckSearch}
+              onNew={p.openNewDeckWizard}
+              onOpen={p.openDeck}
+              onDelete={p.deleteDeck}
+            />
+          ) : p.deckMode === "wizard" ? (
+            <NewDeckWizard
+              wDeckName={p.wDeckName}
+              setWDeckName={p.setWDeckName}
+              wDeckType={p.wDeckType}
+              setWDeckType={p.setWDeckType}
+              wTopic={p.wTopic}
+              setWTopic={p.setWTopic}
+              wAudience={p.wAudience}
+              setWAudience={p.setWAudience}
+              wDuration={p.wDuration}
+              setWDuration={p.setWDuration}
+              wKeyPoints={p.wKeyPoints}
+              setWKeyPoints={p.setWKeyPoints}
+              suggestedPageCount={p.suggestedPageCount}
+              wMaterial={p.wMaterial}
+              setWMaterial={p.setWMaterial}
+              solutionOptions={p.solutionOptions}
+              bidOptions={p.bidOptions}
+              materialLoading={p.materialLoading}
+              deckGenerating={p.deckGenerating}
+              deckProgress={p.deckProgress}
+              onCancel={p.closeDeckWizard}
+              onGenerate={p.startDeckGeneration}
+              deckPickerSlot={<SkillPickerFor scope="ppt-deck" source={p.deckSkills} />}
+            />
+          ) : p.activeDeck ? (
+            <DeckEditorWorkspace
+              deck={p.activeDeck}
+              currentSlide={p.currentSlide}
+              currentSlideIndex={p.currentSlideIndex}
+              setCurrentSlideIndex={p.setCurrentSlideIndex}
+              editorTab={p.editorTab}
+              setEditorTab={p.setEditorTab}
+              slideAiKind={p.slideAiKind}
+              onBack={p.backToDeckList}
+              onRename={p.renameDeck}
+              updateSlide={p.updateSlide}
+              addSlide={p.addSlide}
+              deleteSlideAt={p.deleteSlideAt}
+              moveSlide={p.moveSlide}
+              refineSlide={p.refineSlide}
+              persistFailed={p.deckPersistFailed}
+              onSaveNow={() => void p.saveDeckNow()}
+              onExportPptx={p.exportPptx}
+              onExportSpeech={p.exportSpeech}
+              refinePickerSlot={<SkillPickerFor scope="ppt-deck" source={p.deckSkills} align="right" />}
+            />
+          ) : null
+        ) : p.quoteMode === "list" ? (
+          <QuoteListPanel
+            quotes={p.filteredQuotes}
+            listLoading={p.quoteListLoading}
+            search={p.quoteSearch}
+            setSearch={p.setQuoteSearch}
+            onNew={p.openNewQuote}
+            onOpen={p.openQuote}
+            onCopy={p.copyQuoteAsVersion}
+            onDelete={p.deleteQuote}
+          />
+        ) : p.activeQuote ? (
+          <QuoteEditor
+            quote={p.activeQuote}
+            totals={p.quoteTotals}
+            productItems={p.productItems}
+            productLoading={p.productLoading}
+            onBack={p.backToQuoteList}
+            onRename={p.updateQuoteName}
+            onTaxNoteChange={p.updateTaxNote}
+            onVersionChange={p.updateVersion}
+            addGroup={p.addQuoteGroup}
+            deleteGroup={p.deleteQuoteGroup}
+            renameGroup={p.renameQuoteGroup}
+            addItem={p.addQuoteItem}
+            updateItem={p.updateQuoteItem}
+            deleteItem={p.deleteQuoteItem}
+            saveItemToLibrary={p.saveItemToLibrary}
+            openPicker={p.openProductPicker}
+            onAddProduct={p.addProductToGroup}
+            onRefreshProducts={p.refreshProducts}
+            onDeleteProduct={p.deleteProduct}
+            onAiDraft={p.openQuoteAi}
+            onExportXlsx={p.exportQuoteExcel}
+            onExportWord={p.exportQuoteWord}
+            syncOppAmount={p.syncOppAmountOnSave}
+            onSyncOppAmountChange={p.handleSyncOppAmountChange}
+            oppSyncFailed={p.oppSyncFailed}
+            persistFailed={p.quotePersistFailed}
+            onSaveNow={() => void p.saveQuoteNow()}
+          />
+        ) : null}
+      </main>
+
+      <NewQuoteDialog
+        open={p.newQuoteOpen}
+        onOpenChange={p.setNewQuoteOpen}
+        quoteName={p.nqName}
+        setQuoteName={p.setNqName}
+        quoteRef={p.nqRef}
+        setQuoteRef={p.setNqRef}
+        solutionOptions={p.solutionOptions}
+        bidOptions={p.bidOptions}
+        materialLoading={p.materialLoading}
+        oppOptions={p.quoteOppOptions}
+        oppId={p.nqOpportunityId}
+        setOppId={p.setNqOpportunityId}
+        busy={p.quoteCreating}
+        onCreate={p.createQuote}
+      />
+
+      <QuoteDraftDialog
+        open={p.quoteAiOpen}
+        onOpenChange={p.setQuoteAiOpen}
+        draftRef={p.draftRef}
+        setDraftRef={p.setDraftRef}
+        solutionOptions={p.solutionOptions}
+        bidOptions={p.bidOptions}
+        materialLoading={p.materialLoading}
+        busy={p.quoteAiBusy}
+        onGenerate={p.generateQuoteDraft}
+        quotePickerSlot={<SkillPickerFor scope="quote-draft" source={p.quoteSkills} />}
+      />
+
+      <ProductPickerDialog
+        open={!!p.productPickerGroup}
+        onClose={p.closeProductPicker}
+        items={p.productItems}
+        loading={p.productLoading}
+        groupName={pickerGroupName}
+        onPick={(productId) => p.addProductToGroup(productId)}
+      />
+
+      <ConfirmDialog
+        open={Boolean(p.confirmRequest)}
+        onOpenChange={(open) => {
+          if (!open) p.closeConfirmRequest()
+        }}
+        title={p.confirmRequest?.title ?? ""}
+        description={p.confirmRequest?.description}
+        confirmText={p.confirmRequest?.confirmText}
+        tone={p.confirmRequest?.tone ?? "default"}
+        onConfirm={p.runConfirmRequest}
+      />
+
+      <CostConfirmDialog {...p.costConfirm} />
+    </div>
+  )
+}
