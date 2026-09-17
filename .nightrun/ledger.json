@@ -227,6 +227,22 @@
       "module": "solution-studio",
       "found_in_round": "R000-startup",
       "note": "R001 已用 [NIGHTTEST] 种子（r001_seed.json，幂等可重放）临时解除并验证后删除；长期仍建议按 SOP 第六部分造最小数据集"
-    }
+    },
+    {
+      "id": "B-1",
+      "title": "产品backlog：条款-响应合规矩阵（★条款/废标项/资格[强制]/符合性 → 覆盖状态追踪）",
+      "level": "P2",
+      "status": "in_progress",
+      "category": "flow",
+      "module": "bid-workspace",
+      "source": ".nightrun/PRODUCT_BENCHMARK.md 高优 #1（对标 Loopio/AutogenAI compliance matrix）",
+      "progress": {
+        "阶段一(R005)": "done——complianceMatrix.ts 纯推导 + ComplianceMatrixPanel（挂解析报告下方）+ localStorage 进度；种子 8 条验证渲染/标注/持久化全过",
+        "阶段二(backlog)": "AI 从招标文件自动归纳矩阵行（走 costConfirm）；进度迁 PB json 字段（localStorage 仅本机）；与偏离表联动自动判覆盖"
+      }
+    },
+    { "id": "B-2", "title": "产品backlog：评分表/表格化条款结构化解析（RAGFlow 式深度文档理解）", "level": "P2", "status": "open", "category": "flow", "module": "bid-workspace", "source": "PRODUCT_BENCHMARK.md 高优 #2；是 B-1 矩阵的数据源增强" },
+    { "id": "B-3", "title": "产品backlog：投标复盘与胜率分析（bid_result 数据已有，纯统计）", "level": "P2", "status": "open", "category": "flow", "module": "bid-workspace / 首页", "source": "PRODUCT_BENCHMARK.md 高优 #3；一个修复轮可出 MVP" },
+    { "id": "B-4", "title": "产品backlog：公司模板中心（标书 Word 样式/封面/盖章页；PPT VI 模板 defineSlideMaster）", "level": "P2", "status": "open", "category": "ui", "module": "solution-studio / bid-workspace / ppt-quote", "source": "PRODUCT_BENCHMARK.md 高优 #4" }
   ]
 }

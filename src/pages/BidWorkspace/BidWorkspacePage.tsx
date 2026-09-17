@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/shell/PageHeader"
 import { ArchivePanel } from "@/components/bid-workspace/ArchivePanel"
 import { BidProjectList } from "@/components/bid-workspace/BidProjectList"
 import { BidToolbar } from "@/components/bid-workspace/BidToolbar"
+import { ComplianceMatrixPanel } from "@/components/bid-workspace/ComplianceMatrixPanel"
 import { ComposeStep } from "@/components/bid-workspace/ComposeStep"
 import { DupCheckPanel } from "@/components/bid-workspace/DupCheckPanel"
 import { DefensePanel } from "@/components/bid-workspace/DefensePanel"
@@ -122,6 +123,14 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                   onRescanStar={p.rescanStarClauses}
                   basisMerged={p.basisMergedItems}
                   onOpenStandardsPicker={p.openStandardsPicker}
+                />
+              </div>
+              {/* R005（B-1 阶段一）：实质性条款覆盖矩阵——解析报告本地推导，零 AI 费用 */}
+              <div className="mt-5">
+                <ComplianceMatrixPanel
+                  projectId={p.activeProject.id}
+                  report={p.activeProject.parse_report}
+                  archived={p.isArchivedLocked}
                 />
               </div>
             </section>
