@@ -227,6 +227,14 @@ export function useSolutionStudio() {
     )
   }, [solutions, searchKeyword])
 
+  // 方案列表统计卡（对齐原型「全部 / 编写中 / 已完成」）——始终基于未过滤的全量 solutions，
+  // 不受搜索关键词影响，保证「全部方案」恒为真实总数。done=已完成，其余（大纲中/生成中/部分成稿）计入编写中。
+  const solutionStats = useMemo(() => {
+    const total = solutions.length
+    const done = solutions.filter((s) => s.doc_status === "done").length
+    return { total, done, drafting: total - done }
+  }, [solutions])
+
   // ------------------------------ 商机选项（轮次 F 轨 2：新建方案可关联商机） ------------------------------
   const [wizardOppOptions, setWizardOppOptions] = useState<SolutionOppOption[]>([])
 
@@ -1195,6 +1203,7 @@ export function useSolutionStudio() {
     startSolutionFromChecklist,
     // 列表
     solutions: filteredSolutions,
+    solutionStats,
     listLoading,
     searchKeyword,
     setSearchKeyword,

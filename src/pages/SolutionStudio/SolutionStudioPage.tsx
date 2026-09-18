@@ -1,5 +1,4 @@
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
-import { PageHeader } from "@/components/shell/PageHeader"
 import { ChecklistView } from "@/components/solution-studio/checklist/ChecklistView"
 import { EditorWorkspace } from "@/components/solution-studio/EditorWorkspace"
 import { ExportTemplateCard } from "@/components/solution-studio/ExportTemplateCard"
@@ -50,12 +49,9 @@ export function SolutionStudioPage(p: ReturnType<typeof useSolutionStudio>) {
         </main>
       ) : p.mode === "list" ? (
         <main>
-          <PageHeader
-            title="方案编制"
-            desc="规划 / 可研 / 初设方案快速成稿，支持模板复用与 AI 辅助撰写"
-          />
           <SolutionListPanel
             solutions={p.solutions}
+            solutionStats={p.solutionStats}
             listLoading={p.listLoading}
             searchKeyword={p.searchKeyword}
             setSearchKeyword={p.setSearchKeyword}
