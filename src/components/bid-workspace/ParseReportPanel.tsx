@@ -48,6 +48,10 @@ const STATUS_BADGE: Record<ParseSectionStatus, string> = {
 /** 第十二轮改造 2：重点条款只读渲染时行首 ★/▲ 标记高亮（允许编号前缀） */
 const STAR_LINE_HEAD_RE = /^(\s*(?:\d+[.、)）]\s*)?[★☆▲△]+)/
 
+// 关键项 key 集合：PARSE_KEY_SECTIONS 为模块级常量，此处一次性求值即可，
+// 无需在组件内用 useMemo（早于任何提前 return，规避条件性 Hook 调用崩溃）
+const PARSE_KEY_SECTION_KEYS = new Set(PARSE_KEY_SECTIONS.map((d) => d.key))
+
 function renderStarLine(line: string): ReactNode {
   const m = line.match(STAR_LINE_HEAD_RE)
   if (!m) return line
@@ -102,8 +106,7 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
   const sections = report.sections
   // 用户反馈轮：关键项视图——完整解析报告默认折叠其他项，只看关键项与重点条款（展示层过滤，不改数据）
   const isFull = report.scope === "full"
-  const keySet = useMemo(() => new Set(PARSE_KEY_SECTIONS.map((d) => d.key)), [])
-  const keyFiltered = sections.filter((s) => keySet.has(s.key) || s.key === STAR_CLAUSE_SECTION.key)
+  const keyFiltered = sections.filter((s) => PARSE_KEY_SECTION_KEYS.has(s.key) || s.key === STAR_CLAUSE_SECTION.key)
   const shown = isFull && keyOnly && keyFiltered.length > 0 ? keyFiltered : sections
   const selected: ParseSection = shown.find((s) => s.key === selectedKey) ?? shown[0]
   const selectedStatus = sectionStatus(selected)
