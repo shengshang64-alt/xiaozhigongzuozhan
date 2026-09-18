@@ -133,6 +133,9 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                   projectId={p.activeProject.id}
                   report={p.activeProject.parse_report}
                   archived={p.isArchivedLocked}
+                  tenderText={p.activeProject.tender_text}
+                  onImportSections={p.updateParseReport}
+                  runWithCostConfirm={p.costConfirm.runWithCostConfirm}
                 />
               </div>
               {/* R008（B-2 阶段一）：评分项本地交叉核对（原文扫描 vs 解析报告），零 AI 费用 */}
