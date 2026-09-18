@@ -2,6 +2,7 @@ import { Loader2, Plus, RefreshCw, Inbox } from "lucide-react"
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
 import { PageHeader } from "@/components/shell/PageHeader"
 import { IntelToolbar } from "@/components/intel-center/IntelToolbar"
+import { IntelStatsRow } from "@/components/intel-center/IntelStatsRow"
 import { IntelFilterBar } from "@/components/intel-center/IntelFilterBar"
 import { IntelItemCard } from "@/components/intel-center/IntelItemCard"
 import { IntelDetailDrawer } from "@/components/intel-center/IntelDetailDrawer"
@@ -14,6 +15,7 @@ import { SOURCE_TYPE_LABEL, type useIntelCenter } from "./useIntelCenter"
 export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
   const enabledCount = p.sources.filter((s) => s.enabled).length
   const errorCount = p.sources.filter((s) => s.last_status === "error").length
+  const builtinCount = p.sources.filter((s) => s.is_builtin).length
 
   return (
     <div className="animate-in fade-in duration-500 text-foreground">
@@ -37,6 +39,16 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
         <PageHeader
           title="情报中心"
           desc="政策动态、竞品动向、招标中标、行业媒体四类医疗信息化情报聚合，公共情报全员共享，确认/忽略/收藏每人独立"
+        />
+
+        <IntelStatsRow
+          enabledCount={enabledCount}
+          sourceCount={p.sources.length}
+          errorCount={errorCount}
+          totalItems={p.totalItems}
+          starredCount={p.starredIds.length}
+          builtinCount={builtinCount}
+          customCount={p.sources.length - builtinCount}
         />
 
         <section className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-md">
