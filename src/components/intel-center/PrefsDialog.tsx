@@ -194,7 +194,7 @@ export function PrefsDialog({ open, prefs, sourceNames, saving, onClose, onSave 
           </section>
 
           <p className="rounded-md border border-dashed border-border bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-            偏好只影响你看到的展示与「关注」标记，不改变情报收集口径；设置保存在本地。
+            偏好只影响你看到的展示与「关注」标记，不改变情报收集口径；偏好设置保存在服务端账户下。
           </p>
         </div>
 

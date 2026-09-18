@@ -26,7 +26,7 @@ export function CustomerManagementPage(p: ReturnType<typeof useCustomerManagemen
 
       <PageHeader
         title="客户管理"
-        desc="医院客户档案与商机跟进，把每家目标医院跟到位，数据保存在本地"
+        desc="医院客户档案与商机跟进，把每家目标医院跟到位，数据保存在服务端"
       />
 
       <main>

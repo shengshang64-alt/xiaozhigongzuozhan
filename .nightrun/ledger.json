@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "xiaozhigongzuozhan",
-  "last_updated": "2026-09-18T07:45:00+08:00",
+  "last_updated": "2026-09-18T07:55:00+08:00",
   "note": "D-1~D-7 为 2026-09-17 基线实测（总纲 1.8），本轮 scope=/solution-studio，全局项挂账暂不修；D-8~D-13 为 R001 产出。",
   "items": [
     {
@@ -429,6 +429,28 @@
       },
       "verify": {
         "method": "代码链路核对：checklists 走 /api/checklists 服务端存储",
+        "result": "pass"
+      }
+    },
+    {
+      "id": "D-16",
+      "title": "「保存在本地」失实文案全库清扫（情报偏好 + 客户管理页，D-13/D-15 同款）",
+      "level": "P3",
+      "status": "done",
+      "category": "copy",
+      "module": "intel-center / customer-management",
+      "found_in_round": "R015 全库文案扫描",
+      "fix": {
+        "round": "R015",
+        "files": [
+          "src/components/intel-center/PrefsDialog.tsx",
+          "src/pages/CustomerManagement/CustomerManagementPage.tsx"
+        ],
+        "summary": "两处改为「保存在服务端」如实表述",
+        "commit": "<R015>"
+      },
+      "verify": {
+        "method": "全库 grep 复扫=0 残留；构建 exit=0",
         "result": "pass"
       }
     }
