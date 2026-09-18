@@ -231,6 +231,19 @@ const HOME_PROJECTS_PER_PAGE = 200
 
 const EMPTY_BID_REVIEW: BidReview = { won: 0, lost: 0, winRate: null, lostReasonTop: [], sourceCapped: false }
 
+// 商机漏斗（阶段分布）口径：与 customerTypes.PIPELINE_STAGES 一致，只统计在跟的 5 个阶段，
+// won/lost 终态不进漏斗（终态由「胜负复盘」卡单独呈现）。
+const OPP_FUNNEL_STAGES: { stage: string; name: string }[] = [
+  { stage: "lead", name: "线索" },
+  { stage: "contact", name: "初步接触" },
+  { stage: "needs", name: "需求确认" },
+  { stage: "solution", name: "方案阶段" },
+  { stage: "bidding", name: "投标" },
+]
+
+// 漏斗单条：{ 阶段 key, 阶段名, 商机数 }（展示色由 FunnelCard 按 index 分配，逻辑层不依赖 echarts）
+export type FunnelDatum = { stage: string; name: string; value: number }
+
 export function useHome() {
   // ------------------------------ 登录态 ------------------------------
   const [userId, setUserId] = useState<string | null>(() => decodeRhToken()?.sub ?? null)
@@ -554,6 +567,19 @@ export function useHome() {
     }
   }, [reviewOpps, reviewBids, statsCapped])
 
+  // 商机漏斗（阶段分布）——复用 reviewOpps（零新增请求），按 5 个在跟阶段计数，
+  // 展示色由 FunnelCard 分配；总数 = 当前用户全部商机条数（含终态，用于「共 N 条商机」标签）。
+  const oppFunnel = useMemo<FunnelDatum[]>(() => {
+    const counts = new Map<string, number>()
+    for (const o of reviewOpps) counts.set(o.stage, (counts.get(o.stage) ?? 0) + 1)
+    return OPP_FUNNEL_STAGES.map((s) => ({
+      stage: s.stage,
+      name: s.name,
+      value: counts.get(s.stage) ?? 0,
+    }))
+  }, [reviewOpps])
+  const oppFunnelTotal = useMemo(() => reviewOpps.length, [reviewOpps])
+
   const setProjectField = useCallback(<K extends keyof ProjectForm>(key: K, value: ProjectForm[K]) => {
     setProjectForm((prev) => ({ ...prev, [key]: value }))
   }, [])
@@ -775,6 +801,9 @@ export function useHome() {
     savingDetail,
     // 客户概览
     crmStats,
+    // 商机漏斗（阶段分布，供 FunnelCard echarts 消费）
+    oppFunnel,
+    oppFunnelTotal,
     // 循环 9 B1：待跟进商机提醒（今日到期 + 已逾期）
     followDueOpps,
     crmRecentOpps,

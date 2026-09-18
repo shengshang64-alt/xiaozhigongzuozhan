@@ -3,6 +3,7 @@ import { ActivityFeedSection } from "@/components/home/ActivityFeedSection"
 import { BidReviewCard } from "@/components/home/BidReviewCard"
 import { OppsCard } from "@/components/home/CustomerOverviewSection"
 import { FollowUpReminderCard } from "@/components/home/FollowUpReminderCard"
+import { FunnelCard } from "@/components/home/FunnelCard"
 import { IntelSection } from "@/components/home/IntelSection"
 import { ProjectsSection } from "@/components/home/ProjectsSection"
 import { StatsRow } from "@/components/home/StatsRow"
@@ -37,6 +38,11 @@ export function HomePage(p: ReturnType<typeof useHome>) {
       />
 
       <div className="mb-5 grid items-start gap-4 lg:grid-cols-2">
+        <FunnelCard
+          data={p.oppFunnel}
+          total={p.oppFunnelTotal}
+          loading={p.crmLoading}
+        />
         <TodoCard
           buckets={p.todoBuckets}
           todosLoading={p.todosLoading}
@@ -52,14 +58,16 @@ export function HomePage(p: ReturnType<typeof useHome>) {
           overdueTodoCount={p.overdueTodoCount}
           todosCapped={p.todosCapped}
         />
+      </div>
+
+      <div className="mb-5 grid items-start gap-4 lg:grid-cols-2">
         <OppsCard
           stats={p.crmStats}
           recentOpps={p.crmRecentOpps}
           loading={p.crmLoading}
         />
+        <FollowUpReminderCard items={p.followDueOpps} loading={p.crmLoading} />
       </div>
-
-      <FollowUpReminderCard items={p.followDueOpps} loading={p.crmLoading} />
 
       <BidReviewCard review={p.bidReview} loading={p.crmLoading} />
 

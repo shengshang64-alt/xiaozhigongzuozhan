@@ -1,4 +1,8 @@
+import { useMemo } from "react"
 import { Loader2, TrendingUp, Trophy, XCircle } from "lucide-react"
+import type { EChartsOption } from "echarts"
+import { EChart } from "@/components/common/EChart"
+import { CHART_COLORS } from "@/lib/echarts"
 
 /** 胜负复盘聚合数据（内存聚合当前用户商机 stage/lost_reason + 标书 bid_result，零后端） */
 export type BidReview = {
@@ -19,6 +23,37 @@ type BidReviewCardProps = {
 export function BidReviewCard({ review, loading }: BidReviewCardProps) {
   const decided = review.won + review.lost
   const maxCount = review.lostReasonTop.reduce((m, r) => Math.max(m, r.count), 0)
+  const winRate = review.winRate ?? 0
+  // 胜率环形图：赢单青绿 / 输单浅红，中心显示胜率百分比（对齐原型 donut）
+  const donutOption = useMemo<EChartsOption>(() => ({
+    series: [
+      {
+        type: "pie",
+        radius: ["62%", "82%"],
+        center: ["50%", "50%"],
+        label: { show: false },
+        silent: true,
+        data: [
+          { value: review.won, name: "赢单", itemStyle: { color: CHART_COLORS.primary } },
+          { value: review.lost, name: "输单", itemStyle: { color: CHART_COLORS.dangerSoft } },
+        ],
+      },
+    ],
+    graphic: [
+      {
+        type: "text",
+        left: "center",
+        top: "42%",
+        style: {
+          text: `${winRate}%`,
+          fontSize: 20,
+          fontWeight: 700,
+          fill: CHART_COLORS.ink,
+          textAlign: "center",
+        },
+      },
+    ],
+  }), [review.won, review.lost, winRate])
   return (
     <section className="mb-5 rounded-xl border border-border bg-card p-4 shadow-md lg:p-5 animate-in fade-in duration-500">
       <header className="flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-2">
@@ -50,20 +85,25 @@ export function BidReviewCard({ review, loading }: BidReviewCardProps) {
         </div>
       ) : (
         <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-[2fr_3fr]">
-          <div className="flex flex-col justify-center rounded-lg border border-border bg-background p-4 shadow-sm">
-            <p className="text-xs text-muted-foreground">胜率（赢单 / 已出结果）</p>
-            <p className="mt-1 text-4xl font-bold tabular-nums text-primary">
-              {review.winRate == null ? "—" : `${review.winRate}%`}
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 font-medium text-primary">
-                <Trophy className="h-3.5 w-3.5" />
-                赢单 {review.won}
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-2.5 py-1 font-medium text-destructive">
-                <XCircle className="h-3.5 w-3.5" />
-                输单 {review.lost}
-              </span>
+          <div className="flex items-center gap-4 rounded-lg border border-border bg-background p-4 shadow-sm">
+            <div className="h-[108px] w-[108px] shrink-0">
+              <EChart option={donutOption} height={108} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-muted-foreground">胜率（赢单 / 已出结果）</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums text-primary">
+                {review.winRate == null ? "—" : `${review.winRate}%`}
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 font-medium text-primary">
+                  <Trophy className="h-3.5 w-3.5" />
+                  赢单 {review.won}
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-2.5 py-1 font-medium text-destructive">
+                  <XCircle className="h-3.5 w-3.5" />
+                  输单 {review.lost}
+                </span>
+              </div>
             </div>
           </div>
 
