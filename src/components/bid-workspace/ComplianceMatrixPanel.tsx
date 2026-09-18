@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { Loader2, ShieldAlert, Sparkles } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { llmGenerate } from "@/pages/SolutionStudio/studioLlm"
+import { chatViaGateway } from "@/lib/modelGateway"
 import type { ParseReport, ParseSection } from "@/pages/BidWorkspace/bidTypes"
 import {
   buildComplianceRows,
@@ -94,8 +94,10 @@ export function ComplianceMatrixPanel({
         setScanning(true)
         try {
           const excerpt = tenderText.slice(0, 12000)
-          const text = await llmGenerate(
-            [
+          // R016 修正：走 modelGateway 网关（modelRef 空 = 平台内置模型），不依赖方案页的 studioModelRef
+          const res = await chatViaGateway({
+            modelRef: null,
+            messages: [
               {
                 role: "system",
                 content: [
@@ -106,10 +108,11 @@ export function ComplianceMatrixPanel({
               },
               { role: "user", content: `【招标文件原文（可能截断）】\n${excerpt}\n\n请提取四类条款 JSON。` },
             ],
-            4096,
-            "bid-parse",
-          )
-          const json = tolerantJson(text)
+            page: "bid-workspace",
+            max_tokens: 4096,
+          })
+          if (!res.ok || !res.text) throw new Error(res.error || "AI 生成失败，请重试")
+          const json = tolerantJson(res.text)
           if (!json) throw new Error("AI 返回格式解析失败，请重试")
           const asLines = (v: unknown): string =>
             Array.isArray(v) ? v.map((x) => String(x ?? "").trim()).filter(Boolean).join("\n") : ""

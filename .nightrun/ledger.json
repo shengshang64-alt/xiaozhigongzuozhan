@@ -368,7 +368,8 @@
       "progress": {
         "阶段一(R005)": "done——complianceMatrix.ts 纯推导 + ComplianceMatrixPanel（挂解析报告下方）+ localStorage 进度；种子 8 条验证渲染/标注/持久化全过",
         "阶段二(backlog)": "AI 从招标文件自动归纳矩阵行（走 costConfirm）；进度迁 PB json 字段（localStorage 仅本机）；与偏离表联动自动判覆盖",
-        "阶段二(R016)": "in_progress——矩阵面板 AI 补扫按钮+写回解析报告分节已实现并接线（走费用门禁）；端到端被模型引用跨页为空卡住：studioLlm.llmGenerate 依赖方案页 setStudioModelRef，标书页为 null 报「AI 生成服务暂不可用」。剩余=改用 bid 侧 LLM 入口（或面板内 resolveAvailableModels）；已种 r016 项目可复验"
+        "阶段二(R016)": "in_progress——矩阵面板 AI 补扫按钮+写回解析报告分节已实现并接线（走费用门禁）；端到端被模型引用跨页为空卡住：studioLlm.llmGenerate 依赖方案页 setStudioModelRef，标书页为 null 报「AI 生成服务暂不可用」。剩余=改用 bid 侧 LLM 入口（或面板内 resolveAvailableModels）；已种 r016 项目可复验",
+        "阶段二(R017 排障)": "点击确认运行后回调未执行（无扫描/无错误/无写入）——bid 侧 costConfirm 疑有登录门禁静默拦截；下一轮第一件事：读 useCostConfirm 在 bid 上下文的实现与 requireLogin 逻辑，判定是补登录引导还是换费用门禁通道"
       }
     },
     {
