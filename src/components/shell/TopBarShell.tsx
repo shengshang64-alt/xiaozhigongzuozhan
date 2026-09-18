@@ -1,10 +1,11 @@
 import { useLocation } from "react-router-dom"
+import { Menu } from "lucide-react"
 import { RhAccountMenu } from "@/components/rh/RhAccountMenu"
 import { GlobalCommandPalette } from "@/components/shell/GlobalCommandPalette"
 import type { RhAccountInfo } from "@/lib/rhLogin"
 
 const ROUTE_TITLES: Record<string, string> = {
-  "/": "工作台首页",
+  "/": "工作台",
   "/solution-studio": "方案编制",
   "/bid-workspace": "标书工作",
   "/ppt-quote": "PPT 与报价",
@@ -17,21 +18,34 @@ const ROUTE_TITLES: Record<string, string> = {
 
 type TopBarShellProps = {
   onAccountChange: (account: RhAccountInfo | null) => void
+  collapsed?: boolean
+  onToggleSidebar?: () => void
 }
 
-export function TopBarShell({ onAccountChange }: TopBarShellProps) {
+export function TopBarShell({ onAccountChange, onToggleSidebar }: TopBarShellProps) {
   const { pathname } = useLocation()
-  const currentTitle = ROUTE_TITLES[pathname] ?? "工作台首页"
+  const currentTitle = ROUTE_TITLES[pathname] ?? "工作台"
 
   return (
-    <header className="sticky top-0 z-40 flex h-14 items-center justify-between gap-4 border-b border-border bg-card/90 px-4 backdrop-blur lg:px-6">
-      <p className="truncate text-sm text-muted-foreground">
-        售前工作台
-        <span className="mx-1.5 text-muted-foreground/60">/</span>
-        <span className="font-medium text-foreground">{currentTitle}</span>
-      </p>
+    <header className="sticky top-0 z-40 flex h-[60px] items-center gap-3 border-b border-border bg-card/85 px-4 backdrop-blur lg:px-6">
+      {onToggleSidebar && (
+        <button
+          type="button"
+          onClick={onToggleSidebar}
+          title="折叠/展开导航"
+          className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[9px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Menu className="h-[18px] w-[18px]" />
+        </button>
+      )}
 
-      <div className="flex shrink-0 items-center gap-3">
+      <div className="flex min-w-0 items-center gap-2 text-[13px] text-muted-foreground">
+        <span className="hidden sm:inline">售前工作台</span>
+        <span className="hidden text-muted-foreground/60 sm:inline">/</span>
+        <span className="truncate font-semibold text-foreground">{currentTitle}</span>
+      </div>
+
+      <div className="ml-auto flex shrink-0 items-center gap-2">
         <GlobalCommandPalette />
         <RhAccountMenu onAccountChange={onAccountChange} />
       </div>

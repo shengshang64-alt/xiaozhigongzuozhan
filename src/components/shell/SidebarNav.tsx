@@ -16,10 +16,11 @@ import { decodeRhToken, type RhAccountInfo } from "@/lib/rhLogin"
 type NavItem = { path: string; label: string; icon: typeof FileText }
 type NavSection = { title: string; items: NavItem[] }
 
+// 导航分组与「界面重构原型」对齐：概览 / 核心工作 / 资源与知识 / 系统
 const NAV_SECTIONS: NavSection[] = [
   {
     title: "概览",
-    items: [{ path: "/", label: "工作台首页", icon: LayoutGrid }],
+    items: [{ path: "/", label: "工作台", icon: LayoutGrid }],
   },
   {
     title: "核心工作",
@@ -30,7 +31,7 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: "资源与情报",
+    title: "资源与知识",
     items: [
       { path: "/intel-center", label: "情报中心", icon: Search },
       { path: "/customer-management", label: "客户管理", icon: Users },
@@ -48,9 +49,10 @@ const NAV_SECTIONS: NavSection[] = [
 
 type SidebarNavProps = {
   accountInfo: RhAccountInfo | null
+  collapsed?: boolean
 }
 
-export function SidebarNav({ accountInfo }: SidebarNavProps) {
+export function SidebarNav({ accountInfo, collapsed = false }: SidebarNavProps) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
 
@@ -64,25 +66,35 @@ export function SidebarNav({ accountInfo }: SidebarNavProps) {
   const avatarInitial = displayName ? displayName.slice(0, 1).toUpperCase() : "访"
 
   return (
-    <aside className="sticky top-0 z-50 flex h-screen w-[60px] shrink-0 flex-col border-r border-border bg-card lg:w-60">
-      <header className="border-b border-border p-3 lg:p-5">
-        <div className="flex items-center justify-center gap-2.5 lg:justify-start">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-md">
-            <Layers className="h-5 w-5" />
+    <aside
+      className={
+        "sticky top-0 z-50 flex h-screen shrink-0 flex-col border-r border-sidebar-border text-sidebar-foreground transition-[width] duration-200 " +
+        "[background:linear-gradient(180deg,hsl(177_55%_11%)_0%,hsl(var(--sidebar-background))_100%)] " +
+        (collapsed ? "w-[72px]" : "w-[236px]")
+      }
+    >
+      {/* Logo */}
+      <header className={"flex items-center gap-2.5 border-b border-white/[.07] py-4 " + (collapsed ? "justify-center px-2" : "px-[18px]")}>
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-gradient-to-br from-primary to-[#0C8573] text-white shadow-md">
+          <Layers className="h-[19px] w-[19px]" />
+        </span>
+        {!collapsed && (
+          <span className="min-w-0 leading-tight">
+            <span className="block truncate text-[15px] font-bold text-[#EAF4F2]">售前工作台</span>
+            <span className="block truncate text-[10px] tracking-wide text-[#6F908B]">PRESALES DESK</span>
           </span>
-          <span className="hidden leading-tight lg:block">
-            <span className="block text-sm font-bold text-foreground">售前工作台</span>
-            <span className="block text-xs text-muted-foreground">医疗售前 · 效率中枢</span>
-          </span>
-        </div>
+        )}
       </header>
 
-      <nav className="flex-1 overflow-y-auto p-2 lg:p-3">
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto px-2.5 pb-1.5 pt-2.5">
         {NAV_SECTIONS.map((section) => (
-          <div key={section.title} className="mb-3">
-            <p className="hidden px-3 pb-1.5 pt-2 text-xs font-medium tracking-wide text-muted-foreground lg:block">
-              {section.title}
-            </p>
+          <div key={section.title} className="mb-1">
+            {!collapsed && (
+              <p className="px-2.5 pb-1.5 pt-3 text-[10px] font-medium tracking-[1.6px] text-[#5E7F7B]">
+                {section.title}
+              </p>
+            )}
             <div className="flex flex-col gap-0.5">
               {section.items.map((item) => {
                 const Icon = item.icon
@@ -94,13 +106,19 @@ export function SidebarNav({ accountInfo }: SidebarNavProps) {
                     title={item.label}
                     onClick={() => navigate(item.path)}
                     className={
-                      active
-                        ? "flex items-center justify-center gap-2.5 rounded-lg bg-primary/10 px-2.5 py-2.5 text-sm font-medium text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:justify-start"
-                        : "flex items-center justify-center gap-2.5 rounded-lg px-2.5 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-secondary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:justify-start"
+                      "group relative flex items-center gap-2.5 rounded-[9px] text-[13.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring " +
+                      (collapsed ? "justify-center px-0 py-[11px]" : "px-2.5 py-[9px]") +
+                      " " +
+                      (active
+                        ? "bg-gradient-to-r from-primary/35 to-primary/10 font-medium text-white"
+                        : "text-[#A9C3BF] hover:bg-white/[.06] hover:text-[#E8F3F1]")
                     }
                   >
-                    <Icon className="h-5 w-5 shrink-0" />
-                    <span className="hidden lg:inline">{item.label}</span>
+                    {active && (
+                      <span className="absolute -left-2.5 bottom-2 top-2 w-[3px] rounded-r-[3px] bg-primary" />
+                    )}
+                    <Icon className={"h-[19px] w-[19px] shrink-0 " + (active ? "text-[#4CD5BC]" : "text-[#7FA09B] group-hover:text-[#A9C3BF]")} />
+                    {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
                   </button>
                 )
               })}
@@ -109,24 +127,28 @@ export function SidebarNav({ accountInfo }: SidebarNavProps) {
         ))}
       </nav>
 
-      <footer className="border-t border-border p-2 lg:p-4">
+      {/* Account footer */}
+      <footer className="p-2.5 lg:p-4">
         <button
           type="button"
           onClick={() => navigate("/model-config")}
           title="账户与模型配置"
-          className="flex w-full items-center justify-center gap-2.5 rounded-lg p-2 transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:justify-start"
+          className={
+            "flex w-full items-center gap-2.5 rounded-[11px] bg-white/[.06] p-2.5 transition-colors hover:bg-white/[.1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring " +
+            (collapsed ? "justify-center" : "")
+          }
         >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/60 text-sm font-semibold text-primary-foreground shadow-sm">
+          <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#2BC0A8] to-primary text-[13px] font-semibold text-white">
             {avatarInitial}
           </span>
-          <span className="hidden min-w-0 leading-tight lg:block">
-            <span className="block truncate text-sm font-medium text-foreground">
-              {displayName ?? "本地用户"}
+          {!collapsed && (
+            <span className="min-w-0 leading-tight">
+              <span className="block truncate text-[12.5px] font-medium text-[#E4F1EF]">
+                {displayName ?? "本地用户"}
+              </span>
+              <span className="block truncate text-[10.5px] text-[#6F908B]">医疗售前工程师</span>
             </span>
-            <span className="block truncate text-xs text-muted-foreground">
-              医疗售前工程师
-            </span>
-          </span>
+          )}
         </button>
       </footer>
     </aside>

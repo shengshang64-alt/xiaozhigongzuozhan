@@ -18,6 +18,8 @@ export function WorkbenchShell() {
   // 登录态变化（登录/退出/切换账号）时 bump key，强制页面子树重挂载，
   // 各页 Logic hook 重新按新 token 初始化并拉取数据（不改动任何页面逻辑）。
   const [accountKey, setAccountKey] = useState(0)
+  // 侧边栏折叠（对齐重构原型顶栏 ☰ 交互）
+  const [collapsed, setCollapsed] = useState(false)
 
   const handleAccountChange = useCallback(
     (account: RhAccountInfo | null) => {
@@ -33,12 +35,16 @@ export function WorkbenchShell() {
 
   return (
     <ShellAccountContext.Provider value={accountInfo}>
-      <div className="flex min-h-screen bg-secondary/40 text-secondary-foreground">
-        <SidebarNav accountInfo={accountInfo} />
+      <div className="flex min-h-screen bg-background text-foreground">
+        <SidebarNav accountInfo={accountInfo} collapsed={collapsed} />
         <div className="flex min-w-0 flex-1 flex-col">
-          <TopBarShell onAccountChange={handleAccountChange} />
-          <main className="flex-1 p-4 lg:p-6">
-            <div key={accountKey} className="mx-auto w-full max-w-screen-2xl">
+          <TopBarShell
+            onAccountChange={handleAccountChange}
+            collapsed={collapsed}
+            onToggleSidebar={() => setCollapsed((v) => !v)}
+          />
+          <main className="flex-1 px-4 pb-10 pt-5 lg:px-6">
+            <div key={accountKey} className="mx-auto w-full max-w-[1560px]">
               <Outlet />
             </div>
           </main>
