@@ -1327,11 +1327,18 @@ export function usePptQuote() {
   const loadProducts = useCallback(async (uid: string) => {
     setProductLoading(true)
     try {
-      const data = await apiFetch<ListResponse<ProductItem>>(
-        // B6：perPage 提到 200，避免服务端缺省 50 静默截断产品库
-        `/api/product_library?rh_user_id=${encodeURIComponent(uid)}&page=1&perPage=200`,
-      )
-      setProductItems(data.items ?? [])
+      // B6：perPage 提到 200，避免服务端缺省 50 静默截断产品库
+      // 公司报价体系导入后超过 200 条：分页循环拉全，直到某页不满为止
+      const all: ProductItem[] = []
+      for (let page = 1; page <= 10; page++) {
+        const data = await apiFetch<ListResponse<ProductItem>>(
+          `/api/product_library?rh_user_id=${encodeURIComponent(uid)}&page=${page}&perPage=200`,
+        )
+        const items = data.items ?? []
+        all.push(...items)
+        if (items.length < 200) break
+      }
+      setProductItems(all)
     } catch {
       // 产品库加载失败不打断主流程
     } finally {
