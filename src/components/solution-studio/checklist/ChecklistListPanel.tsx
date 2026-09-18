@@ -60,7 +60,7 @@ export function ChecklistListPanel({ ck }: { ck: UseChecklist }) {
       <div className="flex items-center justify-between gap-2">
         <div>
           <h3 className="text-base font-semibold text-foreground">我的建设清单</h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">清单保存在本地，可重开编辑或带入方案</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">清单保存在服务端，可重开编辑或带入方案</p>
         </div>
         <Button size="sm" onClick={ck.openChecklistWizard} className="bg-primary text-primary-foreground shadow-sm hover:bg-primary/90">
           <Plus className="mr-1 h-4 w-4" />

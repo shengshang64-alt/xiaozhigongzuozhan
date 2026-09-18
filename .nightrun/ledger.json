@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "xiaozhigongzuozhan",
-  "last_updated": "2026-09-18T07:30:00+08:00",
+  "last_updated": "2026-09-18T07:45:00+08:00",
   "note": "D-1~D-7 为 2026-09-17 基线实测（总纲 1.8），本轮 scope=/solution-studio，全局项挂账暂不修；D-8~D-13 为 R001 产出。",
   "items": [
     {
@@ -409,6 +409,27 @@
       "progress": {
         "阶段一(R007)": "done——方案编制导出 Word 模板：封面（单位名/方案名/医院·类型/日期）+ 自动目录（updateFields 域）+ 页眉文字；ExportTemplateCard 按方案 localStorage；node 直验 8/8",
         "阶段二(backlog)": "上传公司 docx 模板解析样式映射；PPT defineSlideMaster 母版；标书工作导出对齐"
+      }
+    },
+    {
+      "id": "D-15",
+      "title": "建设清单页「清单保存在本地」文案失实（D-13 同款）",
+      "level": "P3",
+      "status": "done",
+      "category": "copy",
+      "module": "solution-studio/checklist",
+      "found_in_round": "R014 深度轮(产品经理)",
+      "fix": {
+        "round": "R014",
+        "files": [
+          "src/components/solution-studio/checklist/ChecklistListPanel.tsx"
+        ],
+        "summary": "文案改为「清单保存在服务端」",
+        "commit": "<R014>"
+      },
+      "verify": {
+        "method": "代码链路核对：checklists 走 /api/checklists 服务端存储",
+        "result": "pass"
       }
     }
   ]
