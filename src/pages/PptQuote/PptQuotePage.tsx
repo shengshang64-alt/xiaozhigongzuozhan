@@ -1,7 +1,8 @@
+import { useMemo } from "react"
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
-import { PageHeader } from "@/components/shell/PageHeader"
 import { DeckEditorWorkspace } from "@/components/ppt-quote/DeckEditorWorkspace"
 import { DeckListPanel } from "@/components/ppt-quote/DeckListPanel"
+import { PptStatsRow } from "@/components/ppt-quote/PptStatsRow"
 import { NewDeckWizard } from "@/components/ppt-quote/NewDeckWizard"
 import { ProductPickerDialog } from "@/components/ppt-quote/ProductLibraryPanel"
 import { NewQuoteDialog, QuoteDraftDialog } from "@/components/ppt-quote/QuoteDialogs"
@@ -10,6 +11,7 @@ import { QuoteListPanel } from "@/components/ppt-quote/QuoteListPanel"
 import { QuoteToolbar } from "@/components/ppt-quote/QuoteToolbar"
 import { SkillPickerFor } from "@/components/common/SkillPicker"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
+import { formatMoney, quoteTotal } from "./pptQuoteTypes"
 import type { usePptQuote } from "./usePptQuote"
 
 export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
@@ -20,6 +22,14 @@ export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
   const inListMode =
     (p.activeView === "deck" && p.deckMode === "list") ||
     (p.activeView === "quote" && p.quoteMode === "list")
+  // 统计卡为全量口径（不受搜索过滤影响），对齐原型 stat-row
+  const pptStats = useMemo(() => {
+    const deckCount = p.deckList.length
+    const deckDone = p.deckList.filter((d) => d.doc_status === "done").length
+    const quoteCount = p.quoteList.length
+    const sum = p.quoteList.reduce((s, q) => s + quoteTotal(q.groups ?? []), 0)
+    return { deckCount, deckDone, quoteCount, totalAmount: formatMoney(sum) }
+  }, [p.deckList, p.quoteList])
   return (
     <div className="animate-in fade-in duration-500 text-foreground">
       <QuoteToolbar
@@ -33,14 +43,15 @@ export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
         onSelectModel={p.handleSelectModel}
       />
 
-      {inListMode && (
-        <PageHeader
-          title="PPT 与报价"
-          desc="汇报 PPT 与报价清单整理，支持一键生成与版本管理"
-        />
-      )}
-
       <main>
+        {inListMode && (
+          <PptStatsRow
+            deckCount={pptStats.deckCount}
+            deckDone={pptStats.deckDone}
+            quoteCount={pptStats.quoteCount}
+            quoteTotalAmount={pptStats.totalAmount}
+          />
+        )}
         {p.activeView === "deck" ? (
           p.deckMode === "list" ? (
             <DeckListPanel
