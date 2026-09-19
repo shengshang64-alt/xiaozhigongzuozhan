@@ -1,4 +1,5 @@
 import { Clock, Loader2, Plus, Presentation, Search, Trash2, Users } from "lucide-react"
+import { CompanyTemplateHint } from "@/components/common/CompanyTemplateHint"
 import { DECK_STATUS_LABEL, deckTypeLabel, type DeckRecord } from "@/pages/PptQuote/pptQuoteTypes"
 
 type DeckListPanelProps = {
@@ -49,6 +50,8 @@ export function DeckListPanel({
             新建 PPT
           </button>
         </div>
+        {/* R-203：本场景配套的公司标准模版（附件5 PPT 模板 + 格式规范），点击即下载 */}
+        <CompanyTemplateHint scenario="ppt" extraScenario="spec" />
       </header>
 
       <div className="mt-5 flex items-center gap-3">

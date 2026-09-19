@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
+import { CompanyTemplateHint } from "@/components/common/CompanyTemplateHint"
 import type { UseSolutionStudio } from "@/pages/SolutionStudio/useSolutionStudio"
 import {
   DOC_STATUS_LABEL,
@@ -158,6 +159,8 @@ export function SolutionListPanel(p: SolutionListPanelProps) {
             新建方案
           </Button>
         </div>
+        {/* R-203：本场景配套的公司标准模版（附件4 方案模板 + 封面示例 + 格式规范），点击即下载 */}
+        <CompanyTemplateHint scenario="solution" extraScenario="spec" />
       </header>
 
       {/* 统计卡：始终反映全量方案（不受搜索/类型过滤影响），对齐原型 g3 stat-row */}

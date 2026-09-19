@@ -1,4 +1,5 @@
 import { Copy, Loader2, Plus, ReceiptText, Search, Trash2 } from "lucide-react"
+import { CompanyTemplateHint } from "@/components/common/CompanyTemplateHint"
 import { formatMoney, quoteTotal, type QuoteRecord } from "@/pages/PptQuote/pptQuoteTypes"
 
 type QuoteListPanelProps = {
@@ -51,6 +52,8 @@ export function QuoteListPanel({
             新建报价
           </button>
         </div>
+        {/* R-203：对外报价单的公司标准表式（范本开标一览表/分项报价表），点击即下载 */}
+        <CompanyTemplateHint scenario="quote" />
       </header>
 
       <div className="mt-5 flex items-center gap-3">

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
+import { CompanyTemplateHint } from "@/components/common/CompanyTemplateHint"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import { daysUntil, STAGE_LABEL, type BidProjectRecord, type BidStage } from "@/pages/BidWorkspace/bidTypes"
 
@@ -244,6 +245,8 @@ export function BidProjectList(p: BidProjectListProps) {
               新建投标项目
             </Button>
           </div>
+          {/* R-203：本场景配套的公司标准模版（附件3 投标模板 + 附件1 全文范本 + 格式规范），点击即下载 */}
+          <CompanyTemplateHint scenario="bid" extraScenario="spec" />
         </header>
 
         <div className="mt-6 flex flex-wrap items-center gap-3">
