@@ -126,7 +126,7 @@ export function SidebarNav({ accountInfo, collapsed = false }: SidebarNavProps) 
                       <span className="absolute -left-2.5 bottom-2 top-2 w-[3px] rounded-r-[3px] bg-primary" />
                     )}
                     <Icon className={"h-[19px] w-[19px] shrink-0 " + (active ? "text-[#4CD5BC]" : "text-[#7FA09B] group-hover:text-[#A9C3BF]")} />
-                    {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+                    {!collapsed && <span className="truncate">{item.label}</span>}
                   </button>
                 )
               })}
