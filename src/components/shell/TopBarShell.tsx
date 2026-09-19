@@ -2,7 +2,9 @@ import { useLocation } from "react-router-dom"
 import { Menu } from "lucide-react"
 import { RhAccountMenu } from "@/components/rh/RhAccountMenu"
 import { GlobalCommandPalette } from "@/components/shell/GlobalCommandPalette"
-import type { RhAccountInfo } from "@/lib/rhLogin"
+import { Badge } from "@/components/ui/badge"
+import { isLocalDeployHost, type RhAccountInfo } from "@/lib/rhLogin"
+import { getCachedTeamProfile, TEAM_ROLE_LABELS, type TeamRole } from "@/lib/teamAuth"
 
 const ROUTE_TITLES: Record<string, string> = {
   "/": "工作台",
@@ -12,8 +14,29 @@ const ROUTE_TITLES: Record<string, string> = {
   "/intel-center": "情报中心",
   "/customer-management": "客户管理",
   "/knowledge": "知识库",
+  "/team": "团队管理",
   "/model-config": "模型配置",
   "/assistant": "小智助手",
+}
+
+// 角色徽标配色：viewer 用醒目「只读」色提醒权限受限，admin 高亮，editor 中性。
+const ROLE_BADGE_VARIANT: Record<TeamRole, "success" | "neutral" | "warning"> = {
+  admin: "success",
+  editor: "neutral",
+  viewer: "warning",
+}
+
+/** R-201 阶段A：本地团队域显示当前登录者姓名+角色徽标；线上域/未登录返回 null。 */
+function TeamIdentityBadge() {
+  if (!isLocalDeployHost()) return null
+  const profile = getCachedTeamProfile()
+  if (!profile) return null
+  return (
+    <div className="hidden items-center gap-2 rounded-[9px] border border-border bg-secondary/40 px-2.5 py-1 sm:flex">
+      <span className="max-w-[10rem] truncate text-[13px] font-medium text-foreground">{profile.name}</span>
+      <Badge variant={ROLE_BADGE_VARIANT[profile.role]}>{TEAM_ROLE_LABELS[profile.role]}</Badge>
+    </div>
+  )
 }
 
 type TopBarShellProps = {
@@ -46,6 +69,7 @@ export function TopBarShell({ onAccountChange, onToggleSidebar }: TopBarShellPro
       </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-2">
+        <TeamIdentityBadge />
         <GlobalCommandPalette />
         <RhAccountMenu onAccountChange={onAccountChange} />
       </div>

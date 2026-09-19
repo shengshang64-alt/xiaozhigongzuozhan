@@ -10,6 +10,7 @@ import IntelCenterRoute from "./pages/IntelCenter/index.tsx"
 import CustomerManagementRoute from "./pages/CustomerManagement/index.tsx"
 import KnowledgeRoute from "./pages/Knowledge/index.tsx"
 import AssistantRoute from "./pages/Assistant/index.tsx"
+import TeamRoute from "./pages/Team/index.tsx"
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
         <Route path="/customer-management" element={<CustomerManagementRoute />} />
         <Route path="/knowledge" element={<KnowledgeRoute />} />
         <Route path="/assistant" element={<AssistantRoute />} />
+        <Route path="/team" element={<TeamRoute />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

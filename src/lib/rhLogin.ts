@@ -1,3 +1,7 @@
+// R-201 阶段A: 团队登录（本地域）—— token/档案缓存在 teamAuth 模块自有 key 上,
+// 此处只单向读取, 无循环依赖。
+import { clearTeamSession, getCachedTeamProfile, getTeamToken } from "./teamAuth"
+
 export type RhJwtPayload = {
   sub?: string
   user_name?: string
@@ -176,8 +180,15 @@ export function vibexAuthHeaders(): Record<string, string> {
   // 本地自用域: model_gateway / intel_center 两个 hook 的身份约定是"只认 vibex
   // 网关注入的 X-Rh-User-Id, 缺失一律 401"。本地不存在那层网关, 该头永远为空,
   // 于是模型配置页与情报中心会永久顶着一块登录横幅。这里补上固定身份头。
+  // R-201 阶段A: 数据身份仍是共享池 local-user(零迁移), 团队登录 token 作为
+  // Authorization 附加头随每个 __pb 请求携带 —— 服务端 team_auth 中间件据此
+  // 做 viewer 只读强制与成员管理鉴权。
   if (isLocalDeployHost()) {
-    return { "X-Rh-User-Id": LOCAL_DEPLOY_USER_ID }
+    const teamToken = getTeamToken()
+    return {
+      "X-Rh-User-Id": LOCAL_DEPLOY_USER_ID,
+      ...(teamToken ? { Authorization: `Bearer ${teamToken}` } : {}),
+    }
   }
   const token = getScopedToken()
   return token ? { "X-Vibex-Scoped-Token": token } : {}
@@ -594,8 +605,10 @@ export function redirectToRhLogin(): void {
 
 export function decodeRhToken(): RhJwtPayload | null {
   // 本地自用域: 返回固定身份, 保证所有下游 hook 的 userId 非空。
+  // 团队登录态下 nickName 用真实姓名（R-201 阶段A, sub 保持共享池不变）。
   if (isLocalDeployHost()) {
-    return { sub: LOCAL_DEPLOY_USER_ID, nickName: LOCAL_DEPLOY_DISPLAY_NAME }
+    const team = getCachedTeamProfile()
+    return { sub: LOCAL_DEPLOY_USER_ID, nickName: team ? team.name : LOCAL_DEPLOY_DISPLAY_NAME }
   }
   // 沙箱域的 scoped token 是随机串不是 JWT; userId 来自兑换时缓存的用户信息,
   // 保持 decodeRhToken()?.sub 这个契约在两个域上都可用。
@@ -628,7 +641,12 @@ function authHeaders(): HeadersInit {
 
 export async function fetchRhAccountInfo(): Promise<RhAccountInfo | null> {
   // 本地自用域: 直接返回固定身份, 跳过全部 SSO 兑换网络流程。
+  // 团队登录态下 displayName 用真实姓名（R-201 阶段A）。
   if (isLocalDeployHost()) {
+    const team = getCachedTeamProfile()
+    if (team) {
+      return { userId: LOCAL_DEPLOY_USER_ID, displayName: team.name }
+    }
     return localDeployAccount()
   }
   // 沙箱域: /uc/* 不存在, 访问者信息来自 control 的 /api/sandbox/me
@@ -733,6 +751,12 @@ export async function fetchRhAccountInfo(): Promise<RhAccountInfo | null> {
 }
 
 export async function logoutRhAccount(): Promise<void> {
+  // 本地自用域: 退出 = 清团队会话（R-201 阶段A）; 无 RH 登录态可吊销。
+  if (isLocalDeployHost()) {
+    clearTeamSession()
+    return
+  }
+
   // 沙箱域: 吊销 scoped token + 清本地缓存, 并置"已登出"标记阻断静默兑换
   // (否则页面刷新后隐藏 iframe 会立刻重新签发 token, 用户永远退不出去)。
   // 不动 RH 主站登录态。

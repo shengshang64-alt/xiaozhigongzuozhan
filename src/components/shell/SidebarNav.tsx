@@ -9,11 +9,13 @@ import {
   Monitor,
   Search,
   Settings,
+  UserCog,
   Users,
 } from "lucide-react"
-import { decodeRhToken, type RhAccountInfo } from "@/lib/rhLogin"
+import { decodeRhToken, isLocalDeployHost, type RhAccountInfo } from "@/lib/rhLogin"
+import { getCachedTeamProfile } from "@/lib/teamAuth"
 
-type NavItem = { path: string; label: string; icon: typeof FileText }
+type NavItem = { path: string; label: string; icon: typeof FileText; adminOnly?: boolean }
 type NavSection = { title: string; items: NavItem[] }
 
 // 导航分组与「界面重构原型」对齐：概览 / 核心工作 / 资源与知识 / 系统
@@ -43,6 +45,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { path: "/model-config", label: "模型配置", icon: Settings },
       { path: "/assistant", label: "小智助手", icon: Bot },
+      { path: "/team", label: "团队管理", icon: UserCog, adminOnly: true },
     ],
   },
 ]
@@ -57,6 +60,8 @@ export function SidebarNav({ accountInfo, collapsed = false }: SidebarNavProps) 
   const { pathname } = useLocation()
 
   const tokenPayload = decodeRhToken()
+  // R-201 阶段A：团队管理入口仅本地域 + 管理员可见（写权限服务端另有强校验）
+  const showAdminOnly = isLocalDeployHost() && getCachedTeamProfile()?.role === "admin"
   const displayName =
     accountInfo?.displayName ||
     tokenPayload?.nickName ||
@@ -88,7 +93,10 @@ export function SidebarNav({ accountInfo, collapsed = false }: SidebarNavProps) 
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-2.5 pb-1.5 pt-2.5">
-        {NAV_SECTIONS.map((section) => (
+        {NAV_SECTIONS.map((section) => {
+          const items = section.items.filter((it) => !it.adminOnly || showAdminOnly)
+          if (items.length === 0) return null
+          return (
           <div key={section.title} className="mb-1">
             {!collapsed && (
               <p className="px-2.5 pb-1.5 pt-3 text-[10px] font-medium tracking-[1.6px] text-[#5E7F7B]">
@@ -96,7 +104,7 @@ export function SidebarNav({ accountInfo, collapsed = false }: SidebarNavProps) 
               </p>
             )}
             <div className="flex flex-col gap-0.5">
-              {section.items.map((item) => {
+              {items.map((item) => {
                 const Icon = item.icon
                 const active = pathname === item.path
                 return (
@@ -124,7 +132,8 @@ export function SidebarNav({ accountInfo, collapsed = false }: SidebarNavProps) 
               })}
             </div>
           </div>
-        ))}
+          )
+        })}
       </nav>
 
       {/* Account footer */}
