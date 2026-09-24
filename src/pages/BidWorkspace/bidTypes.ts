@@ -2391,9 +2391,10 @@ type NumRef = { value: number; unit: string; index: number; raw: string }
 /**
  * 从一行文本提取参与比对的（值,单位）清单，内置误报控制：
  * ① 日期排除：「2026年9月」年值后接月日、或 1900-2100 整数年（纪年）不提取；
- * ② 时间排除：数字紧跟「:」前缀（如 8:30 的 30）不提取；
+ * ② 时钟式排除：冒号前紧跟数字时，冒号后的数字是钟点尾数（8:30 的 30）不提取；「关键词：值」的正常冒号不剔；
  * ③ 比较语境排除：数字前 4 字含「不超过/以上/至少…」等区间词不提取；
- * ④ 编号行由调用方按整行排除（NUM_ID_LINE_RE）。
+ * ④ 编号行由调用方按整行排除（NUM_ID_LINE_RE）；
+ * ⑤ 模糊量排除：数字紧邻前是「近/约/大约/约为」时不提取（描述性模糊量非承诺值）。
  */
 function extractNumRefs(line: string): NumRef[] {
   const out: NumRef[] = []
@@ -2409,8 +2410,10 @@ function extractNumRefs(line: string): NumRef[] {
     const after = line.slice(idx + m[0].length)
     // ③ 比较语境（最大误报源）
     if (NUM_COMPARISON_RE.test(before)) continue
-    // ② 时间式：数字紧贴冒号之后（「8:30分钟」形态的尾数）；带钱单位的数字是金额不是时间尾数，豁免（R42 真实标书校准抓到：开标一览表「投标报价：25,010,000.00 元」式写法会被误剔而漏报过限价）
-    if (/[:：]\s*$/.test(beforeAll) && unit !== "元" && unit !== "万元") continue
+    // ② 时钟式专属：仅当冒号前紧跟数字（8:30 的尾数）才剔；「关键词：5年」式承诺值是标书正文最高频形态，不能误剔（R43 真实标书校准收窄；包含 R42 的 元/万元 豁免——钱值冒号前必是汉字，天然不命中）
+    if (/\d\s*[:：]\s*$/.test(beforeAll)) continue
+    // ⑤ 模糊量邻近剔除（R43 真实标书校准：原文「医院近20年历史数据」「质保期约为3年」里的近/约不是承诺值）
+    if (/(?:大?[约近]|约[为是])\s*$/.test(beforeAll)) continue
     // ① 日期：年值后接「N月」或本身是 1900-2100 的整数纪年
     if (unit === "年" && (/^\s*\d{1,2}\s*月/.test(after) || (Number.isInteger(value) && value >= 1900 && value <= 2100))) continue
     out.push({ value, unit, index: idx, raw: m[0] })

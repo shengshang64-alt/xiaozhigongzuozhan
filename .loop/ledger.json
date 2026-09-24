@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 42,
+  "round": 43,
   "backlog": [
     {
       "id": "prompt-matrix-02",
@@ -150,6 +150,16 @@
     }
   ],
   "closed": [
+    {
+      "id": "numref-fuzzy-colon-01",
+      "module": "/bid-workspace",
+      "issue": "A 类真实标书校准二期：extractNumRefs 规则②把「冒号后紧跟的所有数字」一律剔除 → 标书正文最高频承诺形态「质保期：5年」「投入人数：15人」全部隐形（number_conflict/param_escalation 漏报）；同时模糊量「近/约」未剔 → 真实原文「医院近20年历史数据」被误报为服务期加码",
+      "status": "done",
+      "evidence": "R43 从 /api/bid_projects yslab52hxoplrxk 真实原文（5136 行）提取靶点形态（冒号+数字单位行、「近20年」原句均为真实文本）；临时校准 5 项坐实 4 缺陷（漏报×2+误报×2，时钟形态防护 1 项通过）。修复：规则②收窄为「冒号前紧跟数字」的时钟式专属（天然包含 R42 元/万元豁免——钱值冒号前必是汉字）+新增规则⑤模糊量邻近剔除（近/约/大约/约为）；R42 回归锈仍绿。四门：259/259（+2 正式锈）、build 过、eslint 145=基线、全程零写入（仅 GET）；实机 bid-workspace 登录后零 JS 错误（登录前 /api/team/me 401 为门禁正常探测）。降级注明：交卷体检完整触发链需 AI 生成正文（费用），本轮行为验证以单测直调背书。含真实原文形态的临时校准文件跑完即删不入库",
+      "diff": "bidTypes.ts extractNumRefs：规则②改 /\\d\\s*[:：]$/、新增规则⑤、函数头注释同步；bidFormatCheck.test.ts param_escalation describe +2 用例；报告 .loop/reports/2026-09-24-2225.md",
+      "priority": "P1",
+      "closedRound": 43
+    },
     {
       "id": "tender-colon-miss-01",
       "module": "/bid-workspace",
@@ -651,5 +661,5 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "Round42 真实标书首测轮（用户指令\"从 D 盘找标书测试\"·评标专家视角）：发现账本误判（R37/R38\"标书 0 条\"系探错路由，/api/bid_projects 实有 1 项目 14.6 万字真实招标文件），直接用它跑 R36 欠的过限价校验器真文校准 6 项——抓出 S0 方向漏报：招标一览表「投标报价：25,010,000.00 元」式写法被 extractNumRefs 冒号时间规则误剔而静默放行；修复 1 行（元/万元豁免）+2 正式回归锈，零误报项（废标条款复述/评分公式/限价功能描述）全部验证通过。四门：257/257、build、eslint 145=基线、全程零写入业务数据。closed+tender-colon-miss-01/real-data-calib-01；noProgressStreak 保持 0。端到端 AI 生成面体检待用户点头（要费用）。D 盘真实标书清单已登记供料。待拍板池不变。blocked: hook-security-01。"
+  "lastRoundSummary": "Round43 真实标书校准二期（接 R42 用户供料方向·测试工程师视角）：用真文靶点形态坐实 extractNumRefs 两类 4 缺陷——规则②过度剔除致「质保期：5年/投入人数：15人」式承诺形态全部隐形（漏报）、模糊量「近20年/约为3年」未剔致误报加码；修复＝规则②收窄为时钟式专属（包含并取代 R42 元/万元豁免）+新增规则⑤模糊量邻近剔除，+2 正式回归锈。四门：259/259、build、eslint 145=基线、零写入；实机 bid-workspace 登录后零 JS 错。closed+numref-fuzzy-colon-01；noProgressStreak 保持 0。端到端 AI 生成面体检仍待用户点头（要费用）。待拍板池不变（6 个 C 类）。blocked: hook-security-01。下一轮默认：回「继续」＝继续真实标书校准三期（偏离表/大纲面 structuredNumberConflictHits 真文靶点）或通道 2/6 扫新缺陷。"
 }

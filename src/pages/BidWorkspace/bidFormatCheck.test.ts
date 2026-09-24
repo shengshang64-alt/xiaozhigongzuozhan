@@ -68,6 +68,19 @@ describe("param_escalation（参数加码：承诺优于招标档位）", () => 
     expect(hits.some((h) => h.rule === "number_conflict")).toBe(true)
     expect(hits.some((h) => h.rule === "param_escalation")).toBe(false)
   })
+
+  // R43 真实标书校准回归锈：extractNumRefs 时钟式收窄（规则②）与模糊量剔除（规则⑤）
+  it("正文「关键词：值」冒号承诺形态不再被误剔（R43 收窄规则②：质保期：5年 → 报加码）", () => {
+    const hits = numberConflictHits(["质保期：3年"], chObj("系统质保期：5年，全部免费"))
+    expect(hits.some((h) => h.rule === "param_escalation")).toBe(true)
+    expect(numberConflictHits(["投入人数：12人"], chObj("驻场安排表\n投入人数：15人")).some((h) => h.rule === "number_conflict")).toBe(true)
+  })
+
+  it("真时钟形态「8:30人」仍被剔除（收窄不回归）；模糊量「近20年/约为3年」不参与比较（R43 规则⑤）", () => {
+    expect(numberConflictHits(["投入人数：12人"], chObj("投入人数：早8:30人到岗打卡"))).toHaveLength(0)
+    expect(numberConflictHits(["服务期：3年"], chObj("服务期内完成医院近20年历史数据的迁移治理"))).toHaveLength(0)
+    expect(numberConflictHits(["质保期：5年"], chObj("整机质保期约为3年"))).toHaveLength(0)
+  })
 })
 
 // R32 批次2「生成后自动定向修复」：确定性代码清洗（装饰/元话语占位/空行/半角标点/加码降档），零 AI
