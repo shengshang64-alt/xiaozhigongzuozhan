@@ -150,6 +150,8 @@ import {
   normalizeVoidCheck,
   // 循环 8 A4：本地零 AI 数字口径冲突检查（事实表 × 正文）
   numberConflictHits,
+  // numeric-consistency-01：同一核对扩展到结构化面（事实表 × 偏离表/大纲）
+  structuredNumberConflictHits,
   // content-guard-02：本地零 AI 全文一致性拦截（指标口径唯一性 / 占位与绝对化承诺残留）
   metricConflictHits,
   metaLeftoverHits,
@@ -1514,7 +1516,11 @@ export function useBidWorkspace() {
     // 循环 8 A4：本地数字口径冲突检查（零 AI，随体检白拿）——事实表数值口径 × 各章含主题词行的 ±1 行窗口；
     // 无事实表时静默跳过，老 format_report 数据经 normalizeFormatCheckReport 白名单自动兼容
     const factLines = effectiveGlobalFactsLines(cur)
-    if (factLines.length) report.hits.push(...numberConflictHits(factLines, cur.bid_chapters))
+    if (factLines.length) {
+      report.hits.push(...numberConflictHits(factLines, cur.bid_chapters))
+      // numeric-consistency-01：同一事实基准核对偏离表响应值与大纲标题（结构化面，独立 ≤30 上限，不挤占正文命中）
+      report.hits.push(...structuredNumberConflictHits(factLines, cur.bid_outline, cur.response_map))
+    }
     // content-guard-02：不依赖事实表的全文一致性拦截（只扫正文自身），随体检白拿、零 AI
     report.hits.push(...metricConflictHits(cur.bid_chapters), ...metaLeftoverHits(cur.bid_chapters))
     return report

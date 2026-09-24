@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest"
-import { autoRepairChapter, FORMAT_CHECK_KEYS, formatCheckReport, numberConflictHits } from "./bidTypes"
-import type { Chapter } from "@/pages/SolutionStudio/solutionTypes"
+import {
+  autoRepairChapter,
+  FORMAT_CHECK_KEYS,
+  formatCheckReport,
+  numberConflictHits,
+  structuredNumberConflictHits,
+} from "./bidTypes"
+import type { DeviationRow, DeviationTable } from "./bidTypes"
+import type { Chapter, OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
 
 // R32 批次2 #1：装饰符号 / Markdown 正文残留扫描器（零 AI、落进交卷体检管线）
 const ch = (content: string): Chapter[] => [{ title: "第一章", content }] as unknown as Chapter[]
@@ -111,5 +118,56 @@ describe("autoRepairChapter（确定性自动修复）", () => {
     const r = repair(src, ["免费质保期：3年"])
     expect(r.applied).toHaveLength(0)
     expect(r.content).toBe(src)
+  })
+})
+
+// numeric-consistency-01（R32）：数字口径核对从「事实表 × 正文」扩展到偏离表/大纲两个结构化面
+const dev = (clause_text: string, response_summary: string, clause_id = "c1"): DeviationTable =>
+  ({
+    rows: [
+      {
+        clause_id,
+        clause_text,
+        source: "招标技术要求",
+        response_node: "第三章",
+        response_level: "full",
+        response_summary,
+        bid_ref: "",
+      } as DeviationRow,
+    ],
+  }) as DeviationTable
+const ol = (title: string): OutlineNode[] => [{ id: "n1", title, children: [] } as OutlineNode]
+
+describe("structuredNumberConflictHits（偏离表 / 大纲 × 事实表 结构化面对账）", () => {
+  it("偏离表响应值与事实口径不符（方向未知）→ number_conflict，chapter 标注来源面", () => {
+    const hits = structuredNumberConflictHits(
+      ["预算金额：3500万元"],
+      [],
+      dev("本项目预算金额3500万元，投标报价不得超预算", "我方总报价4000万元"),
+    )
+    expect(hits.some((h) => h.rule === "number_conflict" && h.chapter.startsWith("偏离表"))).toBe(true)
+  })
+
+  it("偏离表质保响应高于招标档位 → param_escalation（复用正文方向判定）", () => {
+    const hits = structuredNumberConflictHits(["免费质保期：3年"], [], dev("免费质保期3年", "我司提供5年免费质保服务"))
+    expect(hits.some((h) => h.rule === "param_escalation" && h.chapter.startsWith("偏离表"))).toBe(true)
+  })
+
+  it("偏离表响应值与事实一致 → 不报警", () => {
+    expect(structuredNumberConflictHits(["免费质保期：3年"], [], dev("免费质保期3年", "我司提供3年免费质保"))).toHaveLength(0)
+  })
+
+  it("防误报：响应值带比较语境（不低于）不提取；跨单位（天 vs 月）不比较", () => {
+    expect(structuredNumberConflictHits(["免费质保期：5年"], [], dev("免费质保期5年", "我司承诺质保不低于3年"))).toHaveLength(0)
+    expect(structuredNumberConflictHits(["工期：180天"], [], dev("项目工期180天", "分6个月完成部署"))).toHaveLength(0)
+  })
+
+  it("大纲标题含数值与事实不符 → 命中（chapter 标注大纲）", () => {
+    const hits = structuredNumberConflictHits(["预算金额：3500万元"], ol("本项目预算金额4000万元建设方案"), null)
+    expect(hits.some((h) => h.rule === "number_conflict" && h.chapter.startsWith("大纲"))).toBe(true)
+  })
+
+  it("无事实基准时静默返回空", () => {
+    expect(structuredNumberConflictHits([], ol("任意标题"), dev("任意条款", "任意响应"))).toHaveLength(0)
   })
 })

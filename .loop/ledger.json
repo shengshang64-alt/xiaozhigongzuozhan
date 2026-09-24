@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 31,
+  "round": 32,
   "backlog": [
     {
       "id": "prompt-matrix-02",
@@ -29,13 +29,13 @@
       "diff": ""
     },
     {
-      "id": "numeric-consistency-01",
+      "id": "numeric-consistency-02",
       "module": "/bid-workspace,/ppt-quote",
-      "issue": "全文数值一致性检查器(08报告 3.2-3，用户点名废标级价值提前)：同一数值(预算金额/工期/质保期)在大纲·正文·偏离表·报价间正则对账，不一致列表告警；纯本地零 AI，与 content-guard-03(LLM 语义增量)互补不重叠",
+      "issue": "数值一致性残差：投标报价 vs 预算/最高限价对账（报价不得超预算＝废标级）。R32 已覆盖 大纲·正文·偏离表×事实表；报价面未做——bid_amount 仅结单中标金额（万元）非投标期报价，把 /ppt-quote 报价清单接入标书交卷体检需跨模块数据管道，倾向 C 类，需拍板",
       "standard": [
         "D14"
       ],
-      "priority": "P1",
+      "priority": "P2",
       "status": "open",
       "evidence": "",
       "diff": ""
@@ -551,6 +551,18 @@
       "status": "done",
       "evidence": "vitest 48/48 exit0(新增 bidPromptBase.test.ts 12 案例：铁律 6+3 条计数/逐字稳定/【待填写】口径不出现待补充/6 builder system 全含铁律/三档模式锁点/strict 缺省即注入/UI 标签/出处行豁免截断+对照组仍截) / tsc -b exit0 / eslint 净新增 0(bidTypes+GenerationSettingsBar 改前改后 stash 对比同为 11 历史遗留，新测试文件 0) / build exit0(2.26s)；运行时浏览器坐实(dev :8000 /bid-workspace 动态 import 零 AI)：version=merged-v1.0/R30-2026-09-22、parse/outline/chapter/refine 均含铁律、chapter 缺省即严格响应块、moderate 含 30%~50%、full 含编造红线、clampExempt=true、无待补充残留、0 console error/warn；纯提示词文本变更零数据模型零 pb_hooks，未 live 跑生成(耗 AI，待用户需要时单跑)",
       "diff": "bidTypes.ts：新增 BID_PROMPT_VERSION/TRUTH_IRON_RULES(6条)/COMMON_OUTPUT_RULES(3条)/truthPreamble()，注入 6 个生成器 system(解析/大纲/章/小节/续写/改写)；complianceModeRule 按合并稿 §6.2 重写三档均非空(strict=对标响应句式+禁扩展+篇幅从简；moderate=场景描述 30~50%；full=充实材料+编造红线)；解析 system 新增出处回指行，clampParseSectionContent 豁免（出处：行防幻觉页码截断；COMPLIANCE_MODE_LABEL 改严格响应/场景扩展/大量充实 + GenerationSettingsBar HINT 同步。两处落地适配留证：占位符用【待填写】非稿作【待补充：xxx】、承诺标注不进正文(均因 meta_leftover 检查器/元话语禁令冲突)。GAP-2 编号体系/覆盖矩阵→prompt-matrix-02；GAP-4 编造扫描/逐条对标→prompt-fabscan-03；prompt-extract-01 纯搬迁与新常量位置待合并安排"
+    },
+    {
+      "id": "numeric-consistency-01",
+      "module": "/bid-workspace",
+      "issue": "全文数值一致性检查器（08报告 3.2-3，用户点名废标级价值提前）：把本地零 AI 数字口径核对从已有的「事实表 × 正文」扩展到结构化面——偏离表逐条款响应值与大纲标题同对招标事实基准；正文已有（number_conflict），本轮补齐漏检的偏离表（评标逐字核对面）与大纲",
+      "standard": [
+        "D14"
+      ],
+      "priority": "P1",
+      "status": "done",
+      "evidence": "vitest 229/229 exit0（本文件新增 6 用例：偏离表响应值 number_conflict/质保加码 param_escalation/响应一致不报/比较语境'不低于3年'豁免/跨单位天vs月不比/大纲标题命中/无基准静默空） / tsc -b exit0 / eslint 改动 3 文件 after 27 problems(15e/12w) = git stash 基线 27 problems、净新增 0（15 error 均 lint-debt-01 历史存量） / vite build exit0(2.24s)；运行时 dev(:8000) 动态 import 真实导出模块跑 6 组夹具全对（报价4000万 vs 要求3500万→number_conflict chapter'偏离表 · c1'、质保5年 vs 3年→param_escalation、一致/比较语境/无基准→0 命中、大纲标题命中、标签更新'事实表 × 正文/偏离表/大纲'）。诚实降级：未在登录态逐项目点开交卷体检面板复测（buildFormatReportFor 内仅 report.hits.push(...structuredNumberConflictHits(...)) 一行、与相邻已上线 numberConflictHits 同构、纯函数已在浏览器实跑），面板渲染未改（复用既有 rule key）。首次 import 因 vite 旧 ESM 缓存报'export missing'，加 ?t= 破缓存后正常（已知 vite 脏缓存坑、非代码缺陷）",
+      "diff": "第32轮·纯本地零 AI·零数据模型·零 pb_hooks·零写库（只读告警）。bidTypes.ts：抽公共 buildFactBaseline(factLines) 基准构造（numberConflictHits 改用它、去重复内联、逻辑逐字不变由 229 测试守）；新增 structuredNumberConflictHits(factLines, outline, deviationTable)+flattenOutlineTitles 纯函数——复用 buildFactBaseline/extractNumRefs/overCommitDirection/quoteAround 与全部误报控制（比较语境/编号行/跨单位豁免、方向判定），偏离表以 clause_text 命中 topic 为锚比对 response_summary 数值、大纲以标题同行锚定，命中沿用既有 number_conflict/param_escalation rule（不动 FORMAT_RULE_LABEL 白名单/不改数据模型），chapter 标注来源面（偏离表·条款id / 大纲·标题），总 ≤30；number_conflict 标签文案'（事实表 × 正文）'→'（事实表 × 正文/偏离表/大纲）'。useBidWorkspace.ts:buildFormatReportFor 在 factLines.length 块内 append 一行 structuredNumberConflictHits（独立 ≤30 不挤占正文命中）。残差：投标报价 vs 预算（报价期非 bid_amount 结单字段、跨 /ppt-quote 需管道）移 numeric-consistency-02（倾向 C 类待拍板）"
     }
   ],
   "blocked": [
@@ -563,5 +575,5 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "Round31 prompt-matrix-02（P1，评分细项编号体系+大纲承接+覆盖矩阵，合并稿 v1.0 第二批）：①稳定编号 R1..Rn(技术)/B1..Bn(商务)+主客观启发式分类 classifySubjective，唯一编号源 numberScoringItems 三处共用（大纲 prompt/分步 call2/右栏矩阵/生成对账）；②大纲叶子 description [响应:Rx] 承接标注：单次与长标书分步两条 prompt 链同步要求，normalizeOutline 任意层级透传(修复分步流丢标注缺陷)；③提纲层覆盖矩阵 buildScoringCoverageMatrix/findUncoveredScoringIds 纯本地零 AI，右栏面板升级 R-id+主客观+承接↔映射双向展示、未承接橙色点名，生成完成 toast 诚实暴露未覆盖编号(不自动打回重生成，避未确认费用)；新增 11 用例锈死。四门：vitest 59/59/tsc 0/eslint 新增 0(build 0)，运行时 dev 动态 import 全链路正确 0 console 错误。下一轮候选：prompt-fabscan-03(对标核查四态+编造扫描，P1)、numeric-consistency-01(数值一致性对账，P1)。"
+  "lastRoundSummary": "Round32 numeric-consistency-01（P1，全文数值一致性检查器·结构化面，用户点名废标级）：把本地零 AI 数字口径核对从已有「事实表 × 正文」扩展到偏离表与大纲——①抽 buildFactBaseline 共用基准（numberConflictHits 改用、去重）；②新增 structuredNumberConflictHits 纯函数：偏离表以 clause_text 为 topic 锚比对 response_summary 响应值、大纲以节点标题同行锚定，复用全部误报控制（比较语境/编号行/跨单位豁免/方向加码判定），命中沿用既有 number_conflict/param_escalation rule（不动白名单/数据模型）、chapter 标注来源面；仅告警不阻断零写库；新增 6 用例。四门：vitest 229/229/tsc 0/eslint 新增 0(build 0)，运行时 dev 动态 import 六夹具全对 0 报错。残差：投标报价 vs 预算（bid_amount 仅结单金额非投标期报价、跨 /ppt-quote 需管道）→ numeric-consistency-02（倾向 C 类待拍板）。下一轮候选：prompt-fabscan-03（对标核查四态+编造扫描，P1，含'禁导出'需评估是否触 C 类）。"
 }

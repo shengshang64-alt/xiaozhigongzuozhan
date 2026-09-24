@@ -2112,7 +2112,7 @@ export type FormatCheckRule = FormatCheckKey | "sealed_pages_cross" | "number_co
 export const FORMAT_RULE_LABEL: Record<FormatCheckRule, string> = {
   ...FORMAT_CHECK_LABEL,
   sealed_pages_cross: "暗标页数与目标页数交叉核对",
-  number_conflict: "数字口径一致性（事实表 × 正文）",
+  number_conflict: "数字口径一致性（事实表 × 正文/偏离表/大纲）",
   param_escalation: "参数加码（承诺优于招标档位，过度响应＝额外验收义务）",
   metric_conflict: "指标口径唯一性（跨章同指标多值）",
   meta_leftover: "占位元话语与绝对化承诺残留",
@@ -2431,15 +2431,13 @@ function overCommitDirection(topic: string, bodyVal: number, vals: number[]): "m
 }
 
 /**
- * 数字口径冲突检查（纯函数、零 AI、零后端）：
- * 基准 = 全局事实行（含「【需人工确认】」的行跳过）口径部分提取的（topic → 单位 → 值集）；
- * 扫描 = 每章正文只扫「含 topic 的行 ±1 行」窗口，且跳过编号/标题/章节号行（isPunctDensityBodyLine）与编号类行；
- * 判定 = 同 topic 同单位出现不同数值 → warn（跨单位不换算不比较）；
- * 去重 = 每章每 topic ≤2 条命中，总命中 ≤30 条（防长文刷屏），与 formatCheckReport 既有 push 骨架同口径。
+ * 全局事实基准表（topic → 单位 → 值集）：从事实行「主题：口径」的口径部分提取数值。
+ * 含「【需人工确认】」的行跳过；只取首个冒号/等号之后的口径，主题名里的数字不进基准。
+ * numberConflictHits（正文）与 structuredNumberConflictHits（偏离表/大纲）共用同一基准口径。
  */
-export function numberConflictHits(factLines: string[], chapters: Chapter[]): FormatCheckHit[] {
-  // 基准表：topic → unit → values
-  const baseline = new Map<string, Map<string, number[]>>()
+type FactBaseline = Map<string, Map<string, number[]>>
+function buildFactBaseline(factLines: string[]): FactBaseline {
+  const baseline: FactBaseline = new Map()
   for (const rawLine of factLines ?? []) {
     const line = (rawLine ?? "").trim()
     if (!line || line.includes("【需人工确认】")) continue
@@ -2459,6 +2457,18 @@ export function numberConflictHits(factLines: string[], chapters: Chapter[]): Fo
       unitMap.set(n.unit, vals)
     }
   }
+  return baseline
+}
+
+/**
+ * 数字口径冲突检查（纯函数、零 AI、零后端）：
+ * 基准 = 全局事实行（含「【需人工确认】」的行跳过）口径部分提取的（topic → 单位 → 值集）；
+ * 扫描 = 每章正文只扫「含 topic 的行 ±1 行」窗口，且跳过编号/标题/章节号行（isPunctDensityBodyLine）与编号类行；
+ * 判定 = 同 topic 同单位出现不同数值 → warn（跨单位不换算不比较）；
+ * 去重 = 每章每 topic ≤2 条命中，总命中 ≤30 条（防长文刷屏），与 formatCheckReport 既有 push 骨架同口径。
+ */
+export function numberConflictHits(factLines: string[], chapters: Chapter[]): FormatCheckHit[] {
+  const baseline = buildFactBaseline(factLines)
   const hits: FormatCheckHit[] = []
   if (!baseline.size) return hits
   const topics = [...baseline.keys()]
@@ -2515,6 +2525,96 @@ export function numberConflictHits(factLines: string[], chapters: Chapter[]): Fo
       }
     }
   }
+  return hits
+}
+
+/**
+ * numeric-consistency-01（docs/06 #9 / 08报告 3.2-3，用户点名废标级）：把本地零 AI 数字口径核对
+ * 从「事实表 × 正文」扩展到结构化面——偏离表（逐条款 response_summary 响应值）与大纲（节点标题）
+ * 同样要对齐招标事实口径。偏离表是评标逐字核对的交付物，正文已核对而偏离表漏检＝真实缺口。
+ * 复用既有 buildFactBaseline/extractNumRefs/overCommitDirection/quoteAround 与全部误报控制，零新增正则：
+ *  - 偏离表：以 clause_text（招标要求原文）中出现的 topic 为锚，比对 response_summary 里的数值；
+ *  - 大纲：节点标题自身含 topic 且含数值时比对（与正文同行锚定同法）；
+ *  - 跨单位不比较、比较语境/编号行豁免、方向判定（加码 vs 普通冲突）全部沿用正文口径；
+ *  - 命中沿用 number_conflict / param_escalation 两个既有 rule（不动白名单/数据模型），chapter 标注来源面；
+ *  - 每行/每标题每 topic ≤1 条，总命中 ≤30。仅告警不阻断、不写库，交人工在偏离表/大纲里复核。
+ */
+function flattenOutlineTitles(nodes: OutlineNode[]): string[] {
+  const out: string[] = []
+  const walk = (ns: OutlineNode[]) => {
+    for (const n of ns ?? []) {
+      const t = (n.title ?? "").trim()
+      if (t) out.push(t)
+      if (n.children?.length) walk(n.children)
+    }
+  }
+  walk(nodes)
+  return out
+}
+
+export function structuredNumberConflictHits(
+  factLines: string[],
+  outline: OutlineNode[],
+  deviationTable: DeviationTable | null,
+): FormatCheckHit[] {
+  const baseline = buildFactBaseline(factLines)
+  const hits: FormatCheckHit[] = []
+  if (!baseline.size) return hits
+  const topics = [...baseline.keys()]
+  const seenExact = new Set<string>()
+
+  const emit = (label: string, text: string, tp: string, n: NumRef) => {
+    if (hits.length >= 30) return
+    const vals = baseline.get(tp)?.get(n.unit)
+    if (!vals || !vals.length || vals.includes(n.value)) return
+    const exact = `${label}|${tp}|${n.index}|${n.value}`
+    if (seenExact.has(exact)) return
+    seenExact.add(exact)
+    const factSide = vals.map((v) => `${v}${n.unit}`).join("/")
+    const verdict = overCommitDirection(tp, n.value, vals)
+    hits.push(
+      verdict
+        ? {
+            chapter: label,
+            rule: "param_escalation",
+            quote: `${quoteAround(text, n.index, n.raw.length)}（${
+              verdict === "more" ? "承诺高于招标档位" : "承诺优于招标时限"
+            }：${n.value}${n.unit} vs 要求 ${factSide}）`.slice(0, 80),
+            level: "warn",
+          }
+        : {
+            chapter: label,
+            rule: "number_conflict",
+            quote: `${quoteAround(text, n.index, n.raw.length)}（事实口径「${tp}」为 ${factSide}）`.slice(0, 80),
+            level: "warn",
+          },
+    )
+  }
+
+  // 偏离表：条款原文给主题锚，比对响应说明里的数值（评标最逐字核对的面）
+  for (const row of deviationTable?.rows ?? []) {
+    if (hits.length >= 30) break
+    const summary = (row.response_summary ?? "").trim()
+    if (!summary || summary.includes("【待填写】")) continue
+    const clauseText = row.clause_text ?? ""
+    const anchorTopics = topics.filter((tp) => tp.length >= 2 && clauseText.includes(tp))
+    if (!anchorTopics.length) continue
+    for (const n of extractNumRefs(summary)) {
+      for (const tp of anchorTopics) emit(`偏离表 · ${(row.clause_id || clauseText).trim().slice(0, 16) || "未编号条款"}`, summary, tp, n)
+    }
+  }
+
+  // 大纲：节点标题自身含 topic 且含数值时比对
+  for (const titleLine of flattenOutlineTitles(outline)) {
+    if (hits.length >= 30) break
+    if (NUM_ID_LINE_RE.test(titleLine)) continue
+    const anchorTopics = topics.filter((tp) => tp.length >= 2 && titleLine.includes(tp))
+    if (!anchorTopics.length) continue
+    for (const n of extractNumRefs(titleLine)) {
+      for (const tp of anchorTopics) emit(`大纲 · ${titleLine.slice(0, 16)}`, titleLine, tp, n)
+    }
+  }
+
   return hits
 }
 
