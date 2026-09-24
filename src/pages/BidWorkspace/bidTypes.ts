@@ -2679,13 +2679,8 @@ function fmtYuan(y: number): string {
   return `${y} 元`
 }
 
-/** 投标报价 > 最高限价/预算 → 废标风险（纯函数、零 AI；取不到限价/预算或报价时静默不报，总 ≤15 条） */
-export function overPriceCeilingHits(
-  factLines: string[],
-  chapters: Chapter[],
-  deviationTable: DeviationTable | null,
-): FormatCheckHit[] {
-  const hits: FormatCheckHit[] = []
+/** 从事实行解析报价天花板：硬天花板（最高限价/控制价）优先，无则退用软天花板（预算/估算价/概算）；两者都取不到返回 null */
+export function priceCeilingFromFacts(factLines: string[]): { ceiling: number; src: string } | null {
   let hardCeiling = -1
   let softCeiling = -1
   for (const rawLine of factLines ?? []) {
@@ -2702,9 +2697,22 @@ export function overPriceCeilingHits(
       else softCeiling = Math.max(softCeiling, y)
     }
   }
-  const ceiling = hardCeiling >= 0 ? hardCeiling : softCeiling
-  const ceilingSrc = hardCeiling >= 0 ? "最高限价/控制价" : "预算金额"
-  if (ceiling < 0) return hits
+  if (hardCeiling >= 0) return { ceiling: hardCeiling, src: "最高限价/控制价" }
+  if (softCeiling >= 0) return { ceiling: softCeiling, src: "预算金额" }
+  return null
+}
+
+/** 投标报价 > 最高限价/预算 → 废标风险（纯函数、零 AI；取不到限价/预算或报价时静默不报，总 ≤15 条） */
+export function overPriceCeilingHits(
+  factLines: string[],
+  chapters: Chapter[],
+  deviationTable: DeviationTable | null,
+): FormatCheckHit[] {
+  const hits: FormatCheckHit[] = []
+  const cap = priceCeilingFromFacts(factLines)
+  if (!cap) return hits
+  const ceiling = cap.ceiling
+  const ceilingSrc = cap.src
 
   const seen = new Set<string>()
   const emit = (label: string, text: string) => {
@@ -2745,6 +2753,57 @@ export function overPriceCeilingHits(
     if (summary && QUOTE_TOPIC_RE.test(summary)) {
       emit(`偏离表 · ${(row.clause_id || row.clause_text || "").trim().slice(0, 16) || "未编号条款"}`, summary)
     }
+  }
+  return hits
+}
+
+/** 报价单快照（由调用方从 /api/quotes 映射，bidTypes 不反向依赖 PptQuote 模块） */
+export type QuoteTotalRef = { name: string; totalYuan: number; updated: string; opportunityId: string }
+
+/** 同一报价单的多版本（v1/v2 各一条记录）按名去重只取最新 updated；单商机最多取 3 份，防旧版本刷条数 */
+export function pickLatestQuoteTotals(
+  refs: QuoteTotalRef[],
+  oppId: string,
+): { name: string; totalYuan: number }[] {
+  const key = (oppId ?? "").trim()
+  if (!key) return []
+  const byName = new Map<string, QuoteTotalRef>()
+  for (const r of refs ?? []) {
+    if (!r || (r.opportunityId ?? "").trim() !== key) continue
+    if (!Number.isFinite(r.totalYuan) || r.totalYuan <= 0) continue
+    const name = (r.name ?? "").trim() || "未命名报价单"
+    const prev = byName.get(name)
+    if (!prev || String(r.updated) > String(prev.updated)) byName.set(name, { ...r, name })
+  }
+  return [...byName.values()]
+    .sort((a, b) => String(b.updated).localeCompare(String(a.updated)))
+    .slice(0, 3)
+    .map((r) => ({ name: r.name, totalYuan: r.totalYuan }))
+}
+
+/** 做法 B（numeric-consistency-02）：关联商机的报价单真实总额 vs 天花板（与做法 A 同规则同口径，仅报价取数来源不同；≤5 条） */
+export function quoteRecordCeilingHits(
+  factLines: string[],
+  quotes: { name: string; totalYuan: number }[],
+): FormatCheckHit[] {
+  const hits: FormatCheckHit[] = []
+  const cap = priceCeilingFromFacts(factLines)
+  if (!cap) return hits
+  const seen = new Set<string>()
+  for (const q of quotes ?? []) {
+    if (hits.length >= 5) break
+    if (!q || !Number.isFinite(q.totalYuan) || q.totalYuan <= cap.ceiling) continue
+    const name = (q.name ?? "").trim() || "未命名报价单"
+    const exact = `${name}|${q.totalYuan}`
+    if (seen.has(exact)) continue
+    seen.add(exact)
+    const pct = Math.round(((q.totalYuan - cap.ceiling) / cap.ceiling) * 100)
+    hits.push({
+      chapter: `报价单 · ${name.slice(0, 16)}`,
+      rule: "over_price_ceiling",
+      quote: `【废标风险】关联报价单「${name}」总额 ${fmtYuan(q.totalYuan)} 超${cap.src} ${fmtYuan(cap.ceiling)}（高 ${pct}%），导出前必核`.slice(0, 80),
+      level: "warn",
+    })
   }
   return hits
 }

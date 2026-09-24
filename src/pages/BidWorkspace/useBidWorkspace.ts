@@ -156,6 +156,10 @@ import {
   deviationCommitHits,
   // numeric-consistency-02（做法 A）：投标报价 vs 最高限价/预算 方向性废标核对（纯本地、零 AI、只 warn）
   overPriceCeilingHits,
+  // numeric-consistency-02（做法 B）：关联商机的报价单真实总额接入同一核对（跨模块取数、后端零改动）
+  quoteRecordCeilingHits,
+  pickLatestQuoteTotals,
+  type QuoteTotalRef,
   // content-guard-02：本地零 AI 全文一致性拦截（指标口径唯一性 / 占位与绝对化承诺残留）
   metricConflictHits,
   metaLeftoverHits,
@@ -272,6 +276,8 @@ import { type KbDocRow } from "@/lib/kbCore"
 import { getCachedVisibleDocs, assembleKbContext } from "@/lib/kbAssemble"
 import { deriveTrack } from "@/lib/kbTaxonomy"
 import type { OpportunityRow } from "@/pages/CustomerManagement/customerTypes"
+// numeric-consistency-02（做法 B）：只复用 PptQuote 的类型与纯函数 quoteTotal（无副作用依赖，不拉重模块进标书 chunk）
+import { quoteTotal, type QuoteRecord } from "@/pages/PptQuote/pptQuoteTypes"
 
 // ---------------------------------------------------------------------------
 // 数据请求（走 __pb 代理自定义路由）
@@ -861,6 +867,31 @@ export function useBidWorkspace() {
     if (userId) void loadOppOptions(userId)
     else setOppOptions([])
   }, [userId, loadOppOptions])
+
+  // numeric-consistency-02（做法 B）：报价单快照（/ppt-quote 模块的记录）。随页面加载拉一次，
+  // 失败静默置空＝交卷体检跳过报价单面不报错（与商机选项同款降级）；存 ref 供同步体检函数读取。
+  const quoteRefsRef = useRef<QuoteTotalRef[]>([])
+  useEffect(() => {
+    if (!userId) {
+      quoteRefsRef.current = []
+      return
+    }
+    void (async () => {
+      try {
+        const data = await apiFetch<ListResponse<QuoteRecord>>(
+          `/api/quotes?rh_user_id=${encodeURIComponent(userId)}&page=1&perPage=200`,
+        )
+        quoteRefsRef.current = (data.items ?? []).map((q) => ({
+          name: q.quote_name ?? "",
+          totalYuan: quoteTotal(q.groups),
+          updated: q.updated ?? "",
+          opportunityId: q.opportunity_id ?? "",
+        }))
+      } catch {
+        quoteRefsRef.current = []
+      }
+    })()
+  }, [userId])
 
   // ------------------------------ 新建 / 删除项目 ------------------------------
   const [newDialogOpen, setNewDialogOpen] = useState(false)
@@ -1526,6 +1557,11 @@ export function useBidWorkspace() {
       report.hits.push(...structuredNumberConflictHits(factLines, cur.bid_outline, cur.response_map))
       // numeric-consistency-02（做法 A）：投标报价超最高限价/预算＝废标级，跨 topic 方向性核对（零 AI、只 warn、零新数据模型）
       report.hits.push(...overPriceCeilingHits(factLines, cur.bid_chapters, cur.response_map))
+      // numeric-consistency-02（做法 B）：「PPT 与报价」关联商机的报价单真实总额并入同一规则核对（同口径 over_price_ceiling；
+      // 未关联商机/快照未加载/无报价单时静默跳过，不阻断体检）
+      if (cur.opportunity_id) {
+        report.hits.push(...quoteRecordCeilingHits(factLines, pickLatestQuoteTotals(quoteRefsRef.current, cur.opportunity_id)))
+      }
     }
     // content-guard-02：不依赖事实表的全文一致性拦截（只扫正文自身），随体检白拿、零 AI
     report.hits.push(...metricConflictHits(cur.bid_chapters), ...metaLeftoverHits(cur.bid_chapters))

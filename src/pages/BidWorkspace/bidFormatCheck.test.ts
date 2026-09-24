@@ -7,6 +7,10 @@ import {
   structuredNumberConflictHits,
   deviationCommitHits,
   overPriceCeilingHits,
+  quoteRecordCeilingHits,
+  pickLatestQuoteTotals,
+  priceCeilingFromFacts,
+  type QuoteTotalRef,
   normalizeFormatCheckReport,
 } from "./bidTypes"
 import type { DeviationRow, DeviationTable } from "./bidTypes"
@@ -291,5 +295,88 @@ describe("overPriceCeilingHits（投标报价超最高限价/预算 → 废标�
       checked_at: "",
     })
     expect(report?.hits[0]?.rule).toBe("over_price_ceiling")
+  })
+})
+
+// numeric-consistency-02（做法 B）：关联商机的报价单真实总额并入同一废标核对
+describe("quoteRecordCeilingHits（做法 B：报价单真总额 vs 天花板）", () => {
+  it("报价单总额（元）超预算（万元）→ 归一后报废标，文案带报价单名与超幅%", () => {
+    const hits = quoteRecordCeilingHits(["预算金额：3500万元"], [{ name: "XX医院智慧医疗报价", totalYuan: 36000000 }])
+    expect(hits).toHaveLength(1)
+    expect(hits[0].rule).toBe("over_price_ceiling")
+    expect(hits[0].chapter.startsWith("报价单")).toBe(true)
+    expect(hits[0].quote).toContain("废标")
+    expect(hits[0].quote).toContain("XX医院智慧医疗报价")
+    expect(hits[0].quote).toContain("3%")
+    expect(hits[0].quote).toContain("预算金额")
+  })
+
+  it("报价单总额≤天花板 / 硬限价口径下超预算不超限价 → 不报", () => {
+    expect(quoteRecordCeilingHits(["预算金额：3500万元"], [{ name: "q", totalYuan: 35000000 }])).toHaveLength(0)
+    expect(
+      quoteRecordCeilingHits(["预算金额：3500万元", "最高限价：3600万元"], [{ name: "q", totalYuan: 35500000 }]),
+    ).toHaveLength(0)
+  })
+
+  it("取不到限价/预算或报价单列表为空 → 静默不报", () => {
+    expect(quoteRecordCeilingHits(["项目周期：180天"], [{ name: "q", totalYuan: 99999999 }])).toHaveLength(0)
+    expect(quoteRecordCeilingHits(["预算金额：3500万元"], [])).toHaveLength(0)
+  })
+
+  it("非正数/非法总额不参与比对（价格后录的空白报价单不误报）", () => {
+    expect(
+      quoteRecordCeilingHits(["预算金额：3500万元"], [
+        { name: "空单", totalYuan: 0 },
+        { name: "NaN单", totalYuan: Number.NaN },
+      ]),
+    ).toHaveLength(0)
+  })
+})
+
+describe("pickLatestQuoteTotals（同名多版本取最新、按商机过滤、≤3 份）", () => {
+  const ref = (over: Partial<QuoteTotalRef>): QuoteTotalRef => ({
+    name: "报价单A",
+    totalYuan: 100,
+    updated: "2026-01-01",
+    opportunityId: "opp1",
+    ...over,
+  })
+
+  it("同名 v1/v2 只取最新 updated 那条；不同名都保留", () => {
+    const picked = pickLatestQuoteTotals(
+      [
+        ref({ name: "报价单A", totalYuan: 111, updated: "2026-01-01" }),
+        ref({ name: "报价单A", totalYuan: 222, updated: "2026-03-01" }),
+        ref({ name: "报价单B", totalYuan: 333, updated: "2026-02-01" }),
+      ],
+      "opp1",
+    )
+    expect(picked).toHaveLength(2)
+    expect(picked.find((q) => q.name === "报价单A")?.totalYuan).toBe(222)
+  })
+
+  it("只取关联目标商机的记录；空/非法商机 id 静默空", () => {
+    expect(pickLatestQuoteTotals([ref({ opportunityId: "opp2" })], "opp1")).toHaveLength(0)
+    expect(pickLatestQuoteTotals([ref({})], "")).toHaveLength(0)
+  })
+
+  it("total≤0/NaN 不参与；超 3 份只取最新 3 份且按 updated 降序", () => {
+    const refs = [
+      ref({ name: "q0", totalYuan: 0 }),
+      ref({ name: "qn", totalYuan: Number.NaN }),
+      ref({ name: "a", updated: "2026-01-01" }),
+      ref({ name: "b", updated: "2026-02-01" }),
+      ref({ name: "c", updated: "2026-03-01" }),
+      ref({ name: "d", updated: "2026-04-01" }),
+    ]
+    const picked = pickLatestQuoteTotals(refs, "opp1")
+    expect(picked.map((q) => q.name)).toEqual(["d", "c", "b"])
+  })
+
+  it("priceCeilingFromFacts：硬限价优先于预算；两者都无→null；需人工确认行不参与", () => {
+    expect(priceCeilingFromFacts(["预算金额：3500万元", "最高限价：3600万元"])).toEqual({ ceiling: 3.6e7, src: "最高限价/控制价" })
+    expect(priceCeilingFromFacts(["预算金额：3500万元"])?.src).toBe("预算金额")
+    expect(priceCeilingFromFacts(["项目周期：180天"])).toBeNull()
+    expect(priceCeilingFromFacts(["预算金额：3500万元【需人工确认】"])).toBeNull()
   })
 })
