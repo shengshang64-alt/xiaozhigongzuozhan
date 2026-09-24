@@ -2409,8 +2409,8 @@ function extractNumRefs(line: string): NumRef[] {
     const after = line.slice(idx + m[0].length)
     // ③ 比较语境（最大误报源）
     if (NUM_COMPARISON_RE.test(before)) continue
-    // ② 时间式：数字紧贴冒号之后（「8:30分钟」形态的尾数）
-    if (/[:：]\s*$/.test(beforeAll)) continue
+    // ② 时间式：数字紧贴冒号之后（「8:30分钟」形态的尾数）；带钱单位的数字是金额不是时间尾数，豁免（R42 真实标书校准抓到：开标一览表「投标报价：25,010,000.00 元」式写法会被误剔而漏报过限价）
+    if (/[:：]\s*$/.test(beforeAll) && unit !== "元" && unit !== "万元") continue
     // ① 日期：年值后接「N月」或本身是 1900-2100 的整数纪年
     if (unit === "年" && (/^\s*\d{1,2}\s*月/.test(after) || (Number.isInteger(value) && value >= 1900 && value <= 2100))) continue
     out.push({ value, unit, index: idx, raw: m[0] })

@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 41,
+  "round": 42,
   "backlog": [
     {
       "id": "prompt-matrix-02",
@@ -150,6 +150,26 @@
     }
   ],
   "closed": [
+    {
+      "id": "tender-colon-miss-01",
+      "module": "/bid-workspace",
+      "issue": "A 类 S0 方向漏报：extractNumRefs ②号时间式剔除规则把紧跟冒号的任意数字（含金额）都剔掉，开标一览表标准写法「投标报价：25,010,000.00 元」超限价不报——废标级风险静默放行",
+      "status": "done",
+      "evidence": "R42 真实标书（bid_projects yslab52hxoplrxk 14.6 万字公开示范文本）6 项校准抓出；修复：元/万元单位豁免冒号剔除（1 行+注释），8:30分钟原防护不变；回归锈 +2 正式用例（千分位冒号必报/真实复述行零误报），255→257 全过、build 过、eslint 145=基线；含真实原文的临时校准文件跑完即删不入库",
+      "diff": "bidTypes.ts extractNumRefs ②规则 +豁免条件；bidFormatCheck.test.ts +2 用例；报告 .loop/reports/2026-09-24-2155.md",
+      "priority": "P0",
+      "closedRound": 42
+    },
+    {
+      "id": "real-data-calib-01",
+      "module": "/bid-workspace",
+      "issue": "R36 承诺的\"逐真实项目复核 0 误报\"落地（校验器×真实招标文本面）+ 账本纠错：R37/R38\"本机标书项目 0 条\"论断作废——当时误用 /api/projects 探测，真实路由 /api/bid_projects 实有 1 项目 146,263 字正文",
+      "status": "done",
+      "evidence": "R42 直查 /api/bid_projects totalItems=1（yslab52hxoplrxk，安徽中医大附院政府公开示范文本）；校准 6 项目：天花板提取/复述条款零误报均过，唯一不过＝冒号漏报已转 tender-colon-miss-01 修复。D 盘真实标书供料登记：友商公司产品\\招标材料及方案 30+ 份、KIMI\\pretest-assets\\招标文件-钦州市一院.docx。未覆盖：AI 生成正文后端到端体检（要 AI 费用，待用户单独点头+额度确认）。quote-vs-ceiling-01/b-01 历史 evidence 中\"0 条\"表述以本条为准",
+      "diff": "零代码（纯取证/校准轮产出）；报告 .loop/reports/2026-09-24-2155.md",
+      "priority": "P1",
+      "closedRound": 42
+    },
     {
       "id": "quote-stale-copy-01",
       "module": "/ppt-quote",
@@ -631,5 +651,5 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "Round41 B 类文案收口轮（售前视角，R40 顺手发现项履约）：报价模块 3 处 UI 文案清除已废弃的\"四大分组\"承诺，对齐真实行为（新建单空分组是有意的，分组由产品库 category/手建动态生成）；取证阶段接口直查排除了\"groups 丢数据\"假设（POST→读回完整→DELETE，库回 0 套）。四门全绿：255/255、build、eslint 145=基线、实机 DOM 验证新文案生效零数据创建。closed+quote-stale-copy-01；noProgressStreak 保持 0。待拍板池不变：content-guard-03、fabscan-03残余、kb-semantic-01(建议冻结)、ux-05、perf-02、prompt-extract-01；零风险攒账项已清空，下轮若无新输入将出收敛总报告。blocked: hook-security-01 不变。"
+  "lastRoundSummary": "Round42 真实标书首测轮（用户指令\"从 D 盘找标书测试\"·评标专家视角）：发现账本误判（R37/R38\"标书 0 条\"系探错路由，/api/bid_projects 实有 1 项目 14.6 万字真实招标文件），直接用它跑 R36 欠的过限价校验器真文校准 6 项——抓出 S0 方向漏报：招标一览表「投标报价：25,010,000.00 元」式写法被 extractNumRefs 冒号时间规则误剔而静默放行；修复 1 行（元/万元豁免）+2 正式回归锈，零误报项（废标条款复述/评分公式/限价功能描述）全部验证通过。四门：257/257、build、eslint 145=基线、全程零写入业务数据。closed+tender-colon-miss-01/real-data-calib-01；noProgressStreak 保持 0。端到端 AI 生成面体检待用户点头（要费用）。D 盘真实标书清单已登记供料。待拍板池不变。blocked: hook-security-01。"
 }

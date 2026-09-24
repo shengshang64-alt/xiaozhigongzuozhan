@@ -289,6 +289,24 @@ describe("overPriceCeilingHits（投标报价超最高限价/预算 → 废标�
     expect(hits.some((h) => h.rule === "over_price_ceiling" && h.chapter.startsWith("偏离表"))).toBe(true)
   })
 
+  // R42 真实标书校准回归锈：开标一览表「关键词：金额元」式写法的冒号豁免（此前被时间式规则误剔→漏报）
+  it("开标一览表千分位「投标报价：25,010,000.00 元」超限价 → 报（回归锈 extractNumRefs 冒号+钱单位豁免）", () => {
+    const facts = ["预算金额：2500万元", "最高限价：2500万元"]
+    expect(overPriceCeilingHits(facts, chObj("投标报价：25,000,000.00 元"), null)).toHaveLength(0)
+    const hits = overPriceCeilingHits(facts, chObj("投标报价：25,010,000.00 元"), null)
+    expect(hits.some((h) => h.rule === "over_price_ceiling")).toBe(true)
+  })
+
+  it("真实招标文件复述行（废标条款/评分公式/含'限价'功能描述）不当报价、不误报", () => {
+    const facts = ["预算金额：2500万元", "最高限价：2500万元"]
+    const realLines = [
+      "11.2投标人报价超过招标文件规定的预算金额或者分项、分包最高限价，其投标将被认定为投标无效。",
+      "投标报价得分＝（评标基准价/投标报价）×10％×100",
+      "医保控费规则配置:支持按不同规则模版配置限量、限价、互斥等多种控费规则。",
+    ].join("\n")
+    expect(overPriceCeilingHits(facts, chObj(realLines), null)).toHaveLength(0)
+  })
+
   it("新规则 over_price_ceiling 在白名单存活（normalize 不丢弃）", () => {
     const report = normalizeFormatCheckReport({
       hits: [{ chapter: "第一章", rule: "over_price_ceiling", quote: "x", level: "warn" }],
