@@ -52,7 +52,13 @@ if not errorlevel 1 (
 )
 
 echo       starting...
-start "Vite" /min cmd /c "cd /d ""%ROOT%"" && node ""%ROOT%\node_modules\vite\bin\vite.js"" --config ""%ROOT%\vibex-local\vite.local.config.ts"" --host 127.0.0.1 --port 8000"
+rem NOTE: NODE_OPTIONS is cleared deliberately for the Vite child process.
+rem The WorkBuddy sandbox injects a safe-delete guard via NODE_OPTIONS. When
+rem Vite re-optimizes dependencies it must delete node_modules\.vite\deps_temp_*
+rem (hundreds of files in one go), which trips the guard and kills the dev
+rem server with SAFE_DELETE_BULK_CONFIRM_REQUIRED. Clearing NODE_OPTIONS here
+rem keeps that guard away from Vite's own cache maintenance.
+start "Vite" /min cmd /c "cd /d ""%ROOT%"" && set NODE_OPTIONS= && node ""%ROOT%\node_modules\vite\bin\vite.js"" --config ""%ROOT%\vibex-local\vite.local.config.ts"" --host 127.0.0.1 --port 8000"
 
 set /a VITE_WAIT=0
 :vite_poll

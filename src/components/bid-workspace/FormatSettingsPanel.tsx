@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react"
-import { Check, ChevronDown, Loader2, ShieldCheck, SlidersHorizontal } from "lucide-react"
+import { Check, ChevronDown, Loader2, ShieldCheck, SlidersHorizontal, Wand2 } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { getPocketBaseUrl } from "@/lib/pb"
+import { vibexAuthHeaders } from "@/lib/rhLogin"
 import {
   FORMAT_ALIGN_OPTIONS,
   FORMAT_CHECK_KEYS,
@@ -11,6 +14,7 @@ import {
   LINE_SPACING_OPTIONS,
   PAPER_OPTIONS,
   TITLE_NUMBERING_OPTIONS,
+  ZHIYE_STANDARD_FORMAT,
   fixedLineSpacingValue,
   parseFixedLineSpacing,
   splitContentFont,
@@ -19,6 +23,7 @@ import {
   type FormatFont,
   type FormatFontSize,
   type FormatPaper,
+  type FormatSettings,
   type TitleNumbering,
 } from "@/pages/BidWorkspace/bidTypes"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
@@ -84,6 +89,17 @@ function ToggleRow({
   )
 }
 
+type FormatTemplateLite = { id: string; name: string; is_default?: boolean; format_settings?: FormatSettings }
+
+async function fetchFormatTemplates(): Promise<FormatTemplateLite[]> {
+  const res = await fetch(`${getPocketBaseUrl()}/api/format_templates`, {
+    headers: { "Content-Type": "application/json", ...vibexAuthHeaders() },
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const data = (await res.json()) as { items?: FormatTemplateLite[] }
+  return data.items ?? []
+}
+
 /**
  * 第十七轮 17C：「格式与暗标设置」折叠面板——纸张 / 页边距 / 六级标题字体字号对齐 /
  * 正文字体字号首行缩进行距 / 表格边框与内容字体 / 目录页码页眉页脚开关 / 标题编号示例 /
@@ -101,6 +117,35 @@ export function FormatSettingsPanel(p: FormatSettingsPanelProps) {
   const [sealedPagesDraft, setSealedPagesDraft] = useState("")
   // 循环 2 批 1-4：自家身份词草稿（onBlur 提交，applySetting 防抖落库）
   const [identityDraft, setIdentityDraft] = useState("")
+  // 格式刷新工具：从模板库套用
+  const [ftTemplates, setFtTemplates] = useState<FormatTemplateLite[]>([])
+  const [ftSel, setFtSel] = useState("")
+  const [ftLoading, setFtLoading] = useState(false)
+  const [ftLoaded, setFtLoaded] = useState(false)
+
+  useEffect(() => {
+    if (!open || ftLoaded || ftLoading) return
+    setFtLoading(true)
+    fetchFormatTemplates()
+      .then((items) => {
+        setFtTemplates(items)
+        const def = items.find((t) => t.is_default) ?? items[0]
+        if (def) setFtSel(def.id)
+        setFtLoaded(true)
+      })
+      .catch(() => setFtTemplates([]))
+      .finally(() => setFtLoading(false))
+  }, [open, ftLoaded, ftLoading])
+
+  const applyFormatTemplate = () => {
+    const t = ftTemplates.find((x) => x.id === ftSel)
+    if (!t?.format_settings) {
+      toast.error("该模板没有可套用的格式配置")
+      return
+    }
+    p.setFormatSettingsPatch(t.format_settings)
+    toast.success(`已套用模板「${t.name}」，导出前可再微调`)
+  }
 
   useEffect(() => {
     setMarginDrafts({
@@ -202,6 +247,60 @@ export function FormatSettingsPanel(p: FormatSettingsPanelProps) {
               尚未单独配置格式：当前展示系统缺省值，导出 Word 仍按内置默认样式；修改任意一项后会为本项目生成专属格式配置并自动保存，导出即按配置生效。
             </p>
           )}
+
+          <section className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-secondary/30 px-3 py-2">
+            <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+              <Wand2 className="h-3.5 w-3.5 text-primary" />
+              从格式模板套用
+            </span>
+            {ftLoading ? (
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" />加载模板…
+              </span>
+            ) : ftTemplates.length === 0 ? (
+              <span className="text-xs text-muted-foreground">模板库为空，可去「格式刷新」工具上传格式方案识别生成。</span>
+            ) : (
+              <>
+                <select
+                  value={ftSel}
+                  onChange={(e) => setFtSel(e.target.value)}
+                  className="min-w-[160px] flex-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  {ftTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                      {t.is_default ? "（默认）" : ""}
+                    </option>
+                  ))}
+                </select>
+                <Button size="sm" variant="outline" className="h-7 px-2.5 text-xs" onClick={applyFormatTemplate} disabled={!ftSel}>
+                  套用到本项目
+                </Button>
+              </>
+            )}
+          </section>
+
+          {/* 公司招投标培训（第一期）：《智业软件文档编辑使用规范 V2.1》排版参数一键套用 */}
+          <section className="flex flex-wrap items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
+            <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+              <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+              智业投标文件排版规范（公司文档编辑规范 V2.1）
+            </span>
+            <span className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
+              A4 · 边距左2.8/右2.6/上下2.5cm · 正文宋体小四 1.5倍行距首行缩进2字符 · 表内宋体五号 · 目录到三级；封面/页眉页脚仍以智业 Word 模板为准
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 shrink-0 px-2.5 text-xs"
+              onClick={() => {
+                p.setFormatSettingsPatch(ZHIYE_STANDARD_FORMAT)
+                toast.success("已套用智业标准排版参数，导出前可再微调")
+              }}
+            >
+              一键套用
+            </Button>
+          </section>
 
           <section className="grid gap-3 lg:grid-cols-5">
             <label className="grid gap-1">

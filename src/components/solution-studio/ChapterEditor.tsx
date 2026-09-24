@@ -1,5 +1,5 @@
 import type { ReactNode, RefObject } from "react"
-import { ChevronsRight, ClipboardCheck, Loader2, Minimize2, PenLine, RefreshCw, ScanText, Sparkles, TextQuote } from "lucide-react"
+import { AlertTriangle, CheckCircle2, ChevronsRight, ClipboardCheck, Loader2, Minimize2, PenLine, RefreshCw, ScanText, Sparkles, TextQuote, Undo2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { BidFigure } from "@/components/bid-workspace/BidFigure"
@@ -36,6 +36,12 @@ type ChapterEditorProps = Pick<
   textareaRef?: RefObject<HTMLTextAreaElement | null>
   /** 循环 5 A3：归档只读——禁用全部生成/改写/自检按钮并锁定正文编辑（标书工作页注入，方案编制页不传不受影响） */
   readOnly?: boolean
+  /** sol5 待补充小节：小节标题尚未在正文出现的项，渲染橙色提醒条（可选，不传不渲染） */
+  missingSections?: string[]
+  /** sol5 插入回执：刚从素材弹药库插入的内容标注，渲染绿色提示条 */
+  insertNotice?: { label: string } | null
+  /** sol5 插入回执：撤销最近一次插入 */
+  onUndoInsert?: () => void
 }
 
 export function ChapterEditor({
@@ -57,6 +63,9 @@ export function ChapterEditor({
   optimizeByIssues,
   textareaRef,
   readOnly = false,
+  missingSections,
+  insertNotice,
+  onUndoInsert,
 }: ChapterEditorProps) {
   if (!activeChapter || !activeChapterId) {
     return (
@@ -166,6 +175,31 @@ export function ChapterEditor({
         )}
       </header>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+        {!!missingSections?.length && (
+          <div className="flex shrink-0 items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs leading-relaxed text-foreground">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+            <p>
+              <b className="text-warning">待补充（{missingSections.length}）：</b>
+              本章小节「{missingSections.join("、")}」尚未在正文覆盖，建议生成/补写或从右侧弹药库插入参考段落。
+            </p>
+          </div>
+        )}
+        {insertNotice && (
+          <div className="flex shrink-0 items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs leading-relaxed text-foreground">
+            <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+            <p className="flex flex-wrap items-center gap-2">
+              <span>
+                <b className="text-primary">已从弹药库插入：</b>「{insertNotice.label}」，可继续改写融合，源文档不受影响。
+              </span>
+              {onUndoInsert && (
+                <Button size="sm" variant="ghost" onClick={onUndoInsert} className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground">
+                  <Undo2 className="mr-1 h-3 w-3" />
+                  撤销插入
+                </Button>
+              )}
+            </p>
+          </div>
+        )}
         {!isBiz && activeChapter.selfCheck && reviewChapter && (
           <ChapterScoreCard
             selfCheck={activeChapter.selfCheck}

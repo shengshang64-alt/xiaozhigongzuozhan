@@ -1,4 +1,5 @@
 import type { LlmMessage } from "@/lib/llm"
+import { parseJsonTolerant } from "@/lib/jsonTolerant"
 import type { Chapter, FigureSpec, OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
 import { makeUid, outlineToText } from "@/pages/SolutionStudio/solutionTypes"
 
@@ -24,14 +25,15 @@ export type ParseScope = "key" | "full"
 
 export type ParseSectionDef = { key: string; title: string; guide: string }
 
-/** 关键项 6 项：必选不可取消 */
+/** 关键项 8 项：必选不可取消（2026-09-23 用户反馈轮：商务评分与投标文件目录要求升档，修「评分办法解析不到」「目录不一致」） */
 export const PARSE_KEY_SECTIONS: ParseSectionDef[] = [
   {
     key: "overview",
     title: "项目概述",
     // 用户反馈轮（2026-09-18）：项目概述=完整项目画像六维度（用户口径：只要识别项目概述，提取这六类）
+    // 2026-09-21 用户口径补充：基本信息需含项目类型/预算/地址，且只提要点禁止整段拉原文
     guide:
-      "项目概述按六个维度提取，每行一条「字段名：内容」：项目基本信息（名称/招标编号/采购人）、背景目的（建设背景与采购目的一句话）、规模预算（建设规模/投资/预算金额，保留原文表述）、时间安排（工期/投标截止/开标/关键节点）、实施内容（建设内容与范围要点）、技术特点（核心系统与关键技术要求要点）",
+      "项目概述按六个维度提取，每行一条「字段名：内容」：项目基本信息（名称/招标编号/项目类型/采购人/预算金额/项目地址）、背景目的（建设背景与采购目的一句话）、规模预算（建设规模/投资/预算金额，保留原文表述）、时间安排（工期/投标截止/开标/关键节点）、实施内容（建设内容与范围要点）、技术特点（核心系统与关键技术要求要点）；只提上述重点字段，禁止把招标正文整段抄入",
   },
   {
     key: "tech_score",
@@ -41,7 +43,8 @@ export const PARSE_KEY_SECTIONS: ParseSectionDef[] = [
   {
     key: "project_info",
     title: "项目信息",
-    guide: "项目背景、建设内容、工期要求、资金来源等基础信息，每行一条",
+    // 2026-09-23 用户反馈轮：与项目概述/交货要求职责切分，修「关键信息重复解析」（重复行另由跨项去重兜底）
+    guide: "逐项提取项目背景、建设内容概况、工期要求、资金来源与落实情况等基础信息，每行一条；项目名称/编号/采购人/预算金额等基本信息字段不重复输出（已由项目概述项承担），技术需求明细不归本项（属交货和服务要求）",
   },
   {
     key: "purchaser_info",
@@ -58,9 +61,21 @@ export const PARSE_KEY_SECTIONS: ParseSectionDef[] = [
     title: "响应文件要求",
     guide: "投标（响应）文件的组成、格式、签字盖章、装订与递交等实质性要求，每行一条",
   },
+  // 2026-09-23 用户反馈轮：商务评分随技术评分同档解析（评分办法整体不再依赖「完整档」勾选）
+  {
+    key: "biz_score",
+    title: "商务评分要求",
+    guide: "评分办法中商务部分逐项分值表，每行一条「评分项名（分值 分）：评分标准摘要」",
+  },
+  // 2026-09-23 用户反馈轮：投标文件目录要求升档，大纲生成默认有招标目录锚点可遵循（防自造目录漂移）
+  {
+    key: "bid_outline_req",
+    title: "投标文件目录要求",
+    guide: "招标文件中对投标文件/技术标目录结构的规定（章节名录原文），每行一条目录项，保留原编号与层级",
+  },
 ]
 
-/** 其他项 13 项：完整解析模式下自由勾选 */
+/** 其他项 11 项：完整解析模式下自由勾选 */
 export const PARSE_EXTRA_SECTIONS: ParseSectionDef[] = [
   { key: "purchase_list", title: "采购清单", guide: "采购货物/服务清单（名称、数量、关键参数），每行一条" },
   { key: "agency_info", title: "代理机构信息", guide: "采购代理机构名称、联系人、联系方式、地址，每行一条" },
@@ -72,12 +87,9 @@ export const PARSE_EXTRA_SECTIONS: ParseSectionDef[] = [
   { key: "compliance", title: "符合性检查", guide: "符合性审查要点（资格与格式之外的无效投标审查项），每行一条" },
   { key: "bid_open_req", title: "开标要求", guide: "开标流程、场地、纪律与解密要求，每行一条" },
   { key: "eval_req", title: "评标要求", guide: "评标方法、评标程序与评标委员会组成要求，每行一条" },
-  { key: "biz_score", title: "商务评分要求", guide: "评分办法中商务部分逐项分值表，每行一条「评分项名（分值 分）：评分标准摘要」" },
-  { key: "void_items", title: "无效标与废标项", guide: "废标/无效投标条款原文摘录（未密封、未盖公章、报价超预算、资质不符、串通投标认定等），每行一条" },
+  { key: "void_items", title: "无效标与废标项", guide: "废标/无效投标条款原文摘录（未密封、未盖公章、报价超预算、资质不符、串通投标认定，以及电子标 CA 有效期/签章/加密上传/解密要求、模板占位文字残留等废标条款），每行一条" },
   // 循环 2 批 2-3：原 contract_award + contract_end 合并升级为 contract_terms（补质保衔接口径）
   { key: "contract_terms", title: "合同关键条款", guide: "合同授予条件、签订时限与履约保证金、合同解除与终止条款、质保期与缺陷责任期衔接，每行一条" },
-  // 第十七轮 17A：招标规定的投标文件目录（大纲章结构遵循依据）
-  { key: "bid_outline_req", title: "投标文件目录要求", guide: "招标文件中对投标文件/技术标目录结构的规定（章节名录原文），每行一条目录项，保留原编号与层级" },
   // 第十七轮 17B：编制依据与规范编号清单（规范库补选与正文注入依据）
   { key: "compilation_basis", title: "编制依据与规范", guide: "招标文件中要求或提及的编制依据、标准规范清单（国家标准/行业标准/技术文件/法律法规的编号与名称），每行一条「编号 名称」，保留原文编号格式" },
 ]
@@ -220,7 +232,7 @@ export function starClausesEnabled(cfg: ParseConfig | null | undefined): boolean
   return (cfg ?? defaultParseConfig()).star_clauses !== false
 }
 
-/** 本次解析实际要输出的项：关键项档=6 项；完整档=关键项+勾选项（未勾任何项=全部其他项） */
+/** 本次解析实际要输出的项：关键项档=8 项；完整档=关键项+勾选项（未勾任何项=全部其他项） */
 export function requestedKeys(cfg: ParseConfig | null | undefined): string[] {
   const keyKeys = PARSE_KEY_SECTIONS.map((d) => d.key)
   const conf = cfg ?? defaultParseConfig()
@@ -646,6 +658,70 @@ export function cleanParseSectionContent(content: string): string {
   return outLines.join("\n")
 }
 
+// ------------------------------ parse-validator-01（docs/07 §4.1 缺口1）：解析输出本地硬兜底 ------------------------------
+
+/** 提示词软约束「要点化铁律」的本地硬兜底：概览/摘要型 section 每节条数与每条字数上限
+ * （Issue 1：原 60 字/25 条会把项目概述等长句腰斩＝展示不全，放宽到能看全正常内容、仅拦失控输出） */
+const PARSE_MAX_LINES_PER_SECTION = 80
+const PARSE_MAX_CHARS_PER_LINE = 200
+/**
+ * 原文型/清单型 section 放宽上限（一刀切会截掉参数与时间原文＝丢数据）：
+ * - 逐字/原文保留类（废标条款/保证金/时间节点/评分标准/采购清单/概述/项目信息/交付与响应要求/合同条款）：600 字/条；
+ * - 天然多条目列表类（目录项/规范编号/资格条款常超 25 条）：100 条/节；其余仍按全局上限。
+ */
+const PARSE_LINE_CHAR_OVERRIDES: Record<string, number> = {
+  void_items: 600,
+  bid_deposit: 600,
+  bid_nodes: 600,
+  tech_score: 600,
+  biz_score: 600,
+  purchase_list: 600,
+  overview: 600,
+  project_info: 600,
+  delivery_req: 600,
+  response_req: 600,
+  purchaser_info: 600,
+  contract_terms: 600,
+}
+const PARSE_LINE_COUNT_OVERRIDES: Record<string, number> = {
+  bid_outline_req: 100,
+  compilation_basis: 100,
+  qualification: 100,
+}
+/** 固定截断提示行（不含漂移计数）：一旦截断就固化该行为，读路径重复调用时靠它保持幂等 */
+const PARSE_CLAMP_MARKER = "（部分要点已按上限自动截断，完整内容以招标文件原文为准）"
+
+/**
+ * 解析章节数量/长度本地校验（共享纯函数，与 cleanParseSectionContent 同三点共用：落库清洗 / 分块合并 / 读路径规整）：
+ * 行条数按节类型分档、每行字数分档，超出则截断；一旦截断追加一行固定提示（不含具体条数，以保证幂等）。
+ * 豁免长度截断：URL 行与「原文未提及：」汇总行（均为本地产物、可合法超长）。
+ * 幂等：已收敛内容再过一次输出不变——因为“是否截断过”由固定提示行自身携带并保留（hadMarker），
+ *   而非从已被不可逆截断的数据里重算计数（那样每次读会漂移）。
+ */
+export function clampParseSectionContent(key: string, content: string): string {
+  const src = (content ?? "").trim()
+  if (!src) return ""
+  const maxChars = PARSE_LINE_CHAR_OVERRIDES[key] ?? PARSE_MAX_CHARS_PER_LINE
+  const maxLines = PARSE_LINE_COUNT_OVERRIDES[key] ?? PARSE_MAX_LINES_PER_SECTION
+  const lines = src.split("\n").map((l) => l.trim()).filter(Boolean)
+  // 剥离既有固定提示行（不重复叠加）；并记住“曾经截断”，以便本轮即使不再超长也保留提示（幂等）
+  const hadMarker = lines.includes(PARSE_CLAMP_MARKER)
+  const dataLines = lines.filter((l) => l !== PARSE_CLAMP_MARKER)
+  let clipped = false
+  const out = dataLines.map((l) => {
+    // 本地产物行豁免长度截断：URL / 「原文未提及」汇总 / R30 出处回指后缀（出处被截断会产生幻觉页码，整行保全优先于 60 字纪律）
+    if (/^https?:\/\//i.test(l) || l.startsWith("原文未提及：") || l.includes("（出处：")) return l
+    if (l.length <= maxChars) return l
+    clipped = true
+    return `${l.slice(0, maxChars - 1)}…`
+  })
+  const excess = out.length > maxLines
+  if (excess) out.length = maxLines
+  // clipped||excess 本次发生截断；hadMarker 历史已截断——三者任一即保留固定提示行（不含会漂移的 N）
+  if (clipped || excess || hadMarker) out.push(PARSE_CLAMP_MARKER)
+  return out.join("\n")
+}
+
 /**
  * 用户反馈轮：解析报告重复部分不展示——跨 section 行级去重：
  * 按 sections 顺序遍历，归一化（去空白）后相同的行只保留在首个出现的 section，后续 section 删除该行。
@@ -654,6 +730,13 @@ export function cleanParseSectionContent(content: string): string {
  */
 export function dedupeAcrossSections(report: ParseReport): ParseReport {
   const seen = new Set<string>()
+  // 归一口径增强（2026-09-23 用户反馈轮：同一信息多条措辞微差重复提取）：去空白 + 去行尾（出处：…）回指后缀 + 全角标点归一，仅措辞/出处不同的重复行也收敛到首条
+  const norm = (t: string) =>
+    t
+      .replace(/（出处：[^）]*）\s*$/g, "")
+      .replace(/\s+/g, "")
+      .replace(/[，、；：！？（）]/g, (c) => ({ "，": ",", "、": ",", "；": ";", "：": ":", "！": "!", "？": "?", "（": "(", "）": ")" })[c] ?? c)
+      .toLowerCase()
   const sections = report.sections.map((s) => {
     if (s.key === STAR_CLAUSE_SECTION.key || s.human_edited || !s.content.trim()) return s
     const kept: string[] = []
@@ -664,9 +747,9 @@ export function dedupeAcrossSections(report: ParseReport): ParseReport {
         kept.push(t)
         continue
       }
-      const norm = t.replace(/\s+/g, "")
-      if (seen.has(norm)) continue
-      seen.add(norm)
+      const key = norm(t)
+      if (!key || seen.has(key)) continue
+      seen.add(key)
       kept.push(t)
     }
     const content = kept.join("\n")
@@ -700,7 +783,7 @@ export function normalizeParseReport(raw: unknown): ParseReport | null {
       if (!key) continue
       // 用户反馈轮项 1：读路径统一清洗（存量脏数据打开即清洗）；人工手改过的 section 跳过、尊重手改
       const humanEdited = r.human_edited === true
-      const content = humanEdited ? rawContent : cleanParseSectionContent(rawContent)
+      const content = humanEdited ? rawContent : clampParseSectionContent(key, cleanParseSectionContent(rawContent))
       const stRaw = asString(r.status).trim()
       const status: ParseSectionStatus =
         stRaw === "ok" || stRaw === "failed" || stRaw === "pending"
@@ -834,7 +917,7 @@ export function sanitizeParseSections(raw: unknown, keys: string[]): ParseReport
   const sections: ParseSection[] = []
   for (const key of keys) {
     // 用户反馈轮项 1：落库即清洗（字段去重 + 脏值黑名单 + 未明确归并），单块路径与 mergeChunkReports 同口径
-    const text = cleanParseSectionContent(toContentText(rec[key]).trim())
+    const text = clampParseSectionContent(key, cleanParseSectionContent(toContentText(rec[key]).trim()))
     if (text) {
       sections.push({ key, title: parseSectionTitle(key), content: text, status: "ok", snippet: makeSnippet(text) })
     } else {
@@ -878,9 +961,26 @@ export function missingSectionTitles(report: ParseReport | null, keys: string[])
 
 export type ScoringItem = { item: string; score: number; criteria: string }
 
-/** 从评分办法文本行里恢复评分项（兼容「项名（N 分）：标准」与「项名：N 分」两种行格式） */
+/** 从评分办法文本行里恢复评分项（兼容「项名（N 分）：标准」与「项名：N 分」两种行格式；
+ * Issue 2：额外兼容参考实现的【评分项名称】/【权重/分值】/【评分标准】/【数据来源】分块格式，作解析侧安全网） */
 export function extractScoringFromText(text: string): ScoringItem[] {
   const out: ScoringItem[] = []
+  // 分块格式：以【评分项名称】为界切块，块内聚合分值/标准/出处为一条 ScoringItem
+  if (/【\s*评分项名称\s*】/.test(text)) {
+    const blocks = text.split(/【\s*评分项名称\s*】/)
+    for (let bi = 1; bi < blocks.length; bi++) {
+      const blk = blocks[bi]
+      const name = blk.split(/\n/)[0].replace(/^[：:\s]*/, "").replace(/\s+/g, " ").trim()
+      if (!name) continue
+      const scoreM = blk.match(/【\s*(?:权重|分值|权重\/分值|权?重?\/分\s*值)\s*】[：:]?\s*([0-9]+(?:\.[0-9]+)?)/)
+      const critM = blk.match(/【\s*评分标准\s*】[：:]?\s*([\s\S]*?)(?=【|$)/)
+      const srcM = blk.match(/【\s*(?:数据来源|出处)\s*】[：:]?\s*([\s\S]*?)(?=【|$)/)
+      const criteria = (critM ? critM[1] : "").replace(/\s+/g, " ").trim()
+      const src = srcM ? srcM[1].replace(/\s+/g, " ").trim() : ""
+      out.push({ item: name, score: scoreM ? Number(scoreM[1]) : 0, criteria: criteria + (src ? `（出处：${src}）` : "") })
+    }
+    if (out.length) return out
+  }
   for (const rawLine of text.split(/\n+/)) {
     const line = rawLine.trim().replace(/^\d+[.、]\s*/, "")
     if (!line) continue
@@ -897,6 +997,105 @@ export function extractScoringFromText(text: string): ScoringItem[] {
 
 export function scoringItemsFromReport(report: ParseReport | null): ScoringItem[] {
   return extractScoringFromText(combinedScoringText(report))
+}
+
+// ------------------------------ R31：评分细项编号体系 + 主客观分类 ------------------------------
+
+/** 带稳定编号的评分细项（R31 prompt-matrix-02） */
+export type NumberedScoringItem = ScoringItem & {
+  /** 稳定编号："R1","R2"…(tech) / "B1","B2"…(biz) */
+  id: string
+  category: "tech" | "biz"
+  isSubjective: boolean
+}
+
+/** 启发式判定评分项是否为主观分（含“得 N-M 分”、优秀/良/一般/差、方案质量/完整性/合理性等评判词） */
+export function classifySubjective(item: ScoringItem): boolean {
+  const text = `${item.item} ${item.criteria}`
+  if (/\d+\s*[-~到至]\s*\d+\s*分/.test(text)) return true
+  if (/优.*?良|一般.*?差|合理|完整|清晰|可操作性|评委.*?横向|优者得|酌情/.test(text)) return true
+  return false
+}
+
+/**
+ * 给 ScoringItem[] 分配稳定编号。
+ * 技术/商务分别编号（R1/R2… | B1/B2…）；来源用 section key 区分。
+ */
+export function numberScoringItems(report: ParseReport | null): NumberedScoringItem[] {
+  const techItems = extractScoringFromText(sectionText(report, "tech_score"))
+  const bizItems = extractScoringFromText(sectionText(report, "biz_score"))
+  return [
+    ...techItems.map((s, i) => ({ ...s, id: `R${i + 1}`, category: "tech" as const, isSubjective: classifySubjective(s) })),
+    ...bizItems.map((s, i) => ({ ...s, id: `B${i + 1}`, category: "biz" as const, isSubjective: classifySubjective(s) })),
+  ]
+}
+
+/** 带编号的评分细则 prompt 行（注入大纲生成器，让模型可用 [响应:Rx] 标注承接） */
+export function numberedScoringDetailLines(items: NumberedScoringItem[]): string {
+  return items
+    .map((s) => `[${s.id}] ${s.item}（${s.score} 分）${s.isSubjective ? "「主观」" : "「客观」"}：${s.criteria.trim() || "（评审标准细则未解析）"}`)
+    .join("\n")
+}
+
+/** 一条评分项在大纲中的承接情况（R31 覆盖矩阵行） */
+export type ScoringCoverageEntry = {
+  item: NumberedScoringItem
+  /** 承接该评分项的大纲叶子节点标题（按大纲顺序，去重） */
+  coveredBy: string[]
+}
+
+/** 收集大纲全部 [响应:Rx] 标注：编号 → 承接叶子标题列表（R31，纯本地） */
+function collectResponseAnnotations(
+  outline: import("../SolutionStudio/solutionTypes").OutlineNode[],
+): Map<string, string[]> {
+  const map = new Map<string, string[]>()
+  const walk = (nodes: import("../SolutionStudio/solutionTypes").OutlineNode[]) => {
+    for (const n of nodes) {
+      if (n.description) {
+        const m = n.description.match(/\[(?:响应|Response):([^\]]+)]/i)
+        if (m) {
+          for (const raw of m[1].split(/[,，]\s*/)) {
+            const id = raw.trim()
+            if (!id) continue
+            const list = map.get(id) ?? []
+            if (!list.includes(n.title)) list.push(n.title)
+            map.set(id, list)
+          }
+        }
+      }
+      if (n.children?.length) walk(n.children)
+    }
+  }
+  walk(outline ?? [])
+  return map
+}
+
+/**
+ * R31 评分点覆盖矩阵（纯本地零 AI）：每个编号评分项 ↔ 承接它的大纲叶子标题。
+ * 只扫技术部分顶层章（商务骨架章不承担承接）；商务项（B*）不进矩阵。
+ */
+export function buildScoringCoverageMatrix(
+  outline: import("../SolutionStudio/solutionTypes").OutlineNode[],
+  items: NumberedScoringItem[],
+): ScoringCoverageEntry[] {
+  const annotations = collectResponseAnnotations(techOutlineNodes(outline))
+  return items
+    .filter((s) => s.category === "tech")
+    .map((s) => ({ item: s, coveredBy: annotations.get(s.id) ?? [] }))
+}
+
+/**
+ * R31 提纲层评分点覆盖检查（纯本地零 AI）：
+ * 扫描全部技术叶子节点的 description 字段中的 [响应:R\d+] 标注，
+ * 返回未被任何叶子承接的评分项 ID 列表。
+ */
+export function findUncoveredScoringIds(
+  outline: import("../SolutionStudio/solutionTypes").OutlineNode[],
+  items: NumberedScoringItem[],
+): string[] {
+  return buildScoringCoverageMatrix(outline, items)
+    .filter((e) => !e.coveredBy.length)
+    .map((e) => e.item.id)
 }
 
 // ------------------------------ 招标要求条款抽取（本地零 AI 调用） ------------------------------
@@ -1468,18 +1667,22 @@ export const BID_RESULT_LABEL: Record<Exclude<BidResult, "">, string> = {
 /** gen_options 列结构：clause_response=逐条应答强化 / material_boost=素材优先注入（默认均关）；
  * 循环 7 A4：intra_dup_threshold=章间互查相似度阈值（0.2-0.6，缺省 0.35；搭 gen_options json 列持久化，零 collection 变更）；
  * 用户反馈轮项 3：include_biz=大纲是否包含商务标骨架章（缺省/非法 → true，默认包含） */
+/** 05 三模式（合并稿 v1.0 重定义 R30）：compliance_mode 三档写作模式 strict 严格响应（只做对标响应禁扩展）/ moderate 场景扩展（骨架+项目应用场景描述 30%~50%）/ full 大量充实（骨架+场景+通用充实材料，设编造红线）；
+ *  section_words_touched=用户是否手动调过每小节字数（true 时切换模式不再自动覆盖字数，方案B 第5步联动） */
 export type GenOptions = {
   clause_response: boolean
   material_boost: boolean
   intra_dup_threshold?: number
   include_biz?: boolean
+  compliance_mode?: ComplianceMode
+  section_words_touched?: boolean
 }
 
 /** 循环 7 A4：章间互查阈值缺省值（与 findIntraDupPairs 默认参数一致） */
 export const INTRA_DUP_THRESHOLD_DEFAULT = 0.35
 
 export function defaultGenOptions(): GenOptions {
-  return { clause_response: false, material_boost: false, include_biz: true }
+  return { clause_response: false, material_boost: false, include_biz: true, compliance_mode: COMPLIANCE_MODE_DEFAULT }
 }
 
 /** 容错解析 gen_options json（存量项目缺列 / 脏值 → 全 false；阈值越界 / 非数 → 缺省；include_biz 缺省/非法 → true） */
@@ -1494,7 +1697,102 @@ export function normalizeGenOptions(raw: unknown): GenOptions {
     intra_dup_threshold:
       typeof th === "number" && Number.isFinite(th) && th >= 0.2 && th <= 0.6 ? th : undefined,
     include_biz: rec.include_biz !== false,
+    compliance_mode: isComplianceMode(rec.compliance_mode) ? rec.compliance_mode : COMPLIANCE_MODE_DEFAULT,
+    section_words_touched: rec.section_words_touched === true,
   }
+}
+
+/** 05 三模式：合规严格度开关，只切「超出招标原文的程度」；新增可验收承诺始终受 BID_STYLE_RULES 忠实/克制底线约束 */
+export type ComplianceMode = "strict" | "moderate" | "full"
+export const COMPLIANCE_MODE_DEFAULT: ComplianceMode = "strict"
+export const COMPLIANCE_MODE_LABEL: Record<ComplianceMode, string> = {
+  strict: "严格响应",
+  moderate: "场景扩展",
+  full: "大量充实",
+}
+/** 每模式建议的每小节字数默认（方案B 第5步：切模式且用户未手改字数时联动到此值） */
+export const COMPLIANCE_MODE_SECTION_WORDS: Record<ComplianceMode, number> = {
+  strict: 800,
+  moderate: 1000,
+  full: 1400,
+}
+function isComplianceMode(v: unknown): v is ComplianceMode {
+  return v === "strict" || v === "moderate" || v === "full"
+}
+/** 合并稿 §6.2 三档写作模式规则块（作一条硬约束注入）：三档均非空（2026-09-22 用户拍板全量切换，
+ *  存量项目缺省 strict 也注入严格响应块）；忠实参数/克制承诺底线仍在 BID_STYLE_RULES，此处只界定「素材来源与扩展程度」 */
+export function complianceModeRule(mode: ComplianceMode | undefined): string {
+  if (mode === "moderate") {
+    return "生成模式=场景扩展（合并稿三档之扩展模式）：① 先按严格响应完成本节全部对标响应（骨架，必须先写、写全）；② 再增加「项目应用场景描述」：结合项目背景、建设目标与业务场景，写本节技术/功能/方案在本项目中的应用方式、业务流程、使用角色、预期效果；③ 场景描述必须与本节技术内容直接相关、与项目概述一致，不得虚构招标文件中不存在的项目事实（具体科室、品牌型号、既有数据等，除非原文或素材中有）；④ 场景描述篇幅约占本节 30%~50%；⑤ 不写与本节无关的通用性材料；"
+  }
+  if (mode === "full") {
+    return "生成模式=大量充实（合并稿三档之大量模式）：① 先完成对标响应骨架与项目应用场景描述（两者必须先写、写全）；② 在此之上允许写入与本节技术/项目/功能/流程相关的充实性材料：行业背景与趋势、通用技术原理与方法论、管理体系与制度框架、通用工作流程与规范、风险识别与应对框架、质量保障体系、培训方法论、服务承诺体系等；③ 充实材料定位是「通用能力描述」，用「通常」「一般」「我公司建立了……体系」等表述，严禁把通用材料包装成本项目已发生的事实；④ 严禁虚构具体事实：不编造项目名称、合同金额、客户名称、证书编号、量化指标（招标文件或素材中已有的除外），需要处输出【待填写】占位；⑤ 充实材料必须与章节主题相关，拒绝无关堆砌，不与同级章节重复同类表述，篇幅可充分展开但段落结构清晰、语言克制；"
+  }
+  return "生成模式=严格响应（合并稿三档之严格模式）：① 本节正文以「对标响应」为唯一目标，逐条响应本章/小节对应的招标要求与评分细项原文；② 标准响应句式：引述招标要求并将要求类字眼改为响应表述（「投标人应具备……」改为「我公司具备……」，「应提供……」改为「我公司提供……，完全满足招标文件要求」），改写只动人称与语气、不动任何数值与限定语；③ 响应内容只允许来自：招标文件原文的响应式改写、用户提供的素材资料、主观材料描述（对本项目的理解、服务承诺、配合意愿）；④ 需要截图、证书等客观材料的位置输出【待填写】占位，禁止用文字虚构其内容；⑤ 禁止扩展：不写招标文件未要求的技术细节展开、行业背景、通用方法论等充实性内容；⑥ 篇幅从简，以响应完整、表述清晰为限；"
+}
+
+/** 05 三模式·大纲侧（§5.4）：骨架宽度随模式切换；strict/缺省 返回空串（不追加，大纲 prompt 与现状字节级一致）；
+ *  full 允许增设支撑性技术章（结构层扩展，不涉及新增可验收承诺，符合方案B） */
+export function complianceOutlineRule(mode: ComplianceMode | undefined): string {
+  if (mode === "moderate") {
+    return "技术章骨架范围：以上述常规骨架八章为基准，各技术章的小节数按招标评分点数量决定；不额外增设招标未涉及的顶层技术章；"
+  }
+  if (mode === "full") {
+    return "技术章可扩展骨架：在常规骨架八章基础上，允许按本项目实际需要增设支撑性技术章以体现方案完整性，候选如「总体架构与技术路线、系统集成与数据治理、数据安全与隐私保护、运维服务与 SLA、知识转移与持续改进、同类项目业绩、项目创新点与先进性」；每个新增章必须与本项目直接相关、能落到招标需求或评分点，禁止为凑篇幅增设空泛章节；"
+  }
+  return ""
+}
+
+// ------------------------------ 合并稿 v1.0 底座（R30）：【真实性铁律】+【通用输出要求】公共 SystemPrompt 组件 ------------------------------
+
+/** 标书提示词版本号（2026-09-22 R30 合并稿全量切换；2026-09-23 R31 编号体系+承接标注；R32 批次1 矛盾修复：解析版铁律/三标注圆括号/优先级 P0 句式） */
+export const BID_PROMPT_VERSION = "merged-v1.0/R32-2026-09-23"
+
+/**
+ * 【真实性铁律】（合并稿 §三，最高优先级）：全链（解析/大纲/正文/续写/改写）system 固定前置、逐字一致。
+ * 与合并稿的两处落地适配（均已在台账 R30 留证）：
+ * ① 占位符统一用既有约定【待填写】（稿作【待补充：xxx】）——meta_leftover 事后检查器与元话语禁令均拦「待补充」，
+ *    沿用旧口径避免提示词与检查器互相打架；② 承诺标注（稿 §三铁律5 要求标「【承诺值，请人工确认】」）同理不进正文，
+ *    改用「可在原文/全局事实中核实，拿不准写【待填写】」口径（与承诺克制底线同义）。
+ */
+export const TRUTH_IRON_RULES: string[] = [
+  "只允许基于用户提供的招标文件原文、用户提供的素材与事实资料进行分析和写作，严禁编造招标文件中不存在的要求、数据、条款、评分点；",
+  "引用招标文件的任何信息（数字、日期、金额、分值、条款编号、名称）必须与原文完全一致，每一处引用都必须能回指到原文出处（章节号/页码/附件号）；",
+  "招标文件未提及的信息，明确标注「原文未提及」，严禁用推测、行业惯例或「合理想象」填补；",
+  "严禁虚构事实性材料：包括但不限于不存在的项目案例、合同、客户名称、资质证书、专利、软著、获奖、人员证书、检测数据；确需此类材料的位置输出【待填写】占位，由用户人工补充；",
+  "承诺性表述（服务承诺、工期承诺等）可按行业惯例撰写，但具体数字（工期天数、响应时长、质保年限）必须与招标文件要求一致或更优、可在原文或全局事实中核实；拿不准的一律写【待填写】；",
+  "原文表述模糊、可能理解有误或无法确定的地方，必须显式列出，不得静默跳过。",
+]
+
+/** 【通用输出要求】（合并稿 §三）：与铁律同块前置，逐字一致 */
+export const COMMON_OUTPUT_RULES: string[] = [
+  "只输出任务要求的最终结果，不输出过程、解释、客套话；",
+  "结构化任务只输出指定格式的 JSON 或文本，不包裹 markdown 代码围栏（任务明确要求时除外）；",
+  "分析类结论（解析/归纳/核查）区分三类标注：（原文事实）（直接摘自原文）、（整理归纳）（基于原文的归纳不改变原意）、（原文未提及）；三类标注统一使用圆括号，不使用方括号（避免与正文装饰符号禁令冲突）；正文写作不适用此标注。",
+]
+
+/**
+ * 各阶段 system 共用的铁律前置块（固定文本、缓存友好：同项目多次调用逐字一致）。
+ * R32 批次1 矛盾修复：
+ * - 优先级句式统一为 P0 层（本块 > 任务指令 P1 > 风格规则 P2），不再各处单独自称「最高」而互不排序；
+ * - mode="write"（默认：大纲/章/小节/续写/改写）保留铁律3「未提及必须显式标注」；
+ * - mode="parse"（结构化解析）改写铁律3：缺失项一律省略对应行、由系统统一汇总，
+ *   与 cleanParseSectionContent（删除未明确行 + 末尾追加「原文未提及」汇总）的下游处理对齐，消除自相矛盾。
+ */
+const TRUTH_HEADER_P0 =
+  "【真实性铁律】（最高优先级 · P0：本块优先于任务指令(P1)与风格规则(P2)，任何冲突以本块为准）"
+/** 解析版铁律3：与结构化解析「省略 + 系统汇总」的下游清洗对齐 */
+const TRUTH_RULE3_PARSE =
+  "招标文件未提及 / 无法确定的信息，按本任务的输出指令处理：该省略的直接省略对应行，缺失汇总由系统统一生成，禁止在结构化输出里自行插入「未明确/未提及」类说明行，严禁用推测、行业惯例或「合理想象」填补；"
+
+export function truthPreamble(mode: "write" | "parse" = "write"): string {
+  const rules = TRUTH_IRON_RULES.map((t, i) => (mode === "parse" && i === 2 ? TRUTH_RULE3_PARSE : t))
+  return [
+    TRUTH_HEADER_P0,
+    ...rules.map((t, i) => `${i + 1}. ${t}`),
+    "【通用输出要求】",
+    ...COMMON_OUTPUT_RULES.map((t, i) => `${i + 1}. ${t}`),
+  ].join("\n")
 }
 
 // ------------------------------ 第十三轮改造 1/4：商务/技术章归属判定 ------------------------------
@@ -1633,6 +1931,29 @@ export const DEFAULT_FORMAT_SETTINGS: FormatSettings = {
   sealedPages: null,
 }
 
+/**
+ * 公司《智业软件文档编辑使用规范 V2.1》投标文件排版参数（一键套用）：
+ * A4，边距左 2.8 / 右 2.6 / 上下 2.5cm；正文宋体小四、1.5 倍行距、段前后 0、首行缩进 2 字符；
+ * 表格内容宋体五号；目录到三级（标题样式 1-9）。封面/页眉页脚/智业 Logo 仍须以智业 Word 模板为准，本预设不覆盖暗标设置。
+ */
+export const ZHIYE_STANDARD_FORMAT: Partial<FormatSettings> = {
+  paper: "A4",
+  margins: { top: 2.5, bottom: 2.5, left: 2.8, right: 2.6 },
+  heading: [
+    { font: "黑体", size: "三号", align: "left" },
+    { font: "黑体", size: "四号", align: "left" },
+    { font: "黑体", size: "小四", align: "left" },
+    { font: "黑体", size: "小四", align: "left" },
+    { font: "黑体", size: "小四", align: "left" },
+    { font: "黑体", size: "小四", align: "left" },
+  ],
+  body: { font: "宋体", size: "小四", firstIndent: 2, align: "justify", lineSpacing: "1.5倍" },
+  table: { border: "0.5pt", contentFont: "宋体五号" },
+  toc: true,
+  pageNumber: true,
+  titleNumbering: "1.1.1",
+}
+
 /** 行距值解析「固定值N磅」；非固定值返回 null */
 export function parseFixedLineSpacing(lineSpacing: string): number | null {
   const m = /^固定值(\d+(?:\.\d+)?)磅$/.exec(lineSpacing ?? "")
@@ -1748,6 +2069,8 @@ export type FormatCheckKey =
   | "identity_leak"
   /** 循环 2 批 1-5：措辞本地检查（连续重复句/叠字/括号混用/中英空格，零 AI 零误报设计） */
   | "wording_scan"
+  /** R32 批次2 #1：装饰符号 / Markdown 正文残留扫描（BID_STYLE_RULES 装饰禁令的事后拦截，零 AI） */
+  | "decoration_leftover"
 
 export const FORMAT_CHECK_KEYS: FormatCheckKey[] = [
   "no_color_content",
@@ -1763,6 +2086,7 @@ export const FORMAT_CHECK_KEYS: FormatCheckKey[] = [
   "no_blank_page",
   "identity_leak",
   "wording_scan",
+  "decoration_leftover",
 ]
 
 export const FORMAT_CHECK_LABEL: Record<FormatCheckKey, string> = {
@@ -1779,15 +2103,19 @@ export const FORMAT_CHECK_LABEL: Record<FormatCheckKey, string> = {
   no_blank_page: "不出现空白页标记",
   identity_leak: "暗标身份脱敏（身份词与公司名模式不出现）",
   wording_scan: "措辞检查（连续重复句/叠字/括号混用）",
+  decoration_leftover: "正文不残留装饰符号/Markdown（【】★☆◆■●✓→ 及行首 # - * > 列表符）",
 }
 
 /** 交叉警告规则（暗标页数 × 目标页数联动生成，不在禁则勾选清单内）；number_conflict 为循环 8 A4 本地数字口径核对 */
-export type FormatCheckRule = FormatCheckKey | "sealed_pages_cross" | "number_conflict"
+export type FormatCheckRule = FormatCheckKey | "sealed_pages_cross" | "number_conflict" | "param_escalation" | "metric_conflict" | "meta_leftover"
 
 export const FORMAT_RULE_LABEL: Record<FormatCheckRule, string> = {
   ...FORMAT_CHECK_LABEL,
   sealed_pages_cross: "暗标页数与目标页数交叉核对",
   number_conflict: "数字口径一致性（事实表 × 正文）",
+  param_escalation: "参数加码（承诺优于招标档位，过度响应＝额外验收义务）",
+  metric_conflict: "指标口径唯一性（跨章同指标多值）",
+  meta_leftover: "占位元话语与绝对化承诺残留",
 }
 
 export type FormatCheckHit = { chapter: string; rule: FormatCheckRule; quote: string; level: "warn" | "info" }
@@ -1899,6 +2227,15 @@ const WORDING_REDUPLE_RE = /的的(?!确)|了了|是是|和和|与与/
 const WORDING_CJK_LATIN_RE = /[一-龥][A-Za-z0-9]|[A-Za-z0-9][一-龥]/
 
 /**
+ * R32 批次2 #1：装饰符号 / Markdown 正文残留扫描（BID_STYLE_RULES「排版惯例」「元话语禁令」的事后拦截）。
+ * 合法占位【待填写】【请补充素材】先剥离再判残留，避免误报；markdown 只认行首结构符（标题/列表/引用/加粗），
+ * 不认句中 - 或 | （负数、区间、表格分隔等正常用法），守零误报。
+ */
+const LEGAL_PLACEHOLDER_RE = /【待填写】|【请补充素材】/g
+const DECORATION_GLYPH_RE = /[【】★☆◆◇□■●○▲△▷✔✓✗✘→←↑↓▪▫]/
+const MD_RESIDUE_RE = /^\s*(#{1,6}\s|[-*+]\s|>\s|__|\*\*)/
+
+/**
  * 第十七轮 17C：本地格式规则检查（纯函数，零 AI 费用）——
  * 按勾选禁则逐章扫描正文；每章每规则最多记 2 条命中（防长文刷屏）；
  * 连续空行 >2 命中；半角标点为密度型规则：正文 ≥200 字、命中 ≥8 处且密度 >2% 才触发（误报控制）；
@@ -1930,6 +2267,8 @@ export function formatCheckReport(
     enabled.has("identity_leak") && (formatSettings?.sealed === true || identityList.length > 0)
   // 循环 2 批 1-5：措辞本地检查（零 AI、零误报设计：不查易错别字词典，只查确定性模式）
   const wantWording = enabled.has("wording_scan")
+  // R32 批次2 #1：装饰符号 / Markdown 残留（合法占位剥离后扫 glyph + 行首结构符）
+  const wantDecoration = enabled.has("decoration_leftover")
   ;(chapters ?? []).forEach((c, ci) => {
     const content = c.content ?? ""
     if (!content.trim()) return
@@ -2008,6 +2347,18 @@ export function formatCheckReport(
         if (m) push(title, "wording_scan", quoteAround(line, m.index, m[0].length), "info", "cjk")
       }
     }
+    if (wantDecoration) {
+      for (const line of lines) {
+        const probe = line.replace(LEGAL_PLACEHOLDER_RE, "")
+        const g = DECORATION_GLYPH_RE.exec(probe)
+        if (g) {
+          push(title, "decoration_leftover", quoteAround(probe, g.index, g[0].length), "warn", "glyph")
+          continue
+        }
+        const md = MD_RESIDUE_RE.exec(line)
+        if (md) push(title, "decoration_leftover", quoteAround(line, md.index, md[0].length), "warn", "md")
+      }
+    }
   })
   return { hits, checked_at: new Date().toISOString() }
 }
@@ -2063,6 +2414,20 @@ function extractNumRefs(line: string): NumRef[] {
     out.push({ value, unit, index: idx, raw: m[0] })
   }
   return out
+}
+
+/**
+ * R32 批次2 #4：承诺值优于招标档位的方向判定（接进事实表比对，零新增架构）。
+ * 保守防误报：仅在主题词命中已知“义务方向”、且正文值超出全部基准档位时报警——
+ * 年限/质保类承诺更长＝more 加码；响应/到场/工期类承诺更快＝less 加码；方向未知交回普通 number_conflict。
+ */
+const OVERCOMMIT_MORE_RE = /质保|维保|运维|保修|服务期|保证期|免费/
+const OVERCOMMIT_LESS_RE = /响应|到场|到达|恢复|交付|上线|完工|竣工|工期|RPO|RTO/
+function overCommitDirection(topic: string, bodyVal: number, vals: number[]): "more" | "less" | null {
+  if (!vals.length) return null
+  if (OVERCOMMIT_MORE_RE.test(topic)) return bodyVal > Math.max(...vals) ? "more" : null
+  if (OVERCOMMIT_LESS_RE.test(topic)) return bodyVal < Math.min(...vals) ? "less" : null
+  return null
 }
 
 /**
@@ -2126,12 +2491,24 @@ export function numberConflictHits(factLines: string[], chapters: Chapter[]): Fo
             if ((perKey.get(key) ?? 0) >= 2) continue
             perKey.set(key, (perKey.get(key) ?? 0) + 1)
             const factSide = vals.map((v) => `${v}${n.unit}`).join("/")
-            hits.push({
-              chapter: title,
-              rule: "number_conflict",
-              quote: `${quoteAround(wl, n.index, n.raw.length)}（事实口径「${tp}」为 ${factSide}）`.slice(0, 80),
-              level: "warn",
-            })
+            const verdict = overCommitDirection(tp, n.value, vals)
+            hits.push(
+              verdict
+                ? {
+                    chapter: title,
+                    rule: "param_escalation",
+                    quote: `${quoteAround(wl, n.index, n.raw.length)}（${
+                      verdict === "more" ? "承诺高于招标档位" : "承诺优于招标时限"
+                    }：${n.value}${n.unit} vs 要求 ${factSide}，过度响应＝额外验收义务）`.slice(0, 80),
+                    level: "warn",
+                  }
+                : {
+                    chapter: title,
+                    rule: "number_conflict",
+                    quote: `${quoteAround(wl, n.index, n.raw.length)}（事实口径「${tp}」为 ${factSide}）`.slice(0, 80),
+                    level: "warn",
+                  },
+            )
             if (hits.length >= 30) break outer
           }
         }
@@ -2139,6 +2516,287 @@ export function numberConflictHits(factLines: string[], chapters: Chapter[]): Fo
     }
   }
   return hits
+}
+
+// ---------------------------------------------------------------------------
+// content-guard-02（docs/06 #9 事后一致性拦截，纯本地零 AI）
+// 与 number_conflict 互补：number_conflict 要有全局事实表才比；本组只扫正文自身，
+// 抓同一份标书内部“RPO 写 0 / 又写 <1h”类口径矛盾与绝对化承诺残留（R1 事前块的反向拦截）。
+// 守零误报：只对单位明确、项目级单值的高信号指标做单位归一比对；命中为提醒级，人在交卷体检里复核。
+// ---------------------------------------------------------------------------
+
+const METRIC_SPECS: { name: string; alias: string[]; kind: "time" | "pct" }[] = [
+  { name: "RPO（数据恢复点目标）", alias: ["RPO", "数据恢复点"], kind: "time" },
+  { name: "RTO（业务恢复时间目标）", alias: ["RTO", "业务恢复时间", "故障恢复时间"], kind: "time" },
+  { name: "系统可用性", alias: ["可用性", "可用率", "系统可用"], kind: "pct" },
+]
+
+function timeToSeconds(v: number, unit: string): number {
+  const u = unit.toLowerCase()
+  if (/毫秒|ms/.test(u)) return v / 1000
+  if (/^s$|秒/.test(u)) return v
+  if (/^min$|分钟/.test(u)) return v * 60
+  if (/^h$|小时|时/.test(u)) return v * 3600
+  if (/天|日/.test(u)) return v * 86400
+  if (/周/.test(u)) return v * 604800
+  if (/个月|月/.test(u)) return v * 2592000
+  if (/年/.test(u)) return v * 31536000
+  return v
+}
+
+/** 指标口径唯一性（docs/06 #9 规则1）：跨章同指标出现不同归一化值 → warn，每指标最多 1 条 */
+export function metricConflictHits(chapters: Chapter[]): FormatCheckHit[] {
+  const hits: FormatCheckHit[] = []
+  for (const spec of METRIC_SPECS) {
+    const seen = new Set<string>()
+    const distinct: { display: string; chapter: string }[] = []
+    const register = (key: string, display: string, chapter: string) => {
+      if (seen.has(key)) return
+      seen.add(key)
+      distinct.push({ display, chapter })
+    }
+    ;(chapters ?? []).forEach((c, ci) => {
+      const content = c.content ?? ""
+      if (!content.trim()) return
+      const title = (c.title ?? "").trim() || `第${ci + 1}章`
+      for (const line of content.split(/\r?\n/)) {
+        for (const alias of spec.alias) {
+          let from = 0
+          for (;;) {
+            const ai = line.indexOf(alias, from)
+            if (ai < 0) break
+            from = ai + alias.length
+            const seg = line.slice(ai + alias.length, ai + alias.length + 16)
+            if (spec.kind === "pct") {
+              const m = seg.match(/(\d+(?:\.\d+)?)\s*[%％]/)
+              if (m) register(Number(m[1]).toFixed(4), `${m[1]}%`, title)
+            } else {
+              const m = seg.match(/(\d+(?:\.\d+)?)\s*(毫秒|ms|秒|s|分钟|min|分|小时|h|时|天|日|周|个月|月|年)/i)
+              if (m) register(String(Math.round(timeToSeconds(Number(m[1]), m[2]))), `${m[1]}${m[2]}`, title)
+              else if (/^[\s=＝:：≤<>]*\s*(0|零)/.test(seg)) register("0", "0", title)
+            }
+          }
+        }
+      }
+    })
+    if (distinct.length >= 2) {
+      const a = distinct[0]
+      const b = distinct[1]
+      hits.push({
+        chapter: "（全文）",
+        rule: "metric_conflict",
+        quote: `「${spec.name}」口径不一：${a.display}（${a.chapter}）／${b.display}（${b.chapter}）；若非分层 SLA 请统一`.slice(0, 80),
+        level: "warn",
+      })
+    }
+  }
+  return hits
+}
+
+/** 占位元话语残留（【待填写】为约定合法占位值，不纳入） */
+const META_LEFTOVER_RE = /待定|待补充|待完善|待确认|需人工确认|需补充|此处省略|以下省略|此处略|TBD|TODO|AI\s*生成|由模型生成|模型输出|请填入|请填写|复制内容后|仅保留文本|保留文本|示例占位|占位符/i
+/** 绝对化/保证性承诺残留（与 BID_STYLE_RULES “禁绝对化承诺”事前约束成对） */
+const ABSOLUTE_PROMISE_RE = /确保通过|保证通过|确保达到|保证达到|确保中标|保证中标|万无一失|零风险|百分百通过|100%\s*(?:满足|响应|符合|通过|覆盖)/
+
+/** 占位元话语与绝对化承诺残留（docs/06 #9 规则5）：每章每类最多 2 条命中，总 ≤30 */
+export function metaLeftoverHits(chapters: Chapter[]): FormatCheckHit[] {
+  const hits: FormatCheckHit[] = []
+  const cap = new Map<string, number>()
+  ;(chapters ?? []).forEach((c, ci) => {
+    if (hits.length >= 30) return
+    const content = c.content ?? ""
+    if (!content.trim()) return
+    const title = (c.title ?? "").trim() || `第${ci + 1}章`
+    for (const line of content.split(/\r?\n/)) {
+      const pairs: [RegExp, string][] = [
+        [META_LEFTOVER_RE, "meta"],
+        [ABSOLUTE_PROMISE_RE, "absolute"],
+      ]
+      for (const [re, tag] of pairs) {
+        const m = re.exec(line)
+        if (!m) continue
+        const k = `${title}#${tag}`
+        if ((cap.get(k) ?? 0) >= 2) continue
+        cap.set(k, (cap.get(k) ?? 0) + 1)
+        hits.push({ chapter: title, rule: "meta_leftover", quote: quoteAround(line, m.index, m[0].length), level: "warn" })
+      }
+    }
+  })
+  return hits
+}
+
+/** 自动修复动作（供生成后回显）：rule 复用体检规则名，note 人类可读 */
+export type AutoRepairFix = { rule: FormatCheckRule; note: string }
+
+/** 填值槽位类元话语（明确表示「此处应有一个具体值」）→ 规范化为合法占位【待填写】 */
+const META_SLOT_RE = /待定|待补充|待完善|需补充|请填入|请填写/g
+/** 过程性元话语（AI 腔的过程注释，删掉即可，不留残值）→ 删除 */
+const META_PROC_RE = /此处省略|以下省略|此处略|需人工确认|待确认|AI\s*生成|由模型生成|模型输出|复制内容后|仅保留文本|保留文本|示例占位|占位符|TBD|TODO/gi
+
+/**
+ * R32 批次2「生成后自动定向修复」：对单章正文做**确定性代码清洗**（零 AI、零费用、零幻觉），
+ * 只处理两类可安全自动修的命中——「不改事实/数值语义的纯文本清洗」与「按招标基线把超承诺值降回」：
+ *  ① 装饰/Markdown（decoration_leftover / no_bold / no_underline）：剥离行首 # - * > 结构符、** __ <u> 标记、装饰符号（合法占位【待填写】【请补充素材】先保护后还原）；
+ *  ② no_empty_line_consecutive：≥3 连续空行压成 1 行；
+ *  ③ meta_leftover：填值槽位（待定/待补充/请填入…）→【待填写】；过程性元话语（此处省略/TBD/AI生成…）→ 删除；
+ *     —— 绝对化承诺（确保通过/零风险…）需语言重写、非确定性安全修，保留为 warn 交人工，本函数不动；
+ *  ④ param_escalation：承诺值高于/优于招标档位、且招标基线为**单一确定值**时，把该处数字就地降回基线值（基线多档=不确定，留 warn 不自动改）；
+ *  ⑤ no_half_width_punct：仅把紧跟汉字的半角 , ; : ! ? 转全角（排除 3,000 等数字千分位与英文语境）。
+ * number_conflict / metric_conflict / identity_leak / sealed 页数等一律不自动改，交人工复核。
+ * 清洗类规则是否执行尊重项目 format_check_items 勾选；元话语与加码属常开体检项，不受勾选限制。
+ * 正文无变化时 applied 为空（调用方据此决定是否回写/提示）。
+ */
+export function autoRepairChapter(
+  content: string,
+  factLines: string[],
+  items: FormatCheckKey[],
+): { content: string; applied: AutoRepairFix[] } {
+  if (!content || !content.trim()) return { content, applied: [] }
+  const enabled = new Set<FormatCheckKey>(items ?? [])
+  const wantDecor = enabled.has("decoration_leftover")
+  const wantBold = enabled.has("no_bold")
+  const wantUnderline = enabled.has("no_underline")
+  const wantEmpty = enabled.has("no_empty_line_consecutive")
+  const wantPunct = enabled.has("no_half_width_punct")
+  const glyphG = new RegExp(DECORATION_GLYPH_RE.source, "g")
+
+  // 招标基线表（topic→unit→values），与 numberConflictHits 同口径；仅取单一档位的 topic 用于降档
+  const baseline = new Map<string, Map<string, number[]>>()
+  for (const rawLine of factLines ?? []) {
+    const fl = (rawLine ?? "").trim()
+    if (!fl || fl.includes("【需人工确认】")) continue
+    const topic = factTopicOf(fl)
+    if (!topic) continue
+    const head = fl.match(/^[^：:=]{2,20}[：:=]/)
+    const body = head ? fl.slice(head[0].length) : fl
+    for (const n of extractNumRefs(body)) {
+      let um = baseline.get(topic)
+      if (!um) {
+        um = new Map()
+        baseline.set(topic, um)
+      }
+      const vs = um.get(n.unit) ?? []
+      if (!vs.includes(n.value)) vs.push(n.value)
+      um.set(n.unit, vs)
+    }
+  }
+  const topics = [...baseline.keys()]
+
+  let decorLines = 0
+  let metaLines = 0
+  let punctLines = 0
+  let escCount = 0
+  let emptyCollapsed = 0
+
+  const HALF_MAP: Record<string, string> = { ",": "，", ";": "；", ":": "：", "!": "！", "?": "？" }
+
+  const lines = content.split(/\r?\n/)
+  const out: string[] = []
+  for (const raw of lines) {
+    let line = raw
+
+    // ① 装饰 / Markdown 残留（合法占位先剥离保护，处理完再放回）
+    if (wantDecor || wantBold || wantUnderline) {
+      const slots: string[] = []
+      let s = line.replace(LEGAL_PLACEHOLDER_RE, (m) => {
+        slots.push(m)
+        return `\u0000${slots.length - 1}\u0000`
+      })
+      const before = s
+      if (wantBold) s = s.replace(/\*\*([^*\n]{1,60})\*\*/g, "$1").replace(/__([^_\n]{1,60})__/g, "$1")
+      if (wantUnderline) s = s.replace(/<u>([\s\S]{0,60}?)<\/u>/gi, "$1")
+      if (wantDecor) {
+        s = s.replace(/^(\s*)(?:#{1,6}\s+|[-*+]\s+|>\s+)/, "$1")
+        s = s.replace(glyphG, "")
+      }
+      if (s !== before) {
+        decorLines += 1
+        line = s.replace(/\u0000(\d+)\u0000/g, (_, i) => slots[Number(i)] ?? "")
+      } else {
+        line = s.replace(/\u0000(\d+)\u0000/g, (_, i) => slots[Number(i)] ?? "")
+      }
+    }
+
+    // ③ 元话语规范化（先保护【待填写】避免二次包裹）
+    {
+      const before = line
+      line = line.replace(META_SLOT_RE, "【待填写】").replace(META_PROC_RE, "")
+      if (line !== before) metaLines += 1
+    }
+
+    // ⑤ 半角标点转全角（仅紧跟汉字后）
+    if (wantPunct) {
+      const before = line
+      line = line.replace(/([\u4e00-\u9fa5])([,;:!?])/g, (_, c, p) => c + (HALF_MAP[p] ?? p))
+      if (line !== before) punctLines += 1
+    }
+
+    // ④ 参数加码降档（正文承诺值超/优于招标单一基线档 → 就地降回基线值）
+    if (topics.length && isPunctDensityBodyLine(line) && !NUM_ID_LINE_RE.test(line)) {
+      const hitTopics = topics.filter((tp) => tp.length >= 2 && line.includes(tp))
+      if (hitTopics.length) {
+        const edits: { start: number; end: number; text: string }[] = []
+        for (const n of extractNumRefs(line)) {
+          for (const tp of hitTopics) {
+            const vals = baseline.get(tp)?.get(n.unit)
+            if (!vals || vals.length !== 1) continue // 多档基线不确定，不自动改
+            const verdict = overCommitDirection(tp, n.value, vals)
+            if (!verdict) continue
+            const target = vals[0]
+            if (target === n.value) continue
+            const suffix = n.raw.slice(String(n.value).length)
+            const text = `${target}${suffix}`
+            edits.push({ start: n.index, end: n.index + n.raw.length, text })
+            escCount += 1
+            break
+          }
+        }
+        if (edits.length) {
+          edits.sort((a, b) => b.start - a.start)
+          for (const e of edits) line = line.slice(0, e.start) + e.text + line.slice(e.end)
+        }
+      }
+    }
+
+    out.push(line)
+  }
+
+  // ② 连续空行折叠
+  let finalLines = out
+  if (wantEmpty) {
+    finalLines = []
+    let blank = 0
+    for (const l of out) {
+      if (!l.trim()) {
+        blank += 1
+        continue
+      }
+      if (blank > 2) {
+        emptyCollapsed += blank - 1
+        finalLines.push("")
+      } else {
+        for (let i = 0; i < blank; i++) finalLines.push("")
+      }
+      blank = 0
+      finalLines.push(l)
+    }
+    if (blank > 2) {
+      emptyCollapsed += blank - 1
+      finalLines.push("")
+    } else {
+      for (let i = 0; i < blank; i++) finalLines.push("")
+    }
+  }
+
+  const applied: AutoRepairFix[] = []
+  if (decorLines) applied.push({ rule: "decoration_leftover", note: `清理装饰符号/Markdown 残留 ${decorLines} 行` })
+  if (metaLines) applied.push({ rule: "meta_leftover", note: `占位/过程性元话语规范化 ${metaLines} 行` })
+  if (escCount) applied.push({ rule: "param_escalation", note: `承诺值降回招标基线 ${escCount} 处` })
+  if (punctLines) applied.push({ rule: "no_half_width_punct", note: `半角标点转全角 ${punctLines} 行` })
+  if (emptyCollapsed) applied.push({ rule: "no_empty_line_consecutive", note: `连续空行折叠 ${emptyCollapsed} 处` })
+
+  const next = finalLines.join("\n")
+  return { content: applied.length ? next : content, applied }
 }
 
 export type BidProjectRecord = {
@@ -2490,11 +3148,8 @@ export function extractJsonLoose(text: string): unknown {
     if (openIdx < 0) throw new Error("AI 返回内容不是有效 JSON，请重试")
     candidate = t.slice(openIdx)
   }
-  try {
-    return JSON.parse(candidate)
-  } catch {
-    return JSON.parse(repairJsonCandidate(candidate))
-  }
+  // ai-stability-01：逐级放宽（原样→结构修复→转义字符串内裸控制字符→叠加），全失败才抛可读错误，不再裸抛 SyntaxError
+  return parseJsonTolerant(candidate, repairJsonCandidate)
 }
 
 function asString(v: unknown): string {
@@ -3345,7 +4000,7 @@ export function mergeChunkReports(reports: ParseReport[], keys: string[], scope:
       seen.add(norm)
       lines.push(t)
     }
-    const content = cleanParseSectionContent(lines.join("\n"))
+    const content = clampParseSectionContent(key, cleanParseSectionContent(lines.join("\n")))
     return {
       key,
       title: parseSectionTitle(key),
@@ -3464,6 +4119,47 @@ export const BID_STYLE_RULES: string[] = [
   // 第十六轮 A：同级互补与朴实文风（融合开源标书智能体正文提示词经验）
   "同级互补：只展开本章/本小节标题对应的独特主题，其他章标题已覆盖的内容（如进度计划章写过工期安排，质量保障章不再重写）一律不重复展开，保持内容独特性与互补性；",
   "朴实无华：这是技术方案不是宣传报告，直接陈述结论、参数与措施，不写开场白、不写拔高式总结、不做愿景铺陈；",
+  // 公司招投标培训（第一期）⑤技术条款编写 / ②投标文件编制技巧：参数忠实与承诺克制
+  "技术参数忠实：引用招标技术参数、指标与条款表述时逐字照抄进正文，不漏项、不改原意、不换说法、不做「优化改写」；",
+  "承诺克制（最小值响应）：功能点、响应时间、故障到场时限、质保与运维期等承诺按满足招标要求的最小档响应，禁止超出招标要求多加功能或拔高指标——过度响应就是验收义务；仅投标有效期、授权期限、交货期等形式项在招标未明确时按从宽口径自信满足；",
+  "禁绝对化承诺：不得使用「确保通过 / 保证中标 / 满分响应 / 100% 满足 / 万无一失 / 零风险 / 完全无误差」等绝对化、保证性表述；可承诺处一律用「满足招标要求 / 按招标文件响应 / 承诺……（可验收的具体措施与量化值）」等可核实口径，把结论落在证据上而非形容词上；",
+]
+
+/**
+ * 第 1 轮止血（防翻车增量三条，见 docs/05 §4）：与 BID_STYLE_RULES 同级、注入正文生成器。
+ * 只补 BID_STYLE_RULES 未覆盖的净增量——规模量级自洽 / 政策法规时效 / 术语文字统一；
+ * 红线「技术参数忠实」「承诺克制」「防编造占位」「禁装饰符号」已在 BID_STYLE_RULES，此处不重复。
+ * 与「事后一致性检查器」(docs/06 #9) 是事前约束/事后拦截一对，规则口径共享本节。
+ */
+export const FULLTEXT_GUARD_RULES: string[] = [
+  "规模量级自洽：架构选型与技术配置的规模必须与项目预算量级、医院等级和招标范围相匹配，禁止在数百万级预算项目里堆砌「双活数据中心 / PB 级存储 / 全栈容器中台」等明显超配的旗舰架构；招标未明确要求的高规格设施不得自行写入，规模拿不准时以招标原文界定的范围为上限；",
+  "政策法规时效：引用国家政策、行业标准、规划文件时须为其现行有效的版本与名称，禁止把已过期的阶段性目标当作建设依据（如当前已越过原文件有效期仍写「到 2025 年底前」「《2021—2025 年行动方案》」）；不确定是否现行时，统称「国家及行业现行有效的相关政策与标准」，不写死过期文件名与年份区间；",
+  "术语文字统一：同一指标、系统、评级在全篇使用同一中文名称与口径（如「电子病历系统应用水平分级评价」不要一会儿简称「EMR 评级」一会儿「病历评分」），英文缩写首次出现附中文全称；禁止错别字、无必要的中英文混排与同一概念多名并存；",
+]
+
+/**
+ * docs/05 §2「技术参数响应边界」落地（第 14 轮）：把「允许响应性包装 / 禁止实质性变更」
+ * 从一句原则变成可执行清单 + 自检动作。
+ * 与 BID_STYLE_RULES 的「技术参数忠实」「承诺克制（最小值响应）」是同一红线的可操作化补充
+ * ——那两条给底线，这里给判定标准与逐条反例；属「加约束」，不改任何既有约束的含义，
+ * 因此对存量项目只增不减、方向更严，不会造成新旧内容口径冲突。
+ * 注入正文生成器（章 / 小节 / 续写）与改写器（refine）。
+ */
+export const PARAM_RESPONSE_BOUNDARY_RULES: string[] = [
+  "技术参数响应边界（防废标，所有生成模式均不放宽）：只允许「响应性包装」，禁止「实质性变更」。允许的改写仅三类且必须保留原文全部限定信息——① 人称语态转换（招标「投标人应提供 7×24 小时服务」→ 正文「本项目提供 7×24 小时服务，满足招标要求」）；② 疑问或条件句转陈述句（招标「是否支持 ≥500 并发」→ 正文「本项目支持 500 并发用户，满足招标要求」）；③ 在原文后补响应结论词（「满足招标文件要求」「完全响应」）；",
+  "实质性变更禁令（逐条自检，命中即改回原文口径）：① 改数值（≥500 并发写成 ≥1000、≤8 小时到场写成 ≤4 小时、3 年质保写成 5 年）；② 改单位或口径（Mbps 换 Gbps、并发用户换注册用户、工作日换自然日）；③ 改范围（部分科室换全院、试点换全面推广）；④ 删限定语（漏掉「含税」「含运费」「含三年质保」「含安装调试」）；⑤ 无依据加码（招标未要求的功能主动承诺）。无法逐字对应的，改写为「按招标文件要求响应」或【待填写】，不得自行给一个看起来合理的值；",
+  "参数自检动作（每章输出前执行一次，不输出自检过程）：逐句核对本章出现的每一个数值、单位、范围与限定语，确认其与招标原文逐字一致；凡本章承诺值高于招标要求档位的，一律降回招标档位——高出部分不构成加分，只构成更高的验收义务。",
+]
+
+/**
+ * docs/07 §5.3 + §5.4 落地（第 18 轮）：把事后检查器规则前移为事前「输出前自检」，并注入实测历史缺陷反例。
+ * 与 PARAM_RESPONSE_BOUNDARY_RULES 同为「加约束」——只增不减、方向更严，不改任何既有约束的含义；
+ * 反例是测试报告实测出过的真实负样本（模型对具体反例的遵守度远高于抽象禁令）。
+ * 注入正文生成器（章 / 小节 / 续写）与改写器（refine），紧随参数响应边界之后，与 §5.1 同款接入模式。
+ */
+export const PRE_OUTPUT_SELFCHECK_RULES: string[] = [
+  "输出前自检（每章输出前执行一次，不输出自检过程、只输出正文）：① 本章是否出现招标未要求的服务项或功能承诺？有则删除；② 本章每个数值是否能在招标原文或【全局事实】中找到出处？无出处则改【待填写】；③ 本章指标是否与前文已给值一致？不一致则沿用前文唯一值；④ 是否残留「待补充 / TODO / 占位」等元话语？有则删除；⑤ 是否出现装饰符号（【】★●→）或 Markdown 标记？有则改为纯文本；",
+  "历史缺陷反例（以下为实测出过的问题，同类错误禁止重犯）：同一指标全篇只能一个值（如 RPO 写 0 又写 <1 小时、病历缺陷率写 1% 又写 2% 均属自相矛盾，必须统一）；预算量级与架构规模要相称（数百万预算不得承诺「双活数据中心 + K8s 容器云 + PB 级存储」）；政策引用须现行有效（不得仍写「2025 年前」「《2021—2025 年行动方案》」等已过期表述）；术语与文字统一（禁止「三级甲院」等错别字、禁止无必要中英夹杂）；禁止任何测试占位符残留（如「13131医院」）；禁止绝对化承诺（「确保通过五级评定」「确保获得满分」「数据准确率 100%」一律改为可核实口径）。",
 ]
 
 const IMPLICIT_CONSTRAINT_PATTERN = /(不得超过|不得少于|不低于|至少|必须包含|必须涵盖|视为|总页数|页数不|份数)/
@@ -3558,11 +4254,13 @@ export function buildTenderParseMessages(tenderText: string, cfg: ParseConfig, o
     .join("\n")
   const system = [
     "你是一位深耕医疗信息化行业招投标十余年的资深标书专家，长期为医院 HIS、EMR、LIS、PACS、集成平台、数据中心、互联网医院等项目做投标决策与标书评审，熟悉《政府采购法》《招标投标法》及各地公共资源交易中心的评标规则。",
+    truthPreamble("parse"),
     "当前任务：从招标文件全文中提取结构化要点，供投标团队快速决策与编制投标文件。",
     `本次只输出以下解析项（未列出的项一律不要输出）：\n${specLines}`,
     "提取铁律：以招标文件原文为准，禁止编造；某项内容找不到时省略对应行；每项内容为纯文本多行，行内不使用 markdown 符号；",
     "要点化铁律（2026-09-16 用户要求只提重点）：每项内容必须是【要点清单】——一行一条要点，每条直接给出硬指标或结论（金额/限价/工期/天数/份数/比例/资质证照名称/标准等级/系统名称/人员数量），形如「预算金额：3500 万元」「免费质保期：验收合格起 5 年」「核心系统上线：开工通知后 30 日历天内」；",
     "禁止整段抄原文、禁止复述章节标题、禁止「本项目旨在…」式铺垫句；描述性内容（背景/技术特点/实施范围）压缩为「主题词：核心短语」式要点（如「一体化管理：两院系统兼容、数据统一」「信创适配：国产服务器/操作系统/数据库」）；单条要点 ≤60 字，每项 ≤25 条，宁缺毋滥；",
+    "出处回指（合并稿 §三铁律 2 的解析侧落地）：每条要点能在原文定位出处时，行末以简短括号标注来源，形如（出处：第三章3.2）或（出处：P17）；出处标注不计入 60 字要点上限、本身不超过 12 字；无法确定出处时不标注，禁止臆造出处；",
     "分块解析铁律：分段解析时，非首段只输出本段新出现的关键字段；已在首段或标题中可确定的字段禁止重复输出；本段找不到的字段直接省略对应行，禁止输出「未明确/未提及」类说明行（缺失汇总由系统统一生成）；",
     "输出严格 JSON，键为上述解析项 key，值为多行纯文本（换行用 \\n），禁止解释文字、禁止 markdown 代码围栏，格式示例：",
     `{${keys.map((k) => `"${k}": "……"`).join(", ")}}`,
@@ -3573,6 +4271,135 @@ export function buildTenderParseMessages(tenderText: string, cfg: ParseConfig, o
     { role: "system", content: system },
     { role: "user", content: user },
     { role: "user", content: "请按上述解析项提取并输出 JSON。" },
+  ]
+}
+
+/**
+ * 2026-09-23 用户反馈轮（评分办法解析不到）：本地定位招标文件中的评分办法相关章节，零 AI 调用。
+ * 背景：逐项分段解析时每段只看 ~14k 窗口，评分表跨段断裂/窗口内无完整表是「评分解析不到」主因；
+ * 用标题同义词（评标办法/评分办法/评分标准/评审细则/技术评分表/商务评分表/附件…）扫描标题行，
+ * 命中后取到下一个章/件级标题为止；多处命中（正文+前附表/附件）合并，单块 ≤30000 字、总 ≤40000 字。
+ * 返回空串 = 本地未定位到（调用方回退全文分段解析，行为同现状）。
+ */
+export function extractScoringSectionExcerpt(text: string): string {
+  const src = (text ?? "").trim()
+  if (!src) return ""
+  const lines = src.split(/\r?\n/)
+  // 标题行：可带「第X章/部分/篇」「附件X」「一、」「2.3」前缀 + 评分类关键词，行短且不含句读（排除正文叙述句）
+  const headingRe =
+    /^\s*(?:第\s*[0-9一二三四五六七八九十百]+\s*(?:章|部分|篇)[\s、.．]*)?(?:附\s*件\s*[0-9一二三四五六七八九十甲乙丙丁]*[\s、.．:：]*)?(?:[0-9]+(?:\.[0-9]+)*\s*)?(?:评标办法|评标方法|评标方案|评分办法|计分办法|评审办法|评审因素|评审要素|评分标准|评标标准|评审标准|评分细则|评标细则|详细评审|综合评分|技术评分|商务评分|价格评分|打分表|评分表|评分见附件)/
+  const isHeadingLine = (line: string) => headingRe.test(line) && line.length <= 60 && !/[。；;]/.test(line)
+  // 块终止行：下一个章/件/部分级标题（不用「一、二、」中文序号作边界——评分办法内部小节常用该格式，误切会把评分表本身切掉；也不用小数编号）
+  const isChapterBoundary = (line: string) =>
+    /^\s*(?:第\s*[0-9一二三四五六七八九十百]+\s*(?:章|部分|篇)|附\s*件\s*[0-9一二三四五六七八九十]+\s*[、.．:：]?\s*\S{0,40}$)/.test(line)
+  const blocks: string[] = []
+  let i = 0
+  while (i < lines.length && blocks.length < 4) {
+    if (!isHeadingLine(lines[i].trim())) {
+      i += 1
+      continue
+    }
+    const buf: string[] = []
+    let chars = 0
+    let j = i
+    for (; j < lines.length; j++) {
+      if (j > i && (isChapterBoundary(lines[j]) || isHeadingLine(lines[j].trim()))) break
+      chars += lines[j].length + 1
+      if (chars > 30000) break
+      buf.push(lines[j])
+    }
+    const block = buf.join("\n").trim()
+    // 与已收块重叠（前缀命中）则跳过，避免同一评分表重复入块
+    const normAll = blocks.join("\n").replace(/\s+/g, "")
+    if (block.length >= 20 && !normAll.includes(block.replace(/\s+/g, "").slice(0, 60))) blocks.push(block)
+    i = j > i ? j : i + 1
+  }
+  if (!blocks.length) return ""
+  let out = ""
+  for (const b of blocks) {
+    if (out.length + b.length + 2 > 40000) break
+    out += `${out ? "\n\n" : ""}${b}`
+  }
+  return out
+}
+
+/**
+ * Issue 2（逐项独立提示词重构）：为单个解析项构造专属 System/User 提示词，每项一次独立 LLM 调用。
+ * - overview / tech_score 采用参考实现口径（项目概述七维度尽量用原文、技术评分逐项含档位给分条件与出处并自检）；
+ * - 其余项沿用该项 guide 的要点化口径；
+ * - 输出仍统一为 { "<key>": "多行纯文本" }，以复用既有清洗/合并/评分解析（extractScoringFromText）与下游大纲/覆盖矩阵/评标。
+ */
+export function buildSectionParseMessages(
+  key: string,
+  tenderText: string,
+  opts?: { /** 输入非招标文件全文而是本地定位的评分办法节选时，标明来源并约束「摘录内没有就省略，不得凭常识补写」 */ scoringExcerptMode?: boolean },
+): LlmMessage[] {
+  const d = parseSectionDef(key)
+  const title = d?.title ?? key
+  const jsonContract = `输出严格 JSON，只含一个键 "${key}"，值为该项的多行纯文本（换行用 \\n），行内不使用 markdown 符号，禁止解释文字、禁止代码围栏。格式示例：{"${key}": "……"}`
+  const base = [
+    "你是一位深耕医疗信息化行业招投标十余年的资深标书专家，长期为医院 HIS、EMR、LIS、PACS、集成平台、数据中心、互联网医院等项目做投标决策与标书评审，熟悉《政府采购法》《招标投标法》及各地公共资源交易中心的评标规则。",
+    truthPreamble("parse"),
+  ]
+  let task: string
+  if (key === "overview") {
+    task = [
+      `当前任务：分析用户发来的招标文件，提取并总结「${title}」。`,
+      "请重点覆盖以下方面，尽量使用招标文件原文内容、不要自行编写：",
+      "1. 项目名称和基本信息（招标编号、项目类型、采购人、预算金额、项目地址）；",
+      "2. 项目背景和目的；",
+      "3. 项目规模和预算；",
+      "4. 项目时间安排（工期、投标截止、开标等关键节点）；",
+      "5. 项目要实施的具体内容（建设内容与范围）；",
+      "6. 主要技术特点（核心系统与关键技术要求）；",
+      "7. 其他关键要求。",
+      "工作要求：保持提取信息的全面性与准确性，尽量用原文；只关注与项目实施有关的内容，不提取商务信息（报价、保证金、资质、废标条款等不归本项）；能定位出处时在行末以（出处：…）简短标注；每行一条「字段名：内容」。",
+    ].join("\n")
+  } else if (key === "tech_score") {
+    task = [
+      `当前任务：从招标文件中高效提取「${title}」相关内容，供技术方案 1 对 1 应答式编写。`,
+      "目标定位：重点识别与「技术评分」「评标办法」「评标方法」「评审办法」「评分标准」「评审要素/评审因素」「技术参数/技术要求/技术方案」「打分表」相关的章节与附表；忽略商务、价格、资质等非技术评分项。",
+      "评分表可能不在正文而在「评标办法前附表」「附件：技术评分细则」等附表里，逐处定位后合并提取；评分表为宽表时按行提取，一个评分项的一行不得因拆列而丢失名称、分值、标准三者中的任何一项。",
+      "对每一项技术评分项逐行输出，每行一条，格式：评分项名称（N 分）：评分标准（详细档位与给分条件，如「≥95%得满分，每低1%扣0.5分」）（出处：章节/条款/页码）。",
+      "处理规则：若没有明确的「技术评分表」，据上下文判断评分项并整理成上述格式；存在二级子项用编号体现层级；分值统一为「分」或「%」并保留原文单位表述；分值必须与原文一致。",
+      "自检：尽量覆盖全部技术评分项不遗漏；技术分合计应与原文声明的技术部分总分一致。",
+    ].join("\n")
+  } else if (key === "biz_score") {
+    // 2026-09-23 用户反馈轮：商务评分升为关键项后补专属口径（与 tech_score 同构，不再只靠 guide 一句）
+    task = [
+      `当前任务：从招标文件中提取「${title}」相关内容，供商务标应答与得分策略制定。`,
+      "目标定位：重点识别评分办法（评标办法）中的商务部分与价格部分：商务/信誉/业绩/服务类评分表、价格评分公式、技术-商务-价格分分值划分说明；忽略技术评分项（另有专门解析项承担）。",
+      "对每一项商务/价格评分项逐行输出，每行一条，格式：评分项名称（N 分）：评分标准或计算公式（含档位与给分条件）（出处：章节/条款/页码）。",
+      "价格评分若只给计算公式（如「投标基准价/投标价×30」），公式完整抄录为一条「价格分（N 分）：公式…」；商务与技术的边界按原文分值表归属判断，无法判断的按商务处理并注明。",
+      "自检：商务与价格分合计应与原文声明的商务（+价格）部分总分一致；找不到商务评分时输出「原文未提及：商务评分办法」。",
+    ].join("\n")
+  } else if (key === "void_items") {
+    // OpenBidKit 借鉴：概念边界 + 同义表达归并 + 「原文明确 / 经验补充」分层口径，经验项克制可溯源
+    task = [
+      `当前任务：提取并分析招标文件中的「${title}」。`,
+      "概念边界：「无效投标」指投标人、投标文件、签章密封、递交时间、报价、保证金、资格条件、实质性响应等原因导致投标被认定为无效、否决、不予受理或按无效响应处理的情形；「废标项」指可能导致项目废标、采购失败、重新招标、终止评审、有效投标人不足或实质性响应不足的条款或风险项。",
+      "原文使用「否决投标」「投标无效」「不予受理」「无效响应」「重大偏差」「实质性偏离」「废标情形」等同义表达的，一并按上述边界归类提取。",
+      "输出分两层、每行一条：先列原文明确出现的条款，尽量保留原文关键句，行首加「条款：」；再补原文未明确提及、但结合本项目类型与招投标经验判断非常重要的高风险遗漏项，行首加「重点补充：」并用一句话说明为何需要关注，经验补充最多 3 条，没有明显高风险遗漏则不输出补充行；",
+      "禁止罗列泛泛的通用清单、禁止把与本项目无关的常见废标项硬凑进来；电子标项目须覆盖 CA 有效期、电子签章、加密上传、解密时限等电子投标废标风险。",
+    ].join("\n")
+  } else {
+    task = [
+      `当前任务：从招标文件中提取「${title}」。`,
+      `提取口径：${d?.guide ?? ""}`,
+      "要点化：一行一条要点，直接给硬指标或结论（金额/限价/工期/天数/份数/比例/资质证照名称/标准等级/系统名称/人员数量），尽量用原文关键表述；能定位出处时行末以（出处：…）简短标注；找不到则省略对应行，禁止臆造。",
+      "职责互斥：同一信息若其他解析项更合适承担（如项目基本信息归项目概述、技术/商务评分明细归各自评分项、时间节点归投标关键节点），本项不重复提取。",
+    ].join("\n")
+  }
+  const user = opts?.scoringExcerptMode
+    ? `【评分办法相关章节摘录（系统按标题关键词从招标文件全文中本地定位并截取，可能不含其他章节）】\n${clipText(tenderText, MAX_TENDER_CHARS)}`
+    : `【招标文件全文】\n${clipText(tenderText, MAX_TENDER_CHARS)}`
+  const tail = opts?.scoringExcerptMode
+    ? "请只在上述摘录内提取，摘录内没有的内容直接省略对应行，禁止凭常识或经验补写评分项与分值；若摘录明显不是评分办法章节（如目录条目、通知性文字），请输出空字符串。"
+    : `请只提取「${title}」并按上述 JSON 格式输出。`
+  return [
+    { role: "system", content: [...base, task, jsonContract].join("\n") },
+    { role: "user", content: user },
+    { role: "user", content: tail },
   ]
 }
 
@@ -3593,10 +4420,15 @@ export function buildBidOutlineMessages(
     refTemplateOutline?: string[]
     /** 用户反馈轮项 3：是否输出商务标骨架章（缺省 true；false 时商务段整体替换为「不输出任何商务章节」） */
     includeBiz?: boolean
+    /** 05 三模式（§5.4）：合规严格度驱动技术章骨架宽度（缺省/strict=现状零改动；full 允许增设支撑性技术章） */
+    complianceMode?: ComplianceMode
   },
 ): LlmMessage[] {
   const includeBiz = opts?.includeBiz !== false
   const scoringText = combinedScoringText(report)
+  // R31：编号评分项列表，为大纲承接标注提供稳定 R-id 链
+  const numberedItems = numberScoringItems(report)
+  const numberedScoringText = numberedItems.length ? numberedScoringDetailLines(numberedItems) : scoringText
   const bizText = sectionText(report, "biz_score")
   const respText = sectionText(report, "response_req")
   const techText = sectionText(report, "delivery_req")
@@ -3641,11 +4473,18 @@ export function buildBidOutlineMessages(
       ]
   numbered.push(
     "技术部分（part=\"tech\"）为详细响应骨架，必须以评分办法为纲：逐条覆盖下面技术评分的评分点，每个重要评分项都要落到具体章或节标题；",
+    "事实来源排他（防幻觉，2026-09-23 用户反馈轮：目录不一致/编造招标要求）：大纲中的章节主题、顺序与评分承接只能以下面【技术评分办法】【商务评分办法】【技术方案与响应要求】【招标文件规定的投标文件目录】【★/▲ 重点条款】等注入内容与常规骨架为依据；禁止编造注入内容中不存在的评分项、分值、条款编号或目录要求，禁止把行业常识写成「响应招标文件第X条」式标题；某方面无注入依据时用常规骨架命名，不得假称招标要求；",
+    "承接标注（R31）：每个技术章下的叶子节点（末级节/条）必须在 description 字段中标注其承接的评分编号，格式 `[响应:R1]` 或 `[响应:R1,R3]`（多个逗号分隔）；一个叶子只标注其直接相关的 1-3 个编号；商务骨架章不标注；不承接任何评分项的叶子节点可省略 description；",
     "响应文件要求须逐条落实（组成、格式、签字盖章与装订要求对应专门章节或节）；",
     "技术部分常规骨架参考：项目理解与需求分析、总体建设方案、详细技术方案（按系统分章）、项目实施组织与进度计划、质量保障与测试验收、培训方案、售后服务与运维保障、应急预案；再按本招标文件增删；",
     "标题只写名称、不带编号、不以标点结尾；层级命名规范：一级=部分/章，二级=节，三级=条；",
     "节/条标题必须用具体响应式命名：主题词+落点词（设计/范围/保障/机制/流程等），形如「设备兼容性设计」「多模态数据处理范围」「知识更新机制」；禁止「概述/说明/介绍/相关内容/其他」式空泛标题；",
   )
+  // 05 三模式（§5.4）：骨架宽度随模式追加（strict/缺省 不追加，大纲 prompt 与现状字节级一致）
+  const outlineModeRule = complianceOutlineRule(opts?.complianceMode)
+  if (outlineModeRule) {
+    numbered.push(outlineModeRule)
+  }
   // 第十七轮 17A：招标已规定响应目录时，章结构遵循其顺序与层级（置于硬性要求前列）
   if (outlineReqText) {
     numbered.splice(
@@ -3676,15 +4515,16 @@ export function buildBidOutlineMessages(
   if (clauseList.length) {
     numbered.push(
       `下面【招标要求条款清单】共 ${clauseList.length} 条，每条条款必须至少对应一个技术章（part="tech"）下的大纲叶子节点（无子节点的章/节/条），对应叶子节点的标题须包含该条款的核心词，禁止遗漏任何条款；商务骨架章不承担条款覆盖，coverage 的落点一律填技术章的叶子标题；`,
-      '输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式（顶层章必须带 part 字段；coverage 逐条给出条款在技术章里的落点叶子标题，clause_id 与清单一致）：{"outline":[{"title":"商务章标题","part":"biz","children":[{"title":"小节标题","children":[]}]},{"title":"技术章标题","part":"tech","children":[{"title":"节标题","children":[{"title":"条标题","children":[]}]}]}],"coverage":[{"clause_id":"c1","node_title":"对应叶子节点标题"}]}',
+      '输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式（顶层章必须带 part 字段；技术叶子节点带 description 承接标注；coverage 逐条给出条款在技术章里的落点叶子标题，clause_id 与清单一致）：{"outline":[{"title":"商务章标题","part":"biz","children":[{"title":"小节标题","children":[]}]},{"title":"技术章标题","part":"tech","children":[{"title":"节标题","children":[{"title":"条标题","children":[],"description":"[响应:R1,R3]"}]}]}],"coverage":[{"clause_id":"c1","node_title":"对应叶子节点标题"}]}',
     )
   } else {
     numbered.push(
-      '输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式（顶层章必须带 part 字段）：{"outline":[{"title":"商务章标题","part":"biz","children":[{"title":"小节标题","children":[]}]},{"title":"技术章标题","part":"tech","children":[{"title":"节标题","children":[{"title":"条标题","children":[]}]}]}]}',
+      '输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式（顶层章必须带 part 字段；技术叶子节点带 description 承接标注）：{"outline":[{"title":"商务章标题","part":"biz","children":[{"title":"小节标题","children":[]}]},{"title":"技术章标题","part":"tech","children":[{"title":"节标题","children":[{"title":"条标题","children":[],"description":"[响应:R1,R3]"}]}]}]}',
     )
   }
   const rules = [
     "你是一位深耕医疗信息化行业十余年的资深投标顾问，擅长按评分办法组织技术标结构，确保每一分都有对应响应章节。",
+    truthPreamble(),
     `当前任务：为投标项目「${projectName}」（采购人：${hospital || "未填写"}）生成投标文件响应大纲${
       includeBiz ? "（商务部分骨架 + 技术部分详细大纲）" : "（仅技术部分详细大纲，不含任何商务章节）"
     }，${depthRule}`,
@@ -3695,7 +4535,7 @@ export function buildBidOutlineMessages(
   const system = rules.filter((x) => x !== "").join("\n")
   // 第十六轮 A：多消息缓存序——项目级稳定块前置（同项目多次重生成 identical），任务差异置后
   const stableParts = [
-    `【技术评分办法（逐项分值）】\n${scoringText || "（未解析到技术评分）"}`,
+    `【技术评分办法（逐项分值，编号用于大纲承接标注）】\n${numberedScoringText || "（未解析到技术评分）"}`,
     // 用户反馈轮项 3：不含商务章时商务评分办法与三段商务编排依据不再注入（避免误导模型输出商务章）
     ...(includeBiz ? [`【商务评分办法】\n${bizText || "（未解析到商务评分）"}`] : []),
     `【技术方案与响应要求】\n${[respText, techText].filter((s) => s.trim()).join("\n") || "（未解析到响应要求）"}`,
@@ -3749,7 +4589,7 @@ export function buildBidOutlineMessages(
   ]
 }
 
-/** 第五轮改造 2：大纲本地校验不符时的一次「结构修复」调用（费用含在同一次生成确认内）；第十三轮：修复契约带 part，叶子规模只按技术章计算 */
+/** 第五轮改造 2：大纲本地校验不符时的一次「结构修复」调用（费用含在同一次生成确认内）；第十三轮：修复契约带 part，叶子规模只按技术章计算；OpenBidKit 借鉴：保留叶子 [响应:Rx] 承接标注，承接缺口并入同一次修复（评审→修复闭环，不新增调用） */
 export function buildOutlineFixMessages(
   nodes: OutlineNode[],
   level: 0 | 1 | 2 | 3,
@@ -3761,6 +4601,7 @@ export function buildOutlineFixMessages(
     list.map((n) => ({
       title: n.title,
       ...(depth === 1 ? { part: isBizPart(n) ? "biz" : "tech" } : {}),
+      ...(n.description?.trim() ? { description: n.description.trim() } : {}),
       children: slim(n.children ?? [], depth + 1),
     }))
   const leafLo = Math.max(1, Math.ceil(leafTarget * 0.8))
@@ -3774,15 +4615,16 @@ export function buildOutlineFixMessages(
           ? "目标结构为三级（只按技术章计算）：每个技术章下有节，每节下至少 1 个条级节点，条节点的 children 为空数组；商务骨架章仍只列一级小节。"
           : "保持层级合理（最多三级），不强行增删级数；商务骨架章保持章+一级小节。"
   const system = [
-    "你是资深投标顾问，负责修复投标文件响应大纲（商务部分骨架 + 技术部分详细大纲）的结构。给你现有大纲 JSON 与结构问题清单，请输出修复后的完整大纲 JSON。",
+    "你是资深投标顾问，负责修复投标文件响应大纲（商务部分骨架 + 技术部分详细大纲）的结构。给你现有大纲 JSON 与问题清单，请输出修复后的完整大纲 JSON。",
     "修复规则：",
-    `1. 逐条解决结构问题：${issues.join("；")}；`,
+    `1. 逐条解决问题清单：${issues.join("；")}；`,
     `2. ${structureRule}`,
     "3. 顶层章必须保留 part 字段（\"biz\"=商务骨架章、\"tech\"=技术章），商务章在前、技术章在后，禁止改变章的归属；",
     `4. 技术章叶子节点（无子节点的末端节点，商务章叶子不计入）总数必须落在 ${leafLo}-${leafHi} 个区间（目标 ${leafTarget} 个，每叶子承载约 ${sectionWords} 字正文）：不足时按系统/模块/阶段/保障维度合理拆分补足叶子，超出时合并相近叶子；`,
     "5. 尽量保留现有标题文字与层级归属，只做结构补足、拆分或合并，不重写无关内容；标题只写名称、不带编号、不以标点结尾；节/条标题必须用具体响应式命名（主题词+设计/范围/保障/机制/流程等落点词，形如「设备兼容性设计」「知识更新机制」），现有标题若为「概述/说明/介绍/相关内容/其他」式空泛命名必须改为具体响应式命名；",
-    "6. 输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式：",
-    '{"outline":[{"title":"商务章标题","part":"biz","children":[{"title":"小节标题","children":[]}]},{"title":"技术章标题","part":"tech","children":[{"title":"节标题","children":[{"title":"条标题","children":[]}]}]}]}',
+    "6. 叶子节点 description 中的 [响应:Rx] 承接标注是评分覆盖对账依据：现有标注必须原样保留、禁止丢失；问题清单标明的「评分项未承接」编号，逐个挂到语义最相关的技术叶子 description（与已有标注合并写 [响应:Rx,Ry]），确无可挂叶子时才可新增对应叶子；商务章不标注、不新增承接；",
+    "7. 输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式（顶层章必须带 part 字段；技术叶子节点带 description 承接标注；无承接的叶子不带 description 字段）：",
+    '{"outline":[{"title":"商务章标题","part":"biz","children":[{"title":"小节标题","children":[]}]},{"title":"技术章标题","part":"tech","children":[{"title":"节标题","children":[{"title":"条标题","children":[],"description":"[响应:R1,R3]"}]}]}]}',
   ].join("\n")
   const user = `【现有大纲 JSON】\n${JSON.stringify({ outline: slim(nodes ?? []) })}\n\n请输出修复后的完整大纲 JSON。`
   return [
@@ -3836,6 +4678,8 @@ export type BidChapterPromptOpts = {
    * 空串/缺省=保持全量注入，兼容未重编排的老项目）
    */
   directedFacts?: string
+  /** 05 三模式：合规严格度（缺省/strict=逐字最小风险，与现状一致；moderate/full 放宽表达充分度但不新增可验收承诺） */
+  complianceMode?: ComplianceMode
 }
 
 export function buildBidChapterMessages(
@@ -3864,9 +4708,10 @@ export function buildBidChapterMessages(
   const factsLabel = directedOn ? "本章必守事实" : "全局事实"
   const rules = [
     `你是一位深耕医疗信息化行业十余年的资深投标顾问，正在编写投标项目「${projectName}」（采购人：${hospital || "未填写"}）技术标的第${chapterNo}章「${ch.title}」。`,
+    truthPreamble(),
     "写作铁律：",
     "1. 内容必须真实可落地、可直接用于正式投标文件：使用行业规范术语（HIS、EMR、LIS、PACS、集成平台、电子病历分级评价、互联互通测评、等级保护 2.0、商用密码应用等），杜绝空话套话；",
-    "2. 紧扣招标文件的评分办法与技术需求做实质性响应，涉及指标处给出量化承诺（并发用户数、响应时间、可用性 99.9%、驻场人数、到场时限等）；",
+    "2. 紧扣招标文件的评分办法与技术需求做实质性响应，涉及指标处给出量化承诺（并发用户数、响应时间、驻场人数、到场时限等），取值以招标原文与全局事实为准并遵守最小值响应：满足招标要求档位即可，禁止自行加码承诺；",
     scoringDetail
       ? `3. 本章须逐条响应的评分细则（项名 + 分值 + 评审标准原文）如下，写到对应内容时明确点出响应与承诺，并对齐评审标准中的给分档位：\n${scoringDetail}`
       : "3. 本章未分配到具体评分细则，请围绕招标技术需求写出实质性响应内容；",
@@ -3875,6 +4720,12 @@ export function buildBidChapterMessages(
   ]
   const clauseList = opts.clauses ?? []
   let ruleNo = 6
+  // 合并稿 v1.0（R30 全量切换）：三档写作模式规则块均非空，strict/缺省也注入严格响应块
+  const modeRule = complianceModeRule(opts.complianceMode)
+  if (modeRule) {
+    rules.push(`${ruleNo}. ${modeRule}`)
+    ruleNo += 1
+  }
   if (prevSummaries.length) {
     rules.push(
       `${ruleNo}. 本章首段必须自然承接上一章的收尾内容（见下面【相邻章上下文】），语气与口径保持连贯；相邻章内容仅供语气衔接与避免重复，禁止照抄、复述或改写其中任何具体表述；`,
@@ -3944,6 +4795,26 @@ export function buildBidChapterMessages(
   }
   rules.push(`${ruleNo}. 写作风格硬条款（每条必须遵守）：`)
   for (const t of BID_STYLE_RULES) {
+    ruleNo += 1
+    rules.push(`${ruleNo}. ${t}`)
+  }
+  ruleNo += 1
+  rules.push(`${ruleNo}. 全文一致性与合规底线（每条必须遵守）：`)
+  for (const t of FULLTEXT_GUARD_RULES) {
+    ruleNo += 1
+    rules.push(`${ruleNo}. ${t}`)
+  }
+  ruleNo += 1
+  // docs/05 §2 落地（第 14 轮）：技术参数响应边界与实质性变更禁令——防废标，所有生成模式均不放宽
+  rules.push(`${ruleNo}. 技术参数响应边界与实质性变更禁令（每条必须遵守）：`)
+  for (const t of PARAM_RESPONSE_BOUNDARY_RULES) {
+    ruleNo += 1
+    rules.push(`${ruleNo}. ${t}`)
+  }
+  ruleNo += 1
+  // docs/07 §5.3/§5.4 落地（第 18 轮）：输出前自检 + 历史缺陷反例——事后检查器规则前移为事前约束（只加约束、不改语义）
+  rules.push(`${ruleNo}. 输出前自检与历史缺陷反例（每条必须遵守）：`)
+  for (const t of PRE_OUTPUT_SELFCHECK_RULES) {
     ruleNo += 1
     rules.push(`${ruleNo}. ${t}`)
   }
@@ -4082,16 +4953,23 @@ export function buildBidSectionMessages(
     .join("\n")
   const rules = [
     `你是一位深耕医疗信息化行业十余年的资深投标顾问，正在编写投标项目「${projectName}」（采购人：${hospital || "未填写"}）技术标第${chapterNo}章「${ch.title}」的第 ${opts.sectionIndex + 1} 个小节「${opts.sectionNo} ${opts.sectionName}」（本章共 ${opts.sectionCount} 个小节，本次只写这一个小节）。`,
+    truthPreamble(),
     "写作铁律：",
     `1. 只写本小节内容：输出第一行必须是小节标题行「${opts.sectionNo} ${opts.sectionName}」（纯文本行，不带任何编号外的符号），随后直接写正文段落（3-8 段、每段 3-6 句）；不要写本章其他小节、不要输出章标题、不要开场白与收尾总结；`,
     "2. 内容必须真实可落地、可直接用于正式投标文件：使用行业规范术语（HIS、EMR、LIS、PACS、集成平台、电子病历分级评价、互联互通测评、等级保护 2.0、商用密码应用等），杜绝空话套话；",
-    "3. 紧扣招标文件的评分办法与技术需求做实质性响应，涉及指标处给出量化承诺（并发用户数、响应时间、可用性 99.9%、驻场人数、到场时限等）；",
+    "3. 紧扣招标文件的评分办法与技术需求做实质性响应，涉及指标处给出量化承诺（并发用户数、响应时间、驻场人数、到场时限等），取值以招标原文与全局事实为准并遵守最小值响应：满足招标要求档位即可，禁止自行加码承诺；",
     scoringDetail
       ? `4. 本章须逐条响应的评分细则（项名 + 分值 + 评审标准原文）如下，本小节写到对应内容时明确点出响应与承诺，并对齐评审标准中的给分档位：\n${scoringDetail}`
       : "4. 本章未分配到具体评分细则，请围绕招标技术需求写出实质性响应内容；",
     `5. 本小节字数预算约 ${opts.wordBudget} 字（整章预算按小节均分），在该篇幅内围绕招标参数与评分办法扩展；禁止自造招标未给的具体参数数字，拿不准的用「按招标文件要求响应」等规范表述；`,
   ]
   let ruleNo = 6
+  // 合并稿 v1.0（R30 全量切换）：三档写作模式规则块均非空，strict/缺省也注入严格响应块
+  const modeRule = complianceModeRule(opts.complianceMode)
+  if (modeRule) {
+    rules.push(`${ruleNo}. ${modeRule}`)
+    ruleNo += 1
+  }
   if (opts.writtenTail) {
     rules.push(
       `${ruleNo}. 本小节开头必须与已写小节的结尾（见下面【已写小节内容结尾】）自然衔接，禁止重复或改写已写内容；`,
@@ -4173,6 +5051,26 @@ export function buildBidSectionMessages(
   }
   rules.push(`${ruleNo}. 写作风格硬条款（每条必须遵守）：`)
   for (const t of BID_STYLE_RULES) {
+    ruleNo += 1
+    rules.push(`${ruleNo}. ${t}`)
+  }
+  ruleNo += 1
+  rules.push(`${ruleNo}. 全文一致性与合规底线（每条必须遵守）：`)
+  for (const t of FULLTEXT_GUARD_RULES) {
+    ruleNo += 1
+    rules.push(`${ruleNo}. ${t}`)
+  }
+  ruleNo += 1
+  // docs/05 §2 落地（第 14 轮）：技术参数响应边界与实质性变更禁令——防废标，所有生成模式均不放宽
+  rules.push(`${ruleNo}. 技术参数响应边界与实质性变更禁令（每条必须遵守）：`)
+  for (const t of PARAM_RESPONSE_BOUNDARY_RULES) {
+    ruleNo += 1
+    rules.push(`${ruleNo}. ${t}`)
+  }
+  ruleNo += 1
+  // docs/07 §5.3/§5.4 落地（第 18 轮）：输出前自检 + 历史缺陷反例——事后检查器规则前移为事前约束（只加约束、不改语义）
+  rules.push(`${ruleNo}. 输出前自检与历史缺陷反例（每条必须遵守）：`)
+  for (const t of PRE_OUTPUT_SELFCHECK_RULES) {
     ruleNo += 1
     rules.push(`${ruleNo}. ${t}`)
   }
@@ -4307,9 +5205,24 @@ export function buildBidContinueMessages(
   for (const t of BID_STYLE_RULES) {
     body.push(`${body.length + 1}. ${t}`)
   }
+  body.push("全文一致性与合规底线（每条必须遵守）：")
+  for (const t of FULLTEXT_GUARD_RULES) {
+    body.push(`${body.length + 1}. ${t}`)
+  }
+  // docs/05 §2 落地（第 14 轮）：续写同样受技术参数响应边界约束，防止续写段落自行加码
+  body.push("技术参数响应边界与实质性变更禁令（每条必须遵守）：")
+  for (const t of PARAM_RESPONSE_BOUNDARY_RULES) {
+    body.push(`${body.length + 1}. ${t}`)
+  }
+  // docs/07 §5.3/§5.4 落地（第 18 轮）：续写同样受输出前自检与历史缺陷反例约束
+  body.push("输出前自检与历史缺陷反例（每条必须遵守）：")
+  for (const t of PRE_OUTPUT_SELFCHECK_RULES) {
+    body.push(`${body.length + 1}. ${t}`)
+  }
   body.push(`${body.length + 1}. 只输出续写部分纯文本：禁止 markdown 符号、禁止开场白、禁止复述结尾、禁止收尾总结语。`)
   const system = [
     `你是一位深耕医疗信息化行业十余年的资深投标顾问，正在为投标项目「${projectName}」（采购人：${hospital || "未填写"}）技术标第${chapterNo}章「${chapterTitle}」续写正文。`,
+    truthPreamble(),
     "该章正文已写到一半，你的任务是从断点无缝续写：",
     ...body,
   ].join("\n")
@@ -4385,6 +5298,8 @@ export function buildDupJudgeMessages(pairs: DupPair[]): LlmMessage[] {
     .join("\n\n")
   const system = [
     "你是标书查重评审专家。评标中不同投标人的标书出现大段雷同可能被认定为串通投标（废标风险），同一团队复用自家历史标书也需要改写降低雷同度。",
+    // 公司招投标培训（第一期）④电子标：评标串标认定重点特征
+    "公司培训要点：电子评标认定串标的重点比对维度——标书风格与表述雷同、错误与 typo 异常一致、报价呈规律性、文档属性（作者/公司/机器码）相同；复判时重点看这些维度的雷同风险，ai_note 对 high/medium 给出差异化改写的具体方向（改写哪些表述、换哪种句式结构）；",
     "对每个段落对给出复判：ai_verdict 取 high（实质性雷同，必须改写）/ medium（表达相近，建议改写）/ low（仅术语或通用表述重合，可保留）；ai_note 用一句话说明判断依据与改写建议。",
     "输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式：",
     '{"results":[{"index":1,"ai_verdict":"high","ai_note":""}]}',
@@ -4409,6 +5324,8 @@ export function buildVoidCheckMessages(clauses: string[], bidText: string, starB
     "1. 每条 partial / non_compliant 判定必须附证据：evidence 字段摘录投标文件中支撑该判定的原文（不超过 120 字）；找不到任何可摘录的原文依据时，不得输出该条的风险判定；",
     "2. 投标文件中存在「章节标题 / 目录项 / 附件清单 / 表格条目」等结构性文本线索提到相应材料（证书、报告、授权书、证明材料等）时，不得判 non_compliant——文本解析看不到图片与扫描件附件，此类情况判 compliant 并在 suggestion 中注明「依据目录/附件清单线索，需人工核对原件」；",
     "3. 每条条款都必须输出一行结果（含 compliant），禁止遗漏；判定要保守：拿不准就标 partial，宁可多提醒。",
+    // 公司招投标培训（第一期）④电子标技能培训：公司真实废标案例补查
+    "公司经验补查（电子标实际废标案例总结）：若投标文件正文出现下列硬伤，额外输出条款以「【公司经验】」开头的检查项——①模板占位文字残留（如「请填入您的内容」「复制内容后右键只保留文本」等模板指引语）；②投标金额大小写数字不符；③分项报价合计与总价不符；同样受防误报硬规则约束（必须附 evidence 原文摘录，找不到依据不得输出）；未发现问题时不必输出这些额外项。",
     "输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式：",
     '{"items":[{"clause":"条款原文","source_location":"","response":"","response_location":"","status":"compliant","severity":"critical","suggestion":"","evidence":""}]}',
   ].join("\n")
@@ -4615,6 +5532,7 @@ export function buildBidRefineMessages(
   const scoringDetail = scoringDetailLines(opts?.scoring ?? [])
   const system = [
     `你是医疗信息化行业资深标书编辑，当前处理对象是投标文件《${projectName}》（采购人：${hospital || "未填写"}）第${chapterNo}章「${chapterTitle}」的正文。`,
+    truthPreamble(),
     `请对该章正文执行「${action}」。`,
     scoringDetail
       ? `本章须逐条响应的评分细则（改写/扩写时保持并强化对这些细则的响应；精简时禁止删除已响应评分细则的内容）：\n${scoringDetail}`
@@ -4625,6 +5543,14 @@ export function buildBidRefineMessages(
       : "",
     "写作风格硬条款（每条必须遵守）：",
     ...BID_STYLE_RULES.map((t, i) => `${i + 1}. ${t}`),
+    "全文一致性与合规底线（每条必须遵守）：",
+    ...FULLTEXT_GUARD_RULES.map((t, i) => `${i + 1}. ${t}`),
+    // docs/05 §2 落地（第 14 轮）：改写/扩写同样不得触碰实质性变更（防止「扩写」把参数改高）
+    "技术参数响应边界与实质性变更禁令（每条必须遵守）：",
+    ...PARAM_RESPONSE_BOUNDARY_RULES.map((t, i) => `${i + 1}. ${t}`),
+    // docs/07 §5.3/§5.4 落地（第 18 轮）：改写/扩写也补输出前自检与历史缺陷反例（只加约束、不改语义）
+    "输出前自检与历史缺陷反例（每条必须遵守）：",
+    ...PRE_OUTPUT_SELFCHECK_RULES.map((t, i) => `${i + 1}. ${t}`),
     "输出铁律：直接输出处理后的完整正文纯文本，小节标题行保持「N.M 小节名」格式，禁止 markdown 符号、禁止任何解释说明或开场白。",
   ]
     .filter((s) => s !== "")
@@ -5985,6 +6911,8 @@ export function buildOutlineLevel1Messages(
   const respText = sectionText(report, "response_req")
   const qualText = sectionText(report, "qualification")
   const starText = sectionText(report, STAR_CLAUSE_SECTION.key).trim()
+  // 2026-09-23 用户反馈轮（目录不一致）：分步大纲 call1 同步接入招标目录要求锚点（与整份生成路径同源同口径）
+  const outlineReqTextL1 = sectionText(report, BID_OUTLINE_REQ_KEY).trim()
   const implicitList = opts?.implicitConstraints ?? []
   const techHint = Math.max(4, Math.min(16, Math.round(opts?.techChapterHint ?? 8)))
   const numbered: string[] = includeBiz
@@ -6000,6 +6928,8 @@ export function buildOutlineLevel1Messages(
     `技术部分（part=\"tech\"）输出 ${techHint} 个左右的顶层章、children 一律为空数组（章内小节由后续步骤逐章展开，本次禁止展开）：以评分办法为纲，把下面技术评分的重要评分项分组成章，章与章之间范围互斥、合起来覆盖全部技术评分项与响应文件要求；`,
     "技术章常规骨架参考：项目理解与需求分析、总体建设方案、详细技术方案（可按系统拆多章）、项目实施组织与进度计划、质量保障与测试验收、培训方案、售后服务与运维保障、应急预案；再按本招标文件增删；",
     "标题只写名称、不带编号、不以标点结尾；章标题必须具体（主题词+落点词），禁止「概述/说明/介绍/相关内容/其他」式空泛命名；",
+    // 2026-09-23 用户反馈轮（目录幻觉）：与整份生成路径同口径的事实来源排他条款
+    "事实来源排他（防幻觉）：顶层章的主题与顺序只能来自下面【技术评分办法】【商务评分办法】【响应文件要求】【招标文件规定的投标文件目录】【★/▲ 重点条款】等注入内容与常规骨架参考；禁止编造注入内容中不存在的评分项、分值、条款编号或目录要求；招标已规定响应目录时，技术/商务顶层章必须遵循其顺序与层级，禁止另起炉灶；无注入依据的方面用常规骨架命名，不得假称招标要求；",
   )
   if (starText) {
     numbered.push(
@@ -6036,6 +6966,9 @@ export function buildOutlineLevel1Messages(
     )
   }
   if (starText) stableParts.push(`【★/▲ 重点条款（实质性响应条款，每条必须有顶层章落点）】\n${clipText(starText, 6000)}`)
+  if (outlineReqTextL1) {
+    stableParts.push(`【招标文件规定的投标文件目录（顶层章必须遵循其顺序与层级）】\n${clipText(outlineReqTextL1, 4000)}`)
+  }
   return [
     { role: "system", content: system },
     { role: "user", content: stableParts.join("\n\n") },
@@ -6059,6 +6992,9 @@ export function buildOutlineChildrenMessages(
   opts: { quota: number; level: 0 | 1 | 2 | 3; sectionWords: number; globalFacts?: string },
 ): LlmMessage[] {
   const scoringText = combinedScoringText(report)
+  // R31：编号技术评分项注入，章内叶子用 [响应:Rx] 标注承接（与整份大纲 prompt 同一编号源）
+  const numberedTechItems = numberScoringItems(report).filter((s) => s.category === "tech")
+  const numberedScoringText = numberedTechItems.length ? numberedScoringDetailLines(numberedTechItems) : scoringText
   const techText = sectionText(report, "delivery_req")
   const quota = Math.max(1, Math.round(opts.quota))
   const lo = Math.max(1, quota - 2)
@@ -6073,6 +7009,10 @@ export function buildOutlineChildrenMessages(
     depthRule,
     `叶子规模配额：本章叶子节点（无子节点的末端节点）总数必须落在 ${lo}-${hi} 个（配额 ${quota} 个），每个叶子将承载约 ${opts.sectionWords} 字正文；不足时按系统/模块/阶段/保障维度拆分补足，超出时合并相近叶子；`,
     "内容以评分办法为纲：下面技术评分中与本章主题相关的评分项，每项都要落到具体节/条标题；与本章无关的评分项不要抢写（由其他章承担）；",
+    // R31：分步大纲同步承接标注，保证覆盖矩阵对长标书同样可对账
+    numberedTechItems.length
+      ? "承接标注（R31）：每个叶子节点（无 children 的节/条）必须在 description 字段标注其承接的评分编号，格式 `[响应:R1]` 或 `[响应:R1,R3]`（多个逗号分隔，编号取自下面【技术评分办法】行首 [Rx]）；非叶子节点不标注；不承接任何评分项的叶子可省略 description；"
+      : "",
   ]
   if (otherChapterTitles.length) {
     numbered.push(
@@ -6081,17 +7021,19 @@ export function buildOutlineChildrenMessages(
   }
   numbered.push(
     "标题只写名称、不带编号、不以标点结尾；节/条标题必须用具体响应式命名：主题词+落点词（设计/范围/保障/机制/流程等），形如「设备兼容性设计」「知识更新机制」；禁止「概述/说明/介绍/相关内容/其他」式空泛标题；",
-    "输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式（outline 数组即本章的 children，不要输出章节点本身）：",
-    '{"outline":[{"title":"节标题","children":[{"title":"条标题","children":[]}]}]}',
+    `输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式（outline 数组即本章的 children，不要输出章节点本身；叶子节点带 description 承接标注${numberedTechItems.length ? "，形如 \"description\":\"[响应:R2]\"" : ""}）：`,
+    numberedTechItems.length
+      ? '{"outline":[{"title":"节标题","children":[{"title":"条标题","children":[],"description":"[响应:R2,R5]"}]}]}'
+      : '{"outline":[{"title":"节标题","children":[{"title":"条标题","children":[]}]}]}',
   )
   const system = [
     "你是资深投标顾问，正在为医疗信息化投标文件的某一个技术章展开章内大纲（节/条两级以内）。整份大纲的顶层章已定，本次只展开当前章。",
     `当前要展开的技术章：「${chapterTitle}」。`,
     "硬性要求：",
-    ...numbered.map((t, i) => `${i + 1}. ${t}`),
+    ...numbered.filter((x) => x !== "").map((t, i) => `${i + 1}. ${t}`),
   ].join("\n")
   const user = [
-    `【技术评分办法（逐项分值，只取与本章相关的展开）】\n${clipText(scoringText, 4000) || "（未解析到技术评分）"}`,
+    `【技术评分办法（编号逐项分值，只取与本章相关的展开）】\n${clipText(numberedScoringText, 4000) || "（未解析到技术评分）"}`,
     `【技术需求与交货服务要求】\n${clipText(techText, 4000) || "（未解析）"}`,
     opts.globalFacts ?? "",
     `请为技术章「${chapterTitle}」输出章内节/条大纲 JSON（叶子 ${lo}-${hi} 个，outline 数组即本章 children）。`,

@@ -79,7 +79,7 @@ export async function extractTenderFileText(file: File): Promise<string> {
     throw new Error("暂不支持该格式")
   } catch (e) {
     const detail = e instanceof Error ? e.message : "未知原因"
-    throw new Error(`文件解析失败（${detail}）。支持 .docx / .pdf / .txt；扫描版 PDF 无法提取文字，请改用「粘贴文本」方式导入招标文件内容`)
+    throw new Error(`文件解析失败（${detail}）。支持 .docx / .pdf / .txt；扫描版 PDF 无法提取文字，请改用「粘贴文本」方式导入招标文件内容`, { cause: e })
   }
 }
 
@@ -185,8 +185,8 @@ function body(text: string): Paragraph {
   })
 }
 
-/** 章节配图 SVG → PNG（浏览器内 canvas 转换）；任何一步失败返回 null，由调用方降级为文字段落 */
-async function figureToPng(spec: FigureSpec): Promise<{ data: Uint8Array; width: number; height: number } | null> {
+/** 章节配图 SVG → PNG（浏览器内 canvas 转换）；任何一步失败返回 null，由调用方降级为文字段落（方案编制导出同样复用） */
+export async function figureToPng(spec: FigureSpec): Promise<{ data: Uint8Array; width: number; height: number } | null> {
   try {
     const svg = buildFigureSvg(spec, tokenPalette())
     const parsed = new DOMParser().parseFromString(svg, "image/svg+xml")
@@ -287,6 +287,106 @@ function lineSpacingOf(lineSpacing: string): { line: number; lineRule: "auto" | 
   if (lineSpacing === "单倍") return { line: 240, lineRule: "auto" }
   if (lineSpacing === "2倍") return { line: 480, lineRule: "auto" }
   return { line: 360, lineRule: "auto" }
+}
+
+/**
+ * 格式配置驱动的 docx 构建器（第十七轮 17C 抽出）：字体 run / 各级标题段 / 正文段 /
+ * 全角空格分列的纯文本表格行识别与 docx Table 构建；投标文件导出与方案编制导出共用同一套映射。
+ */
+export type FormatDocxKit = {
+  fontRun: (text: string, o: { font: string; size: string; bold?: boolean; italics?: boolean }) => TextRun
+  headingAt: (i: number) => HeadingFormat
+  headingPara: (
+    level: number,
+    text: string,
+    opts?: { before?: number; after?: number; pageBreakBefore?: boolean },
+  ) => Paragraph
+  bodyPara: (text: string) => Paragraph
+  splitTableRow: (line: string) => string[] | null
+  buildFmtTable: (rows: string[][]) => Table
+}
+
+export function createFormatDocxKit(fmt: FormatSettings): FormatDocxKit {
+  const fontRun: FormatDocxKit["fontRun"] = (text, o) =>
+    new TextRun({
+      text,
+      bold: o.bold ?? false,
+      italics: o.italics ?? false,
+      size: DOCX_SIZE_HALFPT[o.size] ?? 28,
+      font: { ascii: DOCX_FONT[o.font] ?? "SimSun", hAnsi: DOCX_FONT[o.font] ?? "SimSun", eastAsia: o.font },
+    })
+  const headingAt: FormatDocxKit["headingAt"] = (i) => fmt.heading[Math.min(Math.max(i, 0), 5)]
+  const headingPara: FormatDocxKit["headingPara"] = (level, text, opts) => {
+    const h = headingAt(level)
+    const headingLevel = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3][Math.min(level, 2)]
+    return new Paragraph({
+      heading: headingLevel,
+      alignment: DOCX_ALIGN[h.align],
+      ...(opts?.pageBreakBefore ? { pageBreakBefore: true } : {}),
+      spacing: { before: opts?.before ?? 240, after: opts?.after ?? 120 },
+      children: [fontRun(text, { font: h.font, size: h.size, bold: true })],
+    })
+  }
+  const bodySpacing = lineSpacingOf(fmt.body.lineSpacing)
+  // 首行缩进：字符数 × 字号半点值 × 10（1 半点 = 10 twips，2 字符四号 ≈ 560 twips）
+  const bodyIndent = Math.round(fmt.body.firstIndent * (DOCX_SIZE_HALFPT[fmt.body.size] ?? 28) * 10)
+  const bodyPara: FormatDocxKit["bodyPara"] = (text) =>
+    new Paragraph({
+      alignment: DOCX_ALIGN[fmt.body.align],
+      ...(bodyIndent > 0 ? { indent: { firstLine: bodyIndent } } : {}),
+      spacing: { after: 120, ...bodySpacing },
+      children: [fontRun(text, { font: fmt.body.font, size: fmt.body.size })],
+    })
+
+  // 循环 6 A4：正文里的纯文本表格行（生成约定：每行一条记录、列间用全角空格 U+3000 分隔、首行为表头）
+  // 渲染成真正的 docx 表格，边框粗细与单元格字体随格式设置变化
+  const tblFont = splitContentFont(fmt.table.contentFont)
+  const tblBorderPt = parseFloat(fmt.table.border) || 0.5
+  // docx 边框 size 单位 = 1/8 磅："0.5pt" → 4
+  const tblBorderSide = {
+    style: BorderStyle.SINGLE,
+    size: Math.max(1, Math.round(tblBorderPt * 8)),
+    color: "000000",
+  }
+  const splitTableRow: FormatDocxKit["splitTableRow"] = (line) => {
+    if (!line.includes("　")) return null
+    // 生成约定为「两个全角空格 U+3000」分列；用 \u3000+ 正则折叠连续分隔符，兼容模型偶发单个全角空格
+    const cols = line.split(/\u3000+/).map((c) => c.trim())
+    while (cols.length && !cols[cols.length - 1]) cols.pop()
+    while (cols.length && !cols[0]) cols.shift()
+    return cols.length >= 2 ? cols : null
+  }
+  const buildFmtTable: FormatDocxKit["buildFmtTable"] = (rows) => {
+    const colCount = Math.max(...rows.map((r) => r.length))
+    return new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      borders: {
+        top: tblBorderSide,
+        bottom: tblBorderSide,
+        left: tblBorderSide,
+        right: tblBorderSide,
+        insideHorizontal: tblBorderSide,
+        insideVertical: tblBorderSide,
+      },
+      rows: rows.map((cells, ri) =>
+        new TableRow({
+          ...(ri === 0 ? { tableHeader: true } : {}),
+          children: Array.from({ length: colCount }, (_, ci) =>
+            new TableCell({
+              margins: { top: 60, bottom: 60, left: 100, right: 100 },
+              children: [
+                new Paragraph({
+                  spacing: { after: 0, line: 276, lineRule: "auto" },
+                  children: [fontRun(cells[ci] ?? "", { font: tblFont.font, size: tblFont.size, bold: ri === 0 })],
+                }),
+              ],
+            }),
+          ),
+        }),
+      ),
+    })
+  }
+  return { fontRun, headingAt, headingPara, bodyPara, splitTableRow, buildFmtTable }
 }
 
 /** 导出投标文件 Word：format_settings 存在时按格式配置驱动；null=现状默认导出一字不改 */
@@ -395,89 +495,8 @@ async function exportBidDocxDefaults(project: BidProjectRecord): Promise<void> {
  * 章节配图逻辑与默认导出一致（SVG→PNG 插入正文首段后，失败降级「【图】标题」）。
  */
 async function exportBidDocxFormatted(project: BidProjectRecord, fmt: FormatSettings): Promise<void> {
-  const fontRun = (text: string, o: { font: string; size: string; bold?: boolean; italics?: boolean }) =>
-    new TextRun({
-      text,
-      bold: o.bold ?? false,
-      italics: o.italics ?? false,
-      size: DOCX_SIZE_HALFPT[o.size] ?? 28,
-      font: { ascii: DOCX_FONT[o.font] ?? "SimSun", hAnsi: DOCX_FONT[o.font] ?? "SimSun", eastAsia: o.font },
-    })
-  const headingAt = (i: number): HeadingFormat => fmt.heading[Math.min(Math.max(i, 0), 5)]
-  const headingPara = (
-    level: number,
-    text: string,
-    opts?: { before?: number; after?: number; pageBreakBefore?: boolean },
-  ) => {
-    const h = headingAt(level)
-    const headingLevel = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3][Math.min(level, 2)]
-    return new Paragraph({
-      heading: headingLevel,
-      alignment: DOCX_ALIGN[h.align],
-      ...(opts?.pageBreakBefore ? { pageBreakBefore: true } : {}),
-      spacing: { before: opts?.before ?? 240, after: opts?.after ?? 120 },
-      children: [fontRun(text, { font: h.font, size: h.size, bold: true })],
-    })
-  }
-  const bodySpacing = lineSpacingOf(fmt.body.lineSpacing)
-  // 首行缩进：字符数 × 字号半点值 × 10（1 半点 = 10 twips，2 字符四号 ≈ 560 twips）
-  const bodyIndent = Math.round(fmt.body.firstIndent * (DOCX_SIZE_HALFPT[fmt.body.size] ?? 28) * 10)
-  const bodyPara = (text: string) =>
-    new Paragraph({
-      alignment: DOCX_ALIGN[fmt.body.align],
-      ...(bodyIndent > 0 ? { indent: { firstLine: bodyIndent } } : {}),
-      spacing: { after: 120, ...bodySpacing },
-      children: [fontRun(text, { font: fmt.body.font, size: fmt.body.size })],
-    })
-
-  // 循环 6 A4：消费 fmt.table——正文里的纯文本表格行（生成约定：每行一条记录、列间用全角空格
-  // U+3000 分隔、首行为表头）渲染成真正的 docx 表格，边框粗细与单元格字体随格式设置变化
-  const tblFont = splitContentFont(fmt.table.contentFont)
-  const tblBorderPt = parseFloat(fmt.table.border) || 0.5
-  // docx 边框 size 单位 = 1/8 磅："0.5pt" → 4
-  const tblBorderSide = {
-    style: BorderStyle.SINGLE,
-    size: Math.max(1, Math.round(tblBorderPt * 8)),
-    color: "000000",
-  }
-  const splitTableRow = (line: string): string[] | null => {
-    if (!line.includes("　")) return null
-    // 生成约定为「两个全角空格」分列；用 /　+/ 折叠连续分隔符，兼容模型偶发单个全角空格
-    const cols = line.split(/　+/).map((c) => c.trim())
-    while (cols.length && !cols[cols.length - 1]) cols.pop()
-    while (cols.length && !cols[0]) cols.shift()
-    return cols.length >= 2 ? cols : null
-  }
-  const buildFmtTable = (rows: string[][]): Table => {
-    const colCount = Math.max(...rows.map((r) => r.length))
-    return new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      borders: {
-        top: tblBorderSide,
-        bottom: tblBorderSide,
-        left: tblBorderSide,
-        right: tblBorderSide,
-        insideHorizontal: tblBorderSide,
-        insideVertical: tblBorderSide,
-      },
-      rows: rows.map((cells, ri) =>
-        new TableRow({
-          ...(ri === 0 ? { tableHeader: true } : {}),
-          children: Array.from({ length: colCount }, (_, ci) =>
-            new TableCell({
-              margins: { top: 60, bottom: 60, left: 100, right: 100 },
-              children: [
-                new Paragraph({
-                  spacing: { after: 0, line: 276, lineRule: "auto" },
-                  children: [fontRun(cells[ci] ?? "", { font: tblFont.font, size: tblFont.size, bold: ri === 0 })],
-                }),
-              ],
-            }),
-          ),
-        }),
-      ),
-    })
-  }
+  // 字体/标题/正文/表格构建统一走 createFormatDocxKit（与方案编制导出共用同一套映射）
+  const { fontRun, headingAt, headingPara, bodyPara, splitTableRow, buildFmtTable } = createFormatDocxKit(fmt)
 
   const children: (Paragraph | Table | TableOfContents)[] = []
   // 暗标：声明占位页置顶（正文前独立一页），页码在 downloadDocx 选项里整体关闭

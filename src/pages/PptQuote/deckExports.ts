@@ -1,18 +1,38 @@
 import PptxGenJS from "pptxgenjs"
 import { AlignmentType, Document, HeadingLevel, Packer, Paragraph, TextRun } from "docx"
-import { deckTypeLabel, type DeckRecord, type Slide } from "./pptQuoteTypes"
+import { unzipSync, zipSync, strFromU8, strToU8 } from "fflate"
+import {
+  deckTypeLabel,
+  type DeckRecord,
+  type DeckTransition,
+  type Slide,
+  type SlideLayout,
+} from "./pptQuoteTypes"
+import { renderDeckChartPng } from "./deckChart"
+import type { FigureSpec } from "@/pages/SolutionStudio/solutionTypes"
+import { buildFigureSvg, tokenPalette } from "@/components/bid-workspace/BidFigure"
 
 // ---------------------------------------------------------------------------
-// PPT 导出（.pptx 商务简洁版式 + 讲稿 Word）。导出文件用中性商务配色，
-// 与站内 UI token 无关。
+// PPT 导出（.pptx 商务版式：图文/图表/KPI/章节页 + 讲稿 Word + 页面切换动画）。
+// 导出文件用中性商务配色，与站内 UI token 无关。
 // ---------------------------------------------------------------------------
 
 const NAVY = "1F3864"
 const ACCENT = "2E74B5"
+const ACCENT_SOFT = "D6E4F0"
 const BODY = "333333"
 const SUBTLE = "D6E4F0"
 const MUTED = "9AA7B5"
 const LIGHT_BG = "F5F7FA"
+
+const PAGE_W = 13.333
+
+const TRANSITION_XML: Record<Exclude<DeckTransition, "none">, string> = {
+  fade: '<p:transition spd="med"><p:fade/></p:transition>',
+  push: '<p:transition spd="med"><p:push dir="r"/></p:transition>',
+  wipe: '<p:transition spd="med"><p:wipe dir="r"/></p:transition>',
+  split: '<p:transition spd="med"><p:split orient="horz" dir="in"/></p:transition>',
+}
 
 function todayText(): string {
   const d = new Date()
@@ -32,7 +52,66 @@ function bulletFontSize(slides: Slide[]): number {
   return 14
 }
 
-export async function exportDeckPptx(deck: DeckRecord): Promise<void> {
+/** 决定一页实际使用的版式；hasImage = 有真实配图或已有图示 PNG */
+function effectiveLayout(s: Slide, hasImage: boolean): SlideLayout {
+  if (s.chart && (s.chart.categories?.length ?? 0) > 0) return "chart"
+  if (s.kpi && s.kpi.length) return "kpi"
+  const l = s.layout ?? "auto"
+  if (l === "auto") {
+    if (hasImage) return "image-right"
+    return "bullets"
+  }
+  // 显式选了图文版式但没有图，则退回纯要点
+  if ((l === "image-right" || l === "image-left" || l === "banner") && !hasImage) return "bullets"
+  if (l === "chart" && !(s.chart && (s.chart.categories?.length ?? 0) > 0)) return "bullets"
+  if (l === "kpi" && !(s.kpi && s.kpi.length)) return "bullets"
+  return l
+}
+
+/**
+ * 结构化图示 → PNG dataURL（浏览器内 canvas 转换）。
+ * 直接用叶子组件 BidFigure 的 buildFigureSvg/tokenPalette，不走 bidFiles（避免把 pdfjs 打进 PPT 导出包）；
+ * 任一步失败返回 null 由调用方降级为纯文字。
+ */
+async function figureSpecToDataUrl(spec: FigureSpec): Promise<string | null> {
+  try {
+    const svg = buildFigureSvg(spec, tokenPalette())
+    const parsed = new DOMParser().parseFromString(svg, "image/svg+xml")
+    const root = parsed.documentElement
+    if (!root || root.nodeName === "parsererror") return null
+    const width = Number(root.getAttribute("width")) || 640
+    const height = Number(root.getAttribute("height")) || 320
+    const markup = new XMLSerializer().serializeToString(root)
+    const blobUrl = URL.createObjectURL(new Blob([markup], { type: "image/svg+xml;charset=utf-8" }))
+    try {
+      const img = new Image()
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve()
+        img.onerror = () => reject(new Error("配图渲染失败"))
+        img.src = blobUrl
+      })
+      const canvas = document.createElement("canvas")
+      canvas.width = width * 2
+      canvas.height = height * 2
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return null
+      ctx.fillStyle = tokenPalette().card
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      return canvas.toDataURL("image/png")
+    } finally {
+      URL.revokeObjectURL(blobUrl)
+    }
+  } catch {
+    return null
+  }
+}
+
+export interface ExportDeckOptions {
+  transition?: DeckTransition
+}
+
+export async function exportDeckPptx(deck: DeckRecord, opts: ExportDeckOptions = {}): Promise<void> {
   const slides = deck.slides ?? []
   if (!slides.length) throw new Error("没有可导出的页面")
   const pptx = new PptxGenJS()
@@ -46,38 +125,21 @@ export async function exportDeckPptx(deck: DeckRecord): Promise<void> {
   // 封面页
   const cover = pptx.addSlide()
   cover.background = { color: NAVY }
-  cover.addShape(pptx.ShapeType.rect, { x: 0, y: 5.9, w: 13.33, h: 0.06, fill: { color: ACCENT } })
+  cover.addShape(pptx.ShapeType.rect, { x: 0, y: 5.9, w: PAGE_W, h: 0.06, fill: { color: ACCENT } })
   cover.addText(deck.deck_name || "汇报 PPT", {
-    x: 0.9,
-    y: 2.35,
-    w: 11.53,
-    h: 1.5,
-    fontSize: 34,
-    bold: true,
-    color: "FFFFFF",
-    align: "center",
-    valign: "middle",
-    fit: "shrink",
+    x: 0.9, y: 2.35, w: 11.53, h: 1.5, fontSize: 34, bold: true, color: "FFFFFF",
+    align: "center", valign: "middle", fit: "shrink",
   })
   const metaBits = [deckTypeLabel(deck.deck_type)]
   if (deck.audience) metaBits.push(`汇报对象：${deck.audience}`)
   if (deck.duration_min) metaBits.push(`时长约 ${deck.duration_min} 分钟`)
-  cover.addText(metaBits.join("  |  "), {
-    x: 0.9,
-    y: 4.05,
-    w: 11.53,
-    h: 0.5,
-    fontSize: 14,
-    color: SUBTLE,
-    align: "center",
-  })
+  cover.addText(metaBits.join("  |  "), { x: 0.9, y: 4.05, w: 11.53, h: 0.5, fontSize: 14, color: SUBTLE, align: "center" })
   cover.addText(todayText(), { x: 0.9, y: 6.35, w: 11.53, h: 0.4, fontSize: 12, color: SUBTLE, align: "center" })
 
   // 目录页
   const toc = pptx.addSlide()
   toc.background = { color: "FFFFFF" }
-  toc.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 13.33, h: 0.12, fill: { color: ACCENT } })
-  toc.addText("目录", { x: 0.7, y: 0.4, w: 6, h: 0.7, fontSize: 26, bold: true, color: NAVY })
+  toc.addText("目录", { x: 0.7, y: 0.45, w: 6, h: 0.75, fontSize: 26, bold: true, color: NAVY })
   toc.addText(
     slides.map((s, i) => ({
       text: `${String(i + 1).padStart(2, "0")}   ${s.title || `第 ${i + 1} 页`}`,
@@ -87,37 +149,19 @@ export async function exportDeckPptx(deck: DeckRecord): Promise<void> {
   )
   toc.slideNumber = { ...pageNumber }
 
-  // 内容页
+  // 内容页：无真实配图但有 AI 图示的页，预先把首个图示转成 PNG dataURL 代替 image
   const bodyFontSize = bulletFontSize(slides)
-  slides.forEach((s, i) => {
+  const figureImg = new Map<string, string>()
+  for (const s of slides) {
+    if (!s.image && s.figures?.length) {
+      const dataUrl = await figureSpecToDataUrl(s.figures[0])
+      if (dataUrl) figureImg.set(s.id, dataUrl)
+    }
+  }
+  slides.forEach((s) => {
     const sl = pptx.addSlide()
     sl.background = { color: "FFFFFF" }
-    sl.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 13.33, h: 0.12, fill: { color: ACCENT } })
-    sl.addShape(pptx.ShapeType.rect, { x: 0.7, y: 1.18, w: 1.6, h: 0.03, fill: { color: ACCENT } })
-    sl.addText(s.title || `第 ${i + 1} 页`, {
-      x: 0.65,
-      y: 0.32,
-      w: 12.0,
-      h: 0.8,
-      fontSize: 24,
-      bold: true,
-      color: NAVY,
-      fit: "shrink",
-    })
-    const bullets = (s.bullets ?? []).length ? s.bullets : ["—"]
-    sl.addText(
-      bullets.map((b) => ({
-        text: b,
-        options: {
-          bullet: { code: "2022", indent: 14 },
-          breakLine: true,
-          fontSize: bodyFontSize,
-          color: BODY,
-          paraSpaceAfter: 10,
-        },
-      })),
-      { x: 0.85, y: 1.5, w: 11.7, h: 5.45, valign: "top", fit: "shrink" },
-    )
+    renderContentSlide(pptx, sl, s, bodyFontSize, s.image || figureImg.get(s.id), !s.image && figureImg.has(s.id))
     sl.addText(`${deck.deck_name}`, { x: 0.7, y: 7.02, w: 6, h: 0.35, fontSize: 9, color: MUTED })
     if (s.notes?.trim()) sl.addNotes(s.notes.trim())
     sl.slideNumber = { ...pageNumber }
@@ -126,11 +170,278 @@ export async function exportDeckPptx(deck: DeckRecord): Promise<void> {
   // 结尾页
   const end = pptx.addSlide()
   end.background = { color: NAVY }
-  end.addShape(pptx.ShapeType.rect, { x: 0, y: 5.9, w: 13.33, h: 0.06, fill: { color: ACCENT } })
+  end.addShape(pptx.ShapeType.rect, { x: 0, y: 5.9, w: PAGE_W, h: 0.06, fill: { color: ACCENT } })
   end.addText("谢谢聆听", { x: 0.9, y: 2.7, w: 11.53, h: 1.2, fontSize: 40, bold: true, color: "FFFFFF", align: "center" })
   end.addText("欢迎交流指正", { x: 0.9, y: 4.0, w: 11.53, h: 0.5, fontSize: 16, color: SUBTLE, align: "center" })
 
-  await pptx.writeFile({ fileName: safeFileName(deck.deck_name, "pptx") })
+  const transition = opts.transition ?? "none"
+  if (transition === "none") {
+    await pptx.writeFile({ fileName: safeFileName(deck.deck_name, "pptx") })
+    return
+  }
+  // 后处理注入页面切换动画（PowerPoint 与 WPS 通用）
+  const buf = (await pptx.write({ outputType: "arraybuffer" })) as unknown as ArrayBuffer
+  const withTransition = injectTransitions(buf, transition)
+  downloadBlob(withTransition, safeFileName(deck.deck_name, "pptx"))
+}
+
+// ---------------------------------------------------------------------------
+// 单页版式渲染
+// ---------------------------------------------------------------------------
+
+type SlideCtx = ReturnType<PptxGenJS["addSlide"]>
+
+/**
+ * 标题排版：纯文字层级（NAVY 粗体 + 字号），不再画「标题下装饰短线」与「顶部色条」。
+ * 依据 Anthropic pptx skill 设计规范：accent underline / decorative color bar 是典型 "AI 生成幻灯片" 痕迹，
+ * 专业版式靠留白与字号层级建立秩序，而非贴色块。
+ */
+function addSlideTitle(sl: SlideCtx, title: string, opts?: { x?: number; w?: number }) {
+  sl.addText(title || "", {
+    x: opts?.x ?? 0.65, y: 0.4, w: opts?.w ?? 12.0, h: 0.85,
+    fontSize: 24, bold: true, color: NAVY, fit: "shrink", valign: "middle",
+  })
+}
+
+function renderContentSlide(pptx: PptxGenJS, sl: SlideCtx, s: Slide, bodyFontSize: number, resolvedImg?: string, isFigure = false) {
+  const layout = effectiveLayout(s, Boolean(resolvedImg))
+
+  if (layout === "section") {
+    sl.addShape(pptx.ShapeType.rect, { x: 0, y: 2.55, w: PAGE_W, h: 2.4, fill: { color: NAVY } })
+    sl.addText(s.title || "", { x: 0.9, y: 2.9, w: 11.53, h: 1.0, fontSize: 30, bold: true, color: "FFFFFF", valign: "bottom", fit: "shrink" })
+    const sub = (s.bullets ?? []).join("　·　")
+    if (sub) sl.addText(sub, { x: 0.9, y: 4.15, w: 11.53, h: 0.7, fontSize: 14, color: SUBTLE, valign: "top", fit: "shrink" })
+    return
+  }
+
+  // 其余版式统一带标题
+  const bullets = (s.bullets ?? []).length ? s.bullets : []
+  if (layout === "kpi") {
+    addSlideTitle(sl, s.title)
+    renderKpi(pptx, sl, s)
+    if (bullets.length) {
+      sl.addText(bullets.map((b) => ({ text: b, options: { bullet: { code: "2022", indent: 14 }, breakLine: true, fontSize: 15, color: BODY, paraSpaceAfter: 8 } })),
+        { x: 0.85, y: 4.55, w: 11.7, h: 2.3, valign: "top", fit: "shrink" })
+    }
+    return
+  }
+
+  if (layout === "chart") {
+    const hasText = bullets.length > 0
+    addSlideTitle(sl, s.title)
+    const box = hasText ? { x: 6.55, y: 1.55, w: 6.2 } : { x: 1.6, y: 1.6, w: 10.1 }
+    renderNativeChart(pptx, sl, s, box.x, box.y, box.w, hasText ? 5.2 : 5.0, () =>
+      renderChartImage(pptx, sl, s, box.x, box.y, box.w),
+    )
+    if (hasText) {
+      sl.addText(bullets.map((b) => ({ text: b, options: { bullet: { code: "2022", indent: 14 }, breakLine: true, fontSize: bodyFontSize, color: BODY, paraSpaceAfter: 10 } })),
+        { x: 0.85, y: 1.55, w: 5.4, h: 5.2, valign: "top", fit: "shrink" })
+    }
+    return
+  }
+
+  if (layout === "banner") {
+    addSlideTitle(sl, s.title)
+    if (isFigure) addFigureImage(sl, resolvedImg!, { x: 0.7, y: 1.4, w: 11.93, h: 2.7 })
+    else addCoverImage(sl, resolvedImg!, { x: 0.7, y: 1.4, w: 11.93, h: 2.7 })
+    addImageCaption(sl, s, 0.7, 4.16, 11.93)
+    if (bullets.length) {
+      sl.addText(bullets.map((b) => ({ text: b, options: { bullet: { code: "2022", indent: 14 }, breakLine: true, fontSize: bodyFontSize, color: BODY, paraSpaceAfter: 10 } })),
+        { x: 0.85, y: 4.55, w: 11.7, h: 2.4, valign: "top", fit: "shrink" })
+    }
+    return
+  }
+
+  if (layout === "image-right" || layout === "image-left") {
+    const textX = layout === "image-right" ? 0.7 : 7.1
+    const imgX = layout === "image-right" ? 7.1 : 0.7
+    addSlideTitle(sl, s.title)
+    if (isFigure) addFigureImage(sl, resolvedImg!, { x: imgX, y: 1.5, w: 5.55, h: 4.9 })
+    else addCoverImage(sl, resolvedImg!, { x: imgX, y: 1.5, w: 5.55, h: 4.9 })
+    addImageCaption(sl, s, imgX, 6.44, 5.55)
+    const b = bullets.length ? bullets : [s.title || "—"]
+    sl.addText(b.map((t) => ({ text: t, options: { bullet: { code: "2022", indent: 14 }, breakLine: true, fontSize: bodyFontSize, color: BODY, paraSpaceAfter: 10 } })),
+      { x: textX + 0.15, y: 1.55, w: 5.4, h: 5.1, valign: "top", fit: "shrink" })
+    return
+  }
+
+  // bullets（默认）
+  addSlideTitle(sl, s.title)
+  const list = bullets.length ? bullets : ["—"]
+  sl.addText(list.map((t) => ({ text: t, options: { bullet: { code: "2022", indent: 14 }, breakLine: true, fontSize: bodyFontSize, color: BODY, paraSpaceAfter: 10 } })),
+    { x: 0.85, y: 1.5, w: 11.7, h: 5.45, valign: "top", fit: "shrink" })
+}
+
+/** 图表原生配色（与商务主色一致，不受站内 token 约束） */
+const CHART_PALETTE = ["2E74B5", "1F3864", "5B9BD5", "8FAADC", "375623", "C55A11"]
+
+/**
+ * 原生可编辑图表：用 pptxgenjs.addChart 生成真正的 OOXML chart 对象
+ * （可在 PowerPoint/WPS 里右键「编辑数据」改数值），这是 Anthropic pptx skill
+ * 相对「截图当图表」类工具的第一卖点，也是本次升级核心。
+ * addChart 抛错时回退到 ECharts PNG 内嵌（onFallback），保证导出不中断。
+ */
+function renderNativeChart(
+  pptx: PptxGenJS,
+  sl: SlideCtx,
+  s: Slide,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  onFallback: () => void,
+) {
+  const c = s.chart
+  if (!c || !(c.categories?.length)) {
+    onFallback()
+    return
+  }
+  try {
+    const type =
+      c.type === "pie" ? pptx.ChartType.pie : c.type === "line" ? pptx.ChartType.line : pptx.ChartType.bar
+    const data = (c.series ?? []).map((sr) => ({
+      name: sr.name || "系列",
+      labels: c.categories,
+      values: sr.data.map((v) => (Number.isFinite(v) ? v : 0)),
+    }))
+    if (!data.length) {
+      onFallback()
+      return
+    }
+    sl.addChart(type, data, {
+      x, y, w, h,
+      chartColors: CHART_PALETTE,
+      barDir: "col",
+      barGapWidthPct: 60,
+      lineSize: 3,
+      lineSmooth: true,
+      showLegend: c.type === "pie" || data.length > 1,
+      legendPos: "b",
+      legendFontSize: 12,
+      legendColor: BODY,
+      catAxisLabelColor: BODY,
+      catAxisLabelFontSize: 11,
+      valAxisLabelColor: MUTED,
+      valAxisLabelFontSize: 10,
+      valAxisLineShow: false,
+      dataLabelColor: BODY,
+      dataLabelFontSize: 10,
+      showValue: c.type === "pie" ? false : data.length <= 1,
+      dataLabelFormatCode: "0.#",
+      valAxisTitle: c.unit || "",
+      showValAxisTitle: Boolean(c.unit),
+      valAxisTitleFontSize: 10,
+      valAxisTitleColor: MUTED,
+      holeSize: 55,
+    })
+  } catch {
+    try {
+      onFallback()
+    } catch {
+      /* 连回退也失败：留空，不阻断导出 */
+    }
+  }
+}
+
+function addImageCaption(sl: SlideCtx, s: Slide, x: number, y: number, w: number) {
+  if (!s.imageAlt?.trim()) return
+  sl.addText(s.imageAlt.trim().slice(0, 60), { x, y, w, h: 0.3, fontSize: 9, italic: true, color: MUTED, align: "center" })
+}
+
+/**
+ * pptxgenjs 4.x 若把 dataURL 传给 `path`，会误把 base64 尾部当扩展名，导致写出的
+ * media 文件名与 [Content_Types] 出现 `image/<乱码>`（真实图片仍能靠字节嗅探显示，但不规范）。
+ * 改用 `data` 选项（去掉 `data:` scheme 前缀，形如 `image/png;base64,...`），可正确落 `.png` 与 `image/png`。
+ */
+function imgDataOpt(dataUrl: string): { data: string } {
+  return { data: dataUrl.replace(/^data:/i, "") }
+}
+
+/** 图片以 cover 方式填满方框（自动裁剪，不变形）；dataUrl 支持 dataURL，导出时不触网 */
+function addCoverImage(sl: SlideCtx, dataUrl: string, box: { x: number; y: number; w: number; h: number }) {
+  try {
+    sl.addImage({ ...imgDataOpt(dataUrl), x: box.x, y: box.y, w: box.w, h: box.h, sizing: { type: "cover", w: box.w, h: box.h } })
+  } catch {
+    /* 图片异常则跳过，保留文字 */
+  }
+}
+
+/** 图示页：按 contain 等比缩放居中放满方框（不裁剪，保护架构/流程图完整） */
+function addFigureImage(sl: SlideCtx, dataUrl: string, box: { x: number; y: number; w: number; h: number }) {
+  try {
+    sl.addImage({ ...imgDataOpt(dataUrl), x: box.x, y: box.y, w: box.w, h: box.h, sizing: { type: "contain", w: box.w, h: box.h } })
+  } catch {
+    /* 图示异常则跳过，保留文字 */
+  }
+}
+
+/** 图表页：把 SlideChart 渲染成 PNG，按 900:520 比例内嵌（不变形） */
+function renderChartImage(pptx: PptxGenJS, sl: SlideCtx, s: Slide, x: number, y: number, w: number) {
+  if (!s.chart) return
+  try {
+    const png = renderDeckChartPng(s.chart, 900, 520)
+    const h = (w * 520) / 900
+    sl.addImage({ ...imgDataOpt(png), x, y, w, h })
+  } catch {
+    /* 图表渲染失败：留一个占位框，不阻断导出 */
+    sl.addShape(pptx.ShapeType.rect, { x, y, w, h: (w * 520) / 900, fill: { color: LIGHT_BG }, line: { color: MUTED, width: 1 } })
+  }
+}
+
+/** KPI 大数字卡：2-4 张等宽卡片 */
+function renderKpi(pptx: PptxGenJS, sl: SlideCtx, s: Slide) {
+  const kpi = (s.kpi ?? []).slice(0, 4)
+  if (!kpi.length) return
+  const gap = 0.3
+  const areaX = 0.7
+  const areaW = 11.93
+  const cardW = (areaW - gap * (kpi.length - 1)) / kpi.length
+  const cardH = 2.3
+  const topY = 1.75
+  kpi.forEach((k, i) => {
+    const x = areaX + i * (cardW + gap)
+    sl.addShape(pptx.ShapeType.roundRect, { x, y: topY, w: cardW, h: cardH, fill: { color: LIGHT_BG }, line: { color: ACCENT_SOFT, width: 1 }, rectRadius: 0.08 })
+    sl.addShape(pptx.ShapeType.rect, { x, y: topY, w: cardW, h: 0.08, fill: { color: ACCENT } })
+    sl.addText(k.value || "", { x: x + 0.1, y: topY + 0.35, w: cardW - 0.2, h: 1.0, fontSize: 40, bold: true, color: NAVY, align: "center", valign: "middle", fit: "shrink" })
+    sl.addText(k.label || "", { x: x + 0.15, y: topY + 1.45, w: cardW - 0.3, h: 0.7, fontSize: 14, color: BODY, align: "center", valign: "top", fit: "shrink" })
+  })
+}
+
+// ---------------------------------------------------------------------------
+// 页面切换动画注入 + 下载
+// ---------------------------------------------------------------------------
+
+function injectTransitions(buf: ArrayBuffer, transition: DeckTransition): Uint8Array {
+  const zip = unzipSync(new Uint8Array(buf))
+  const xml = transition === "none" ? "" : TRANSITION_XML[transition]
+  const slideRe = /^ppt\/slides\/slide\d+\.xml$/
+  for (const key of Object.keys(zip)) {
+    if (!slideRe.test(key) || !xml) continue
+    const file = zip[key]
+    if (!file) continue
+    let text = strFromU8(file)
+    if (text.indexOf("<p:transition") >= 0) continue
+    const clr = text.indexOf("<p:clrMapOvr")
+    const pos = clr >= 0 ? clr : text.indexOf("</p:cSld>") >= 0 ? text.indexOf("</p:cSld>") + "</p:cSld>".length : -1
+    if (pos < 0) continue
+    text = text.slice(0, pos) + xml + text.slice(pos)
+    zip[key] = strToU8(text)
+  }
+  return zipSync(zip)
+}
+
+function downloadBlob(bytes: Uint8Array, fileName: string) {
+  const blob = new Blob([bytes.slice()], {
+    type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = fileName
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 3000)
 }
 
 // ---------------------------------------------------------------------------

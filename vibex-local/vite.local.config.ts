@@ -4,10 +4,27 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  // 独立缓存目录：避免与根 vite.config.ts 共用 node_modules/.vite 造成预构建混版
+  cacheDir: 'node_modules/.vite-xzlocal',
   resolve: {
+    // 强制单例 React，杜绝 "more than one copy of React" → Invalid hook call 白屏
+    dedupe: ['react', 'react-dom'],
     alias: {
       '@': path.resolve(__dirname, '../src'),
     },
+  },
+  // 预声明首趟要打包的依赖：消除浏览器加载时懒发现依赖触发的二次 re-optimize 竞态
+  optimizeDeps: {
+    include: [
+      'react',
+      'react-dom',
+      'react/jsx-runtime',
+      'react/jsx-dev-runtime',
+      'lucide-react',
+      'react-router-dom',
+      'pocketbase',
+      'sonner',
+    ],
   },
   server: {
     host: '127.0.0.1',

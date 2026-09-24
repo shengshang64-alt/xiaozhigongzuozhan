@@ -1,10 +1,47 @@
 import * as XLSX from "xlsx"
 import { AlignmentType, Document, Packer, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } from "docx"
-import { formatMoney, groupSubtotal, itemSubtotal, quoteTotal, type QuoteRecord } from "./pptQuoteTypes"
+import { formatMoney, groupSubtotal, itemSubtotal, quoteTotal, type QuoteItem, type QuoteRecord } from "./pptQuoteTypes"
+import { targetsLabel } from "@/pages/SolutionStudio/checklistTypes"
 
 // ---------------------------------------------------------------------------
-// 报价导出：Excel（分组小计/总计带公式）+ Word 报价单
+// 报价导出：Excel + Word，与建设清单 exportChecklistXlsx 同构 10 列。
+//   表头：类别 | 产品/系统 | 模块 | 来源 | 数量 | 单位 | 单价(元) | 小计(元) | 评级关联 | 备注
+//   折扣不进列（包含在小计），旧行无 product_id 时降级取 item_name / spec。
 // ---------------------------------------------------------------------------
+
+/** 报价行→导出行（10 列）：与 ChecklistLine 口径对齐 */
+export function quoteRowCells(it: QuoteItem, category: string): (string | number)[] {
+  const productName = it.product_name ?? it.item_name ?? ""
+  const moduleName = it.module_name || it.module_func || it.spec || ""
+  const sourceLabel = it.source === "external" ? "外购" : it.source === "company" ? "我公司" : "手工"
+  const ratingLabel = targetsLabel(it.rating_hits ?? [])
+  const remark = it.remark ?? it.spec ?? ""
+  return [
+    it.category?.trim() || category,
+    productName,
+    moduleName,
+    sourceLabel,
+    Number(it.qty) || 0,
+    it.unit || "套",
+    Number(it.price) || 0,
+    itemSubtotal(it),
+    ratingLabel,
+    remark,
+  ]
+}
+
+export const QUOTE_EXPORT_HEADERS = [
+  "类别",
+  "产品/系统",
+  "模块",
+  "来源",
+  "数量",
+  "单位",
+  "单价(元)",
+  "小计(元)",
+  "评级关联",
+  "备注",
+] as const
 
 function safeFileName(name: string, ext: string): string {
   const base = (name || "报价单").replace(/[\\/:*?"<>|]/g, "_").slice(0, 60)
@@ -34,7 +71,7 @@ export async function exportQuoteXlsx(quote: QuoteRecord): Promise<void> {
   }
   r += 1
 
-  const headers = ["分组", "序号", "名称", "规格说明", "单位", "数量", "单价(元)", "折扣(%)", "小计(元)"]
+  const headers = QUOTE_EXPORT_HEADERS as unknown as string[]
   headers.forEach((h, c) => put(r, c, { t: "s", v: h, s: { font: { bold: true } } }))
   r += 1
 
@@ -42,33 +79,36 @@ export async function exportQuoteXlsx(quote: QuoteRecord): Promise<void> {
   groups.forEach((g) => {
     const start = r
     const items = g.items ?? []
-    items.forEach((it, idx) => {
-      str(r, 0, idx === 0 ? g.name : "")
-      put(r, 1, { t: "n", v: idx + 1 })
-      str(r, 2, it.item_name || "")
-      str(r, 3, it.spec || "")
-      str(r, 4, it.unit || "")
-      put(r, 5, { t: "n", v: it.qty || 0 })
-      put(r, 6, { t: "n", v: it.price || 0 })
-      put(r, 7, { t: "n", v: it.discount == null ? 100 : it.discount })
-      put(r, 8, { t: "n", v: itemSubtotal(it), f: `F${r + 1}*G${r + 1}*H${r + 1}/100` })
+    items.forEach((it) => {
+      const row = quoteRowCells(it, g.name)
+      // 0-3 文本；4/6/7 数字；5/8/9 文本
+      str(r, 0, String(row[0] ?? ""))
+      str(r, 1, String(row[1] ?? ""))
+      str(r, 2, String(row[2] ?? ""))
+      str(r, 3, String(row[3] ?? ""))
+      put(r, 4, { t: "n", v: Number(row[4]) || 0 })
+      str(r, 5, String(row[5] ?? ""))
+      put(r, 6, { t: "n", v: Number(row[6]) || 0 })
+      put(r, 7, { t: "n", v: itemSubtotal(it), f: `E${r + 1}*G${r + 1}*${Number(it.discount == null ? 100 : it.discount)}/100` })
+      str(r, 8, String(row[8] ?? ""))
+      str(r, 9, String(row[9] ?? ""))
       r += 1
     })
-    str(r, 2, `${g.name}小计`, true)
+    str(r, 3, `${g.name}小计`, true)
     if (items.length) {
-      put(r, 8, { t: "n", v: groupSubtotal(g), f: `SUM(I${start + 1}:I${r})` })
+      put(r, 7, { t: "n", v: groupSubtotal(g), f: `SUM(H${start + 1}:H${r})` })
     } else {
-      put(r, 8, { t: "n", v: 0 })
+      put(r, 7, { t: "n", v: 0 })
     }
     subtotalRows.push(r)
     r += 1
   })
 
-  str(r, 2, "总计", true)
-  put(r, 8, {
+  str(r, 3, "总计", true)
+  put(r, 7, {
     t: "n",
     v: quoteTotal(groups),
-    f: subtotalRows.length ? subtotalRows.map((x) => `I${x + 1}`).join("+") : "0",
+    f: subtotalRows.length ? subtotalRows.map((x) => `H${x + 1}`).join("+") : "0",
   })
   r += 1
   if (quote.tax_note?.trim()) {
@@ -78,17 +118,18 @@ export async function exportQuoteXlsx(quote: QuoteRecord): Promise<void> {
   str(r, 0, `导出时间：${new Date().toLocaleString("zh-CN")}`)
   r += 1
 
-  ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: r - 1, c: 8 } })
+  ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: r - 1, c: 9 } })
   ws["!cols"] = [
     { wch: 12 },
+    { wch: 22 },
+    { wch: 22 },
+    { wch: 8 },
     { wch: 6 },
-    { wch: 26 },
-    { wch: 38 },
-    { wch: 8 },
-    { wch: 8 },
+    { wch: 6 },
     { wch: 12 },
-    { wch: 10 },
     { wch: 14 },
+    { wch: 18 },
+    { wch: 24 },
   ]
   XLSX.utils.book_append_sheet(wb, ws, "报价清单")
   XLSX.writeFile(wb, safeFileName(`${quote.quote_name}${quote.version ? `-${quote.version}` : ""}`, "xlsx"))
@@ -115,7 +156,7 @@ export async function exportQuoteDocx(quote: QuoteRecord): Promise<void> {
   const groups = quote.groups ?? []
   if (!groups.length) throw new Error("报价内容为空，无法导出")
   const HEADER_FILL = "EEF3F8"
-  const headerCells = ["序号", "名称", "规格说明", "单位", "数量", "单价(元)", "折扣(%)", "小计(元)"]
+  const headerCells = QUOTE_EXPORT_HEADERS as unknown as string[]
   const rows: TableRow[] = [
     new TableRow({
       tableHeader: true,
@@ -129,12 +170,12 @@ export async function exportQuoteDocx(quote: QuoteRecord): Promise<void> {
       new TableRow({
         children: [
           new TableCell({
-            columnSpan: 8,
+            columnSpan: 10,
             shading: { fill: "F7F9FB" },
             margins: { top: 60, bottom: 60, left: 80, right: 80 },
             children: [
               new Paragraph({
-                children: [new TextRun({ text: g.name, bold: true, size: 19, color: "1F3864" })],
+                children: [new TextRun({ text: `【${g.name}】`, bold: true, size: 19, color: "1F3864" })],
               }),
             ],
           }),
@@ -147,7 +188,7 @@ export async function exportQuoteDocx(quote: QuoteRecord): Promise<void> {
         new TableRow({
           children: [
             new TableCell({
-              columnSpan: 8,
+              columnSpan: 10,
               margins: { top: 40, bottom: 40, left: 80, right: 80 },
               children: [new Paragraph({ children: [new TextRun({ text: "（本组暂无行项）", size: 18, color: "999999" })] })],
             }),
@@ -155,18 +196,21 @@ export async function exportQuoteDocx(quote: QuoteRecord): Promise<void> {
         }),
       )
     }
-    items.forEach((it, idx) => {
+    items.forEach((it) => {
+      const cells = quoteRowCells(it, g.name)
       rows.push(
         new TableRow({
           children: [
-            cellText(String(idx + 1), { align: AlignmentType.CENTER }),
-            cellText(it.item_name || ""),
-            cellText(it.spec || ""),
-            cellText(it.unit || "", { align: AlignmentType.CENTER }),
-            cellText(String(it.qty || 0), { align: AlignmentType.CENTER }),
-            cellText(formatMoney(it.price || 0), { align: AlignmentType.RIGHT }),
-            cellText(String(it.discount == null ? 100 : it.discount), { align: AlignmentType.CENTER }),
+            cellText(String(cells[0] ?? "")),
+            cellText(String(cells[1] ?? "")),
+            cellText(String(cells[2] ?? "")),
+            cellText(String(cells[3] ?? ""), { align: AlignmentType.CENTER }),
+            cellText(String(cells[4] ?? ""), { align: AlignmentType.CENTER }),
+            cellText(String(cells[5] ?? ""), { align: AlignmentType.CENTER }),
+            cellText(formatMoney(Number(cells[6]) || 0), { align: AlignmentType.RIGHT }),
             cellText(formatMoney(itemSubtotal(it)), { align: AlignmentType.RIGHT }),
+            cellText(String(cells[8] ?? "")),
+            cellText(String(cells[9] ?? "")),
           ],
         }),
       )
@@ -185,6 +229,11 @@ export async function exportQuoteDocx(quote: QuoteRecord): Promise<void> {
             ],
           }),
           cellText(formatMoney(groupSubtotal(g)), { bold: true, align: AlignmentType.RIGHT, fill: HEADER_FILL }),
+          new TableCell({
+            columnSpan: 2,
+            margins: { top: 50, bottom: 50, left: 80, right: 80 },
+            children: [new Paragraph({ children: [new TextRun({ text: "", size: 18 })] })],
+          }),
         ],
       }),
     )
@@ -203,6 +252,11 @@ export async function exportQuoteDocx(quote: QuoteRecord): Promise<void> {
           ],
         }),
         cellText(formatMoney(quoteTotal(groups)), { bold: true, align: AlignmentType.RIGHT, fill: HEADER_FILL }),
+        new TableCell({
+          columnSpan: 2,
+          margins: { top: 70, bottom: 70, left: 80, right: 80 },
+          children: [new Paragraph({ children: [new TextRun({ text: "", size: 20 })] })],
+        }),
       ],
     }),
   )

@@ -2,6 +2,10 @@ import { AlertTriangle, CheckCircle2, Loader2, Pencil, RefreshCw, Trophy, XCircl
 import { Button } from "@/components/ui/button"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import { BID_RESULT_LABEL, type BidResult } from "@/pages/BidWorkspace/bidTypes"
+// R012（B-3 阶段二）：失单原因结构化——共享定义已上收到 @/lib/lostReason（Round 28 商机侧接入后单一真源）
+import { LOST_REASON_CODES, splitLostReason } from "@/lib/lostReason"
+
+export { LOST_REASON_CODES }
 
 type ResultRegisterCardProps = Pick<
   UseBidWorkspace,
@@ -33,15 +37,6 @@ const RESULT_CHOICES: { value: Exclude<BidResult, "">; label: string; icon: type
   { value: "lost", label: "失单", icon: XCircle },
   { value: "pending", label: "待定", icon: CheckCircle2 },
 ]
-
-// R012（B-3 阶段二）：失单原因结构化——类别前缀「【代码】明细」存入既有 lost_reason 字段，零 schema 变更
-export const LOST_REASON_CODES = ["价格因素", "技术方案", "资质业绩", "商务条款", "客户关系", "其他"] as const
-
-function splitLostReason(raw: string): { code: string; detail: string } {
-  const m = (raw ?? "").trim().match(/^【([^】]+)】([\s\S]*)$/)
-  if (!m) return { code: "", detail: (raw ?? "").trim() }
-  return { code: m[1], detail: m[2].trim() }
-}
 
 function fmtSyncedAt(iso: string): string {
   if (!iso) return ""

@@ -4,6 +4,7 @@ import { toast } from "sonner"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, vibexAuthHeaders, type RhAccountInfo } from "@/lib/rhLogin"
 import { buildIntelToOppQuery } from "@/lib/intelToOpp"
+import { cleanIntelBody, cleanIntelLine } from "./intelBodyClean"
 import { exportIntelItemsXlsx } from "@/lib/intelExports"
 import type { LlmMessage } from "@/lib/llm"
 import {
@@ -38,6 +39,16 @@ export interface IntelSourceRow {
   created: string
 }
 
+/** 招标/中标结构化字段（后端 /api/intel/extract-bid 规则抽取，零 AI，可能缺项） */
+export interface IntelStructured {
+  buyer?: string
+  budget?: string
+  deadline?: string
+  code?: string
+  winner?: string
+  won_amount?: string
+}
+
 export interface IntelItemRow {
   id: string
   source_id: string
@@ -48,6 +59,7 @@ export interface IntelItemRow {
   item_type: IntelSourceType | ""
   summary: string
   tags: string[]
+  structured?: IntelStructured | null
   region: string
   item_status: "pending" | "confirmed" | "ignored" | ""
   added_by: string
@@ -164,6 +176,9 @@ const PER_PAGE = 10
 // ---------------------------------------------------------------------------
 // AI 摘要打标（统一模型网关：个人模型优先，平台 gpt-5.5 兜底）
 // ---------------------------------------------------------------------------
+
+/** 项目线索标记的 localStorage 持久化键（个人维度，不跨设备同步） */
+const INTEL_LEAD_KEY = "zx_intel_leads_v1"
 
 const LLM_ERROR_ZH: Record<string, string> = {
   timeout: "AI 处理超时（可能服务器繁忙），请稍后重试",
@@ -946,11 +961,22 @@ export function useIntelCenter() {
   )
 
   // ------------------------------ 条目操作 ------------------------------
+  // 轮次 B：全局搜索/首页情报深链 ?item= 消费（声明前置：ux-04 closeDetail 需同步清理参数）
+  const [searchParams, setSearchParams] = useSearchParams()
   const [detailItem, setDetailItem] = useState<IntelItemRow | null>(null)
   const [taggingIds, setTaggingIds] = useState<string[]>([])
 
   const openDetail = useCallback((item: IntelItemRow) => setDetailItem(item), [])
-  const closeDetail = useCallback(() => setDetailItem(null), [])
+  // ux-04：关闭详情后同步清理深链 ?item= 参数，避免地址栏残留过期状态（回退/分享态一致）
+  const closeDetail = useCallback(() => {
+    setDetailItem(null)
+    setSearchParams((prev) => {
+      if (!prev.has("item")) return prev
+      const next = new URLSearchParams(prev)
+      next.delete("item")
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
 
   // 轮次 F 轨 2：情报一键转商机——本地抽取医院名/金额后带预填深链跳客户管理
   const navigate = useNavigate()
@@ -963,8 +989,7 @@ export function useIntelCenter() {
     [navigate],
   )
 
-  // 轮次 B：全局搜索/首页情报深链 ?item= 消费。分页列表可能不含该条，直接按 id 取单条。
-  const [searchParams] = useSearchParams()
+  // 轮次 B：深链 ?item= 消费。分页列表可能不含该条，直接按 id 取单条。
   const deepLinkItemRef = useRef<string | null>(null)
   useEffect(() => {
     const itemId = searchParams.get("item")
@@ -1122,9 +1147,10 @@ export function useIntelCenter() {
     )
   }, [batchSelectedIds, requireLogin, starRows, userId])
 
-  const doAiTag = useCallback(
-    async (item: IntelItemRow) => {
-      setTaggingIds((prev) => [...prev, item.id])
+  // 单条 AI 增强的核心：调用网关 → 解析 → 乐观更新 + PATCH 落库（失败回滚）。
+  // 不弹 toast、不管理 taggingIds，供单条按钮与批量增强复用。
+  const runAiTag = useCallback(
+    async (item: IntelItemRow): Promise<{ ok: boolean; reason?: string }> => {
       try {
         const r = await chatViaGateway({
           modelRef: activeModelRef,
@@ -1132,25 +1158,17 @@ export function useIntelCenter() {
           page: "intel-center",
           max_tokens: 1024,
         })
-        if (r.needsLogin) {
-          setNeedsRhLogin(true)
-          toast.error(LLM_ERROR_ZH.rh_login_required)
-          return
-        }
+        if (r.needsLogin) return { ok: false, reason: "login" }
         if (!r.ok || r.status !== "success" || !r.text) {
           // 循环7 C1 附带：未收录错误码/裸英文码统一中文兜底，不再把原始码透给用户
           const rawErr = r.error ?? ""
           const zhErr =
             LLM_ERROR_ZH[rawErr] ??
             (/[一-龥]/.test(rawErr) ? rawErr : "AI 摘要失败，请稍后重试")
-          toast.error(zhErr)
-          return
+          return { ok: false, reason: zhErr }
         }
         const parsed = parseAiTagResult(r.text)
-        if (!parsed) {
-          toast.error("AI 返回内容无法解析，请重试")
-          return
-        }
+        if (!parsed) return { ok: false, reason: "parse" }
         // 循环7 C1-3：乐观更新前快照本地字段，PATCH 落库失败时回滚并提示
         const prevSnapshot = {
           summary: item.summary,
@@ -1177,18 +1195,36 @@ export function useIntelCenter() {
         } catch (patchErr) {
           patchItemLocal(item.id, prevSnapshot)
           const pe = patchErr as Error & { httpStatus?: number }
-          if (pe.httpStatus === 401) setNeedsRhLogin(true)
-          toast.error("AI 打标结果保存失败，已恢复原内容，请稍后重试")
-          return
+          if (pe.httpStatus === 401) return { ok: false, reason: "login" }
+          return { ok: false, reason: "save" }
         }
-        toast.success("AI 摘要与打标完成")
+        return { ok: true }
       } catch {
-        toast.error("AI 摘要失败，请稍后重试")
-      } finally {
-        setTaggingIds((prev) => prev.filter((id) => id !== item.id))
+        return { ok: false, reason: "AI 摘要失败，请稍后重试" }
       }
     },
     [patchItemLocal],
+  )
+
+  const doAiTag = useCallback(
+    async (item: IntelItemRow) => {
+      setTaggingIds((prev) => [...prev, item.id])
+      const res = await runAiTag(item)
+      setTaggingIds((prev) => prev.filter((id) => id !== item.id))
+      if (res.ok) {
+        toast.success("AI 摘要与打标完成")
+      } else if (res.reason === "login") {
+        setNeedsRhLogin(true)
+        toast.error(LLM_ERROR_ZH.rh_login_required)
+      } else if (res.reason === "parse") {
+        toast.error("AI 返回内容无法解析，请重试")
+      } else if (res.reason === "save") {
+        toast.error("AI 打标结果保存失败，已恢复原内容，请稍后重试")
+      } else {
+        toast.error(res.reason || "AI 摘要失败，请稍后重试")
+      }
+    },
+    [runAiTag],
   )
 
   const aiTagItem = useCallback(
@@ -1205,6 +1241,55 @@ export function useIntelCenter() {
   )
 
   const aiTagging = useCallback((itemId: string) => taggingIds.includes(itemId), [taggingIds])
+
+  // 批量 AI 增强：对当前选中的情报逐条调用网关生成摘要/分类/区域/标签，串行执行、
+  // 命中登录失效即中断，结束给一次汇总提示（成本确认在 aiTagBatch 入口统一做一次）。
+  const batchAiTag = useCallback(async () => {
+    const ids = batchSelectedIds
+    if (!ids.length) return
+    if (!requireLogin()) return
+    const targets = itemList.filter((it) => ids.includes(it.id))
+    setBatchBusy(true)
+    let ok = 0
+    let fail = 0
+    let login = false
+    for (const it of targets) {
+      const res = await runAiTag(it)
+      if (res.ok) {
+        ok += 1
+      } else {
+        fail += 1
+        if (res.reason === "login") {
+          login = true
+          break
+        }
+      }
+    }
+    setBatchBusy(false)
+    if (login) {
+      setNeedsRhLogin(true)
+      toast.error(LLM_ERROR_ZH.rh_login_required)
+      return
+    }
+    toast[fail ? "error" : "success"](
+      fail
+        ? `批量 AI 增强：${ok} 条成功，${fail} 条失败可重试`
+        : `已完成 ${ok} 条情报的 AI 摘要与打标`,
+    )
+    setBatchSelectedIds([])
+    setBatchMode(false)
+  }, [batchSelectedIds, itemList, requireLogin, runAiTag])
+
+  const aiTagBatch = useCallback(() => {
+    if (!requireLogin()) return
+    if (!batchSelectedIds.length) return
+    costConfirm.runWithCostConfirm(
+      () => {
+        void batchAiTag()
+      },
+      `将调用 AI 为选中的 ${batchSelectedIds.length} 条情报生成摘要与标签，${costTextForModel(activeModelRef)}`,
+    )
+  }, [requireLogin, batchSelectedIds, costConfirm, batchAiTag])
 
   // ------------------------------ 手动录入 ------------------------------
   const [entryDialogOpen, setEntryDialogOpen] = useState(false)
@@ -1252,15 +1337,24 @@ export function useIntelCenter() {
   }, [entryUrl])
 
   const submitEntry = useCallback(async () => {
-    const title = entryTitle.trim()
+    // Round 26 (intel-data-01)：持久化前清洗粘贴/抓取的网页残留（服务端 POST 对手动入库零清洗）
+    const title = cleanIntelLine(entryTitle)
     if (!title) {
       toast.error("请填写情报标题")
+      return
+    }
+    const cleanBody = cleanIntelBody(entrySnippet, 2000)
+    if (!cleanBody.text) {
+      toast.error("请填写情报正文（清理后无有效内容）")
       return
     }
     const url = entryUrl.trim()
     if (url && !/^https?:\/\//i.test(url)) {
       toast.error("原文链接必须以 http:// 或 https:// 开头")
       return
+    }
+    if (cleanBody.changed) {
+      toast.info(cleanBody.removedLines > 0 ? `已自动清理正文中的脚本/标签与 ${cleanBody.removedLines} 行噪声内容` : "已自动清理正文中的脚本/标签残留")
     }
     setEntrySaving(true)
     try {
@@ -1270,7 +1364,7 @@ export function useIntelCenter() {
         body: JSON.stringify({
           title: title.slice(0, 200),
           url: url.slice(0, 500),
-          content_snippet: entrySnippet.trim().slice(0, 2000),
+          content_snippet: cleanBody.text.slice(0, 2000),
           item_type: entryType,
           region: entryRegion.trim().slice(0, 30),
           item_status: "pending",
@@ -1302,6 +1396,130 @@ export function useIntelCenter() {
       setEntrySaving(false)
     }
   }, [entryTitle, entryUrl, entrySnippet, entryType, entryRegion, entryIsPublic, userId, refreshItems])
+
+  // ------------------------------ 重构轮：项目线索标记 / 一键建标书任务 / AI 情报周报 ------------------------------
+
+  // 线索标记（个人维度，localStorage 持久化；卡片显「已标线索」徽标，详情可一键建标/转商机）
+  const [leadIds, setLeadIds] = useState<string[]>(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(INTEL_LEAD_KEY) || "[]")
+      return Array.isArray(raw) ? raw.map(String) : []
+    } catch {
+      return []
+    }
+  })
+  const isLead = useCallback((itemId: string) => leadIds.includes(itemId), [leadIds])
+  const toggleLead = useCallback(
+    (item: IntelItemRow) => {
+      const wasLead = leadIds.includes(item.id)
+      setLeadIds((prev) => {
+        const next = prev.includes(item.id) ? prev.filter((x) => x !== item.id) : [...prev, item.id]
+        try {
+          localStorage.setItem(INTEL_LEAD_KEY, JSON.stringify(next))
+        } catch {
+          /* 存储不可用时仅内存态生效 */
+        }
+        return next
+      })
+      toast.success(wasLead ? "已取消线索标记" : "已标记为项目线索，可在详情一键建标书任务")
+    },
+    [leadIds],
+  )
+
+  // 一键新建标书任务：按情报招标要素预填创建 bid_projects 草稿并直跳标书工作区
+  const createBidTask = useCallback(
+    (item: IntelItemRow) => {
+      if (!requireLogin()) return
+      const st = item.structured || {}
+      const dm = /(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})/.exec(st.deadline || "")
+      const payload: Record<string, unknown> = {
+        rh_user_id: userId ?? "",
+        project_name: item.title.slice(0, 120),
+        tender_no: st.code || "",
+        hospital: st.buyer || "",
+        stage: "pending_parse",
+        global_facts: `来源情报：${item.url || item.title}；预算参考：${st.budget || "未抽取到"}；截止：${st.deadline || "未抽取到"}`,
+      }
+      if (dm) payload.bid_open_date = `${dm[1]}-${dm[2].padStart(2, "0")}-${dm[3].padStart(2, "0")}`
+      void apiFetch<{ id?: string }>("/api/bid_projects", { method: "POST", body: JSON.stringify(payload) })
+        .then((r) => {
+          if (!r?.id) {
+            toast.error("标书任务创建失败：未返回项目 id")
+            return
+          }
+          toast.success("标书任务已创建（招标要素已带入），正在跳转标书工作区")
+          setDetailItem(null)
+          navigate(`/bid-workspace?project=${encodeURIComponent(r.id)}`)
+        })
+        .catch((err) => {
+          const e = err as Error & { httpStatus?: number }
+          if (e.httpStatus === 401) setNeedsRhLogin(true)
+          toast.error("标书任务创建失败，请稍后重试")
+        })
+    },
+    [requireLogin, userId, navigate],
+  )
+
+  // AI 情报周报：汇总近 7 天（剔除已忽略）条目生成 Markdown 周报，可复制
+  const [reportOpen, setReportOpen] = useState(false)
+  const [reportLoading, setReportLoading] = useState(false)
+  const [reportText, setReportText] = useState("")
+
+  const doWeeklyReport = useCallback(async () => {
+    setReportLoading(true)
+    setReportText("")
+    try {
+      const cutoff = Date.now() - 7 * 86400_000
+      const weekItems = itemList
+        .filter((it) => it.my_status !== "ignored" && new Date(it.published_at || it.created).getTime() >= cutoff)
+        .slice(0, 40)
+      if (weekItems.length === 0) {
+        setReportText("近 7 天没有可汇总的情报（已忽略条目不计入）。可调整筛选时间范围，或先到信息源管理补充采集源。")
+        return
+      }
+      const ctx = weekItems
+        .map(
+          (it, i) =>
+            `${i + 1}. [${SOURCE_TYPE_LABEL[it.item_type] || "其他"}] ${it.title}（${it.source_name || "来源未知"}${it.region ? `｜${it.region}` : ""}｜${fmtIntelTime(it.published_at || it.created)}）${it.summary ? ` 摘要：${it.summary.slice(0, 120)}` : ""}`,
+        )
+        .join("\n")
+      const messages: LlmMessage[] = [
+        {
+          role: "system",
+          content:
+            "你是医疗信息化售前团队的情报分析师。基于给定的一周情报清单输出一份 Markdown 周报，结构固定为：\n# 售前情报周报\n## 本周要点（3-5 条）\n## 政策与标准\n## 招标机会（含预算/截止，标注建议动作）\n## 竞品动态\n## 建议行动清单\n只依据清单内容，不得编造；某节无内容写「本周无」。语言精炼，面向售前工程师。",
+        },
+        { role: "user", content: `请基于以下 ${weekItems.length} 条本周情报生成周报：\n${ctx}` },
+      ]
+      const r = await chatViaGateway({ modelRef: activeModelRef, messages, page: "intel-center", max_tokens: 2048 })
+      if (r.needsLogin) {
+        setNeedsRhLogin(true)
+        setReportText(LLM_ERROR_ZH.rh_login_required ?? "AI 服务需要登录，请登录后重试")
+        return
+      }
+      if (!r.ok || r.status !== "success" || !r.text) {
+        const rawErr = r.error ?? ""
+        setReportText(LLM_ERROR_ZH[rawErr] ?? (/[一-龥]/.test(rawErr) ? rawErr : "周报生成失败，请稍后重试"))
+        return
+      }
+      setReportText(r.text)
+    } catch {
+      setReportText("周报生成异常，请稍后重试")
+    } finally {
+      setReportLoading(false)
+    }
+  }, [itemList])
+
+  const generateWeeklyReport = useCallback(() => {
+    if (!requireLogin()) return
+    setReportOpen(true)
+    costConfirm.runWithCostConfirm(
+      () => {
+        void doWeeklyReport()
+      },
+      `将调用 AI 汇总近 7 天情报生成售前周报，${costTextForModel(activeModelRef)}`,
+    )
+  }, [requireLogin, costConfirm, doWeeklyReport])
 
   // ------------------------------ 汇总 ------------------------------
   return {
@@ -1373,6 +1591,16 @@ export function useIntelCenter() {
     convertToOpportunity,
     confirmItem,
     ignoreItem,
+    // 重构轮：线索 / 建标 / 周报
+    leadIds,
+    isLead,
+    toggleLead,
+    createBidTask,
+    reportOpen,
+    closeReport: () => setReportOpen(false),
+    reportLoading,
+    reportText,
+    generateWeeklyReport,
     // 循环 10 小改 2：批量模式
     batchMode,
     batchSelectedIds,
@@ -1383,6 +1611,7 @@ export function useIntelCenter() {
     batchSetStatus,
     batchToggleStar,
     aiTagItem,
+    aiTagBatch,
     aiTagging,
     // 收藏
     starredIds,

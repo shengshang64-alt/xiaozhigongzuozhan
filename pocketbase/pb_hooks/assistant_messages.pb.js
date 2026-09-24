@@ -83,16 +83,17 @@ routerAdd("GET", "/api/assistant_messages", function (e) {
     ensureCollLocal()
     var info = e.requestInfo()
     var query = info.query || {}
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var page = parseInt(String(query.page || "1"), 10) || 1
     var perPage = parseInt(String(query.perPage || "50"), 10) || 50
     if (perPage > 200) perPage = 200
     var sort = String(query.sort || "-created")
     var filterParts = []
     var params = {}
-    if (query.rh_user_id !== undefined && query.rh_user_id !== "") {
-      filterParts.push("rh_user_id = {:rh_user_id}")
-      params.rh_user_id = String(query.rh_user_id)
-    }
+    filterParts.push("rh_user_id = {:rh_user_id}")
+      params.rh_user_id = __uid
     if (query.session_id !== undefined && query.session_id !== "") {
       filterParts.push("session_id = {:session_id}")
       params.session_id = String(query.session_id)
@@ -116,10 +117,17 @@ routerAdd("GET", "/api/assistant_messages", function (e) {
 routerAdd("GET", "/api/assistant_messages/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("assistant_messages", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id")||"") === __uid) } catch(_x) {}
+    if (!__own) { try { __own = (String(rec.get("owner_id")||"") === __uid) } catch(_x) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     return e.json(200, rec.publicExport())
   } catch (err) {
     var msg = String(err && err.message || err)
@@ -149,8 +157,11 @@ routerAdd("POST", "/api/assistant_messages", function (e) {
   try {
     var coll = ensureCollLocal()
     var body = e.requestInfo().body || {}
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var rec = new Record(coll)
-    rec.set("rh_user_id", body.rh_user_id === undefined || body.rh_user_id === null ? "" : String(body.rh_user_id))
+    rec.set("rh_user_id", __uid)
     rec.set("session_id", body.session_id === undefined || body.session_id === null ? "" : String(body.session_id))
     rec.set("role", body.role === undefined || body.role === null ? "" : String(body.role))
     rec.set("content", body.content === undefined || body.content === null ? "" : String(body.content))
@@ -166,12 +177,19 @@ routerAdd("POST", "/api/assistant_messages", function (e) {
 routerAdd("PATCH", "/api/assistant_messages/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("assistant_messages", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id")||"") === __uid) } catch(_x) {}
+    if (!__own) { try { __own = (String(rec.get("owner_id")||"") === __uid) } catch(_x) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     var body = e.requestInfo().body || {}
-    if ("rh_user_id" in body) rec.set("rh_user_id", body.rh_user_id === undefined || body.rh_user_id === null ? "" : String(body.rh_user_id))
+    // IDOR fix: owner transfer disabled
     if ("session_id" in body) rec.set("session_id", body.session_id === undefined || body.session_id === null ? "" : String(body.session_id))
     if ("role" in body) rec.set("role", body.role === undefined || body.role === null ? "" : String(body.role))
     if ("content" in body) rec.set("content", body.content === undefined || body.content === null ? "" : String(body.content))
@@ -186,10 +204,17 @@ routerAdd("PATCH", "/api/assistant_messages/{id}", function (e) {
 routerAdd("DELETE", "/api/assistant_messages/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("assistant_messages", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id")||"") === __uid) } catch(_x) {}
+    if (!__own) { try { __own = (String(rec.get("owner_id")||"") === __uid) } catch(_x) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     $app.delete(rec)
     return e.json(200, { ok: true })
   } catch (err) {

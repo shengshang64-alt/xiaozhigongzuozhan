@@ -83,6 +83,7 @@ export function FloatingAssistant() {
             </span>
             <button
               type="button"
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={goFullScreen}
               aria-label="进入全屏对话"
               title="进入全屏"
@@ -92,6 +93,7 @@ export function FloatingAssistant() {
             </button>
             <button
               type="button"
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={() => setOpen(false)}
               aria-label="收起小智聊天窗"
               className="rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -116,6 +118,8 @@ export function FloatingAssistant() {
             busy={vm.sendState !== "idle"}
             contextLabel={vm.contextLabel}
             onCloseContext={vm.closeContext}
+            onCancel={vm.cancelSend}
+            elapsedSec={vm.sendElapsedTick}
             compact
           />
 

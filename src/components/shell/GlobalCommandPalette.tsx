@@ -36,6 +36,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   "/bid-workspace": FileCheck2,
   "/ppt-quote": Monitor,
   "/intel-center": Newspaper,
+  "/competitors": Building2,
   "/customer-management": Users,
   "/knowledge": BookOpen,
   "/model-config": Settings,

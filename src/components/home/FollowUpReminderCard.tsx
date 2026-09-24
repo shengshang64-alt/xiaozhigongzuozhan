@@ -1,5 +1,6 @@
-import { CalendarClock } from "lucide-react"
+import { CalendarClock, Inbox } from "lucide-react"
 import { useNavigate } from "react-router-dom"
+import { EmptyHintLine } from "@/components/home/EmptyHintLine"
 import type { FollowDueOpp } from "@/pages/Home/useHome"
 
 type FollowUpReminderCardProps = {
@@ -12,6 +13,16 @@ export function FollowUpReminderCard({ items, loading }: FollowUpReminderCardPro
   const navigate = useNavigate()
   const overdue = items.filter((i) => i.overdue)
   const dueToday = items.filter((i) => !i.overdue)
+  // home-03：无到期/逾期提醒时折叠为一行提示，不再占半屏整卡(含恒为 0 的徽章)
+  if (!loading && items.length === 0) {
+    return (
+      <EmptyHintLine
+        icon={<Inbox className="h-4 w-4" />}
+        text="暂无待跟进商机"
+        hint="在商机看板设置「下次跟进时间」，到期与逾期时在这里提醒"
+      />
+    )
+  }
   return (
     <section className="mb-5 rounded-lg border border-border bg-card shadow-md animate-in fade-in duration-500">
       <header className="flex min-h-14 flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
@@ -27,11 +38,6 @@ export function FollowUpReminderCard({ items, loading }: FollowUpReminderCardPro
       <div className="p-4">
         {loading ? (
           <p className="text-xs text-muted-foreground">跟进提醒加载中…</p>
-        ) : items.length === 0 ? (
-          <div className="py-2 text-center">
-            <p className="text-sm font-medium text-foreground">暂无待跟进商机</p>
-            <p className="mt-1 text-xs text-muted-foreground">在商机看板为商机设置「下次跟进时间」，到期与逾期时会在这里提醒你</p>
-          </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {overdue.length > 0 && (

@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ArrowRightCircle, CheckCircle2, CircleDashed, RotateCcw, ShieldAlert, TriangleAlert } from "lucide-react"
+import { ArrowRightCircle, CheckCircle2, ChevronDown, CircleDashed, RotateCcw, ShieldAlert, TriangleAlert } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,10 +24,11 @@ type GateChecklistProps = Pick<
  * 已确认显示绿勾 + 时间 + 备注，重置需二次确认。确认/重置即 PATCH stage_gates。
  */
 export function GateChecklist({ activeProject, confirmGate, resetGate, voidCriticalUnresolved }: GateChecklistProps) {
-  // notingGate=正在展开备注输入的闸门；resetTarget=待二次确认重置的闸门
+  // notingGate=正在展开备注输入的闸门；resetTarget=待二次确认重置的闸门；redlineOpen=公司红线自查展开态
   const [notingGate, setNotingGate] = useState<"" | GateKind>("")
   const [noteDraft, setNoteDraft] = useState("")
   const [resetTarget, setResetTarget] = useState<GateKind | null>(null)
+  const [redlineOpen, setRedlineOpen] = useState(false)
   if (!activeProject) return null
   const gates = activeProject.stage_gates
   const confirmedCount = GATE_KINDS.filter((k) => findGateRecord(gates, k)).length
@@ -184,6 +185,46 @@ export function GateChecklist({ activeProject, confirmGate, resetGate, voidCriti
           闸门仅约束全套导出与归档，单份文档随时可导，各环节仍可自由进出继续完善
         </p>
       )}
+
+      {/* 公司招投标培训（第一期）摘要：培训里的过程红线无法程序化判定，交卷前逐项人工过一遍 */}
+      <div className="mt-4 rounded-lg border border-border bg-background">
+        <button
+          type="button"
+          onClick={() => setRedlineOpen((o) => !o)}
+          aria-expanded={redlineOpen}
+          className="flex w-full items-center justify-between gap-2 rounded-lg px-4 py-2.5 text-left transition-colors hover:bg-secondary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <span className="flex items-center gap-2 text-sm font-medium text-card-foreground">
+            <ShieldAlert className="h-4 w-4 shrink-0 text-primary" />
+            公司投标红线自查（招投标培训摘要，交卷前逐项人工过一遍）
+          </span>
+          <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${redlineOpen ? "rotate-180" : ""}`} />
+        </button>
+        {redlineOpen && (
+          <div className="grid gap-3 border-t border-border p-4 text-xs leading-relaxed text-muted-foreground lg:grid-cols-2">
+            <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">
+              <p className="font-medium text-foreground">串标五禁止（处罚：采购额 5‰-10‰ 罚款、1-3 年禁入）</p>
+              <p className="mt-1">① 禁止不同投标人同一台电脑制作标书；② 禁止同一 IP 上传/解密；③ 禁止多个 CA 证书同机使用；④ 禁止同一源文件修改制作；⑤ 禁止风格、报价、方案、错误异常雷同。</p>
+            </div>
+            <div className="rounded-md border border-border px-3 py-2">
+              <p className="font-medium text-foreground">电子标废标六查 + 文档属性</p>
+              <p className="mt-1">CA 有效期须含开标当天；加密文件上传无误；签字盖章无遗漏；关联索引正确；模板占位文字（「请填入您的内容」）零残留；开标解密正常（先跑系统测试）。转 PDF 前删除 Word 文档属性（公司/作者信息），图片保持嵌入型清晰可读。</p>
+            </div>
+            <div className="rounded-md border border-border px-3 py-2">
+              <p className="font-medium text-foreground">报价三核实</p>
+              <p className="mt-1">大小写金额一致；分项合计＝总价；报价与竞标价/预算关系反复核对。授权期限、投标有效期类形式承诺满足招标全周期。</p>
+            </div>
+            <div className="rounded-md border border-border px-3 py-2">
+              <p className="font-medium text-foreground">审核四道关与归档</p>
+              <p className="mt-1">自我审核 → 团队互审（发现雷同款）→ 主管复审 → 销售终审（标书须经销售最后确认）；中标公告后 10 个工作日内发总部商务支持部归档；文件名按「日期-标题-版本号」三要素，完稿发审原则上 PDF。</p>
+            </div>
+            <div className="rounded-md border border-border px-3 py-2 lg:col-span-2">
+              <p className="font-medium text-foreground">公司流程时限</p>
+              <p className="mt-1">公开招标挂网后 5 日历日内发起竞标评审、开标前 3 日历日完成（谈判/磋商/询价 2 日历日）； 30 万以上项目报价评审挂网前 3 个工作日完成；中标公告 2 个工作日内提交投标结果汇报；二次挂网项目须比对条款变化，重大不一致 3 个工作日内沟通运营管理部。</p>
+            </div>
+          </div>
+        )}
+      </div>
 
       <ConfirmDialog
         open={resetTarget !== null}

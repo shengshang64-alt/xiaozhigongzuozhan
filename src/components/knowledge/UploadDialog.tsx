@@ -1,7 +1,7 @@
 // 上传弹窗：拖拽或选择文件（md/markdown/txt/docx/pdf/zip），选目标库、目录与分类，逐文件展示解析入库结果。
 // 轮次 D-1：分类选择（默认「其他」），按文件名关键词智能预选，可手动覆盖。
 import { useEffect, useRef, useState } from "react"
-import { AlertCircle, CheckCircle2, FileArchive, FileText, Loader2, UploadCloud } from "lucide-react"
+import { AlertCircle, CheckCircle2, FileArchive, FileText, FolderInput, Loader2, UploadCloud } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
@@ -27,6 +27,8 @@ type UploadDialogProps = {
   uploadResults: UploadRowResult[]
   uploading: boolean
   processUploadFiles: (files: File[], category?: string) => void
+  processUploadFolder: () => void
+  supportsFolder: boolean
   allFolderPaths: string[]
 }
 
@@ -42,6 +44,8 @@ export function UploadDialog({
   uploadResults,
   uploading,
   processUploadFiles,
+  processUploadFolder,
+  supportsFolder,
   allFolderPaths,
 }: UploadDialogProps) {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -59,7 +63,7 @@ export function UploadDialog({
     const files = allFiles.filter((f) => isSupportedUpload(f.name))
     const ignoredCount = allFiles.length - files.length
     if (ignoredCount > 0) {
-      toast.info(`已忽略 ${ignoredCount} 个不支持的文件，仅支持 md / txt / docx / pdf / zip`)
+      toast.info(`已忽略 ${ignoredCount} 个不支持的文件，仅支持 md / txt / docx / pdf / pptx / xlsx / zip`)
     }
     if (files.length === 0) return
     if (categoryTouched) {
@@ -97,7 +101,7 @@ export function UploadDialog({
         <DialogHeader>
           <DialogTitle>上传文档</DialogTitle>
           <DialogDescription>
-            md / markdown / txt 直接入库，docx / pdf 自动转文本，zip 整包在本地解压并保留目录结构（不上传原文件）
+            md / markdown / txt 直接入库，docx / pdf / pptx / xlsx 自动转文本，zip 整包在本地解压并保留目录结构（不上传原文件）
           </DialogDescription>
         </DialogHeader>
 
@@ -199,15 +203,28 @@ export function UploadDialog({
             <FileText className="h-3.5 w-3.5" />
             选择文件（可多选）
           </Button>
+          {supportsFolder ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={uploading}
+              onClick={() => processUploadFolder()}
+              className="gap-1.5 text-xs shadow-sm"
+              title="递归导入整个文件夹，保留子目录结构，按内容自动归类"
+            >
+              <FolderInput className="h-3.5 w-3.5" />
+              导入整个文件夹（自动分类）
+            </Button>
+          ) : null}
           <p className="flex items-center gap-1 text-xs text-muted-foreground">
             <FileArchive className="h-3.5 w-3.5" />
-            zip 包内只提取 .md / .markdown / .txt 文档
+            zip 包内只提取 .md / .markdown / .txt 文档；文件夹导入自动跳过代码与缓存目录
           </p>
           <input
             ref={inputRef}
             type="file"
             multiple
-            accept=".md,.markdown,.txt,.docx,.pdf,.zip"
+            accept=".md,.markdown,.txt,.docx,.pdf,.pptx,.xls,.xlsx,.zip"
             className="hidden"
             onChange={(e) => {
               handleFiles(e.target.files)

@@ -95,16 +95,17 @@ routerAdd("GET", "/api/ppt_decks", function (e) {
     ensureCollLocal()
     var info = e.requestInfo()
     var query = info.query || {}
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var page = parseInt(String(query.page || "1"), 10) || 1
     var perPage = parseInt(String(query.perPage || "50"), 10) || 50
     if (perPage > 200) perPage = 200
     var sort = String(query.sort || "-updated")
     var filterParts = []
     var params = {}
-    if (query.rh_user_id !== undefined && query.rh_user_id !== "") {
-      filterParts.push("rh_user_id = {:rh_user_id}")
-      params.rh_user_id = String(query.rh_user_id)
-    }
+    filterParts.push("rh_user_id = {:rh_user_id}")
+      params.rh_user_id = __uid
     if (query.q !== undefined && String(query.q) !== "") {
       filterParts.push("deck_name ~ {:q_kw}")
       params.q_kw = "%" + String(query.q) + "%"
@@ -128,10 +129,17 @@ routerAdd("GET", "/api/ppt_decks", function (e) {
 routerAdd("GET", "/api/ppt_decks/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("ppt_decks", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id")||"") === __uid) } catch(_x) {}
+    if (!__own) { try { __own = (String(rec.get("owner_id")||"") === __uid) } catch(_x) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     return e.json(200, rec.publicExport())
   } catch (err) {
     var msg = String(err && err.message || err)
@@ -165,8 +173,11 @@ routerAdd("POST", "/api/ppt_decks", function (e) {
   try {
     var coll = ensureCollLocal()
     var body = e.requestInfo().body || {}
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var rec = new Record(coll)
-    rec.set("rh_user_id", body.rh_user_id === undefined || body.rh_user_id === null ? "" : String(body.rh_user_id))
+    rec.set("rh_user_id", __uid)
     rec.set("deck_name", body.deck_name === undefined || body.deck_name === null ? "" : String(body.deck_name))
     rec.set("deck_type", body.deck_type === undefined || body.deck_type === null ? "" : String(body.deck_type))
     rec.set("audience", body.audience === undefined || body.audience === null ? "" : String(body.audience))
@@ -186,12 +197,19 @@ routerAdd("POST", "/api/ppt_decks", function (e) {
 routerAdd("PATCH", "/api/ppt_decks/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("ppt_decks", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id")||"") === __uid) } catch(_x) {}
+    if (!__own) { try { __own = (String(rec.get("owner_id")||"") === __uid) } catch(_x) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     var body = e.requestInfo().body || {}
-    if ("rh_user_id" in body) rec.set("rh_user_id", body.rh_user_id === undefined || body.rh_user_id === null ? "" : String(body.rh_user_id))
+    // IDOR fix: owner transfer disabled
     if ("deck_name" in body) rec.set("deck_name", body.deck_name === undefined || body.deck_name === null ? "" : String(body.deck_name))
     if ("deck_type" in body) rec.set("deck_type", body.deck_type === undefined || body.deck_type === null ? "" : String(body.deck_type))
     if ("audience" in body) rec.set("audience", body.audience === undefined || body.audience === null ? "" : String(body.audience))
@@ -210,10 +228,17 @@ routerAdd("PATCH", "/api/ppt_decks/{id}", function (e) {
 routerAdd("DELETE", "/api/ppt_decks/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("ppt_decks", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id")||"") === __uid) } catch(_x) {}
+    if (!__own) { try { __own = (String(rec.get("owner_id")||"") === __uid) } catch(_x) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     $app.delete(rec)
     return e.json(200, { ok: true })
   } catch (err) {

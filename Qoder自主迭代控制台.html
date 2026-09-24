@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>小智工作站 · Qoder 自主迭代控制台</title>
+<style>
+  :root{
+    --bg:#0a0e13; --bg2:#0f151d; --panel:#141b24; --panel2:#1a222d;
+    --line:#232d3a; --line2:#2d3a4a;
+    --fg:#e6edf3; --fg2:#9fb0c3; --fg3:#6b7b8f;
+    --cy:#22d3ee; --cy2:#0891b2; --vi:#a78bfa; --am:#f0b429;
+    --ok:#3fb950; --bad:#f85149; --warn:#d29922;
+    --mono:'Cascadia Code','JetBrains Mono',Consolas,'Courier New',monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--fg);
+    font:14px/1.7 -apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif;
+    padding:0 0 80px;
+  }
+  a{color:var(--cy);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 22px}
+
+  /* ---------- 顶栏 ---------- */
+  header{
+    background:linear-gradient(180deg,#0e1a24 0%,#0a0e13 100%);
+    border-bottom:1px solid var(--line); padding:26px 0 22px; margin-bottom:26px;
+    position:relative;overflow:hidden;
+  }
+  header::after{
+    content:'';position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(600px 120px at 12% 0%,rgba(34,211,238,.16),transparent 70%);
+  }
+  h1{margin:0 0 6px;font-size:24px;letter-spacing:.3px;font-weight:650}
+  h1 .sub{color:var(--fg3);font-weight:400;font-size:14px;margin-left:8px}
+  .lede{color:var(--fg2);margin:0;max-width:840px}
+
+  /* ---------- 状态条 ---------- */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:12px;margin:0 0 26px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;position:relative;overflow:hidden}
+  .stat::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--cy2)}
+  .stat.good::before{background:var(--ok)}
+  .stat.warn::before{background:var(--warn)}
+  .stat .k{color:var(--fg3);font-size:12px;letter-spacing:.4px;text-transform:uppercase}
+  .stat .v{font-size:22px;font-weight:650;margin-top:2px;font-family:var(--mono)}
+  .stat .n{color:var(--fg3);font-size:12px;margin-top:2px}
+
+  /* ---------- 标签页 ---------- */
+  nav.tabs{display:flex;gap:6px;border-bottom:1px solid var(--line);margin-bottom:22px;flex-wrap:wrap}
+  .tab{
+    background:transparent;border:1px solid transparent;border-bottom:none;
+    color:var(--fg2);padding:9px 15px;border-radius:8px 8px 0 0;cursor:pointer;
+    font-size:14px;font-family:inherit;transition:.15s;
+  }
+  .tab:hover{color:var(--fg);background:var(--panel)}
+  .tab.act{color:var(--cy);background:var(--panel);border-color:var(--line);border-bottom-color:var(--panel);font-weight:600}
+  .pane{display:none}
+  .pane.act{display:block}
+
+  h2{font-size:17px;margin:26px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--line);font-weight:640}
+  h2:first-child{margin-top:0}
+  h3{font-size:14px;margin:18px 0 8px;color:var(--cy);font-weight:620}
+  p{margin:8px 0}
+  ul,ol{margin:8px 0;padding-left:22px}
+  li{margin:5px 0}
+  code{font-family:var(--mono);background:#1b2430;border:1px solid var(--line2);border-radius:4px;padding:1px 5px;font-size:12.5px;color:#7dd3fc}
+
+  /* ---------- 卡片 ---------- */
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:12px 0}
+  .card.hi{border-color:var(--cy2);background:linear-gradient(180deg,rgba(34,211,238,.05),transparent)}
+  .card.warn{border-color:#5a4a15;background:linear-gradient(180deg,rgba(210,153,34,.06),transparent)}
+  .card.bad{border-color:#5c2626;background:linear-gradient(180deg,rgba(248,81,73,.06),transparent)}
+  .card h3{margin-top:0}
+
+  /* ---------- 表格 ---------- */
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13.5px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--fg3);font-weight:600;font-size:12px;letter-spacing:.4px;text-transform:uppercase;background:var(--panel2)}
+  tr:hover td{background:rgba(255,255,255,.015)}
+  td.mono,th.mono{font-family:var(--mono);font-size:12.5px}
+
+  /* ---------- 状态点 ---------- */
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:1px}
+  .dot.ok{background:var(--ok);box-shadow:0 0 0 3px rgba(63,185,80,.14)}
+  .dot.bad{background:var(--bad);box-shadow:0 0 0 3px rgba(248,81,73,.14)}
+  .dot.todo{background:var(--warn);box-shadow:0 0 0 3px rgba(210,153,34,.14)}
+  .dot.idle{background:var(--fg3)}
+
+  /* ---------- 命令块 ---------- */
+  .cmd{position:relative;background:#070b10;border:1px solid var(--line2);border-radius:8px;margin:10px 0;overflow:hidden}
+  .cmd .bar{display:flex;justify-content:space-between;align-items:center;background:#0d141c;border-bottom:1px solid var(--line);padding:6px 10px}
+  .cmd .lbl{color:var(--fg3);font-size:12px;font-family:var(--mono)}
+  .cmd pre{margin:0;padding:12px 14px;overflow-x:auto;font-family:var(--mono);font-size:12.8px;line-height:1.65;color:#c9d8e6}
+  .cp{
+    background:var(--panel2);border:1px solid var(--line2);color:var(--fg2);
+    border-radius:5px;padding:3px 10px;font-size:12px;cursor:pointer;font-family:inherit;transition:.15s;
+  }
+  .cp:hover{background:var(--cy2);color:#02121a;border-color:var(--cy2)}
+  .cp.done{background:var(--ok);color:#04170a;border-color:var(--ok)}
+
+  /* ---------- 步骤 ---------- */
+  .steps{counter-reset:s;list-style:none;padding:0;margin:12px 0}
+  .steps > li{
+    counter-increment:s;position:relative;padding:12px 16px 12px 52px;
+    background:var(--panel);border:1px solid var(--line);border-radius:9px;margin:9px 0;
+  }
+  .steps > li::before{
+    content:counter(s);position:absolute;left:14px;top:12px;
+    width:24px;height:24px;border-radius:50%;background:var(--cy2);color:#02121a;
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12.5px;font-family:var(--mono);
+  }
+  .steps > li.skip::before{background:var(--ok)}
+  .steps > li.block::before{background:var(--warn)}
+  .steps b{display:block;margin-bottom:3px}
+
+  /* ---------- 分层图 ---------- */
+  .layer{display:grid;grid-template-columns:118px 1fr;gap:14px;align-items:stretch;margin:10px 0}
+  .layer .tag{
+    display:flex;align-items:center;justify-content:center;text-align:center;
+    border-radius:9px;font-weight:650;font-size:13px;padding:12px 6px;line-height:1.4;
+  }
+  .layer.l1 .tag{background:linear-gradient(160deg,#1b2a38,#13202b);border:1px solid #26414f;color:var(--cy)}
+  .layer.l2 .tag{background:linear-gradient(160deg,#251b38,#1a132a);border:1px solid #453366;color:var(--vi)}
+  .layer.l3 .tag{background:linear-gradient(160deg,#382b13,#231b0d);border:1px solid #6b5320;color:var(--am)}
+  .layer .body{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:13px 16px}
+  .layer .body .files{font-family:var(--mono);font-size:12.2px;color:#8fa8bf;margin-top:6px;line-height:1.8}
+
+  .kv{font-family:var(--mono);font-size:12.5px;color:var(--fg2);margin:4px 0}
+  .kv b{color:var(--fg)}
+
+  .pill{display:inline-block;background:var(--panel2);border:1px solid var(--line2);border-radius:999px;padding:2px 10px;font-size:12px;color:var(--fg2);margin:2px 4px 2px 0}
+  .pill.cy{border-color:var(--cy2);color:var(--cy)}
+
+  blockquote{margin:10px 0;padding:10px 16px;border-left:3px solid var(--cy2);background:rgba(34,211,238,.045);border-radius:0 8px 8px 0;color:var(--fg2)}
+  blockquote b{color:var(--fg)}
+
+  footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);color:var(--fg3);font-size:12.5px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:860px){.grid2{grid-template-columns:1fr}.layer{grid-template-columns:1fr}.layer .tag{padding:8px}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <h1>Qoder 自主迭代控制台 <span class="sub">小智工作站 · PRESALES DESK</span></h1>
+    <p class="lede">
+      把「人工发一句话给 AI 跑一轮」升级为<strong>可定时、可续跑、可无人值守</strong>的循环。
+      项目里已有的方法论（<code>AI-ITERATION.md</code>）与账本（<code>.loop/ledger.json</code>）本来就很完整，
+      缺的只是最后一公里的<strong>接线</strong>——本控制台就是那根线。
+    </p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- ============ 状态条 ============ -->
+  <div class="stats">
+    <div class="stat"><div class="k">项目</div><div class="v" style="font-size:15px">小智工作站</div><div class="n">Vite :8000 · PocketBase :7000</div></div>
+    <div class="stat"><div class="k">主账本轮次</div><div class="v">31</div><div class="n">下一轮 = 第 32 轮</div></div>
+    <div class="stat"><div class="k">候选池</div><div class="v">13</div><div class="n">未关闭 12 项</div></div>
+    <div class="stat good"><div class="k">接线状态</div><div class="v" style="font-size:17px">已就位</div><div class="n">规则 / 子代理 / 权限 / Hook</div></div>
+    <div class="stat warn"><div class="k">待你处理</div><div class="v">2</div><div class="n">CLI 登录 · Git 基线提交</div></div>
+  </div>
+
+  <!-- ============ 标签 ============ -->
+  <nav class="tabs">
+    <button class="tab act" data-t="overview">总览</button>
+    <button class="tab" data-t="start">快速开始</button>
+    <button class="tab" data-t="cmds">命令速查</button>
+    <button class="tab" data-t="safety">安全机制</button>
+    <button class="tab" data-t="faq">坑与问答</button>
+  </nav>
+
+  <!-- ==================== 总览 ==================== -->
+  <section class="pane act" id="overview">
+
+    <h2>一、这件事之前卡在哪</h2>
+    <table>
+      <thead><tr><th style="width:30%">环节</th><th style="width:35%">改动前</th><th>现在</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>谁知道项目规矩</b></td>
+          <td>规则写在 <code>AI-ITERATION.md</code> 里，每次得手动把它喂给 AI</td>
+          <td><span class="dot ok"></span>5 个规则文件放进 <code>.qoder/rules/</code>，Qoder 每次自动加载</td>
+        </tr>
+        <tr>
+          <td><b>谁换视角</b></td>
+          <td>靠 AI 在一个会话里"假装"换角色</td>
+          <td><span class="dot ok"></span>6 个角色做成独立子代理，<b>各自独立上下文</b>，视角真的会变</td>
+        </tr>
+        <tr>
+          <td><b>谁触发</b></td>
+          <td>人记得去发那句话</td>
+          <td><span class="dot ok"></span><code>qoder-auto.cmd run 3</code> 一条命令；也可接定时任务</td>
+        </tr>
+        <tr>
+          <td><b>谁记账</b></td>
+          <td>AI 自己更新账本，人得复查</td>
+          <td><span class="dot ok"></span>驱动器校验报告是否<b>真的落盘</b>，伪完成会被判为"无产出"并计数</td>
+        </tr>
+        <tr>
+          <td><b>谁踩刹车</b></td>
+          <td>靠 AI 自觉</td>
+          <td><span class="dot ok"></span>连续 3 轮无产出 / 连续 2 次环境失败，自动停机</td>
+        </tr>
+        <tr>
+          <td><b>危险操作</b></td>
+          <td>靠提示词约束</td>
+          <td><span class="dot ok"></span>权限白名单 + Hook 硬拦截，<b>--yolo 也绕不过</b></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>二、三层接线结构</h2>
+
+    <div class="layer l1">
+      <div class="tag">知识层<br><span style="font-size:11px;opacity:.8">Qoder 自动读</span></div>
+      <div class="body">
+        <b>让 Qoder 一启动就知道：这是什么项目、规矩是什么、红线在哪</b>
+        <div class="files">
+          .qoder/rules/00-platform-contract.md &nbsp;— VibeX 平台往返契约（不可协商）<br>
+          .qoder/rules/10-project-facts.md &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;— 技术栈 / 端口 / 命令 / 已知坑 / 账本位置<br>
+          .qoder/rules/20-iteration-protocol.md &nbsp;— 9 步流程 / A B C 放行门 / 角色轮换<br>
+          .qoder/rules/30-redlines.md &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;— 红线清单（写成可判定的具体行为）<br>
+          .qoder/rules/40-code-conventions.md &nbsp;— 代码规范（仅 src/ 等目录生效）
+        </div>
+      </div>
+    </div>
+
+    <div class="layer l2">
+      <div class="tag">角色层<br><span style="font-size:11px;opacity:.8">独立上下文</span></div>
+      <div class="body">
+        <b>每轮换一个主导视角，避免反复发现同一类问题</b>
+        <div class="files">
+          .qoder/agents/iter-round.md &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;— <b>主执行代理</b>（跑完整一轮，含落盘契约）<br>
+          .qoder/agents/presales-engineer.md &nbsp;— 售前：这功能能不能帮我拿下项目<br>
+          .qoder/agents/product-manager.md &nbsp;&nbsp;&nbsp;— 产品：是否更有价值而非更复杂<br>
+          .qoder/agents/qa-engineer.md &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;— 测试：边界 / 异常 / 数据一致性<br>
+          .qoder/agents/hospital-it.md &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;— 医院信息科：客户会不会觉得不专业<br>
+          .qoder/agents/bid-evaluator.md &nbsp;&nbsp;&nbsp;&nbsp;— 评标专家：经不经得起逐条评审<br>
+          .qoder/agents/biz-finance.md &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;— 商务财务：报价 / 成本 / 合规
+        </div>
+      </div>
+    </div>
+
+    <div class="layer l3">
+      <div class="tag">执行层<br><span style="font-size:11px;opacity:.8">无人值守</span></div>
+      <div class="body">
+        <b>驱动循环：读账本 → 组装提示词 → 调 CLI → 校验产物 → 记账 → 提交 → 判停</b>
+        <div class="files">
+          scripts/qoder-loop.mjs &nbsp;— 循环驱动器（核心）<br>
+          scripts/qoder-setup.mjs — 部署自检向导（可反复运行）<br>
+          qoder-auto.cmd &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;— 一键启动器（双击可用）<br>
+          .qoder/settings.json &nbsp;— 权限白名单：allow 40 条 / deny 27 条<br>
+          .qoder/hooks/guard.mjs &nbsp;— PreToolUse 硬拦截（唯一不可绕过点）
+        </div>
+      </div>
+    </div>
+
+    <h2>三、你要做/已完成的</h2>
+    <table>
+      <thead><tr><th style="width:44%">事项</th><th style="width:14%">状态</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>规则包 .qoder/rules/（5 个文件）</td><td><span class="dot ok"></span>已完成</td><td>已按真实基线写入（技术栈、端口、已知坑、VibeX 契约）</td></tr>
+        <tr><td>角色子代理 .qoder/agents/（7 个）</td><td><span class="dot ok"></span>已完成</td><td>每个含人设 / 尖锐追问 / 审查靶区 / 判定标准 / 禁止事项</td></tr>
+        <tr><td>权限白名单 + 硬拦截 Hook</td><td><span class="dot ok"></span>已完成</td><td>确定性放行需要的命令，拒绝 27 类危险操作</td></tr>
+        <tr><td>循环驱动器 + 一键启动器</td><td><span class="dot ok"></span>已完成</td><td>已实测：状态视图、环境预检、试跑均正常</td></tr>
+        <tr><td>Qoder CLI 安装</td><td><span class="dot ok"></span>已完成</td><td>qodercli v1.1.62 已装到用户全局（AppData\Roaming\npm）</td></tr>
+        <tr><td><b>Qoder CLI 登录</b></td><td><span class="dot bad"></span>待你操作</td><td>实测返回 <code>Not logged in · Please run /login</code></td></tr>
+        <tr><td><b>Git 基线提交</b></td><td><span class="dot bad"></span>待你操作</td><td>当前 204 处未提交，没有回滚点就无法判断"哪一轮改坏了"</td></tr>
+        <tr><td>定时自动运行（每晚）</td><td><span class="dot idle"></span>可选</td><td>需要你定时间；跑 AI 会消耗额度，建议先手动跑几轮看质量</td></tr>
+      </tbody>
+    </table>
+
+  </section>
+
+  <!-- ==================== 快速开始 ==================== -->
+  <section class="pane" id="start">
+
+    <h2>按顺序做，缺哪步补哪步</h2>
+
+    <ol class="steps">
+      <li class="skip">
+        <b>确认服务在跑</b>
+        浏览器打开 <a href="http://127.0.0.1:8000/" target="_blank">http://127.0.0.1:8000/</a> 能看到界面即可。
+        没起来就双击项目根目录的 <code>start-local.cmd</code>（它会同时拉起前端和 PocketBase）。
+        <div class="kv">当前实测：Vite 200 / PocketBase 200 — <span class="dot ok"></span>已就绪</div>
+      </li>
+
+      <li class="block">
+        <b>登录 Qoder CLI（一次性）</b>
+        打开终端（CMD 或 PowerShell），执行下面这条，然后按提示完成登录：
+        <div class="cmd">
+          <div class="bar"><span class="lbl">终端</span><button class="cp" data-c="qodercli">复制</button></div>
+          <pre>qodercli</pre>
+        </div>
+        进入界面后输入 <code>/login</code> 回车，浏览器完成授权后按 <code>Ctrl+C</code> 或 <code>/quit</code> 退出即可。
+        <div class="kv">验证是否成功：</div>
+        <div class="cmd">
+          <div class="bar"><span class="lbl">终端</span><button class="cp" data-c='qodercli -p --max-turns 2 --permission-mode dont_ask -o json "回复：就绪"'>复制</button></div>
+          <pre>qodercli -p --max-turns 2 --permission-mode dont_ask -o json "回复：就绪"</pre>
+        </div>
+        看到 <code>"result":"就绪"</code> 就说明通了；若还是 <code>Not logged in</code>，说明登录没完成。
+      </li>
+
+      <li class="block">
+        <b>建立 Git 基线提交</b>
+        这是自主迭代的<strong>安全绳</strong>。没有干净基线，就无法判断某一轮改坏了什么，也无法一键回滚。
+        <div class="cmd">
+          <div class="bar"><span class="lbl">项目根目录（D:\重要文件\工作的小程序\xiaozhigongzuozhan）</span><button class="cp" data-c='git add -A &amp;&amp; git commit -m "chore: 自主迭代接线前的基线快照"'>复制</button></div>
+          <pre>git add -A &amp;&amp; git commit -m "chore: 自主迭代接线前的基线快照"</pre>
+        </div>
+        <div class="card warn" style="margin-top:10px">
+          <b>提交前请确认</b> <code>.gitignore</code> 已排除 <code>.env.local</code>、<code>pocketbase/pb_data</code>、
+          <code>*.log</code>、<code>_qa/</code>、<code>_edgeprofile/</code> 等敏感与产物目录。
+          204 处改动里包含大量 <code>src/</code> 与 <code>pb_hooks/</code> 的真实代码变更，提交前值得扫一眼。
+        </div>
+      </li>
+
+      <li>
+        <b>自检一遍（零费用）</b>
+        <div class="cmd">
+          <div class="bar"><span class="lbl">项目根目录</span><button class="cp" data-c="node scripts/qoder-setup.mjs">复制</button></div>
+          <pre>node scripts/qoder-setup.mjs</pre>
+        </div>
+        它会逐项检查接线是否齐备、CLI 是否可用、服务是否在跑、账本是否可读、工作区是否干净，
+        并给出「按顺序该做什么」。这个脚本可以反复跑，不会重复写入或破坏已有配置。
+      </li>
+
+      <li>
+        <b>试跑一次——只组装提示词，不调用 AI（零费用）</b>
+        <div class="cmd">
+          <div class="bar"><span class="lbl">项目根目录</span><button class="cp" data-c="node scripts/qoder-loop.mjs --dry-run --rounds 1">复制</button></div>
+          <pre>node scripts/qoder-loop.mjs --dry-run --rounds 1</pre>
+        </div>
+        它会生成 <code>.loop/prompt-R032-*.md</code>——也就是<strong>即将交给 AI 的完整指令</strong>。
+        用记事本打开看一眼：轮次对不对、待办项选得对不对、红线是否写清。
+        觉得没问题再往下走。（这一步的建议：<b>一定要看</b>，这是你唯一能在花钱之前干预的窗口。）
+      </li>
+
+      <li>
+        <b>正式跑一轮</b>
+        <div class="cmd">
+          <div class="bar"><span class="lbl">项目根目录</span><button class="cp" data-c="node scripts/qoder-loop.mjs --rounds 1">复制</button></div>
+          <pre>node scripts/qoder-loop.mjs --rounds 1</pre>
+        </div>
+        结束后：
+        <div class="kv">看结果 → <b>.loop/reports/</b> 下最新的报告（写给非程序员看，含"你怎么自己验证"）</div>
+        <div class="kv">看概览 → <b>.loop/MORNING.md</b> 顶部的一行结论</div>
+        <div class="kv">看细节 → <b>.loop/logs/</b> 里的运行日志</div>
+      </li>
+
+      <li>
+        <b>觉得质量可以了，再放大</b>
+        <div class="cmd">
+          <div class="bar"><span class="lbl">连续跑 3 轮</span><button class="cp" data-c="node scripts/qoder-loop.mjs --rounds 3">复制</button></div>
+          <pre>node scripts/qoder-loop.mjs --rounds 3</pre>
+        </div>
+        <div class="cmd">
+          <div class="bar"><span class="lbl">只修某个模块</span><button class="cp" data-c="node scripts/qoder-loop.mjs --rounds 1 --scope /knowledge">复制</button></div>
+          <pre>node scripts/qoder-loop.mjs --rounds 1 --scope /knowledge</pre>
+        </div>
+        <div class="cmd">
+          <div class="bar"><span class="lbl">用指定视角跑（不走自动轮换）</span><button class="cp" data-c="node scripts/qoder-loop.mjs --rounds 1 --role qa-engineer">复制</button></div>
+          <pre>node scripts/qoder-loop.mjs --rounds 1 --role qa-engineer</pre>
+        </div>
+      </li>
+    </ol>
+
+    <blockquote>
+      <b>不想敲命令？</b> 直接双击项目根目录的 <code>qoder-auto.cmd</code>，它会弹出一个菜单，
+      把 status / check / dry / run 都列出来。也支持 <code>qoder-auto.cmd run 3</code> 这种直接带参数的用法。
+    </blockquote>
+
+  </section>
+
+  <!-- ==================== 命令速查 ==================== -->
+  <section class="pane" id="cmds">
+
+    <h2>零费用命令（不调用 AI，随便跑）</h2>
+    <div class="cmd">
+      <div class="bar"><span class="lbl">看当前状态：轮次 / 候选池 / 下一步该用哪个视角</span><button class="cp" data-c="node scripts/qoder-loop.mjs --status">复制</button></div>
+      <pre>node scripts/qoder-loop.mjs --status</pre>
+    </div>
+    <div class="cmd">
+      <div class="bar"><span class="lbl">环境预检</span><button class="cp" data-c="node scripts/qoder-loop.mjs --check">复制</button></div>
+      <pre>node scripts/qoder-loop.mjs --check</pre>
+    </div>
+    <div class="cmd">
+      <div class="bar"><span class="lbl">部署自检（更详细，含修复指引）</span><button class="cp" data-c="node scripts/qoder-setup.mjs">复制</button></div>
+      <pre>node scripts/qoder-setup.mjs</pre>
+    </div>
+    <div class="cmd">
+      <div class="bar"><span class="lbl">试跑：只生成提示词，不花钱</span><button class="cp" data-c="node scripts/qoder-loop.mjs --dry-run --rounds 1">复制</button></div>
+      <pre>node scripts/qoder-loop.mjs --dry-run --rounds 1</pre>
+    </div>
+
+    <h2>正式运行</h2>
+    <table>
+      <thead><tr><th style="width:52%">命令</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">... --rounds 3</td><td>跑 3 轮</td></tr>
+        <tr><td class="mono">... --rounds 1 --scope /knowledge</td><td>限定范围（范围外问题只记账不修改）</td></tr>
+        <tr><td class="mono">... --role bid-evaluator</td><td>强制用某个视角（不走自动轮换）</td></tr>
+        <tr><td class="mono">... --timeout 60</td><td>单轮墙钟超时 60 分钟（默认 45）</td></tr>
+        <tr><td class="mono">... --max-turns 100</td><td>单轮最大对话轮次（默认 80）</td></tr>
+        <tr><td class="mono">... --model &lt;名&gt;</td><td>指定模型（默认用 Qoder 当前配置）</td></tr>
+        <tr><td class="mono">... --no-commit</td><td>不自动 git 提交（默认每轮提交一次）</td></tr>
+        <tr><td class="mono">... --backup-pb</td><td>跑前备份 pocketbase/pb_data</td></tr>
+        <tr><td class="mono">... --allow-dirty</td><td>允许脏工作区开跑（<b>不建议</b>，会失去回滚点）</td></tr>
+        <tr><td class="mono">... --permission-mode auto</td><td>切换权限模式（见「安全机制」页）</td></tr>
+        <tr><td class="mono">... --json</td><td>机器可读输出（供上层程序调用）</td></tr>
+      </tbody>
+    </table>
+
+    <h2>定时自动运行（可选）</h2>
+    <p>想让它每晚自己跑，用 Windows 计划任务。下面是可直接粘贴的命令（按需改时间）：</p>
+    <div class="cmd">
+      <div class="bar"><span class="lbl">在「管理员」PowerShell 里执行一次即可</span><button class="cp" data-c='schtasks /create /tn "Xiaozhi-Qoder-AutoLoop" /tr "cmd /c cd /d \"D:\重要文件\工作的小程序\xiaozhigongzuozhan\" && node scripts\qoder-loop.mjs --rounds 3" /sc daily /st 01:00 /f'>复制</button></div>
+      <pre>schtasks /create /tn "Xiaozhi-Qoder-AutoLoop" /tr "cmd /c cd /d \"D:\重要文件\工作的小程序\xiaozhigongzuozhan\" &amp;&amp; node scripts\qoder-loop.mjs --rounds 3" /sc daily /st 01:00 /f</pre>
+    </div>
+    <p>删除定时任务：</p>
+    <div class="cmd">
+      <div class="bar"><span class="lbl">删除</span><button class="cp" data-c='schtasks /delete /tn "Xiaozhi-Qoder-AutoLoop" /f'>复制</button></div>
+      <pre>schtasks /delete /tn "Xiaozhi-Qoder-AutoLoop" /f</pre>
+    </div>
+    <div class="card warn">
+      <b>开定时任务之前，请先手动跑几天。</b>
+      理由：跑 AI 会真实消耗额度、真实修改代码。先确认三轮质量稳定、报告看得懂、
+      没有出现"伪完成"（报告写了但实际没改 / 改了但构建不过），再交给夜里自己跑。
+    </div>
+
+  </section>
+
+  <!-- ==================== 安全机制 ==================== -->
+  <section class="pane" id="safety">
+
+    <h2>三层防护，从松到紧</h2>
+
+    <h3>第一层 · 规则约束（软）</h3>
+    <p>
+      <code>.qoder/rules/30-redlines.md</code> 把红线写成<strong>可判定的具体行为</strong>，而不是"注意安全"这类套话。
+      例如不是"谨慎删除数据"，而是"不执行 rm -rf / git push / 改 PB schema / 删业务数据"。
+    </p>
+
+    <h3>第二层 · 权限白名单（中）</h3>
+    <p><code>.qoder/settings.json</code> 里：</p>
+    <table>
+      <thead><tr><th style="width:16%">类别</th><th style="width:12%">数量</th><th>内容</th></tr></thead>
+      <tbody>
+        <tr><td><b>allow</b></td><td class="mono">40 条</td><td>项目内文件编辑；<code>pnpm build/lint/test</code>、<code>npx tsc/vite/eslint/vitest</code>、<code>node</code>、只读 git（status/diff/log/add/commit/stash/restore）、本地 curl、启停服务脚本</td></tr>
+        <tr><td><b>ask</b></td><td class="mono">2 条</td><td>WebFetch / WebSearch（headless 下无人确认即自动拒绝）</td></tr>
+        <tr><td><b>deny</b></td><td class="mono">27 条</td><td>删除类（rm/rmdir/del/批量通配符）、格式化磁盘、<code>git push</code>/<code>reset --hard</code>/<code>clean</code>、提权、注册表、<code>taskkill</code>、装全局包、读 <code>.env</code> 与 <code>pb_data</code>、读写私钥</td></tr>
+      </tbody>
+    </table>
+    <p>
+      权限模式默认 <code>accept_edits</code>：<strong>工作目录内文件编辑自动批准，其余走上面的规则</strong>。
+      这个组合是<strong>确定性</strong>的——比 <code>auto</code>（靠 AI 分类器概率判断，分类器不可达时动作会被拒）更可预测，
+      比 <code>yolo</code> 安全得多。
+    </p>
+
+    <h3>第三层 · Hook 硬拦截（硬，不可绕过）</h3>
+    <p>
+      <code>.qoder/hooks/guard.mjs</code> 挂在 <code>PreToolUse</code> 上。
+      Qoder 的 Hook 权限决策<strong>优先级高于权限模式</strong>——也就是说，
+      <strong>即使有人用 <code>--yolo</code> 启动，Hook 返回的 deny 依然生效。</strong>
+      这是整套机制里唯一不可绕过的防线。
+    </p>
+    <p>它拦截的东西包括：递归强制删除、磁盘格式化、<code>git push</code>、提权、注册表写入、
+      结束服务进程、装全局包、下载内容直接管道给 shell 执行、写/读 <code>.env</code>、
+      写 <code>.git</code> / <code>pb_data</code> / <code>node_modules</code> / <code>.vibex</code> 平台目录。
+    </p>
+    <blockquote>
+      Hook 自身的失败策略是"放过"：若脚本异常或 stdin 超时，它输出 <code>ask</code> 交回正常权限管道，
+      <b>绝不因为守卫自身故障而阻断你的正常工作</b>。
+    </blockquote>
+
+    <h2>权限模式怎么选</h2>
+    <table>
+      <thead><tr><th style="width:22%">模式</th><th style="width:20%">headless 下的行为</th><th>建议</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">accept_edits <span class="pill cy">默认</span></td><td>文件编辑自动批准；命令按 allow/deny 规则</td><td><b>推荐。</b>配合白名单完全确定性</td></tr>
+        <tr><td class="mono">auto</td><td>由 AI 分类器逐个决策授权</td><td>想更少人工干预时可用，但需在<b>用户级</b> <code>~/.qoder/settings.json</code> 里写 <code>autoMode</code> 引导（工作区配置会被刻意忽略）</td></tr>
+        <tr><td class="mono">dont_ask</td><td>需要确认的一律拒绝</td><td>最保守。实测会拒掉 <code>pnpm build</code>，AI 跑不了验证门禁，<b>不建议用于本流程</b></td></tr>
+        <tr><td class="mono">bypass_permissions</td><td>全部放行</td><td>仅在你完全信任当前任务时使用；<b>Hook 仍会拦危险操作</b></td></tr>
+      </tbody>
+    </table>
+
+    <h2>刹车机制</h2>
+    <table>
+      <thead><tr><th style="width:38%">触发条件</th><th>行为</th></tr></thead>
+      <tbody>
+        <tr><td>连续 3 轮没产出报告</td><td>判定为"空转/伪完成"，自动停机</td></tr>
+        <tr><td>连续 2 次环境预检失败</td><td>自动停机（避免反复撞同一个墙）</td></tr>
+        <tr><td>CLI 未登录</td><td>立即停机并给出登录指引（重试不会好转）</td></tr>
+        <tr><td>单轮超时（默认 45 分钟）</td><td>终止该轮进程，记录为超时</td></tr>
+        <tr><td>工作区不干净</td><td>拒绝开跑（除非显式 <code>--allow-dirty</code>）</td></tr>
+        <tr><td>AI 判定为 C 类（新增能力）</td><td>只写方案不动代码，报告里列进"需要你决定"</td></tr>
+      </tbody>
+    </table>
+
+  </section>
+
+  <!-- ==================== FAQ ==================== -->
+  <section class="pane" id="faq">
+
+    <h2>容易踩的坑</h2>
+
+    <div class="card bad">
+      <h3>坑 1：把 IDE 的 qoder 当成 CLI（最容易搞错）</h3>
+      <p>
+        <code>D:\Program Files\Qoder IDE\bin\qoder</code> 是 <b>IDE 启动器</b>（一个 VS Code 外壳），
+        <b>不能用于 headless 自动化</b>——它会试图拉起图形界面。
+        自动化必须用独立的 <code>qodercli</code> 命令（本机已装 v1.1.62，在
+        <code>C:\Users\Administrator\AppData\Roaming\npm\</code>）。
+      </p>
+    </div>
+
+    <div class="card bad">
+      <h3>坑 2：装了 CLI ≠ 能跑（还要登录）</h3>
+      <p>
+        实测未登录时 CLI 会返回 <code>{"is_error":true,"result":"Not logged in · Please run /login"}</code>，
+        退出码 1。驱动器已识别这个状态并<b>立即停机 + 打印修复办法</b>，
+        不会把它误判成"AI 没写好报告"。
+      </p>
+    </div>
+
+    <div class="card warn">
+      <h3>坑 3：npm 全局安装会拦截 postinstall</h3>
+      <p>
+        本机 npm 有 allow-scripts 策略，安装 <code>@qoder-ai/qodercli</code> 时
+        <code>postinstall.cjs</code> 与 <code>sharp</code> 的安装脚本被跳过（终端会打 warning）。
+        实测<b>不影响使用</b>——<code>qodercli --version</code> 正常返回 1.1.62。
+        若将来出现异常，用这条补跑脚本：
+      </p>
+      <div class="cmd">
+        <div class="bar"><span class="lbl">备用</span><button class="cp" data-c="npm install -g @qoder-ai/qodercli --allow-scripts=@qoder-ai/qodercli,sharp">复制</button></div>
+        <pre>npm install -g @qoder-ai/qodercli --allow-scripts=@qoder-ai/qodercli,sharp</pre>
+      </div>
+    </div>
+
+    <div class="card warn">
+      <h3>坑 4：改 <code>pocketbase/pb_hooks/</code> 后必须重启 PocketBase</h3>
+      <p>
+        PB v0.40.4 的行为：改了后端钩子不重启不生效，会表现为"改了没反应"，
+        很容易被误判成"修复失败"。协议里已写明，AI 也知道。
+      </p>
+    </div>
+
+    <div class="card warn">
+      <h3>坑 5：不要让 Vite 在沙箱环境下重建依赖缓存</h3>
+      <p>
+        <code>start-local.cmd</code> 启动 Vite 前会清空 <code>NODE_OPTIONS</code>，
+        因为安全守卫会在 Vite 批量删除 <code>deps_temp_*</code>（一次上百个文件）时误杀 dev server。
+        <b>这个处理不能删</b>。
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>坑 6：浏览器自动化会话不跨调用保持</h3>
+      <p>
+        相关规则已写进知识层，AI 每轮都会读到：会话不跨 bash 调用保持，必须每次重新 open + 登录；
+        点击 Radix 按钮必须用 <code>agent-browser click @ref</code>，在 <code>eval</code> 里写 <code>.click()</code> 会产生
+        "点了没反应"的<b>假阳性</b>；<code>open</code> 与 <code>eval</code> 必须压在同一个 bash 调用内。
+      </p>
+    </div>
+
+    <h2>常见问答</h2>
+
+    <h3>Q：一轮大概跑多久？花多少钱？</h3>
+    <p>
+      A：单轮墙钟默认上限 45 分钟。费用取决于模型与轮次用量，驱动器每次运行结束会打印
+      <b>本次总费用</b>（从 CLI 返回的 <code>total_cost_usd</code> 汇总），运行记录也存进
+      <code>.loop/autoloop-state.json</code>，方便你回溯哪一轮最贵。<br>
+      省钱的关键不是限制轮次，而是协议里的<b>"零费用优先"</b>：静态读码 / 接口直查 / DOM 快照 / 本地复算能得出结论的，
+      就不该调 AI。
+    </p>
+
+    <h3>Q：它会把我的代码改坏吗？</h3>
+    <p>
+      A：三层防护 + 两道刹车。更实际的三条保障：<br>
+      ① 每轮改动<b>小而可独立回滚</b>，跑完自动 commit，出问题 <code>git revert</code> 一条命令；<br>
+      ② 验证门禁是硬性的——<code>tsc -b &amp;&amp; vite build</code> 不过就必须先回滚再重来，禁止在失败状态上叠加改动；<br>
+      ③ 本轮只做一件事，禁止一次改一堆导致无法归因。
+    </p>
+
+    <h3>Q：它会不会为了"看起来有进展"而瞎改？</h3>
+    <p>
+      A：协议里专门堵了这条。待办池清空时<b>禁止发明工作</b>（禁止无意义重构、改注释、换变量名），
+      正确做法是回到七条发现通道重扫；仍然没有就出总报告，明确说"当前已收敛，需要新需求输入"。
+      驱动器还会独立校验报告文件是否真的落盘——<b>没落盘就计为"无产出"</b>，连续 3 轮即停机。
+    </p>
+
+    <h3>Q：能不能让它自动加上新功能？</h3>
+    <p>
+      A：能发现，但不能自己动手。<code>AI-ITERATION.md</code> 把工作分成三类：<br>
+      <b>A 类修 bug / B 类优化</b> → 自动执行；<b>C 类新增能力</b> → <b>只写方案，等你点头</b>。<br>
+      所以它会把新功能想法整理成"做什么 / 为什么 / 动哪些文件 / 对已有数据有无影响"的方案交给你，
+      而不是半夜自己把功能加上去。
+    </p>
+
+    <h3>Q：我只想让它在某个模块里干活怎么办？</h3>
+    <p>A：加范围限定即可，范围外的问题它只记账不修改：</p>
+    <div class="cmd">
+      <div class="bar"><span class="lbl">只在知识库模块迭代</span><button class="cp" data-c="node scripts/qoder-loop.mjs --rounds 1 --scope /knowledge">复制</button></div>
+      <pre>node scripts/qoder-loop.mjs --rounds 1 --scope /knowledge</pre>
+    </div>
+
+    <h3>Q：跑偏了怎么紧急叫停？</h3>
+    <p>
+      A：在跑的那个终端窗口按 <code>Ctrl+C</code> 即可。驱动器与日志都落盘，
+      重跑时会从账本里的 <code>round</code> 继续，不会重复已完成项。
+      若已产生不想要的改动：<code>git log --oneline -5</code> 找到上一轮提交，
+      <code>git revert &lt;hash&gt;</code> 或 <code>git reset --hard HEAD~1</code> 回滚。
+    </p>
+
+  </section>
+
+  <footer>
+    <div class="kv">项目：小智工作站（医疗信息化售前工作台）· <span class="mono">D:\重要文件\工作的小程序\xiaozhigongzuozhan</span></div>
+    <div class="kv">接线生成时间：2026-09-24 · Qoder CLI v1.1.62 · 主账本轮次 31</div>
+    <div class="kv">方法论唯一入口：<span class="mono">AI-ITERATION.md</span>（本控制台只是接线，不替代它）</div>
+  </footer>
+</div>
+
+<script>
+/* ---------- 标签切换 ---------- */
+(function () {
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab'));
+  var panes = Array.prototype.slice.call(document.querySelectorAll('.pane'));
+  tabs.forEach(function (t) {
+    t.addEventListener('click', function () {
+      tabs.forEach(function (x) { x.classList.remove('act'); });
+      panes.forEach(function (p) { p.classList.remove('act'); });
+      t.classList.add('act');
+      var el = document.getElementById(t.getAttribute('data-t'));
+      if (el) el.classList.add('act');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
+})();
+
+/* ---------- 一键复制（含旧浏览器降级） ---------- */
+(function () {
+  function legacyCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+  Array.prototype.slice.call(document.querySelectorAll('.cp')).forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var text = btn.getAttribute('data-c') || '';
+      var old = btn.textContent;
+      var done = function (ok) {
+        btn.textContent = ok ? '已复制' : '复制失败';
+        btn.classList.toggle('done', ok);
+        setTimeout(function () { btn.textContent = old; btn.classList.remove('done'); }, 1600);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(legacyCopy(text)); });
+      } else {
+        done(legacyCopy(text));
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

@@ -259,6 +259,21 @@ export function snapshotFromChecklist(rec: ChecklistRecord): ChecklistSnapshot {
   }
 }
 
+/** 从清单行集合提取「建设系统」名称列表（去重 + 保留首次插入顺序）
+ * 仅已勾选行参与，不区分 company/external；给方案向导的 systems 预填使用。*/
+export function systemsFromChecklist(items: ChecklistLine[]): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const l of items ?? []) {
+    if (l.checked === false) continue
+    const name = (l.product_name ?? "").trim()
+    if (!name || seen.has(name)) continue
+    seen.add(name)
+    out.push(name)
+  }
+  return out
+}
+
 /** 容错解析 AI 匹配结果 JSON：[{customer, product}] */
 export function parseMatchJson(text: string): { customer: string; product: string | null }[] {
   let t = (text ?? "").trim()

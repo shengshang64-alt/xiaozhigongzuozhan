@@ -239,7 +239,7 @@ export function QuickToolsPanel(p: QuickToolsPanelProps) {
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   <p className="text-sm font-medium text-foreground">
                     {p.toolKind === "parse" && p.parseChunkProgress
-                      ? `正在解析第 ${p.parseChunkProgress.current}/${p.parseChunkProgress.total} 段…`
+                      ? `正在解析第 ${p.parseChunkProgress.current}/${p.parseChunkProgress.total} 项…`
                       : "执行中，约需 1-2 分钟…"}
                   </p>
                 </div>

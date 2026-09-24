@@ -9,6 +9,7 @@ import {
   assistantApiFetch,
   extractTemplateSlots,
   fillTemplate,
+  PRESET_SKILLS,
   type AssistantListResponse,
   type SkillRow,
 } from "@/lib/assistantCore"
@@ -91,6 +92,23 @@ export async function loadSkillsForScope(scope: SkillScope, userId: string): Pro
     const scopes = normalizeScopes(row.applicable_scopes)
     return scopes.includes("all") || scopes.includes(scope)
   })
+}
+
+/**
+ * 预置技能（系统内置、开箱即用）归一为 SkillRow，按 scope 过滤。
+ * id 加 `preset:` 前缀：与用户自定义技能（PocketBase 行）隔离、且跨加载稳定，
+ * 避免 useScopeSkills 的「裁剪失效勾选」误删预置项的勾选态。
+ */
+export function presetSkillsForScope(scope: SkillScope): SkillRow[] {
+  return PRESET_SKILLS.filter((p) => p.scopes.includes("all") || p.scopes.includes(scope)).map((p) => ({
+    id: `preset:${p.id}`,
+    rh_user_id: "preset",
+    skill_name: p.name,
+    prompt_template: p.template,
+    created: "",
+    applicable_scopes: p.scopes,
+    description: p.desc,
+  }))
 }
 
 /**

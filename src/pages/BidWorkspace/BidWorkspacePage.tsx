@@ -6,6 +6,7 @@ import { ArchivePanel } from "@/components/bid-workspace/ArchivePanel"
 import { BidProjectList } from "@/components/bid-workspace/BidProjectList"
 import { BidReviewSummary } from "@/components/bid-workspace/BidReviewSummary"
 import { BidToolbar } from "@/components/bid-workspace/BidToolbar"
+import { BidWarRoom } from "@/components/bid-workspace/BidWarRoom"
 import { ComplianceMatrixPanel } from "@/components/bid-workspace/ComplianceMatrixPanel"
 import { ComposeStep } from "@/components/bid-workspace/ComposeStep"
 import { DupCheckPanel } from "@/components/bid-workspace/DupCheckPanel"
@@ -40,7 +41,13 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
 
       {p.mode === "detail" && p.activeProject ? (
         <main>
-          <PipelineStepper activeStep={p.activeStep} requestStep={p.requestStep} activeProject={p.activeProject} />
+          <PipelineStepper
+            activeStep={p.activeStep}
+            requestStep={p.requestStep}
+            activeProject={p.activeProject}
+            missCount={p.uncoveredClauses.length}
+            riskCount={p.voidCriticalUnresolved}
+          />
           <OpportunityLinkBar
             activeProject={p.activeProject}
             activeOppOptions={p.activeOppOptions}
@@ -48,6 +55,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
             linkOpportunity={p.linkOpportunity}
             linkedOpportunityName={p.linkedOpportunityName}
             isArchivedLocked={p.isArchivedLocked}
+            warRoomSlot={<BidWarRoom activeProject={p.activeProject} missCount={p.uncoveredClauses.length} riskCount={p.voidCriticalUnresolved} />}
           />
           {/* 循环 5 A3：归档只读硬锁横幅——导出与查看保留，解除归档后可编辑 */}
           {p.isArchivedLocked && (
@@ -105,7 +113,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                     {p.parseLoading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ScanSearch className="mr-1.5 h-4 w-4" />}
                     {p.parseLoading
                       ? p.parseChunkProgress
-                        ? `正在解析第 ${p.parseChunkProgress.current}/${p.parseChunkProgress.total} 段…`
+                        ? `正在解析第 ${p.parseChunkProgress.current}/${p.parseChunkProgress.total} 项…`
                         : "解析中…"
                       : p.activeProject.parse_report
                         ? "重新解析"
@@ -168,6 +176,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               genOptions={p.genOptions}
               setClauseResponse={p.setClauseResponse}
               setMaterialBoost={p.setMaterialBoost}
+              setComplianceMode={p.setComplianceMode}
               setIncludeBiz={p.setIncludeBiz}
               bizRemoveCount={p.bizRemoveCount}
               confirmRemoveBizChapters={p.confirmRemoveBizChapters}
@@ -254,6 +263,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               bidOutlineSkills={p.bidOutlineSkills}
               bidChapterSkills={p.bidChapterSkills}
               deviationSkills={p.deviationSkills}
+              requestStep={p.requestStep}
             />
           )}
           {p.activeStep === 4 && (

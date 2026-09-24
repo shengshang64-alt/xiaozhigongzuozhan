@@ -107,7 +107,7 @@ function Wait-PocketBase($Process) {
 }
 
 Ensure-PocketBase
-$pb = Start-Process -FilePath $PbBin -ArgumentList @("serve", "--http=127.0.0.1:7000") -WorkingDirectory $PbDir -RedirectStandardOutput (Join-Path $PbLogDir "stdout.log") -RedirectStandardError (Join-Path $PbLogDir "stderr.log") -PassThru
+$pb = Start-Process -FilePath $PbBin -ArgumentList @("serve", "--http=127.0.0.1:7000", "--dir=$PbDir\pb_data", "--hooksDir=$PbDir\pb_hooks") -WorkingDirectory $PbDir -RedirectStandardOutput (Join-Path $PbLogDir "stdout.log") -RedirectStandardError (Join-Path $PbLogDir "stderr.log") -PassThru
 try {
   Wait-PocketBase $pb
   $vite = Ensure-NodePm

@@ -15,13 +15,64 @@ export interface KbUploadItem {
 const TEXT_EXT_RE = /\.(md|markdown|txt)$/i
 const JOIN_SEP = "/"
 
+/** XML 实体解码（先剥标签再解码，避免正文里的 &lt; 被误当标签删） */
+function decodeXmlEntities(s: string): string {
+  return s
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)))
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+}
+
+/** pptx：fflate 选择性 inflate 只取各 slide 的 <a:t> 文本（不解压 ppt/media 图片，防巨型 deck OOM） */
+async function extractPptxText(file: File): Promise<string> {
+  const { unzipSync, strFromU8 } = await import("fflate")
+  const buf = new Uint8Array(await file.arrayBuffer())
+  let entries: Record<string, Uint8Array>
+  try {
+    // filter 让 fflate 只解压幻灯片 XML，跳过图片/媒体，200MB 级 deck 也不会整包解压 OOM
+    entries = unzipSync(buf, { filter: (f) => /^ppt\/slides\/slide\d+\.xml$/.test(f.name) })
+  } catch {
+    throw new Error("pptx 解压失败（可能加密或已损坏）")
+  }
+  const keys = Object.keys(entries)
+    .sort((a, b) => (parseInt(a.match(/(\d+)/)?.[1] ?? "0") - parseInt(b.match(/(\d+)/)?.[1] ?? "0")))
+  const out: string[] = []
+  for (const k of keys) {
+    const xml = strFromU8(entries[k])
+    // a:t 后只允许空白+属性或紧邻 >，避免把 <a:tx>/<a:tbl>/<a:txBody> 等兄弟标签误当开标签
+    const runs = xml.match(/<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/g) ?? []
+    const txt = runs
+      .map((s) => decodeXmlEntities(s.replace(/^<a:t(?:\s[^>]*)?>/, "").replace(/<\/a:t>$/, "")))
+      .join(" ")
+      .trim()
+    if (txt) out.push(txt)
+  }
+  return out.join("\n")
+}
+
+/** xls/xlsx：SheetJS 逐表转 CSV */
+async function extractXlsxText(file: File): Promise<string> {
+  const XLSX = await import("xlsx")
+  const wb = XLSX.read(await file.arrayBuffer(), { type: "array" })
+  const out: string[] = []
+  for (const name of wb.SheetNames) {
+    const csv = XLSX.utils.sheet_to_csv(wb.Sheets[name])
+    if (csv.trim()) out.push(`【工作表 ${name}】\n${csv}`)
+  }
+  return out.join("\n")
+}
+
 function joinFolder(base: string, sub: string): string {
   const parts = [base.trim(), sub.trim()].filter(Boolean).map((p) => p.replace(/^\/+|\/+$/g, ""))
   return parts.filter(Boolean).join(JOIN_SEP)
 }
 
 function titleFromFileName(fileName: string): string {
-  return fileName.replace(/\.(md|markdown|txt|docx|pdf)$/i, "").trim() || fileName
+  return fileName.replace(/\.(md|markdown|txt|docx|pdf|pptx|xls|xlsx)$/i, "").trim() || fileName
 }
 
 function dirOfPath(entryPath: string): string {
@@ -85,6 +136,34 @@ export async function parseUploadFile(file: File, baseFolder: string): Promise<K
     ]
   }
 
+  if (lower.endsWith(".pptx")) {
+    const content = await extractPptxText(file)
+    if (!content) throw new Error("pptx 中没有解析出文本（可能是纯图片演示）")
+    return [
+      {
+        title: titleFromFileName(fileName),
+        content,
+        doc_format: "pptx",
+        folder_path: baseFolder,
+        source_file_name: fileName,
+      },
+    ]
+  }
+
+  if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
+    const content = await extractXlsxText(file)
+    if (!content) throw new Error("表格中没有解析出内容")
+    return [
+      {
+        title: titleFromFileName(fileName),
+        content,
+        doc_format: lower.endsWith(".xls") ? "xls" : "xlsx",
+        folder_path: baseFolder,
+        source_file_name: fileName,
+      },
+    ]
+  }
+
   if (lower.endsWith(".zip")) {
     const { unzipSync, strFromU8 } = await import("fflate")
     const buf = new Uint8Array(await file.arrayBuffer())
@@ -117,5 +196,5 @@ export async function parseUploadFile(file: File, baseFolder: string): Promise<K
 }
 
 export function isSupportedUpload(fileName: string): boolean {
-  return /\.(md|markdown|txt|docx|pdf|zip)$/i.test(fileName)
+  return /\.(md|markdown|txt|docx|pdf|pptx|xls|xlsx|zip)$/i.test(fileName)
 }

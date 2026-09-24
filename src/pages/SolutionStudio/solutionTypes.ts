@@ -1,4 +1,5 @@
 import type { LlmMessage } from "@/lib/llm"
+import { parseJsonTolerant } from "@/lib/jsonTolerant"
 
 // ---------------------------------------------------------------------------
 // 方案编制页：领域类型、常量与 LLM prompt 构造（Logic 层专用，无 JSX）
@@ -12,7 +13,7 @@ export type SolutionTypeKey = "planning" | "feasibility" | "preliminary" | "cust
  */
 export type OutlinePart = "biz" | "tech"
 
-export type OutlineNode = { id: string; title: string; children: OutlineNode[]; part?: OutlinePart }
+export type OutlineNode = { id: string; title: string; children: OutlineNode[]; part?: OutlinePart; /** R31：叶节点承接评分编号，如 "[响应:R1,R3]" */ description?: string }
 
 export type ChapterGenStatus = "pending" | "generating" | "done" | "failed"
 
@@ -297,11 +298,14 @@ export function normalizeOutline(raw: unknown, depth = 1): OutlineNode[] {
     if (!title) continue
     // 仅顶层节点带 part 归属标记（深层节点不携带）；非 "biz"/"tech" 的非法值一律按 tech（不写字段）
     const part = depth === 1 && rec.part === "biz" ? ("biz" as OutlinePart) : undefined
+    // R31：任意层级都透传 description 承接标注（分步大纲 call2 的节节点解析深度从 1 起，不能按深度丢弃）
+    const description = String(rec.description ?? "").trim() || undefined
     out.push({
       id: makeUid(),
       title,
       children: depth < 3 ? normalizeOutline(rec.children, depth + 1) : [],
       ...(part ? { part } : {}),
+      ...(description ? { description } : {}),
     })
   }
   return out
@@ -320,7 +324,8 @@ export function parseOutlineJson(text: string): unknown {
     candidate = t.slice(objStart, t.lastIndexOf("}") + 1)
   }
   if (!candidate) throw new Error("大纲格式解析失败")
-  const parsed = JSON.parse(candidate) as Record<string, unknown> | unknown[]
+  // ai-stability-01：宽松解析（含裸控制字符转义），失败抛可读错误而非裸 SyntaxError（此函数 bid/solution 共用）
+  const parsed = parseJsonTolerant(candidate) as Record<string, unknown> | unknown[]
   if (Array.isArray(parsed)) return parsed
   const rec = parsed as Record<string, unknown>
   if (Array.isArray(rec.outline)) return rec.outline
@@ -434,34 +439,188 @@ export function buildOutlineMessages(
   ]
 }
 
+/**
+ * 方案正文写作风格硬条款（对标标书侧 BID_STYLE_RULES 移植）：
+ * 章节生成 / 改写 prompt 统一注入，逐条编号进 system，消除 AI 腔与编造。
+ */
+export const SOL_STYLE_RULES: string[] = [
+  "确定性用语：禁止「我们建议 / 您可以考虑 / 推荐采用」等试探口吻，一律用「本项目采用 / 建设内容为 / 具体措施如下」等确定性表述；",
+  "反 AI 腔：语言正式、落地可执行，禁止连环连接词堆砌（首先其次再次最后、总而言之），禁止「赋能 / 抓手 / 闭环」等宣传套话；",
+  "元话语禁令：禁止「待补充 / TODO / 需人工确认 / 此处省略 / AI 生成」等元话语进入正文（约定占位值【待填写】除外）；",
+  "排版惯例：禁止装饰符号（【】★◆■●✓✅→等）与 Markdown 标题、斜体、加粗符号，小节标题用「N.M 名称」纯文本行；",
+  "防编造占位：事实基线里没有的具体值（金额 / 日期 / 数量 / 编号等）一律写【待填写】，禁止改写成「待定 / TBD」，禁止编造；",
+  "同级互补：只展开本章/本小节标题对应的独特主题，其它章已覆盖的内容不重复展开，保持全文内容互补；",
+  "朴实无华：这是建设方案不是宣传册，直接陈述建设内容、参数与措施，不写开场白与拔高式愿景总结。",
+  "禁绝对化承诺：不得使用「确保通过 / 保证达到 / 满分 / 100% / 万无一失 / 零风险」等绝对化、保证性表述，尤其禁止承诺「确保通过电子病历五级 / 互联互通某级等评级评定」——评级结果由评审机构判定、非建设方可保证；可达成目标用「按……标准规划建设 / 满足……评审要求」等可核实口径表述；",
+]
+
+// ---------------------------------------------------------------------------
+// 05 §6 方案侧三模式：方案没有招标文件锚点，模式轴换为「以医院需求为界 vs 主动扩展」。
+// 联合类型与标书侧 ComplianceMode 结构一致，但方案语义/措辞独立、默认 moderate
+// （方案是给客户看的售前材料，无「加码=验收义务」法律风险，过严显单薄）。
+// strict → 仍与既有默认写法基本一致；moderate/full 各注入一条边界规则。
+// ---------------------------------------------------------------------------
+
+export type SolutionComplianceMode = "strict" | "moderate" | "full"
+export const SOL_COMPLIANCE_MODE_DEFAULT: SolutionComplianceMode = "moderate"
+export const SOL_COMPLIANCE_MODES: SolutionComplianceMode[] = ["strict", "moderate", "full"]
+export const SOL_COMPLIANCE_MODE_LABEL: Record<SolutionComplianceMode, string> = {
+  strict: "严守需求",
+  moderate: "适度深化",
+  full: "充分扩展",
+}
+export const SOL_COMPLIANCE_MODE_HINT: Record<SolutionComplianceMode, string> = {
+  strict: "严格按已确认的建设清单与医院需求编写，不新增系统、不新增功能模块",
+  moderate: "在需求项内深化实施、集成、安全、培训细节，不新增系统清单（默认）",
+  full: "可增设架构论证、技术路线、数据治理、运维体系、案例业绩等支撑性章节",
+}
+
+function isSolMode(v: unknown): v is SolutionComplianceMode {
+  return v === "strict" || v === "moderate" || v === "full"
+}
+
+/** localStorage 读取容错：非法/缺省一律回落默认（moderate） */
+export function normalizeSolMode(v: unknown): SolutionComplianceMode {
+  return isSolMode(v) ? v : SOL_COMPLIANCE_MODE_DEFAULT
+}
+
+/** 章正文生成的模式边界规则（缺省=moderate） */
+export function solComplianceModeRule(mode: SolutionComplianceMode | undefined): string {
+  const m = mode ?? SOL_COMPLIANCE_MODE_DEFAULT
+  if (m === "strict")
+    return "生成模式=严守需求：严格按【医院项目事实基线】与已确认的建设清单编写，不得新增清单外的系统、功能模块或子系统；建设清单未覆盖但确有必要提及的内容，以「建议补充」口径标注，不写成确定性建设内容；"
+  if (m === "full")
+    return "生成模式=充分扩展：在不改变已确认建设清单（不新增对外承诺的系统/功能模块清单）的前提下，允许增设支撑性章节与小节（如总体架构论证、技术路线、数据治理、运维服务与 SLA、同类案例业绩）以体现方案完整性；新增内容必须与本项目直接相关、能落到医院需求，技术参数与量化指标仍以事实基线为界、不得加码为可验收承诺，禁止为凑篇幅增设空泛章节；"
+  return "生成模式=适度深化：紧扣医院需求与建设清单，在既有需求项范围内深化实施细节、集成方案、安全措施与培训安排；不新增清单外的系统或功能模块，量化指标与事实基线自洽；"
+}
+
+/** 章内「扩写」的模式边界规则（仅 expand 注入；rewrite/condense 与模式无关） */
+function solRefineModeRule(mode: SolutionComplianceMode | undefined): string {
+  const m = mode ?? SOL_COMPLIANCE_MODE_DEFAULT
+  if (m === "strict")
+    return "改写边界：严守建设清单与医院需求，扩写只深化既有需求项，不新增清单外的系统或功能模块；"
+  if (m === "full")
+    return "改写边界：扩写可在本章内补充架构论证、技术路线、数据治理、运维与案例等支撑性内容，但不得新增对外承诺的系统/功能模块清单，量化指标仍以事实基线为界；"
+  return "改写边界：扩写聚焦本章需求项内的实施、集成、安全、培训细节深化，不新增系统清单；"
+}
+
 export function buildChapterMessages(
   sol: Pick<SolutionRecord, "solution_name" | "solution_type" | "hospital" | "hospital_info" | "outline">,
   chapters: Chapter[],
   chapterIndex: number,
+  /** 轮次新增：知识库 Top-K 检索命中的参考素材（注明来源文档；空/缺省=不注入） */
+  kbMaterial?: string,
+  /** 05 §6：方案侧三模式（缺省=moderate） */
+  complianceMode?: SolutionComplianceMode,
+  /** 对标标书侧第五轮：整份目标页数折算的本章字数预算（缺省/0=维持既有 1200-2000 字口径） */
+  wordBudget?: number,
+  /** 配图开关：开启后输出 {content, figures} JSON 契约（架构图/流程图/界面示意，导出 Word 时插图） */
+  figuresEnabled?: boolean,
 ): LlmMessage[] {
   const ch = chapters[chapterIndex]
   const chapterNo = chapterIndex + 1
+  const info = sol.hospital_info
   const sectionLines = (ch.sections ?? []).map((s, j) => `${chapterNo}.${j + 1} ${s}`).join("\n")
-  const system = [
+
+  // —— system：人设 + 写作铁律 + 风格硬条款（同份方案跨章恒定，可命中服务端前缀缓存）——
+  const rules: string[] = [
     `你是一位深耕医疗信息化行业十余年的资深售前解决方案专家，正在为医院编写正式方案文档《${sol.solution_name}》（${typeLabel(sol.solution_type)}）。`,
     "写作铁律：",
     "1. 内容必须真实可落地，使用行业规范术语（HIS、EMR、LIS、PACS、集成平台、数据中心、互联网医院、电子病历分级评价、互联互通测评、等级保护 2.0、商用密码应用等），不写空话套话；",
-    "2. 结合医院等级、床位与门诊量规模给出匹配的量化指标（并发用户数、页面响应时间、存储容量、系统可用性、业务量估算等）；",
-    `3. 严格按给定小节组织正文：每个小节标题单独一行，格式「${chapterNo}.1 小节名」，小节下写 2-5 段、每段 3-6 句；`,
-    "4. 直接输出纯文本正文：禁止 markdown 符号（#、*、-、反引号）、禁止输出本章以外的内容、禁止开场白与总结语；",
-    "5. 本章篇幅 1200-2000 字，与全文大纲保持一致，不复述其他章节。",
-  ].join("\n")
+    "2. 量化指标（并发用户数、页面响应时间、存储容量、系统可用性、业务量估算等）必须与下面【医院项目事实基线】自洽，可按行业常规估算但不得与基线冲突；",
+    "3. 正文涉及医院名称、等级、床位、门诊量、预算、建设系统清单等事实信息时，必须与【医院项目事实基线】完全一致，基线没有的具体值写【待填写】，禁止编造不同数值；",
+    "4. 禁止 markdown 符号（#、*、-、反引号）、禁止输出本章以外的内容、禁止开场白与总结语；",
+    wordBudget && wordBudget > 0
+      ? `5. 本章字数预算约 ${wordBudget} 字（整份目标页数按章节权重折算，约 500 字/页），写足写具体：每个小节给出建设内容、功能清单、配置建议、实施步骤等可落地细节，禁止为凑篇幅重复套话；`
+      : "5. 本章篇幅 1200-2000 字，与全文大纲保持一致，不复述其它章节内容。",
+  ]
+  let ruleNo = 6
+  if (kbMaterial) {
+    rules.push(
+      `${ruleNo}. 下面【知识库参考素材】是团队沉淀的历史方案/案例/标准问答素材（已注明来源）：本章必须优先从素材中提取系统功能清单、配置数量、实施步骤、同类案例与量化数据展开写作，素材里的具体功能名/指标/案例要用到对应小节，不得视而不见只写通用方法论；但必须结合本医院等级、规模与实际需求改写，与事实基线不符的信息一律不采用，禁止整段照抄。`,
+    )
+    ruleNo += 1
+  }
+  rules.push(`${ruleNo}. 写作风格硬条款（每条必须遵守）：`)
+  for (const t of SOL_STYLE_RULES) {
+    ruleNo += 1
+    rules.push(`${ruleNo}. ${t}`)
+  }
+  ruleNo += 1
+  rules.push(`${ruleNo}. ${solComplianceModeRule(complianceMode)}`)
+  ruleNo += 1
+  // 配图开关：复用标书侧三种结构化图型与 JSON 契约（解析端 parseChapterOutput 同套兼容）
+  if (figuresEnabled) {
+    rules.push(
+      `${ruleNo}. 可为本章附 0-2 个结构化配图数据（figures 数组，没有合适图型就输出空数组，不要硬凑）：architecture（架构图）{"type":"architecture","title":"图名","layers":[{"name":"层名","modules":["模块名"]}]}；flow（流程图）{"type":"flow","title":"图名","steps":[{"name":"步骤","desc":"可选说明"}],"branches":["可选分支说明"]}；demo（系统界面示意）{"type":"demo","title":"图名","sidebar":["菜单项"],"main":[{"block":"区块名","desc":"可选说明"}]}；`,
+      `${ruleNo + 1}. 配图内容必须直接取自本章将要撰写的实际内容：architecture 各层 modules 必须是本章正文提到的子系统/功能模块，flow 的 steps 必须是本章撰写的业务环节/操作步骤，严禁「模块A」「步骤1」等泛化占位词与纯序号命名；`,
+      `${ruleNo + 2}. 输出严格 JSON，禁止解释文字、禁止代码围栏，格式：{"content":"本章纯文本正文（禁止 markdown 符号）","figures":[]}`,
+    )
+  } else {
+    rules.push(`${ruleNo}. 直接输出纯文本正文，不输出 JSON 与配图数据；`)
+  }
+  const system = rules.join("\n")
+
+  // —— stableUser：同份方案跨章 identical 的大块上下文，前置以命中前缀缓存 ——
   const scopeBlock = checklistScopeBlock(sol.hospital_info?.ref_checklist_snapshot)
-  const user = [
-    `【医院项目信息】\n${infoBlock(sol.hospital, sol.hospital_info)}`,
+  const stableUser = [
+    `【医院项目事实基线（全篇唯一权威口径，勿编造、勿冲突）】\n${infoBlock(sol.hospital, info)}`,
     scopeBlock ? scopeBlock : "",
     `【全文大纲（仅供保持上下文一致，不要复述）】\n${outlineToText(sol.outline ?? [])}`,
+  ]
+    .filter((s) => s !== "")
+    .join("\n\n")
+
+  // —— taskUser：仅本章差异内容，置后，不影响前缀缓存命中 ——
+  const taskUser = [
     `【当前要编写的章节】第${chapterNo}章 ${ch.title}`,
-    sectionLines ? `本章小节：\n${sectionLines}` : "本章无预设小节，请按内容逻辑自行组织 2-4 个小节。",
+    sectionLines
+      ? `本章小节（每个小节标题单独一行，格式「${chapterNo}.1 小节名」，小节下写 2-5 段、每段 3-6 句）：\n${sectionLines}`
+      : `本章无预设小节，请按内容逻辑自行组织 2-4 个小节，小节标题行格式「${chapterNo}.1 名称」，小节下写 2-5 段、每段 3-6 句。`,
+    kbMaterial ? `【知识库参考素材（团队沉淀，注明来源文档，须贴合本院实际）】\n${kbMaterial}` : "",
     "请编写本章完整正文。",
-  ].join("\n\n")
+  ]
+    .filter((s) => s !== "")
+    .join("\n\n")
+
   return [
     { role: "system", content: system },
+    { role: "user", content: stableUser },
+    { role: "user", content: taskUser },
+  ]
+}
+
+/**
+ * 章节未达字数预算时的自动续写 prompt：给已写内容与尾部摘录，只补写剩余部分，
+ * 禁止重复既有段落（合并端再过 stripOverlap 去重叠）；输出纯文本，不带 JSON 契约。
+ */
+export function buildSolContinueMessages(
+  sol: Pick<SolutionRecord, "solution_name" | "solution_type" | "hospital" | "hospital_info">,
+  chapterTitle: string,
+  written: string,
+  remainWords: number,
+  complianceMode?: SolutionComplianceMode,
+): LlmMessage[] {
+  const tail = written.slice(-800)
+  const rules = [
+    `你是一位深耕医疗信息化行业十余年的资深售前解决方案专家，正在为医院编写正式方案文档《${sol.solution_name}》（${typeLabel(sol.solution_type)}）。`,
+    `本章「${chapterTitle}》已写 ${written.length} 字，距预算还差约 ${Math.max(200, remainWords)} 字，你的任务是从已写内容的结尾处继续补写，写满剩余预算。`,
+    "续写铁律：",
+    "1. 从已有内容的断点处自然接续：不重复已有段落、不重写已有小节、不输出章标题与开场语，直接补写尚未展开或展开不足的小节内容；",
+    "2. 优先补齐：已有正文里一笔带过的小节、素材里有细节可挖的功能/案例/数据、实施与运维等可落地措施；禁止为凑字数重复套话；",
+    "3. 小节标题行格式「N.M 名称」与已有正文一致；已写过的小节不再重复输出标题，未写的小节补标题行；",
+    "4. 直接输出纯文本续写内容：禁止 markdown 符号、禁止 JSON、禁止收尾总结语；",
+    `5. 写作风格硬条款与事实基线口径与正文生成一致：`,
+    ...SOL_STYLE_RULES.map((t) => `  - ${t}`),
+    `6. ${solComplianceModeRule(complianceMode)}`,
+  ].join("\n")
+  const user = [
+    `【医院项目事实基线】\n${infoBlock(sol.hospital, sol.hospital_info)}`,
+    `【本章已写内容尾部摘录（最后 800 字，续写从这里接）】\n${tail}`,
+    `请从尾部摘录结尾处继续补写本章「${chapterTitle}」剩余内容，约补 ${Math.max(200, remainWords)} 字。只输出续写部分正文。`,
+  ].join("\n\n")
+  return [
+    { role: "system", content: rules },
     { role: "user", content: user },
   ]
 }
@@ -481,6 +640,8 @@ export function buildRefineMessages(
   content: string,
   /** 轮次 E-4：自检「按建议优化」时把 issues 摘要拼入改写指令 */
   extraInstruction?: string,
+  /** 05 §6：方案侧三模式，仅对「扩写」注入边界规则（缺省=moderate） */
+  complianceMode?: SolutionComplianceMode,
 ): LlmMessage[] {
   const action =
     kind === "rewrite"
@@ -491,6 +652,7 @@ export function buildRefineMessages(
   const system = [
     `你是医疗信息化行业资深方案文档编辑，正在处理方案《${sol.solution_name}》（${typeLabel(sol.solution_type)}，客户：${sol.hospital}）中「${chapterTitle}」一章。`,
     `请对该章正文执行「${action}」。`,
+    kind === "expand" ? solRefineModeRule(complianceMode) : "",
     extraInstruction ? `本次改写须重点修复以下自检发现的问题：\n${extraInstruction}` : "",
     "输出铁律：直接输出处理后的完整正文纯文本，小节标题行保持「N.M 小节名」格式，禁止 markdown 符号、禁止任何解释说明或开场白。",
   ]

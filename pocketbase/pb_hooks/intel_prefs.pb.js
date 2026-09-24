@@ -83,16 +83,17 @@ routerAdd("GET", "/api/intel_prefs", function (e) {
     ensureCollLocal()
     var info = e.requestInfo()
     var query = info.query || {}
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var page = parseInt(String(query.page || "1"), 10) || 1
     var perPage = parseInt(String(query.perPage || "50"), 10) || 50
     if (perPage > 200) perPage = 200
     var sort = String(query.sort || "-created")
     var filterParts = []
     var params = {}
-    if (query.owner_id !== undefined && query.owner_id !== "") {
-      filterParts.push("owner_id = {:owner_id}")
-      params.owner_id = String(query.owner_id)
-    }
+    filterParts.push("owner_id = {:owner_id}")
+      params.owner_id = __uid
     var filter = filterParts.length > 0 ? filterParts.join(" && ") : ""
     var records = filter
       ? $app.findRecordsByFilter("intel_prefs", filter, sort, perPage, (page - 1) * perPage, params)
@@ -112,10 +113,17 @@ routerAdd("GET", "/api/intel_prefs", function (e) {
 routerAdd("GET", "/api/intel_prefs/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("intel_prefs", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id")||"") === __uid) } catch(_x) {}
+    if (!__own) { try { __own = (String(rec.get("owner_id")||"") === __uid) } catch(_x) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     return e.json(200, rec.publicExport())
   } catch (err) {
     var msg = String(err && err.message || err)
@@ -145,8 +153,11 @@ routerAdd("POST", "/api/intel_prefs", function (e) {
   try {
     var coll = ensureCollLocal()
     var body = e.requestInfo().body || {}
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var rec = new Record(coll)
-    rec.set("owner_id", body.owner_id === undefined || body.owner_id === null ? "" : String(body.owner_id))
+    rec.set("owner_id", __uid)
     rec.set("region_focus", body.region_focus === undefined || body.region_focus === null ? "" : String(body.region_focus))
     rec.set("focus_sources", body.focus_sources)
     rec.set("focus_topics", body.focus_topics)
@@ -162,10 +173,17 @@ routerAdd("POST", "/api/intel_prefs", function (e) {
 routerAdd("PATCH", "/api/intel_prefs/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("intel_prefs", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id")||"") === __uid) } catch(_x) {}
+    if (!__own) { try { __own = (String(rec.get("owner_id")||"") === __uid) } catch(_x) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     var body = e.requestInfo().body || {}
     if ("owner_id" in body) rec.set("owner_id", body.owner_id === undefined || body.owner_id === null ? "" : String(body.owner_id))
     if ("region_focus" in body) rec.set("region_focus", body.region_focus === undefined || body.region_focus === null ? "" : String(body.region_focus))
@@ -182,10 +200,17 @@ routerAdd("PATCH", "/api/intel_prefs/{id}", function (e) {
 routerAdd("DELETE", "/api/intel_prefs/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("intel_prefs", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id")||"") === __uid) } catch(_x) {}
+    if (!__own) { try { __own = (String(rec.get("owner_id")||"") === __uid) } catch(_x) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     $app.delete(rec)
     return e.json(200, { ok: true })
   } catch (err) {

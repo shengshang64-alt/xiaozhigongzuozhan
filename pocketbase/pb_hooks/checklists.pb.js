@@ -98,16 +98,17 @@ routerAdd("GET", "/api/checklists", function (e) {
     ensureCollLocal()
     var info = e.requestInfo()
     var query = info.query || {}
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var page = parseInt(String(query.page || "1"), 10) || 1
     var perPage = parseInt(String(query.perPage || "50"), 10) || 50
     if (perPage > 200) perPage = 200
     var sort = String(query.sort || "-updated")
     var filterParts = []
     var params = {}
-    if (query.rh_user_id !== undefined && query.rh_user_id !== "") {
-      filterParts.push("rh_user_id = {:rh_user_id}")
-      params.rh_user_id = String(query.rh_user_id)
-    }
+    filterParts.push("rh_user_id = {:rh_user_id}")
+      params.rh_user_id = __uid
     var filter = filterParts.length > 0 ? filterParts.join(" && ") : ""
     var records = filter
       ? $app.findRecordsByFilter("checklists", filter, sort, perPage, (page - 1) * perPage, params)
@@ -127,10 +128,17 @@ routerAdd("GET", "/api/checklists", function (e) {
 routerAdd("GET", "/api/checklists/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("checklists", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id")||"") === __uid) } catch(_x) {}
+    if (!__own) { try { __own = (String(rec.get("owner_id")||"") === __uid) } catch(_x) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     return e.json(200, rec.publicExport())
   } catch (err) {
     var msg = String(err && err.message || err)
@@ -165,8 +173,11 @@ routerAdd("POST", "/api/checklists", function (e) {
   try {
     var coll = ensureCollLocal()
     var body = e.requestInfo().body || {}
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var rec = new Record(coll)
-    rec.set("rh_user_id", body.rh_user_id === undefined || body.rh_user_id === null ? "" : String(body.rh_user_id))
+    rec.set("rh_user_id", __uid)
     rec.set("checklist_name", body.checklist_name === undefined || body.checklist_name === null ? "" : String(body.checklist_name))
     rec.set("hospital", body.hospital === undefined || body.hospital === null ? "" : String(body.hospital))
     rec.set("rating_targets", body.rating_targets)
@@ -187,12 +198,19 @@ routerAdd("POST", "/api/checklists", function (e) {
 routerAdd("PATCH", "/api/checklists/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("checklists", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id")||"") === __uid) } catch(_x) {}
+    if (!__own) { try { __own = (String(rec.get("owner_id")||"") === __uid) } catch(_x) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     var body = e.requestInfo().body || {}
-    if ("rh_user_id" in body) rec.set("rh_user_id", body.rh_user_id === undefined || body.rh_user_id === null ? "" : String(body.rh_user_id))
+    // IDOR fix: owner transfer disabled
     if ("checklist_name" in body) rec.set("checklist_name", body.checklist_name === undefined || body.checklist_name === null ? "" : String(body.checklist_name))
     if ("hospital" in body) rec.set("hospital", body.hospital === undefined || body.hospital === null ? "" : String(body.hospital))
     if ("rating_targets" in body) rec.set("rating_targets", body.rating_targets)
@@ -212,10 +230,17 @@ routerAdd("PATCH", "/api/checklists/{id}", function (e) {
 routerAdd("DELETE", "/api/checklists/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("checklists", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id")||"") === __uid) } catch(_x) {}
+    if (!__own) { try { __own = (String(rec.get("owner_id")||"") === __uid) } catch(_x) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     $app.delete(rec)
     return e.json(200, { ok: true })
   } catch (err) {

@@ -1,4 +1,5 @@
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
+import { useMemo } from "react"
 import { ChecklistView } from "@/components/solution-studio/checklist/ChecklistView"
 import { EditorWorkspace } from "@/components/solution-studio/EditorWorkspace"
 import { ExportTemplateCard } from "@/components/solution-studio/ExportTemplateCard"
@@ -15,6 +16,11 @@ const STUDIO_VIEWS: { key: "checklist" | "solution"; label: string }[] = [
 ]
 
 export function SolutionStudioPage(p: ReturnType<typeof useSolutionStudio>) {
+  // 从 CheckProduct 产品库取“产品/系统”候选标签：优先 in_company=true，否则回退全部；去重 + 排序
+  const productNames = useMemo(() => {
+    const source = p.checklist.companyProducts.length > 0 ? p.checklist.companyProducts : p.checklist.products
+    return Array.from(new Set(source.map((x) => x.product_name).filter(Boolean))).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"))
+  }, [p.checklist.companyProducts, p.checklist.products])
   return (
     <div className="animate-in fade-in duration-500 text-foreground">
       <StudioToolbar
@@ -88,6 +94,10 @@ export function SolutionStudioPage(p: ReturnType<typeof useSolutionStudio>) {
             materialHistoryBlocks={p.materialHistoryBlocks}
             materialLoading={p.materialLoading}
             insertMaterialToChapter={p.insertMaterialToChapter}
+            chapterMaterialRecos={p.chapterMaterialRecos}
+            insertNotice={p.insertNotice}
+            undoMaterialInsert={p.undoMaterialInsert}
+            missingChapterSections={p.missingChapterSections}
             solutions={p.solutions}
             openSolutionToKb={p.openSolutionToKb}
             bulkGenerating={p.bulkGenerating}
@@ -100,8 +110,12 @@ export function SolutionStudioPage(p: ReturnType<typeof useSolutionStudio>) {
             exportingWord={p.exportingWord}
             chapterSkills={p.chapterSkills}
             rewriteSkills={p.rewriteSkills}
+            solComplianceMode={p.solComplianceMode}
+            setSolComplianceMode={p.setSolComplianceMode}
+            solGen={p.solGen}
+            setSolGenPatch={p.setSolGenPatch}
           />
-          {/* 循环 9 C2：导出页面格式设置（按方案存 localStorage，导出 Word 生效） */}
+          {/* 问题 3：导出格式模板（正文/标题/表格/页面，按方案存 localStorage，导出 Word 生效） */}
           <div className="mt-4">
             <SsFormatCard fmt={p.ssFmt} onPatch={p.setSsFmtPatch} />
           </div>
@@ -134,6 +148,7 @@ export function SolutionStudioPage(p: ReturnType<typeof useSolutionStudio>) {
         onPickChecklist={p.handlePickChecklist}
         outlineDraft={p.outlineDraft}
         outlineLoading={p.outlineLoading}
+        confirming={p.confirming}
         submitWizardInfo={p.submitWizardInfo}
         confirmOutline={p.confirmOutline}
         outlineRename={p.outlineRename}
@@ -142,6 +157,7 @@ export function SolutionStudioPage(p: ReturnType<typeof useSolutionStudio>) {
         outlineAddRoot={p.outlineAddRoot}
         outlineMove={p.outlineMove}
         outlineSkills={p.outlineSkills}
+        productNames={productNames}
       />
 
       <SolutionToKbWizard

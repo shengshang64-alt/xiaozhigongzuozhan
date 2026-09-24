@@ -639,7 +639,7 @@ export function useChecklist(deps: {
             content: `【客户清单条目】\n${unmatched.map((r) => r.norm).join("\n")}\n\n【我公司产品名列表】\n${names.join("、")}\n\n请逐条匹配并输出 JSON。`,
           },
         ]
-        const text = await llmGenerate(messages, MAX_TOKENS_MATCH, "checklist-match")
+        const text = await llmGenerate(messages, MAX_TOKENS_MATCH, "checklist-match", 0)
         const pairs = parseMatchJson(text)
         const nameToProduct = new Map(companyProducts.map((p) => [nameNorm(p.product_name), p]))
         setCkMatchRows((prev) =>

@@ -7,6 +7,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { STAGE_LABEL, type OppStage, type OpportunityRow } from "@/pages/CustomerManagement/customerTypes"
+import { LOST_REASON_CODES, formatLostReason, splitLostReason } from "@/lib/lostReason"
 
 type StageChangeDialogProps = {
   stageDialog: { opp: OpportunityRow; target: OppStage } | null
@@ -31,6 +32,8 @@ export function StageChangeDialog({
 }: StageChangeDialogProps) {
   if (!stageDialog) return null
   const { opp, target } = stageDialog
+  // R012 对齐投标侧：失单原因结构化「【类别】明细」，draft 仍是单字符串（零 hook 改动），旧数据拆回两栏
+  const lostReason = splitLostReason(lostReasonDraft)
   return (
     <Dialog open onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="max-w-md">
@@ -54,14 +57,29 @@ export function StageChangeDialog({
             />
           </div>
           {target === "lost" && (
-            <div>
-              <p className="mb-1 text-xs font-medium text-muted-foreground">失单原因（选填）</p>
-              <input
-                value={lostReasonDraft}
-                onChange={(e) => setLostReasonDraft(e.target.value)}
-                placeholder="如：预算取消 / 竞品低价中标"
-                className="h-9 w-full rounded-md border border-border bg-background px-2.5 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              />
+            <div className="grid gap-2">
+              <div>
+                <p className="mb-1 text-xs font-medium text-muted-foreground">失单原因类别（选填，便于复盘聚合）</p>
+                <select
+                  value={LOST_REASON_CODES.includes(lostReason.code as (typeof LOST_REASON_CODES)[number]) ? lostReason.code : ""}
+                  onChange={(e) => setLostReasonDraft(formatLostReason(e.target.value, lostReason.detail))}
+                  className="h-9 w-full rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <option value="">未分类（仅填明细）</option>
+                  {LOST_REASON_CODES.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <p className="mb-1 text-xs font-medium text-muted-foreground">失单明细（如：价格分落后 8%）</p>
+                <input
+                  value={lostReason.code ? lostReason.detail : lostReasonDraft}
+                  onChange={(e) => setLostReasonDraft(lostReason.code ? formatLostReason(lostReason.code, e.target.value) : e.target.value)}
+                  placeholder={lostReason.code ? "补充说明，方便后续复盘" : "如：预算取消 / 竞品低价中标"}
+                  className="h-9 w-full rounded-md border border-border bg-background px-2.5 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                />
+              </div>
             </div>
           )}
         </div>

@@ -1,0 +1,104 @@
+{
+  "general": {
+    "defaultPermissionMode": "accept_edits"
+  },
+  "permissions": {
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob",
+      "Edit(/src/**)",
+      "Edit(/pocketbase/pb_hooks/**)",
+      "Edit(/pocketbase/pb_migrations/**)",
+      "Edit(/scripts/**)",
+      "Edit(/docs/**)",
+      "Edit(/.loop/**)",
+      "Edit(/.qoder/**)",
+      "Edit(/public/**)",
+      "Edit(/AI-ITERATION.md)",
+      "Edit(/package.json)",
+      "Edit(/vite.config.ts)",
+      "Edit(/tailwind.config.js)",
+      "Edit(/eslint.config.js)",
+      "Edit(/tsconfig.app.json)",
+      "Bash(pnpm build)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm lint)",
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm test)",
+      "Bash(pnpm test:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vite:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npx vitest:*)",
+      "Bash(node:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git stash:*)",
+      "Bash(git restore:*)",
+      "Bash(curl http://127.0.0.1:*)",
+      "Bash(curl http://localhost:*)",
+      "Bash(*start-local.cmd*)",
+      "Bash(*stop-local.cmd*)"
+    ],
+    "ask": [
+      "WebFetch",
+      "WebSearch"
+    ],
+    "deny": [
+      "Read(/.env)",
+      "Read(/.env.*)",
+      "Read(/.git/**)",
+      "Read(/pocketbase/pb_data/**)",
+      "Read(*.pem)",
+      "Read(*.key)",
+      "Read(*.pfx)",
+      "Bash(rm:*)",
+      "Bash(rmdir:*)",
+      "Bash(del:*)",
+      "Bash(erase:*)",
+      "Bash(format:*)",
+      "Bash(sudo:*)",
+      "Bash(runas:*)",
+      "Bash(git push:*)",
+      "Bash(git reset:*)",
+      "Bash(git clean:*)",
+      "Bash(git rebase:*)",
+      "Bash(npm publish:*)",
+      "Bash(pnpm publish:*)",
+      "Bash(wmic:*)",
+      "Bash(taskkill:*)",
+      "Bash(reg:*)",
+      "Bash(winget:*)",
+      "Bash(choco:*)",
+      "Bash(npm i -g:*)",
+      "Bash(npm install -g:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .qoder/hooks/guard.mjs"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .qoder/hooks/guard.mjs"
+          }
+        ]
+      }
+    ]
+  }
+}

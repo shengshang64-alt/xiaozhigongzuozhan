@@ -187,6 +187,23 @@ export function useAssistant(options?: UseAssistantOptions) {
   const [sendState, setSendState] = useState<"idle" | "sending" | "fetching">("idle")
   const [fetchBadge, setFetchBadge] = useState("")
   const sendingRef = useRef(false)
+  // p1-ux：本轮 chatViaGateway 的取消句柄；用户点「取消」时 abort，
+  // 服务端 fetch 会立即断开；已发出的一轮 LLM 调用不可撤回，但可停止后续
+  // fetchSiteData/下一轮 LLM，用户体感为「停止思考、回到输入态」
+  const sendAbortRef = useRef<AbortController | null>(null)
+  const [sendElapsedTick, setSendElapsedTick] = useState(0)
+  useEffect(() => {
+    if (sendState === "idle") {
+      setSendElapsedTick(0)
+      return
+    }
+    const timer = window.setInterval(() => setSendElapsedTick((t) => t + 1), 1000)
+    return () => window.clearInterval(timer)
+  }, [sendState])
+  const cancelSend = useCallback(() => {
+    if (!sendAbortRef.current) return
+    sendAbortRef.current.abort()
+  }, [])
   // A2-9：会话列表加载态 + 最近一次提问（失败重试用）
   const [sessionsLoading, setSessionsLoading] = useState(false)
   const lastUserTextRef = useRef("")
@@ -608,6 +625,9 @@ export function useAssistant(options?: UseAssistantOptions) {
       sendingRef.current = true
       setSendState("sending")
       lastUserTextRef.current = userText
+      // p1-ux：本轮独立的取消句柄；finally 里清 null 避免二次 cancel 打到下轮
+      const ctrl = new AbortController()
+      sendAbortRef.current = ctrl
       const working: LlmMessage[] = convMessagesRef.current
         .filter((m) => !m.failed)
         .slice(-20)
@@ -617,13 +637,18 @@ export function useAssistant(options?: UseAssistantOptions) {
       let finalMemories: { group: MemoryGroup; content: string }[] = []
       try {
         for (;;) {
+          if (ctrl.signal.aborted) throw new Error("user_cancelled")
           const systemPrompt = buildSystemPrompt(memoryRowsRef.current, contextLabelRef.current)
           const res = await chatViaGateway({
             modelRef: activeModelRefRef.current,
             messages: [{ role: "system", content: systemPrompt }, ...working],
             page: "assistant",
             max_tokens: 4096,
+            signal: ctrl.signal,
           })
+          if (res.error === "user_cancelled" || ctrl.signal.aborted) {
+            throw new Error("user_cancelled")
+          }
           if (res.needsLogin) {
             setNeedsRhLogin(true)
             throw new Error("rh_login_required")
@@ -670,25 +695,32 @@ export function useAssistant(options?: UseAssistantOptions) {
         void persistTurn(uid, userText, finalDisplay)
       } catch (err) {
         const raw = err instanceof Error ? err.message : undefined
-        const message = mapAssistantLlmError(raw)
-        toast.error(message)
-        // A2-9：登录过期走登录横幅，其余失败在消息流里插入可重试的失败消息
-        if (raw !== "rh_login_required") {
-          const failMsg: ChatMsg = { id: localId("ai"), role: "assistant", content: message, failed: true }
-          setConvMessages((prev) => [...prev, failMsg])
-          convMessagesRef.current = [...convMessagesRef.current, failMsg]
-          // B1：失败消息（错误文案 + 提问原文）按会话桶持久化到 localStorage，刷新后仍可见可重试
-          appendFailedMsg(uid, activeSessionIdRef.current ?? failedPendingBucket(floatMode), {
-            id: failMsg.id,
-            userText,
-            content: message,
-            at: Date.now(),
-          })
+        // p1-ux：用户主动取消 — 静默收尾，不 toast、不入失败桶、不占重试位；
+        // 已在存储层的旧失败条目也不动，保留其原时间线位置
+        if (raw === "user_cancelled") {
+          // 什么都不做，让 finally 复位状态
+        } else {
+          const message = mapAssistantLlmError(raw)
+          toast.error(message)
+          // A2-9：登录过期走登录横幅，其余失败在消息流里插入可重试的失败消息
+          if (raw !== "rh_login_required") {
+            const failMsg: ChatMsg = { id: localId("ai"), role: "assistant", content: message, failed: true }
+            setConvMessages((prev) => [...prev, failMsg])
+            convMessagesRef.current = [...convMessagesRef.current, failMsg]
+            // B1：失败消息（错误文案 + 提问原文）按会话桶持久化到 localStorage，刷新后仍可见可重试
+            appendFailedMsg(uid, activeSessionIdRef.current ?? failedPendingBucket(floatMode), {
+              id: failMsg.id,
+              userText,
+              content: message,
+              at: Date.now(),
+            })
+          }
         }
       } finally {
         setFetchBadge("")
         setSendState("idle")
         sendingRef.current = false
+        sendAbortRef.current = null
       }
     },
     [persistAutoMemories, persistTurn, floatMode],
@@ -810,6 +842,9 @@ export function useAssistant(options?: UseAssistantOptions) {
     sendMessage,
     retryLast,
     dismissFailedMsg,
+    // p1-ux：本轮取消 + 已用秒数（供 ChatComposer/ChatStream 消费）
+    cancelSend,
+    sendElapsedTick,
     // 页面联动
     contextLabel,
     contextEnabled,

@@ -1,7 +1,7 @@
 // 右栏阅读视图：Markdown 渲染 / 纯文本编辑切换 + 重命名、移动到、删除（含团队文档二次强确认）。
 // 轮次 D：分类与 AI 策略块（DocPolicySection）+ 引用跳转近似定位（citationFocus）。
 import { useEffect, useRef, useState } from "react"
-import { BookOpen, Check, FolderInput, Pencil, ShieldAlert, Trash2, X } from "lucide-react"
+import { BookOpen, Check, FileText, FolderInput, Pencil, ShieldAlert, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -38,6 +38,9 @@ type DocReaderPanelProps = {
   allFolderPaths: string[]
   updateDocPolicy: (doc: KbDocRow, patch: Partial<Pick<KbDocRow, "doc_category" | "ai_context_mode" | "retrieval_weight" | "is_sensitive">>) => void
   citationFocus: CitationFocus | null
+  /** perf-01：最近阅读（未选文档时的空态引导列表，最多 6 条） */
+  recentDocs?: KbDocRow[]
+  onOpenRecent?: (doc: KbDocRow) => void
 }
 
 export function DocReaderPanel({
@@ -60,6 +63,8 @@ export function DocReaderPanel({
   allFolderPaths,
   updateDocPolicy,
   citationFocus,
+  recentDocs = [],
+  onOpenRecent,
 }: DocReaderPanelProps) {
   const editable = canEditDoc(selectedDoc)
   const policy = selectedDoc ? effectivePolicy(selectedDoc) : null
@@ -174,6 +179,32 @@ export function DocReaderPanel({
           <p className="max-w-64 text-xs leading-relaxed text-muted-foreground">
             从左侧目录或中间列表点开文档，支持 Markdown 渲染、在线编辑与移动归档
           </p>
+          {/* perf-01：有阅读史时把最近看过的前 6 篇直接列在这里，回到页面可一键续读 */}
+          {recentDocs.length > 0 && (
+            <div className="mt-2 w-full max-w-80 text-left">
+              <p className="mb-1.5 text-xs font-semibold text-muted-foreground">最近阅读</p>
+              <ul className="space-y-1">
+                {recentDocs.map((doc) => (
+                  <li key={doc.id}>
+                    <button
+                      type="button"
+                      onClick={() => onOpenRecent?.(doc)}
+                      title={doc.folder_path ? `${doc.folder_path} · ${doc.title}` : doc.title}
+                      className="flex w-full items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-card-foreground shadow-sm transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    >
+                      <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
+                      <span className="min-w-0 flex-1 truncate">{doc.title}</span>
+                      {doc.folder_path ? (
+                        <span className="max-w-28 shrink-0 truncate text-muted-foreground">
+                          {doc.folder_path.split("/").filter(Boolean).pop()}
+                        </span>
+                      ) : null}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 

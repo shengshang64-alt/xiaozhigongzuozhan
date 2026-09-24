@@ -19,6 +19,9 @@ import {
   buildExtractMessages,
   buildProfileMessages,
   buildSuggestionMessages,
+  computeMissingFields,
+  decodeBinSections,
+  deriveFlatFromLeadership,
   DRAFT_NUMBER_KEYS,
   EMPTY_CUSTOMER_DRAFT,
   isTerminalStage,
@@ -28,8 +31,10 @@ import {
   rowToDraft,
   splitDepartmentList,
   STAGE_LABEL,
+  toLeadership,
   toNumberOrNull,
   type AiProfileResult,
+  type BinSection,
   type BidProjectLinkRow,
   type ChainAssetItem,
   type ContactInfo,
@@ -273,9 +278,13 @@ export function useCustomerManagement() {
       ])
       // D1：hook 模板 totalItems=页内条数不可信；hasMore 改按「本页拉满」判定，total 仅在拉不满时可精确推断
       const cItems = cRes?.items ?? []
+      const cTotal = cRes?.totalItems ?? 0
       setCustomers(cItems)
       setCustomersPage(1)
-      setTotalCustomers(cItems.length >= CRM_PER_PAGE ? null : cItems.length)
+      // 本轮（B-03/B-04）：/api/customers 已改为返回真总数（大于本页条数即可采信）；
+      // 后端未重启时 totalItems 仍等于本页条数，回退旧启发式：满页⇒null（总数未知），未满页⇒本页条数即总数。
+      // 这样界面绝不会再把「本页 20 条」当成「客户总数 20」显示。
+      setTotalCustomers(cTotal > cItems.length ? cTotal : cItems.length < CRM_PER_PAGE ? cItems.length : null)
       setCustomersHasMore(cItems.length >= CRM_PER_PAGE)
       const oItems = oRes?.items ?? []
       setOpportunities(oItems)
@@ -338,7 +347,15 @@ export function useCustomerManagement() {
       setCustomers((prev) => [...prev, ...newItems])
       setCustomersPage(targetPage)
       // D1：本页拉满则总数不可知（null），拉不满时精确总数 = 前面整页 + 本页条数
-      setTotalCustomers(newItems.length >= CRM_PER_PAGE ? null : (targetPage - 1) * CRM_PER_PAGE + newItems.length)
+      // 本轮（B-03/B-04）：后端已返回真总数，优先采信；否则回退上述旧启发式
+      const mTotal = data.totalItems ?? 0
+      setTotalCustomers(
+        mTotal > newItems.length
+          ? mTotal
+          : newItems.length >= CRM_PER_PAGE
+            ? null
+            : (targetPage - 1) * CRM_PER_PAGE + newItems.length,
+      )
       setCustomersHasMore(newItems.length >= CRM_PER_PAGE)
     } catch {
       toast.error("加载更多客户失败，请稍后重试")
@@ -749,6 +766,9 @@ export function useCustomerManagement() {
     const monthIso = monthStart.toISOString()
     return {
       customerCount: totalCustomers ?? customers.length,
+      // 本轮（B-03）：totalCustomers=null 表示总数不可知（本页已拉满且后端未给真总数），
+      // 此时统计卡数字需加「+」后缀，避免把已加载条数读成精确总数
+      customerCountCapped: totalCustomers === null,
       activeOppCount: opportunities.filter((o) => !isTerminalStage(o.stage)).length,
       monthFollowCount: allFollowRecords.filter((r) => (r.created ?? "") >= monthIso).length,
     }
@@ -763,6 +783,14 @@ export function useCustomerManagement() {
   const [aiMatching, setAiMatching] = useState(false)
   const [extractText, setExtractText] = useState("")
   const [extracting, setExtracting] = useState(false)
+  const [fetchingSite, setFetchingSite] = useState(false)
+  // 微信/公众号文章链接兜底：粘贴具体文章直链→direct 直取正文→抽取回填当前表单
+  const [articleUrl, setArticleUrl] = useState("")
+  // 批量补全：对列表中已存在的客户，抓官网→抽取→仅回填当前为空的字段→写库
+  const [batchEnriching, setBatchEnriching] = useState(false)
+  const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 })
+  const batchCancelRef = useRef(false)
+  const [enrichingOneId, setEnrichingOneId] = useState<string | null>(null)
 
   const requireLogin = useCallback((): boolean => {
     if (!userId) {
@@ -802,15 +830,16 @@ export function useCustomerManagement() {
     const marked: string[] = []
     setCustomerDraft((prev) => {
       const next: CustomerDraft = { ...prev }
+      const asRec = next as unknown as Record<string, unknown>
       if (hospitalName && !next.hospital_name.trim()) next.hospital_name = hospitalName
       const putStr = (field: keyof CustomerDraft, value: string | null) => {
         if (value === null) return
-        next[field] = value
+        asRec[field] = value
         marked.push(String(field))
       }
       const putNum = (field: keyof CustomerDraft, value: number | null) => {
         if (value === null) return
-        next[field] = String(value)
+        asRec[field] = String(value)
         marked.push(String(field))
       }
       putStr("level", result.level)
@@ -826,9 +855,17 @@ export function useCustomerManagement() {
       putNum("beds_total", result.beds_total)
       putNum("beds_icu", result.beds_icu)
       putNum("beds_or", result.beds_or)
+      putNum("annual_revenue", result.annual_revenue)
+      putStr("president", result.president)
+      putStr("party_secretary", result.party_secretary)
+      putStr("it_lead", result.it_lead)
       if (result.key_departments) {
         next.key_departments_text = result.key_departments.join("、")
         marked.push("key_departments")
+      }
+      if (result.leadership && result.leadership.length) {
+        next.leadership = result.leadership.map((m) => ({ name: m.name, title: m.title, role: m.role }))
+        marked.push("leadership")
       }
       return next
     })
@@ -890,29 +927,71 @@ export function useCustomerManagement() {
     }, costText)
   }, [requireLogin, customerDraft.hospital_name, costConfirm, costText, doAiMatch])
 
-  const doExtract = useCallback(async () => {
+  // 共享：把一段医院介绍正文交给大模型抽取并回填表单
+  // （「粘贴文本提取」与「抓取官网补全」两条入口复用同一抽取管线）
+  const extractFromText = useCallback(async (text: string) => {
     setExtracting(true)
     try {
       const res = await chatViaGateway({
         modelRef: activeModelRef,
-        messages: injectSkillBlock(buildExtractMessages(extractText), skillBlockFor("customer-profile")),
+        messages: injectSkillBlock(buildExtractMessages(text), skillBlockFor("customer-profile")),
         max_tokens: 2000,
         page: "customer-management",
       })
-      if (!handleLlmResult(res)) return
+      if (!handleLlmResult(res)) return false
       const parsed = parseProfileJson(res.text)
       if (!parsed) {
-        toast.error("未能从文本中提取出医院信息，请检查粘贴内容")
-        return
+        toast.error("未能从文本中提取出医院信息，请检查内容")
+        return false
       }
       applyProfileToDraft(parsed)
       toast.success("字段已提取进表单，请逐项核实标有「AI 提供」的字段")
+      return true
     } catch {
       toast.error("网络异常，文本提取失败，请稍后重试")
+      return false
     } finally {
       setExtracting(false)
     }
-  }, [extractText, activeModelRef, handleLlmResult, applyProfileToDraft])
+  }, [activeModelRef, handleLlmResult, applyProfileToDraft])
+
+  const doExtract = useCallback(() => {
+    void extractFromText(extractText)
+  }, [extractText, extractFromText])
+
+  // 抓取医院官网正文 → 填入文本框（透明可编辑）→ 复用抽取管线回填
+  const doFetchSite = useCallback(async () => {
+    const name = customerDraft.hospital_name.trim()
+    setFetchingSite(true)
+    try {
+      const r = await apiFetch<{ ok: boolean; url?: string; introUrl?: string; text?: string; message?: string }>(
+        "/api/customers/fetch-site",
+        { method: "POST", body: JSON.stringify({ name, website: customerDraft.website.trim() }) },
+      )
+      if (!r.ok || !r.text) {
+        toast.error(r.message || "抓取官网失败，可改用「AI 匹配」或粘贴官网简介文本")
+        return
+      }
+      if (!customerDraft.website.trim() && r.url) setDraftField("website", r.url)
+      setExtractText(r.text)
+      await extractFromText(r.text)
+    } catch {
+      toast.error("网络异常，抓取官网失败，请稍后重试")
+    } finally {
+      setFetchingSite(false)
+    }
+  }, [customerDraft.hospital_name, customerDraft.website, extractFromText, setDraftField])
+
+  const runFetchSite = useCallback(() => {
+    if (!requireLogin()) return
+    if (!customerDraft.hospital_name.trim()) {
+      toast.error("请先填写医院名称")
+      return
+    }
+    costConfirm.runWithCostConfirm(() => {
+      void doFetchSite()
+    }, costText)
+  }, [requireLogin, customerDraft.hospital_name, costConfirm, costText, doFetchSite])
 
   const runExtract = useCallback(() => {
     if (!requireLogin()) return
@@ -924,6 +1003,186 @@ export function useCustomerManagement() {
       void doExtract()
     }, costText)
   }, [requireLogin, extractText, costConfirm, costText, doExtract])
+
+  // 低层：调用后端 fetch-site 抓正文。direct=true 时把 website 当作文章直链直接取正文（微信/公众号兜底）
+  // 返回正文已合并后端回传的 GBK 字节段（前端 TextDecoder 解码），并透传 sources 供 UI 展示来源。
+  const fetchSiteText = useCallback(async (
+    name: string,
+    website: string,
+    direct: boolean,
+  ): Promise<{ ok: boolean; url?: string; text?: string; message?: string; sources?: string[] }> => {
+    try {
+      const r = await apiFetch<{
+        ok: boolean; url?: string; text?: string; message?: string; sources?: string[]; binSections?: BinSection[]
+      }>("/api/customers/fetch-site", { method: "POST", body: JSON.stringify({ name, website, direct }) })
+      if (r.ok) r.text = decodeBinSections(r.text || "", r.binSections)
+      return { ok: r.ok, url: r.url, text: r.text, message: r.message, sources: r.sources }
+    } catch {
+      return { ok: false, message: "网络异常，抓取失败" }
+    }
+  }, [])
+
+  // 低层：把正文交给大模型抽取为档案（不回填表单，供批量补全直接写库用）
+  const extractProfileFromText = useCallback(async (text: string): Promise<AiProfileResult | null> => {
+    const res = await chatViaGateway({
+      modelRef: activeModelRef,
+      messages: injectSkillBlock(buildExtractMessages(text), skillBlockFor("customer-profile")),
+      max_tokens: 2000,
+      page: "customer-management",
+    })
+    if (!res.ok) return null
+    return parseProfileJson(res.text)
+  }, [activeModelRef])
+
+  // 表单内：粘贴公众号/文章链接 → direct 直取正文 → 复用抽取管线回填当前表单
+  const runFetchUrl = useCallback(() => {
+    if (!requireLogin()) return
+    const u = articleUrl.trim()
+    if (!/^https?:\/\//i.test(u)) {
+      toast.error("请粘贴完整文章链接（http/https 开头，如公众号推文）")
+      return
+    }
+    costConfirm.runWithCostConfirm(() => {
+      void (async () => {
+        setFetchingSite(true)
+        try {
+          const r = await fetchSiteText(customerDraft.hospital_name.trim(), u, true)
+          if (!r.ok || !r.text) {
+            toast.error(r.message || "链接抓取失败（微信文章可能有防盗链/需登录，可在浏览器打开后复制正文用「粘贴文本提取」）")
+            return
+          }
+          setExtractText(r.text)
+          await extractFromText(r.text)
+        } finally {
+          setFetchingSite(false)
+        }
+      })()
+    }, costText)
+  }, [requireLogin, articleUrl, costConfirm, costText, customerDraft.hospital_name, fetchSiteText, extractFromText])
+
+  // 批量补全单个客户：抓官网→抽取→仅回填当前为空的字段→PATCH 写库；返回本次实际补上的字段数
+  const enrichCustomerRow = useCallback(async (row: CustomerRow): Promise<{ filled: number; note: string; sources?: string[] }> => {
+    const fetched = await fetchSiteText(row.hospital_name, row.website, false)
+    if (!fetched.ok || !fetched.text) return { filled: 0, note: fetched.message || "官网抓取失败", sources: fetched.sources }
+    const profile = await extractProfileFromText(fetched.text)
+    if (!profile) return { filled: 0, note: "正文未能抽取到可核实字段", sources: fetched.sources }
+
+    const derived = deriveFlatFromLeadership(profile.leadership)
+    const patch: Record<string, unknown> = {}
+    const marks = new Set<string>(row.ai_generated_fields ?? [])
+    const putStr = (key: string, val: string | null, cur: string) => {
+      if (val != null && val !== "" && !cur.trim()) { patch[key] = val; marks.add(key) }
+    }
+    const putNum = (key: string, val: number | null, cur: number) => {
+      if (val != null && !(typeof cur === "number" && cur > 0)) { patch[key] = val; marks.add(key) }
+    }
+    putStr("level", profile.level, row.level)
+    putStr("hospital_type", profile.hospital_type, row.hospital_type)
+    putStr("region", profile.region, row.region)
+    putStr("address", profile.address, row.address)
+    putStr("website", profile.website || fetched.url || null, row.website)
+    putNum("outpatient_daily", profile.outpatient_daily, row.outpatient_daily)
+    putNum("outpatient_yearly", profile.outpatient_yearly, row.outpatient_yearly)
+    putNum("beds_total", profile.beds_total, row.beds_total)
+    putNum("beds_icu", profile.beds_icu, row.beds_icu)
+    putNum("beds_or", profile.beds_or, row.beds_or)
+    putNum("annual_revenue", profile.annual_revenue, row.annual_revenue)
+    putStr("president", profile.president || derived.president, row.president)
+    putStr("party_secretary", profile.party_secretary || derived.party_secretary, row.party_secretary)
+    putStr("it_lead", profile.it_lead, row.it_lead)
+    if (profile.key_departments && profile.key_departments.length && !(row.key_departments?.length)) {
+      patch.key_departments = profile.key_departments
+      marks.add("key_departments")
+    }
+    if (profile.leadership && profile.leadership.length && !toLeadership(row.leadership).length) {
+      patch.leadership = profile.leadership
+      marks.add("leadership")
+    }
+
+    const filled = Object.keys(patch).filter((k) => k !== "ai_generated_fields").length
+    if (filled === 0) return { filled: 0, note: "无新增可填字段（已有信息保持不变）", sources: fetched.sources }
+    patch.ai_generated_fields = Array.from(marks)
+    const updated = await apiFetch<CustomerRow>(`/api/customers/${row.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    })
+    setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+    return { filled, note: `补全 ${filled} 项`, sources: fetched.sources }
+  }, [fetchSiteText, extractProfileFromText])
+
+  // 批量补全入口：默认先处理前 limit 家（缺省全部）；串行、可中途取消；只填空字段、已核实字段不覆盖
+  const runBatchEnrich = useCallback(async (limit?: number) => {
+    if (!requireLogin()) return
+    if (!activeModelRef) {
+      toast.error("请先在上方选择用于抽取的模型")
+      return
+    }
+    const withName = customers.filter((c) => c.hospital_name.trim())
+    // 优先处理“缺得最多”的客户（而非列表前 N 家），让批量补全把力气花在刀刃上
+    const targets = [...withName].sort((a, b) => computeMissingFields(b).length - computeMissingFields(a).length)
+    const slice = limit && limit > 0 ? targets.slice(0, limit) : targets
+    if (!slice.length) {
+      toast.error("列表里还没有可补全的客户")
+      return
+    }
+    batchCancelRef.current = false
+    setBatchEnriching(true)
+    setBatchProgress({ done: 0, total: slice.length })
+    let totalFilled = 0
+    try {
+      for (let i = 0; i < slice.length; i++) {
+        if (batchCancelRef.current) break
+        const row = slice[i]
+        try {
+          const r = await enrichCustomerRow(row)
+          totalFilled += r.filled
+        } catch {
+          /* 单家失败不阻塞批量，继续下一家 */
+        }
+        setBatchProgress({ done: i + 1, total: slice.length })
+      }
+      if (batchCancelRef.current) toast.info(`批量补全已停止，共补上 ${totalFilled} 个字段`)
+      else toast.success(`批量补全完成，共补上 ${totalFilled} 个字段（均标记「AI 提供需核实」，请逐项核对）`)
+    } finally {
+      setBatchEnriching(false)
+    }
+  }, [requireLogin, activeModelRef, customers, enrichCustomerRow])
+
+  const cancelBatchEnrich = useCallback(() => {
+    batchCancelRef.current = true
+  }, [])
+
+  // 单家定向补全：只处理选中的这一家（抓官网→抽取→仅填空字段→写库），复用批量补全同一管线
+  const enrichOneCustomer = useCallback((customerId: string) => {
+    if (!requireLogin()) return
+    if (!activeModelRef) {
+      toast.error("请先在上方选择用于抽取的模型")
+      return
+    }
+    const row = customers.find((c) => c.id === customerId)
+    if (!row) {
+      toast.error("未找到该客户")
+      return
+    }
+    costConfirm.runWithCostConfirm(() => {
+      void (async () => {
+        setEnrichingOneId(customerId)
+        try {
+          const r = await enrichCustomerRow(row)
+          if (r.filled > 0) {
+            const src = r.sources && r.sources.length ? `（来源：${r.sources.join("、")}）` : ""
+            toast.success(`已为「${row.hospital_name}」补全 ${r.filled} 项${src}，均标记「AI 提供需核实」，请逐项核对`)
+          } else {
+            toast.info(r.note)
+          }
+        } catch {
+          toast.error("补全失败，请稍后重试")
+        } finally {
+          setEnrichingOneId(null)
+        }
+      })()
+    }, costText)
+  }, [requireLogin, activeModelRef, customers, costConfirm, costText, enrichCustomerRow])
 
   const saveCustomer = useCallback(async () => {
     if (!userId) return
@@ -943,6 +1202,10 @@ export function useCustomerManagement() {
         website: customerDraft.website.trim(),
         key_departments: splitDepartmentList(customerDraft.key_departments_text),
         notes: customerDraft.notes.trim(),
+        president: customerDraft.president.trim(),
+        party_secretary: customerDraft.party_secretary.trim(),
+        it_lead: customerDraft.it_lead.trim(),
+        leadership: toLeadership(customerDraft.leadership),
         ai_generated_fields: customerAiFields,
       }
       for (const key of DRAFT_NUMBER_KEYS) body[key] = toNumberOrNull(customerDraft[key])
@@ -1528,6 +1791,7 @@ export function useCustomerManagement() {
     oppsLoadingMore,
     loadMoreOpportunities,
     // A3 统计 capped 标志（统计卡数字加「+」后缀）
+    customerCountCapped: totalCustomers === null,
     oppCapped,
     followCapped,
     refsHasMore,
@@ -1584,6 +1848,17 @@ export function useCustomerManagement() {
     setExtractText,
     extracting,
     runExtract,
+    fetchingSite,
+    runFetchSite,
+    articleUrl,
+    setArticleUrl,
+    runFetchUrl,
+    batchEnriching,
+    batchProgress,
+    runBatchEnrich,
+    cancelBatchEnrich,
+    enrichingOneId,
+    enrichOneCustomer,
     // 联系人
     contactName,
     setContactName,

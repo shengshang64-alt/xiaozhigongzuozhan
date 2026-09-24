@@ -8,6 +8,7 @@ import { ChapterEditor } from "@/components/solution-studio/ChapterEditor"
 import { OutlineTreeEditor } from "@/components/solution-studio/OutlineTreeEditor"
 import { ChapterBudgetBar } from "@/components/bid-workspace/ChapterBudgetBar"
 import { DeviationPanel } from "@/components/bid-workspace/DeviationPanel"
+import { ScoreMappingPanel } from "@/components/bid-workspace/ScoreMappingPanel"
 import { FormatSettingsPanel } from "@/components/bid-workspace/FormatSettingsPanel"
 import { GenerationSettingsBar } from "@/components/bid-workspace/GenerationSettingsBar"
 import { GlobalFactsPanel } from "@/components/bid-workspace/GlobalFactsPanel"
@@ -44,6 +45,7 @@ type ComposeStepProps = Pick<
   | "genOptions"
   | "setClauseResponse"
   | "setMaterialBoost"
+  | "setComplianceMode"
   | "setIncludeBiz"
   | "bizRemoveCount"
   | "confirmRemoveBizChapters"
@@ -130,6 +132,7 @@ type ComposeStepProps = Pick<
   | "bidOutlineSkills"
   | "bidChapterSkills"
   | "deviationSkills"
+  | "requestStep"
 >
 
 const LEVEL_OPTIONS: { value: 0 | 1 | 2 | 3; label: string }[] = [
@@ -713,7 +716,7 @@ export function ComposeStep(p: ComposeStepProps) {
               </span>
             </div>
           ) : null}
-          <div className="mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-[2fr_3fr]">
+          <div className="mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-[2fr_3fr] xl:grid-cols-[200px_minmax(0,1fr)_300px]">
             <div className="lg:sticky lg:top-20">
               <OutlineNavTree
                 outline={proj.bid_outline}
@@ -770,6 +773,41 @@ export function ComposeStep(p: ComposeStepProps) {
                 />
               </div>
             </div>
+            {/* 重构轮：右栏评分点双向映射（缺失橙/废标红，本地推导零 AI） */}
+            <div className="hidden xl:sticky xl:top-20 xl:block">
+              <ScoreMappingPanel
+                report={proj.parse_report ?? null}
+                chapters={proj.bid_chapters}
+                outline={proj.bid_outline ?? []}
+                activeChapterId={p.activeChapterId}
+                outlineClauseTotal={p.outlineClauseTotal}
+                coveredClauseCount={p.coveredClauseCount}
+                uncoveredClauses={p.uncoveredClauses}
+                voidItems={proj.void_check?.items ?? []}
+                onJumpResponse={p.jumpToResponseNode}
+                onSelectChapter={p.selectChapter}
+                onAddClause={p.addClauseToOutline}
+                onGoVoidCheck={() => p.requestStep(5)}
+              />
+            </div>
+          </div>
+
+          {/* 窄于 xl 时评分点面板降级到编辑器下方（保持功能可见） */}
+          <div className="mt-4 xl:hidden">
+            <ScoreMappingPanel
+              report={proj.parse_report ?? null}
+              chapters={proj.bid_chapters}
+              outline={proj.bid_outline ?? []}
+              activeChapterId={p.activeChapterId}
+              outlineClauseTotal={p.outlineClauseTotal}
+              coveredClauseCount={p.coveredClauseCount}
+              uncoveredClauses={p.uncoveredClauses}
+              voidItems={proj.void_check?.items ?? []}
+              onJumpResponse={p.jumpToResponseNode}
+              onSelectChapter={p.selectChapter}
+              onAddClause={p.addClauseToOutline}
+              onGoVoidCheck={() => p.requestStep(5)}
+            />
           </div>
 
           <DeviationPanel

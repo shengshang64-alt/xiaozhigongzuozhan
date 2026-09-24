@@ -1,4 +1,4 @@
-import { Check, CheckSquare, ExternalLink, Sparkles, Square, Star, X } from "lucide-react"
+import { Check, CheckSquare, ExternalLink, Flag, Sparkles, Square, Star, X } from "lucide-react"
 import {
   fmtIntelTime,
   ITEM_STATUS_LABEL,
@@ -11,6 +11,9 @@ type IntelItemCardProps = {
   starred: boolean
   aiTagging: boolean
   focused: boolean
+  // 重构轮：项目线索标记（个人态）
+  lead: boolean
+  onToggleLead: (item: IntelItemRow) => void
   onOpenDetail: (item: IntelItemRow) => void
   onConfirm: (item: IntelItemRow) => void
   onIgnore: (item: IntelItemRow) => void
@@ -40,6 +43,8 @@ export function IntelItemCard({
   starred,
   aiTagging,
   focused,
+  lead,
+  onToggleLead,
   onOpenDetail,
   onConfirm,
   onIgnore,
@@ -83,6 +88,11 @@ export function IntelItemCard({
         <span className={statusBadgeClass(item.my_status || "pending")}>
           {ITEM_STATUS_LABEL[item.my_status || "pending"] ?? "待确认"}
         </span>
+        {lead && (
+          <span className="rounded-full border border-violet-400/60 bg-violet-500/10 px-2 py-0.5 text-xs font-medium text-violet-600">
+            已标线索
+          </span>
+        )}
         {item.visibility === "personal" ? (
           <span className="rounded-full border border-dashed border-primary/40 px-2 py-0.5 text-xs text-primary">
             个人 · 我的
@@ -133,6 +143,23 @@ export function IntelItemCard({
         </div>
       )}
 
+      {item.structured && (item.structured.budget || item.structured.deadline || item.structured.won_amount || item.structured.winner) && (
+        <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+          {item.structured.deadline && (
+            <span className="rounded bg-warning/10 px-1.5 py-0.5 text-warning">截止 {item.structured.deadline}</span>
+          )}
+          {item.structured.budget && (
+            <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground">预算 {item.structured.budget}</span>
+          )}
+          {item.structured.winner && (
+            <span className="max-w-48 truncate rounded bg-muted px-1.5 py-0.5 text-muted-foreground">中标 {item.structured.winner}</span>
+          )}
+          {item.structured.won_amount && (
+            <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground">中标额 {item.structured.won_amount}</span>
+          )}
+        </div>
+      )}
+
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         <span className="truncate">{item.source_name || (item.added_by === "manual" ? "手动录入" : "未知来源")}</span>
         <span>{fmtIntelTime(item.published_at || item.created)}</span>
@@ -169,6 +196,23 @@ export function IntelItemCard({
             忽略
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => onToggleLead(item)}
+          title={lead ? "取消项目线索标记" : "标记为项目线索（个人视角，便于跟进）"}
+          className={`flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 ${
+            lead
+              ? "border-violet-400/60 bg-violet-500/10 text-violet-600"
+              : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground"
+          }`}
+        >
+          <Flag
+            className={`h-3.5 w-3.5 ${
+              lead ? "fill-violet-500 text-violet-600" : "text-muted-foreground group-hover:text-foreground"
+            }`}
+          />
+          {lead ? "已标线索" : "标线索"}
+        </button>
         {item.url && (
           <a
             href={item.url}

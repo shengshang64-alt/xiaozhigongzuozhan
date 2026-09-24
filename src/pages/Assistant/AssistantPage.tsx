@@ -123,6 +123,8 @@ export function AssistantPage(p: ReturnType<typeof useAssistant>) {
             busy={p.sendState !== "idle"}
             contextLabel={p.contextLabel}
             onCloseContext={p.closeContext}
+            onCancel={p.cancelSend}
+            elapsedSec={p.sendElapsedTick}
             focusSignal={p.composerFocusTick}
           />
         </section>

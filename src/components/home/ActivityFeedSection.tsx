@@ -1,9 +1,12 @@
+import { useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   Activity,
   ArrowRight,
   Building2,
   CalendarCheck,
+  ChevronDown,
+  ChevronUp,
   FileCheck2,
   FileText,
   Loader2,
@@ -24,6 +27,8 @@ const KIND_ICONS: Record<ActivityKind, LucideIcon> = {
   intel: Newspaper,
 }
 
+const COLLAPSED_LIMIT = 6
+
 type ActivityFeedSectionProps = {
   events: ActivityEvent[]
   loading: boolean
@@ -31,6 +36,20 @@ type ActivityFeedSectionProps = {
 
 export function ActivityFeedSection({ events, loading }: ActivityFeedSectionProps) {
   const navigate = useNavigate()
+  const [expanded, setExpanded] = useState(false)
+  // home-01：按可见签名去重合并（同 kind+标题+描述的重复条目只保留最新一条），再限高折叠
+  const deduped = useMemo(() => {
+    const seen = new Set<string>()
+    const out: ActivityEvent[] = []
+    for (const e of events) {
+      const key = `${e.kind}|${e.title}|${e.desc}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(e)
+    }
+    return out
+  }, [events])
+  const visible = expanded ? deduped : deduped.slice(0, COLLAPSED_LIMIT)
   return (
     <section className="mb-5 rounded-xl border border-border bg-card shadow-md">
       <header className="flex min-h-14 items-center gap-3 border-b border-border px-4 py-3">
@@ -42,17 +61,17 @@ export function ActivityFeedSection({ events, loading }: ActivityFeedSectionProp
           <p className="truncate text-xs text-muted-foreground">客户、商机、跟进、标书、方案与情报的最新进展，点击直达详情</p>
         </div>
         <span className="ml-auto hidden shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground sm:inline-flex">
-          最近 {events.length} 条
+          最近 {deduped.length} 条
         </span>
       </header>
 
       <div className="p-4">
-        {loading && events.length === 0 ? (
+        {loading && deduped.length === 0 ? (
           <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin text-primary" />
             动态加载中…
           </div>
-        ) : events.length === 0 ? (
+        ) : deduped.length === 0 ? (
           <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border py-16 text-center">
             <Activity className="h-8 w-8 text-muted-foreground" />
             <p className="text-sm font-medium text-foreground">
@@ -63,8 +82,9 @@ export function ActivityFeedSection({ events, loading }: ActivityFeedSectionProp
             </p>
           </div>
         ) : (
+          <>
           <ul className="flex flex-col">
-            {events.map((event) => {
+            {visible.map((event) => {
               const Icon = KIND_ICONS[event.kind] ?? Activity
               return (
                 <li key={event.id}>
@@ -89,6 +109,26 @@ export function ActivityFeedSection({ events, loading }: ActivityFeedSectionProp
               )
             })}
           </ul>
+          {deduped.length > COLLAPSED_LIMIT && (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="mt-1 flex w-full items-center justify-center gap-1 rounded-lg py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-primary"
+            >
+              {expanded ? (
+                <>
+                  收起
+                  <ChevronUp className="h-3.5 w-3.5" />
+                </>
+              ) : (
+                <>
+                  查看全部 {deduped.length} 条
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </>
+              )}
+            </button>
+          )}
+          </>
         )}
       </div>
     </section>

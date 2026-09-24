@@ -1,12 +1,23 @@
 import { useState } from "react"
-import { ExternalLink, Pencil, Phone, Plus, Trash2, UserRound } from "lucide-react"
+import { ExternalLink, Loader2, Pencil, Phone, Plus, Trash2, UserRound, Wand2 } from "lucide-react"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { AiBadge } from "@/components/customer-management/AiBadge"
-import { fmtMetric, type CustomerRow } from "@/pages/CustomerManagement/customerTypes"
+import {
+  computeMissingFields,
+  fmtMetric,
+  toItRatings,
+  toLeadership,
+  toSystemVendors,
+  type CustomerRow,
+} from "@/pages/CustomerManagement/customerTypes"
 
 type CustomerProfileCardProps = {
   customer: CustomerRow
   onEdit: () => void
+  /** 单家定向智能补全（仅补当前客户、仅填空字段） */
+  onEnrichOne: (customerId: string) => void
+  /** 正在补全的客户 id（驱动本卡片按钮 loading） */
+  enrichingOneId: string | null
   contactName: string
   setContactName: (value: string) => void
   contactTitle: string
@@ -26,9 +37,17 @@ const METRICS: { key: keyof CustomerRow; label: string }[] = [
   { key: "beds_or", label: "手术间" },
 ]
 
+const LEADERS: { key: keyof CustomerRow; label: string }[] = [
+  { key: "president", label: "院长" },
+  { key: "party_secretary", label: "书记" },
+  { key: "it_lead", label: "信息化负责人" },
+]
+
 export function CustomerProfileCard({
   customer,
   onEdit,
+  onEnrichOne,
+  enrichingOneId,
   contactName,
   setContactName,
   contactTitle,
@@ -42,6 +61,11 @@ export function CustomerProfileCard({
   const aiFields = customer.ai_generated_fields ?? []
   const contacts = customer.contacts ?? []
   const departments = customer.key_departments ?? []
+  const leaders = toLeadership(customer.leadership)
+  const missingCount = computeMissingFields(customer).length
+  const enriching = enrichingOneId === customer.id
+  // 有结构化领导班子时，扁平区只保留“信息化负责人”（院长/书记由领导团队块承担，避免重复）
+  const flatLeaders = leaders.length > 0 ? LEADERS.filter((l) => l.key === "it_lead") : LEADERS
   // 删除联系人前走模态确认，存 index + 展示名
   const [pendingRemoveContact, setPendingRemoveContact] = useState<{ idx: number; label: string } | null>(null)
 
@@ -62,14 +86,28 @@ export function CustomerProfileCard({
             {[customer.hospital_type, customer.region].filter(Boolean).join(" · ") || "类型与地区待补充"}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onEdit}
-          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          <Pencil className="h-3.5 w-3.5 text-primary" />
-          编辑档案
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {missingCount > 0 && (
+            <button
+              type="button"
+              onClick={() => onEnrichOne(customer.id)}
+              disabled={enriching}
+              title={`当前缺 ${missingCount} 项：抓取官网/概况/领导班子等多来源，用 AI 只补空白字段（已填不覆盖，结果标记需核实）`}
+              className="inline-flex items-center gap-1 rounded-md border border-primary/40 bg-background px-2.5 py-1.5 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-primary/10 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              {enriching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+              {enriching ? "补全中…" : "智能补全缺失项"}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onEdit}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <Pencil className="h-3.5 w-3.5 text-primary" />
+            编辑档案
+          </button>
+        </div>
       </header>
 
       {customer.address && (
@@ -129,6 +167,85 @@ export function CustomerProfileCard({
           <p className="mt-1 text-xs text-muted-foreground">待补充，可在编辑档案里添加</p>
         )}
       </div>
+
+      {(() => {
+        const ratings = toItRatings(customer.it_ratings)
+        const vendors = toSystemVendors(customer.system_vendors)
+        if (ratings.length === 0 && vendors.length === 0) return null
+        return (
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            {ratings.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground">信息化评级</p>
+                <ul className="mt-1.5 flex flex-col gap-1">
+                  {ratings.map((r, i) => (
+                    <li key={`${r.dimension}-${i}`} className="flex flex-wrap items-center gap-1.5 text-xs">
+                      <span className="rounded bg-secondary px-1.5 py-0.5 text-secondary-foreground">{r.dimension}</span>
+                      <span className="font-medium text-foreground">{r.grade || "—"}</span>
+                      {r.status && <span className="text-muted-foreground">{`· ${r.status}`}</span>}
+                      {r.publish_date && <span className="text-muted-foreground">{`· ${r.publish_date}过级`}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {vendors.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground">系统厂家</p>
+                <ul className="mt-1.5 flex flex-col gap-1">
+                  {vendors.map((v, i) => (
+                    <li key={`${v.system}-${i}`} className="text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">{v.system}</span>
+                      {`：${v.vendor}`}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
+      {leaders.length > 0 && (
+        <div className="mt-4">
+          <p className="text-xs font-semibold text-muted-foreground">
+            领导班子
+            {aiFields.includes("leadership") && <span className="ml-1 text-primary">·AI 提供需核实</span>}
+          </p>
+          <ul className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1.5">
+            {leaders.map((m, i) => (
+              <li key={`${m.name}-${i}`} className="text-xs">
+                <span className="font-medium text-foreground">{m.name}</span>
+                {m.title && <span className="ml-1 text-muted-foreground">{m.title}</span>}
+                {m.role && <span className="ml-1 text-muted-foreground">（{m.role}）</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {(customer.annual_revenue > 0 || flatLeaders.some((l) => String(customer[l.key] ?? "").trim())) && (
+        <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1.5 rounded-md border border-border bg-background px-3 py-2.5 text-xs">
+          {customer.annual_revenue > 0 && (
+            <span className="text-muted-foreground">
+              年营业收入：
+              <span className="font-medium text-foreground">{customer.annual_revenue.toLocaleString()} 万元</span>
+              {aiFields.includes("annual_revenue") && <span className="ml-0.5 text-primary">·AI</span>}
+            </span>
+          )}
+          {flatLeaders.map((l) => {
+            const val = String(customer[l.key] ?? "").trim()
+            if (!val) return null
+            return (
+              <span key={String(l.key)} className="text-muted-foreground">
+                {l.label}：
+                <span className="font-medium text-foreground">{val}</span>
+                {aiFields.includes(String(l.key)) && <span className="ml-0.5 text-primary">·AI</span>}
+              </span>
+            )
+          })}
+        </div>
+      )}
 
       {customer.notes && (
         <div className="mt-4 rounded-md border border-dashed border-border bg-background p-3">

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react"
+import { useRef, useState, type ReactNode } from "react"
 import { Archive, ArchiveRestore, CalendarClock, FileCheck2, Loader2, Plus, Search, Trash2, Undo2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -222,6 +222,18 @@ function ProjectCard({
 
 export function BidProjectList(p: BidProjectListProps) {
   const [pendingDelete, setPendingDelete] = useState<BidProjectRecord | null>(null)
+  // ux-03：新建投标唯一必填「项目名称」——hook 已有 toast 兼底但一闪而过、不落字段；此处补行内红框+红字提示+自动聚焦
+  const [projNameErr, setProjNameErr] = useState("")
+  const projNameRef = useRef<HTMLInputElement>(null)
+  const submitCreate = () => {
+    if (!p.formProjectName.trim()) {
+      setProjNameErr("请填写项目名称后再创建")
+      projNameRef.current?.focus()
+      return
+    }
+    setProjNameErr("")
+    void p.createProject()
+  }
   return (
     <main className="animate-in fade-in duration-500">
       <section className="mx-auto max-w-7xl px-4 pt-8">
@@ -377,7 +389,7 @@ export function BidProjectList(p: BidProjectListProps) {
         </p>
       </section>
 
-      <Dialog open={p.newDialogOpen} onOpenChange={p.setNewDialogOpen}>
+      <Dialog open={p.newDialogOpen} onOpenChange={(open) => { if (!open) setProjNameErr(""); p.setNewDialogOpen(open) }}>
         <DialogContent className="max-w-md rounded-2xl border-border bg-card shadow-lg">
           <DialogHeader>
             <DialogTitle className="text-foreground">新建投标项目</DialogTitle>
@@ -385,13 +397,18 @@ export function BidProjectList(p: BidProjectListProps) {
           </DialogHeader>
           <div className="grid gap-3">
             <label className="grid gap-1.5 text-sm">
-              <span className="font-medium text-foreground">项目名称 *</span>
+              <span className="font-medium text-foreground">项目名称 <span className="text-destructive">*</span></span>
               <Input
+                ref={projNameRef}
                 value={p.formProjectName}
-                onChange={(e) => p.setFormProjectName(e.target.value)}
+                aria-invalid={Boolean(projNameErr)}
+                onChange={(e) => { p.setFormProjectName(e.target.value); if (projNameErr) setProjNameErr("") }}
                 placeholder="如：市一院智慧医院信息化建设项目"
-                className="border-border bg-background focus-visible:shadow-[var(--focus-ring)]"
+                className={projNameErr ? "border-destructive bg-background focus-visible:shadow-[var(--focus-ring)]" : "border-border bg-background focus-visible:shadow-[var(--focus-ring)]"}
               />
+              {projNameErr && (
+                <p role="alert" className="text-xs font-medium text-destructive">{projNameErr}</p>
+              )}
             </label>
             <label className="grid gap-1.5 text-sm">
               <span className="font-medium text-foreground">招标编号</span>
@@ -446,7 +463,7 @@ export function BidProjectList(p: BidProjectListProps) {
             <Button variant="outline" onClick={() => p.setNewDialogOpen(false)} className="border-border text-muted-foreground hover:text-foreground">
               取消
             </Button>
-            <Button onClick={() => void p.createProject()} disabled={p.creating} className="bg-primary text-primary-foreground hover:bg-primary/90">
+            <Button onClick={submitCreate} disabled={p.creating} className="bg-primary text-primary-foreground hover:bg-primary/90">
               {p.creating && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
               创建项目
             </Button>

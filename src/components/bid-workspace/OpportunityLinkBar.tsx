@@ -1,17 +1,21 @@
 import { Hospital, Link2 } from "lucide-react"
+import type { ReactNode } from "react"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import { STAGE_LABEL } from "@/pages/BidWorkspace/bidTypes"
 
 type OpportunityLinkBarProps = Pick<
   UseBidWorkspace,
   "activeProject" | "activeOppOptions" | "oppOptionsCapped" | "linkOpportunity" | "linkedOpportunityName" | "isArchivedLocked"
->
+> & {
+  /** warroom-01：作战室入口插槽（一屏聚合弹框的触发按钮），渲染在头部右侧 */
+  warRoomSlot?: ReactNode
+}
 
 const selectClass =
   "h-9 min-w-52 rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
 
 /** 流水线头部信息区：项目基本信息 + 关联商机下拉（第四轮改造） */
-export function OpportunityLinkBar({ activeProject, activeOppOptions, oppOptionsCapped, linkOpportunity, linkedOpportunityName, isArchivedLocked }: OpportunityLinkBarProps) {
+export function OpportunityLinkBar({ activeProject, activeOppOptions, oppOptionsCapped, linkOpportunity, linkedOpportunityName, isArchivedLocked, warRoomSlot }: OpportunityLinkBarProps) {
   if (!activeProject) return null
   const proj = activeProject
   return (
@@ -31,6 +35,7 @@ export function OpportunityLinkBar({ activeProject, activeOppOptions, oppOptions
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {warRoomSlot}
           <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
             <Link2 className="h-3.5 w-3.5 text-primary" />
             关联商机

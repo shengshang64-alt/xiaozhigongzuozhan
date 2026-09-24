@@ -15,7 +15,14 @@ import { useCostConfirm } from "@/hooks/useCostConfirm"
 import { useScopeSkills } from "@/hooks/useScopeSkills"
 import { injectSkillBlock, skillBlockFor, skillCostSuffix, type SkillScope } from "@/lib/skillCore"
 import { makeUid, type Chapter, type OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
+import { callAigcAndPoll, formatAigcFailureMessage, type AigcFailure } from "@/lib/aigc"
+import {
+  buildSearchQuery,
+  searchImages,
+  type ImageSearchProvider,
+} from "./imageSearch"
 import { exportDeckPptx, exportSpeechDocx } from "./deckExports"
+import { lintDeck, lintSummaryText } from "./deckLint"
 import { exportQuoteDocx as writeQuoteDocx, exportQuoteXlsx as writeQuoteXlsx } from "./quoteExports"
 import {
   buildDeckBatchMessages,
@@ -29,15 +36,19 @@ import {
   emptySlide,
   groupSubtotal,
   makeDefaultGroups,
-  normalizeQuoteGroups,
+  mergeItemsIntoGroups,
+  normalizeDraftItemsFromCatalog,
   normalizeSlidePlan,
   normalizeSlides,
   parseJsonLoose,
+  quoteItemFromProduct,
   REFINE_LABEL,
   sanitizeDeck,
   sanitizeQuote,
   suggestPageCount,
+  TRANSITION_LABEL,
   type DeckRecord,
+  type DeckTransition,
   type DeckTypeKey,
   type MaterialOption,
   type MaterialRef,
@@ -49,6 +60,7 @@ import {
   type Slide,
   type SlidePlan,
 } from "./pptQuoteTypes"
+import type { CheckProduct, ChecklistRecord } from "@/pages/SolutionStudio/checklistTypes"
 
 // ---------------------------------------------------------------------------
 // 数据请求（走 __pb 代理自定义路由，禁用 PB SDK 标准 REST）
@@ -419,6 +431,34 @@ export function usePptQuote() {
   const [deckProgress, setDeckProgress] = useState("")
 
   const suggestedPageCount = useMemo(() => suggestPageCount(Number(wDuration) || 10), [wDuration])
+  // 目标页数：用户在向导里可直接指定；留空则按汇报时长的建议页数
+  const [wPages, setWPages] = useState("")
+  const targetPageCount = useMemo(() => {
+    const n = Math.round(Number(wPages))
+    if (!Number.isFinite(n) || n <= 0) return suggestedPageCount
+    return Math.max(1, Math.min(40, n))
+  }, [wPages, suggestedPageCount])
+
+  // 导出页面切换动画（deck 级，导出时注入 OOXML；不持久化）
+  const [deckTransition, setDeckTransition] = useState<DeckTransition>("fade")
+
+  // 真实配图自动预分配（向导开关）："off" | "search" | "ai" | "hybrid"（先搜后 AI 兜底）
+  const [autoFigureMode, setAutoFigureMode] = useState<"off" | "search" | "ai" | "hybrid">("off")
+  const [autoFigureProvider, setAutoFigureProvider] = useState<ImageSearchProvider>("pexels")
+  // 逐页预置开关：搜图/AI 生图的当页 busy 状态（0 = 闲置）
+  const [slideFigureBusy, setSlideFigureBusy] = useState<{ index: number; kind: "search" | "ai" | "" }>({ index: -1, kind: "" })
+  // TDZ 规避：`runAutoFigure` 定义在 `doGenerateDeck` 之后，deps 数组不能直接引用；
+  // 用 ref 中转，定义完成后用 useEffect 同步，`doGenerateDeck` 中只读 `ref.current`。
+  const runAutoFigureRef = useRef<((mode: "off" | "search" | "ai" | "hybrid", provider: ImageSearchProvider) => Promise<void>) | null>(null)
+
+  // 真实配图：从医院官网取候选图池 + 逐页插入
+  const [imagePool, setImagePool] = useState<{ source: string; loading: boolean; urls: string[]; error: string }>({
+    source: "",
+    loading: false,
+    urls: [],
+    error: "",
+  })
+  const [slideImageBusy, setSlideImageBusy] = useState(false)
 
   const openNewDeckWizard = useCallback(() => {
     flushDeckPersist()
@@ -427,8 +467,10 @@ export function usePptQuote() {
     setWTopic("")
     setWAudience("院领导")
     setWDuration("15")
+    setWPages("")
     setWKeyPoints("")
     setWMaterial(null)
+    setImagePool({ source: "", loading: false, urls: [], error: "" })
     applyDeckState(null)
     setDeckMode("wizard")
   }, [applyDeckState, flushDeckPersist])
@@ -487,7 +529,7 @@ export function usePptQuote() {
 
   const doGenerateDeck = useCallback(async () => {
     const topic = wTopic.trim()
-    const pageCount = suggestedPageCount
+    const pageCount = targetPageCount
     const deckName = wDeckName.trim() || `${topic}汇报 PPT`
     const ctx = {
       deckType: wDeckType,
@@ -549,6 +591,13 @@ export function usePptQuote() {
       setEditorTab("edit")
       setDeckMode("editor")
       toast.success(`已生成 ${rec.slides.length} 页，可逐页精修后导出`)
+      // 自动配图（开关开启时）：失败不阻断主流程，内部已 catch
+      if (autoFigureMode !== "off") {
+        // 释放当前 deckGenerating 锁后，自动配图会重新上锁
+        setDeckGenerating(false)
+        setDeckProgress("")
+        await runAutoFigureRef.current?.(autoFigureMode, autoFigureProvider)
+      }
     } catch (err) {
       handleGenError(err)
     } finally {
@@ -557,9 +606,11 @@ export function usePptQuote() {
     }
   }, [
     applyDeckState,
+    autoFigureMode,
+    autoFigureProvider,
     fetchMaterialText,
     handleGenError,
-    suggestedPageCount,
+    targetPageCount,
     userId,
     wAudience,
     wDeckName,
@@ -701,13 +752,362 @@ export function usePptQuote() {
       toast.error("没有可导出的页面")
       return
     }
+    // 导出前结构自检：命中问题不阻断，只给一句可执行改进提示（借鉴顶级 skill 的自校验闭环）
+    const lintIssues = lintDeck(deck.slides)
+    if (lintIssues.length) {
+      toast.warning(`导出前自检：${lintSummaryText(lintIssues)}；${lintIssues[0].msg}${lintIssues.length > 1 ? ` 等 ${lintIssues.length} 项` : ""}`)
+    }
     try {
-      await exportDeckPptx(deck)
-      toast.success("PPT 文件已导出，文件内文本框可在 Office/WPS 直接修改（若打开是保护视图，先点「启用编辑」）；讲稿已写入演讲者备注")
+      await exportDeckPptx(deck, { transition: deckTransition })
+      toast.success(
+        deckTransition === "none"
+          ? "PPT 文件已导出（无切换动画）；文本框可在 Office/WPS 直接修改，讲稿已写入演讲者备注"
+          : `PPT 文件已导出（含「${TRANSITION_LABEL[deckTransition]}」切换动画）；文本框与图片均可在 Office/WPS 直接修改`,
+      )
     } catch {
       toast.error("导出失败，请重试")
     }
-  }, [flushDeckPersist])
+  }, [flushDeckPersist, deckTransition])
+
+  // ------------------------------ 真实配图 ------------------------------
+  const hostOf = (u: string) => {
+    try {
+      return new URL(u).hostname.replace(/^www\./, "")
+    } catch {
+      return "图片来源"
+    }
+  }
+
+  const setSlideImage = useCallback(
+    (index: number, dataUrl: string, alt: string) => {
+      mutateDeck((d) => ({
+        ...d,
+        slides: d.slides.map((s, i) => {
+          if (i !== index) return s
+          const keep = s.layout && ["image-right", "image-left", "banner"].includes(s.layout) ? s.layout : "image-right"
+          return { ...s, image: dataUrl, imageAlt: s.imageAlt?.trim() || alt, layout: s.chart ? s.layout : keep }
+        }),
+      }))
+    },
+    [mutateDeck],
+  )
+
+  const clearSlideImage = useCallback(
+    (index: number) => {
+      mutateDeck((d) => ({
+        ...d,
+        slides: d.slides.map((s, i) => (i === index ? { ...s, image: undefined, imageAlt: undefined, layout: s.layout === "banner" || s.layout?.startsWith("image") ? "bullets" : s.layout } : s)),
+      }))
+    },
+    [mutateDeck],
+  )
+
+  /** 从医院官网/名称取候选真实图片池 */
+  const loadImagePool = useCallback(async (source: string) => {
+    const q = source.trim()
+    if (!q) {
+      toast.error("请输入医院名称或官网地址")
+      return
+    }
+    setImagePool({ source: q, loading: true, urls: [], error: "" })
+    try {
+      const looksUrl = /^https?:\/\//i.test(q) || /\.(cn|com|org|net|gov|net\.cn)(\/|$)/i.test(q)
+      const r = await apiFetch<{ ok: boolean; images?: string[]; message?: string }>("/api/customers/fetch-site", {
+        method: "POST",
+        body: JSON.stringify(looksUrl ? { name: q.slice(0, 40), website: q } : { name: q }),
+      })
+      const urls = (r.images ?? []).slice(0, 18)
+      if (!r.ok || !urls.length) {
+        setImagePool({ source: q, loading: false, urls: [], error: r.message || "未从该来源取到可用图片，可换家医院或直接粘贴图片地址" })
+        return
+      }
+      setImagePool({ source: q, loading: false, urls, error: "" })
+    } catch {
+      setImagePool({ source: q, loading: false, urls: [], error: "取图失败，请稍后重试" })
+    }
+  }, [])
+
+  /** 通过服务端代理下载某候选图并插入指定页（绕跨域） */
+  const attachImageFromUrl = useCallback(
+    async (index: number, url: string) => {
+      setSlideImageBusy(true)
+      try {
+        const r = await apiFetch<{ ok: boolean; dataUrl?: string; message?: string }>("/api/customers/fetch-image", {
+          method: "POST",
+          body: JSON.stringify({ url }),
+        })
+        if (!r.ok || !r.dataUrl) {
+          toast.error(r.message || "图片下载失败，换一张试试")
+          return
+        }
+        setSlideImage(index, r.dataUrl, hostOf(url))
+        toast.success("真实图片已插入本页")
+      } catch {
+        toast.error("图片下载失败，请稍后重试")
+      } finally {
+        setSlideImageBusy(false)
+      }
+    },
+    [setSlideImage],
+  )
+
+  /** 本地上传图片（浏览器 FileReader，dataURL 干净无跨域） */
+  const uploadSlideImage = useCallback(
+    (index: number, file: File) => {
+      if (!file.type.startsWith("image/")) {
+        toast.error("请选择图片文件")
+        return
+      }
+      if (file.size > 6 * 1024 * 1024) {
+        toast.error("图片过大（>6MB），请换一张")
+        return
+      }
+      const reader = new FileReader()
+      reader.onload = () => {
+        const dataUrl = String(reader.result || "")
+        if (dataUrl.startsWith("data:image")) {
+          setSlideImage(index, dataUrl, file.name.replace(/\.[^.]+$/, "").slice(0, 40))
+          toast.success("图片已插入本页")
+        } else {
+          toast.error("图片读取失败")
+        }
+      }
+      reader.onerror = () => toast.error("图片读取失败")
+      reader.readAsDataURL(file)
+    },
+    [setSlideImage],
+  )
+
+  /** 一键：用当前图池给「有 imageHint 且无图」的页批量配真实图 */
+  const applyPoolImagesToHinted = useCallback(async () => {
+    const deck = activeDeckRef.current
+    const pool = imagePool.urls
+    if (!deck || !pool.length) {
+      toast.error("请先取一张图池")
+      return
+    }
+    const targets = deck.slides
+      .map((s, i) => ({ s, i }))
+      .filter(({ s }) => !s.image && (s.imageHint?.trim() || s.layout === "banner" || s.layout?.startsWith("image")))
+    if (!targets.length) {
+      toast.error("没有待配图的页（需 AI 标了配图关键词）")
+      return
+    }
+    setSlideImageBusy(true)
+    let ok = 0
+    let ptr = 0
+    for (const { i } of targets) {
+      if (ptr >= pool.length) break
+      const url = pool[ptr++]
+      try {
+        const r = await apiFetch<{ ok: boolean; dataUrl?: string }>("/api/customers/fetch-image", {
+          method: "POST",
+          body: JSON.stringify({ url }),
+        })
+        if (r.ok && r.dataUrl) {
+          setSlideImage(i, r.dataUrl, hostOf(url))
+          ok += 1
+        }
+      } catch {
+        /* 单张失败跳过 */
+      }
+    }
+    setSlideImageBusy(false)
+    toast.success(ok ? `已为 ${ok} 页配上真实图片` : "配图失败，请逐页手动插入")
+  }, [imagePool.urls, setSlideImage])
+
+  /** 粘贴图片直链（走服务端代理下载） */
+  const attachImageByPastedUrl = useCallback(
+    async (index: number, url: string) => {
+      const u = url.trim()
+      if (!/^https?:\/\//i.test(u)) {
+        toast.error("请输入 http(s) 图片地址")
+        return
+      }
+      await attachImageFromUrl(index, u)
+    },
+    [attachImageFromUrl],
+  )
+
+  // ---------------- 逐页联网搜图 / AI 生图 ----------------
+
+  /** 拉取图片 URL → dataURL，失败时抛内层错信息。 */
+  const urlToDataUrl = useCallback(async (url: string): Promise<string> => {
+    const r = await apiFetch<{ ok: boolean; dataUrl?: string; message?: string }>("/api/customers/fetch-image", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    })
+    if (!r.ok || !r.dataUrl) throw new Error(r.message || "图片代理下载失败")
+    return r.dataUrl
+  }, [])
+
+  /** 单页搜图：按 imageHint/标题取候选，默认插首张命中，失败不阻断 */
+  const searchAndAttachImage = useCallback(
+    async (index: number, query?: string, providerOverride?: ImageSearchProvider) => {
+      const deck = activeDeckRef.current
+      const sl = deck?.slides?.[index]
+      if (!sl) return false
+      const provider = providerOverride || autoFigureProvider
+      const q = (query || buildSearchQuery({ imageHint: sl.imageHint, title: sl.title, firstBullet: sl.bullets[0] })).trim()
+      if (!q) {
+        toast.error("本页无配图关键词且标题为空，无法搜图")
+        return false
+      }
+      setSlideFigureBusy({ index, kind: "search" })
+      try {
+        const res = await searchImages(provider, q, { perPage: 6 })
+        if (!res.ok || !res.hits.length) {
+          toast.error(res.message || "未搜到相关图片")
+          return false
+        }
+        const hit = res.hits[0]
+        const dataUrl = await urlToDataUrl(hit.url)
+        setSlideImage(index, dataUrl, hit.alt || `${provider} · ${q}`)
+        toast.success(`已从 ${hit.source} 配图`)
+        return true
+      } catch (e) {
+        toast.error(String((e as Error)?.message || e) || "搜图失败")
+        return false
+      } finally {
+        setSlideFigureBusy({ index: -1, kind: "" })
+      }
+    },
+    [autoFigureProvider, setSlideImage, urlToDataUrl],
+  )
+
+  /** 单页 AI 生图（nano-banana-pro）：本地无 RH Key 会 401/412，不阻断主流程 */
+  const aiGenerateImageForSlide = useCallback(
+    async (index: number, promptOverride?: string) => {
+      const deck = activeDeckRef.current
+      const sl = deck?.slides?.[index]
+      if (!sl) return false
+      const hint = (promptOverride || buildSearchQuery({ imageHint: sl.imageHint, title: sl.title, firstBullet: sl.bullets[0] })).trim()
+      if (!hint) {
+        toast.error("本页无可用提示词")
+        return false
+      }
+      const prompt = `医疗信息化汇报 PPT 实景配图，主题：${hint}；专业、干净、真实感，避免文字水印与多余图标，水平构图 16:9`
+      setSlideFigureBusy({ index, kind: "ai" })
+      try {
+        const r = await callAigcAndPoll("nano-banana-pro", {
+          prompt,
+          aspectRatio: "16:9",
+          page: "ppt-deck",
+        })
+        if (r.status !== "success") {
+          const msg = formatAigcFailureMessage(r as AigcFailure)
+          toast.error(msg)
+          return false
+        }
+        const url = r.url || r.outputs?.[0]?.url
+        if (!url) {
+          toast.error("AI 未返回图片 URL")
+          return false
+        }
+        const dataUrl = await urlToDataUrl(url)
+        setSlideImage(index, dataUrl, `AI · ${hint.slice(0, 24)}`)
+        toast.success("AI 生图已插入本页")
+        return true
+      } catch (e) {
+        toast.error(String((e as Error)?.message || e) || "AI 生图失败")
+        return false
+      } finally {
+        setSlideFigureBusy({ index: -1, kind: "" })
+      }
+    },
+    [setSlideImage, urlToDataUrl],
+  )
+
+  /**
+   * 自动配图为当前 active deck 一切换完毕的 slides 补图：
+   *   - search: 只跑图库搜索
+   *   - ai:     只跑 AI 生图
+   *   - hybrid: 先搜图，失败回退 AI 生图
+   *   失败不阻断，每页内部 catch，并发 3 路，上限 12 页。
+   */
+  const runAutoFigure = useCallback(
+    async (mode: "off" | "search" | "ai" | "hybrid", provider: ImageSearchProvider) => {
+      if (mode === "off") return
+      const deck = activeDeckRef.current
+      if (!deck?.slides?.length) return
+      const targets = deck.slides
+        .map((s, i) => ({ s, i }))
+        .filter(({ s }) => !s.image && (s.imageHint?.trim() || s.layout === "banner" || (s.layout || "").startsWith("image")))
+        .slice(0, 12)
+      if (!targets.length) return
+      setDeckGenerating(true)
+      setDeckProgress(`正在自动配图（共 ${targets.length} 页）…`)
+      let done = 0
+      let ok = 0
+      const queue = targets.slice()
+      const workers = Array.from({ length: Math.min(3, queue.length) }, async () => {
+        while (queue.length) {
+          const t = queue.shift()
+          if (!t) break
+          try {
+            let inserted = false
+            if (mode === "search" || mode === "hybrid") {
+              const q = buildSearchQuery({ imageHint: t.s.imageHint, title: t.s.title, firstBullet: t.s.bullets[0] })
+              if (q) {
+                try {
+                  const res = await searchImages(provider, q, { perPage: 4 })
+                  if (res.ok && res.hits.length) {
+                    const hit = res.hits[0]
+                    try {
+                      const dataUrl = await urlToDataUrl(hit.url)
+                      setSlideImage(t.i, dataUrl, hit.alt || `${provider} · ${q}`)
+                      inserted = true
+                    } catch {
+                      /* 代理下载失败→下面 fall back AI */
+                    }
+                  }
+                } catch {
+                  /* search 失败 → fallback */
+                }
+              }
+            }
+            if (!inserted && (mode === "ai" || mode === "hybrid")) {
+              const hint = buildSearchQuery({ imageHint: t.s.imageHint, title: t.s.title, firstBullet: t.s.bullets[0] })
+              if (hint) {
+                const prompt = `医疗信息化汇报 PPT 实景配图，主题：${hint}；专业、干净、真实感，避免文字水印与多余图标，水平构图 16:9`
+                try {
+                  const r = await callAigcAndPoll("nano-banana-pro", { prompt, aspectRatio: "16:9", page: "ppt-deck" })
+                  if (r.status === "success") {
+                    const url = r.url || r.outputs?.[0]?.url
+                    if (url) {
+                      const dataUrl = await urlToDataUrl(url)
+                      setSlideImage(t.i, dataUrl, `AI · ${hint.slice(0, 24)}`)
+                      inserted = true
+                    }
+                  }
+                } catch {
+                  /* AI fail → skip */
+                }
+              }
+            }
+            if (inserted) ok += 1
+          } finally {
+            done += 1
+            setDeckProgress(`正在自动配图（${done}/${targets.length}）…`)
+          }
+        }
+      })
+      await Promise.all(workers)
+      setDeckGenerating(false)
+      setDeckProgress("")
+      if (ok === 0) {
+        toast.info("自动配图未命中，可逐页手动重试")
+      } else {
+        toast.success(`自动配图完成：${ok}/${targets.length}`)
+      }
+    },
+    [setSlideImage, urlToDataUrl],
+  )
+
+  // 同步 ref，让定义更早的 doGenerateDeck 能安全调用。
+  useEffect(() => {
+    runAutoFigureRef.current = runAutoFigure
+  }, [runAutoFigure])
 
   const exportSpeech = useCallback(async () => {
     flushDeckPersist()
@@ -1239,6 +1639,58 @@ export function usePptQuote() {
     [mutateQuote, requestConfirm],
   )
 
+  // ------------------------------ 我公司系统清单（与建设清单同源） ------------------------------
+  // CheckProduct / ChecklistRecord 不取时 → 不阻断报价主流程；TTL 5min 避免频繁重拉。
+  // 声明位置前置到 AI 草案回调之前，规避 useCallback 依赖的 TDZ 报错。
+  const [checkProducts, setCheckProducts] = useState<CheckProduct[]>([])
+  const [checkProductsLoading, setCheckProductsLoading] = useState(false)
+  const [checklists, setChecklists] = useState<ChecklistRecord[]>([])
+  const [checklistsLoading, setChecklistsLoading] = useState(false)
+  const [checkProductPickerOpen, setCheckProductPickerOpen] = useState(false)
+  const [checklistImportOpen, setChecklistImportOpen] = useState(false)
+  const catalogFetchAtRef = useRef(0)
+  const checklistsFetchAtRef = useRef(0)
+
+  const loadCheckProducts = useCallback(async (force = false) => {
+    const now = Date.now()
+    if (!force && now - catalogFetchAtRef.current < 5 * 60 * 1000 && checkProducts.length) return
+    catalogFetchAtRef.current = now
+    setCheckProductsLoading(true)
+    try {
+      const data = await apiFetch<ListResponse<CheckProduct>>("/api/check_products?page=1&perPage=200")
+      setCheckProducts(data.items ?? [])
+    } catch {
+      // 目录加载失败不阻断主流程（同旧 product_library 容错口径）
+    } finally {
+      setCheckProductsLoading(false)
+    }
+  }, [checkProducts.length])
+
+  const loadChecklists = useCallback(async (uid: string, force = false) => {
+    const now = Date.now()
+    if (!force && now - checklistsFetchAtRef.current < 5 * 60 * 1000 && checklists.length) return
+    checklistsFetchAtRef.current = now
+    setChecklistsLoading(true)
+    try {
+      const data = await apiFetch<ListResponse<ChecklistRecord>>(
+        `/api/checklists?rh_user_id=${encodeURIComponent(uid)}&perPage=200`,
+      )
+      setChecklists(data.items ?? [])
+    } catch {
+      // 忽略：导入入口自动置空
+    } finally {
+      setChecklistsLoading(false)
+    }
+  }, [checklists.length])
+
+  const refreshCheckProducts = useCallback(() => {
+    void loadCheckProducts(true)
+  }, [loadCheckProducts])
+
+  const refreshChecklists = useCallback(() => {
+    if (userId) void loadChecklists(userId, true)
+  }, [loadChecklists, userId])
+
   // ------------------------------ 报价 AI 初稿 ------------------------------
   const [quoteAiOpen, setQuoteAiOpen] = useState(false)
   const [draftRef, setDraftRef] = useState<MaterialRef | null>(null)
@@ -1257,31 +1709,46 @@ export function usePptQuote() {
     if (!ref) return
     setQuoteAiBusy(true)
     try {
+      // 确保目录已加载（新报价首次进 AI 草案时拉取一次）
+      if (!checkProducts.length) {
+        await loadCheckProducts(true)
+      }
       const materialText = await fetchMaterialText(ref)
-      const text = await llmGenerate(buildQuoteDraftMessages(ref.name, materialText), MAX_TOKENS_LONGFORM, "quote-draft", activeModelRef.current)
-      const parsed = normalizeQuoteGroups(parseJsonLoose(text))
+      const catalogForPrompt = checkProducts.length ? checkProducts : []
+      const text = await llmGenerate(
+        buildQuoteDraftMessages(ref.name, materialText, catalogForPrompt),
+        MAX_TOKENS_LONGFORM,
+        "quote-draft",
+        activeModelRef.current,
+      )
+      const { items: drafts, filtered } = normalizeDraftItemsFromCatalog(parseJsonLoose(text), catalogForPrompt)
+      if (!drafts.length) {
+        toast.warning(
+          filtered > 0
+            ? `AI 返回 ${filtered} 条均不在产品库中，已忽略。建议先丰富产品库或手工加行。`
+            : "AI 未从产品库匹配到任何行项，建议手工导入或调整素材。",
+        )
+        setQuoteAiOpen(false)
+        return
+      }
       let added = 0
+      let skipped = 0
       mutateQuote((q) => {
-        const groups = q.groups.map((g) => ({ ...g, items: [...g.items] }))
-        for (const pg of parsed) {
-          let target = groups.find((g) => g.name === pg.name)
-          if (!target) target = groups.find((g) => g.name === "实施服务") ?? groups[0]
-          if (!target) continue
-          for (const it of pg.items) {
-            target.items.push({ ...it, id: makeUid() })
-            added += 1
-          }
-        }
-        return { ...q, ref_type: ref.type, ref_id: ref.id, ref_name: ref.name, groups }
+        const merged = mergeItemsIntoGroups(q.groups, drafts)
+        added = merged.added
+        skipped = merged.skipped
+        return { ...q, ref_type: ref.type, ref_id: ref.id, ref_name: ref.name, groups: merged.groups }
       })
       setQuoteAiOpen(false)
-      toast.success(`已生成 ${added} 条行项初稿，请核对价格与数量`)
+      const filteredNote = filtered > 0 ? `，过滤 ${filtered} 条非目录项` : ""
+      const skippedNote = skipped > 0 ? `，跳过 ${skipped} 条重复` : ""
+      toast.success(`AI 初稿完成：新增 ${added} 条${skippedNote}${filteredNote}，价格待人工录入`)
     } catch (err) {
       handleGenError(err)
     } finally {
       setQuoteAiBusy(false)
     }
-  }, [draftRef, fetchMaterialText, handleGenError, mutateQuote])
+  }, [checkProducts.length, draftRef, fetchMaterialText, handleGenError, loadCheckProducts, mutateQuote])
 
   const generateQuoteDraft = useCallback(() => {
     if (!draftRef) {
@@ -1323,6 +1790,131 @@ export function usePptQuote() {
   const [productItems, setProductItems] = useState<ProductItem[]>([])
   const [productLoading, setProductLoading] = useState(false)
   const [productPickerGroup, setProductPickerGroup] = useState<string | null>(null)
+
+  /** 从产品库单条追加到报价（一个或多个 product_id + qty）；自动按 category 归组，价格默认 0（后录） */
+  const addCheckProductsToQuote = useCallback(
+    (picks: { productId: string; qty?: number }[], opts: { zeroPrice?: boolean } = {}) => {
+      const cur = activeQuoteRef.current
+      if (!cur) return
+      const drafts = picks
+        .map(({ productId, qty }) => {
+          const p = checkProducts.find((x) => x.id === productId)
+          if (!p) return null
+          return quoteItemFromProduct(p, { zeroPrice: opts.zeroPrice ?? true, qty: qty ?? 1 })
+        })
+        .filter((x): x is Omit<QuoteItem, "id"> => Boolean(x))
+      if (!drafts.length) {
+        toast.error("产品库中未匹配到选中项")
+        return
+      }
+      mutateQuote((q) => ({ ...q, ...mergeItemsIntoGroups(q.groups, drafts) }))
+      const skipped = drafts.length - new Set(drafts.map((d) => `${d.category}::${d.product_name}::${d.module_name}`)).size
+      toast.success(`已导入 ${drafts.length} 条产品${skipped ? `，其中 ${skipped} 条重复已去重` : ""}`)
+    },
+    [checkProducts, mutateQuote],
+  )
+
+  /** 从一份建设清单导入报价（zeroPrice 开关控制价格是否后置录入） */
+  const importFromChecklist = useCallback(
+    (checklistId: string, opts: { zeroPrice: boolean }) => {
+      const rec = checklists.find((c) => c.id === checklistId)
+      if (!rec) {
+        toast.error("未找到建设清单")
+        return
+      }
+      const kept = (rec.items ?? []).filter((l) => l.checked !== false)
+      if (!kept.length) {
+        toast.error("该清单暂无已勾选行项")
+        return
+      }
+      const drafts = kept.map((l) => {
+        const p = l.product_id ? checkProducts.find((x) => x.id === l.product_id) : null
+        if (p) {
+          return {
+            ...quoteItemFromProduct(p, { zeroPrice: opts.zeroPrice, qty: l.qty || 1 }),
+            module_func: l.module_func || p.module_func,
+            source: l.source,
+            rating_hits: l.rating_hits ?? [],
+            remark: l.remark ?? "",
+          }
+        }
+        return {
+          item_name: l.product_name,
+          spec: l.module_func || "",
+          unit: l.unit || "套",
+          qty: Math.max(1, Number(l.qty) || 1),
+          price: opts.zeroPrice ? 0 : Number(l.unit_price) || 0,
+          discount: 100,
+          category: l.category || "未分类",
+          product_line: l.product_line,
+          product_name: l.product_name,
+          module_name: l.module_name,
+          module_func: l.module_func,
+          source: l.source,
+          product_id: l.product_id,
+          rating_hits: l.rating_hits ?? [],
+          remark: l.remark,
+        }
+      })
+      let addedN = 0
+      let skippedN = 0
+      mutateQuote((q) => {
+        const merged = mergeItemsIntoGroups(q.groups, drafts)
+        addedN = merged.added
+        skippedN = merged.skipped
+        return { ...q, groups: merged.groups }
+      })
+      toast.success(`从清单「${rec.checklist_name}」导入 ${addedN} 条${skippedN ? `，跳过 ${skippedN} 条已存在` : ""}`)
+      setChecklistImportOpen(false)
+    },
+    [checkProducts, checklists, mutateQuote],
+  )
+
+  /** 手工添加一行（归入当前分组，无 product_id，标记为 external） */
+  const addManualItem = useCallback(
+    (groupId: string) => {
+      mutateQuote((q) => ({
+        ...q,
+        groups: q.groups.map((g) =>
+          g.id === groupId
+            ? {
+                ...g,
+                items: [
+                  ...g.items,
+                  {
+                    id: makeUid(),
+                    item_name: "",
+                    spec: "",
+                    unit: "套",
+                    qty: 1,
+                    price: 0,
+                    discount: 100,
+                    category: g.name || "未分类",
+                    source: "external",
+                    rating_hits: [],
+                    remark: "",
+                  },
+                ],
+              }
+            : g,
+        ),
+      }))
+    },
+    [mutateQuote],
+  )
+
+  const openCheckProductPicker = useCallback(() => {
+    void loadCheckProducts()
+    setCheckProductPickerOpen(true)
+  }, [loadCheckProducts])
+  const closeCheckProductPicker = useCallback(() => setCheckProductPickerOpen(false), [])
+
+  const openChecklistImport = useCallback(() => {
+    if (userId) void loadChecklists(userId)
+    void loadCheckProducts()
+    setChecklistImportOpen(true)
+  }, [loadCheckProducts, loadChecklists, userId])
+  const closeChecklistImport = useCallback(() => setChecklistImportOpen(false), [])
 
   const loadProducts = useCallback(async (uid: string) => {
     setProductLoading(true)
@@ -1442,7 +2034,9 @@ export function usePptQuote() {
     void loadQuotes(userId)
     void loadProducts(userId)
     void loadMaterialOptions(userId)
-  }, [loadDecks, loadMaterialOptions, loadProducts, loadQuotes, userId])
+    void loadCheckProducts()
+    void loadChecklists(userId)
+  }, [loadChecklists, loadCheckProducts, loadDecks, loadMaterialOptions, loadProducts, loadQuotes, userId])
 
   return {
     // 账号与视图
@@ -1486,6 +2080,9 @@ export function usePptQuote() {
     wMaterial,
     setWMaterial,
     suggestedPageCount,
+    wPages,
+    setWPages,
+    targetPageCount,
     deckGenerating,
     deckProgress,
     startDeckGeneration,
@@ -1507,6 +2104,25 @@ export function usePptQuote() {
     saveDeckNow,
     exportPptx,
     exportSpeech,
+    // 页面切换动画与真实配图
+    deckTransition,
+    setDeckTransition,
+    imagePool,
+    loadImagePool,
+    attachImageFromUrl,
+    attachImageByPastedUrl,
+    uploadSlideImage,
+    clearSlideImage,
+    applyPoolImagesToHinted,
+    slideImageBusy,
+    // 逐页搜图 / AI 生图 / 自动配图开关
+    searchAndAttachImage,
+    aiGenerateImageForSlide,
+    autoFigureMode,
+    setAutoFigureMode,
+    autoFigureProvider,
+    setAutoFigureProvider,
+    slideFigureBusy,
     // 报价列表与新建
     quoteList,
     quoteListLoading,
@@ -1566,6 +2182,22 @@ export function usePptQuote() {
     openProductPicker,
     closeProductPicker,
     addProductToGroup,
+    // 我公司系统清单（与 SolutionStudio 建设清单同源）
+    checkProducts,
+    checkProductsLoading,
+    refreshCheckProducts,
+    checkProductPickerOpen,
+    openCheckProductPicker,
+    closeCheckProductPicker,
+    addCheckProductsToQuote,
+    checklists,
+    checklistsLoading,
+    refreshChecklists,
+    checklistImportOpen,
+    openChecklistImport,
+    closeChecklistImport,
+    importFromChecklist,
+    addManualItem,
     // 模型选择（统一网关）
     modelOptions,
     selectedModelKey,

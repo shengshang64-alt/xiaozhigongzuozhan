@@ -1,11 +1,16 @@
-import { Loader2, Plus, RefreshCw, Inbox } from "lucide-react"
+import { useState } from "react"
+import { Loader2, Plus, RefreshCw, Inbox, Copy, ChevronDown, ChevronRight } from "lucide-react"
+import { toast } from "sonner"
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
 import { PageHeader } from "@/components/shell/PageHeader"
 import { IntelToolbar } from "@/components/intel-center/IntelToolbar"
 import { IntelStatsRow } from "@/components/intel-center/IntelStatsRow"
+import { IntelFilterRail } from "@/components/intel-center/IntelFilterRail"
 import { IntelFilterBar } from "@/components/intel-center/IntelFilterBar"
 import { IntelItemCard } from "@/components/intel-center/IntelItemCard"
-import { IntelDetailDrawer } from "@/components/intel-center/IntelDetailDrawer"
+import { IntelDetailPanel } from "@/components/intel-center/IntelDetailPanel"
 import { ManualEntryDialog } from "@/components/intel-center/ManualEntryDialog"
 import { CleanupIrrelevantDialog } from "@/components/intel-center/CleanupIrrelevantDialog"
 import { PrefsDialog } from "@/components/intel-center/PrefsDialog"
@@ -16,6 +21,9 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
   const enabledCount = p.sources.filter((s) => s.enabled).length
   const errorCount = p.sources.filter((s) => s.last_status === "error").length
   const builtinCount = p.sources.filter((s) => s.is_builtin).length
+  // intel-01 降噪：右栏低频面板默认折叠为一行，压进场屏数
+  const [srcOpen, setSrcOpen] = useState(false)
+  const [aiHelpOpen, setAiHelpOpen] = useState(false)
 
   return (
     <div className="animate-in fade-in duration-500 text-foreground">
@@ -33,6 +41,8 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
         batchMode={p.batchMode}
         batchBusy={p.batchBusy}
         onToggleBatch={p.toggleBatchMode}
+        onWeeklyReport={p.generateWeeklyReport}
+        reportLoading={p.reportLoading}
       />
 
       <main className="pb-10">
@@ -71,22 +81,25 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
           </div>
         </section>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[3fr_1fr]">
+        {/* 重构轮：三栏布局 — 左筛选栏 / 中卡片流 / 右详情+概览小卡 */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[176px_minmax(0,1fr)] xl:grid-cols-[176px_minmax(0,1fr)_340px]">
+          <IntelFilterRail
+            typeTab={p.typeTab}
+            onTypeTab={p.handleTypeTab}
+            statusTab={p.statusTab}
+            onStatusTab={p.handleStatusTab}
+            sinceRange={p.sinceRange}
+            onSinceChange={p.handleSinceChange}
+            allTags={p.allTags}
+            activeTag={p.activeTag}
+            onTagClick={p.handleTagClick}
+          />
           <section className="min-w-0 space-y-4">
             <IntelFilterBar
-              typeTab={p.typeTab}
-              onTypeTab={p.handleTypeTab}
-              statusTab={p.statusTab}
-              onStatusTab={p.handleStatusTab}
               searchInput={p.searchInput}
               onSearchInput={p.setSearchInput}
               onSubmitSearch={p.submitSearch}
               onClearFilters={p.clearFilters}
-              allTags={p.allTags}
-              activeTag={p.activeTag}
-              onTagClick={p.handleTagClick}
-              sinceRange={p.sinceRange}
-              onSinceChange={p.handleSinceChange}
               regionFilter={p.regionFilter}
               onRegionFilter={p.handleRegionFilter}
               regionOptions={p.regionOptions}
@@ -152,6 +165,15 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
                 </button>
                 <button
                   type="button"
+                  disabled={p.batchBusy || p.batchSelectedIds.length === 0}
+                  onClick={p.aiTagBatch}
+                  title="对选中情报调用 AI 生成摘要与标签（会计费）"
+                  className="rounded-md border border-primary/40 bg-card px-2.5 py-1 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  批量 AI 增强
+                </button>
+                <button
+                  type="button"
                   disabled={p.batchBusy}
                   onClick={p.clearBatchSelect}
                   className="ml-auto rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-card-foreground disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -192,7 +214,7 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
                 {p.displayItems.map((item) => (
                   <IntelItemCard
                     key={item.id}
@@ -200,6 +222,8 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
                     starred={p.isStarred(item.id)}
                     aiTagging={p.aiTagging(item.id)}
                     focused={p.isItemFocused(item)}
+                    lead={p.isLead(item.id)}
+                    onToggleLead={p.toggleLead}
                     onOpenDetail={p.openDetail}
                     onConfirm={p.confirmItem}
                     onIgnore={p.ignoreItem}
@@ -229,35 +253,67 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
           </section>
 
           <aside className="space-y-4">
+            <div className="lg:sticky lg:top-[7.5rem] lg:max-h-[calc(100vh-9rem)]">
+              <IntelDetailPanel
+                item={p.detailItem}
+                starred={p.detailItem ? p.isStarred(p.detailItem.id) : false}
+                aiTagging={p.detailItem ? p.aiTagging(p.detailItem.id) : false}
+                lead={p.detailItem ? p.isLead(p.detailItem.id) : false}
+                onClose={p.closeDetail}
+                onConfirm={p.confirmItem}
+                onIgnore={p.ignoreItem}
+                onAiTag={p.aiTagItem}
+                onToggleStar={p.toggleStar}
+                onToggleLead={p.toggleLead}
+                onCreateBidTask={p.createBidTask}
+                onConvertToOpp={p.convertToOpportunity}
+              />
+            </div>
+
             <div className="rounded-lg border border-border bg-card p-4 shadow-md">
-              <h2 className="text-sm font-semibold text-foreground">信息源状态</h2>
-              <p className="mt-1 text-xs text-muted-foreground">内置 {p.sources.filter((s) => s.is_builtin).length} 个 · 自定义 {p.sources.filter((s) => !s.is_builtin).length} 个</p>
-              <ul className="mt-3 space-y-2">
-                {p.sources.slice(0, 6).map((source) => (
-                  <li key={source.id} className="flex items-center gap-2 text-xs">
-                    <span
-                      className={
-                        source.last_status === "error"
-                          ? "h-2 w-2 shrink-0 rounded-full bg-destructive"
-                          : source.enabled
-                            ? "h-2 w-2 shrink-0 rounded-full bg-primary"
-                            : "h-2 w-2 shrink-0 rounded-full bg-muted-foreground/40"
-                      }
-                    />
-                    <span className="truncate text-foreground">{source.source_name}</span>
-                    <span className="ml-auto shrink-0 text-muted-foreground">
-                      {SOURCE_TYPE_LABEL[source.source_type] ?? ""}
-                    </span>
-                  </li>
-                ))}
-              </ul>
               <button
                 type="button"
-                onClick={p.openSourcesPanel}
-                className="mt-3.5 w-full rounded-md border border-border px-3 py-2 text-sm text-card-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                aria-expanded={srcOpen}
+                onClick={() => setSrcOpen((v) => !v)}
+                className="flex w-full items-center gap-1.5 text-left"
               >
-                查看全部并管理
+                {srcOpen ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                <h2 className="text-sm font-semibold text-foreground">信息源状态</h2>
+                <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                  {p.sources.length} 个{errorCount > 0 ? `·${errorCount} 异常` : ""}
+                </span>
               </button>
+              {srcOpen && (
+                <>
+                  <p className="mt-2 text-xs text-muted-foreground">内置 {p.sources.filter((s) => s.is_builtin).length} 个 · 自定义 {p.sources.filter((s) => !s.is_builtin).length} 个</p>
+                  <ul className="mt-3 space-y-2">
+                    {p.sources.slice(0, 6).map((source) => (
+                      <li key={source.id} className="flex items-center gap-2 text-xs">
+                        <span
+                          className={
+                            source.last_status === "error"
+                              ? "h-2 w-2 shrink-0 rounded-full bg-destructive"
+                              : source.enabled
+                                ? "h-2 w-2 shrink-0 rounded-full bg-primary"
+                                : "h-2 w-2 shrink-0 rounded-full bg-muted-foreground/40"
+                          }
+                        />
+                        <span className="truncate text-foreground">{source.source_name}</span>
+                        <span className="ml-auto shrink-0 text-muted-foreground">
+                          {SOURCE_TYPE_LABEL[source.source_type] ?? ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    type="button"
+                    onClick={p.openSourcesPanel}
+                    className="mt-3.5 w-full rounded-md border border-border px-3 py-2 text-sm text-card-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    查看全部并管理
+                  </button>
+                </>
+              )}
             </div>
 
             <div className="rounded-lg border border-border bg-card p-4 shadow-md">
@@ -268,13 +324,25 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
             </div>
 
             <div className="rounded-lg border border-dashed border-border bg-card p-4 shadow-md">
-              <h2 className="text-sm font-semibold text-foreground">AI 摘要打标</h2>
-              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                对感兴趣的条目点「AI 摘要打标」，AI 会生成不超过 120 字的售前视角摘要，并自动判定情报类型、地区与标签。
-              </p>
-              <p className="mt-2 text-xs text-muted-foreground">
-                当前模型来源：{p.modelOptions.length > 0 ? "可在页内工具栏切换" : "平台默认模型"}
-              </p>
+              <button
+                type="button"
+                aria-expanded={aiHelpOpen}
+                onClick={() => setAiHelpOpen((v) => !v)}
+                className="flex w-full items-center gap-1.5 text-left"
+              >
+                {aiHelpOpen ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                <h2 className="text-sm font-semibold text-foreground">AI 摘要打标</h2>
+              </button>
+              {aiHelpOpen && (
+                <>
+                  <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                    对感兴趣的条目点「AI 摘要打标」，AI 会生成不超过 120 字的售前视角摘要，并自动判定情报类型、地区与标签。
+                  </p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    当前模型来源：{p.modelOptions.length > 0 ? "可在页内工具栏切换" : "平台默认模型"}
+                  </p>
+                </>
+              )}
             </div>
 
             <p className="px-1 text-xs leading-relaxed text-muted-foreground">
@@ -284,17 +352,47 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
         </div>
       </main>
 
-      <IntelDetailDrawer
-        item={p.detailItem}
-        starred={p.detailItem ? p.isStarred(p.detailItem.id) : false}
-        aiTagging={p.detailItem ? p.aiTagging(p.detailItem.id) : false}
-        onClose={p.closeDetail}
-        onConfirm={p.confirmItem}
-        onIgnore={p.ignoreItem}
-        onAiTag={p.aiTagItem}
-        onToggleStar={p.toggleStar}
-        onConvertToOpp={p.convertToOpportunity}
-      />
+      {/* 重构轮：AI 情报周报弹窗 */}
+      <Dialog open={p.reportOpen} onOpenChange={(open) => { if (!open) p.closeReport() }}>
+        <DialogContent className="max-h-[85vh] max-w-2xl overflow-hidden p-0">
+          <DialogHeader className="border-b border-border px-5 py-3.5">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              AI 情报周报
+              {p.reportLoading && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+            </DialogTitle>
+            <DialogDescription className="text-xs">基于近 7 天未忽略的情报由 AI 汇总生成，发布前请人工核对</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[55vh] overflow-y-auto px-5 py-4">
+            {p.reportLoading && !p.reportText ? (
+              <div className="space-y-2.5">
+                {[86, 64, 92, 70, 58].map((w, i) => (
+                  <div key={i} className="h-3.5 animate-pulse rounded bg-muted" style={{ width: `${w}%` }} />
+                ))}
+                <p className="pt-2 text-xs text-muted-foreground">正在汇总近 7 天情报并生成周报…</p>
+              </div>
+            ) : (
+              <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground">{p.reportText}</pre>
+            )}
+          </div>
+          <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!p.reportText || p.reportLoading}
+              onClick={() => {
+                void navigator.clipboard.writeText(p.reportText).then(() => toast.success("周报已复制到剪贴板"))
+              }}
+            >
+              <Copy className="mr-1.5 h-3.5 w-3.5" />
+              复制周报
+            </Button>
+            <Button type="button" size="sm" disabled={p.reportLoading} onClick={p.generateWeeklyReport}>
+              {p.reportLoading ? "生成中…" : "重新生成"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <ManualEntryDialog
         open={p.entryDialogOpen}

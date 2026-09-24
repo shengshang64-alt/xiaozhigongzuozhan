@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
+import { SubmissionChecklistPanel } from "@/components/bid-workspace/SubmissionChecklistPanel"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import {
   COVERAGE_LEVEL_LABEL,
@@ -662,6 +663,13 @@ export function SubmissionCheckPanel({
           chaptersReady={chaptersReady}
           onRun={startCoverageAudit}
           onSupplement={supplementFromAudit}
+        />
+        {/* R25（A3 / bid-checklist-01）：交卷前合规清单——形式要件与资质文件逐项确认，与排版/内容检查互补；key 按项目重挂载以本机初始化进度 */}
+        <SubmissionChecklistPanel
+          key={activeProject?.id ?? ""}
+          projectId={activeProject?.id ?? ""}
+          report={activeProject?.parse_report ?? null}
+          locked={isArchivedLocked}
         />
       </div>
 

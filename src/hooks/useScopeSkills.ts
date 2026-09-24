@@ -8,6 +8,7 @@ import type { SkillRow } from "@/lib/assistantCore"
 import {
   loadSkillSelection,
   loadSkillsForScope,
+  presetSkillsForScope,
   registerScopeSkills,
   saveSkillSelection,
   skillPromptBlock,
@@ -27,27 +28,29 @@ export interface UseScopeSkills {
 }
 
 export function useScopeSkills(scope: SkillScope, userId?: string): UseScopeSkills {
-  const [scopeSkills, setScopeSkills] = useState<SkillRow[]>([])
+  // 预置技能（系统内置）始终可用；与用户自定义技能合并后进 picker 可选池
+  const presetSkills = useMemo(() => presetSkillsForScope(scope), [scope])
+  const [customSkills, setCustomSkills] = useState<SkillRow[]>([])
   const [skillsLoading, setSkillsLoading] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>(() => loadSkillSelection(scope).ids)
   const [filledVars, setFilledVars] = useState<Record<string, Record<string, string>>>(
     () => loadSkillSelection(scope).vars,
   )
 
-  // 拉取该功能点可用技能（用户隔离）
+  // 拉取该功能点用户自定义技能（用户隔离）；预置技能不依赖 userId，未登录也展示
   useEffect(() => {
     let cancelled = false
     if (!userId) {
-      setScopeSkills([])
+      setCustomSkills([])
       return
     }
     setSkillsLoading(true)
     loadSkillsForScope(scope, userId)
       .then((rows) => {
-        if (!cancelled) setScopeSkills(rows)
+        if (!cancelled) setCustomSkills(rows)
       })
       .catch(() => {
-        if (!cancelled) setScopeSkills([])
+        if (!cancelled) setCustomSkills([])
       })
       .finally(() => {
         if (!cancelled) setSkillsLoading(false)
@@ -56,6 +59,14 @@ export function useScopeSkills(scope: SkillScope, userId?: string): UseScopeSkil
       cancelled = true
     }
   }, [scope, userId])
+
+  // 可选池：预置在前、自定义在后，按 id 去重（preset: 前缀与 PB 行天然不冲突）
+  const scopeSkills = useMemo(() => {
+    const map = new Map<string, SkillRow>()
+    for (const s of presetSkills) map.set(s.id, s)
+    for (const s of customSkills) map.set(s.id, s)
+    return [...map.values()]
+  }, [presetSkills, customSkills])
 
   // 技能列表变化后裁剪已失效的勾选（被删除 / scope 被改走的技能）
   useEffect(() => {

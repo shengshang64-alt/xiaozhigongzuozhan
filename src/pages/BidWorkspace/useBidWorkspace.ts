@@ -58,11 +58,11 @@ import {
   buildOutlineChildrenMessages,
   buildOutlineFixMessages,
   buildOutlineLevel1Messages,
+  buildSectionParseMessages,
   buildSectionResizeMessages,
   buildSpeechNotesMessages,
   buildSubmissionCheckMessages,
   buildSubmissionDigest,
-  buildTenderParseMessages,
   buildVoidCheckMessages,
   chapterOrchestration,
   chapterWordBudgets,
@@ -78,6 +78,8 @@ import {
   collectTechLeafRefs,
   combinedScoringText,
   commonSubstringLen,
+  COMPLIANCE_MODE_DEFAULT,
+  COMPLIANCE_MODE_SECTION_WORDS,
   daysUntil,
   defaultGenOptions,
   defaultParseConfig,
@@ -98,9 +100,13 @@ import {
   extractPageCap,
   extractTemplateOutlineLines,
   extractRequirementClauses,
+  extractScoringSectionExcerpt,
   extractStarClauses,
   factSettingsSourceText,
   findGateRecord,
+  // R31（prompt-matrix-02）：评分细项编号大纲承接对账（纯本地零 AI）
+  findUncoveredScoringIds,
+  numberScoringItems,
   BID_OUTLINE_REQ_KEY,
   // 第十七轮 17B：编制依据与规范库
   BASIS_CHAPTER_TITLE_RE,
@@ -144,6 +150,11 @@ import {
   normalizeVoidCheck,
   // 循环 8 A4：本地零 AI 数字口径冲突检查（事实表 × 正文）
   numberConflictHits,
+  // content-guard-02：本地零 AI 全文一致性拦截（指标口径唯一性 / 占位与绝对化承诺残留）
+  metricConflictHits,
+  metaLeftoverHits,
+  // R32 批次2「生成后自动定向修复」：确定性代码清洗（装饰/元话语/加码降档），零 AI 零费用
+  autoRepairChapter,
   outlineReqMatchRate,
   ORCHESTRATION_BATCH_SIZE,
   orchestrationProjectBrief,
@@ -223,6 +234,7 @@ import {
   type FormatCheckKey,
   type FormatCheckReport,
   type FormatIssue,
+  type ComplianceMode,
   type FormatSettings,
   type GateKind,
   type GenOptions,
@@ -250,7 +262,9 @@ import {
 } from "./bidTypes"
 import { extractTenderFileText } from "./bidFiles"
 // 第十三轮改造 3：素材优先注入——复用轮次 D 知识库块级检索（本地检索零 AI，命中为空静默跳过）
-import { listKbDocs, searchKbDocs, visibleKbDocs, type KbDocRow } from "@/lib/kbCore"
+import { type KbDocRow } from "@/lib/kbCore"
+import { getCachedVisibleDocs, assembleKbContext } from "@/lib/kbAssemble"
+import { deriveTrack } from "@/lib/kbTaxonomy"
 import type { OpportunityRow } from "@/pages/CustomerManagement/customerTypes"
 
 // ---------------------------------------------------------------------------
@@ -307,12 +321,20 @@ function llmErrorText(r: { error?: string; text?: string }): string {
   return /[一-龥]/.test(e) ? e : "生成失败，请稍后重试"
 }
 
-async function llmGenerate(messages: LlmMessage[], maxTokens: number, scope?: SkillScope): Promise<string> {
+async function llmGenerate(
+  messages: LlmMessage[],
+  maxTokens: number,
+  scope?: SkillScope,
+  temperature?: number,
+): Promise<string> {
   const r = await chatViaGateway({
     modelRef: activeModelRef,
     messages: injectSkillBlock(messages, skillBlockFor(scope)),
     page: "bid-workspace",
     max_tokens: maxTokens,
+    // docs/07 §5.2（第 19 轮）：确定性任务（解析抽取 / JSON 语法修复）显式 temperature=0 降输出方差；
+    // 未传（undefined）时保持模型默认，与其余调用行为、计费口径完全不变
+    temperature,
   })
   if (r.needsLogin) throw new AuthRequiredError("请求需要重新验证，请稍后重试")
   if (!r.ok || r.status !== "success" || !r.text) throw new Error(llmErrorText(r))
@@ -335,7 +357,7 @@ async function withJsonRepair<T>(raw: string, parseFn: (text: string) => T): Pro
     if (origErr instanceof AuthRequiredError) throw origErr
     let repaired: string
     try {
-      repaired = await llmGenerate(buildJsonRepairMessages(raw), MAX_TOKENS_LONGFORM)
+      repaired = await llmGenerate(buildJsonRepairMessages(raw), MAX_TOKENS_LONGFORM, undefined, 0)
     } catch (repairErr) {
       if (repairErr instanceof AuthRequiredError) throw repairErr
       throw origErr
@@ -386,7 +408,7 @@ async function parseTenderChunked(
 ): Promise<{ report: ParseReport; failedChunks: number[] }> {
   const chunks = text.length > MAX_TENDER_CHARS ? chunkTenderText(text) : [text]
   if (chunks.length <= 1) {
-    const raw = await llmGenerate(build(text), MAX_TOKENS_LONGFORM, "bid-parse")
+    const raw = await llmGenerate(build(text), MAX_TOKENS_LONGFORM, "bid-parse", 0)
     return { report: sanitizeParseSections(extractJsonLoose(raw), keys), failedChunks: [] }
   }
   const reports: ParseReport[] = []
@@ -396,7 +418,7 @@ async function parseTenderChunked(
     let ok = false
     for (let attempt = 0; attempt < 2 && !ok; attempt++) {
       try {
-        const raw = await llmGenerate(build(chunks[i]), MAX_TOKENS_LONGFORM, "bid-parse")
+        const raw = await llmGenerate(build(chunks[i]), MAX_TOKENS_LONGFORM, "bid-parse", 0)
         reports.push(sanitizeParseSections(extractJsonLoose(raw), keys))
         ok = true
       } catch (e) {
@@ -1314,6 +1336,11 @@ export function useBidWorkspace() {
         return
       }
       applySetting("section_words", Math.min(2000, Math.max(400, n)))
+      // 方案B 第5步：用户手动调过字数即置 touched 标记，后续切换生成模式不再自动覆盖
+      const base = activeProjectRef.current?.gen_options ?? defaultGenOptions()
+      if (base.section_words_touched !== true) {
+        applySetting("gen_options", { ...base, section_words_touched: true })
+      }
     },
     [applySetting],
   )
@@ -1347,6 +1374,18 @@ export function useBidWorkspace() {
   )
   const setClauseResponse = useCallback((v: boolean) => setGenOption("clause_response", v), [setGenOption])
   const setMaterialBoost = useCallback((v: boolean) => setGenOption("material_boost", v), [setGenOption])
+  // 05 三模式（方案B）：合规严格度开关——切模式时若用户未手改字数，联动每小节字数默认（strict 800 / moderate 1000 / full 1400）
+  const complianceMode: ComplianceMode = genOptions.compliance_mode ?? COMPLIANCE_MODE_DEFAULT
+  const setComplianceMode = useCallback(
+    (mode: ComplianceMode) => {
+      const base = activeProjectRef.current?.gen_options ?? defaultGenOptions()
+      applySetting("gen_options", { ...base, compliance_mode: mode })
+      if (base.section_words_touched !== true) {
+        applySetting("section_words", COMPLIANCE_MODE_SECTION_WORDS[mode])
+      }
+    },
+    [applySetting],
+  )
   // 用户反馈轮项 3：大纲商务标章节开关（默认包含；搭 gen_options json 列持久化，零 collection 变更）
   // 用户反馈轮：关闭开关时若存量大纲含商务章，弹确认一并移除（开启时若无商务章则提示重生成大纲才带入）
   const [bizRemoveCount, setBizRemoveCount] = useState<number | null>(null)
@@ -1476,8 +1515,34 @@ export function useBidWorkspace() {
     // 无事实表时静默跳过，老 format_report 数据经 normalizeFormatCheckReport 白名单自动兼容
     const factLines = effectiveGlobalFactsLines(cur)
     if (factLines.length) report.hits.push(...numberConflictHits(factLines, cur.bid_chapters))
+    // content-guard-02：不依赖事实表的全文一致性拦截（只扫正文自身），随体检白拿、零 AI
+    report.hits.push(...metricConflictHits(cur.bid_chapters), ...metaLeftoverHits(cur.bid_chapters))
     return report
   }, [])
+
+  /**
+   * R32 批次2：章生成后本地体检自动回显（零 AI、不阻断）——重算 format_report 并入 submission_check
+   * （保留已有 AI items / fact_conflicts），使交卷体检面板与战情室徽标即时刷新；异常静默，绝不影响生成主流程。
+   */
+  const refreshFormatReport = useCallback((): FormatCheckReport | null => {
+    const cur = activeProjectRef.current
+    if (!cur) return null
+    try {
+      const report = buildFormatReportFor(cur)
+      const prev = cur.submission_check
+      updateProject({
+        submission_check: {
+          items: prev?.items ?? [],
+          checked_at: prev?.checked_at ?? report.checked_at,
+          format_report: report,
+          fact_conflicts: prev?.fact_conflicts ?? null,
+        },
+      })
+      return report
+    } catch {
+      return null
+    }
+  }, [buildFormatReportFor, updateProject])
 
   // ------------------------------ 第十七轮 17B：编制依据与规范库（清单 = 解析提取 ∪ 规范库补选） ------------------------------
   // basis_style 未设置（""）时默认 table；撰写样式与补选清单都随项目持久化（applySetting 防抖落库）。
@@ -1562,12 +1627,12 @@ export function useBidWorkspace() {
       : source0
     setFactAiBusy(true)
     try {
-      const raw = await llmGenerate(buildFactSettingsMessages(source), MAX_TOKENS_LONGFORM)
+      const raw = await llmGenerate(buildFactSettingsMessages(source), MAX_TOKENS_LONGFORM, undefined, 0)
       let lines = factLinesFromText(raw)
       // 循环 2 批 1-2：解析为空（疑似格式异常）时自动做一次语法修复重试，不单独弹费用确认
       if (!lines.length) {
         try {
-          const repaired = await llmGenerate(buildJsonRepairMessages(raw), MAX_TOKENS_LONGFORM)
+          const repaired = await llmGenerate(buildJsonRepairMessages(raw), MAX_TOKENS_LONGFORM, undefined, 0)
           lines = factLinesFromText(repaired)
         } catch {
           // 修复调用失败：按原口径走下方空结果提示
@@ -2158,14 +2223,56 @@ export function useBidWorkspace() {
         return next ? upsertParseSection(base, next) : base
       }
       try {
-        // 第八轮改造 1：超长招标文件分段解析（≤MAX_TENDER_CHARS 时单块，与现状一致）
-        const { report, failedChunks } = await parseTenderChunked(
-          text,
-          requestedKeys(cfg),
-          cfg.scope,
-          (chunk) => buildTenderParseMessages(chunk, cfg),
-          (current, total) => setParseChunkProgress({ current, total }),
+        // Issue 2 重构 + OpenBidKit 借鉴：逐项独立提示词 + 并发池解析——每个勾选解析项各一次独立 LLM
+        // 调用（各自 System/User），并发上限 3 路（提速又不撞网关限流）；单项内部
+        // 仍按超长分段合并；cancel 感知（新一轮解析/切项目/卸载即停）；单项失败不再中断整体，置空占位交空项自动重跑。
+        const keys = requestedKeys(cfg)
+        // 2026-09-23 用户反馈轮（评分办法解析不到）：本地定位评分办法章节，命中时 tech_score/biz_score 以节选为专属输入
+        // 单跑（避开全文 14k 窗口把评分表截断；调用数也从 N 段降到 1-3 段）；未命中回退全文分段，行为同现状；
+        // 空项自动重跑仍走全文（下方既有逻辑），与节选路径互为兜底
+        const scoringExcerpt = extractScoringSectionExcerpt(text)
+        const usesScoringExcerpt = (key: string) => Boolean(scoringExcerpt) && (key === "tech_score" || key === "biz_score")
+        const slots: (ParseSection | undefined)[] = new Array(keys.length).fill(undefined)
+        const failedChunks: number[] = []
+        let cursor = 0
+        let completed = 0
+        const parseOneSlot = async (): Promise<void> => {
+          for (;;) {
+            if (parseRunSeqRef.current !== mySeq) return
+            if (source === "project" && (activeProjectRef.current?.id ?? null) !== startProjectId) return
+            const i = cursor
+            cursor += 1
+            if (i >= keys.length) return
+            const key = keys[i]
+            try {
+              const scoringInput = usesScoringExcerpt(key)
+              const { report: secReport, failedChunks: secFailed } = await parseTenderChunked(
+                scoringInput ? scoringExcerpt : text,
+                [key],
+                cfg.scope,
+                (chunk) => buildSectionParseMessages(key, chunk, scoringInput ? { scoringExcerptMode: true } : undefined),
+              )
+              const sec = secReport.sections.find((s) => s.key === key)
+              slots[i] = sec ?? { key, title: parseSectionTitle(key), content: "" }
+              for (const n of secFailed) if (!failedChunks.includes(n)) failedChunks.push(n)
+            } catch (e) {
+              if (e instanceof AuthRequiredError) throw e
+              // 单项整体失败（非鉴权）：置空占位，计入空项自动重跑或报告中手动重解析，不拖垮其他项
+              slots[i] = { key, title: parseSectionTitle(key), content: "" }
+            } finally {
+              completed += 1
+              setParseChunkProgress({ current: completed, total: keys.length })
+            }
+          }
+        }
+        await Promise.all(
+          Array.from({ length: Math.min(3, keys.length) }, () => parseOneSlot()),
         )
+        // 被新一轮解析/切项目打断：不保存半成品，直接退出（finally 复位进度）
+        if (parseRunSeqRef.current !== mySeq) return
+        if (source === "project" && (activeProjectRef.current?.id ?? null) !== startProjectId) return
+        const sections = slots.filter((s): s is ParseSection => s !== undefined)
+        const report: ParseReport = { scope: cfg.scope, sections }
         const okCount = report.sections.filter((s) => s.content.trim()).length
         if (!okCount) {
           throw new Error("没有从招标文件中提取到有效要点，请确认文本完整后重试")
@@ -2204,7 +2311,7 @@ export function useBidWorkspace() {
             if (source === "project" && (activeProjectRef.current?.id ?? null) !== startProjectId) break
             try {
               const rerun = await parseTenderChunked(text, [key], "key", (chunk) =>
-                buildTenderParseMessages(chunk, defaultParseConfig(), [key]),
+                buildSectionParseMessages(key, chunk),
               )
               const fresh = rerun.report.sections.find((s) => s.key === key)
               if (!fresh || !fresh.content.trim()) continue
@@ -2320,7 +2427,7 @@ export function useBidWorkspace() {
       try {
         // 单 key 版解析 prompt：复用裁剪逻辑，只要求输出该项；第八轮改造 1：同样走分段
         const { report, failedChunks } = await parseTenderChunked(text, [key], "key", (chunk) =>
-          buildTenderParseMessages(chunk, defaultParseConfig(), [key]),
+          buildSectionParseMessages(key, chunk),
         )
         const fresh = report.sections.find((s) => s.key === key)
         if (!fresh || !fresh.content.trim()) {
@@ -2559,6 +2666,8 @@ export function useBidWorkspace() {
             // 第十七轮 17D：历史范本目录结构（本地抽标题行，零 AI；未导入为空数组，builder 静默不注入）
             refTemplateOutline: extractTemplateOutlineLines(cur.ref_template_text),
             includeBiz,
+            // 05 三模式（§5.4）：透传合规严格度驱动骨架宽度（strict/缺省 builder 不追加，行为同现状）
+            complianceMode: cur.gen_options?.compliance_mode,
           }),
           MAX_TOKENS_OUTLINE,
           "bid-outline",
@@ -2570,8 +2679,14 @@ export function useBidWorkspace() {
       // 用户反馈轮项 3 防御：关闭商务标时过滤模型违例/存量缓存产出的商务节点（开启时不过滤）
       if (!includeBiz) nodes = nodes.filter((n) => !isBizPart(n))
       if (!nodes.length) throw new Error("大纲格式解析失败，请重试")
-      // 第五轮改造 2：本地结构校验，级数或叶子规模不符时自动一次结构修复（费用含在同一次确认内）
+      // 第五轮改造 2：本地结构校验，级数或叶子规模不符时自动一次结构修复（费用含在同一次确认内）；
+      // OpenBidKit 借鉴（评审→修复闭环）：R31 评分承接缺口并入同一次修复调用的问题清单，不新增调用次数
       const issues = validateOutlineShape(nodes, outlineLevel, leafGoal)
+      const numberedForFix = numberScoringItems(cur.parse_report)
+      const uncoveredForFix = findUncoveredScoringIds(nodes, numberedForFix)
+      if (uncoveredForFix.length) {
+        issues.push(`评分项未承接（${uncoveredForFix.slice(0, 12).join("、")}${uncoveredForFix.length > 12 ? " 等" : ""}）`)
+      }
       if (issues.length) {
         try {
           const fixRaw = await llmGenerate(
@@ -2582,6 +2697,10 @@ export function useBidWorkspace() {
           const fixed = outlineLevel > 0 ? trimOutlineDepth(fixedParsed, outlineLevel) : fixedParsed
           if (fixed.length) {
             const stillIssues = validateOutlineShape(fixed, outlineLevel, leafGoal)
+            const stillUncovered = findUncoveredScoringIds(fixed, numberedForFix)
+            if (stillUncovered.length) {
+              stillIssues.push(`评分项仍未承接：${stillUncovered.slice(0, 6).join("、")}${stillUncovered.length > 6 ? " 等" : ""}`)
+            }
             nodes = fixed
             if (stillIssues.length) {
               toast.error(`大纲结构经一次自动修复后仍不完全符合设置（${stillIssues.join("；")}），已保留当前结果，请手动调整或重新生成`)
@@ -2605,6 +2724,18 @@ export function useBidWorkspace() {
       const leaves = collectLeafTitles(techOutlineNodes(nodes))
       const uncoveredCount = clauses.filter((cl) => !leaves.some((t) => clauseMatchesTitle(cl.text, t))).length
       const bizCount = nodes.filter((n) => isBizPart(n)).length
+      // R31：评分点承接对账——技术编号评分项 ↔ 叶子 [响应:Rx] 标注（本地，零 AI）
+      const scoringNumbered = numberScoringItems(cur.parse_report).filter((s) => s.category === "tech")
+      const uncoveredScoring = findUncoveredScoringIds(nodes, numberScoringItems(cur.parse_report))
+      const scoringBlock = scoringNumbered.length
+        ? `；评分点承接 ${scoringNumbered.length - uncoveredScoring.length}/${scoringNumbered.length}${
+            uncoveredScoring.length
+              ? uncoveredScoring.length === scoringNumbered.length
+                ? "（大纲未携带承接标注，重新生成大纲可自动标注）"
+                : `（未承接：${uncoveredScoring.slice(0, 6).join("、")}${uncoveredScoring.length > 6 ? " 等" : ""}）`
+              : "（全部评分点已有叶子承接）"
+          }`
+        : ""
       toast.success(
         `${
           staged
@@ -2622,7 +2753,7 @@ export function useBidWorkspace() {
             : `大纲含技术章叶子 ${leaves.length} 个（本次不含商务章节）`
         }（目标约 ${leafGoal} 个、每叶子约 ${sectionWords} 字）${
           outlineLevel > 0 ? `，技术部分 ${outlineLevel} 级目录` : "，级数按招标要求自动决定"
-        }`,
+        }${scoringBlock}`,
       )
     } catch (e) {
       handleLlmError(e, "大纲生成失败，请重试")
@@ -2939,6 +3070,35 @@ export function useBidWorkspace() {
   // 一键补齐进行中（信息条按钮 busy 态）
   const [pageFillBusy, setPageFillBusy] = useState(false)
 
+  // R32 批次2「自动修复」：生成后命中即对刚成稿章做确定性代码清洗（零 AI、零费用），
+  // 返回修复动作数（0=无改动）；回写正文并同步编辑视图，体检报告随后由 refreshFormatReport 重算回显（各生成/补齐入口共用）
+  // 注：定义前置到 runFillPages 之前，避免批量补齐入口的 useCallback deps 触发块级 const 暂时死区（TDZ）
+  const applyAutoRepair = useCallback(
+    (nodeId: string): number => {
+      const cur = activeProjectRef.current
+      if (!cur) return 0
+      const ch = (cur.bid_chapters ?? []).find((c) => c.node_id === nodeId)
+      if (!ch || !(ch.content ?? "").trim()) return 0
+      try {
+        const res = autoRepairChapter(
+          ch.content ?? "",
+          effectiveGlobalFactsLines(cur),
+          cur.format_check_items ?? FORMAT_CHECK_KEYS,
+        )
+        if (!res.applied.length) return 0
+        updateChapter(nodeId, { content: res.content })
+        if (activeChapterId === nodeId) {
+          editingContentRef.current = res.content
+          setEditingContentState(res.content)
+        }
+        return res.applied.length
+      } catch {
+        return 0
+      }
+    },
+    [activeChapterId, updateChapter],
+  )
+
   /**
    * 一键补齐：缺口字数（距治理下限）按各章预算权重分配到已有正文的章节，逐章走既有
    * 续写链路（每章一次调用，串行），失败章跳过记录；全部完成后复跑一次总量治理。
@@ -2958,6 +3118,7 @@ export function useBidWorkspace() {
     setPageFillBusy(true)
     const failedTitles: string[] = []
     let filled = 0
+    let autoRepaired = 0
     try {
       const eff = effectiveTargetPages(start)
       const lower = Math.floor(eff * (1 - PAGE_GOVERN_TOLERANCE) * 500)
@@ -3024,6 +3185,7 @@ export function useBidWorkspace() {
               title: ch.title,
               content: merged,
             })
+            if (applyAutoRepair(ch.node_id)) autoRepaired += 1
           }
         } catch {
           failedTitles.push(ch.title)
@@ -3031,15 +3193,17 @@ export function useBidWorkspace() {
       }
       // 补齐完成后复跑总量治理（超出硬上限时收敛）
       governTotalPages()
+      refreshFormatReport()
+      const repairNote = autoRepaired ? `，已自动修正 ${autoRepaired} 章格式问题` : ""
       if (failedTitles.length) {
-        toast.error(`页数补齐结束，新增约 ${filled} 字；「${failedTitles.join("」「")}」章补齐失败，可单独「继续生成」`)
+        toast.error(`页数补齐结束，新增约 ${filled} 字${repairNote}；「${failedTitles.join("」「")}」章补齐失败，可单独「继续生成」`)
       } else {
-        toast.success(`页数补齐完成，新增约 ${filled} 字，请查看正文页数是否达标`)
+        toast.success(`页数补齐完成，新增约 ${filled} 字${repairNote}，请查看正文页数是否达标`)
       }
     } finally {
       setPageFillBusy(false)
     }
-  }, [activeChapterId, governTotalPages, outlineClauses, outlineCoverage, updateChapter, writeStageSnapshot])
+  }, [activeChapterId, applyAutoRepair, governTotalPages, outlineClauses, outlineCoverage, refreshFormatReport, updateChapter, writeStageSnapshot])
 
   const startFillPages = useCallback(() => {
     if (!requireLogin() || pageFillBusy) return
@@ -3212,14 +3376,23 @@ export function useBidWorkspace() {
       let kbDocs: KbDocRow[] = []
       if (boost) {
         try {
-          kbDocs = visibleKbDocs(await listKbDocs(), userId)
+          kbDocs = await getCachedVisibleDocs(userId)
         } catch {
           kbDocs = [] // 知识库不可用时静默降级，不阻断正文生成
         }
       }
+      // 组装层第一期：按项目赛道（项目名+医院+招标要点派生）与标书用途桶对检索结果软加权
+      const projectTrack = deriveTrack(
+        [cur.project_name, cur.hospital, (cur.tender_text ?? "").slice(0, 2000)].filter(Boolean).join(" "),
+      )
       const kbMaterialFor = (queryParts: string[]): string => {
         if (!kbDocs.length) return ""
-        const hits = searchKbDocs(kbDocs, queryParts.filter(Boolean).join(" ").slice(0, 600), 5)
+        const { hits } = assembleKbContext(kbDocs, {
+          query: queryParts.filter(Boolean).join(" ").slice(0, 600),
+          track: projectTrack,
+          buckets: ["标书弹药", "产品资料", "方案素材"],
+          topN: 5,
+        })
         if (!hits.length) return ""
         return hits
           .map((h) => `（来源文档：《${h.doc.title}》${h.headingPath ? ` · ${h.headingPath}` : ""}）\n${h.snippet}`)
@@ -3251,6 +3424,8 @@ export function useBidWorkspace() {
         // 循环 2 批 2-1：定向事实——编排为本章挑了必守事实时，以定向事实块替代全量全局事实注入
         // （未重编排的老项目 facts 缺省，回退全量注入，行为与现状一致）
         directedFacts: chapterOrchOpt?.facts?.length ? buildDirectedFactsBlock(chapterOrchOpt.facts) : undefined,
+        // 05 三模式：透传合规严格度（strict/缺省 builder 不注入，行为同现状）
+        complianceMode: cur.gen_options?.compliance_mode,
       }
       if (budget > SECTION_GEN_MIN_BUDGET && sections.length >= 2) {
         // 小节级串行生成
@@ -3472,6 +3647,21 @@ export function useBidWorkspace() {
             reached ? "，篇幅达标" : "，续写 6 轮后仍未达预算，可手动「继续生成」补足"
           }${out.figures.length ? `，含 ${out.figures.length} 张配图` : ""}`,
         )
+        // R32 批次2：生成后命中即自动定向修复（确定性代码清洗，零 AI/零费用），再本地体检回显剩余需人工项
+        const repairedN = applyAutoRepair(nodeId)
+        const rep = refreshFormatReport()
+        const chHits = rep?.hits.filter((h) => h.chapter === out.title).length ?? 0
+        if (repairedN && chHits) {
+          toast.warning(
+            `「${out.title}」已自动修复 ${repairedN} 类问题（装饰/元话语/参数加码，零费用），另有 ${chHits} 处需人工复核，可到「交卷体检」查看明细`,
+          )
+        } else if (repairedN) {
+          toast.success(`「${out.title}」已自动修复 ${repairedN} 类问题（装饰符号/元话语/参数加码，确定性代码、零费用）`)
+        } else if (chHits) {
+          toast.warning(
+            `「${out.title}」本地体检发现 ${chHits} 处提示（数值/指标口径等需人工判断项，零费用），可到「交卷体检」查看明细，不影响继续生成`,
+          )
+        }
       } catch (e) {
         setSectionGenState(null)
         updateChapter(nodeId, { gen_status: "failed" })
@@ -3480,7 +3670,7 @@ export function useBidWorkspace() {
         setChapterBusy(null)
       }
     },
-    [activeChapterId, applyBudgetGovernance, generateChapterContent, governTotalPages, handleLlmError, runSupplementLoop, runTotalWordAdjust, updateChapter, writeStageSnapshot],
+    [activeChapterId, applyAutoRepair, applyBudgetGovernance, generateChapterContent, governTotalPages, handleLlmError, refreshFormatReport, runSupplementLoop, runTotalWordAdjust, updateChapter, writeStageSnapshot],
   )
 
   const generateChapter = useCallback(
@@ -3542,9 +3732,17 @@ export function useBidWorkspace() {
         let kbMaterial = ""
         if (boost) {
           try {
-            const kbDocs = visibleKbDocs(await listKbDocs(), userId)
+            const kbDocs = await getCachedVisibleDocs(userId)
             if (kbDocs.length) {
-              const hits = searchKbDocs(kbDocs, [ch.title, sectionName, ...sectionClauses.map((c) => c.text)].filter(Boolean).join(" ").slice(0, 600), 5)
+              const projectTrack = deriveTrack(
+                [cur.project_name, cur.hospital, (cur.tender_text ?? "").slice(0, 2000)].filter(Boolean).join(" "),
+              )
+              const { hits } = assembleKbContext(kbDocs, {
+                query: [ch.title, sectionName, ...sectionClauses.map((c) => c.text)].filter(Boolean).join(" ").slice(0, 600),
+                track: projectTrack,
+                buckets: ["标书弹药", "产品资料", "方案素材"],
+                topN: 5,
+              })
               kbMaterial = hits
                 .map((h) => `（来源文档：《${h.doc.title}》${h.headingPath ? ` · ${h.headingPath}` : ""}）\n${h.snippet}`)
                 .join("\n\n")
@@ -3605,6 +3803,8 @@ export function useBidWorkspace() {
               }),
               // 循环 2 批 1-4：小节重写同口径注入暗标身份脱敏规则条
               sealedIdentityRules: sealedIdentityBlock(cur.format_settings?.sealed === true, cur.identity_words),
+              // 05 三模式：小节重写同口径透传合规严格度
+              complianceMode: cur.gen_options?.compliance_mode,
               sectionName,
               sectionNo: `${idx + 1}.${sectionIdx + 1}`,
               sectionIndex: sectionIdx,
@@ -3628,7 +3828,9 @@ export function useBidWorkspace() {
           editingContentRef.current = nextContent
           setEditingContentState(nextContent)
         }
-        toast.success(`小节「${sectionName}」已重写：${piece.length} 字 / 目标约 ${sectionBudget} 字，其余小节未改动`)
+        const repaired = applyAutoRepair(nodeId)
+        refreshFormatReport()
+        toast.success(`小节「${sectionName}」已重写：${piece.length} 字 / 目标约 ${sectionBudget} 字，其余小节未改动${repaired ? `，已自动修正 ${repaired} 处格式问题` : ""}`)
       } catch (e) {
         // 失败不污染 content：仅 toast，正文与统计保持原样
         handleLlmError(e, `小节「${sectionName}」重写失败，正文未改动，请重试`)
@@ -3636,7 +3838,7 @@ export function useBidWorkspace() {
         setChapterBusy(null)
       }
     },
-    [activeChapterId, handleLlmError, outlineClauses, outlineCoverage, updateChapter, userId],
+    [activeChapterId, applyAutoRepair, handleLlmError, outlineClauses, outlineCoverage, refreshFormatReport, updateChapter, userId],
   )
 
   const regenerateSection = useCallback(
@@ -3700,8 +3902,10 @@ export function useBidWorkspace() {
           editingContentRef.current = nextContent
           setEditingContentState(nextContent)
         }
+        const repaired = applyAutoRepair(nodeId)
+        refreshFormatReport()
         toast.success(
-          `小节「${sectionName}」已${mode === "expand" ? "扩写" : "缩写"}：${pieceText.length} 字 → ${piece.length} 字（目标约 ${targetChars} 字），其余小节未改动`,
+          `小节「${sectionName}」已${mode === "expand" ? "扩写" : "缩写"}：${pieceText.length} 字 → ${piece.length} 字（目标约 ${targetChars} 字），其余小节未改动${repaired ? `，已自动修正 ${repaired} 处格式问题` : ""}`,
         )
       } catch (e) {
         handleLlmError(e, `小节「${sectionName}」${mode === "expand" ? "扩写" : "缩写"}失败，正文未改动，请重试`)
@@ -3709,7 +3913,7 @@ export function useBidWorkspace() {
         setChapterBusy(null)
       }
     },
-    [activeChapterId, handleLlmError, updateChapter],
+    [activeChapterId, applyAutoRepair, handleLlmError, refreshFormatReport, updateChapter],
   )
 
   const resizeSection = useCallback(
@@ -3771,14 +3975,16 @@ export function useBidWorkspace() {
         // 第十一轮改造 4：改写/扩写/精简成功同样留快照
         const kindLabel = kind === "rewrite" ? "改写" : kind === "expand" ? "扩写" : "精简"
         writeStageSnapshot("chapter", `章节${kindLabel}完成：${ch.title}`, { chapter_id: nodeId, title: ch.title, content: clean })
-        toast.success("章节处理完成")
+        const repaired = applyAutoRepair(nodeId)
+        refreshFormatReport()
+        toast.success(repaired ? `章节处理完成，已自动修正 ${repaired} 处格式问题` : "章节处理完成")
       } catch (e) {
         handleLlmError(e, "处理失败，请重试")
       } finally {
         setChapterBusy(null)
       }
     },
-    [activeChapterId, flushEditingContent, handleLlmError, outlineClauses, outlineCoverage, updateChapter, writeStageSnapshot],
+    [activeChapterId, applyAutoRepair, flushEditingContent, handleLlmError, outlineClauses, outlineCoverage, refreshFormatReport, updateChapter, writeStageSnapshot],
   )
 
   const refineChapter = useCallback(
@@ -3869,7 +4075,9 @@ export function useBidWorkspace() {
           setEditingContentState(merged)
         }
         writeStageSnapshot("chapter", `章节续写完成：${ch.title}`, { chapter_id: nodeId, title: ch.title, content: merged })
-        toast.success(`续写完成，本章新增约 ${cont.trim().length} 字`)
+        const repaired = applyAutoRepair(nodeId)
+        refreshFormatReport()
+        toast.success(`续写完成，本章新增约 ${cont.trim().length} 字${repaired ? `，已自动修正 ${repaired} 处格式问题` : ""}`)
       } catch (e) {
         updateChapter(nodeId, { gen_status: hadContent ? "done" : "failed" })
         handleLlmError(e, "续写失败，请重试")
@@ -3877,7 +4085,7 @@ export function useBidWorkspace() {
         setChapterBusy(null)
       }
     },
-    [activeChapterId, flushEditingContent, handleLlmError, outlineClauses, outlineCoverage, targetPages, updateChapter, writeStageSnapshot],
+    [activeChapterId, applyAutoRepair, flushEditingContent, handleLlmError, outlineClauses, outlineCoverage, refreshFormatReport, targetPages, updateChapter, writeStageSnapshot],
   )
 
   const continueChapter = useCallback(
@@ -3902,6 +4110,7 @@ export function useBidWorkspace() {
     const total = techIdx.length
     setGenProgress({ current: 0, total })
     let failedCount = 0
+    let autoRepairedChapters = 0
     for (let k = 0; k < techIdx.length; k++) {
       if (cancelBulkRef.current) break
       const cur = activeProjectRef.current
@@ -3944,6 +4153,8 @@ export function useBidWorkspace() {
             content: bulkCh.content,
           })
         }
+        // R32 批次2：批量每章成稿后同样做确定性自动修复（零费用），修复动作计入收尾汇报
+        if (!cancelBulkRef.current && applyAutoRepair(ch.node_id)) autoRepairedChapters += 1
       } catch {
         setSectionGenState(null)
         failedCount += 1
@@ -3955,6 +4166,15 @@ export function useBidWorkspace() {
     if (!cancelBulkRef.current) adjustRounds = await runTotalWordAdjust()
     // 第十一轮改造 2：批量生成收口后做总量治理（超出硬上限自动裁剪收敛）
     if (!cancelBulkRef.current) governTotalPages()
+    // R32 批次2：批量生成完成后先汇报确定性自动修复成果，再本地体检回显剩余需人工项（零费用、不阻断）
+    if (!cancelBulkRef.current) {
+      const rep = refreshFormatReport()
+      const warnN = rep?.hits.filter((h) => h.level === "warn").length ?? 0
+      if (autoRepairedChapters)
+        toast.success(`批量生成完成：已对 ${autoRepairedChapters} 章做确定性自动修复（装饰/元话语/参数加码，零费用）`)
+      if (warnN)
+        toast.warning(`本地体检（零费用）共发现 ${warnN} 处提示（数值/指标口径等需人工判断项），可到「交卷体检」查看明细，不影响当前成果`)
+    }
     bulkGeneratingRef.current = false
     setBulkGenerating(false)
     setGenProgress({ current: 0, total: 0 })
@@ -3976,7 +4196,7 @@ export function useBidWorkspace() {
     if (cancelBulkRef.current) toast.info(`已暂停，可继续生成剩余技术章节${summary ? `；${summary}` : ""}`)
     else if (failedCount) toast.error(`生成结束，${failedCount} 个技术章节失败，可单独重试；${summary}`)
     else toast.success(`全部技术章节正文生成完毕；${summary}`)
-  }, [activeChapterId, applyBudgetGovernance, generateChapterContent, governTotalPages, runSupplementLoop, runTotalWordAdjust, updateChapter, writeStageSnapshot])
+  }, [activeChapterId, applyAutoRepair, applyBudgetGovernance, generateChapterContent, governTotalPages, refreshFormatReport, runSupplementLoop, runTotalWordAdjust, updateChapter, writeStageSnapshot])
 
   const startBulkGenerate = useCallback(() => {
     if (!requireLogin()) return
@@ -5765,6 +5985,9 @@ export function useBidWorkspace() {
     genOptions,
     setClauseResponse,
     setMaterialBoost,
+    // 05 三模式：合规严格度（随项目持久化）
+    complianceMode,
+    setComplianceMode,
     // 用户反馈轮项 3：大纲商务标章节开关（随项目持久化）
     setIncludeBiz,
     // 用户反馈轮：关闭商务标开关时的存量章移除确认（null=不弹）

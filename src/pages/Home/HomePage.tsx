@@ -5,6 +5,7 @@ import { OppsCard } from "@/components/home/CustomerOverviewSection"
 import { FollowUpReminderCard } from "@/components/home/FollowUpReminderCard"
 import { FunnelCard } from "@/components/home/FunnelCard"
 import { IntelSection } from "@/components/home/IntelSection"
+import { MustSeeTodayBar } from "@/components/home/MustSeeTodayBar"
 import { ProjectsSection } from "@/components/home/ProjectsSection"
 import { StatsRow } from "@/components/home/StatsRow"
 import { TodoCard } from "@/components/home/TodoCard"
@@ -27,6 +28,12 @@ export function HomePage(p: ReturnType<typeof useHome>) {
         dateLabel={todayLabel}
         greeting={p.greeting}
         displayName={displayName}
+      />
+
+      <MustSeeTodayBar
+        data={p.mustSee}
+        loading={p.todosLoading || p.crmLoading || p.projectsLoading}
+        onOpenProject={p.openProjectDetail}
       />
 
       <StatsRow

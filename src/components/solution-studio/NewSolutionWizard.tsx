@@ -44,6 +44,7 @@ type NewSolutionWizardProps = Pick<
   | "formChecklistId"
   | "outlineDraft"
   | "outlineLoading"
+  | "confirming"
   | "submitWizardInfo"
   | "confirmOutline"
   | "outlineRename"
@@ -55,6 +56,8 @@ type NewSolutionWizardProps = Pick<
 > & {
   checklistOptions: ChecklistRecord[]
   onPickChecklist: (id: string) => void
+  /** 从 CheckProduct 产品库自动汇总的「产品/系统」候选列表（非空时优先作为 systems 标签云） */
+  productNames?: string[]
 }
 
 const STEP_TITLES = ["选择方案类型", "填写项目信息", "确认方案大纲"]
@@ -72,6 +75,10 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
   const info = p.formInfo
   const setInfo = p.setFormInfo
   const linkedChecklist = p.checklistOptions.find((c) => c.id === p.formChecklistId) ?? null
+  // 产品库候选：优先使用外部传入的 CheckProduct.product_name 去重列表；老数据回退到 SYSTEM_OPTIONS
+  const catalogNames = (p.productNames ?? []).filter(Boolean)
+  const systemPresets = catalogNames.length > 0 ? catalogNames : SYSTEM_OPTIONS
+  const inPresets = (s: string) => systemPresets.includes(s)
   const toggleSystem = (sys: string) => {
     const has = info.systems.includes(sys)
     setInfo({ ...info, systems: has ? info.systems.filter((s) => s !== sys) : [...info.systems, sys] })
@@ -82,7 +89,7 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
   useEffect(() => {
     if (p.wizardOpen) {
       setCustomSystemsDraft(
-        p.formInfo.systems.filter((s) => !SYSTEM_OPTIONS.includes(s)).join("、"),
+        p.formInfo.systems.filter((s) => !inPresets(s)).join("、"),
       )
     }
     // 仅在向导打开时重置草稿
@@ -93,7 +100,7 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
     .map((s) => s.trim())
     .filter(Boolean)
   const commitCustomSystems = () => {
-    const presets = info.systems.filter((s) => SYSTEM_OPTIONS.includes(s))
+    const presets = info.systems.filter((s) => inPresets(s))
     setInfo({ ...info, systems: [...presets, ...customPreview.filter((s) => !presets.includes(s))] })
   }
   return (
@@ -122,7 +129,7 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
             commitCustomSystems()
             p.submitWizardInfo()
           } else if (p.wizardStep === 3) {
-            if (p.outlineLoading) return
+            if (p.outlineLoading || p.confirming) return
             void p.confirmOutline()
           }
         }}
@@ -157,53 +164,85 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
         </ol>
 
         {p.wizardStep === 1 && (
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {p.solutionTypes.map((t) => {
-              const selected = p.formTypeKey === t.key
-              return (
-                <button
-                  key={t.key}
-                  type="button"
-                  onClick={() => p.setFormTypeKey(t.key)}
-                  className={`rounded-lg border p-4 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                    selected
-                      ? "border-primary bg-primary/10 shadow-md"
-                      : "border-border bg-card shadow-sm hover:border-primary/40 hover:shadow-md"
-                  }`}
-                >
-                  <p className={`text-sm font-semibold ${selected ? "text-primary" : "text-foreground"}`}>{t.label}</p>
-                  <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{t.desc}</p>
-                </button>
-              )
-            })}
+          <div className="mt-4 space-y-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {p.solutionTypes.map((t) => {
+                const selected = p.formTypeKey === t.key
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => p.setFormTypeKey(t.key)}
+                    className={`rounded-lg border p-4 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                      selected
+                        ? "border-primary bg-primary/10 shadow-md"
+                        : "border-border bg-card shadow-sm hover:border-primary/40 hover:shadow-md"
+                    }`}
+                  >
+                    <p className={`text-sm font-semibold ${selected ? "text-primary" : "text-foreground"}`}>{t.label}</p>
+                    <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{t.desc}</p>
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* 素材来源：将“关联建设清单”前置到 Step 1，作为大卡片醒目入口 */}
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 shadow-sm">
+              <FieldLabel text="素材来源 · 关联建设清单（推荐）" />
+              <p className="mb-2 text-xs text-muted-foreground">
+                选一份已有的建设清单：将自动预填医院名称与建设系统清单，AI 大纲会按清单条目覆盖分系统章节。
+              </p>
+              <Select value={p.formChecklistId} onValueChange={p.onPickChecklist}>
+                <SelectTrigger className="w-full bg-card">
+                  <SelectValue placeholder="不关联，下一步手动勾选建设系统" />
+                </SelectTrigger>
+                <SelectContent>
+                  {p.checklistOptions.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-muted-foreground">
+                      还没有建设清单，先到「建设清单」创建或从产品库导入。
+                    </div>
+                  ) : (
+                    p.checklistOptions.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.checklist_name}
+                        {c.hospital ? ` · ${c.hospital}` : ""}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              {linkedChecklist && (
+                <p className="mt-2 rounded-md border border-primary/30 bg-card px-2.5 py-1.5 text-xs text-primary">
+                  已选「{linkedChecklist.checklist_name}」：
+                  {(linkedChecklist.items ?? []).filter((l) => l.checked !== false).length} 个条目、合计{" "}
+                  {fmtMoney(calcTotal(linkedChecklist.items ?? []))}，下一步系统标签已自动带入。
+                </p>
+              )}
+            </div>
           </div>
         )}
 
         {p.wizardStep === 2 && (
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <FieldLabel text="关联建设清单（可选）" />
-              <Select value={p.formChecklistId} onValueChange={p.onPickChecklist}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="不关联，手动勾选建设系统" />
-                </SelectTrigger>
-                <SelectContent>
-                  {p.checklistOptions.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.checklist_name}
-                      {c.hospital ? ` · ${c.hospital}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {linkedChecklist && (
-                <p className="mt-1.5 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-xs text-primary">
-                  已关联清单「{linkedChecklist.checklist_name}」：
-                  {(linkedChecklist.items ?? []).filter((l) => l.checked !== false).length} 个条目、合计{" "}
-                  {fmtMoney(calcTotal(linkedChecklist.items ?? []))}，建设内容已预填，方案将按清单覆盖分系统章节
+            {linkedChecklist ? (
+              <div className="sm:col-span-2">
+                <p className="rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-xs text-primary">
+                  已关联清单「{linkedChecklist.checklist_name}」：从清单带入{" "}
+                  {new Set(
+                    (linkedChecklist.items ?? [])
+                      .filter((l) => l.checked !== false)
+                      .map((l) => l.product_name),
+                  ).size}{" "}
+                  个系统，下方标签已自动勾选（可手动补充）。方案将按清单覆盖分系统章节。
                 </p>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="sm:col-span-2">
+                <p className="rounded-md border border-dashed border-border bg-muted/20 px-2.5 py-1.5 text-xs text-muted-foreground">
+                  未关联建设清单，可手动勾选下方系统标签；建议到上一步选一份清单，AI 大纲会更贴合医院实际。
+                </p>
+              </div>
+            )}
             <div className="sm:col-span-2">
               <FieldLabel text="方案名称" />
               <Input
@@ -285,7 +324,7 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
             <div className="sm:col-span-2">
               <FieldLabel text="建设内容 / 系统清单" required />
               <div className="flex flex-wrap gap-2">
-                {SYSTEM_OPTIONS.map((sys) => {
+                {systemPresets.map((sys) => {
                   const on = info.systems.includes(sys)
                   return (
                     <button
@@ -402,9 +441,18 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
             </div>
           )}
           {p.wizardStep === 3 && (
-            <Button onClick={() => void p.confirmOutline()} disabled={p.outlineLoading} className="bg-primary text-primary-foreground shadow-sm hover:bg-primary/90">
-              确认大纲，进入编制
-              <ArrowRight className="ml-1 h-4 w-4" />
+            <Button onClick={() => void p.confirmOutline()} disabled={p.outlineLoading || p.confirming} className="bg-primary text-primary-foreground shadow-sm hover:bg-primary/90">
+              {p.confirming ? (
+                <>
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  创建中…
+                </>
+              ) : (
+                <>
+                  确认大纲，进入编制
+                  <ArrowRight className="ml-1 h-4 w-4" />
+                </>
+              )}
             </Button>
           )}
         </div>

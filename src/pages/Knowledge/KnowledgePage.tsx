@@ -150,6 +150,8 @@ export function KnowledgePage(p: ReturnType<typeof useKnowledge>) {
           allFolderPaths={p.allFolderPaths}
           updateDocPolicy={p.updateDocPolicy}
           citationFocus={p.citationFocus}
+          recentDocs={p.recentDocs}
+          onOpenRecent={p.selectDoc}
         />
       </main>
 
@@ -172,6 +174,8 @@ export function KnowledgePage(p: ReturnType<typeof useKnowledge>) {
         uploadResults={p.uploadResults}
         uploading={p.uploading}
         processUploadFiles={(files, category) => void p.processUploadFiles(files, category)}
+        processUploadFolder={() => void p.processUploadFolder()}
+        supportsFolder={p.supportsFolderImport}
         allFolderPaths={p.allFolderPaths}
       />
       <QaDrawer

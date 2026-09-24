@@ -24,12 +24,19 @@ export function currentStudioCostText(): string {
   return costTextForModel(studioModelRef)
 }
 
-export async function llmGenerate(messages: LlmMessage[], maxTokens: number, scope?: SkillScope): Promise<string> {
+export async function llmGenerate(
+  messages: LlmMessage[],
+  maxTokens: number,
+  scope?: SkillScope,
+  temperature?: number,
+): Promise<string> {
   const r = await chatViaGateway({
     modelRef: studioModelRef,
     messages: injectSkillBlock(messages, skillBlockFor(scope)),
     page: "solution-studio",
     max_tokens: maxTokens,
+    // docs/07 §5.2（第 19 轮）：与标书侧同口径——仅确定性任务显式传 temperature，未传保持模型默认
+    temperature,
   })
   if (r.needsLogin) throw new Error(LLM_ERROR_ZH.rh_login_required)
   if (!r.ok || r.status !== "success" || !r.text) {

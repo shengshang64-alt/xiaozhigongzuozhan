@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
-import { AlignmentType, HeadingLevel, Paragraph, TableOfContents, TextRun } from "docx"
+import { AlignmentType, HeadingLevel, ImageRun, Paragraph, Table, TableOfContents } from "docx"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, vibexAuthHeaders, type RhAccountInfo } from "@/lib/rhLogin"
 import { modelRefKey, resolveAvailableModels, type ModelRef } from "@/lib/modelGateway"
@@ -13,11 +13,27 @@ import {
   type KbDocRow,
   type KbSearchHit,
 } from "@/lib/kbCore"
+import { getCachedVisibleDocs, assembleKbContext } from "@/lib/kbAssemble"
+import { deriveTrack } from "@/lib/kbTaxonomy"
 import { contextSnippetOf } from "@/lib/kbPolicy"
 import { listKbQaPairs, matchQaPair, visibleQaPairs, type KbQaPairRow } from "@/lib/kbQa"
 import { useCostConfirm } from "@/hooks/useCostConfirm"
-import { downloadDocx, pageOptsFromFormatSettings } from "@/pages/BidWorkspace/bidFiles"
-import { DEFAULT_FORMAT_SETTINGS, normalizeFormatSettings, type FormatSettings } from "@/pages/BidWorkspace/bidTypes"
+import {
+  createFormatDocxKit,
+  downloadDocx,
+  figureToPng,
+  pageOptsFromFormatSettings,
+} from "@/pages/BidWorkspace/bidFiles"
+import {
+  DEFAULT_FORMAT_SETTINGS,
+  chapterWordBudgets,
+  normalizeFormatSettings,
+  parseChapterOutput,
+  sanitizeChapterText,
+  stripOverlap,
+  trimToBudget,
+  type FormatSettings,
+} from "@/pages/BidWorkspace/bidTypes"
 import { useScopeSkills } from "@/hooks/useScopeSkills"
 import { skillCostSuffix } from "@/lib/skillCore"
 import { currentStudioCostText, llmGenerate, setStudioModelRef } from "./studioLlm"
@@ -27,6 +43,7 @@ import { snapshotFromChecklist, type ChecklistRecord } from "./checklistTypes"
 import {
   addChildToTree,
   buildChapterMessages,
+  buildSolContinueMessages,
   buildChapterReviewMessages,
   buildOutlineMessages,
   buildRefineMessages,
@@ -41,14 +58,18 @@ import {
   removeNodeFromTree,
   renameNodeInTree,
   SOLUTION_TYPES,
+  SOL_COMPLIANCE_MODE_DEFAULT,
+  normalizeSolMode,
   typeLabel,
   VERDICT_LABEL,
   type Chapter,
   type ChapterSelfCheck,
   type DocStatus,
+  type FigureSpec,
   type HospitalInfo,
   type OutlineNode,
   type RefineKind,
+  type SolutionComplianceMode,
   type SolutionRecord,
   type SolutionTypeKey,
 } from "./solutionTypes"
@@ -95,6 +116,18 @@ export type MaterialTab = "kb" | "ammo" | "history"
 
 export type MaterialKbHit = KbSearchHit
 
+/** sol5 智能推荐：按当前章节主题跨三来源本地推导的素材条目（零 AI 调用） */
+export type MaterialRecoItem = {
+  key: string
+  source: "kb" | "ammo" | "history"
+  title: string
+  badge: string
+  snippet: string
+  text: string
+  /** 插入时写入正文的「素材来源」标注 */
+  label: string
+}
+
 export type MaterialHistoryBlock = {
   key: string
   solutionId: string
@@ -115,6 +148,45 @@ function readSsFmt(id: string): FormatSettings {
     return normalizeFormatSettings(JSON.parse(raw)) ?? DEFAULT_FORMAT_SETTINGS
   } catch {
     return DEFAULT_FORMAT_SETTINGS
+  }
+}
+
+// 05 §6：方案侧三模式按方案存 localStorage（零 collection 变更）；读容错，非法回默认 moderate
+function solModeKey(id: string): string {
+  return `ss_mode_${id}`
+}
+
+function readSolMode(id: string): SolutionComplianceMode {
+  try {
+    return normalizeSolMode(localStorage.getItem(solModeKey(id)))
+  } catch {
+    return SOL_COMPLIANCE_MODE_DEFAULT
+  }
+}
+
+// 问题1+2：生成设置（目标页数→逐章字数预算；配图开关→架构图/流程图）按方案存 localStorage（零 collection 变更）
+export type SolGenSettings = { targetPages: number; figuresEnabled: boolean }
+
+const SOL_GEN_DEFAULT: SolGenSettings = { targetPages: 0, figuresEnabled: false }
+
+function solGenKey(id: string): string {
+  return `ss_gen_${id}`
+}
+
+function normalizeTargetPages(v: unknown): number {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return 0
+  return Math.max(0, Math.min(200, Math.round(n)))
+}
+
+function readSolGen(id: string): SolGenSettings {
+  try {
+    const raw = localStorage.getItem(solGenKey(id))
+    if (!raw) return SOL_GEN_DEFAULT
+    const o = JSON.parse(raw) as Partial<SolGenSettings>
+    return { targetPages: normalizeTargetPages(o.targetPages), figuresEnabled: o.figuresEnabled === true }
+  } catch {
+    return SOL_GEN_DEFAULT
   }
 }
 
@@ -263,6 +335,12 @@ export function useSolutionStudio() {
   // 循环 9 C2：当前方案的导出页面格式（纸张/边距/页码；随方案切换加载，防抖落 localStorage）
   const [ssFmt, setSsFmt] = useState<FormatSettings>(DEFAULT_FORMAT_SETTINGS)
   const ssFmtTimerRef = useRef<number | null>(null)
+  // 05 §6：当前方案的生成模式（随方案切换加载，即时落 localStorage）
+  const [solComplianceMode, setSolComplianceModeState] = useState<SolutionComplianceMode>(SOL_COMPLIANCE_MODE_DEFAULT)
+  const solComplianceModeRef = useRef<SolutionComplianceMode>(SOL_COMPLIANCE_MODE_DEFAULT)
+  // 问题1+2：当前方案的生成设置（目标页数/配图开关，随方案切换加载，即时落 localStorage）
+  const [solGen, setSolGenState] = useState<SolGenSettings>(SOL_GEN_DEFAULT)
+  const solGenRef = useRef<SolGenSettings>(SOL_GEN_DEFAULT)
   // R007（B-4 阶段一）：导出模板（封面/目录/页眉；随方案切换加载，即时落 localStorage）
   const [expTpl, setExpTpl] = useState<SolutionExportTemplate>(DEFAULT_EXPORT_TEMPLATE)
 
@@ -273,6 +351,12 @@ export function useSolutionStudio() {
       setSolutions((prev) => prev.map((s) => (s.id === next.id ? next : s)))
       setSsFmt(readSsFmt(next.id))
       setExpTpl(readSolutionExportTemplate(next.id))
+      const m = readSolMode(next.id)
+      solComplianceModeRef.current = m
+      setSolComplianceModeState(m)
+      const g = readSolGen(next.id)
+      solGenRef.current = g
+      setSolGenState(g)
     }
   }, [])
 
@@ -304,6 +388,38 @@ export function useSolutionStudio() {
       }
       return nextFmt
     })
+  }, [])
+
+  /** 05 §6：切换生成模式——乐观更新 + 即时写 localStorage（同步 ref 供生成回调读取） */
+  const setSolComplianceMode = useCallback((mode: SolutionComplianceMode) => {
+    solComplianceModeRef.current = mode
+    setSolComplianceModeState(mode)
+    const id = activeSolutionRef.current?.id
+    if (id) {
+      try {
+        localStorage.setItem(solModeKey(id), mode)
+      } catch {
+        /* 隐私模式 / 配额超：静默降级为仅本次会话生效 */
+      }
+    }
+  }, [])
+
+  /** 问题1+2：生成设置补丁——同步 ref 供生成回调读取 + 即时写 localStorage */
+  const setSolGenPatch = useCallback((patch: Partial<SolGenSettings>) => {
+    const next: SolGenSettings = {
+      targetPages: patch.targetPages !== undefined ? normalizeTargetPages(patch.targetPages) : solGenRef.current.targetPages,
+      figuresEnabled: patch.figuresEnabled !== undefined ? patch.figuresEnabled === true : solGenRef.current.figuresEnabled,
+    }
+    solGenRef.current = next
+    setSolGenState(next)
+    const id = activeSolutionRef.current?.id
+    if (id) {
+      try {
+        localStorage.setItem(solGenKey(id), JSON.stringify(next))
+      } catch {
+        /* 隐私模式 / 配额超：静默降级为仅本次会话生效 */
+      }
+    }
   }, [])
 
   const persistSolution = useCallback(
@@ -354,6 +470,9 @@ export function useSolutionStudio() {
   const [formInfo, setFormInfo] = useState<HospitalInfo>(emptyHospitalInfo)
   const [outlineDraft, setOutlineDraft] = useState<OutlineNode[]>([])
   const [outlineLoading, setOutlineLoading] = useState(false)
+  // ux-01：确认大纲创建方案的在途护栏——ref 同步拦双点/连按 Enter 重复 POST，state 只驱动按钮禁用反馈
+  const [confirming, setConfirming] = useState(false)
+  const confirmingRef = useRef(false)
   const draftSourceRef = useRef<{ outline: OutlineNode[] } | null>(null)
 
   const openNewWizard = useCallback(() => {
@@ -494,10 +613,14 @@ export function useSolutionStudio() {
   }, [])
 
   const confirmOutline = useCallback(async () => {
+    // ux-01：在途互斥——上一次创建未落地前直接忽略（双点/连按 Enter/网络慢时重复提交），防创建多个同名方案
+    if (confirmingRef.current) return
     if (!outlineDraft.length) {
       toast.error("大纲为空，请先生成或添加章节")
       return
     }
+    confirmingRef.current = true
+    setConfirming(true)
     const chapters: Chapter[] = outlineDraft.map((n) => ({
       node_id: n.id,
       title: n.title,
@@ -550,6 +673,9 @@ export function useSolutionStudio() {
       }
     } catch {
       toast.error("方案创建失败，请稍后重试")
+    } finally {
+      confirmingRef.current = false
+      setConfirming(false)
     }
   }, [applySolutionState, checklist.myChecklists, formChecklistId, formHospital, formInfo, formOpportunityId, formSolutionName, formTypeKey, outlineDraft, userId])
 
@@ -699,6 +825,136 @@ export function useSolutionStudio() {
 
   // ------------------------------ 章节 AI 操作 ------------------------------
 
+  // 知识库自动复用（RAG）：共享可见文档缓存（kbAssemble 模块级，TTL 内不重复拉全库）
+  const ensureKbCache = useCallback((): Promise<KbDocRow[]> => {
+    return getCachedVisibleDocs(userId).catch(() => [] as KbDocRow[])
+  }, [userId])
+  // 问题 4：弹药库标准问答会话内缓存（同 kbCache 模式），正文生成时一并注入
+  const qaCacheRef = useRef<KbQaPairRow[] | null>(null)
+  useEffect(() => {
+    qaCacheRef.current = null
+  }, [userId])
+  const ensureQaCache = useCallback(async (): Promise<KbQaPairRow[]> => {
+    if (qaCacheRef.current) return qaCacheRef.current
+    try {
+      const pairs = visibleQaPairs(await listKbQaPairs(), userId).filter((r) => r.status === "approved")
+      qaCacheRef.current = pairs
+      return pairs
+    } catch {
+      return []
+    }
+  }, [userId])
+  const buildKbRefBlock = useCallback(
+    async (query: string): Promise<string> => {
+      const q = query.slice(0, 600)
+      const blocks: string[] = []
+      try {
+        const docs = await ensureKbCache()
+        if (docs.length) {
+          // 组装层第一期：按方案赛道（查询派生）+ 方案用途桶软加权，Top-K 5
+          const { hits } = assembleKbContext(docs, {
+            query: q,
+            track: deriveTrack(q),
+            buckets: ["方案素材", "政策法规标准", "产品资料"],
+            topN: 5,
+          })
+          if (hits.length) {
+            blocks.push(
+              hits
+                .map(
+                  (h) =>
+                    `（来源：《${h.doc.title}》${h.headingPath ? ` · ${h.headingPath}` : ""}）\n${contextSnippetOf(h.doc, { snippet: h.snippet })}`,
+                )
+                .join("\n\n"),
+            )
+          }
+        }
+      } catch {
+        /* 检索失败不阻断生成，素材块置空 */
+      }
+      try {
+        const pairs = await ensureQaCache()
+        const scored: { pair: KbQaPairRow; score: number }[] = []
+        for (const pair of pairs) {
+          const matched = matchQaPair(q, [pair])
+          if (matched) scored.push({ pair, score: matched.score })
+        }
+        scored.sort((a, b) => b.score - a.score)
+        for (const { pair } of scored.slice(0, 2)) {
+          blocks.push(`（来源：弹药库 · ${pair.question}）\n${(pair.answer ?? "").slice(0, 500)}`)
+        }
+      } catch {
+        /* 弹药匹配失败同样不阻断 */
+      }
+      return blocks.join("\n\n")
+    },
+    [ensureKbCache, ensureQaCache],
+  )
+
+  // 问题 1：章节自动补足——低于预算 60% 时续写最多 2 轮；超写按 1.3× 预算段落边界裁剪
+  const CHAPTER_MIN_RATIO = 0.6
+  const CHAPTER_MAX_CONT_ROUNDS = 2
+  const MAX_TOKENS_CONTINUE = 4096
+
+  /** 单章正文生成共用链路（单章/批量同一入口）：KB 素材 → 字数预算 → 配图 JSON 契约 → 自动续写 */
+  const generateChapterContent = useCallback(
+    async (cur: SolutionRecord, idx: number): Promise<{ content: string; figures: FigureSpec[]; underlength: boolean }> => {
+      const ch = cur.chapters[idx]
+      const kbMaterial = await buildKbRefBlock([ch.title, ...(ch.sections ?? [])].filter(Boolean).join(" "))
+      const { targetPages, figuresEnabled } = solGenRef.current
+      const wordBudget = targetPages > 0 ? chapterWordBudgets(cur.chapters, targetPages)[idx] : 0
+      const text = await llmGenerate(
+        buildChapterMessages(
+          {
+            solution_name: cur.solution_name,
+            solution_type: cur.solution_type,
+            hospital: cur.hospital,
+            hospital_info: cur.hospital_info,
+            outline: cur.outline,
+          },
+          cur.chapters,
+          idx,
+          kbMaterial,
+          solComplianceModeRef.current,
+          wordBudget || undefined,
+          figuresEnabled,
+        ),
+        MAX_TOKENS_LONGFORM,
+        "solution-chapter",
+      )
+      const parsed = parseChapterOutput(text, figuresEnabled)
+      let content = parsed.content
+      for (let round = 0; wordBudget > 0 && round < CHAPTER_MAX_CONT_ROUNDS && content.length < wordBudget * CHAPTER_MIN_RATIO; round++) {
+        const cont = await llmGenerate(
+          buildSolContinueMessages(
+            {
+              solution_name: cur.solution_name,
+              solution_type: cur.solution_type,
+              hospital: cur.hospital,
+              hospital_info: cur.hospital_info,
+            },
+            ch.title,
+            content,
+            wordBudget - content.length,
+            solComplianceModeRef.current,
+          ),
+          MAX_TOKENS_CONTINUE,
+          "solution-chapter",
+        )
+        const extra = stripOverlap(content, cont.trim())
+        if (!extra) break
+        content = `${content}\n\n${extra}`
+      }
+      if (wordBudget > 0) content = trimToBudget(content, Math.round(wordBudget * 1.3)).text
+      return {
+        content,
+        figures: parsed.figures,
+        underlength: wordBudget > 0 && content.length < wordBudget * CHAPTER_MIN_RATIO,
+      }
+    },
+    [buildKbRefBlock],
+  )
+
   const runGenerateChapter = useCallback(
     async (nodeId: string) => {
       const cur = activeSolutionRef.current
@@ -708,25 +964,12 @@ export function useSolutionStudio() {
       setChapterBusy(nodeId)
       updateChapter(nodeId, { gen_status: "generating" }, { persist: false })
       try {
-        const text = await llmGenerate(
-          buildChapterMessages(
-            {
-              solution_name: cur.solution_name,
-              solution_type: cur.solution_type,
-              hospital: cur.hospital,
-              hospital_info: cur.hospital_info,
-              outline: cur.outline,
-            },
-            activeSolutionRef.current?.chapters ?? cur.chapters,
-            idx,
-          ),
-          MAX_TOKENS_LONGFORM,
-          "solution-chapter",
-        )
-        updateChapter(nodeId, { content: text.trim(), gen_status: "done" })
+        const chNow = cur.chapters[idx]
+        const { content, figures, underlength } = await generateChapterContent(cur, idx)
+        updateChapter(nodeId, { content, figures, underlength, gen_status: "done" })
         if (activeChapterId === nodeId) {
-          editingContentRef.current = text.trim()
-          setEditingContentState(text.trim())
+          editingContentRef.current = content
+          setEditingContentState(content)
         }
         await lastPersistRef.current
         const all = activeSolutionRef.current?.chapters ?? []
@@ -735,7 +978,8 @@ export function useSolutionStudio() {
         } else if (all.some((c) => c.gen_status === "done")) {
           updateSolution({ doc_status: "partial" as DocStatus })
         }
-        toast.success(`「${cur.chapters[idx].title}」正文已生成`)
+        toast.success(`「${chNow.title}」正文已生成（${content.length} 字${figures.length ? `，含 ${figures.length} 张配图` : ""}）`)
+        if (underlength) toast.warning("本章成稿明显低于字数预算，可用「扩写」补充")
       } catch (e) {
         updateChapter(nodeId, { gen_status: "failed" })
         toast.error(e instanceof Error ? e.message : "正文生成失败，请重试")
@@ -743,7 +987,7 @@ export function useSolutionStudio() {
         setChapterBusy(null)
       }
     },
-    [activeChapterId, updateChapter, updateSolution],
+    [activeChapterId, updateChapter, updateSolution, generateChapterContent],
   )
 
   const generateChapter = useCallback(
@@ -779,6 +1023,7 @@ export function useSolutionStudio() {
             ch.title,
             ch.content,
             extraInstruction,
+            solComplianceModeRef.current,
           ),
           MAX_TOKENS_LONGFORM,
           "solution-rewrite",
@@ -938,6 +1183,85 @@ export function useSolutionStudio() {
     return scored.slice(0, 20).map((s) => s.pair)
   }, [materialQaPairs, materialQuery, userId])
 
+  // sol5 智能推荐：切到任意章节，按「章标题 + 小节名」对知识库 / 弹药库 / 历史方案本地打分推荐，
+  // 与手动搜索共用同一套脱敏与可见性策略（searchKbDocs / visibleQaPairs），零 AI 调用零后端改动
+  const chapterMaterialRecos = useMemo<MaterialRecoItem[]>(() => {
+    const ch = activeChapter
+    if (!ch || ch.part === "biz") return []
+    const q = [ch.title, ...(ch.sections ?? [])].filter(Boolean).join(" ")
+    if (!q.trim()) return []
+    const out: MaterialRecoItem[] = []
+    for (const h of searchKbDocs(materialKbVisible, q, 2)) {
+      const snippet = contextSnippetOf(h.doc, { snippet: h.snippet })
+      out.push({
+        key: `kb:${h.doc.id}:${h.chunkStart ?? "doc"}`,
+        source: "kb",
+        title: h.doc.title,
+        badge: h.headingPath || h.doc.folder_path || "知识库",
+        snippet,
+        text: snippet,
+        label: `《${h.doc.title}》${h.headingPath ? ` · ${h.headingPath}` : ""}`,
+      })
+    }
+    const approved = visibleQaPairs(materialQaPairs, userId).filter((r) => r.status === "approved")
+    const scoredAmmo: { pair: KbQaPairRow; score: number }[] = []
+    for (const pair of approved) {
+      const matched = matchQaPair(q, [pair])
+      if (matched) scoredAmmo.push({ pair, score: matched.score })
+    }
+    scoredAmmo.sort((a, b) => b.score - a.score)
+    for (const { pair } of scoredAmmo.slice(0, 2)) {
+      out.push({
+        key: `ammo:${pair.id}`,
+        source: "ammo",
+        title: pair.question,
+        badge: pair.category || "标准问答",
+        snippet: pair.answer,
+        text: pair.answer,
+        label: `弹药库 · ${pair.question}`,
+      })
+    }
+    // 历史方案只取「其他方案」的成稿章节，避免推荐当前方案自己的本章
+    const titleTokens = tokenizeText(ch.title ?? "").filter((t) => t.length >= 2)
+    if (titleTokens.length) {
+      const hist: { block: MaterialHistoryBlock; score: number }[] = []
+      for (const sol of solutions) {
+        if (sol.id === activeSolution?.id) continue
+        for (const c of sol.chapters ?? []) {
+          const text = (c.content ?? "").trim()
+          if (!text) continue
+          let hit = 0
+          for (const tok of titleTokens) if ((c.title ?? "").includes(tok)) hit++
+          if (hit > 0) {
+            hist.push({
+              block: {
+                key: `${sol.id}:${c.node_id}`,
+                solutionId: sol.id,
+                solutionName: sol.solution_name,
+                chapterTitle: c.title ?? "",
+                text,
+              },
+              score: hit,
+            })
+          }
+        }
+      }
+      hist.sort((a, b) => b.score - a.score)
+      for (const { block } of hist.slice(0, 2)) {
+        out.push({
+          key: `history:${block.key}`,
+          source: "history",
+          title: `${block.solutionName} · ${block.chapterTitle}`,
+          badge: "历史方案",
+          snippet: block.text,
+          text: block.text,
+          label: `${block.solutionName} · ${block.chapterTitle}`,
+        })
+      }
+    }
+    return out.slice(0, 6)
+  }, [activeChapter, materialKbVisible, materialQaPairs, userId, solutions, activeSolution?.id])
+
   const materialHistoryBlocks = useMemo<MaterialHistoryBlock[]>(() => {
     const blocks: MaterialHistoryBlock[] = []
     for (const sol of solutions) {
@@ -966,6 +1290,9 @@ export function useSolutionStudio() {
   // 引用即复制：插入当前章节 textarea 光标处（无光标焦点则追加章末），绝不写源库
   const chapterTextareaRef = useRef<HTMLTextAreaElement | null>(null)
 
+  // sol5 插入回执：编辑器绿色提示 + 撤销（仅当仍停留在插入时的章节才展示，无需 effect 清理）
+  const [lastInsert, setLastInsert] = useState<{ nodeId: string; payload: string; label: string } | null>(null)
+
   const insertMaterialToChapter = useCallback(
     (text: string, sourceLabel: string) => {
       if (!activeChapterId) {
@@ -984,10 +1311,41 @@ export function useSolutionStudio() {
         next = cur.trim() ? `${cur.replace(/\s+$/, "")}\n\n${payload}` : payload
       }
       setEditingContent(next)
+      setLastInsert({ nodeId: activeChapterId, payload, label: sourceLabel })
       toast.success("已插入，记得改写融合")
     },
     [activeChapterId, setEditingContent],
   )
+
+  // sol5 插入回执派生与撤销
+  const insertNotice = lastInsert && lastInsert.nodeId === activeChapterId ? lastInsert : null
+
+  const undoMaterialInsert = useCallback(() => {
+    if (!lastInsert) return
+    const cur = editingContentRef.current
+    const idx = cur.indexOf(lastInsert.payload)
+    if (idx >= 0) {
+      setEditingContent(cur.slice(0, idx) + cur.slice(idx + lastInsert.payload.length))
+      toast("已撤销插入")
+    } else {
+      toast.error("插入内容已被手动编辑，无法自动撤销")
+    }
+    setLastInsert(null)
+  }, [lastInsert, setEditingContent])
+
+  // sol5 待补充检测：章小节标题未在正文出现的项（本地字符串覆盖判定，零 AI），供编辑器橙色提醒条
+  const missingChapterSections = useMemo<string[]>(() => {
+    const ch = activeChapter
+    if (!ch || ch.part === "biz") return []
+    const sections = (ch.sections ?? []).filter(Boolean)
+    if (!sections.length) return []
+    const body = `${editingContent || ch.content || ""}`.replace(/\s+/g, "")
+    if (!body) return [] // 尚未生成正文时不重复提醒（编辑器已有空态引导）
+    return sections.filter((s) => {
+      const key = s.replace(/^[0-9.、\s]+/, "").replace(/\s+/g, "")
+      return key.length >= 2 && !body.includes(key)
+    })
+  }, [activeChapter, editingContent])
 
   // ------------------------------ 历史方案入素材库向导（轮次 E-2） ------------------------------
 
@@ -1031,26 +1389,12 @@ export function useSolutionStudio() {
       setGenProgress({ current: i + 1, total })
       updateChapter(ch.node_id, { gen_status: "generating" }, { persist: false })
       try {
-        const text = await llmGenerate(
-          buildChapterMessages(
-            {
-              solution_name: cur.solution_name,
-              solution_type: cur.solution_type,
-              hospital: cur.hospital,
-              hospital_info: cur.hospital_info,
-              outline: cur.outline,
-            },
-            cur.chapters,
-            i,
-          ),
-          MAX_TOKENS_LONGFORM,
-          "solution-chapter",
-        )
-        updateChapter(ch.node_id, { content: text.trim(), gen_status: "done" })
+        const { content, figures, underlength } = await generateChapterContent(cur, i)
+        updateChapter(ch.node_id, { content, figures, underlength, gen_status: "done" })
         okCount += 1
         if (activeChapterId === ch.node_id) {
-          editingContentRef.current = text.trim()
-          setEditingContentState(text.trim())
+          editingContentRef.current = content
+          setEditingContentState(content)
         }
       } catch (e) {
         failedCount += 1
@@ -1082,7 +1426,7 @@ export function useSolutionStudio() {
         `生成结束，${failedCount} 个章节失败：${firstError.slice(0, 80) || "原因未知"}；可稍后单独重试失败章节`,
       )
     else toast.success("全部章节正文生成完毕")
-  }, [activeChapterId, flushEditingContent, updateChapter, updateSolution])
+  }, [activeChapterId, flushEditingContent, updateChapter, updateSolution, generateChapterContent])
 
   const startBulkGenerate = useCallback(() => {
     const cur = activeSolutionRef.current
@@ -1121,46 +1465,110 @@ export function useSolutionStudio() {
     if (exportingWord) return
     setExportingWord(true)
     try {
+      // 问题 3：导出全格式驱动（字体/字号/首行缩进/行距/标题/表格/配图），与投标文件导出共用 createFormatDocxKit 同一套映射
+      const { fontRun, headingAt, headingPara, bodyPara, splitTableRow, buildFmtTable } = createFormatDocxKit(ssFmt)
       // R007（B-4 阶段一）：前置封面 + 目录（按模板开关），正文追加其后
-      const children: (Paragraph | TableOfContents)[] = [...buildExportFrontMatter(sol, expTpl)]
+      const children: (Paragraph | Table | TableOfContents)[] = [...buildExportFrontMatter(sol, expTpl)]
+      const h0 = headingAt(0)
       children.push(
         new Paragraph({
           heading: HeadingLevel.TITLE,
           alignment: AlignmentType.CENTER,
-          children: [new TextRun({ text: sol.solution_name, bold: true, size: 44 })],
+          spacing: { after: 200 },
+          children: [fontRun(sol.solution_name, { font: h0.font, size: h0.size, bold: true })],
         }),
       )
       children.push(
         new Paragraph({
           alignment: AlignmentType.CENTER,
           spacing: { after: 360 },
-          children: [new TextRun({ text: `${sol.hospital} · ${typeLabel(sol.solution_type)}`, size: 24 })],
+          children: [
+            fontRun(`${sol.hospital} · ${typeLabel(sol.solution_type)}`, { font: ssFmt.body.font, size: ssFmt.body.size }),
+          ],
         }),
       )
-      sol.chapters.forEach((ch, idx) => {
-        children.push(
-          new Paragraph({
-            heading: HeadingLevel.HEADING_1,
-            spacing: { before: 320, after: 200 },
-            children: [new TextRun({ text: `第${idx + 1}章 ${ch.title}`, bold: true, size: 32 })],
-          }),
-        )
-        const lines = (ch.content || "").split("\n")
-        for (const rawLine of lines) {
-          const line = rawLine.trim()
-          if (!line) continue
+      const chapterPrefix = (idx: number) =>
+        ssFmt.titleNumbering === "none" ? "" : ssFmt.titleNumbering === "chapter" ? `第${idx + 1}章 ` : `${idx + 1} `
+      for (const [idx, ch] of sol.chapters.entries()) {
+        children.push(headingPara(0, `${chapterPrefix(idx)}${ch.title}`, { before: 320, after: 200 }))
+        const paras: (Paragraph | Table)[] = []
+        let firstBodyAt = -1
+        const cleanContent = sanitizeChapterText(ch.content || "")
+        const contentLines = cleanContent
+          .split("\n")
+          .map((l) => l.trim())
+          .filter(Boolean)
+        let li = 0
+        while (li < contentLines.length) {
+          const line = contentLines[li]
+          // 连续 ≥2 行全角空格分列视为表格块，转真正的 docx 表格（边框/单元格字体随格式设置）
+          const headCols = splitTableRow(line)
+          if (headCols) {
+            const block: string[][] = [headCols]
+            let lj = li + 1
+            while (lj < contentLines.length) {
+              const nextCols = splitTableRow(contentLines[lj])
+              if (!nextCols) break
+              block.push(nextCols)
+              lj++
+            }
+            if (block.length >= 2) {
+              if (firstBodyAt === -1) firstBodyAt = paras.length
+              paras.push(buildFmtTable(block))
+              li = lj
+              continue
+            }
+          }
           const isSubHeading =
-            ch.sections.some((s) => line.startsWith(s)) || /^\d+[.、]\s*\S/.test(line) || /^\d+\.\d+/.test(line)
-          children.push(
-            new Paragraph({
-              heading: isSubHeading ? HeadingLevel.HEADING_2 : undefined,
-              spacing: { after: 120 },
-              children: [new TextRun({ text: line, bold: isSubHeading, size: isSubHeading ? 26 : 24 })],
-            }),
-          )
+            (ch.sections ?? []).some((s) => line.startsWith(s)) || /^\d+[.、]\s*\S/.test(line) || /^\d+\.\d+/.test(line)
+          const isH3 = /^（[一二三四五六七八九十]+）/.test(line)
+          if (!isSubHeading && !isH3 && firstBodyAt === -1) firstBodyAt = paras.length
+          paras.push(isSubHeading ? headingPara(1, line) : isH3 ? headingPara(2, line) : bodyPara(line))
+          li++
         }
-      })
-      // 循环 9 C2：页面级格式（纸张/边距/页码）按方案 localStorage 设置生效；正文样式保持现状
+        // 问题 2：章节配图 SVG→PNG 插入正文首段后；单张转换失败降级「【图】标题」文字行
+        const figs = ch.figures ?? []
+        if (figs.length) {
+          const figParas: Paragraph[] = []
+          for (const spec of figs) {
+            const png = await figureToPng(spec)
+            const figCaption = (spec.caption ?? "").trim()
+            if (png) {
+              const drawW = 460
+              const drawH = Math.max(40, Math.round((drawW * png.height) / png.width))
+              figParas.push(
+                new Paragraph({
+                  alignment: AlignmentType.CENTER,
+                  spacing: { before: 160, after: 60 },
+                  children: [new ImageRun({ type: "png", data: png.data, transformation: { width: drawW, height: drawH } })],
+                }),
+              )
+            } else {
+              figParas.push(bodyPara(`【图】${spec.title}`))
+            }
+            figParas.push(
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { after: figCaption ? 40 : 160 },
+                children: [fontRun(spec.title, { font: ssFmt.body.font, size: ssFmt.body.size, italics: true })],
+              }),
+            )
+            if (figCaption) {
+              figParas.push(
+                new Paragraph({
+                  alignment: AlignmentType.CENTER,
+                  spacing: { after: 160 },
+                  children: [fontRun(figCaption, { font: ssFmt.body.font, size: ssFmt.body.size })],
+                }),
+              )
+            }
+          }
+          const insertAt = firstBodyAt === -1 ? paras.length : firstBodyAt + 1
+          paras.splice(insertAt, 0, ...figParas)
+        }
+        children.push(...paras)
+      }
+      // 循环 9 C2：页面级格式（纸张/边距/页码）按方案 localStorage 设置生效
       // R007（B-4 阶段一）：页眉文字与目录自动更新域按导出模板生效
       const pageOpts = pageOptsFromFormatSettings(ssFmt, { pageNumber: ssFmt.pageNumber })
       await downloadDocx(
@@ -1172,7 +1580,7 @@ export function useSolutionStudio() {
           updateFields: expTpl.toc || undefined,
         },
       )
-      toast.success("Word 文档已导出，封面/目录/页眉按导出模板、纸张页边距按页面设置生效")
+      toast.success("Word 文档已导出：封面/目录/页眉按导出模板，字体/字号/行距/缩进/标题/配图按格式模板生效")
     } catch {
       toast.error("导出失败，请稍后重试")
     } finally {
@@ -1233,6 +1641,7 @@ export function useSolutionStudio() {
     setFormInfo,
     outlineDraft,
     outlineLoading,
+    confirming,
     submitWizardInfo,
     confirmOutline,
     outlineRename,
@@ -1265,6 +1674,11 @@ export function useSolutionStudio() {
     materialLoading,
     insertMaterialToChapter,
     chapterTextareaRef,
+    // sol5 智能推荐 / 插入回执 / 待补充小节提醒
+    chapterMaterialRecos,
+    insertNotice,
+    undoMaterialInsert,
+    missingChapterSections,
     // 历史方案入素材库（轮次 E-2）
     kbWizardSolution,
     openSolutionToKb,
@@ -1278,9 +1692,15 @@ export function useSolutionStudio() {
     docStatusLabel,
     exportWord,
     exportingWord,
-    // 循环 9 C2：方案导出页面格式（按方案存 localStorage）
+    // 循环 9 C2：方案导出格式（完整 FormatSettings：页面/正文/标题/表格/目录，按方案存 localStorage）
     ssFmt,
     setSsFmtPatch,
+    // 问题1+2：生成设置（目标页数/配图开关，按方案存 localStorage）
+    solGen,
+    setSolGenPatch,
+    // 05 §6：方案侧三模式（按方案存 localStorage）
+    solComplianceMode,
+    setSolComplianceMode,
     // R007（B-4 阶段一）：方案导出模板（封面/目录/页眉，按方案存 localStorage）
     expTpl,
     setExpTplPatch,

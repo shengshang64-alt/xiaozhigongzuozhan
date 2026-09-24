@@ -3,8 +3,9 @@
 // - 平台内置 gpt-5.5：仍走 @/lib/llm 的 callLlmWithFallback（poll-first 由其内部处理）
 // - 收到 fallback_to_platform 时自动回退平台模型
 import { getPocketBaseUrl } from "@/lib/pb"
-import { vibexAuthHeaders } from "@/lib/rhLogin"
+import { vibexAuthHeaders, decodeRhToken } from "@/lib/rhLogin"
 import { callLlmWithFallback, type LlmCallResult, type LlmMessage } from "@/lib/llm"
+import { llmCacheGet, llmCacheSet } from "@/lib/llmCache"
 
 export const PLATFORM_MODEL_ID = "gpt-5.5"
 export const TEST_PROMPT = "请用一句话介绍你自己"
@@ -181,13 +182,49 @@ export interface ChatViaGatewayOptions {
   max_tokens?: number
   temperature?: number
   page?: string
+  /** p1-ux：外部可中断信号；用户点「取消」时置 aborted，前端区分于服务超时 */
+  signal?: AbortSignal
+  /**
+   * LLM 降耗：开启后对「同模型 + 完整 messages + 参数 + page」完全一致的请求做精确响应缓存，
+   * 命中直接返回、不再出站计费。默认关闭——不改变「重新生成」等期望每次新结果的调用行为，
+   * 仅由确定性强、重复收益高的调用（如知识库问答）显式开启。
+   */
+  cacheable?: boolean
+  /** 缓存存活时长（毫秒），默认 24h */
+  cacheTtlMs?: number
+}
+
+// 精确缓存命中口径：把影响输出的全部入参序列化为一一映射的稳定 identity。
+function llmCacheIdentity(opts: ChatViaGatewayOptions): string {
+  const ref = opts.modelRef
+  const isPlatform = !ref || ref.source === "platform"
+  return JSON.stringify({
+    src: isPlatform ? "platform" : "personal",
+    cid: isPlatform ? "" : ref!.configId,
+    mid: isPlatform ? PLATFORM_MODEL_ID : ref!.modelId,
+    msgs: opts.messages,
+    mt: opts.max_tokens ?? null,
+    t: opts.temperature ?? null,
+    p: opts.page ?? "",
+  })
+}
+
+export async function chatViaGateway(opts: ChatViaGatewayOptions): Promise<LlmCallResult> {
+  if (!opts.cacheable) return chatViaGatewayUncached(opts)
+  const userId = decodeRhToken()?.sub ?? null
+  const identity = llmCacheIdentity(opts)
+  const hit = await llmCacheGet(userId, identity)
+  if (hit) return hit
+  const result = await chatViaGatewayUncached(opts)
+  void llmCacheSet(userId, identity, result, opts.cacheTtlMs)
+  return result
 }
 
 // 个人模型出站前端兜底超时：服务端转发上限 120s，留 30s 余量；
 // 防跨服务重启的请求连接半开挂死、生成按钮无限转圈不报错
 const PERSONAL_CHAT_TIMEOUT_MS = 150_000
 
-export async function chatViaGateway(opts: ChatViaGatewayOptions): Promise<LlmCallResult> {
+async function chatViaGatewayUncached(opts: ChatViaGatewayOptions): Promise<LlmCallResult> {
   const ref = opts.modelRef
   if (!ref || ref.source === "platform") {
     return callLlmWithFallback(PLATFORM_MODEL_ID, {
@@ -195,10 +232,24 @@ export async function chatViaGateway(opts: ChatViaGatewayOptions): Promise<LlmCa
       page: opts.page,
       max_tokens: opts.max_tokens,
       temperature: opts.temperature,
+      signal: opts.signal,
     })
   }
   const ctrl = new AbortController()
   const timer = window.setTimeout(() => ctrl.abort(), PERSONAL_CHAT_TIMEOUT_MS)
+  // 用户主动取消 → 联动内部 ctrl.abort；用 userAborted 标记区分服务超时
+  let userAborted = false
+  if (opts.signal) {
+    if (opts.signal.aborted) {
+      userAborted = true
+      ctrl.abort()
+    } else {
+      opts.signal.addEventListener("abort", () => {
+        userAborted = true
+        ctrl.abort()
+      }, { once: true })
+    }
+  }
   let res: GwResult<{ text: string; model?: string }>
   try {
     res = await gwFetch<{ text: string; model?: string }>(`/api/model-gw/chat`, {
@@ -215,6 +266,9 @@ export async function chatViaGateway(opts: ChatViaGatewayOptions): Promise<LlmCa
   } finally {
     window.clearTimeout(timer)
   }
+  if (userAborted) {
+    return { ok: false, status: "failed", text: "", error: "user_cancelled" }
+  }
   if (!res.ok && ctrl.signal.aborted) {
     return { ok: false, status: "failed", text: "", error: "个人模型请求超时（可能网络波动或服务重启），请重试或切换平台内置模型" }
   }
@@ -229,6 +283,7 @@ export async function chatViaGateway(opts: ChatViaGatewayOptions): Promise<LlmCa
         page: opts.page,
         max_tokens: opts.max_tokens,
         temperature: opts.temperature,
+        signal: opts.signal,
       })
     }
     return { ok: false, status: "failed", text: "", error: res.message || "生成失败，请重试" }

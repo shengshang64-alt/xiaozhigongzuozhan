@@ -120,7 +120,7 @@ export function TenderStep({
                 {parseLoading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ScanSearch className="mr-1.5 h-4 w-4" />}
                 {parseLoading
                   ? parseChunkProgress
-                    ? `正在解析第 ${parseChunkProgress.current}/${parseChunkProgress.total} 段…`
+                    ? `正在解析第 ${parseChunkProgress.current}/${parseChunkProgress.total} 项…`
                     : "AI 解析中，约需 1-2 分钟…"
                   : "AI 解析招标文件"}
               </Button>

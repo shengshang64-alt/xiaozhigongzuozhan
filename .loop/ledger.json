@@ -1,0 +1,567 @@
+{
+  "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
+  "target": "http://127.0.0.1:8000/",
+  "round": 31,
+  "backlog": [
+    {
+      "id": "prompt-matrix-02",
+      "module": "/bid-workspace",
+      "issue": "合并稿 v1.0 第二批(§四~§五/要求2)：评分细项编号体系 R1/R1-1 + 主观/客观分项标注与主观分项清单汇总 + 大纲叶子 description [响应:Rx-x] 承接标注 + 提纲层评分点覆盖矩阵审核(未覆盖即打带回灌重生成)；需改 tech_score/biz_score 解析 guide 与 buildBidOutlineMessages/审核环，配合 vitest 锈死；占位/铁律底座已在 R30 落地",
+      "standard": [
+        "A4",
+        "D13"
+      ],
+      "priority": "P1",
+      "status": "done",
+      "evidence": "vitest 59/59 exit0(新增 scoringNumbering.test.ts 11 用例：编号稳定性 R1/R2/B1、主客观启发式、注入行格式逐字、矩阵全角逗号/英文 Response 标注解析、商务章标注不计入、空报告/空大纲静默降级与诚实暴露) / tsc -b exit0 / eslint 新增代码 0 error(bidTypes 命中 5 错均存量为 lint-debt-01 已登记行 3324/3395/3800/3817/6511，useBidWorkspace 命中行均早于本轮改动区) / build exit0(2.23s)。运行时零 AI(dev :8000 动态 import)：bidTypes/solutionTypes/ScoreMappingPanel/ComposeStep/useBidWorkspace 全部加载成功；浏览器实跑 numberScoringItems→normalizeOutline→buildScoringCoverageMatrix→findUncoveredScoringIds 链路正确(ids=[R1:主观,R2:客观,B1:客观]、矩阵 R1/R2→承接叶子、uncovered=[])；0 console error/warn。与 backlog 文字偏差(均已在实现时收口)：①编号经 R31-Plan 定稿为单层稳定编号 R1..Rn/B1..Bn(弃两层 R1-1：解析行无父子结构，强造两层会引入臆造层级)；②不改解析 guide，编号由 extractScoringFromText 本地确定性抽取后分配(prompt/右栏矩阵/生成对账三处同源，零成本零漂移)；③未覆盖不打回自动重生成，改为诚实暴露：生成完成 toast 点名未覆盖编号 + 右栏矩阵橙色未承接，由用户决策重生成(避免未确认的 AI 费用)",
+      "diff": "bidTypes.ts：新增 NumberedScoringItem/classifySubjective/numberScoringItems/numberedScoringDetailLines/buildScoringCoverageMatrix/collectResponseAnnotations，findUncoveredScoringIds 重构为矩阵推导(此前无调用方)；buildBidOutlineMessages 注入编号细则行+[响应:Rx] 承接标注规则+格式示例(上轮已落)；分步大纲 call2 buildOutlineChildrenMessages 同步编号注入与叶子承接规则(无评分项时静默、空规则过滤)。solutionTypes.ts：OutlineNode 增 description(上轮已落)；normalizeOutline 改为任意层级透传 description(修复分步大纲 children 解析深度从 1 起导致的标注丢弃)。ScoreMappingPanel.tsx：评分点清单改用同源编号项(R-id 徽标+主观/客观标签)，升级为承接(大纲标注对账)↔映射(正文相似度)双向展示，顶部「承接 x/y · 映射 x/y」，未承接橙色点名。ComposeStep.tsx：两处面板调用传 outline={proj.bid_outline ?? []}。useBidWorkspace.ts：大纲生成完成后本地对账，toast 追加「评分点承接 x/y(未承接：R3、R5…/未携带标注提示)」，零新增 AI 调用。新增 scoringNumbering.test.ts(11 用例)。未动 pb_hooks/未动后端模型"
+    },
+    {
+      "id": "prompt-fabscan-03",
+      "module": "/bid-workspace",
+      "issue": "合并稿 v1.0 第三批(§七/要求4)：输出前对标核查升级——P7.1 逐条对标核查四态(完全/部分/未响应/无法确认+整改建议按章聚合回灌)与 P7.2 编造内容扫描(数字/名称/承诺值/占位符/矛盾五类对象交叉比对，疑似编造未清零禁导出)接入交卷体检；与 content-guard-03(LLM 语义增量)合并评估防重叠；检查器保持模式中立(R6 否决不变)",
+      "standard": [
+        "D14"
+      ],
+      "priority": "P1",
+      "status": "open",
+      "evidence": "",
+      "diff": ""
+    },
+    {
+      "id": "numeric-consistency-01",
+      "module": "/bid-workspace,/ppt-quote",
+      "issue": "全文数值一致性检查器(08报告 3.2-3，用户点名废标级价值提前)：同一数值(预算金额/工期/质保期)在大纲·正文·偏离表·报价间正则对账，不一致列表告警；纯本地零 AI，与 content-guard-03(LLM 语义增量)互补不重叠",
+      "standard": [
+        "D14"
+      ],
+      "priority": "P1",
+      "status": "open",
+      "evidence": "",
+      "diff": ""
+    },
+    {
+      "id": "prompt-extract-01",
+      "module": "/bid-workspace",
+      "issue": "提示词纯搬迁式抽离(08报告 §2.P1，用户 2026-09-22 拍板解除 bidTypes.ts 禁重构红线、限定只搬不改字)：32+ 个 build*Messages 原样搬到 prompts/ 分任务文件，bidTypes.ts 留 re-export，每个构造器加 PROMPT_VERSION；分批(每批≤5 构造器)，配合 vitest 快照锈死文本不变；改语义仍需用户确认",
+      "standard": [
+        "A4"
+      ],
+      "priority": "P2",
+      "status": "open",
+      "evidence": "",
+      "diff": ""
+    },
+    {
+      "id": "ux-05",
+      "module": "/assistant",
+      "issue": "记忆提供编辑/删除/失效，清理陈旧矛盾事实",
+      "standard": [
+        "A3"
+      ],
+      "priority": "P3",
+      "status": "open",
+      "evidence": "",
+      "diff": ""
+    },
+    {
+      "id": "perf-02",
+      "module": "/solution-studio",
+      "issue": "大纲编辑器121输入框虚拟滚动/可折叠分组；AI长耗时加流式或分步进度",
+      "standard": [
+        "C12"
+      ],
+      "priority": "P3",
+      "status": "open",
+      "evidence": "",
+      "diff": ""
+    },
+    {
+      "id": "content-guard-03",
+      "module": "/bid-workspace,/solution-studio",
+      "issue": "06#9 一致性规则2/3/4(量化依据/数据量级自洽/政策时效)需 LLM+KB 接地，作为事后检查的 AI 增量另立(本轮 R7 已落纯本地规则1/5)",
+      "standard": [
+        "D14"
+      ],
+      "priority": "P2",
+      "status": "open",
+      "evidence": "",
+      "diff": ""
+    },
+    {
+      "id": "lint-debt-01",
+      "module": "/bid-workspace",
+      "issue": "bidTypes.ts 8 处历史 lint(no-useless-assignment/irregular-whitespace/useless-escape) 清零，本轮防翻车改动未新增错误",
+      "standard": [
+        "A4"
+      ],
+      "priority": "P3",
+      "status": "open",
+      "evidence": "",
+      "diff": ""
+    },
+    {
+      "id": "crm-b04-others",
+      "module": "all",
+      "issue": "/api/opportunities、/api/follow_records 等自定义路由 totalItems 同样谎报=本页条数(实测 opportunities: items=1 totalItems=1)；当前无 UI 依赖，危害低，可照 customers.pb.js 同款批量修",
+      "standard": [
+        "A2"
+      ],
+      "priority": "P3",
+      "status": "open",
+      "evidence": "",
+      "diff": ""
+    },
+    {
+      "id": "crm-consistency-01",
+      "module": "/",
+      "issue": "首页 useHome.ts:439 客户数仍用「本页条数 + 200 上限」；/api/customers 现已返回真总数，可统一采信，消除「客户>200 时首页显示 200+、客户管理页显示真实数」的两页口径差异",
+      "standard": [
+        "B8"
+      ],
+      "priority": "P3",
+      "status": "open",
+      "evidence": "",
+      "diff": ""
+    },
+    {
+      "id": "quote-history-01",
+      "module": "/ppt-quote",
+      "issue": "B2 报价历史库：项目结单沉淀报价明细，报价页按医院等级+床位数+模块组合给参考区间；先做历史报价列表+手工参考，渐进增强",
+      "standard": [
+        "B8"
+      ],
+      "priority": "P2",
+      "status": "open",
+      "evidence": "",
+      "diff": ""
+    },
+    {
+      "id": "gap-pool-01",
+      "module": "/competitors",
+      "issue": "B3 竞品差距→能力需求池：AI深度分析采纳写回时标记差距项，汇入能力需求清单，方案生成时可按项目引用(针对X差距的应对)",
+      "standard": [
+        "D13"
+      ],
+      "priority": "P3",
+      "status": "open",
+      "evidence": "",
+      "diff": ""
+    },
+    {
+      "id": "kb-semantic-01",
+      "module": "/knowledge",
+      "issue": "C2 语义检索升级：为每篇预生成embedding存kb_docs字段，前端算余弦相似度增强现有关键词二元组打分；6千条×1024维前端可承载，不需向量库服务，守禁Node边车决策",
+      "standard": [
+        "A1"
+      ],
+      "priority": "P2",
+      "status": "open",
+      "evidence": "",
+      "diff": ""
+    }
+  ],
+  "closed": [
+    {
+      "id": "content-guard-01",
+      "module": "/bid-workspace",
+      "issue": "第1轮止血：防翻车块增量三条(规模量级自洽/政策时效/术语统一)进正文生成提示词",
+      "standard": [
+        "D13",
+        "D14"
+      ],
+      "priority": "P1",
+      "status": "done",
+      "evidence": "tsc --noEmit exit=0；eslint 新增 0 错误(8 处告警均为改动区外历史遗留)；纯提示词改动，零 UI/零数据模型变更",
+      "diff": "bidTypes.ts +30：新增导出常量 FULLTEXT_GUARD_RULES(3 条)，注入 buildBidChapterMessages/buildBidSectionMessages/buildBidContinueMessages/buildBidRefineMessages 四个正文生成器，与 BID_STYLE_RULES 同级编号；避让已存在的'技术参数忠实/承诺克制/防编造占位/禁装饰符号'不重复"
+    },
+    {
+      "id": "compliance-01",
+      "module": "/assistant,/solution-studio",
+      "issue": "评审标准/分值/分级类问题强制走知识库接地并标注来源，无解则拒答，禁止编造数值门槛",
+      "standard": [
+        "D13"
+      ],
+      "priority": "P0",
+      "status": "done",
+      "evidence": "tsc exit0/eslint 0 新增/build 2.01s；纯提示词零逻辑变更",
+      "diff": "assistantCore.ts buildSystemPrompt 新增『领域硬事实题强制接地(最高优先级)』：评审/测评标准·分值门槛·政策指标·建设规模类问题必须先 [[FETCH:kb_docs]] 接地，无据则如实说知识库暂无并建议以官方文件为准，严禁凭记忆编造分值/门槛/条款编号；KB_QA_SYSTEM_PROMPT 已有兜底未重复改"
+    },
+    {
+      "id": "compliance-02",
+      "module": "/bid-workspace,/competitors,/solution-studio",
+      "issue": "禁用绝对化/保证性承诺；竞品话术禁贬损与不实，加'仅供内部参考'",
+      "standard": [
+        "D14"
+      ],
+      "priority": "P0",
+      "status": "done",
+      "evidence": "tsc exit0/eslint 0 新增(8 处历史遗留不变)/build exit0；顺带修一处自造错别字 诋毁",
+      "diff": "BID_STYLE_RULES 追加『禁绝对化承诺』(确保通过/满分/100%/万无一失/零风险→可核实口径)；SOL_STYLE_RULES 追加『禁绝对化承诺』并点名禁『确保通过电子病历五级/互联互通评级』；useCompetitorTalks TALK_SYSTEM_PROMPT 追加 req6『禁贬损/诋毁/不实+仅供内部参考不得写入对外投标』"
+    },
+    {
+      "id": "backend-01",
+      "module": "/solution-studio,/bid-workspace,/ppt-quote",
+      "issue": "doc_templates 接口 401 清零，恢复模板列表可见",
+      "standard": [
+        "A2"
+      ],
+      "priority": "P1",
+      "status": "done",
+      "evidence": "网络层坐实(本地 dev :8000/__pb)：无 X-Rh-User-Id→401、带→200；solution=2/bid=2/ppt=1 条；/download 带→200(225KB 模板原件)、不带→401；isLocalDeployHost 含 127.0.0.1 故浏览器端 vibexAuthHeaders 逐字等价；tsc/eslint/build 全绿",
+      "diff": "CompanyTemplateHint.tsx 纯前端修复(未碰 pb_hooks 红线/未重启 PB)：列表 fetch 补 vibexAuthHeaders()；下载改为带鉴权头 fetch→blob→a.download 触发(因 <a href> 直链发不了自定义头)，失败走 sonner toast"
+    },
+    {
+      "id": "bid-mode-switch-01",
+      "module": "/bid-workspace",
+      "issue": "05 compliance_mode 三档(strict/moderate/full) 首版·方案B：full 只放宽表达+增设小节、不新增可验收承诺；注入正文主战场",
+      "standard": [
+        "D13",
+        "D14"
+      ],
+      "priority": "P2",
+      "status": "done",
+      "evidence": "tsc exit0 / eslint 新增0(遗留 lint-debt-01 不变) / build exit0；运行时浏览器坐实(dev :8000 项目编制步)：三档渲染、默认高亮=严格偏离表(缺省零改动)，点适度方案→激活切换+每小节字数联动 800→1000，点回严格→字数回落 800，无 console error；测试项目已恢复原态",
+      "diff": "方案B 首版·正文主战场。bidTypes.ts: GenOptions 加 compliance_mode/section_words_touched，defaultGenOptions/normalizeGenOptions 容错缺省 strict；新增 ComplianceMode 类型·LABEL·SECTION_WORDS(800/1000/1400)·complianceModeRule(strict/缺省 返空串=prompt 字节级不变)，注入 buildBidChapterMessages/buildBidSectionMessages(仅 moderate/full 注入)。useBidWorkspace.ts: setComplianceMode(仿 intra_dup 先例)+section_words_touched 门控字数联动，setSectionWords 置 touched，baseOpts/小节重写调用透传 complianceMode，return 暴露 complianceMode/setComplianceMode。GenerationSettingsBar.tsx: 第一行首加三选一卡片+提示语；ComposeStep/BidWorkspacePage 透传 setComplianceMode。全零 collection 变更(搭 gen_options json 列)；全链路注入(大纲/偏离表/评标/覆盖审计)与方案A 承诺清单留待后续轮"
+    },
+    {
+      "id": "bid-mode-outline-01",
+      "module": "/bid-workspace",
+      "issue": "05 compliance_mode 三档全链路·大纲侧(§5.4)：full 允许按项目增设支撑性技术章，moderate 小节数随评分点、不加章，strict 现状零改动",
+      "standard": [
+        "D13",
+        "D14"
+      ],
+      "priority": "P2",
+      "status": "done",
+      "evidence": "tsc exit0 / eslint 新增0(bidTypes 8 处历史遗留不变) / build exit0；运行时浏览器坐实(dev :8000 项目编制步)：full 往返——点充分方案→激活+字数联动 1400、PATCH bid_projects 200(gen_options.compliance_mode=full 落库，大纲调用点即读此值)，点回严格回落 800、项目复原态；模块图无 stale-binding、无 console error",
+      "diff": "第5轮·大纲生成侧。bidTypes.ts: 新增 complianceOutlineRule(mode)(strict/缺省 返空串=大纲 prompt 字节级不变；moderate 锁八章不加顶层章；full 给候选增设章清单+相关性约束)；buildBidOutlineMessages opts 加 complianceMode，numbered 骨架 push 后条件追加规则句。useBidWorkspace.ts: buildBidOutlineMessages 调用点透传 complianceMode: cur.gen_options?.compliance_mode。承 R4 的 setComplianceMode/字数联动复用，无新数据字段。余 §5.3 下游校验与 §6 方案侧见 bid-mode-checkers-01"
+    },
+    {
+      "id": "bid-mode-checkers-01",
+      "module": "/solution-studio",
+      "issue": "05 三模式收尾：§6 方案侧 buildChapterMessages/buildRefineMessages 注入(SOL 默认 moderate)已做；§5.3 偏离表/评标/覆盖审计注入模式经审慎评估=不做(守审计中立)",
+      "standard": [
+        "D13",
+        "D14"
+      ],
+      "priority": "P2",
+      "status": "done",
+      "evidence": "tsc exit0 / eslint 新增0(git stash 基线对比：改动前这4文件同样10处 error，均为 set-state-in-effect/forward-ref/memo 历史遗留) / build exit0(2.10s)；运行时浏览器坐实(dev :8000 /solution-studio 编辑器头)：三选一渲染·默认高亮'适度深化'(moderate)，点充分扩展→激活切换+提示更新+localStorage ss_mode_<id>=full 即时落库，点严守需求→strict 同步，验证后删 ss_mode_ 键复原原态；无 console error",
+      "diff": "第6轮。§6 方案侧(生成面)：solutionTypes.ts 新增 SolutionComplianceMode·SOL_COMPLIANCE_MODE_DEFAULT=moderate·LABEL/HINT/MODES·normalizeSolMode·solComplianceModeRule(换锚'以医院需求为界'：strict 不新增系统清单/moderate 需求项内深化/full 增设支撑章但不加码可验收承诺)·solRefineModeRule(仅 expand 注入)；buildChapterMessages/buildRefineMessages 各加 complianceMode 形参并注入。useSolutionStudio.ts: solComplianceMode state+ref，按方案 localStorage(ss_mode_ 仿 ssFmt 零 collection)读写，applySolutionState 加载，setSolComplianceMode setter，3 处调用点透传。EditorWorkspace/SolutionStudioPage: 编辑器头三选一控件+传参。【§5.3 审慎否决】buildEvalMessages(4595 注释'技术路=buildEvalMessages 不动'/'评标三路…审计要保持中立')、偏离表(4484'判定保守宁可多提醒')、覆盖/废标(防误报硬规则)是防废标安全网，注入生成模式会让检查器对漏项放松=危险方向，违代码库承重不变量；按 代码/配置>文档 优先级与售前判断保留检查器 mode-blind+保守，05 §5.3 记为 won't-do(留证)"
+    },
+    {
+      "id": "content-guard-02",
+      "module": "/bid-workspace",
+      "issue": "06#9 全文一致性事后检查器·纯本地零AI首版：规则1(指标口径唯一性)+规则5(占位元话语/绝对化承诺残留)并入交卷体检",
+      "standard": [
+        "D14"
+      ],
+      "priority": "P2",
+      "status": "done",
+      "evidence": "tsc exit0 / eslint 新增0(git stash 基线对比：改动前后同样 13 error/12 warning 全为历史遗留) / build exit0(2.40s)；运行时浏览器动态 import 纯函数零改动验证(dev :8000)：RPO=0 vs <1小时命中、RPO 4小时 vs 240分钟 单位归一不命中(防误报)、可用性99.9% vs 99.99%命中、确保通过/待补充/请填写命中而【待填写】约定合法不命中；FORMAT_RULE_LABEL 两新键解析正确且 normalizeFormatCheckReport 白名单存活(未知规则丢弃)；无 console error",
+      "diff": "第7轮·纯本地零AI，复用既有交卷体检框架(format_report/hits/FORMAT_RULE_LABEL 通吃渲染)，零新 UI/零 LLM/零数据模型。bidTypes.ts +110：FormatCheckRule 加 metric_conflict|meta_leftover，FORMAT_RULE_LABEL 加两 label(白名单存活)；新增 METRIC_SPECS(仅收单位明确、项目级单值的 RPO/RTO/系统可用性，丢弃易误报的响应时间/并发数)、timeToSeconds(毫秒/秒/分/时/天/周/月/年归一)、metricConflictHits(跨章同指标不同归一值→warn，措辞'若非分层SLA请统一')、META_LEFTOVER_RE(不含约定合法的'待填写')、ABSOLUTE_PROMISE_RE、metaLeftoverHits(每章每类≤2、总≤30)。useBidWorkspace.ts +5：buildFormatReportFor 在 numberConflictHits 后 append metricConflictHits+metaLeftoverHits。规则2/3/4(需LLM+KB)另立 content-guard-03"
+    },
+    {
+      "id": "ux-01",
+      "module": "/solution-studio",
+      "issue": "确认大纲创建方案防重复提交：在途互斥护栏(ref 同步)+按钮禁用反馈，杜绝双点/连按 Enter 生成多个同名方案",
+      "standard": [
+        "A3",
+        "C12"
+      ],
+      "priority": "P1",
+      "status": "done",
+      "evidence": "tsc exit0 / eslint 新增0(git stash 基线对比：改动前后这3文件同样 11 error/1 warning，均为 set-state-in-effect/react-compiler TDZ 历史遗留) / build exit0(2.68s)；运行时浏览器坐实(dev :8000 /solution-studio 走『以此为底稿』复用向导零 LLM 成本到第三步)：同一 tick 对『确认大纲，进入编制』连发两次 .click()→网络层仅 1 条 POST /api/solutions(200)、方案总数 5→6(仅新增 1 行)证明 ref 护栏生效；测后 DELETE 删除测试行(200)总数回 5、reload 无 console error、列表复原 5 卡",
+      "diff": "第8轮·纯前端零红线。根因：confirmOutline 无在途互斥—outlineLoading 仅管大纲生成步，创建 POST 期间第三步按钮 disabled={outlineLoading} 与 Enter 处理均未禁用→双击/连按 Enter 触发多次 POST 建多个同名方案。useSolutionStudio.ts：新增 confirming state + confirmingRef(ref 同步拦同一 tick 重复调用，state 仅驱动 UI)；confirmOutline 入口 `if (confirmingRef.current) return`+置位，finally 复位；return 暴露 confirming。NewSolutionWizard.tsx：Pick 加 confirming，第三步按钮 disabled={outlineLoading||confirming}+confirming 时显 Loader2『创建中…』，Enter step3 加 ||p.confirming 短路。SolutionStudioPage.tsx：向 NewSolutionWizard 传 confirming={p.confirming}。向导成功后本就 setWizardOpen(false) 关窗跳编辑器(既有)，本轮补齐其缺失的重复提交防护"
+    },
+    {
+      "id": "ux-02",
+      "module": "/competitors",
+      "issue": "'档案列表/图表总览'Tab 无法切换——实测不可复现(测试假阴性)，Tab 与竞品档案详情均正常",
+      "standard": [
+        "A1"
+      ],
+      "priority": "P1",
+      "status": "done",
+      "evidence": "运行时浏览器坐实(dev :8000 /competitors)：默认落在『对比分析』，用真实 mousedown 事件序列(pointerdown/mousedown/mouseup/click)逐个切 图表总览→档案列表→对比分析，data-state 正确迁移、可见 tabpanel 随动；elementFromPoint 命中测试确认 tab 中心点命中的就是该 BUTTON 本身(无遮罩挡点击)；点厂商行 setSelectedId 生效、右侧 DetailPanel 渲染(竞争研判/档案完整度等标记齐)。无 console error。零代码改动=按 代码/配置>台账结论 优先级判定为既有正常，不伪造修复。browser-use click 工具在本 app 持续 5s 超时(已知工具级问题、非页面缺陷)",
+      "diff": "无。根因推断：早先全页面体检用裸 element.click() 只派发 click 不派发 mousedown，而 Radix Tabs.Trigger 在 mousedown 上 select()，故合成 .click() 对 Radix Tab 是假阴性(与本仓 setPointerCapture/点击踩坑同源)。经充分复现判为不可复现的测试假阴性、非产品缺陷，守『不夹带无关改动』不做防御性 hack(改 Tab 兼容裸 click 无用户价值且违背 Radix 语义)。backlog 摘除 ux-02"
+    },
+    {
+      "id": "type-scale-01",
+      "module": "all",
+      "issue": "全站标题收敛为一套 type scale + 修 /format-tool PageHeader 破损：实测仅 /format-tool 旁路共享 PageHeader，其余 8 页已统一；迁 FormatTool 上 PageHeader 即完成收敛",
+      "standard": [
+        "B5",
+        "B6"
+      ],
+      "priority": "P1",
+      "status": "done",
+      "evidence": "tsc exit0 / eslint 改动文件 0 problems / build exit0(3.06s)；运行时浏览器坐实(dev :8000)：/format-tool h1『格式刷新』class 与 /competitors h1『竞品分析』逐字相同 text-xl font-semibold tracking-tight text-foreground lg:text-2xl，计算样式均 32px/600/-0.8px；desc 由内联 span 归位为独立 <p>；两按钮动作(上传/从零定义)保留；无 console error。CSS-only 零数据改动",
+      "diff": "第11轮·纯前端零红线。Measure 纠台账一处夸大：全站页面级标题其实早已收敛于共享 PageHeader(BidWorkspace/IntelCenter/Team/ModelConfig/Knowledge/CustomerManagement/Competitors/Assistant 8 页均 import+用)，唯 /format-tool 旁路用自定义 header 并把描述内联进 h1 span、缺 tracking-tight/lg:text-2xl、夹带 Layers 图标——即『破损』；无 32/48px 页面标题混用。修复=FormatToolPage.tsx 删自定义 header 改 <PageHeader title/desc/actions>(去内联图标对齐其余无图标页)，删未用 Layers import、加 PageHeader import。canonical scale 由 PageHeader 单点持有，迁上去即自动收敛"
+    },
+    {
+      "id": "crm-b03-b04",
+      "module": "/customer-management",
+      "issue": "客户管理「客户总数」显示已加载条数(20)而非真实总数(161)：/api/customers totalItems 恒=本页条数(B-04) + CrmStatsRow 未传 capped 无「+」提示(B-03)",
+      "standard": [
+        "A2",
+        "B8"
+      ],
+      "priority": "P0",
+      "status": "done",
+      "evidence": "接口实测(重启PB前后对照)：perPage=20 → totalItems 20→161；perPage=50/200 与 page=2 均恒为 161(真总数不随分页漂移)；带筛选 q=三明 → items=2 totalItems=2(筛选口径正确)；不带 X-Rh-User-Id 仍 401(门禁未破坏)。浏览器实机(dev :8000 /customer-management)：统计卡『161 客户总数』(修复前 20)、列表头『共 161 家医院客户』(修复前『已加载 20 家』)；agent-browser click 点『加载更多客户』→『已加载 40 家 / 共 161 家』且卡片仍 161；控制台 0 error。回归：首页『客户 161』不变、0 error。接口耗时 5–12ms(同款 solutions 5–9ms)。构建 npx tsc -b && npx vite build exit 0(5.15s)；eslint 133e/15w 逐文件与改动前完全一致、新增 0。兼容性判定表 5/5 PASS(含后端未重启场景)。诚实项：未留存修复前界面截图(改动前未开浏览器)，修复前表现由接口实测+代码路径+docs 测试报告三处互证；构建曾出现 1 次不可复现的打包器偶发失败，已重跑 3 次全绿",
+      "diff": "第10轮·A类修·S0 指标显示错误，两层根因一起修。①pocketbase/pb_hooks/customers.pb.js +10：totalItems 改返回过滤后真总数，镜像 solutions.pb.js 的 D-9 先例(findRecordsByFilter 大 limit 计数，PB v0.40 JSVM 无 countRecordsByFilter)；未改 schema/数据模型，只改自定义路由返回值。②useCustomerManagement.ts：loadAll 采信 cTotal>cItems.length 的真总数、否则回退旧启发式(满页⇒null 未知)、未满页⇒本页条数；loadMoreCustomers 同步；stats 增 customerCountCapped=totalCustomers===null；return 暴露。③CustomerManagementPage.tsx +1 传 customerCountCapped。④CrmStatsRow.tsx：新增 customerCountCapped 可选 prop 并接 capped(数字加「+」)，顺带修正 capped 悬浮提示『基于最近 200 条』→『基于当前已加载的数据』(客户每页 20 条，原文为错误陈述)。零新增依赖、零业务数据改动。PB 重启一次(PID 10008→19800，参数与 start-local.cmd 一致)"
+    },
+    {
+      "id": "home-01",
+      "module": "/",
+      "issue": "首页最新动态：20 条无限高(实测 1147px/1.27×视口)含精确重复→按可见签名去重+折叠限高≤6+查看全部",
+      "standard": [
+        "B7"
+      ],
+      "priority": "P1",
+      "status": "done",
+      "evidence": "tsc exit0 / eslint 0 problems / build exit0(2.84s)；运行时浏览器坐实(dev :8000 /)：折叠态 section 457px(原 1147px，↓60%)、6 行、可见区零精确重复、徽标『最近 18 条』(原 20 条→合并 2 组同方案/同标书重复)；点『查看全部 18 条』→18 行/1081px、再点『收起』→回落 6 行/457px，往返正常；无 console error；纯 UI state 零数据改动",
+      "diff": "第12轮·纯前端零红线，仅改视图层 ActivityFeedSection.tsx(+44/-4)，数据钩子 useActivityFeed 不动(仍返回原始 events 作单一数据源)。新增 useMemo+useState(COLLAPSED_LIMIT=6)：按 kind|title|desc 可见签名去重(合并同方案名+同医院等完全重复条目，保守不并描述不同者如转载同题情报)；折叠 visible=expanded?全部:前6；页脚『查看全部 N 条/收起』按钮(ChevronDown/ChevronUp)。计数徽标与空态判定改用 deduped.length 保持口径一致"
+    },
+    {
+      "id": "home-02",
+      "module": "/",
+      "issue": "首页新增『今日必看』置顶行动条：逾期/今日到期/进行中三组聚合，首屏唯一强调整点，进行中项目上移到首屏",
+      "standard": [
+        "B7",
+        "B8",
+        "C10"
+      ],
+      "priority": "P1",
+      "status": "done",
+      "evidence": "tsc exit0 / eslint 基线对比 0 新增(改动前 useHome 同样 3 处 set-state-in-effect 历史 error，行号位移 283/501/680→303/521/700，新文件 0 错) / build exit0；运行时浏览器坐实(dev :8000 /)：三组语义色正确 已逾期=text-destructive、今日到期=text-warning、进行中=text-muted-foreground，徽标计数=各项和；种子数据(1 逾期标书/1 今日方案/1 今日待办)→徽标『4 项待处理』逾期1到期2进行1，日期算术准(逾期12天/今日截止/今天到期)；点项目项→复用既有项目详情 Dialog(标题+进度滑杆、不跳转)、点待办项→navigate /customer-management，两分支均验；测后 3 条 __TEST 临时记录 DELETE 200 复原、reload 回 1 项、无残留；无 console error(仅 ECharts 既有 log)",
+      "diff": "第13轮·纯前端零红线、零新增请求(mustSee 复用 useHome 已拉取的 todos/opportunities/projects 内存派生)。新增组件 MustSeeTodayBar.tsx(132 行)：三组 GROUP_TONE 语义色对齐 badge.tsx 设计系统(逾期=destructive/到期=warning/进行中=neutral；成功态本 DS 用 primary 非绿，故空态 CheckCircle2 用 text-primary、未自造 theme 里不存在的 text-success)；每组≤3 行+计数徽标控高；点 item.project→onOpenProject(复用 selectedProject 驱动 ProjectsSection 的 Dialog)，点 item.route→useNavigate。useHome.ts：导出 MustSeeItem/MustSeeToday 类型，新增 mustSee useMemo(待办 overdue/today 桶 + followDueOpps overdue/today + projects deadline 日差→逾期/今日截止/进行中三归，active 按 deadline 升序)，return 暴露 mustSee。HomePage.tsx：WelcomeBanner 后、StatsRow 前置顶 <MustSeeTodayBar>，loading=todosLoading||crmLoading||projectsLoading，onOpenProject=openProjectDetail。『进行中项目上移』=把活跃项目提进首屏行动条(点击开同一详情弹窗)，未物理迁移底部 ProjectsSection(避免大改布局)"
+    },
+    {
+      "id": "home-03",
+      "module": "/",
+      "issue": "首页空态卡(胜负复盘/待跟进商机)无数据时折叠为一行提示，不各占整卡；有数据时恢复渲染整卡",
+      "standard": [
+        "B9"
+      ],
+      "priority": "P1",
+      "status": "done",
+      "evidence": "tsc exit0 / eslint 改动 3 文件 0 问题(新建 EmptyHintLine + 两卡文件均干净，无需基线对比) / build exit0(3.50s)；运行时浏览器坐实(dev :8000 /)：①空态两卡均折叠为一行提示(待跟进 69px/胜负复盘 43px，原各占整卡)；②POST 2 条 __TEST 商机(stage=won / next_follow_date=今日)→两卡恢复整卡渲染：待跟进卡含种子行+徽章『今日到期 1』、复盘卡含环形图 canvas+『赢单 1』；③测后 DELETE 200×2、reload 回 1 条原商机、行提示回归无残留；无 console error/warn",
+      "diff": "第14轮·纯前端零红线。新建共享组件 EmptyHintLine.tsx(25 行)：虚线边框一行式空态提示(icon+主文案+hint 引导)，自身不带外边距、间距由调用方按布局上下文传(BidReview 传 mb-5，grid 并排的 FollowUp 不传避免双份间距)。BidReviewCard.tsx：decided===0 且非 loading 时 early-return 行提示，删原整卡内大虚线空态块(Trophy h-8 大图+两行文案)；loading 优先级保持(不闪提示)。FollowUpReminderCard.tsx：items 空且非 loading 时 early-return，不再渲染含恒为 0 徽章的整卡 header；删卡内旧空态块。有数据路径两卡零改动。另：本轮同步将产品级分析 7 条新 Issue 入池(warroom-01/tender-extract-01 P1、bid-checklist-01/winloss-01/quote-history-01/kb-semantic-01 P2、gap-pool-01 P3)，backlog 14→20"
+    },
+    {
+      "id": "intel-01",
+      "module": "/intel-center",
+      "issue": "情报中心降噪：主CTA filled、低频维护动作收进'更多'、信息源状态/AI打标面板默认折叠（实测按钮总数随卡片数浮动、非常量 89；真正噪声在工具栏 7 钮全平铺 + 右栏常驻说明卡）",
+      "standard": [
+        "C10",
+        "B8"
+      ],
+      "priority": "P1",
+      "status": "done",
+      "evidence": "tsc exit0 / eslint 改动 2 文件 0 问题 / build exit0(1.94s)；运行时浏览器坐实(dev :8000 /intel-center)：fresh load 工具栏常驻按钮 7→4(手动录入 filled 主CTA bg=rgb(14,124,154)/批量管理/AI周报/更多操作)、信息源+AI打标两面板默认折叠(不见'查看全部并管理')；点'更多操作'展开第二行→信息源/我的偏好/清理不相关/导出清单（10）全现；点面板标题→展开/再点→收起均正常；reload 回默认折叠态；无 console error/warn。全程零数据变更、零 AI 调用（测试中一次误触卡片 AI 打标弹计费确认框→点'取消'关闭、未确认、无费用）",
+      "diff": "第15轮·纯视图层零新依赖零后端。UI 库无 dropdown/collapsible 原语，为避免引入 Radix 新依赖与 setPointerCapture 点击失效坑，'更多'用内联换行展开(w-full 第二行、非浮层)。IntelToolbar.tsx：新增 moreOpen state；手动录入升为唯一 filled 主 CTA(bg-primary)、批量管理/AI周报留常驻、把信息源/我的偏好/清理不相关/导出清单 4 个低频维护动作收进'更多操作▾'默认折叠第二行(secondaryBtn 统一 outline、去强调色竞争)；常驻 7→3+1。IntelCenterPage.tsx：右栏信息源状态/AI摘要打标两卡改 aria-expanded 可折叠(局部 useState、默认折叠)，信息源折叠态标题行显 'N个·M异常' 摘要；有数据渲染路径零改动。台账'89按钮'为数据相关非恒定(实测 fresh load 116，且多为每卡固有确认/忽略/收藏)——按 代码>台账 只修真实可见噪声(工具栏平铺无主次 + 右栏常驻卡拉长进场屏)，不强凑按钮常量指标"
+    },
+    {
+      "id": "ux-03",
+      "module": "/bid-workspace",
+      "issue": "新建投标必填为空时静默拦截→补显式校验反馈（Measure 纠台账：createProject 对唯一必填「项目名称」已有 toast.error并非全静默；真实短板=toast 一闪而过、不落字段、无行内错提示）",
+      "standard": [
+        "A3"
+      ],
+      "priority": "P2",
+      "status": "done",
+      "evidence": "tsc exit0 / eslint 改动文件 0 问题 / build exit0；运行时浏览器坐实(dev :8000 /bid-workspace 新建对话框)：①名称空点「创建项目」→对话框保持打开+行内红字『请填写项目名称后再创建』(role=alert)+aria-invalid=true+输入框自动聚焦+红框 rgb(218,83,78)；②输入合法名→错提示消失、边框复位 rgb(224,232,235)；③点创建→成功建项目并关框；④测后 DELETE __TEST 项目 200、total 回 4、reload 无残留；无 console error/warn",
+      "diff": "第16轮·纯视图层零 hook 变更。改动收敛在 BidProjectList.tsx(+23/-6)，不动 6130 行 useBidWorkspace。新增局部 projNameErr state + projNameRef(Input 已 forwardRef可安全传 ref)；submitCreate 先本地校验 trim 非空→失败置错+focus、成功才调 createProject；项目名称 Input 接 ref+aria-invalid+条件 border-destructive 红框，行下 role=alert 红字；onChange 输入即清错；Dialog onOpenChange 关闭时 setProjNameErr('')。行内红框/红字与 hook 内原有 toast 为双保险(同一条件、无冲突)。Measure 按 代码>台账 判定静默拦截描述夸大——唯一必填本就有 toast，本轮价值=将短暂 toast 升级为持久化、锁定到字段的行内反馈+a11y(aria-invalid/role=alert)+自动聚焦"
+    },
+    {
+      "id": "ux-04",
+      "module": "/intel-center",
+      "issue": "关闭情报详情后清理 URL 的 ?item= 参数，保证回退/分享态一致",
+      "standard": [
+        "C11"
+      ],
+      "priority": "P2",
+      "status": "done",
+      "evidence": "tsc exit0 / eslint 改动文件与基线(git stash 对比)同为 27 problems(25 error/2 warn)、净新增 0(均为该文件既有 React Compiler/hooks 历史债) / build exit0；运行时浏览器坐实(dev :8000 /intel-center)：①深链 ?item=vbs542... 进入→详情自动打开(标题存在+有「关闭详情」钮)；②点关闭→location.search 由 '?item=…' 变空(参数已清、replace 不入历史栈)；③常态点卡片开详情→不加参数、再关闭→仍无参数(无幽灵参数，prev.has 守卫 no-op)；无 console error/warn；全程零数据变更",
+      "diff": "第17轮·纯前端零新依赖。仅改 useIntelCenter.ts：将 useSearchParams 声明从深链 useEffect 处上提到条目操作段前(避开 TDZ：closeDetail 早于原声明行引用 setSearchParams)，解构补出 setSearchParams；closeDetail 由 setDetailItem(null) 扩展为同时删 item 参数(has('item') 守卫、无则 return prev 不触发多余渲染)，配 { replace: true } 不新增历史条目；openDetail 不变(卡片开详情不写 URL、保持轻)。深链消费 useEffect 逻辑零改动"
+    },
+    {
+      "id": "prompt-selfcheck-01",
+      "module": "/bid-workspace",
+      "issue": "docs/07 §5.3+§5.4 落地：输出前自检段(5 项) + 历史缺陷反例(6 类真实负样本)作为事前约束注入正文生成器，把事后检查器规则前移；Measure 发现评审报告多项已过期(#1 eslint globalIgnores、#2 §5.1 参数响应边界表均已落地，报告写的 Round13/零命中为旧态)",
+      "standard": [
+        "A4",
+        "D14"
+      ],
+      "priority": "P1",
+      "status": "done",
+      "evidence": "tsc exit0 / eslint bidTypes.ts 改动后 8 problems = 基线(git stash 对比) 8 problems、净新增 0(均为 lint-debt-01 已知历史债) / build exit0(1.73s)；离线静态断言：PRE_OUTPUT_SELFCHECK_RULES 定义 1 次、符号共 5 次(1 定义+4 消费)、生成器头注入 4 处；纯 builder 文本拼接、零 AI 调用(live 跑一章仅验证输出、会耗 AI、待用户需要时单独跑)",
+      "diff": "第18轮·纯提示词文本“加约束”，零行为/零语义变更。新增导出常量 PRE_OUTPUT_SELFCHECK_RULES(bidTypes.ts，2 条：①输出前自检5项②历史缺陷反例6类，按文件既有风格各压成编号项)，紧随 PARAM_RESPONSE_BOUNDARY_RULES 注入 4 个正文生成器(buildBidChapter/Section/Continue/Refine)，与 §5.1 已落地的同款接入模式一致(编号站用 ruleNo、续写站用 body.length、改写站用 spread)；不改 BID_STYLE/FULLTEXT/PARAM 任何共享常量内容(避免影响其他消费方)，只新增专用常量×仅 4 生成器引用。属“加约束”而非“改已有约束含义”→ 不触红线。待办：报告剩余 step-1 已入池跟踪(parse-temp-01 温度、parse-validator-01 本地校验)；step-2/3(提示词从 bidTypes 抽离/拆列拆集合/知识库上限/并发控制)涉拍板或后端红线未动"
+    },
+    {
+      "id": "parse-temp-01",
+      "module": "/bid-workspace,/solution-studio",
+      "issue": "docs/07 §5.2：解析/JSON修复等确定性任务显式设 temperature=0（注：modelGateway 已支持入参、仅调用点未传），降输出方差",
+      "standard": [
+        "A4"
+      ],
+      "priority": "P2",
+      "status": "done",
+      "evidence": "tsc exit0 / eslint 改动 3 文件与基线(git stash 对比)同为 19 problems(7 errors/12 warnings)、净新增 0(均为历史 hooks 债) / build exit0；离线验证：标书侧 5 点+方案侧 1 点共 6 个确定性任务传 0、两个 llmGenerate 定义均含 temperature?: number 形参；llm.ts 守卫 0!==undefined/null 成立、modelGateway 0??null=0 → 0 正确透传。零 AI 调用(温度不改计费/身份口径；live 连解析2次一致性验证需用户点头、会耗 AI)",
+      "diff": "第19轮·纯前端零新依赖零红线。两个 llmGenerate 封装(useBidWorkspace.ts/studioLlm.ts)加可选 temperature?: number 形参并透传 chatViaGateway(不传=undefined=行为不变、llm.ts 守卫跳过)；确定性任务显式设 0：标书 withJsonRepair(全局 JSON 修复唯一收口点、覆盖所有解析修复)+bid-parse 非分块与分块+factSettings 抽取及其专属修复=5 点；方案 checklist-match(parseMatchJson 确定性匹配)=1 点。判定类(评标/覆盖审计/查重/废标/交卷体检)与大纲/正文/讲标生成保持默认未动——温度档属另一类判断、留待评估；不碰 modelGateway/llm.ts 底层、不碰计费/身份红线"
+    },
+    {
+      "id": "parse-validator-01",
+      "module": "/bid-workspace",
+      "issue": "docs/07 §4.1 缺口1：提示词「≤60字/条、≤25条/项」无本地硬兜底 → 新增纯本地 clampParseSectionContent 分档截断（界定适用 section：原文/清单型放宽防丢参数与时间，概览/摘要型收口；修幂等坑：读路径反复调用，提示行改固定文案不带漂移计数）",
+      "standard": [
+        "A4",
+        "D13"
+      ],
+      "priority": "P2",
+      "status": "done",
+      "evidence": "tsc exit0 / eslint bidTypes.ts 改动后 8 problems = git stash 基线 8 problems、净新增 0(均 lint-debt-01 历史债) / build exit0；纯本地函数离线断言 .diag/verify_parse_validator.cjs 12/12 全过(不触发 AI、零数据变更)。关键修正：Measure 坐实 clamp 挂在读路径 normalizeParseReport 会被反复调用，初版把「已截断 N 条」计数写进内容→每次打开数字漂移且不幂等(两案断言先红)，改为固定提示行+hadMarker 固化「截断过」事实(不含可漂移的 N)后转绿",
+      "diff": "新增 clampParseSectionContent(key,content) 纯函数(bidTypes.ts 解析清洗段)：概览/摘要型节 ≤25 条/节·≤60 字/条；原文/清单型节按 PARSE_LINE_CHAR_OVERRIDES(void_items/bid_deposit/bid_nodes/tech_score/biz_score/purchase_list=600 字)与 PARSE_LINE_COUNT_OVERRIDES(bid_outline_req/compilation_basis/qualification=100 条)放宽，防一刀切截掉参数与时间原文；URL 行与「原文未提及：」汇总豁免长度截断；超截断追加固定提示行(不含漂移计数以保幂等)。接线 3 处收口(与 cleanParseSectionContent 同调用点):sanitizeParseSections 落库 / mergeChunkReports 合并 / normalizeParseReport 读路径，human_edited 与 star_clauses 天然不经此。零新依赖零后端零红线"
+    },
+    {
+      "id": "ai-stability-01",
+      "module": "/solution-studio,/bid-workspace,/ppt-quote",
+      "issue": "AI 生成 JSON 遇裸控制字符时 JSON.parse 崩溃→以裸 SyntaxError 冒到用户面前：新增跨模块容错解析 parseJsonTolerant（逐级放宽：原样→结构修复→转义字符串内裸控制字符→二者叠加），3 处解析收口接线，全失败才抛一句可读、可重试的错误",
+      "standard": [
+        "A4"
+      ],
+      "priority": "P2",
+      "status": "done",
+      "evidence": "tsc exit0 / eslint 新 lib jsonTolerant.ts 0 problems、改动 3 个 tracked 文件 after 8 = git stash 基线 8、净新增 0(均既有历史债 lint-debt-01) / build exit0；离线断言 .diag/verify_json_tolerant.cjs 11/11 全过(控制字符转义/结构修复/叠加/全失败友好报错/成功路径与 JSON.parse 逐字等价，零 AI)；运行时冒烟 dev :8000 /bid-workspace 加载 import 链 hydrate 无 console error/warn。Measure 坐实 3 处收口(extractJsonLoose L2733、parseOutlineJson L323(bid+solution 共用)、parseJsonLoose ppt L356)原为无 try 的裸抛面；happy path 首次尝试即命中 JSON.parse、行为零变化",
+      "diff": "第21轮·纯前端零新依赖零红线。新建 src/lib/jsonTolerant.ts(84 行，无任何外部 import 不可能成环)：escapeControlCharsInStrings 手写扫描器仅转义字符串字面量内 code<0x20 的裸字节(结构区换行/空格合法不动、已有的 \\n \\\" 等两字符转义靠 esc 态跳过)；parseJsonTolerant(text, repair?) 按 [原样→repair→转义→repair(转义)] 逐级 try JSON.parse、全失败才抛「AI 返回内容不是有效 JSON，请重试」。3 处收口各改 import + 1 调用：bidTypes.ts extractJsonLoose(标书全链 extractJsonLoose(raw) 调用的共同收口，传既有 repairJsonCandidate)、solutionTypes.ts parseOutlineJson(bid+solution 共用)、pptQuoteTypes.ts parseJsonLoose。withJsonRepair 既有「自动重试」保持不变——二次仍失败时重抛的不再是裸 SyntaxError。承 R19：自动重试能力本就在，本轮补齐的是崩溃兜底这一半"
+    },
+    {
+      "id": "kb-cap-01",
+      "module": "/knowledge",
+      "issue": "知识库加载硬上限致尾部文档静默不可见 + 首屏白屏（Measure 纠台账：台账记『MAX_PAGES=30×200=6000、6423 里 423 篇静默不可见、首屏 40–61s、仅静态核对未实机复现』为旧态；运行时坐实两半均已在制轮次落地并生效）",
+      "standard": [
+        "A1",
+        "B9"
+      ],
+      "priority": "P0",
+      "status": "done",
+      "evidence": "运行时浏览器坐实(dev :8000 /knowledge)：①真实总数 6423(page1–32 各 200 + page33=23 + page34 空收敛)，past6000=true 证明当前 listKbDocs 已突破旧 6000 上限、423 篇不再被静默丢弃；未撞 12000 安全上限故不误弹扩容告警。②IndexedDB kb-doc-cache:local-user 已建立(saveKbCache/loadKbCache 接线 useKnowledge 挂载：缓存优先直显、TTL 5min 内跳网络、超期后台全量校准回写)，页面正常渲染文档计数(团队库 1717)非白屏。③单页全量含 content ~3.2s × ~33 页=冷加载 ~60–100s(evaluate 工具 15s 超时侧面印证慢)，暖缓存路径即时。④无 app 级 console error/warn(唯一 403 是探测 superuser-only 标准集合端点的测试自伤、非页面)。附带坐实：自定义 /api/kb_docs 路由 totalItems 谎报=本页条数(200)、与 crm-b04 同族。",
+      "diff": "无本轮新增代码——kb-cap-01 两半已由在制轮次落地并经运行时验证生效：①截断：kbCore.ts KB_LIST_MAX_PAGES 30(=6000)→60(=12000)，注释直接点名『423 篇静默丢弃·kb-cap-01』；②性能：新建 src/lib/kbDocCache.ts(IndexedDB stale-while-revalidate)接线 useKnowledge 首屏直显 + refreshDocs 回写；③可观测：refreshDocs 命中上限由 console.warn 改 toast.warning 显式告知。按 代码/配置>台账 与 ux-02 先例判为『已解决·本轮实测坐实并纠台账数字』，守不夹带无关改动——冷加载 ~60–100s 的真正收敛(按文件夹懒加载/服务端检索)属 perf-01/kb-semantic-01 既定范围，不在本 Issue 强推。另 /api/kb_docs totalItems 谎报已在 crm-b04-others 覆盖同类，无需新立。"
+    },
+    {
+      "id": "warroom-01",
+      "module": "/bid-workspace",
+      "issue": "A1 投标项目作战室 v1：项目详情一屏聚合招标要点+我方章节进度+检查器红黄灯+该客群竞品battlecard+相关情报，替代横跨解析/编制/查重/废标/评标/竞品/情报多页人肉找信息",
+      "standard": [
+        "B7",
+        "C10"
+      ],
+      "priority": "P1",
+      "status": "done",
+      "evidence": "tsc -b exit0 / eslint 新文件 BidWarRoom.tsx + 改动 OpportunityLinkBar/BidWorkspacePage 均 0 问题(自研组件避开 set-state-in-effect：懒加载改事件驱动 onOpenChange 触发) / build exit0(2.32s)；运行时浏览器坐实(dev :8000 /bid-workspace 两项目)：①待解析项目→五区块全渲染、三纯派生块走合法空态(未解析/0章/暂无招标要点+引导)、竞品懒加载命中 4 家 battlecard、情报按采购人检索为空走空态、0 console error/warn；②编制中项目(三明市中西医结合医院)→招标条款待响应1项warning、我方技术章 14/28 章 96,528 字、招标要点 9 评分项+项目概述/甲方/资格性审查/废标项逐区前5行要点全渲染(取自己加载 parse_report 零额外请求)，0 console error/warn；作战室全程只读零写库、reload 无残留",
+      "diff": "第23轮·纯前端零新依赖零后端零 collection 变更。新建 src/components/bid-workspace/BidWarRoom.tsx(自含触发按钮+Dialog、max-w-4xl+ScrollArea、五区块 grid lg:2 列)：【三纯派生零请求】①招标要点 sectionText 取 overview/purchaser_info/qualification/void_items/tech_score/biz_score/bid_nodes/bid_deposit 前 5 行(长行截断)+scoringItemsFromReport 评分构成②我方章节 bid_outline 过part!=biz 算技术章总数、bid_chapters content 非空算已生成、累加字数③检查器红黄灯：riskCount/missCount(页传 p.voidCriticalUnresolved/p.uncoveredClauses.length)+submission_check.format_report warn/info 计数+dup_report.suspect_count+ai_review.total_score，Badge 语义四档(danger/warning/success/neutral)。【两懒加载(onOpenChange 事件驱动、kickedRef 幂等)】④该客群竞品 listCompetitors()后按 竞品名/legal_name/keywords 命中『采购人+项目名+tender_text+全部分区』语料判相关，无具名命中按 enrichProgress 回退 top3 并标注“仅供内部研判”⑤相关情报 fetch /api/intel/items?q=采购人&item_status=pending,confirmed&per_page=8，卡片深链 /intel-center?item=<id>(复用 ux-04 深链)。接入：OpportunityLinkBar 加可选 warRoomSlot prop 渲染在头部右侧；BidWorkspacePage detail 分支传 <BidWarRoom activeProject missCount riskCount/>。复用既有 competitorsCore/intel 路由/bidTypes 纯函数，未改 useBidWorkspace(6137行)/未碰 pb_hooks/未改数据模型。v1 只读聚合不跳流转(仅情报深链)，与检查器互跳、竞品按医院在任系统厂家 SystemVendor 更细粒度定相、向导/一键转任务等增强留待后续轮"
+    },
+    {
+      "id": "tender-extract-01",
+      "module": "/bid-workspace",
+      "issue": "A2 招标文件→要求清单结构化抽取(废标/资质/评分/格式)+人工确认作偏离表/评标/覆盖审计的项目专属基准",
+      "standard": [
+        "A4",
+        "D13"
+      ],
+      "priority": "P1",
+      "status": "done",
+      "evidence": "Measure 全链源码坐实四类需求均已落为解析报告分区、可人工确认、且被三个检查器消费：①废标→void_items ②资质→qualification(强制项加[强制]前缀) ③评分点与分值→tech_score/biz_score ④格式要求→response_req(核心关键项·guide 明列组成/格式/签字盖章/装订/递交，scope=key 默认解析)，四者 human_edited 标记可改。抽取增强：ComplianceMatrixPanel R016 一次 LLM 补扫四类条款写回 parse_report(走 runWithCostConfirm 费用门禁)+buildComplianceRows 覆盖矩阵逐条人工标覆盖状态/响应章节(localStorage)。检查器消费此专属基准：交卷体检 runSubmissionCheck 读 scoringItemsFromReport+sectionText(void_items) 做实质响应覆盖审计(useBidWorkspace L4619-4620/L4668-4673)；评标 runEval 读 scoringItemsFromReport+combinedScoringText(L440/L4433)且含独立 format 路(mergeAiReview tech/format/commercial L4464)；偏离表 generateDeviationTable/response_map 消费解析条款。零新增代码——按 代码/配置>台账 与 kb-cap-01/ux-02 先例判为已由 R005/R008/R009/R016+交卷体检+偏离表+评标交付",
+      "diff": "无本轮新增代码——Issue 四类抽取+人工确认+三检查器专属基准消费均已在制轮次落地并经源码坐实。真实残差(把已人工确认的强制资格[强制]项与 response_req 格式/份数/签章要点 surfaced 成交卷前逐项目就绪清单)不属本 Issue、避免为已交付 P1 硬凑改动，移交 bid-checklist-01：扩大 LLM 覆盖审计口径涉审计中立(R6 审慎否决保持检查器保守)，故走纯本地清单而非扩审计。已据此回写 backlog 中 bid-checklist-01 并解除其对 tender-extract-01 的依赖。质量门(tsc/eslint/build)本 Issue 无代码改动不适用"
+    },
+    {
+      "id": "bid-checklist-01",
+      "module": "/bid-workspace",
+      "issue": "A3 交卷前逐项目合规清单：基于已落地解析分区(response_req 格式/签字盖章/装订/份数/递交 + qualification [强制]资格)纯本地生成 checklist 并 surfaced 到交卷就绪视图，与 format_report(排版)/覆盖审计(内容)合成排版+内容+形式三合一就绪度",
+      "standard": [
+        "A3",
+        "D14"
+      ],
+      "priority": "P2",
+      "status": "done",
+      "evidence": "tsc -b exit0 / eslint 3 文件(2 新+1 改) 净新增 0(新组件用 key={projectId} 重挂载+useState(()=>read) 惰性初始化规避 react-hooks/set-state-in-effect) / build exit0(2.00s)；运行时浏览器坐实(dev :8000 /bid-workspace 交卷体检步6·三明市中西医结合医院真实 parse_report)：面板本地推导生成 12 项·两分组(形式与签章要求 6 + 资格与资质文件 6)，徽标 共12 / 强制待确认7 = 7 个「必备」chip(渲染与汇总口径一致)，点「标记已备齐」→强制待确认 7→6·该行「必备」chip 消失·localStorage bid_checklist_b34a1b6b2lwo5xp={\"format:71zy98\":\"done\"} 落盘，切步3 再回步6 重挂载→进度从本机 localStorage rehydrate(该行仍 done、徽标 6)坐实惰性 useState·无 setState-in-effect；0 console error/warn。为过 step6 门控(stepEntryMissing 需 dup_report||void_check)临时给该测试项目补一条占位 void_check(既有 json 字段、非 schema/非 pb_hooks)，验后置回 null、删测试 localStorage 键，net 零改动复原",
+      "diff": "第25轮·纯前端零新依赖零后端零 collection。新建 src/pages/BidWorkspace/submissionChecklist.ts(122 行纯逻辑)：buildChecklistRows(report) 从 parse_report 的 response_req(kind=format·FORMAT_MANDATORY 正则判份数/密封/签章/装订等强制) 与 qualification(kind=qual·[强制]前缀判强制并 strip) 本地推导清单行，DJB2 rowId 报告重解析后仍对得上进度·去重·跳截断提示行；summarizeChecklist(total/pending/mandatoryPending/done/na/formatCount/qualCount)；readChecklistProgress/writeChecklistProgress 走 localStorage bid_checklist_ 前缀(complianceMatrix bid_matrix_ 同模式·try/catch 隐私模式静默降级)。新建 src/components/bid-workspace/SubmissionChecklistPanel.tsx(194 行)：key 重挂载+惰性 useState 读本机进度，两分组 grid lg:2 每行 CheckSquare 切 done / CircleSlash 切 na(pending/done/na 三态)，徽标语义对齐 badge.tsx(强制待确认 danger/待确认 warning/全部已确认 success/已备齐·不适用 neutral)，空态引导去解析两分区，页脚三态就绪文案。挂载 SubmissionCheckPanel.tsx：import + 在 CoverageAuditCard 后渲染 <SubmissionChecklistPanel report=parse_report locked=isArchivedLocked>。与既有交卷体检互补，不改 useBidWorkspace(6137 行)/未碰 pb_hooks/未改数据模型；扩 LLM 覆盖审计口径涉审计中立(R6 审慎否决)不做、走纯本地清单"
+    },
+    {
+      "id": "intel-data-01",
+      "module": "/intel-center",
+      "issue": "情报入库正文清洗(去script/JSON/导航残留)+日期解析校验+去重；抓取失败源告警",
+      "standard": [
+        "D15"
+      ],
+      "priority": "P2",
+      "status": "done",
+      "evidence": "tsc -b exit0 / eslint 新文件 intelBodyClean.ts 0 problems、useIntelCenter.ts after=25 error/2 warn = git stash 基线 25 error/2 warn 净新增 0(均为该文件既有 React Compiler/hooks 历史债) / build exit0(2.35s)；运行时浏览器坐实(dev :8000 /intel-center 手动录入对话框)：粘贴含 <script>/JSON/版权所有/纯日期/style 的脏正文 + 带 HTML 标签与实体的脏标题 → 保存 → 入库 content_snippet 仅剩两条有效正文行(脚本/JSON/版权/日期/注释/style 行全剥)，title 实体已解码(&amp;→&)、无标签、空白归一，toast「已自动清理正文中的脚本/标签与 3 行噪声内容」触发；0 console error/warn；测后 DELETE 2 条测试情报(200)、leftover=0。Measure 诚实缩围：Issue 列举的自动抓取清洗/去重/日期解析已在 pb_hooks/intel_center.pb.js crawlOne 落地(红线不可动、不重复劳动)，抓取失败源告警客户端已存在(IntelStatsRow errorCount 红字 + SourceManagerPanel.statusHint 每源 last_error)，手动录入 published_at=nowIso 无客户端日期解析面 → 唯一纯前端缺口 = 手动入库正文/标题零清洗(服务端 POST 对 content_snippet 纯 String())，本条只补此缺口",
+      "diff": "第26轮·纯前端零新依赖零后端零 collection。新建 src/pages/IntelCenter/intelBodyClean.ts(纯函数零 import)：cleanIntelBody(raw,max=2000) 剥 script/style/noscript/svg/HTML 注释整块 → <br>/块闭合转换行 → 去残留标签 → 解码常用实体 → 逐行剔 JSON/JS 残留行(JSON_LINE_RE)/导航版权噪声行(NOISE_LINE_RE 镜像服务端 noiseRe 并扩充 扫一扫/关注公众号/联系我们/返回顶部/上下篇/责任编辑等)/纯日期行(DATE_ONLY_RE 镜像 dateOnlyRe) → 归一空白并按 max 截断，返回 {text,changed,removedLines}；cleanIntelLine(raw) 单行版(剥块+去标签+解码实体+归一空白)供标题用。接线 useIntelCenter.ts submitEntry(唯一客户端清洗点，同时覆盖抓取链接与粘贴两入口的持久化面，因 fetchEntryUrl 仅 slice 不清洗)：title=cleanIntelLine、empty 校验移入清洗后 title、新增正文 empty 守卫、body 存 cleanIntelBody(entrySnippet,2000).text、changed 时 toast.info 提示清理行数。镜像服务端 crawlOne 口径但仅作用于手动录入面，不碰 pb_hooks/不改自动抓取链/不改数据模型"
+    },
+    {
+      "id": "perf-01",
+      "module": "/knowledge",
+      "issue": "目录树全量拉取(近6000篇)改按文件夹懒加载；右栏空态放最近阅读/推荐引导",
+      "standard": [
+        "B9"
+      ],
+      "priority": "P2",
+      "status": "done",
+      "evidence": "tsc -b exit0 / eslint 4 文件：kbCore·KnowledgePage 0/0、DocReaderPanel 1 error=基线 1(既有 set-state-in-effect)、useKnowledge after 6 ⊂ 基线 7 条历史债纯新增 0 / build exit0(2.05s)；运行时浏览器坐实(dev :8000 /knowledge)：①最近阅读空态——连开 2 篇(中医医院/信创改造总览)→回未选中态→空态「最近阅读」列 2 条(最新在前)带目录叶名、一键重开成功、localStorage kb_recent_docs_local-user 2 id 序正、reload 跨会话持久；②并发分页冷加载计时——全量 listKbDocs 46.2s(基线 kb-cap-01 串行 33 页估 60–100s)、count=6423 无截断无缺重、rows[0]/[200]/[400] 与独立拉 page1/2/3 首条逐字一致(保序 3/3 PASS)；0 console error/warn；测后删 kb_recent_docs 键复原。Measure 诚实缩围：「按文件夹懒加载」本体被路由能力封死——kb_docs list 路由无 folder 过滤、fields 服务端未消费(pb_hooks 红线)，native collection 端点 superuser-only(403 已坐实 R22)；冷加载真痛改用纯前端并发分批压至 46s(带宽受限、剩余为下载物理时间，并发 3 为低内存机保守值)，服务端 folder/fields 支持属后端线不在本循环强推",
+      "diff": "第27轮·纯前端零新依赖零后端零 collection。①kbCore.ts listKbDocs 全量翻页串行→并发分批：抽 fetchKbPage(page)(单页拉取+解析瘦身逻辑逐字未动)，每批 KB_LIST_PAGE_BATCH=3 页 Promise.all 并发、批间串行、任一页返回不满即停(收敛语义同串行版)、拼接按页序(实测逐字等价)、任一页失败整体抛出与上限告警条件同旧；小 perPage 调用方(全局搜索)首批即停不受影响。②useKnowledge.ts：模块级 kbRecentKey/readRecentIds(按账号隔离 localStorage、上限 8)，recentIds state(声明提前供 handleAccountChange 切账号重读)，持久化 effect(未登录不写、隐私模式静默)，recentDocs useMemo(myVisibleDocs 现场解析、被删/失权条目自动消失、slice 6)，selectDoc 记录去重前移，return 暴露 recentDocs。③DocReaderPanel.tsx：props 增 recentDocs/onOpenRecent，空态有阅读史时显示「最近阅读」可点列表(FileText+标题+目录叶名)、无历史保持原占位。④KnowledgePage.tsx 传参。未碰 pb_hooks/未改数据模型；「按文件夹懒加载」服务端能力残差已记本条 evidence、不另立 Issue(超纯前端红线)"
+    },
+    {
+      "id": "winloss-01",
+      "module": "/customer-management",
+      "issue": "B1 赢单/丢单复盘结构化+看板：复盘表单化(丢单原因分类)，聚合丢单原因Pareto与分客群胜率，反哺方案生成提示词",
+      "standard": [
+        "B8"
+      ],
+      "priority": "P2",
+      "status": "done",
+      "evidence": "tsc -b exit0 / eslint 本轮 6 文件 0 error 0 warning(优于基线，无需 stash 对比) / build exit0 2.27s；运行时坐实(dev :8000 /customer-management)：StageChangeDialog 失单类别下拉(6类+未分类)提交后 lost_reason 存储值=【价格因素】价格分落后 8%（…）与投标侧格式完全一致，复盘面板 Pareto(价格因素 1·100%)+分客群胜率(综合医院 0%(0/1))+分页未完时 partial 诚实标注，无终态商机时面板隐藏，全程 0 console error，投标工作流回归正常(ResultRegisterCard 改共享模块后)，测试痕迹 net-zero(DELETE 跟进记录+PATCH 复原 stage/lost_reason 后 reload 复核)；诚实缩围残差：「反哺方案生成提示词」涉生成链路超本轮最小改动红线，记本条 evidence、不另立 Issue",
+      "diff": "新建：src/lib/lostReason.ts(LOST_REASON_CODES/splitLostReason/formatLostReason/lostReasonCategory 单一真源)、winLossReview.ts(纯聚合：胜率/丢单 Pareto 含累计占比/按 hospital_type 分客群胜率)、WinLossReviewPanel.tsx(看板下方挂载)；改造：StageChangeDialog 失单原因自由文本→类别下拉+明细(零 hook 改动，draft 仍单字符串)、ResultRegisterCard 改用共享模块并 re-export 保持对外兼容、CustomerManagementPage 挂载面板。未碰 pb_hooks/未改数据模型"
+    },
+    {
+      "id": "test-net-01",
+      "module": "all",
+      "issue": "自动化测试网(08报告 §0-2 零测试网=最大风险项，用户拍板：装 vitest 从现有纯模块起步)，报告 §5.2 第 1 层机器硬门的地基",
+      "standard": [
+        "A4"
+      ],
+      "priority": "P1",
+      "status": "done",
+      "evidence": "vitest 5.0.1 dev-only 依赖(pnpm add -D，零运行时代码变更零 pb 变更)；首批 4 纯模块 36 案例全绿 0.6s：lostReason(R28 契约互逆/旧数据回退/非前缀【】不误拆)、intelBodyClean(R26 真实脏样本：script/style/注释整块剥离不计行、JSON/版权/日期/噪声行剔除=4、实体解码含 R26 缺陷回归位、截断加省略号)、winLossReview(R28 Pareto 降序+累计 100、分客群 join、ghost 客户归未知类型、空终态不除零、partial 透传)、submissionChecklist(R25 两分区强制判定、前缀剥离、去重、稳定 id、空报告安全)；质量门：vitest run exit0 / tsc -b exit0(含测试文件) / eslint 4 新文件 exit0(唯一新增=测试描述文本内反斜杠 no-useless-escape，已改写法清零) / vite build exit0(分块警告为存量)；首轮跑出 1 个 fixture 算例错(c1 lost 实为 2 非 3)当场修正，验证了断言需实测而非臆断；零运行时变更故无 browser 验证面，dev 页面无回归风险",
+      "diff": "package.json：+devDeps vitest 5.0.1、+scripts.test=vitest run；新建 4 个 colocated 测试：src/lib/lostReason.test.ts(62 行)、src/pages/IntelCenter/intelBodyClean.test.ts(73 行)、src/pages/CustomerManagement/winLossReview.test.ts(66 行)、src/pages/BidWorkspace/submissionChecklist.test.ts(76 行)，均复用 vite.config 现有 @ alias 零新增配置；后续标准：每轮新增纯逻辑模块必附单测，提示词抽离(prompt-extract-01)将用 vitest 快照锈死文本不变"
+    },
+    {
+      "id": "prompt-merge-01",
+      "module": "/bid-workspace",
+      "issue": "《标书智能体提示词·优化合并稿 v1.0》底座批次(用户 2026-09-22 提交全文并拍板：全量切换+本轮只做底座)：真实性铁律公共组件全链注入 + 解析出处回指 + 三档写作模式按稿重写",
+      "standard": [
+        "A4",
+        "D13",
+        "D14"
+      ],
+      "priority": "P1",
+      "status": "done",
+      "evidence": "vitest 48/48 exit0(新增 bidPromptBase.test.ts 12 案例：铁律 6+3 条计数/逐字稳定/【待填写】口径不出现待补充/6 builder system 全含铁律/三档模式锁点/strict 缺省即注入/UI 标签/出处行豁免截断+对照组仍截) / tsc -b exit0 / eslint 净新增 0(bidTypes+GenerationSettingsBar 改前改后 stash 对比同为 11 历史遗留，新测试文件 0) / build exit0(2.26s)；运行时浏览器坐实(dev :8000 /bid-workspace 动态 import 零 AI)：version=merged-v1.0/R30-2026-09-22、parse/outline/chapter/refine 均含铁律、chapter 缺省即严格响应块、moderate 含 30%~50%、full 含编造红线、clampExempt=true、无待补充残留、0 console error/warn；纯提示词文本变更零数据模型零 pb_hooks，未 live 跑生成(耗 AI，待用户需要时单跑)",
+      "diff": "bidTypes.ts：新增 BID_PROMPT_VERSION/TRUTH_IRON_RULES(6条)/COMMON_OUTPUT_RULES(3条)/truthPreamble()，注入 6 个生成器 system(解析/大纲/章/小节/续写/改写)；complianceModeRule 按合并稿 §6.2 重写三档均非空(strict=对标响应句式+禁扩展+篇幅从简；moderate=场景描述 30~50%；full=充实材料+编造红线)；解析 system 新增出处回指行，clampParseSectionContent 豁免（出处：行防幻觉页码截断；COMPLIANCE_MODE_LABEL 改严格响应/场景扩展/大量充实 + GenerationSettingsBar HINT 同步。两处落地适配留证：占位符用【待填写】非稿作【待补充：xxx】、承诺标注不进正文(均因 meta_leftover 检查器/元话语禁令冲突)。GAP-2 编号体系/覆盖矩阵→prompt-matrix-02；GAP-4 编造扫描/逐条对标→prompt-fabscan-03；prompt-extract-01 纯搬迁与新常量位置待合并安排"
+    }
+  ],
+  "blocked": [
+    {
+      "id": "hook-security-01",
+      "module": "pb_hooks",
+      "issue": "后端安全三项(08报告 1.1/1.2/1.3)：API Key XOR+硬编码 SECRET 升级 AES-GCM+环境变量、LLM 接口速率限制、token 用量 llm_usage 落库",
+      "status": "deferred-by-user",
+      "decision": "2026-09-22 用户拍板：本地单用户自用部署维持现状，不碰 pb_hooks 红线；若将来对外部署或多用户化，需单独立项并豁免红线+重启 PB 专门做；论断已逐条坐实(model_gateway.pb.js L18/88/187)非误报"
+    }
+  ],
+  "noProgressStreak": 0,
+  "lastRoundSummary": "Round31 prompt-matrix-02（P1，评分细项编号体系+大纲承接+覆盖矩阵，合并稿 v1.0 第二批）：①稳定编号 R1..Rn(技术)/B1..Bn(商务)+主客观启发式分类 classifySubjective，唯一编号源 numberScoringItems 三处共用（大纲 prompt/分步 call2/右栏矩阵/生成对账）；②大纲叶子 description [响应:Rx] 承接标注：单次与长标书分步两条 prompt 链同步要求，normalizeOutline 任意层级透传(修复分步流丢标注缺陷)；③提纲层覆盖矩阵 buildScoringCoverageMatrix/findUncoveredScoringIds 纯本地零 AI，右栏面板升级 R-id+主客观+承接↔映射双向展示、未承接橙色点名，生成完成 toast 诚实暴露未覆盖编号(不自动打回重生成，避未确认费用)；新增 11 用例锈死。四门：vitest 59/59/tsc 0/eslint 新增 0(build 0)，运行时 dev 动态 import 全链路正确 0 console 错误。下一轮候选：prompt-fabscan-03(对标核查四态+编造扫描，P1)、numeric-consistency-01(数值一致性对账，P1)。"
+}

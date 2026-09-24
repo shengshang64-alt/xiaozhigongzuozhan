@@ -5,6 +5,7 @@ import { decodeRhToken, vibexAuthHeaders, type RhAccountInfo } from "@/lib/rhLog
 import type { CrmOppBrief, CrmStats } from "@/components/home/CustomerOverviewSection"
 import type { BidReview } from "@/components/home/BidReviewCard"
 import { useActivityFeed } from "@/hooks/useActivityFeed"
+import { cleanIntelLine, displayizeIntel } from "@/pages/IntelCenter/intelBodyClean"
 
 // ---------------------------------------------------------------------------
 // 数据类型（字段名与 PocketBase collection 完全一致，snake_case，不做转换层）
@@ -141,6 +142,26 @@ const EMPTY_PROJECT_FORM: ProjectForm = {
 
 export const PROJECT_TYPES = ["方案", "标书", "PPT", "报价"] as const
 
+// home-02：今日必看行动条——置顶的首屏唯一强调整点，纯客户端归集已拉取数据（零新增请求/零后端）
+export type MustSeeGroup = "overdue" | "dueToday" | "active"
+export type MustSeeCategory = "todo" | "opp" | "project"
+export type MustSeeItem = {
+  id: string
+  group: MustSeeGroup
+  category: MustSeeCategory
+  title: string
+  meta: string
+  detail: string
+  route?: string
+  project?: ProjectItem
+}
+export type MustSeeToday = {
+  overdue: MustSeeItem[]
+  dueToday: MustSeeItem[]
+  active: MustSeeItem[]
+  total: number
+}
+
 // 情报摘要（真实数据来自情报中心 intel_items，首页取最新 5 条，按本人 my_status 已确认优先）
 type IntelItemRow = {
   id: string
@@ -166,14 +187,17 @@ const INTEL_TAG_BY_TYPE: Record<string, string> = {
 
 function mapIntelRow(row: IntelItemRow): IntelItem {
   const when = row.published_at || row.created || ""
-  const snippet = (row.content_snippet || "").replace(/\s+/g, " ").trim()
+  // 抓取入库的 content_snippet/summary 常带被从中间截断的半截 HTML/CSS 残片；
+  // 展示层走 displayizeIntel（深度清洗）而非仅去成对标签的 cleanIntelLine，避免残留乱码
+  const snippet = displayizeIntel(row.content_snippet || "", 120)
+  const cleanedSummary = row.summary ? displayizeIntel(row.summary, 160) : ""
   return {
     id: row.id,
-    title: row.title,
+    title: cleanIntelLine(row.title),
     source: row.source_name || "情报中心",
     publishedAt: when.slice(0, 10),
     tag: INTEL_TAG_BY_TYPE[row.item_type] ?? "情报",
-    summary: row.summary || (snippet ? `${snippet.slice(0, 120)}…` : "暂无摘要，进入情报中心用 AI 摘要打标"),
+    summary: cleanedSummary || snippet || "暂无摘要，进入情报中心用 AI 摘要打标",
   }
 }
 
@@ -753,6 +777,69 @@ export function useHome() {
     return todos.filter((t) => !t.done && todoBucketKeyOf(t.due_date, todayStart) === "overdue").length
   }, [todos, nowTick])
 
+  // home-02：今日必看——把逾期待办 / 今日到期 / 进行中项目归集到一个置顶行动条（复用已拉数据，零新请求）
+  const mustSee = useMemo<MustSeeToday>(() => {
+    const todayStart = startOfTodayMs(nowTick)
+    const overdue: MustSeeItem[] = []
+    const dueToday: MustSeeItem[] = []
+    const active: MustSeeItem[] = []
+
+    for (const t of visibleTodos) {
+      if (t.done) continue
+      const key = todoBucketKeyOf(t.due_date, todayStart)
+      if (key !== "overdue" && key !== "today") continue
+      const route =
+        t.link ||
+        (t.source_type === "opportunity" && t.source_id
+          ? `/customer-management?opp=${t.source_id}`
+          : "/customer-management")
+      const item: MustSeeItem = {
+        id: `todo_${t.id}`,
+        group: key === "overdue" ? "overdue" : "dueToday",
+        category: "todo",
+        title: t.content.slice(0, 40) || "待办",
+        meta: t.source_type === "opportunity" ? "商机跟进" : "待办",
+        detail: key === "overdue" ? `已逾期（截止 ${String(t.due_date ?? "").slice(5, 10)}）` : "今天到期",
+        route,
+      }
+      ;(key === "overdue" ? overdue : dueToday).push(item)
+    }
+
+    for (const o of followDueOpps) {
+      const item: MustSeeItem = {
+        id: `opp_${o.id}`,
+        group: o.overdue ? "overdue" : "dueToday",
+        category: "opp",
+        title: o.opp_name || "商机",
+        meta: o.customer_name || "未填客户",
+        detail: o.overdue ? `待跟进逾期（${o.next_follow_date.slice(5)}）` : `今日待跟进（${o.next_follow_date.slice(5)}）`,
+        route: `/customer-management?opp=${o.id}`,
+      }
+      ;(o.overdue ? overdue : dueToday).push(item)
+    }
+
+    for (const pr of projects) {
+      if (pr.progress >= 100) continue
+      const dl = (pr.deadline || "").slice(0, 10)
+      let daysLeft: number | null = null
+      if (dl) {
+        const t = new Date(`${dl}T00:00:00`).getTime()
+        if (!Number.isNaN(t)) daysLeft = Math.round((t - todayStart) / DAY_MS)
+      }
+      if (daysLeft !== null && daysLeft < 0) {
+        overdue.push({ id: `prj_${pr.id}`, group: "overdue", category: "project", title: pr.project_name, meta: pr.hospital || "未填医院", detail: `${pr.project_type}已逾期 ${Math.abs(daysLeft)} 天 · 进度 ${pr.progress}%`, project: pr })
+      } else if (daysLeft === 0) {
+        dueToday.push({ id: `prj_${pr.id}`, group: "dueToday", category: "project", title: pr.project_name, meta: pr.hospital || "未填医院", detail: `${pr.project_type}今日截止 · 进度 ${pr.progress}%`, project: pr })
+      } else {
+        active.push({ id: `prj_${pr.id}`, group: "active", category: "project", title: pr.project_name, meta: pr.hospital || "未填医院", detail: `${pr.project_type} · 进度 ${pr.progress}%${daysLeft !== null ? ` · 剩 ${daysLeft} 天` : ""}`, project: pr })
+      }
+    }
+
+    active.sort((a, b) => (a.project?.deadline || "9999-12-31").localeCompare(b.project?.deadline || "9999-12-31"))
+
+    return { overdue, dueToday, active, total: overdue.length + dueToday.length + active.length }
+  }, [visibleTodos, followDueOpps, projects, nowTick])
+
   const greeting = useMemo(() => {
     const hour = new Date().getHours()
     if (hour < 6) return "夜深了"
@@ -826,6 +913,7 @@ export function useHome() {
     activityEvents,
     activityLoading,
     // 派生
+    mustSee,
     activeProjectCount,
     pendingTodoCount,
     doneTodoCount,

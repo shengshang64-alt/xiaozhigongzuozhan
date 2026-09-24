@@ -23,13 +23,16 @@ import {
   deleteKbDoc,
   extractKbIndex,
   KB_QA_SYSTEM_PROMPT,
+  KB_LIST_MAX_PAGES,
+  KB_LIST_PER_PAGE,
   listKbDocs,
   searchKbDocs,
   updateKbDoc,
   visibleKbDocs,
   type KbDocRow,
 } from "@/lib/kbCore"
-import { categoryOf, contextSnippetOf, guessCategoryFromFileName } from "@/lib/kbPolicy"
+import { categoryOf, contextSnippetOf, guessCategoryFromFileName, classifyKbDoc, KB_CATEGORY_POLICY } from "@/lib/kbPolicy"
+import { KB_CACHE_TTL_MS, loadKbCache, saveKbCache } from "@/lib/kbDocCache"
 import {
   createKbQaPair,
   deleteKbQaPair,
@@ -41,6 +44,7 @@ import {
   type KbQaPairRow,
 } from "@/lib/kbQa"
 import { parseUploadFile } from "./kbUpload"
+import { pickAndWalkFolder, joinImportFolder, supportsFolderImport } from "./kbImport"
 import { pushKbTrash, readKbTrash, removeKbTrash, type KbTrashItem } from "./kbTrash"
 
 // ---------------------------------------------------------------------------
@@ -133,6 +137,22 @@ function baseNameOf(path: string): string {
   return segs.length ? segs[segs.length - 1] : ""
 }
 
+/** perf-01：按账号隔离的「最近阅读」文档 id 列表（localStorage 持久化，上限 8） */
+function kbRecentKey(uid: string | null): string {
+  return uid ? `kb_recent_docs_${uid}` : ""
+}
+
+function readRecentIds(uid: string | null): string[] {
+  try {
+    const key = kbRecentKey(uid)
+    if (!key) return []
+    const raw = JSON.parse(localStorage.getItem(key) ?? "[]") as unknown
+    return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string").slice(0, 8) : []
+  } catch {
+    return []
+  }
+}
+
 export function useKnowledge() {
   const costConfirm = useCostConfirm()
   const shellAccount = useContext(ShellAccountContext)
@@ -140,6 +160,8 @@ export function useKnowledge() {
   // ------------------------------ 登录态 ------------------------------
   const [userId, setUserId] = useState<string | null>(() => decodeRhToken()?.sub ?? null)
   const [needsRhLogin, setNeedsRhLogin] = useState(false)
+  // perf-01：最近阅读 id 列表（selectDoc 时记录，右栏空态引导用；声明提前供切账号回调重读，持久化见下方 effect）
+  const [recentIds, setRecentIds] = useState<string[]>(() => readRecentIds(decodeRhToken()?.sub ?? null))
   // 轮次 F：知识库问答技能 scope 接入（选择器源暴露给 QaDrawer）
   const kbQaSkills = useScopeSkills("kb-qa", userId ?? undefined)
   const userIdRef = useRef<string | null>(userId)
@@ -160,6 +182,8 @@ export function useKnowledge() {
   const handleAccountChange = useCallback((account: RhAccountInfo | null) => {
     const uid = account?.userId ?? decodeRhToken()?.sub ?? null
     setUserId(uid)
+    // perf-01：切账号时同步重读本账号的最近阅读，避免沿用上一账号的列表
+    setRecentIds(readRecentIds(uid))
     if (uid) setNeedsRhLogin(false)
   }, [])
 
@@ -210,14 +234,37 @@ export function useKnowledge() {
       const rows = await listKbDocs()
       setDocs(rows)
       setDocsLoading(false)
+      // kb-cap-01：命中翻页安全上限说明仍有文档未返回。旧实现只 console.warn＝对用户静默丢数据，
+      // 现改为显式告知（否则「资料明明传上去了却搜不到」会被误判成没上传成功）。
+      if (rows.length >= KB_LIST_MAX_PAGES * KB_LIST_PER_PAGE) {
+        toast.warning(
+          `知识库已达加载上限 ${rows.length} 篇，仍有文档未显示，请联系管理员扩容`,
+        )
+      }
+      // 性能第一批：全量成功后回写本地缓存（仅当前用户可见子集，避免落他人个人笔记）。
+      void saveKbCache(userIdRef.current, visibleKbDocs(rows, userIdRef.current))
     } catch {
       setDocsLoading(false)
       toast.error("知识库文档加载失败，请稍后重试")
     }
   }, [])
 
+  // 性能第一批：挂载时缓存优先直显，TTL 内跳过网络；超期或无缓存才后台全量校准。
   useEffect(() => {
-    void refreshDocs()
+    let cancelled = false
+    void (async () => {
+      const snap = await loadKbCache(userIdRef.current)
+      if (cancelled) return
+      if (snap) {
+        setDocs(snap.docs)
+        setDocsLoading(false)
+        if (Date.now() - snap.syncedAt < KB_CACHE_TTL_MS) return
+      }
+      await refreshDocs()
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [refreshDocs])
 
   // ------------------------------ 视图状态 ------------------------------
@@ -241,16 +288,41 @@ export function useKnowledge() {
     [myVisibleDocs],
   )
 
+  // perf-01：最近阅读持久化（未登录不写，避免落错桶；隐私模式静默降级）
+  useEffect(() => {
+    const key = kbRecentKey(userId)
+    if (!key) return
+    try {
+      localStorage.setItem(key, JSON.stringify(recentIds))
+    } catch {
+      /* 隐私模式等场景静默降级 */
+    }
+  }, [recentIds, userId])
+
+  // 标题/可见性每次从当前 docs 现场解析：文档被删/失权自然从列表消失，无需额外清理
+  const recentDocs = useMemo(() => {
+    const out: KbDocRow[] = []
+    for (const id of recentIds) {
+      const hit = myVisibleDocs.find((d) => d.id === id)
+      if (hit) out.push(hit)
+      if (out.length >= 6) break
+    }
+    return out
+  }, [recentIds, myVisibleDocs])
+
   const libDocs = useMemo(() => {
     const base = libTab === "team" ? myVisibleDocs.filter((d) => d.visibility !== "personal") : myVisibleDocs.filter((d) => d.visibility === "personal")
     const q = searchQuery.trim().toLowerCase()
     if (!q) return base
+    // 性能第一批：列表快速筛选只扫元数据（title/summary/keywords/folder），
+    // 不再对每篇 content 做全文 includes（1730 篇 × 每次按键 = 卡顿主因）；
+    // 需要全文语义检索请走顶部 BM25 搜索（searchKbDocs 已覆盖 content）。
     return base.filter(
       (d) =>
         d.title.toLowerCase().includes(q) ||
         (d.summary ?? "").toLowerCase().includes(q) ||
         (d.keywords ?? []).some((k) => String(k).toLowerCase().includes(q)) ||
-        (d.content ?? "").toLowerCase().includes(q),
+        (d.folder_path ?? "").toLowerCase().includes(q),
     )
   }, [libTab, myVisibleDocs, searchQuery])
 
@@ -381,6 +453,8 @@ export function useKnowledge() {
     setSelectedDocId(doc.id)
     setLibTab(doc.visibility === "personal" ? "personal" : "team")
     setEditMode(false)
+    // perf-01：记录最近阅读（去重前移，上限 8；落盘由持久化 effect 完成）
+    setRecentIds((prev) => [doc.id, ...prev.filter((x) => x !== doc.id)].slice(0, 8))
   }, [])
 
   // 轮次 B + D2：全局搜索深链 ?doc= 消费（ref 存「已消费 id」，URL id 变化即重新消费）
@@ -859,6 +933,95 @@ export function useKnowledge() {
     [uploadFolder, uploadVisibility, refreshDocs, locateDoc],
   )
 
+  // 本地文件夹导入：递归遍历所选目录，逐文件解析 + 内容感知七分类 + 摘要/关键词 + 按分类默认策略入库。
+  const processUploadFolder = useCallback(async () => {
+    const uid = userIdRef.current
+    if (!uid) {
+      requireLogin()
+      return
+    }
+    if (uploading) return
+    if (!supportsFolderImport()) {
+      toast.error("当前浏览器不支持选择文件夹，请改用 Chrome / Edge，或用「选择文件」多选")
+      return
+    }
+    const picked = await pickAndWalkFolder()
+    if (!picked) return // 用户取消
+    if (picked.files.length === 0) {
+      toast.info("该文件夹下没有可导入的文档（支持 md/txt/docx/pdf/pptx/xlsx）")
+      return
+    }
+    setUploading(true)
+    setUploadResults(picked.files.map((f) => ({ fileName: f.file.name, done: false, okCount: 0 })))
+    const base = uploadFolder.trim()
+    const rootPrefix = base ? joinImportFolder(base, picked.rootName) : picked.rootName
+    const existing = new Set(
+      docsRef.current.map((d) => `${d.folder_path || ""}||${d.source_file_name || ""}`),
+    )
+    const vis = uploadVisibility
+    let okTotal = 0
+    let dup = 0
+    let fail = 0
+    const byCat: Record<string, number> = {}
+    let firstNewId: string | null = null
+    for (let i = 0; i < picked.files.length; i++) {
+      const { file, relFolder } = picked.files[i]
+      try {
+        const items = await parseUploadFile(file, joinImportFolder(rootPrefix, relFolder))
+        let okCount = 0
+        for (const item of items) {
+          const key = `${item.folder_path}||${item.source_file_name}`
+          if (existing.has(key)) {
+            dup += 1
+            continue
+          }
+          const { summary, keywords } = extractKbIndex(item.title, item.content)
+          const { category } = classifyKbDoc(item.source_file_name || item.title, item.content)
+          const pol = KB_CATEGORY_POLICY[category] ?? KB_CATEGORY_POLICY["其他"]
+          const created = await createKbDoc({
+            rh_user_id: uid,
+            title: item.title,
+            folder_path: item.folder_path,
+            content: item.content.slice(0, 480000),
+            doc_format: item.doc_format,
+            visibility: vis,
+            summary,
+            keywords,
+            source_file_name: item.source_file_name,
+            uploader_name: uploaderNameRef.current,
+            doc_category: category,
+            ai_context_mode: pol.ai_context_mode,
+            retrieval_weight: pol.retrieval_weight,
+            is_sensitive: pol.is_sensitive,
+          })
+          existing.add(key)
+          byCat[category] = (byCat[category] || 0) + 1
+          okCount += 1
+          okTotal += 1
+          if (!firstNewId && created?.id) firstNewId = created.id
+        }
+        if (okCount === 0) fail += 1
+        setUploadResults((prev) => prev.map((r, idx) => (idx === i ? { ...r, done: true, okCount } : r)))
+      } catch (err) {
+        fail += 1
+        const reason = err instanceof Error ? err.message : "解析失败"
+        setUploadResults((prev) =>
+          prev.map((r, idx) => (idx === i ? { ...r, done: true, okCount: 0, failReason: reason } : r)),
+        )
+      }
+    }
+    setUploading(false)
+    await refreshDocs()
+    const catText = Object.entries(byCat)
+      .sort((a, b) => b[1] - a[1])
+      .map(([c, n]) => `${c} ${n}`)
+      .join("，")
+    toast.success(
+      `已导入《${picked.rootName}》：入库 ${okTotal} 篇${catText ? `（${catText}）` : ""}${dup ? `，跳过重复 ${dup}` : ""}${fail ? `，失败/空 ${fail}` : ""}`,
+    )
+    if (firstNewId) locateDoc(firstNewId)
+  }, [uploading, uploadFolder, uploadVisibility, requireLogin, refreshDocs, locateDoc])
+
   // ------------------------------ 问知识库 ------------------------------
   const [qaOpen, setQaOpen] = useState(false)
   const [qaScope, setQaScope] = useState<QaScope>("all")
@@ -1172,6 +1335,8 @@ export function useKnowledge() {
           messages: injectSkillBlock(messages, skillBlockFor("kb-qa")),
           page: "knowledge",
           max_tokens: 4096,
+          // 降耗：同模型 + 同完整 messages（含检索资料与历史）才命中，重复提问直接返回、不再出站计费。
+          cacheable: true,
         })
         if (res.needsLogin) {
           setNeedsRhLogin(true)
@@ -1342,6 +1507,7 @@ export function useKnowledge() {
     sortedDocs,
     selectedDoc,
     selectDoc,
+    recentDocs,
     sortKey,
     setSortKey,
     folderTree,
@@ -1407,6 +1573,8 @@ export function useKnowledge() {
     openUpload,
     closeUpload,
     processUploadFiles,
+    processUploadFolder,
+    supportsFolderImport: supportsFolderImport(),
     // 问答
     qaOpen,
     qaScope,

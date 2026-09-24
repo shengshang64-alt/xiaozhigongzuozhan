@@ -10,6 +10,7 @@ import { OpportunityDialog } from "@/components/customer-management/OpportunityD
 import { OpportunityDetailPanel } from "@/components/customer-management/OpportunityDetailPanel"
 import { StageChangeDialog } from "@/components/customer-management/StageChangeDialog"
 import { KanbanBoard } from "@/components/customer-management/KanbanBoard"
+import { WinLossReviewPanel } from "@/components/customer-management/WinLossReviewPanel"
 import type { useCustomerManagement } from "./useCustomerManagement"
 
 export function CustomerManagementPage(p: ReturnType<typeof useCustomerManagement>) {
@@ -34,6 +35,7 @@ export function CustomerManagementPage(p: ReturnType<typeof useCustomerManagemen
           customerCount={p.stats.customerCount}
           activeOppCount={p.stats.activeOppCount}
           monthFollowCount={p.stats.monthFollowCount}
+          customerCountCapped={p.customerCountCapped}
           activeOppCountCapped={p.oppCapped}
           monthFollowCountCapped={p.followCapped}
         />
@@ -89,6 +91,10 @@ export function CustomerManagementPage(p: ReturnType<typeof useCustomerManagemen
               onSelectCustomer={p.selectCustomer}
               oppCountByCustomer={p.oppCountByCustomer}
               onNewCustomer={p.openNewCustomer}
+              batchEnriching={p.batchEnriching}
+              batchProgress={p.batchProgress}
+              onBatchEnrich={(limit) => void p.runBatchEnrich(limit)}
+              onCancelBatchEnrich={p.cancelBatchEnrich}
             />
 
             <div className="min-h-60">
@@ -121,6 +127,8 @@ export function CustomerManagementPage(p: ReturnType<typeof useCustomerManagemen
                   onSelectOpportunity={p.selectOpportunity}
                   onNewOpportunity={p.openNewOpportunity}
                   onEditCustomer={() => p.openEditCustomer(p.selectedCustomer!)}
+                  onEnrichOne={p.enrichOneCustomer}
+                  enrichingOneId={p.enrichingOneId}
                   chainAssets={p.chainAssets}
                   chainLoading={p.chainLoading}
                   followRecords={p.followRecords}
@@ -172,6 +180,12 @@ export function CustomerManagementPage(p: ReturnType<typeof useCustomerManagemen
               onNewOpportunity={() => p.openNewOpportunity()}
               onMoveStage={(opp, target) => void p.moveOpportunityStage(opp, target)}
             />
+            {/* Round 28（winloss-01）：丢单原因 Pareto + 分客群胜率；口径=已加载数据，分页中如实标注 */}
+            <WinLossReviewPanel
+              opportunities={p.opportunities}
+              customers={p.customers}
+              partial={p.totalOpps === null || p.customersHasMore}
+            />
           </div>
         )}
       </main>
@@ -189,6 +203,11 @@ export function CustomerManagementPage(p: ReturnType<typeof useCustomerManagemen
         setExtractText={p.setExtractText}
         extracting={p.extracting}
         onExtract={p.runExtract}
+        fetchingSite={p.fetchingSite}
+        onFetchSite={p.runFetchSite}
+        articleUrl={p.articleUrl}
+        setArticleUrl={p.setArticleUrl}
+        onFetchUrl={p.runFetchUrl}
         onSave={p.saveCustomer}
         saving={p.savingCustomer}
         profileSkills={p.customerProfileSkills}

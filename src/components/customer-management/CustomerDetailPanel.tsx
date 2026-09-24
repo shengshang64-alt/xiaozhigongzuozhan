@@ -30,6 +30,9 @@ type CustomerDetailPanelProps = {
   onSelectOpportunity: (oppId: string) => void
   onNewOpportunity: (customerId: string) => void
   onEditCustomer: () => void
+  /** 单家定向智能补全（透传给 CustomerProfileCard） */
+  onEnrichOne: (customerId: string) => void
+  enrichingOneId: string | null
   chainAssets: ChainAssetItem[]
   chainLoading: boolean
   followRecords: FollowRecordRow[]
@@ -65,6 +68,8 @@ export function CustomerDetailPanel({
   onSelectOpportunity,
   onNewOpportunity,
   onEditCustomer,
+  onEnrichOne,
+  enrichingOneId,
   chainAssets,
   chainLoading,
   followRecords,
@@ -98,6 +103,8 @@ export function CustomerDetailPanel({
       <CustomerProfileCard
         customer={customer}
         onEdit={onEditCustomer}
+        onEnrichOne={onEnrichOne}
+        enrichingOneId={enrichingOneId}
         contactName={contactName}
         setContactName={setContactName}
         contactTitle={contactTitle}

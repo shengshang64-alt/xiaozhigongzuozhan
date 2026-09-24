@@ -2,6 +2,7 @@ import { useLocation, useNavigate } from "react-router-dom"
 import {
   BookOpen,
   Bot,
+  Building2,
   FileCheck2,
   FileText,
   LayoutGrid,
@@ -9,6 +10,7 @@ import {
   Monitor,
   Search,
   Settings,
+  Type,
   UserCog,
   Users,
 } from "lucide-react"
@@ -30,12 +32,14 @@ const NAV_SECTIONS: NavSection[] = [
       { path: "/solution-studio", label: "方案编制", icon: FileText },
       { path: "/bid-workspace", label: "标书工作", icon: FileCheck2 },
       { path: "/ppt-quote", label: "PPT 与报价", icon: Monitor },
+      { path: "/format-tool", label: "格式刷新", icon: Type },
     ],
   },
   {
     title: "资源与知识",
     items: [
       { path: "/intel-center", label: "情报中心", icon: Search },
+      { path: "/competitors", label: "竞品分析", icon: Building2 },
       { path: "/customer-management", label: "客户管理", icon: Users },
       { path: "/knowledge", label: "知识库", icon: BookOpen },
     ],
@@ -80,7 +84,7 @@ export function SidebarNav({ accountInfo, collapsed = false }: SidebarNavProps) 
     >
       {/* Logo */}
       <header className={"flex items-center gap-2.5 border-b border-white/[.07] py-4 " + (collapsed ? "justify-center px-2" : "px-[18px]")}>
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-gradient-to-br from-primary to-[#0C8573] text-white shadow-md">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-gradient-to-br from-primary to-[#0A5D76] text-white shadow-md">
           <Layers className="h-[19px] w-[19px]" />
         </span>
         {!collapsed && (
@@ -119,13 +123,13 @@ export function SidebarNav({ accountInfo, collapsed = false }: SidebarNavProps) 
                       " " +
                       (active
                         ? "bg-gradient-to-r from-primary/35 to-primary/10 font-medium text-white"
-                        : "text-[#A9C3BF] hover:bg-white/[.06] hover:text-[#E8F3F1]")
+                        : "text-[#9BB8BD] hover:bg-white/[.06] hover:text-[#DCEEEC]")
                     }
                   >
                     {active && (
                       <span className="absolute -left-2.5 bottom-2 top-2 w-[3px] rounded-r-[3px] bg-primary" />
                     )}
-                    <Icon className={"h-[19px] w-[19px] shrink-0 " + (active ? "text-[#4CD5BC]" : "text-[#7FA09B] group-hover:text-[#A9C3BF]")} />
+                    <Icon className={"h-[19px] w-[19px] shrink-0 " + (active ? "text-[#22B8CE]" : "text-[#7FA09B] group-hover:text-[#9BB8BD]")} />
                     {!collapsed && <span className="truncate">{item.label}</span>}
                   </button>
                 )
@@ -147,7 +151,7 @@ export function SidebarNav({ accountInfo, collapsed = false }: SidebarNavProps) 
             (collapsed ? "justify-center" : "")
           }
         >
-          <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#2BC0A8] to-primary text-[13px] font-semibold text-white">
+          <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#22B8CE] to-primary text-[13px] font-semibold text-white">
             {avatarInitial}
           </span>
           {!collapsed && (

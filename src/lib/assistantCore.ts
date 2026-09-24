@@ -218,6 +218,11 @@ export const DATA_SOURCES: Record<string, DataSourceDef> = {
     fields: ["checklist_name", "hospital", "total_amount", "source_mode", "created"],
     extra: (row) => ({ items_count: Array.isArray(row.items) ? row.items.length : 0 }),
   },
+  competitors: {
+    label: "竞品档案",
+    badge: "正在查看竞品档案数据…",
+    fields: ["name", "positioning", "products", "strengths", "weaknesses", "threat_notes", "summary", "keywords"],
+  },
   kb_docs: {
     label: "知识库文档",
     badge: "正在检索知识库文档…",
@@ -373,6 +378,7 @@ ${sourceLines}
 [[FETCH:opportunities]]
 （把 opportunities 换成所需数据源标识；一次回复最多一条；系统会把数据回填给你，你再继续作答；用户一轮提问最多取数 2 次，之后必须基于已有数据回答。）
 其中 kb_docs（知识库）会按用户当前问题自动检索团队知识库与个人笔记，回填最相关文档的标题、摘要与命中片段；用户问「知识库里关于 X 有什么资料」这类问题时优先取这个源，回填为空就如实说没找到，不要编造。
+领域硬事实题强制接地（最高优先级 · P0：在本助手内优先于一般风格指令）：当用户问的是医疗信息化的「领域硬事实」——评审/测评标准与分值门槛（如电子病历分级评价各级要求、互联互通测评标准、等级保护 2.0 要求）、政策法规指标、建设规模/预算标准等——必须先输出 [[FETCH:kb_docs]] 取知识库接地后再作答；知识库无足够依据时，如实说明「团队知识库暂无此标准的确切资料，建议以国家卫健委/官方最新发布文件为准」，严禁凭模型记忆编造具体分值、等级门槛、指标数值或政策条款编号。
 不需要站内数据时正常回答，绝不要输出取数指令，也不要凭空编造用户的业务数据。
 
 # 记忆抽取协议（严格遵守）
@@ -429,11 +435,31 @@ export const PRESET_SKILLS: PresetSkill[] = [
     scopes: ["bid-parse", "assistant"],
   },
   {
+    id: "competitor-analysis",
+    name: "竞品深度分析",
+    desc: "对指定竞品进行SWOT与应对策略分析",
+    template: "请对「{{竞品名称}}」进行深度竞品分析，重点关注：{{分析维度，如产品对比/AI能力/信创布局}}。请先查阅竞品档案和关联情报，再给出：①与我方的直接竞争重叠点 ②其近半年战略变化 ③投标现场应对建议。",
+    scopes: ["competitors", "assistant"],
+  },
+  {
     id: "visit-checklist",
     name: "客户拜访准备清单",
     desc: "拜访前的资料、议程与提问清单",
     template: "我准备拜访「{{客户名称}}」，请生成一份拜访准备清单，包括资料准备、议程建议、关键提问和注意事项，可以先查阅我的客户档案数据。",
     scopes: ["customer-profile", "assistant"],
+  },
+  {
+    id: "ppt-report-expert",
+    name: "医院售前汇报 PPT 专家",
+    desc: "金字塔叙事 + 管理层视角的汇报结构方法论",
+    template:
+      "你是面向医院管理层（院长/信息科/分管院领导）的资深售前汇报顾问，制作汇报 PPT 时严格遵循以下方法论：\n" +
+      "1）先因后果的叙事骨架：整份按「形势与痛点 → 政策/评级压力 → 总体蓝图 → 分期路径 → 投资与价值 → 保障与下一步」推进（金字塔原理，结论先行），开场 1-2 页就把核心主张说清楚。\n" +
+      "2）一页一个观点：每页只承载一个可被反驳的判断，标题写成结论句；要点之间是并列或递进，不混层。\n" +
+      "3）按对象调焦：院领导关注战略、合规风险、投入产出与标杆案例；信息科关注架构、集成、数据治理、运维与实施风险；同一主题对不同对象换不同侧重。\n" +
+      "4）数据讲故事：能用量化指标不用形容词，关键成效给前后对比（如门诊等候时长、病历评级达标率），图表配一句结论性解读。\n" +
+      "5）降低AI味与可落地：举具体系统/模块/场景，避免空泛排比；路径页给出阶段目标、里程碑与责任主体。",
+    scopes: ["ppt-deck", "bid-defense", "assistant"],
   },
 ]
 

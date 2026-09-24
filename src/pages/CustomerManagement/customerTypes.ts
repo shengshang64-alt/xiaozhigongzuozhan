@@ -32,6 +32,30 @@ export interface ContactInfo {
   phone: string
 }
 
+/** 信息化评级（一维度一条：电子病历/互联互通/智慧服务） */
+export interface ItRating {
+  dimension: string
+  grade: string
+  declare_year: string
+  publish_date: string
+  history: string
+  status: string
+}
+
+/** 系统厂家（HIS/EMR/HIP，可多系统各自不同厂家） */
+export interface SystemVendor {
+  system: string
+  vendor: string
+}
+
+/** 领导团队成员（姓名 + 职务 + 可选分工/来源） */
+export interface LeadershipMember {
+  name: string
+  title: string
+  role?: string
+  source?: string
+}
+
 export interface CustomerRow {
   id: string
   rh_user_id: string
@@ -51,6 +75,13 @@ export interface CustomerRow {
   notes: string
   ai_generated_fields: string[]
   last_follow_at: string
+  annual_revenue: number
+  president: string
+  party_secretary: string
+  it_lead: string
+  it_ratings?: ItRating[]
+  system_vendors?: SystemVendor[]
+  leadership?: LeadershipMember[]
   created: string
   updated: string
 }
@@ -194,6 +225,11 @@ export interface CustomerDraft {
   beds_total: string
   beds_icu: string
   beds_or: string
+  annual_revenue: string
+  president: string
+  party_secretary: string
+  it_lead: string
+  leadership: LeadershipMember[]
   key_departments_text: string
   notes: string
 }
@@ -210,6 +246,11 @@ export const EMPTY_CUSTOMER_DRAFT: CustomerDraft = {
   beds_total: "",
   beds_icu: "",
   beds_or: "",
+  annual_revenue: "",
+  president: "",
+  party_secretary: "",
+  it_lead: "",
+  leadership: [],
   key_departments_text: "",
   notes: "",
 }
@@ -220,6 +261,7 @@ export const DRAFT_NUMBER_KEYS = [
   "beds_total",
   "beds_icu",
   "beds_or",
+  "annual_revenue",
 ] as const
 
 export function rowToDraft(row: CustomerRow): CustomerDraft {
@@ -236,6 +278,11 @@ export function rowToDraft(row: CustomerRow): CustomerDraft {
     beds_total: num(row.beds_total),
     beds_icu: num(row.beds_icu),
     beds_or: num(row.beds_or),
+    annual_revenue: num(row.annual_revenue),
+    president: row.president ?? "",
+    party_secretary: row.party_secretary ?? "",
+    it_lead: row.it_lead ?? "",
+    leadership: toLeadership(row.leadership).map((m) => ({ name: m.name, title: m.title, role: m.role ?? "" })),
     key_departments_text: (row.key_departments ?? []).join("、"),
     notes: row.notes ?? "",
   }
@@ -271,17 +318,24 @@ export interface AiProfileResult {
   beds_total: number | null
   beds_icu: number | null
   beds_or: number | null
+  annual_revenue: number | null
+  president: string | null
+  party_secretary: string | null
+  it_lead: string | null
   key_departments: string[] | null
+  leadership: Array<{ name: string; title: string; role: string }> | null
 }
 
-const PROFILE_JSON_SPEC = `{"level":"医院等级，如 三级甲等 / 二级甲等，不确定填 null","hospital_type":"综合医院 / 中医院 / 妇幼保健院 / 专科医院 / 基层医疗 / 其他 之一，不确定填 null","region":"所在省市，如 江苏省苏州市，不确定填 null","address":"医院地址，不确定填 null","website":"官网地址，不确定填 null","outpatient_daily":日门诊量数字或null,"outpatient_yearly":年门诊量数字或null,"beds_total":开放床位数数字或null,"beds_icu":ICU床位数数字或null,"beds_or":手术间数数字或null,"key_departments":["重点科室名，最多8个"]或null}`
+const PROFILE_JSON_SPEC = `{"level":"医院等级，如 三级甲等 / 二级甲等，不确定填 null","hospital_type":"综合医院 / 中医院 / 妇幼保健院 / 专科医院 / 基层医疗 / 其他 之一，不确定填 null","region":"所在省市，如 江苏省苏州市，不确定填 null","address":"医院地址，不确定填 null","website":"官网地址，不确定填 null","outpatient_daily":日门诊量数字或null,"outpatient_yearly":年门诊量数字或null,"beds_total":开放床位数数字或null,"beds_icu":ICU床位数数字或null,"beds_or":手术间数数字或null,"annual_revenue":年营业收入数字(单位万元，如 收入 12.5亿元 填 125000)，不确定填 null,"president":"院长姓名，不确定填 null","party_secretary":"党委书记姓名，不确定填 null","it_lead":"信息化负责人/信息中心主任/CIO 姓名，不确定填 null","key_departments":["重点科室名，最多8个"]或null,"leadership":[{"name":"姓名","title":"职务，如 院长/党委书记/副院长/总会计师","role":"分工或兼任职务，可省"}]，只列文字里明确点名的人，没有则 null}`
 
 const PROFILE_SYSTEM_PROMPT = `你是医疗信息化行业的资深售前顾问，熟悉全国各级医院的公开信息。用户给你医院名称或一段医院介绍文字，你输出该医院的结构化档案，只输出一个 JSON 对象，不要输出任何其他文字、解释或 markdown 围栏之外的内容。JSON 结构：${PROFILE_JSON_SPEC}
 硬性要求：
-1. 只依据你可靠掌握的公开信息填写，凡是不能确定的字段一律填 null，严禁编造精确数字；
-2. 门诊量、床位数只填整数，不要带单位；数量级都没把握就填 null；
-3. key_departments 填该医院公认的国家临床重点专科或特色科室，没有把握填 null；
-4. 所有文本字段用简体中文。`
+1. 只依据你可靠掌握的公开信息填写，凡是不能确定的字段一律填 null，严禁编造精确数字或人名；
+2. 门诊量、床位数、年营业收入只填整数，不要带单位；年营业收入统一换算成“万元”（1亿元=10000万元）；数量级都没把握就填 null；
+3. president/party_secretary/it_lead 只在有把握时填姓名，不要猜测；信息化负责人极少公开，多数应填 null；
+4. key_departments 填该医院公认的国家临床重点专科或特色科室，没有把握填 null；
+5. leadership 只收录文字里明确出现「姓名+职务」配对的人（如 张三 院长、李四 党委书记），不得推测或补全未点名的人；president/party_secretary 若已在 leadership 中出现，也要照常填入对应姓名；
+6. 所有文本字段用简体中文。`
 
 export function buildProfileMessages(hospitalName: string): LlmMessage[] {
   return [
@@ -295,7 +349,7 @@ export function buildExtractMessages(rawText: string): LlmMessage[] {
     { role: "system", content: PROFILE_SYSTEM_PROMPT },
     {
       role: "user",
-      content: `请从下面这段文字里提取医院档案信息（文字里明确提到的才填，没提到的一律填 null）：\n\n${rawText.slice(0, 4000)}`,
+      content: `请从下面这段文字里提取医院档案信息（文字里明确提到的才填，没提到的一律填 null）：\n\n${rawText.slice(0, 16000)}`,
     },
   ]
 }
@@ -318,6 +372,20 @@ export function parseProfileJson(text: string): AiProfileResult | null {
     const deps = Array.isArray(obj.key_departments)
       ? obj.key_departments.map((d) => String(d).trim()).filter(Boolean).slice(0, 8)
       : null
+    const leadership = Array.isArray(obj.leadership)
+      ? (obj.leadership as unknown[])
+          .map((m) => {
+            if (!m || typeof m !== "object") return null
+            const rec = m as Record<string, unknown>
+            const name = String(rec.name ?? "").trim().slice(0, 40)
+            if (!name) return null
+            const title = String(rec.title ?? "").trim().slice(0, 40)
+            const role = String(rec.role ?? "").trim().slice(0, 40)
+            return { name, title, role }
+          })
+          .filter((m): m is { name: string; title: string; role: string } => m !== null)
+          .slice(0, 12)
+      : null
     return {
       level: str(obj.level),
       hospital_type: str(obj.hospital_type),
@@ -329,7 +397,12 @@ export function parseProfileJson(text: string): AiProfileResult | null {
       beds_total: num(obj.beds_total),
       beds_icu: num(obj.beds_icu),
       beds_or: num(obj.beds_or),
+      annual_revenue: num(obj.annual_revenue),
+      president: str(obj.president),
+      party_secretary: str(obj.party_secretary),
+      it_lead: str(obj.it_lead),
       key_departments: deps && deps.length > 0 ? deps : null,
+      leadership: leadership && leadership.length > 0 ? leadership : null,
     }
   } catch {
     return null
@@ -439,4 +512,111 @@ export function fmtMetric(n: number | null | undefined): string {
 
 export function nowIso(): string {
   return new Date().toISOString()
+}
+
+// 防御性解析：json 字段运行时可能是 null/非数组，统一归一成对象数组，避免渲染抛错。
+export function toItRatings(v: unknown): ItRating[] {
+  return Array.isArray(v) ? (v as ItRating[]).filter((r) => r && typeof r === "object") : []
+}
+
+export function toSystemVendors(v: unknown): SystemVendor[] {
+  return Array.isArray(v) ? (v as SystemVendor[]).filter((r) => r && typeof r === "object") : []
+}
+
+// 领导团队归一：过滤非对象/无姓名项，字符串清洗，cap 12。
+export function toLeadership(v: unknown): LeadershipMember[] {
+  if (!Array.isArray(v)) return []
+  return (v as Array<Record<string, unknown>>)
+    .filter((m) => m && typeof m === "object" && String(m.name ?? "").trim())
+    .map((m) => ({
+      name: String(m.name ?? "").trim().slice(0, 40),
+      title: String(m.title ?? "").trim().slice(0, 40),
+      role: String(m.role ?? "").trim().slice(0, 40),
+      source: String(m.source ?? "").trim().slice(0, 40),
+    }))
+    .slice(0, 12)
+}
+
+// 向后兼容：从领导团队派生扁平的院长/书记（title 命中且非“副/名誉”等）。
+export function deriveFlatFromLeadership(
+  list: Array<{ name: string; title: string }> | null | undefined,
+): { president: string | null; party_secretary: string | null } {
+  const out: { president: string | null; party_secretary: string | null } = {
+    president: null,
+    party_secretary: null,
+  }
+  if (!list || !list.length) return out
+  for (const m of list) {
+    const t = String(m.title || "")
+    const name = String(m.name || "").trim()
+    if (!name) continue
+    // 书记：命中“书记”但排除“副书记”（副职不算一把手）
+    if (!out.party_secretary && /书记/.test(t) && !/副书记/.test(t)) out.party_secretary = name
+    // 院长：命中“院长”但排除“副/名誉/荣誉/执行院长”（正职才回填 president）
+    if (!out.president && /院长/.test(t) && !/(副院长|名誉院长|荣誉院长|执行院长)/.test(t)) out.president = name
+  }
+  return out
+}
+
+// 计算一家客户仍缺失的核心字段（供列表徽标与单家定向补全）。
+export function computeMissingFields(row: CustomerRow): string[] {
+  const missing: string[] = []
+  const textKeys: (keyof CustomerRow)[] = ["level", "region", "website", "address", "it_lead"]
+  for (const k of textKeys) {
+    if (!String(row[k] ?? "").trim()) missing.push(String(k))
+  }
+  const numKeys: (keyof CustomerRow)[] = ["outpatient_daily", "outpatient_yearly", "beds_total", "annual_revenue"]
+  for (const k of numKeys) {
+    const v = row[k]
+    if (typeof v !== "number" || v <= 0) missing.push(String(k))
+  }
+  if (!(row.key_departments && row.key_departments.length)) missing.push("key_departments")
+  // 领导团队：leadership 与 president 任一非空即算已填
+  const hasLeader = toLeadership(row.leadership).length > 0 || String(row.president ?? "").trim()
+  if (!hasLeader) missing.push("leadership")
+  return missing
+}
+
+// 非 UTF-8 页回传的字节段（后端 base64），前端用原生 TextDecoder 解码。
+export type BinSection = { label: string; encoding: string; bytesB64: string }
+
+export function base64ToBytes(b64: string): Uint8Array {
+  const clean = String(b64 || "").replace(/[^A-Za-z0-9+/]/g, "")
+  const bin = atob(clean)
+  const out = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+  return out
+}
+
+// 把后端回传的 GBK 字节段解码、去标签后按段拼回正文；环境不支持 TextDecoder 则降级跳过。
+export function decodeBinSections(text: string, binSections?: BinSection[] | null): string {
+  let out = text || ""
+  if (!binSections || !binSections.length) return out
+  if (typeof TextDecoder === "undefined") return out
+  for (const sec of binSections) {
+    try {
+      const dec = new TextDecoder(sec.encoding || "gbk")
+      const html = dec.decode(base64ToBytes(sec.bytesB64))
+      const stripped = stripHtmlForExtract(html)
+      if (stripped) out += `\n【${sec.label}】\n` + stripped
+    } catch {
+      /* 不支持的编码或解码失败，跳过该段 */
+    }
+  }
+  return out.slice(0, 16000)
+}
+
+// 去标签→可读正文（与后端 cleanText 对齐）：删脚本/样式/注释，标签转空格，常见实体还原，压缩空白。
+export function stripHtmlForExtract(html: string): string {
+  let t = String(html || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<(noscript|svg|iframe)[\s\S]*?<\/\1>/gi, " ")
+  t = t.replace(/<[^>]+>/g, " ")
+  t = t
+    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/&#\d+;/g, " ")
+  return t.replace(/\u3000/g, " ").replace(/[\t\r]+/g, " ").replace(/ {2,}/g, " ").replace(/\n{2,}/g, "\n").trim().slice(0, 6000)
 }

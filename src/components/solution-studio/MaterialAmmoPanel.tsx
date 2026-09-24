@@ -1,8 +1,8 @@
 import type { ReactNode } from "react"
-import { Archive, BookOpen, CornerDownLeft, Library, Loader2, MessageSquareQuote, PanelRightClose, PanelRightOpen, Search } from "lucide-react"
+import { Archive, BookOpen, CornerDownLeft, Library, Loader2, MessageSquareQuote, PanelRightClose, PanelRightOpen, Search, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import type { UseSolutionStudio } from "@/pages/SolutionStudio/useSolutionStudio"
+import type { MaterialRecoItem, UseSolutionStudio } from "@/pages/SolutionStudio/useSolutionStudio"
 
 // ---------------------------------------------------------------------------
 // 素材弹药面板（轮次 E-1）：知识库 / 弹药库 / 历史方案 三来源检索，
@@ -28,6 +28,10 @@ type MaterialAmmoPanelProps = Pick<
   onToggleCollapsed: () => void
   /** 历史方案页签空态：打开「拆块入素材库」向导 */
   onOpenKbWizard: () => void
+  /** sol5 智能推荐：按当前章节主题本地推导的素材条目（未输入搜索词时展示） */
+  recos?: MaterialRecoItem[]
+  /** 推荐依据的章节名（推荐条文案） */
+  recoChapterTitle?: string | null
 }
 
 const TABS: { key: "kb" | "ammo" | "history"; label: string }[] = [
@@ -100,6 +104,49 @@ function EmptyHint({ icon, title, desc, action }: { icon: ReactNode; title: stri
   )
 }
 
+const RECO_SOURCE_LABEL: Record<MaterialRecoItem["source"], string> = {
+  kb: "知识库",
+  ammo: "弹药库",
+  history: "历史方案",
+}
+
+/** sol5 智能推荐卡片：标题 + 来源徽标 + 摘要 + 一键插入（与手动搜索同链路 insertMaterialToChapter） */
+function RecoCard({
+  item,
+  disabled,
+  onInsert,
+}: {
+  item: MaterialRecoItem
+  disabled: boolean
+  onInsert: () => void
+}) {
+  return (
+    <article className="rounded-lg border border-primary/20 bg-primary/5 p-3 shadow-sm transition-shadow hover:shadow-md">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-xs font-semibold text-foreground" title={item.title}>{item.title}</p>
+          <span className="mt-1 inline-block rounded-full bg-card px-2 py-0.5 text-xs text-primary ring-1 ring-primary/30">
+            {RECO_SOURCE_LABEL[item.source]} · {item.badge}
+          </span>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={disabled}
+          title={disabled ? "先在左侧选中章节" : "插入到正文光标处"}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={onInsert}
+          className="shrink-0 border-primary/40 bg-card text-primary hover:bg-primary/10 hover:text-primary"
+        >
+          <CornerDownLeft className="mr-1 h-3.5 w-3.5" />
+          一键插入
+        </Button>
+      </div>
+      <p className="mt-2 line-clamp-3 whitespace-pre-line text-xs leading-relaxed text-muted-foreground">{item.snippet}</p>
+    </article>
+  )
+}
+
 export function MaterialAmmoPanel(p: MaterialAmmoPanelProps) {
   const canInsert = Boolean(p.activeChapterId)
 
@@ -169,6 +216,24 @@ export function MaterialAmmoPanel(p: MaterialAmmoPanelProps) {
       </div>
 
       <div className="mt-2 min-h-0 flex-1 space-y-2 overflow-y-auto px-3 pb-3">
+        {/* sol5：未搜索时展示按章节主题的跨来源智能推荐（切章自动重排） */}
+        {!p.materialQuery && !!p.recos?.length && (
+          <div className="space-y-2">
+            <p className="flex items-center gap-1.5 rounded-lg bg-primary/10 px-2.5 py-2 text-xs font-medium text-primary">
+              <Sparkles className="h-3.5 w-3.5 shrink-0" />
+              依据「{p.recoChapterTitle || "当前章节"}」智能推荐 {p.recos.length} 条
+            </p>
+            {p.recos.map((item) => (
+              <RecoCard
+                key={item.key}
+                item={item}
+                disabled={!canInsert}
+                onInsert={() => p.insertMaterialToChapter(item.text, item.label)}
+              />
+            ))}
+            <p className="text-[11px] leading-relaxed text-muted-foreground">本地相似度推荐供参考，输入关键词可精确检索</p>
+          </div>
+        )}
         {p.materialLoading ? (
           <div className="flex items-center justify-center gap-2 py-10 text-xs text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />

@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react"
 import { Check, Gauge, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import { CLAUSE_GRANULARITY_LABEL, type ClauseGranularity } from "@/pages/BidWorkspace/bidTypes"
+import {
+  CLAUSE_GRANULARITY_LABEL,
+  COMPLIANCE_MODE_LABEL,
+  type ClauseGranularity,
+  type ComplianceMode,
+} from "@/pages/BidWorkspace/bidTypes"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 
 type GenerationSettingsBarProps = Pick<
@@ -21,6 +26,7 @@ type GenerationSettingsBarProps = Pick<
   | "genOptions"
   | "setClauseResponse"
   | "setMaterialBoost"
+  | "setComplianceMode"
   | "estimatedPages"
   | "settingsSaved"
   | "leafTarget"
@@ -34,6 +40,14 @@ const LEVEL_OPTIONS: { value: 0 | 1 | 2 | 3; label: string }[] = [
 ]
 
 const GRANULARITY_OPTIONS: ClauseGranularity[] = ["system", "l2", "l3"]
+
+// 合并稿 v1.0（R30）：三档写作模式选择器——只切「素材来源与扩展程度」，新增可验收承诺始终受忠实/克制底线约束
+const COMPLIANCE_MODES: ComplianceMode[] = ["strict", "moderate", "full"]
+const COMPLIANCE_MODE_HINT: Record<ComplianceMode, string> = {
+  strict: "只做对标响应：要求字眼改响应表述，禁写行业背景/方法论等扩展内容，篇幅从简（默认，最安全）",
+  moderate: "对标响应骨架 + 本项目应用场景描述（约占 30%~50% 篇幅）",
+  full: "骨架+场景之上可写行业背景/方法论/制度等充实材料；严禁包装成本项目已发生的事实",
+}
 
 /**
  * 第五轮改造 1：编制步骤顶部常驻「生成设置」条——目标页数 / 目录级数 / 配图开关 /
@@ -137,7 +151,29 @@ export function GenerationSettingsBar(p: GenerationSettingsBarProps) {
       {/* 用户反馈轮项 2：原 xl:grid-cols-7 挤行改分组两行——第一行数值/选择组、第二行开关组，
           「技术章生成强化」双 checkbox 卡独立全宽行；控件高度统一 h-9、label 间距统一 gap-1.5 */}
       <div className="mt-3 grid gap-3">
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <div className="grid gap-1.5 text-xs">
+            <span className="font-medium text-muted-foreground">生成模式（越界扩写的新增承诺越克越严）</span>
+            <div className="grid grid-cols-3 gap-1">
+              {COMPLIANCE_MODES.map((mode) => {
+                const active = (p.genOptions.compliance_mode ?? "strict") === mode
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => p.setComplianceMode(mode)}
+                    className={`flex h-9 items-center justify-center rounded-md px-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                      active ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted text-muted-foreground hover:text-card-foreground"
+                    }`}
+                  >
+                    {COMPLIANCE_MODE_LABEL[mode]}
+                  </button>
+                )
+              })}
+            </div>
+            <span className="text-muted-foreground">{COMPLIANCE_MODE_HINT[p.genOptions.compliance_mode ?? "strict"]}</span>
+          </div>
+
           <label className="grid gap-1.5 text-xs">
             <span className="font-medium text-muted-foreground">目标页数（留空按体量估算）</span>
             <Input

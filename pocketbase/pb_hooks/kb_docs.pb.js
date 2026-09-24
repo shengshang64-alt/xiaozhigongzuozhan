@@ -2,9 +2,9 @@
 // pb_hooks/kb_docs.pb.js — 业务 collection + REST CRUD 路由 (self-contained)
 //
 // 由 mcp__rh-pb-hooks__install_business_collection 装. 不要直接 Read+Write 这个文件.
-// 业务字段: rh_user_id:text, title:text, folder_path:text, content:text, doc_format:text, visibility:text, summary:text, keywords:json, source_file_name:text, uploader_name:text, doc_category:text, ai_context_mode:text, retrieval_weight:number, is_sensitive:bool
+// 业务字段: rh_user_id:text, title:text, folder_path:text, content:text, doc_format:text, visibility:text, summary:text, keywords:json, source_file_name:text, uploader_name:text, doc_category:text, ai_context_mode:text, retrieval_weight:number, is_sensitive:bool, kb_track:text, kb_bucket:text
 // 路由: list,get,create,update,delete
-// list filter 字段: rh_user_id,visibility,folder_path,doc_format
+// list filter 字段: rh_user_id,visibility,folder_path,doc_format,kb_track,kb_bucket
 // list 默认排序: -updated
 
 onBootstrap(function (e) {
@@ -41,6 +41,8 @@ onBootstrap(function (e) {
       addField({ name: 'ai_context_mode', type: 'text', max: 20 })
       addField({ name: 'retrieval_weight', type: 'number' })
       addField({ name: 'is_sensitive', type: 'bool' })
+      addField({ name: 'kb_track', type: 'text', max: 40 })
+      addField({ name: 'kb_bucket', type: 'text', max: 40 })
       addField({ name: "created", type: "autodate", onCreate: true })
       addField({ name: "updated", type: "autodate", onCreate: true, onUpdate: true })
       if (changed) {
@@ -67,6 +69,8 @@ onBootstrap(function (e) {
           { name: 'ai_context_mode', type: 'text', max: 20 },
           { name: 'retrieval_weight', type: 'number' },
           { name: 'is_sensitive', type: 'bool' },
+          { name: 'kb_track', type: 'text', max: 40 },
+          { name: 'kb_bucket', type: 'text', max: 40 },
           { name: "created", type: "autodate", onCreate: true },
           { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
         ],
@@ -102,6 +106,8 @@ routerAdd("GET", "/api/kb_docs", function (e) {
           { name: 'ai_context_mode', type: 'text', max: 20 },
           { name: 'retrieval_weight', type: 'number' },
           { name: 'is_sensitive', type: 'bool' },
+          { name: 'kb_track', type: 'text', max: 40 },
+          { name: 'kb_bucket', type: 'text', max: 40 },
         { name: "created", type: "autodate", onCreate: true },
         { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
       ],
@@ -113,6 +119,9 @@ routerAdd("GET", "/api/kb_docs", function (e) {
     ensureCollLocal()
     var info = e.requestInfo()
     var query = info.query || {}
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var page = parseInt(String(query.page || "1"), 10) || 1
     var perPage = parseInt(String(query.perPage || "50"), 10) || 50
     if (perPage > 200) perPage = 200
@@ -134,6 +143,14 @@ routerAdd("GET", "/api/kb_docs", function (e) {
     if (query.doc_format !== undefined && query.doc_format !== "") {
       filterParts.push("doc_format = {:doc_format}")
       params.doc_format = String(query.doc_format)
+    }
+    if (query.kb_track !== undefined && query.kb_track !== "") {
+      filterParts.push("kb_track = {:kb_track}")
+      params.kb_track = String(query.kb_track)
+    }
+    if (query.kb_bucket !== undefined && query.kb_bucket !== "") {
+      filterParts.push("kb_bucket = {:kb_bucket}")
+      params.kb_bucket = String(query.kb_bucket)
     }
     if (query.q !== undefined && String(query.q) !== "") {
       filterParts.push("(title ~ {:q_kw} || source_file_name ~ {:q_kw2})")
@@ -159,6 +176,9 @@ routerAdd("GET", "/api/kb_docs", function (e) {
 routerAdd("GET", "/api/kb_docs/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("kb_docs", id) } catch (_) { rec = null }
@@ -192,6 +212,8 @@ routerAdd("POST", "/api/kb_docs", function (e) {
           { name: 'ai_context_mode', type: 'text', max: 20 },
           { name: 'retrieval_weight', type: 'number' },
           { name: 'is_sensitive', type: 'bool' },
+          { name: 'kb_track', type: 'text', max: 40 },
+          { name: 'kb_bucket', type: 'text', max: 40 },
         { name: "created", type: "autodate", onCreate: true },
         { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
       ],
@@ -202,8 +224,11 @@ routerAdd("POST", "/api/kb_docs", function (e) {
   try {
     var coll = ensureCollLocal()
     var body = e.requestInfo().body || {}
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var rec = new Record(coll)
-    rec.set("rh_user_id", body.rh_user_id === undefined || body.rh_user_id === null ? "" : String(body.rh_user_id))
+    rec.set("rh_user_id", __uid)
     rec.set("title", body.title === undefined || body.title === null ? "" : String(body.title))
     rec.set("folder_path", body.folder_path === undefined || body.folder_path === null ? "" : String(body.folder_path))
     rec.set("content", body.content === undefined || body.content === null ? "" : String(body.content))
@@ -217,6 +242,8 @@ routerAdd("POST", "/api/kb_docs", function (e) {
     rec.set("ai_context_mode", body.ai_context_mode === undefined || body.ai_context_mode === null ? "" : String(body.ai_context_mode))
     rec.set("retrieval_weight", (body.retrieval_weight === undefined || body.retrieval_weight === null) ? 0 : Number(body.retrieval_weight))
     rec.set("is_sensitive", !!body.is_sensitive)
+    rec.set("kb_track", body.kb_track === undefined || body.kb_track === null ? "" : String(body.kb_track))
+    rec.set("kb_bucket", body.kb_bucket === undefined || body.kb_bucket === null ? "" : String(body.kb_bucket))
     $app.save(rec)
     return e.json(200, rec.publicExport())
   } catch (err) {
@@ -229,12 +256,15 @@ routerAdd("POST", "/api/kb_docs", function (e) {
 routerAdd("PATCH", "/api/kb_docs/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("kb_docs", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
     var body = e.requestInfo().body || {}
-    if ("rh_user_id" in body) rec.set("rh_user_id", body.rh_user_id === undefined || body.rh_user_id === null ? "" : String(body.rh_user_id))
+    // IDOR fix: owner transfer disabled
     if ("title" in body) rec.set("title", body.title === undefined || body.title === null ? "" : String(body.title))
     if ("folder_path" in body) rec.set("folder_path", body.folder_path === undefined || body.folder_path === null ? "" : String(body.folder_path))
     if ("content" in body) rec.set("content", body.content === undefined || body.content === null ? "" : String(body.content))
@@ -248,6 +278,8 @@ routerAdd("PATCH", "/api/kb_docs/{id}", function (e) {
     if ("ai_context_mode" in body) rec.set("ai_context_mode", body.ai_context_mode === undefined || body.ai_context_mode === null ? "" : String(body.ai_context_mode))
     if ("retrieval_weight" in body) rec.set("retrieval_weight", (body.retrieval_weight === undefined || body.retrieval_weight === null) ? 0 : Number(body.retrieval_weight))
     if ("is_sensitive" in body) rec.set("is_sensitive", !!body.is_sensitive)
+    if ("kb_track" in body) rec.set("kb_track", body.kb_track === undefined || body.kb_track === null ? "" : String(body.kb_track))
+    if ("kb_bucket" in body) rec.set("kb_bucket", body.kb_bucket === undefined || body.kb_bucket === null ? "" : String(body.kb_bucket))
     $app.save(rec)
     return e.json(200, rec.publicExport())
   } catch (err) {
@@ -259,6 +291,9 @@ routerAdd("PATCH", "/api/kb_docs/{id}", function (e) {
 routerAdd("DELETE", "/api/kb_docs/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("kb_docs", id) } catch (_) { rec = null }

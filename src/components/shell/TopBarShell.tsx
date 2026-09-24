@@ -1,6 +1,8 @@
+import { useState } from "react"
 import { useLocation } from "react-router-dom"
-import { Menu } from "lucide-react"
+import { Menu, Palette } from "lucide-react"
 import { RhAccountMenu } from "@/components/rh/RhAccountMenu"
+import { AppearanceDialog } from "@/components/shell/AppearanceDialog"
 import { GlobalCommandPalette } from "@/components/shell/GlobalCommandPalette"
 import { Badge } from "@/components/ui/badge"
 import { isLocalDeployHost, type RhAccountInfo } from "@/lib/rhLogin"
@@ -12,8 +14,10 @@ const ROUTE_TITLES: Record<string, string> = {
   "/bid-workspace": "标书工作",
   "/ppt-quote": "PPT 与报价",
   "/intel-center": "情报中心",
+  "/competitors": "竞品分析",
   "/customer-management": "客户管理",
   "/knowledge": "知识库",
+  "/format-tool": "格式刷新",
   "/team": "团队管理",
   "/model-config": "模型配置",
   "/assistant": "小智助手",
@@ -48,6 +52,7 @@ type TopBarShellProps = {
 export function TopBarShell({ onAccountChange, onToggleSidebar }: TopBarShellProps) {
   const { pathname } = useLocation()
   const currentTitle = ROUTE_TITLES[pathname] ?? "工作台"
+  const [appearanceOpen, setAppearanceOpen] = useState(false)
 
   return (
     <header className="sticky top-0 z-40 flex h-[60px] items-center gap-3 border-b border-border bg-card/85 px-4 backdrop-blur lg:px-6">
@@ -70,9 +75,18 @@ export function TopBarShell({ onAccountChange, onToggleSidebar }: TopBarShellPro
 
       <div className="ml-auto flex shrink-0 items-center gap-2">
         <TeamIdentityBadge />
+        <button
+          type="button"
+          onClick={() => setAppearanceOpen(true)}
+          title="个性化外观（模式/配色/背景图）"
+          className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[9px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Palette className="h-[18px] w-[18px]" />
+        </button>
         <GlobalCommandPalette />
         <RhAccountMenu onAccountChange={onAccountChange} />
       </div>
+      <AppearanceDialog open={appearanceOpen} onClose={() => setAppearanceOpen(false)} />
     </header>
   )
 }

@@ -2,6 +2,7 @@ import { useMemo } from "react"
 import { Loader2, TrendingUp, Trophy, XCircle } from "lucide-react"
 import type { EChartsOption } from "echarts"
 import { EChart } from "@/components/common/EChart"
+import { EmptyHintLine } from "@/components/home/EmptyHintLine"
 import { CHART_COLORS } from "@/lib/echarts"
 
 /** 胜负复盘聚合数据（内存聚合当前用户商机 stage/lost_reason + 标书 bid_result，零后端） */
@@ -54,6 +55,17 @@ export function BidReviewCard({ review, loading }: BidReviewCardProps) {
       },
     ],
   }), [review.won, review.lost, winRate])
+  // home-03：无已出结果商机时折叠为一行提示，不各占整卡；有数据时恢复渲染整卡
+  if (!loading && decided === 0) {
+    return (
+      <EmptyHintLine
+        className="mb-5"
+        icon={<Trophy className="h-4 w-4" />}
+        text="胜负复盘暂无已出结果的商机"
+        hint="在客户管理把商机推进到赢单/输单后，这里自动汇总胜率与输单原因"
+      />
+    )
+  }
   return (
     <section className="mb-5 rounded-xl border border-border bg-card p-4 shadow-md lg:p-5 animate-in fade-in duration-500">
       <header className="flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-2">
@@ -74,14 +86,6 @@ export function BidReviewCard({ review, loading }: BidReviewCardProps) {
         <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin text-primary" />
           复盘数据加载中…
-        </div>
-      ) : decided === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border py-8 text-center">
-          <Trophy className="h-8 w-8 text-muted-foreground" />
-          <p className="text-sm font-medium text-foreground">还没有分出胜负的商机</p>
-          <p className="text-xs text-muted-foreground">
-            在客户管理里把商机推进到「赢单 / 输单」并填写输单原因，这里会自动汇总胜率
-          </p>
         </div>
       ) : (
         <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-[2fr_3fr]">

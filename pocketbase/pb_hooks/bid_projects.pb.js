@@ -71,14 +71,16 @@ onBootstrap(function (e) {
       addField({ name: 'identity_words', type: 'text' })
       addField({ name: "created", type: "autodate", onCreate: true })
       addField({ name: "updated", type: "autodate", onCreate: true, onUpdate: true })
-      // 用户反馈轮（2026-09-18）：长文本字段存量 max=5000 拦截十万字级招标文件保存（500 update_failed）——
-      // 按既有字段修复模式把 max 放宽为不限（0）；只放宽不收紧，幂等
+      // 用户反馈轮（2026-09-18）：长文本字段存量限制拦截十万字级招标文件保存（500 update_failed）
+      // 2026-09-21 修正：PB 0.23+ text 字段 max=0 并非不限，而是应用默认 5000 上限（官方 JSVM 文档），
+      // 旧修复把 max 置 0 从未解除限制；改为显式放宽到 LONG_TEXT_MAX；只放宽不收紧，幂等
       var LONG_TEXT_FIELDS = ["tender_text", "ref_template_text", "ref_materials_text", "global_facts", "identity_words"]
+      var LONG_TEXT_MAX = 5000000
       for (var lti = 0; lti < LONG_TEXT_FIELDS.length; lti++) {
         try {
           var lf = existing.fields.getByName(LONG_TEXT_FIELDS[lti])
-          try { $app.logger().info("bid_projects field max probe", "field", LONG_TEXT_FIELDS[lti], "max", String(lf && lf.max), "type", String(lf && lf.type)) } catch (_) {}
-          if (lf && lf.max > 0) { lf.max = 0; changed = true }
+          var lfMax = (typeof lf.max === "number") ? lf.max : 0
+          if (lf && (lfMax === 0 || lfMax < LONG_TEXT_MAX)) { lf.max = LONG_TEXT_MAX; changed = true }
         } catch (err) {
           try { $app.logger().warn("bid_projects field repair err", "field", LONG_TEXT_FIELDS[lti], "err", String(err)) } catch (_) {}
         }
@@ -209,16 +211,17 @@ routerAdd("GET", "/api/bid_projects", function (e) {
     ensureCollLocal()
     var info = e.requestInfo()
     var query = info.query || {}
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var page = parseInt(String(query.page || "1"), 10) || 1
     var perPage = parseInt(String(query.perPage || "50"), 10) || 50
     if (perPage > 200) perPage = 200
     var sort = String(query.sort || "-updated")
     var filterParts = []
     var params = {}
-    if (query.rh_user_id !== undefined && query.rh_user_id !== "") {
-      filterParts.push("rh_user_id = {:rh_user_id}")
-      params.rh_user_id = String(query.rh_user_id)
-    }
+    filterParts.push("rh_user_id = {:rh_user_id}")
+      params.rh_user_id = __uid
     if (query.stage !== undefined && query.stage !== "") {
       filterParts.push("stage = {:stage}")
       params.stage = String(query.stage)
@@ -242,10 +245,17 @@ routerAdd("GET", "/api/bid_projects", function (e) {
 routerAdd("GET", "/api/bid_projects/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("bid_projects", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id")||"") === __uid) } catch(_x) {}
+    if (!__own) { try { __own = (String(rec.get("owner_id")||"") === __uid) } catch(_x) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     return e.json(200, rec.publicExport())
   } catch (err) {
     var msg = String(err && err.message || err)
@@ -259,9 +269,11 @@ routerAdd("POST", "/api/bid_projects", function (e) {
     if (collFix2) {
       var needFix2 = false
       var LTF2 = ["tender_text", "ref_template_text", "ref_materials_text", "global_facts", "identity_words"]
+      var WANT2 = 5000000
       for (var li2 = 0; li2 < LTF2.length; li2++) {
         var f2 = collFix2.fields.getByName(LTF2[li2])
-        if (f2 && f2.max > 0) { f2.max = 0; needFix2 = true }
+        var m2 = (f2 && typeof f2.max === "number") ? f2.max : 0
+        if (f2 && (m2 === 0 || m2 < WANT2)) { f2.max = WANT2; needFix2 = true }
       }
       if (needFix2) $app.save(collFix2)
     }
@@ -325,8 +337,11 @@ routerAdd("POST", "/api/bid_projects", function (e) {
   try {
     var coll = ensureCollLocal()
     var body = e.requestInfo().body || {}
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var rec = new Record(coll)
-    rec.set("rh_user_id", body.rh_user_id === undefined || body.rh_user_id === null ? "" : String(body.rh_user_id))
+    rec.set("rh_user_id", __uid)
     rec.set("project_name", body.project_name === undefined || body.project_name === null ? "" : String(body.project_name))
     rec.set("tender_no", body.tender_no === undefined || body.tender_no === null ? "" : String(body.tender_no))
     rec.set("hospital", body.hospital === undefined || body.hospital === null ? "" : String(body.hospital))
@@ -379,28 +394,38 @@ routerAdd("POST", "/api/bid_projects", function (e) {
 // PATCH /api/bid_projects/{id}  body 字段同 POST, 只更新 body 里出现的字段
 routerAdd("PATCH", "/api/bid_projects/{id}", function (e) {
   try {
-    // 用户反馈轮（2026-09-18）：长文本字段 max 懒修复（存量 max=5000 拦截十万字级招标文件保存）；
-    // Goja 跨 routerAdd 不共享顶层函数/变量，故内联；检查幂等——max 已为 0 时只读不写
+    // 用户反馈轮（2026-09-18）：长文本字段 max 懒修复；2026-09-21 修正：PB 0.23+ text max=0 并非不限
+    // 而是应用默认 5000 上限（官方 JSVM 文档），故显式放宽到 WANT；只放宽不收紧，幂等
+    // Goja 跨 routerAdd 不共享顶层函数/变量，故与 POST/onBootstrap 各自内联
     try {
       var collFix = $app.findCollectionByNameOrId("bid_projects")
       if (collFix) {
         var needFix = false
         var LTF = ["tender_text", "ref_template_text", "ref_materials_text", "global_facts", "identity_words"]
+        var WANT = 5000000
         for (var li = 0; li < LTF.length; li++) {
-          var f0 = collFix.fields.getByName(LTF[li])
-          if (li === 0) throw new Error("probe-max=" + String(f0 && f0.max) + "-type=" + String(f0 && f0.type) + "-need=" + String(needFix))
-          if (f0 && f0.max > 0) { f0.max = 0; needFix = true }
+          var ff = collFix.fields.getByName(LTF[li])
+          if (!ff) continue
+          var curMax = (typeof ff.max === "number") ? ff.max : 0
+          if (curMax === 0 || curMax < WANT) { ff.max = WANT; needFix = true }
         }
         if (needFix) $app.save(collFix)
       }
     } catch (_) {}
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("bid_projects", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id")||"") === __uid) } catch(_x) {}
+    if (!__own) { try { __own = (String(rec.get("owner_id")||"") === __uid) } catch(_x) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     var body = e.requestInfo().body || {}
-    if ("rh_user_id" in body) rec.set("rh_user_id", body.rh_user_id === undefined || body.rh_user_id === null ? "" : String(body.rh_user_id))
+    // IDOR fix: owner transfer disabled
     if ("project_name" in body) rec.set("project_name", body.project_name === undefined || body.project_name === null ? "" : String(body.project_name))
     if ("tender_no" in body) rec.set("tender_no", body.tender_no === undefined || body.tender_no === null ? "" : String(body.tender_no))
     if ("hospital" in body) rec.set("hospital", body.hospital === undefined || body.hospital === null ? "" : String(body.hospital))
@@ -446,6 +471,7 @@ routerAdd("PATCH", "/api/bid_projects/{id}", function (e) {
     return e.json(200, rec.publicExport())
   } catch (err) {
     var msg = String(err && err.message || err)
+    try { $app.logger().error("bid_projects update: " + msg) } catch (_) {}
     return e.json(500, { error: "update_failed", message: msg, fingerprint: msg.substring(0, 80) })
   }
 })
@@ -453,10 +479,17 @@ routerAdd("PATCH", "/api/bid_projects/{id}", function (e) {
 routerAdd("DELETE", "/api/bid_projects/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("bid_projects", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id")||"") === __uid) } catch(_x) {}
+    if (!__own) { try { __own = (String(rec.get("owner_id")||"") === __uid) } catch(_x) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     $app.delete(rec)
     return e.json(200, { ok: true })
   } catch (err) {

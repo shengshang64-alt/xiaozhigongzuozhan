@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react"
-import { Loader2, Sparkles, X } from "lucide-react"
+import { Camera, Loader2, Sparkles, X } from "lucide-react"
 import { AUDIENCES, DECK_TYPES, type DeckTypeKey, type MaterialRef, type MaterialOption } from "@/pages/PptQuote/pptQuoteTypes"
+import type { ImageSearchProvider } from "@/pages/PptQuote/imageSearch"
 import { MaterialPicker } from "./MaterialPicker"
 
 type NewDeckWizardProps = {
@@ -17,6 +18,9 @@ type NewDeckWizardProps = {
   wKeyPoints: string
   setWKeyPoints: (v: string) => void
   suggestedPageCount: number
+  wPages: string
+  setWPages: (v: string) => void
+  targetPageCount: number
   wMaterial: MaterialRef | null
   setWMaterial: (ref: MaterialRef | null) => void
   solutionOptions: MaterialOption[]
@@ -28,6 +32,11 @@ type NewDeckWizardProps = {
   onGenerate: () => void
   /** 「AI 生成 PPT」按钮旁的带入技能选择器（页面注入） */
   deckPickerSlot?: ReactNode
+  /** 自动配图开关与参数 */
+  autoFigureMode: "off" | "search" | "ai" | "hybrid"
+  setAutoFigureMode: (v: "off" | "search" | "ai" | "hybrid") => void
+  autoFigureProvider: ImageSearchProvider
+  setAutoFigureProvider: (v: ImageSearchProvider) => void
 }
 
 const inputCls =
@@ -47,6 +56,9 @@ export function NewDeckWizard({
   wKeyPoints,
   setWKeyPoints,
   suggestedPageCount,
+  wPages,
+  setWPages,
+  targetPageCount,
   wMaterial,
   setWMaterial,
   solutionOptions,
@@ -57,6 +69,10 @@ export function NewDeckWizard({
   onCancel,
   onGenerate,
   deckPickerSlot,
+  autoFigureMode,
+  setAutoFigureMode,
+  autoFigureProvider,
+  setAutoFigureProvider,
 }: NewDeckWizardProps) {
   // A2-8：汇报时长 onBlur clamp + 必填项空值行内提示
   const [durationHint, setDurationHint] = useState("")
@@ -179,6 +195,34 @@ export function NewDeckWizard({
                   />
                   {durationHint && <span className="mt-1 block text-xs text-destructive">{durationHint}</span>}
                 </label>
+                <label className="block">
+                  <span className="mb-1.5 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                    目标页数（选填）
+                    <span className="badge-neutral">默认 {suggestedPageCount} 页</span>
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={40}
+                    value={wPages}
+                    onChange={(e) => setWPages(e.target.value)}
+                    onBlur={() => {
+                      const raw = wPages.trim()
+                      if (raw === "") return
+                      const n = Number(raw)
+                      if (!Number.isFinite(n) || n <= 0) {
+                        setWPages("")
+                        return
+                      }
+                      setWPages(String(Math.max(1, Math.min(40, Math.round(n)))))
+                    }}
+                    placeholder={`留空按建议 ${suggestedPageCount} 页`}
+                    className={inputCls}
+                  />
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {wPages.trim() ? `将生成 ${targetPageCount} 页（1–40）` : `将按时长建议生成约 ${suggestedPageCount} 页`}
+                  </span>
+                </label>
               </div>
               <label className="block">
                 <span className="mb-1.5 block text-xs font-medium text-muted-foreground">核心要点（选填，每行一条）</span>
@@ -206,9 +250,50 @@ export function NewDeckWizard({
           <div className="rounded-lg border border-border bg-card p-4 shadow-md lg:p-5">
             <h2 className="text-sm font-semibold text-foreground">第三步 · 生成</h2>
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-              AI 将按医疗售前汇报场景生成 {suggestedPageCount} 页左右的逐页标题、要点与讲稿备注
-              {suggestedPageCount > 10 ? "（页数较多时分批生成，请耐心等待）" : ""}，生成后可逐页精修。按实际 token 用量扣费。
+              AI 将按医疗售前汇报场景生成约 {targetPageCount} 页的图文内容（标题、要点、讲稿，并按内容自动判断是否配数据图表 / 数字亮点 / 配图建议）
+              {targetPageCount > 10 ? "（页数较多时分批生成，请耐心等待）" : ""}，生成后可逐页精修、真实配图后导出。按实际 token 用量扣费。
             </p>
+
+            {/* 自动配图开关 */}
+            <div className="mt-3.5 rounded-md border border-border bg-muted/40 p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                  <Camera className="h-3.5 w-3.5 text-indigo-500" />
+                  自动为推荐配图页拉真实图片
+                </p>
+                <select
+                  value={autoFigureMode}
+                  onChange={(e) => setAutoFigureMode(e.target.value as "off" | "search" | "ai" | "hybrid")}
+                  disabled={deckGenerating}
+                  className="ml-auto h-7 rounded-md border border-border bg-background px-1.5 text-[11px] text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60"
+                >
+                  <option value="off">不自动（逐页手动）</option>
+                  <option value="search">仅联网搜图（免费）</option>
+                  <option value="ai">仅 AI 生图（RH 扣费）</option>
+                  <option value="hybrid">先搜图，不中回退 AI</option>
+                </select>
+                {(autoFigureMode === "search" || autoFigureMode === "hybrid") ? (
+                  <select
+                    value={autoFigureProvider}
+                    onChange={(e) => setAutoFigureProvider(e.target.value as ImageSearchProvider)}
+                    disabled={deckGenerating}
+                    className="h-7 rounded-md border border-border bg-background px-1.5 text-[11px] text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60"
+                  >
+                    <option value="pexels">Pexels</option>
+                    <option value="unsplash">Unsplash</option>
+                  </select>
+                ) : null}
+              </div>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                {autoFigureMode === "off"
+                  ? "默认不自动，逐页图框内部手工选图；可预先配好 API Key 后切换开关。"
+                  : autoFigureMode === "ai"
+                    ? "AI 生图走 RunningHub 上的 nano-banana-pro，会按页扣 RH 币；本地无 Key 会失败但不阻断主流程。"
+                    : autoFigureMode === "hybrid"
+                      ? "先图库搜图；命中不中时自动回退到 AI 生图（后者会扣 RH 币）。"
+                      : "仅 Pexels/Unsplash 图库。需先在逐页编辑里的 “API Key” 面板写好 Key（或写入 .env.local）；无 Key 会自动跳过。"}
+              </p>
+            </div>
             {deckGenerating && (
               <p className="mt-3 flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />

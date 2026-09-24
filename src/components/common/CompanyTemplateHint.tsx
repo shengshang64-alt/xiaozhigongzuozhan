@@ -3,7 +3,9 @@
 // scripts/import-company-templates.mjs 导入）。无数据/接口异常时整行不渲染，不打扰主流程。
 import { useEffect, useState } from "react"
 import { Download, Paperclip } from "lucide-react"
+import { toast } from "sonner"
 import { getPocketBaseUrl } from "@/lib/pb"
+import { vibexAuthHeaders } from "@/lib/rhLogin"
 
 type TemplateRow = {
   id: string
@@ -25,13 +27,16 @@ function downloadUrl(id: string): string {
  */
 export function CompanyTemplateHint({ scenario, extraScenario }: { scenario: string; extraScenario?: string }) {
   const [rows, setRows] = useState<TemplateRow[]>([])
+  const [busyId, setBusyId] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     const scenarios = extraScenario ? [scenario, extraScenario] : [scenario]
     void Promise.all(
       scenarios.map((s) =>
-        fetch(`${getPocketBaseUrl()}/api/doc_templates?scenario=${s}&active=true&perPage=20&sort=sort`)
+        fetch(`${getPocketBaseUrl()}/api/doc_templates?scenario=${s}&active=true&perPage=20&sort=sort`, {
+          headers: vibexAuthHeaders(),
+        })
           .then((r) => (r.ok ? r.json() : { items: [] }))
           .catch(() => ({ items: [] })),
       ),
@@ -50,6 +55,32 @@ export function CompanyTemplateHint({ scenario, extraScenario }: { scenario: str
     }
   }, [scenario, extraScenario])
 
+  // 下载走带鉴权头的 fetch→blob：后端 /download 只认 X-Rh-User-Id，而 <a href> 直链发不了自定义头
+  const handleDownload = async (r: TemplateRow) => {
+    if (busyId) return
+    setBusyId(r.id)
+    try {
+      const res = await fetch(downloadUrl(r.id), { headers: vibexAuthHeaders() })
+      if (!res.ok) {
+        toast.error(`下载失败：模版${res.status === 404 ? "不存在或未导入原件" : "暂不可用"}`)
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = r.file_name || r.name
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      toast.error("下载失败，请稍后重试")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   if (rows.length === 0) return null
 
   return (
@@ -62,6 +93,10 @@ export function CompanyTemplateHint({ scenario, extraScenario }: { scenario: str
         <a
           key={r.id}
           href={downloadUrl(r.id)}
+          onClick={(ev) => {
+            ev.preventDefault()
+            void handleDownload(r)
+          }}
           title={`${r.file_name}（点击下载原件）${r.usage_notes ? `\n${r.usage_notes}` : ""}`}
           className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-0.5 font-medium text-foreground transition-colors hover:border-primary/50 hover:text-primary"
         >

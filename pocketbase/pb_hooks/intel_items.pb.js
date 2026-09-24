@@ -2,7 +2,7 @@
 // pb_hooks/intel_items.pb.js — 业务 collection + REST CRUD 路由 (self-contained)
 //
 // 由 mcp__rh-pb-hooks__install_business_collection 装. 不要直接 Read+Write 这个文件.
-// 业务字段: source_id:text, source_name:text, title:text, url:text, content_snippet:text, item_type:text, summary:text, tags:json, region:text, item_status:text, added_by:text, owner_id:text, published_at:text, visibility:text
+// 业务字段: source_id:text, source_name:text, title:text, url:text, content_snippet:text, item_type:text, summary:text, tags:json, region:text, item_status:text, added_by:text, owner_id:text, published_at:text, visibility:text, structured:json
 // 路由: list,get,create,update,delete
 // list filter 字段: item_type,item_status,owner_id,source_id
 // list 默认排序: -published_at
@@ -41,6 +41,7 @@ onBootstrap(function (e) {
       addField({ name: 'owner_id', type: 'text', max: 60 })
       addField({ name: 'published_at', type: 'text', max: 40 })
       addField({ name: 'visibility', type: 'text' })
+      addField({ name: 'structured', type: 'json' })
       addField({ name: "created", type: "autodate", onCreate: true })
       addField({ name: "updated", type: "autodate", onCreate: true, onUpdate: true })
       if (changed) {
@@ -67,6 +68,7 @@ onBootstrap(function (e) {
           { name: 'owner_id', type: 'text', max: 60 },
           { name: 'published_at', type: 'text', max: 40 },
           { name: 'visibility', type: 'text' },
+          { name: 'structured', type: 'json' },
           { name: "created", type: "autodate", onCreate: true },
           { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
         ],
@@ -102,6 +104,7 @@ routerAdd("GET", "/api/intel_items", function (e) {
           { name: 'owner_id', type: 'text', max: 60 },
           { name: 'published_at', type: 'text', max: 40 },
           { name: 'visibility', type: 'text' },
+          { name: 'structured', type: 'json' },
         { name: "created", type: "autodate", onCreate: true },
         { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
       ],
@@ -113,6 +116,9 @@ routerAdd("GET", "/api/intel_items", function (e) {
     ensureCollLocal()
     var info = e.requestInfo()
     var query = info.query || {}
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var page = parseInt(String(query.page || "1"), 10) || 1
     var perPage = parseInt(String(query.perPage || "50"), 10) || 50
     if (perPage > 200) perPage = 200
@@ -158,6 +164,9 @@ routerAdd("GET", "/api/intel_items", function (e) {
 routerAdd("GET", "/api/intel_items/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("intel_items", id) } catch (_) { rec = null }
@@ -191,6 +200,7 @@ routerAdd("POST", "/api/intel_items", function (e) {
           { name: 'owner_id', type: 'text', max: 60 },
           { name: 'published_at', type: 'text', max: 40 },
           { name: 'visibility', type: 'text' },
+          { name: 'structured', type: 'json' },
         { name: "created", type: "autodate", onCreate: true },
         { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
       ],
@@ -201,6 +211,9 @@ routerAdd("POST", "/api/intel_items", function (e) {
   try {
     var coll = ensureCollLocal()
     var body = e.requestInfo().body || {}
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var rec = new Record(coll)
     rec.set("source_id", body.source_id === undefined || body.source_id === null ? "" : String(body.source_id))
     rec.set("source_name", body.source_name === undefined || body.source_name === null ? "" : String(body.source_name))
@@ -213,7 +226,7 @@ routerAdd("POST", "/api/intel_items", function (e) {
     rec.set("region", body.region === undefined || body.region === null ? "" : String(body.region))
     rec.set("item_status", body.item_status === undefined || body.item_status === null ? "" : String(body.item_status))
     rec.set("added_by", body.added_by === undefined || body.added_by === null ? "" : String(body.added_by))
-    rec.set("owner_id", body.owner_id === undefined || body.owner_id === null ? "" : String(body.owner_id))
+    rec.set("owner_id", __uid)
     rec.set("published_at", body.published_at === undefined || body.published_at === null ? "" : String(body.published_at))
     rec.set("visibility", body.visibility === undefined || body.visibility === null ? "" : String(body.visibility))
     $app.save(rec)
@@ -228,6 +241,9 @@ routerAdd("POST", "/api/intel_items", function (e) {
 routerAdd("PATCH", "/api/intel_items/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("intel_items", id) } catch (_) { rec = null }
@@ -258,6 +274,9 @@ routerAdd("PATCH", "/api/intel_items/{id}", function (e) {
 routerAdd("DELETE", "/api/intel_items/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("intel_items", id) } catch (_) { rec = null }

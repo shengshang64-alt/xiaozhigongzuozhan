@@ -8,7 +8,7 @@ import { ChapterNavTree } from "@/components/solution-studio/ChapterNavTree"
 import { MaterialAmmoPanel } from "@/components/solution-studio/MaterialAmmoPanel"
 import { SkillPickerFor } from "@/components/common/SkillPicker"
 import type { UseSolutionStudio } from "@/pages/SolutionStudio/useSolutionStudio"
-import { typeLabel } from "@/pages/SolutionStudio/solutionTypes"
+import { typeLabel, SOL_COMPLIANCE_MODES, SOL_COMPLIANCE_MODE_LABEL, SOL_COMPLIANCE_MODE_HINT } from "@/pages/SolutionStudio/solutionTypes"
 
 type EditorWorkspaceProps = Pick<
   UseSolutionStudio,
@@ -34,6 +34,10 @@ type EditorWorkspaceProps = Pick<
   | "materialHistoryBlocks"
   | "materialLoading"
   | "insertMaterialToChapter"
+  | "chapterMaterialRecos"
+  | "insertNotice"
+  | "undoMaterialInsert"
+  | "missingChapterSections"
   | "solutions"
   | "openSolutionToKb"
   | "bulkGenerating"
@@ -46,6 +50,10 @@ type EditorWorkspaceProps = Pick<
   | "exportingWord"
   | "chapterSkills"
   | "rewriteSkills"
+  | "solComplianceMode"
+  | "setSolComplianceMode"
+  | "solGen"
+  | "setSolGenPatch"
 >
 
 export function EditorWorkspace(p: EditorWorkspaceProps) {
@@ -71,6 +79,8 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
       insertMaterialToChapter={p.insertMaterialToChapter}
       activeChapterId={p.activeChapterId}
       solutions={p.solutions}
+      recos={p.chapterMaterialRecos}
+      recoChapterTitle={p.activeChapter?.title ?? null}
       collapsed={materialCollapsed}
       onToggleCollapsed={() => setMaterialCollapsed((prev) => !prev)}
       onOpenKbWizard={() => p.openSolutionToKb(sol)}
@@ -125,6 +135,62 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
             <PrintExportButton title="把当前方案正文按只读版式调起打印，可在打印对话框选择「另存为 PDF」" />
           </div>
         </div>
+        {/* 05 §6：方案侧生成模式三选一 + 问题1/2：目标页数与配图开关（均按方案存 localStorage） */}
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground">生成模式</span>
+            <div className="inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
+              {SOL_COMPLIANCE_MODES.map((m) => {
+                const active = p.solComplianceMode === m
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => p.setSolComplianceMode(m)}
+                    title={SOL_COMPLIANCE_MODE_HINT[m]}
+                    className={`rounded-md px-2.5 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                      active ? "bg-card font-medium text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {SOL_COMPLIANCE_MODE_LABEL[m]}
+                  </button>
+                )
+              })}
+            </div>
+            <span className="text-xs text-muted-foreground">{SOL_COMPLIANCE_MODE_HINT[p.solComplianceMode]}</span>
+          </div>
+          <label
+            className="flex items-center gap-1.5 text-xs text-muted-foreground"
+            title="按每页约 500 字折算逐章字数预算：生成不足 60% 自动续写（最多 2 轮），超写按 1.3× 预算裁剪；留空或 0 = 不限页数（维持每章 1200-2000 字）"
+          >
+            <span className="font-medium text-foreground">目标页数</span>
+            <input
+              type="number"
+              min={0}
+              max={200}
+              placeholder="不限"
+              value={p.solGen.targetPages || ""}
+              onChange={(e) => {
+                const n = Number(e.target.value)
+                p.setSolGenPatch({ targetPages: e.target.value === "" || !Number.isFinite(n) ? 0 : n })
+              }}
+              className="h-7 w-16 rounded-md border border-border bg-background px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            />
+            页
+          </label>
+          <label
+            className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground"
+            title="开启后生成章节可附架构图/流程图/系统界面示意（结构化数据绘制，导出 Word 自动插图）；关闭则只输出纯文本"
+          >
+            <input
+              type="checkbox"
+              checked={p.solGen.figuresEnabled}
+              onChange={(e) => p.setSolGenPatch({ figuresEnabled: e.target.checked })}
+              className="h-4 w-4 accent-primary"
+            />
+            生成架构图/流程图配图
+          </label>
+        </div>
         {p.bulkGenerating && (
           <div className="mt-4">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -146,7 +212,7 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
 
       <div
         className={`mt-5 grid grid-cols-1 items-start gap-4 ${
-          materialCollapsed ? "lg:grid-cols-[200px_2.75rem_minmax(0,1fr)]" : "lg:grid-cols-[200px_300px_minmax(0,1fr)]"
+          materialCollapsed ? "lg:grid-cols-[200px_minmax(0,1fr)_2.75rem]" : "lg:grid-cols-[200px_minmax(0,1fr)_300px]"
         }`}
       >
         <div className="lg:sticky lg:top-20">
@@ -157,7 +223,6 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
             doneChapterCount={p.doneChapterCount}
           />
         </div>
-        <div className="hidden lg:block">{materialPanel}</div>
         <ChapterEditor
           activeChapter={p.activeChapter}
           activeChapterId={p.activeChapterId}
@@ -171,9 +236,14 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
           textareaRef={p.chapterTextareaRef}
           bulkGenerating={p.bulkGenerating}
           chapterIndex={chapterIndex}
+          figures={p.activeChapter?.figures}
+          missingSections={p.missingChapterSections}
+          insertNotice={p.insertNotice}
+          onUndoInsert={p.undoMaterialInsert}
           genPickerSlot={<SkillPickerFor scope="solution-chapter" source={p.chapterSkills} align="right" />}
           refinePickerSlot={<SkillPickerFor scope="solution-rewrite" source={p.rewriteSkills} align="right" />}
         />
+        <div className="hidden lg:block">{materialPanel}</div>
       </div>
 
       {/* 循环 11 块 B：打印 / 存 PDF 只读正文块（屏幕隐藏，打印独占显示） */}
@@ -187,7 +257,7 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
       />
 
       <footer className="mt-10 border-t border-border pt-5 text-center text-xs text-muted-foreground">
-        正文按章节顺序串行生成以保持全文一致，编辑内容自动保存；导出 Word 保留章—节标题层级
+        正文按章节顺序串行生成以保持全文一致，编辑内容自动保存；导出 Word 按下方格式模板应用字体/标题/行距与章节配图
       </footer>
     </section>
   )

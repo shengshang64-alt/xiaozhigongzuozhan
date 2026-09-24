@@ -92,6 +92,9 @@ routerAdd("GET", "/api/kb_qa_pairs", function (e) {
     ensureCollLocal()
     var info = e.requestInfo()
     var query = info.query || {}
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var page = parseInt(String(query.page || "1"), 10) || 1
     var perPage = parseInt(String(query.perPage || "50"), 10) || 50
     if (perPage > 200) perPage = 200
@@ -133,6 +136,9 @@ routerAdd("GET", "/api/kb_qa_pairs", function (e) {
 routerAdd("GET", "/api/kb_qa_pairs/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("kb_qa_pairs", id) } catch (_) { rec = null }
@@ -169,8 +175,11 @@ routerAdd("POST", "/api/kb_qa_pairs", function (e) {
   try {
     var coll = ensureCollLocal()
     var body = e.requestInfo().body || {}
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var rec = new Record(coll)
-    rec.set("rh_user_id", body.rh_user_id === undefined || body.rh_user_id === null ? "" : String(body.rh_user_id))
+    rec.set("rh_user_id", __uid)
     rec.set("question", body.question === undefined || body.question === null ? "" : String(body.question))
     rec.set("answer", body.answer === undefined || body.answer === null ? "" : String(body.answer))
     rec.set("category", body.category === undefined || body.category === null ? "" : String(body.category))
@@ -189,12 +198,15 @@ routerAdd("POST", "/api/kb_qa_pairs", function (e) {
 routerAdd("PATCH", "/api/kb_qa_pairs/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("kb_qa_pairs", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
     var body = e.requestInfo().body || {}
-    if ("rh_user_id" in body) rec.set("rh_user_id", body.rh_user_id === undefined || body.rh_user_id === null ? "" : String(body.rh_user_id))
+    // IDOR fix: owner transfer disabled
     if ("question" in body) rec.set("question", body.question === undefined || body.question === null ? "" : String(body.question))
     if ("answer" in body) rec.set("answer", body.answer === undefined || body.answer === null ? "" : String(body.answer))
     if ("category" in body) rec.set("category", body.category === undefined || body.category === null ? "" : String(body.category))
@@ -212,6 +224,9 @@ routerAdd("PATCH", "/api/kb_qa_pairs/{id}", function (e) {
 routerAdd("DELETE", "/api/kb_qa_pairs/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
+    var __h = (e.requestInfo()||{}).headers||{}
+    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
     try { rec = $app.findRecordById("kb_qa_pairs", id) } catch (_) { rec = null }

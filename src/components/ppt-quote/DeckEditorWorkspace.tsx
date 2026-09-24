@@ -1,9 +1,13 @@
 import { useState, type ReactNode } from "react"
-import { ArrowLeft, Download, Eye, FileText, Pencil } from "lucide-react"
-import { deckTypeLabel, type DeckRecord, type RefineKind, type Slide } from "@/pages/PptQuote/pptQuoteTypes"
+import { ArrowLeft, Download, Eye, FileText, Pencil, Play } from "lucide-react"
+import { deckTypeLabel, TRANSITION_LABEL, type DeckRecord, type DeckTransition, type RefineKind, type Slide } from "@/pages/PptQuote/pptQuoteTypes"
+import type { ImageSearchProvider } from "@/pages/PptQuote/imageSearch"
 import { SlideListNav } from "./SlideListNav"
 import { SlideEditor } from "./SlideEditor"
 import { SlidePreviewGrid } from "./SlidePreviewGrid"
+import { DeckPresent } from "./DeckPresent"
+
+type ImagePool = { source: string; loading: boolean; urls: string[]; error: string }
 
 type DeckEditorWorkspaceProps = {
   deck: DeckRecord
@@ -27,6 +31,24 @@ type DeckEditorWorkspaceProps = {
   onExportSpeech: () => void
   /** 逐页编辑「改写 / 扩写 / 精简」旁的带入技能选择器（页面注入） */
   refinePickerSlot?: ReactNode
+  /** 页面切换动画（deck 级，导出时注入 OOXML） */
+  deckTransition: DeckTransition
+  setDeckTransition: (value: DeckTransition) => void
+  /** 真实配图：图池 + 逐页/一键插入 */
+  imagePool: ImagePool
+  imageBusy: boolean
+  onLoadImagePool: (source: string) => void
+  attachImageFromUrl: (index: number, url: string) => void
+  attachImageByPastedUrl: (index: number, url: string) => void
+  uploadSlideImage: (index: number, file: File) => void
+  clearSlideImage: (index: number) => void
+  applyPoolImagesToHinted: () => void
+  /** 逐页联网搜图 / AI 生图 */
+  searchAndAttachImage: (index: number, query?: string, providerOverride?: ImageSearchProvider) => Promise<boolean>
+  aiGenerateImageForSlide: (index: number, promptOverride?: string) => Promise<boolean>
+  autoFigureProvider: ImageSearchProvider
+  setAutoFigureProvider: (v: ImageSearchProvider) => void
+  slideFigureBusy: { index: number; kind: "search" | "ai" | "" }
 }
 
 export function DeckEditorWorkspace({
@@ -49,6 +71,21 @@ export function DeckEditorWorkspace({
   onExportPptx,
   onExportSpeech,
   refinePickerSlot,
+  deckTransition,
+  setDeckTransition,
+  imagePool,
+  imageBusy,
+  onLoadImagePool,
+  attachImageFromUrl,
+  attachImageByPastedUrl,
+  uploadSlideImage,
+  clearSlideImage,
+  applyPoolImagesToHinted,
+  searchAndAttachImage,
+  aiGenerateImageForSlide,
+  autoFigureProvider,
+  setAutoFigureProvider,
+  slideFigureBusy,
 }: DeckEditorWorkspaceProps) {
   // 用户反馈轮：可编辑性提示条（可关闭，sessionStorage 记忆）
   const [editHintDismissed, setEditHintDismissed] = useState(() => {
@@ -58,6 +95,8 @@ export function DeckEditorWorkspace({
       return false
     }
   })
+  // 应用内放映预览（按 deckTransition 播放页面切换动画）
+  const [presenting, setPresenting] = useState(false)
   return (
     <section className="py-6 pb-16">
       <header className="rounded-2xl border border-border bg-gradient-to-br from-background via-secondary to-card px-5 py-4 shadow-md animate-in fade-in duration-500">
@@ -85,6 +124,29 @@ export function DeckEditorWorkspace({
             {deck.audience || "未设对象"} · {deck.duration_min} 分钟 · {deck.slides.length} 页
           </span>
           <div className="ml-auto flex shrink-0 items-center gap-2">
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              切换动画
+              <select
+                value={deckTransition}
+                onChange={(e) => setDeckTransition(e.target.value as DeckTransition)}
+                className="h-9 rounded-md border border-border bg-card px-2 text-sm text-card-foreground shadow-sm transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                {(Object.keys(TRANSITION_LABEL) as DeckTransition[]).map((k) => (
+                  <option key={k} value={k}>
+                    {TRANSITION_LABEL[k]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={() => setPresenting(true)}
+              disabled={!deck.slides.length}
+              className="flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-card-foreground shadow-sm transition-all hover:border-primary hover:text-primary disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <Play className="h-4 w-4" />
+              放映预览
+            </button>
             <button
               type="button"
               onClick={onExportSpeech}
@@ -180,6 +242,7 @@ export function DeckEditorWorkspace({
             slideAiKind={slideAiKind}
             persistFailed={persistFailed}
             onTitleChange={(value) => updateSlide({ title: value })}
+            onLayoutChange={(layout) => updateSlide({ layout })}
             onBulletsChange={(value) =>
               updateSlide({
                 bullets: value
@@ -191,6 +254,19 @@ export function DeckEditorWorkspace({
             onNotesChange={(value) => updateSlide({ notes: value })}
             onRefine={refineSlide}
             refinePickerSlot={refinePickerSlot}
+            imagePool={imagePool}
+            imageBusy={imageBusy}
+            onLoadImagePool={onLoadImagePool}
+            onAttachImageFromUrl={(url) => attachImageFromUrl(currentSlideIndex, url)}
+            onAttachImageByPastedUrl={(url) => attachImageByPastedUrl(currentSlideIndex, url)}
+            onUploadImage={(file) => uploadSlideImage(currentSlideIndex, file)}
+            onClearImage={() => clearSlideImage(currentSlideIndex)}
+            onApplyPoolImagesToHinted={applyPoolImagesToHinted}
+            onSearchImage={(query) => searchAndAttachImage(currentSlideIndex, query)}
+            onAIGenerateImage={(prompt) => aiGenerateImageForSlide(currentSlideIndex, prompt)}
+            autoFigureProvider={autoFigureProvider}
+            setAutoFigureProvider={setAutoFigureProvider}
+            figureBusyKind={slideFigureBusy.index === currentSlideIndex ? slideFigureBusy.kind : ""}
           />
         </div>
       ) : (
@@ -205,6 +281,16 @@ export function DeckEditorWorkspace({
           />
         </div>
       )}
+
+      {presenting && deck.slides.length ? (
+        <DeckPresent
+          slides={deck.slides}
+          deckName={deck.deck_name}
+          transition={deckTransition}
+          startIndex={Math.min(currentSlideIndex, deck.slides.length - 1)}
+          onClose={() => setPresenting(false)}
+        />
+      ) : null}
     </section>
   )
 }

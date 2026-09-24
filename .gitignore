@@ -12,6 +12,17 @@ dist
 dist-ssr
 *.local
 
+# 环境变量与密钥（务必禁止入库；仅允许示例文件）
+.env
+.env.*
+!.env.example
+
+# SQLite 运行时产物（WAL/SHM/journal 不得入库）
+*.db-wal
+*.db-shm
+*.db-journal
+**/pb_data/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -33,3 +44,7 @@ pocketbase/logs/
 .nightrun/backup/
 .nightrun/evidence/*.tmp
 .nightrun/seed/*.tmp
+
+# 诊断与 QA 产物（体积大、可再生，不入库）
+.diag/
+_qa/

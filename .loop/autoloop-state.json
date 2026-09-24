@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "total_rounds_run": 0,
+  "consecutive_no_report": 0,
+  "consecutive_env_fail": 0,
+  "history": [
+    {
+      "round": 32,
+      "role": "qa-engineer",
+      "status": "dry_run",
+      "reason": "",
+      "topic": "",
+      "workClass": "",
+      "durationMs": 0,
+      "reportProduced": false,
+      "commitHash": "",
+      "needsUserDecision": [],
+      "honestNotes": [],
+      "cliMeta": null
+    }
+  ],
+  "last_run_at": "2026-09-24T09:01:01.322Z",
+  "last_stop_reason": "completed_requested_rounds"
+}

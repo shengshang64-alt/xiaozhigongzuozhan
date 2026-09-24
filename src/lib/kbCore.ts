@@ -4,7 +4,7 @@
 
 import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/rhLogin"
-import { contextSnippetOf, effectivePolicy } from "@/lib/kbPolicy"
+import { categoryOf, contextSnippetOf, effectivePolicy } from "@/lib/kbPolicy"
 
 // ---------------------------------------------------------------------------
 // 行类型（字段名与 kb_docs collection 100% 一致，snake_case）
@@ -32,6 +32,10 @@ export interface KbDocRow {
   retrieval_weight?: number
   /** 轮次 D-1：敏感标记，空 = 取分类默认 */
   is_sensitive?: boolean
+  /** 组装层第一期：赛道标签（kbTaxonomy.KB_TRACKS，空=未分类），供调用时按场景软加权 */
+  kb_track?: string
+  /** 组装层第一期：用途桶标签（kbTaxonomy.KB_BUCKETS，空=未分类） */
+  kb_bucket?: string
 }
 
 export type KbVisibility = "team" | "personal"
@@ -68,18 +72,38 @@ export type ListKbDocsOptions = {
   fields?: string
 }
 
+/**
+ * listKbDocs 翻页安全上限（页）。仅作服务端异常时的兜底——正常路径靠
+ * 「返回条数 < 一页」提前收敛，故提高上限不产生额外请求。
+ * 本轮（kb-cap-01）：30 → 60。实测 kb_docs 真实总数 6423（末页为第 33 页、23 条），
+ * 旧上限 30 页 × 200 = 6000 使第 31–33 页共 423 篇文档被**静默丢弃**并退出前端检索；
+ * 60 页(=12000) 为当前规模留一倍余量，避免再次静默截断。
+ */
+export const KB_LIST_MAX_PAGES = 60
+
+/** 服务端 kb_docs list 路由的每页硬上限（hook 把 perPage 钳到 200，请求更大值无效）。 */
+export const KB_LIST_PER_PAGE = 200
+
+/**
+ * perf-01：全量翻页并发批大小。冷加载实测单页(200 篇含全文)~3.2s，6400+ 篇要串行 33 页
+ * ≈ 60–100s（kb-cap-01 坐实）；改为每批 3 页并发下载、批间仍串行（保留「返回不满一页即停」
+ * 的收敛语义），冷加载约降 3 倍。并发度取 3 是低内存机器的保守值（每页响应体均为大字符串，
+ * 在飞响应 ×3 可控），高于 4 无必要且加剧带宽争抢。
+ */
+const KB_LIST_PAGE_BATCH = 3
+
 export async function listKbDocs(opts?: ListKbDocsOptions): Promise<KbDocRow[]> {
   // list 路由不按 rh_user_id 过滤（团队文档全员可见），个人文档隔离在前端做。
   // 循环7 C2-2：服务端把 perPage 钳到 200 且原实现只拉第 1 页，>200 文档会被截断；
-  // 改为循环翻页拉全（直到返回条数 < 服务端回显的实际 perPage），安全上限 10 页，
-  // 超限 console.warn。函数签名不变，调用方无感。
+  // 改为循环翻页拉全（直到返回条数 < 服务端回显的实际 perPage）。安全上限原为 10 页(=2000)，
+  // 但本地材料批量导入后团队+个人已超 2000（实测 2004），尾部文档会被静默丢弃且退出前端检索，
+  // 故先上调到 30 页(=6000)；本轮 kb-cap-01 再上调到 KB_LIST_MAX_PAGES(=60 页)。
   const perPage = opts?.perPage ?? 500
-  const MAX_PAGES = 10
+  const MAX_PAGES = KB_LIST_MAX_PAGES
   // 当前自定义 list 路由按 publicExport 返回全字段、暂未消费 fields 参数（红线：pb_hooks 零变更），
   // 故在解析层兜底瘦身：fields 明确裁掉 content 时强制置空，避免命中仍驻留全文大字符串
   const slimContent = opts?.fields !== undefined && !opts.fields.split(",").includes("content")
-  const all: KbDocRow[] = []
-  for (let page = 1; page <= MAX_PAGES; page += 1) {
+  const fetchKbPage = async (page: number): Promise<{ rows: KbDocRow[]; effectivePerPage: number }> => {
     const params = new URLSearchParams({ page: String(page), perPage: String(perPage) })
     if (opts?.q) params.set("q", opts.q)
     if (opts?.fields) params.set("fields", opts.fields)
@@ -96,13 +120,31 @@ export async function listKbDocs(opts?: ListKbDocsOptions): Promise<KbDocRow[]> 
       ai_context_mode: typeof r.ai_context_mode === "string" ? r.ai_context_mode : "",
       retrieval_weight: typeof r.retrieval_weight === "number" ? r.retrieval_weight : undefined,
       is_sensitive: typeof r.is_sensitive === "boolean" ? r.is_sensitive : undefined,
+      kb_track: typeof r.kb_track === "string" ? r.kb_track : "",
+      kb_bucket: typeof r.kb_bucket === "string" ? r.kb_bucket : "",
     }))
-    all.push(...rows)
     // 响应回显钳制后的实际 perPage；返回条数不足一页即最后一页
     const effectivePerPage =
       typeof data.perPage === "number" && data.perPage > 0 ? data.perPage : Math.min(perPage, 200)
-    if (rows.length < effectivePerPage) return all
-    if (page === MAX_PAGES) {
+    return { rows, effectivePerPage }
+  }
+  const all: KbDocRow[] = []
+  let done = false
+  for (let start = 1; start <= MAX_PAGES && !done; start += KB_LIST_PAGE_BATCH) {
+    const size = Math.min(KB_LIST_PAGE_BATCH, MAX_PAGES - start + 1)
+    // 同批并发拉页，任一页失败则整体抛出（与旧串行实现一致）；拼接按页序，结果与串行版逐字等价
+    const batch = await Promise.all(
+      Array.from({ length: size }, (_, i) => fetchKbPage(start + i)),
+    )
+    for (const { rows, effectivePerPage } of batch) {
+      all.push(...rows)
+      if (rows.length < effectivePerPage) {
+        done = true
+        break
+      }
+    }
+    // 撞满安全上限且末批最后一页仍满页，才说明仍有文档未返回（旧串行版同条件）
+    if (!done && start + size > MAX_PAGES) {
       console.warn(
         `[kbCore] listKbDocs 达到翻页安全上限 ${MAX_PAGES} 页（已取 ${all.length} 条），超出部分未返回`,
       )
@@ -128,6 +170,9 @@ export async function createKbDoc(body: {
   source_file_name: string
   uploader_name: string
   doc_category?: string
+  ai_context_mode?: string
+  retrieval_weight?: number
+  is_sensitive?: boolean
 }): Promise<KbDocRow> {
   return kbFetch<KbDocRow>(`/api/kb_docs`, { method: "POST", body: JSON.stringify(body) })
 }
@@ -202,12 +247,23 @@ function stripMarkdown(text: string): string {
 // 上传建索引：摘要（首个有效段落截断）+ 关键词（标题分词 + 正文高频词）
 // ---------------------------------------------------------------------------
 
+/** 摘要候选行判定：跳过空/纯标点、xlsx 合成表名标记【工作表 X】、以及分隔符密集却几乎无正文的纯 CSV 表头噪声行 */
+function isSummaryJunkLine(line: string): boolean {
+  if (!line || line.length < 10) return true
+  if (/^[-*\d.、\s（）()·｜|]*$/.test(line)) return true
+  if (/^【工作表[^】]*】$/.test(line)) return true
+  const seps = (line.match(/[,，|\t]/g) ?? []).length
+  const core = line.replace(/[,，|\t\s]/g, "")
+  if (seps >= 3 && core.length < seps * 2) return true
+  return false
+}
+
 export function extractKbIndex(title: string, content: string): { summary: string; keywords: string[] } {
   const plain = stripMarkdown(content ?? "")
   const paragraphs = (content ?? "")
     .split(/\n{1,}/)
     .map((line) => stripMarkdown(line))
-    .filter((line) => line.length >= 10 && !/^[-*\d.、\s]*$/.test(line))
+    .filter((line) => !isSummaryJunkLine(line))
   const summary = (paragraphs[0] ?? plain).slice(0, 160)
 
   const counts = new Map<string, number>()
@@ -425,11 +481,132 @@ export function scoreKbDoc(doc: KbDocRow, tokens: string[]): number {
   return score
 }
 
+// ---------------------------------------------------------------------------
+// 检索打分（块级 v2，p1-kb）：IDF + BM25 tf-saturation + 短语邻接 +
+// 标题整串强匹配 + 分类多样化 + 疑问词停用；每 doc 最多贡献 2 块（第 2 块分数
+// ≥ 第 1 块 60% 才带），topN 按 doc 数；blocked 过滤与 retrieval_weight 加权不变。
+// ---------------------------------------------------------------------------
+
+// 中文常见疑问/连接词：出现频次高但信息量低，进入主排序会稀释信号，直接过滤
+const QUERY_STOPWORDS = new Set([
+  "什么", "怎么", "怎样", "如何", "为什么", "哪些", "哪个", "是否", "可以", "需要",
+  "有没", "多少", "对于", "关于", "以及", "或者", "并且", "但是", "可是", "然后",
+  "进行", "一下", "这个", "那个", "哪些个",
+])
+
+// 语料 df 缓存：以 docs 数组引用为 WeakMap 键，listKbDocs 每次返回新数组即重建；
+// 同一 session 内多次调 searchKbDocs 只扫一遍语料。
+const kbIdfCache = new WeakMap<KbDocRow[], { N: number; df: Map<string, number> }>()
+
+function getOrBuildIdf(docs: KbDocRow[]): { N: number; df: Map<string, number> } {
+  const hit = kbIdfCache.get(docs)
+  if (hit) return hit
+  const df = new Map<string, number>()
+  let N = 0
+  for (const d of docs) {
+    // blocked 文档既不参与检索也不进 df，避免其词汇压低公共词权重
+    if (effectivePolicy(d).ai_context_mode === "blocked") continue
+    N += 1
+    const unique = new Set<string>()
+    const head = (d.title ?? "") + " " + (d.keywords ?? []).join(" ")
+    // body 采样前 6000 字：df 是文档级布尔量，抽样近似不影响排序且避免超长文档遍历开销
+    const body = (d.content ?? "").slice(0, 6000)
+    for (const t of tokenizeText(head + " " + body)) unique.add(t)
+    for (const t of unique) df.set(t, (df.get(t) ?? 0) + 1)
+  }
+  const built = { N, df }
+  kbIdfCache.set(docs, built)
+  return built
+}
+
+function idfOf(tok: string, N: number, df: Map<string, number>): number {
+  const d = df.get(tok) ?? 0
+  // Lucene 风格：恒正且稀词权重更高；N 极小时也不会爆
+  return Math.log(1 + (N - d + 0.5) / (d + 0.5))
+}
+
+// 分词权重：CJK 长段 > 3 字片段 > 拉丁词 > 2 字 bigram（bigram 是子串证据，非独立信号）
+function tokenWeightOf(tok: string): number {
+  if (/^[a-z0-9]/i.test(tok)) return 1.0
+  const L = tok.length
+  if (L >= 4) return 1.6
+  if (L === 3) return 1.3
+  return 1.0
+}
+
+interface QueryToken {
+  tok: string
+  weight: number
+}
+
+function tokenizeQueryWeighted(q: string): QueryToken[] {
+  const src = (q ?? "").toLowerCase()
+  const out: QueryToken[] = []
+  const seen = new Set<string>()
+  const add = (t: string) => {
+    if (seen.has(t) || t.length < 2 || QUERY_STOPWORDS.has(t)) return
+    seen.add(t)
+    out.push({ tok: t, weight: tokenWeightOf(t) })
+  }
+  for (const m of src.matchAll(LATIN_WORD_RE)) add(m[0])
+  for (const m of src.matchAll(CJK_RUN_RE)) {
+    const run = m[0]
+    if (run.length <= 4) add(run)
+    // 长段截前 4 字保留主信号（bigram 循环下面已覆盖其余子串）
+    else add(run.slice(0, 4))
+    for (let i = 0; i + 2 <= run.length; i++) add(run.slice(i, i + 2))
+  }
+  return out
+}
+
+// 短语邻接：query 命中的不同 tok 若首次位置间距 ≤ 100 字，视为「共同描述同一件事」，
+// 每一对相邻加 2 分。仅按 tok 首次出现位置计算避免高频词反复触发。
+function phraseAdjacencyBonus(hits: { tok: string; at: number }[]): number {
+  if (hits.length < 2) return 0
+  const first = new Map<string, number>()
+  for (const h of hits) if (!first.has(h.tok)) first.set(h.tok, h.at)
+  const arr = [...first.values()].sort((a, b) => a - b)
+  let bonus = 0
+  for (let i = 1; i < arr.length; i++) {
+    if (arr[i] - arr[i - 1] <= 100) bonus += 2
+  }
+  return bonus
+}
+
+const BM25_K1 = 1.4
+
+function bm25Tf(tf: number, dl: number, avgDl: number): number {
+  const cap = Math.min(tf, 20)
+  const b = 0.75
+  const norm = 1 - b + b * (dl / Math.max(1, avgDl))
+  return (cap * (BM25_K1 + 1)) / (cap + BM25_K1 * norm)
+}
+
+// 单文档 chunk 命中的粗估平均块长（避免全局扫描；用当前 doc 的 chunks 长度中位数）
+function estimateAvgDl(docs: KbDocRow[], cap = 20): number {
+  let total = 0
+  let n = 0
+  const lim = Math.min(docs.length, cap)
+  for (let i = 0; i < lim; i++) {
+    const chunks = chunkKbDoc(docs[i])
+    for (const c of chunks) {
+      total += c.text.length
+      n += 1
+    }
+  }
+  return n > 0 ? Math.max(200, total / n) : 800
+}
+
 export function searchKbDocs(docs: KbDocRow[], question: string, topN = 5): KbSearchHit[] {
-  const tokens = tokenizeText(question).filter((t) => t.length >= 2)
-  if (tokens.length === 0) return []
-  const limit = Math.max(3, Math.min(topN, 5))
-  const docEntries: { bestScore: number; hits: KbSearchHit[] }[] = []
+  const qTokens = tokenizeQueryWeighted(question)
+  if (qTokens.length === 0) return []
+  const limit = Math.max(3, Math.min(topN, 8))
+  const { N, df } = getOrBuildIdf(docs)
+  const avgDl = estimateAvgDl(docs)
+  const rawQ = (question ?? "").toLowerCase().trim()
+  const tokList = qTokens.map((q) => q.tok)
+
+  const docEntries: { bestScore: number; hits: KbSearchHit[]; category: string }[] = []
 
   for (const doc of docs) {
     const policy = effectivePolicy(doc)
@@ -439,21 +616,35 @@ export function searchKbDocs(docs: KbDocRow[], question: string, topN = 5): KbSe
     const lowerTitle = (doc.title ?? "").toLowerCase()
     const keywords = (doc.keywords ?? []).map((k) => String(k).toLowerCase())
     let docBonus = 0
-    for (const tok of tokens) {
-      if (lowerTitle.includes(tok)) docBonus += 3
-      if (keywords.some((k) => k.includes(tok) || tok.includes(k))) docBonus += 2
+    for (const { tok, weight } of qTokens) {
+      if (lowerTitle.includes(tok)) docBonus += 3 * weight
+      if (keywords.some((k) => k.includes(tok) || tok.includes(k))) docBonus += 2 * weight
     }
+    // 原查询整串作为 title 子串（≥3 字）：极强信号，加 15 分
+    if (rawQ.length >= 3 && lowerTitle.includes(rawQ)) docBonus += 15
 
     const scored: { chunk: KbChunk; chunkScore: number }[] = []
     for (const chunk of chunkKbDoc(doc)) {
       const lowerText = chunk.text.toLowerCase()
       const lowerHeading = (chunk.headingPath ?? "").toLowerCase()
-      let chunkScore = 0
-      for (const tok of tokens) {
-        if (lowerHeading && lowerHeading.includes(tok)) chunkScore += 2
-        chunkScore += Math.min(countOccurrences(lowerText, tok), 10)
+      const dl = Math.max(1, lowerText.length)
+
+      let s = 0
+      const pos: { tok: string; at: number }[] = []
+      for (const { tok, weight } of qTokens) {
+        const tf = countOccurrences(lowerText, tok)
+        if (tf === 0) continue
+        pos.push({ tok, at: lowerText.indexOf(tok) })
+        const idf = idfOf(tok, N, df)
+        s += weight * idf * bm25Tf(tf, dl, avgDl)
+        if (lowerHeading && lowerHeading.includes(tok)) s += 2 * weight
       }
-      if (chunkScore > 0) scored.push({ chunk, chunkScore })
+      if (s > 0) {
+        s += phraseAdjacencyBonus(pos)
+        // 超长块轻罚：>1500 字后每 1000 字衰减 ~1/1.5，避免大段落自然赢小段落
+        if (dl > 1500) s *= 1500 / dl
+        scored.push({ chunk, chunkScore: s })
+      }
     }
     scored.sort((a, b) => b.chunkScore - a.chunkScore)
 
@@ -464,7 +655,7 @@ export function searchKbDocs(docs: KbDocRow[], question: string, topN = 5): KbSe
         hits.push({
           doc,
           score: (chunkScore + docBonus) * policy.retrieval_weight,
-          snippet: makeSnippet(chunk.text, tokens),
+          snippet: makeSnippet(chunk.text, tokList),
           headingPath: chunk.headingPath || undefined,
           chunkStart: chunk.start,
         })
@@ -474,15 +665,34 @@ export function searchKbDocs(docs: KbDocRow[], question: string, topN = 5): KbSe
       hits.push({
         doc,
         score: docBonus * policy.retrieval_weight,
-        snippet: makeSnippet(doc.content ?? "", tokens),
+        snippet: makeSnippet(doc.content ?? "", tokList),
       })
     }
-    if (hits.length > 0) docEntries.push({ bestScore: hits[0].score, hits })
+    if (hits.length > 0) {
+      docEntries.push({ bestScore: hits[0].score, hits, category: categoryOf(doc) })
+    }
   }
 
   docEntries.sort((a, b) => b.bestScore - a.bestScore)
+
+  // 分类多样化：top limit 全为同一分类且存在其它分类的可信候选（≥ top1 * 60%），
+  // 用最佳不同分类替换末位，避免 AI 上下文被单一视角垄断。
+  const picked = docEntries.slice(0, limit)
+  if (picked.length >= 3) {
+    const catCount = new Map<string, number>()
+    for (const e of picked) catCount.set(e.category, (catCount.get(e.category) ?? 0) + 1)
+    const dominant = [...catCount.entries()].sort((a, b) => b[1] - a[1])[0]
+    if (dominant && dominant[1] >= picked.length - 1) {
+      const threshold = picked[0].bestScore * 0.6
+      const cand = docEntries
+        .slice(limit)
+        .find((e) => e.category !== dominant[0] && e.bestScore >= threshold)
+      if (cand) picked[picked.length - 1] = cand
+    }
+  }
+
   const out: KbSearchHit[] = []
-  for (const entry of docEntries.slice(0, limit)) out.push(...entry.hits)
+  for (const entry of picked) out.push(...entry.hits)
   return out
 }
 
