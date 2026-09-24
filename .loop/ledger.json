@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 51,
+  "round": 52,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -16,10 +16,10 @@
     {
       "id": "r44-intel-hygiene-02",
       "module": "/intel-center,/",
-      "issue": "[R44体验审计·不可通过级] 情报采集质量簇 5 项：F9 类型判定失效——电子病历评级/医保政策/数智医院/光子CT 等大量行业资讯全标'竞品动向'，分类形同虚设；F10 首页情报摘要卡=垃圾文本（'网站支持IPv6 长者助手…1 2 3 4'导航菜单残留）、摘要错挂他文（卫健委发布会挂AI黑客摘要）、出现未来日期 2027-01-01；F21 首页'in_more 更多'DOM残留；F22 7个采集源抓取失败无处理入口；F23 垃圾条目居列表首位（标题=站名、6标签乱贴）。需抓取文本清洗+类型判定规则修订（判类型属提示词语义则触红线#2，若为关键词规则可自动修，待定位确认）",
+      "issue": "[R44体验审计·不可通过级] 情报采集质量簇：F9 类型判定失效【R52 定性+增量止血：漂移源 yedm5f0kdmx7m3r(cn-witmed.com) 错标competitor已改media，新条目归对类；存量101条错标待用户拍板修正方案(报告2026-09-25-0730)；重复源5对并入本簇待清理】；F10 首页情报摘要卡=垃圾文本（导航菜单残留、摘要错挂、2027未来日期）；F21 首页in_more DOM残留；F22 7个采集源抓取失败无处理入口；F23 垃圾条目居列表首位",
       "priority": "P1",
       "status": "open",
-      "evidence": "R44实机走查snapshot + R48全表扫描: intel 200条乱码/空标题/替换符=0，F10首页\"垃圾文本\"判定为显示层串了导航菜单、非库内脏数据(无需删数据)。采集失败/类型判定等仍需代码侧处理。",
+      "evidence": "R52 接口全量拉取 500 条分布: policy214/competitor151(含漂移101)/media92/bid42/空1；源表40个含重复5对失败7个；.diag/r52_items_full.json",
       "diff": ""
     },
     {
@@ -773,8 +773,15 @@
       "issue": "后端安全三项(08报告 1.1/1.2/1.3)：API Key XOR+硬编码 SECRET 升级 AES-GCM+环境变量、LLM 接口速率限制、token 用量 llm_usage 落库",
       "status": "deferred-by-user",
       "decision": "2026-09-22 用户拍板：本地单用户自用部署维持现状，不碰 pb_hooks 红线；若将来对外部署或多用户化，需单独立项并豁免红线+重启 PB 专门做；论断已逐条坐实(model_gateway.pb.js L18/88/187)非误报"
+    },
+    {
+      "id": "intel-retype-101",
+      "module": "/intel-center",
+      "issue": "漂移源存量 101 条 item_type competitor→media 批量修正：方案①临时superuser(推荐,中断~1分钟) / 方案②一次性hooks路由(R1-R10全跑) / 不动",
+      "status": "needs_user_decision",
+      "decision": ""
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "Round51 修 F6 隐式硬约束碎片句(A类·代码)：extractImplicitConstraints 先接回换行断句再按完整句提取，超长句锚定关键词按标点裁剪，排除「备份份数」误报。24→21条全完整句，实机+293单测验证。P0簇 r44-parse-quality-01 收官(F1/F2/F6全闭)。下轮建议 F9 情报类型判定。"
+  "lastRoundSummary": "Round52 F9 定性+增量止血(A类·数据)：漂移源「HIT专家网·资讯首页」(cn-witmed.com)错标competitor灌水竞品桶101/151条，源已改media生效，新条目归对类；存量101条修正需superuser/hooks路由，列方案①②待拍板。零代码改动。下轮：拍板后修存量或推进F10。"
 }
