@@ -265,19 +265,30 @@ export const STAR_CLAUSE_LIMIT = 200
 
 const STAR_MARK_RE = /[★☆▲△]/
 
+// R50/F2：标记行后续正文行吸收的上限（防把后文整段吞进条款）
+const STAR_CONT_CAP = 4
+const STAR_CLAUSE_MAX_CHARS = 600
+// 结构边界：章节标题/中文编号/附表附件表头 → 当前条款到此为止
+const STAR_BOUNDARY_RE = /^(第[一二三四五六七八九十百]+[章节部分篇]|[一二三四五六七八九十]+、|附[件表]|评标办法|评分标准|技术参数及要求|序号$)/
+
 /**
  * 从招标文件原文本地扫描 ★/▲ 标记条款（纯函数，零 AI 调用）：
- * 逐行扫描，命中行 = 含 ★☆▲△ 任一标记；连续命中行合并为一条条款；去重；
- * 每条保留原标记与原文字；上限 200 条，超出时末行追加「…另有 N 条未列出」。
+ * 标记行=条款起点；去重；上限 200 条，超出时末行追加「…另有 N 条未列出」。
+ * R50/F2 修「★条款只剩★1~★10光杆编号、正文全丢」（13431 实测，S0 级：实质性条款依据丢失）：
+ * PDF 转译后「★N」常单独占行、条款正文在其后行（中间隔空行），旧逻辑只保留含标记的行、
+ * 其余一律 flush 丢弃 → 现在标记行后最多吸收 4 行非标记正文（单条 ≤600 字），
+ * 遇章标题/前附表等结构边界即终止本条；连续标记行改为各自成条（每条=一个独立落点，对大纲映射更有利）。
  */
 export function extractStarClauses(text: string): string[] {
   const clauses: string[] = []
   const seen = new Set<string>()
   let buf: string[] = []
+  let chars = 0
   const flush = () => {
-    if (!buf.length) return
+    if (!buf.length) { chars = 0; return }
     const clause = buf.join("\n").trim()
     buf = []
+    chars = 0
     if (!clause) return
     const dedupeKey = clause.replace(/\s+/g, "").slice(0, 60)
     if (seen.has(dedupeKey)) return
@@ -286,8 +297,13 @@ export function extractStarClauses(text: string): string[] {
   }
   for (const rawLine of (text ?? "").split(/\r?\n/)) {
     const line = rawLine.trim()
-    if (line && STAR_MARK_RE.test(line)) buf.push(line)
-    else flush()
+    if (!line) continue // 空行只是分隔符，不结束条款（PDF 转译 marker 与正文间必有空行）
+    if (STAR_MARK_RE.test(line)) { flush(); buf = [line]; chars = line.length; continue }
+    if (!buf.length) continue // 无进行中的条款：普通正文跳过
+    if (buf.length > STAR_CONT_CAP || chars >= STAR_CLAUSE_MAX_CHARS) continue // 超长截断：不再吸收，等下一个标记
+    if (STAR_BOUNDARY_RE.test(line)) { flush(); continue } // 结构边界 = 本条结束
+    buf.push(line)
+    chars += line.length
   }
   flush()
   if (clauses.length > STAR_CLAUSE_LIMIT) {

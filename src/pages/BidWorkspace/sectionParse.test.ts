@@ -6,6 +6,7 @@ import {
   dedupeAcrossSections,
   extractScoringFromText,
   extractScoringSectionExcerpt,
+  extractStarClauses,
   requestedKeys,
   type ParseReport,
 } from "./bidTypes"
@@ -257,5 +258,58 @@ describe("大纲防幻觉注入（2026-09-23 用户反馈轮：目录不一致�
       .join("\n")
     expect(all).toContain("事实来源排他")
     expect(all).toContain("禁止编造注入内容中不存在的评分项")
+  })
+})
+
+// R50/F2 锈死网：★条款本地扫描必须拿到正文（旧逻辑只保留含★的行、正文全丢，13431 实测只剩★1~★10光杆编号）
+describe("extractStarClauses（★条款扫描：标记行 + 后续正文行）", () => {
+  it("PDF 转译结构：★N 单独占行、正文在其后行（隔空行）→ 条款须含正文与注", () => {
+    const tender = [
+      "序号",
+      "",
+      "技术参数及要求",
+      "",
+      "★1",
+      "",
+      "软件性能支持处理日均门诊患者人次达15000以上、住院患者人次5000以上。",
+      "",
+      "注:投标文件中须提供承诺函并盖公章承诺满足此项条件。",
+      "",
+      "★2",
+      "",
+      "数据处理能力：承建方须制定并执行历史数据迁移与归档整体方案。",
+    ].join("\n")
+    const clauses = extractStarClauses(tender)
+    expect(clauses.length).toBe(2)
+    // 关键断言：条款不再是光杆「★1」，而是带上了真实正文
+    expect(clauses[0]).toContain("★1")
+    expect(clauses[0]).toContain("日均门诊患者人次达15000")
+    expect(clauses[0]).toContain("承诺函")
+    expect(clauses[1]).toContain("数据处理能力")
+  })
+
+  it("行内式条款（标记与正文同行）不回归；连续标记行各自成条；首个标记前的普通正文被丢弃", () => {
+    const clauses = extractStarClauses(
+      ["前言与目录说明，不属于任何重点条款", "★ 须本地化服务团队", "★ 质保期不少于3年"].join("\n"),
+    )
+    expect(clauses).toEqual(["★ 须本地化服务团队", "★ 质保期不少于3年"])
+  })
+
+  it("结构边界（章标题/前附表）终止条款，不把后文整段吞进标记条款", () => {
+    const tender = [
+      "★1",
+      "完全满足采购需求所有实质性条款",
+      "第四章 评标方法和标准",
+      "本节无关评标细则，不应被吞进上一条。",
+      "不应被吞进上一条的第二行内容。",
+      "不应被吞进上一条的第三行内容。",
+      "不应被吞进上一条的第四行内容。",
+      "不应被吞进上一条的第五行内容。",
+    ].join("\n")
+    const clauses = extractStarClauses(tender)
+    expect(clauses.length).toBe(1)
+    expect(clauses[0]).toContain("实质性条款")
+    expect(clauses[0]).not.toContain("评标细则")
+    expect(clauses[0]).not.toContain("第四章")
   })
 })
