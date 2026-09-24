@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 40,
+  "round": 41,
   "backlog": [
     {
       "id": "prompt-matrix-02",
@@ -150,6 +150,16 @@
     }
   ],
   "closed": [
+    {
+      "id": "quote-stale-copy-01",
+      "module": "/ppt-quote",
+      "issue": "B 类文案收口：报价模块 3 处 UI 文案残留已废弃的\"软件许可/实施服务/硬件三方/年保维保四大分组\"口径（新建弹窗承诺预置四组但 makeDefaultGroups 已改为返回空且注释明确有意；列表页副标题、AI 初稿弹窗同病），与防回流单测锁定的废弃决策对齐",
+      "status": "done",
+      "evidence": "R41 取证：接口直查 POST带groups→读回完整→DELETE 排除数据丢失级（.diag/r41_quote_groups_probe.mjs，库保持 0 套）；确认纯文案过时。修后四门：255/255（含 quoteDraftPrompt 防回流 7 用例）/build 过/eslint 145=基线/实机 DOM 快照两处新文案已生效且零数据创建。只改文案不动行为（恢复预置四组会违反废弃决策）",
+      "diff": "QuoteDialogs.tsx 弹窗说明 ×2；QuoteListPanel.tsx 副标题 ×1；报告 .loop/reports/2026-09-24-2105.md",
+      "priority": "P3",
+      "closedRound": 41
+    },
     {
       "id": "quote-history-min-01",
       "module": "/ppt-quote",
@@ -621,5 +631,5 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "Round40 改造轮（C 类已授权·售前工程师视角）：用户回「继续」按 R39 既定默认＝做首推项报价历史参考最小切片——报价编辑器关联商机时展示同客户历史报价（同 opportunity_id 或同商机名兼容老单、排除自身、updated 降序≤5）+一键导入明细（deepCopyGroups 重生 id、走既有 mutateQuote 自动保存链路）；未关联商机面板静默不渲染。零 AI/零 PB schema/零新依赖/无需重启。四门全绿：vitest 255/255(+4)/build exit0/eslint src 145=基线净新增 0/实机临时单验证 console 零错后已删库回 0 套。quote-history-01 收窄为二期（等级+床位参考区间）继续 open，closed+quote-history-min-01。noProgressStreak 1→0。诚实降级：本机商机 0 条，面板显形+导入实点击待真实数据补验。顺手发现待选 B 类小修：新建报价弹窗文案说预置四分组但实际空分组。待拍板池余：content-guard-03、fabscan-03残余、kb-semantic-01(建议冻结)、ux-05、perf-02、prompt-extract-01。blocked: hook-security-01 不变。"
+  "lastRoundSummary": "Round41 B 类文案收口轮（售前视角，R40 顺手发现项履约）：报价模块 3 处 UI 文案清除已废弃的\"四大分组\"承诺，对齐真实行为（新建单空分组是有意的，分组由产品库 category/手建动态生成）；取证阶段接口直查排除了\"groups 丢数据\"假设（POST→读回完整→DELETE，库回 0 套）。四门全绿：255/255、build、eslint 145=基线、实机 DOM 验证新文案生效零数据创建。closed+quote-stale-copy-01；noProgressStreak 保持 0。待拍板池不变：content-guard-03、fabscan-03残余、kb-semantic-01(建议冻结)、ux-05、perf-02、prompt-extract-01；零风险攒账项已清空，下轮若无新输入将出收敛总报告。blocked: hook-security-01 不变。"
 }

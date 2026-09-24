@@ -40,7 +40,7 @@ export function QuoteListPanel({
               医疗项目<span className="text-primary">报价管理</span>
             </h1>
             <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
-              行项报价自动算小计，按软件许可 / 实施服务 / 硬件三方 / 年保维保分组汇总；可关联方案或标书项目让 AI 推荐行项初稿，支持多版本谈判与 Excel / Word 导出。
+              行项报价自动算小计，按产品库分类或自定义分组汇总；可关联方案或标书项目让 AI 推荐行项初稿，支持多版本谈判与 Excel / Word 导出。
             </p>
           </div>
           <button

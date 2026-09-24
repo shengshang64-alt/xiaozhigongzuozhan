@@ -66,7 +66,7 @@ export function NewQuoteDialog({
         <DialogHeader>
           <DialogTitle>新建报价</DialogTitle>
           <DialogDescription>
-            创建后将预置软件许可 / 实施服务 / 硬件三方 / 年保维保四个分组，可手动录入行项或用 AI 生成初稿
+            创建后可从产品库追加或从建设清单导入行项，也可手动新增分组录入，或用 AI 生成初稿
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
@@ -171,7 +171,7 @@ export function QuoteDraftDialog({
             按方案生成报价初稿
           </DialogTitle>
           <DialogDescription>
-            选择一个方案或标书项目，AI 会读取其大纲与正文摘要，按建设内容推荐四个分组下的行项（名称 / 规格 / 单位 / 建议数量 / 参考单价），生成后全部可人工修改
+            选择一个方案或标书项目，AI 会读取其大纲与正文摘要，按建设内容推荐行项（名称 / 规格 / 单位 / 建议数量 / 参考单价），生成后全部可人工修改
           </DialogDescription>
         </DialogHeader>
         <MaterialPicker
