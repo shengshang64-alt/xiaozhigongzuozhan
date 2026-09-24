@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 52,
+  "round": 53,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -16,10 +16,10 @@
     {
       "id": "r44-intel-hygiene-02",
       "module": "/intel-center,/",
-      "issue": "[R44体验审计·不可通过级] 情报采集质量簇：F9 类型判定失效【R52 定性+增量止血：漂移源 yedm5f0kdmx7m3r(cn-witmed.com) 错标competitor已改media，新条目归对类；存量101条错标待用户拍板修正方案(报告2026-09-25-0730)；重复源5对并入本簇待清理】；F10 首页情报摘要卡=垃圾文本（导航菜单残留、摘要错挂、2027未来日期）；F21 首页in_more DOM残留；F22 7个采集源抓取失败无处理入口；F23 垃圾条目居列表首位",
+      "issue": "[R44体验审计·不可通过级] 情报采集质量簇：F9 类型判定失效【R52 定性+增量止血：漂移源 yedm5f0kdmx7m3r(cn-witmed.com) 错标competitor已改media，新条目归对类；存量101条错标待用户拍板修正方案(报告2026-09-25-0730)；重复源5对并入本簇待清理】；F10 首页情报摘要卡【R53 已修显示层(closed: intel-home-summary-clean-01)：导航词密度清洗+未来日期钳制，根治需采集端换栏目页URL(记backlog)】；F21 首页in_more DOM残留；F22 7个采集源抓取失败无处理入口；F23 垃圾条目居列表首位",
       "priority": "P1",
       "status": "open",
-      "evidence": "R52 接口全量拉取 500 条分布: policy214/competitor151(含漂移101)/media92/bid42/空1；源表40个含重复5对失败7个；.diag/r52_items_full.json",
+      "evidence": "R53 实机首页+截图 _shots/R53/；报告 .loop/reports/2026-09-25-0744.md；.diag/r53_gd_case.json 逐字节数据",
       "diff": ""
     },
     {
@@ -196,6 +196,16 @@
     }
   ],
   "closed": [
+    {
+      "id": "intel-home-summary-clean-01",
+      "module": "/intel-center,/",
+      "priority": "P1",
+      "status": "closed",
+      "issue": "F10 首页情报摘要卡=门户导航残片(网站支持IPv6 长者助手 1 2 3 4)+假日期2027-01-01",
+      "fix": "displayizeIntel：行内导航词密度(≥2块或占比≥50%)+每词独占行变体(整行短导航词≤12字)+分页行过滤；useHome 未来日期钳制(>明天不显示)。入库路径 cleanIntelBody 未动",
+      "verify": "实机首页导航词0命中/2027隐藏，截图 _shots/R53/home-intel-clean.png；296/296 单测含真实案例+防误杀用例",
+      "evidence": ".diag/r53_gd_case.json 逐字节数据；报告 .loop/reports/2026-09-25-0744.md；提交 6e84809"
+    },
     {
       "id": "r44-parse-quality-01",
       "module": "/bid-workspace",
@@ -783,5 +793,5 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "Round52 F9 定性+增量止血(A类·数据)：漂移源「HIT专家网·资讯首页」(cn-witmed.com)错标competitor灌水竞品桶101/151条，源已改media生效，新条目归对类；存量101条修正需superuser/hooks路由，列方案①②待拍板。零代码改动。下轮：拍板后修存量或推进F10。"
+  "lastRoundSummary": "Round53 修 F10 首页情报摘要卡(A类·显示层)：displayizeIntel 增加站务导航词密度判定(行内命中率+每词独占行变体)+分页行过滤，useHome 钳制未来日期。实机导航垃圾清零、假日期隐藏；296单测/build/eslint145=基线。下轮：等 intel-retype-101 拍板，或推进 F21/F23。"
 }
