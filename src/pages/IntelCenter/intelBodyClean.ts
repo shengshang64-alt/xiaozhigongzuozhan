@@ -64,6 +64,15 @@ const URL_LINE_RE = /https?:\/\/|\/\/|\.php|\.aspx?\b|\.(jpg|jpeg|png|gif|webp|b
 const CSS_LINE_RE = /[{}]/
 
 /**
+ * R53/F10：门户站务导航词——抓到门户/列表页首页时整片混入摘要的页面骨架词。
+ * 单个词可能出现在正文里（如「政务服务改革」），所以按「行内切块命中率」判行，不逐词杀：
+ * 无空格连写的正常摘要 = 1 块，永不误杀；导航残片按空格切开、导航词占比高即整行丢。
+ */
+const NAV_TOKEN_RE = /首页|网站支持|IPv6|长者助手|适老化|网站找错|网站纠错|无障碍|机构职能|政务动态|政务公开|政务服务|互动交流|要闻速递|工作动态|政声传递|各地动态|友情链接|网站地图|站内搜索|设为首页|加入收藏|上一页|下一页|网站群|版权所有|统计分析|数据发布|专题专栏|扫码关注/i
+/** 分页/索引行：孤立数字串、「首页 上一页 1 2 3 下一页」类 */
+const PAGER_LINE_RE = /^[\d\s]{1,24}$|^(?:首页|上一页|下一页|末页|尾页)[\d\s上一页下一页末页]*$/
+
+/**
  * 展示层深度清洗（首页摘要 / 卡片副文本）：在 cleanIntelBody 的「成对标签」之外，
  * 额外对付抓取入库时被从中间截断的半截 HTML（`<img ... class=` 无右括号、
  * `.jpg" border="0"...>` 无左括号、`ef="//service.weibo..."` 丢头）与内联 CSS/JS 残片。
@@ -89,6 +98,14 @@ export function displayizeIntel(raw: string, max = 120): string {
     if (!t) continue
     if (CSS_LINE_RE.test(t) || URL_LINE_RE.test(t)) continue
     if (JSON_LINE_RE.test(t) || NOISE_LINE_RE.test(t) || DATE_ONLY_RE.test(t)) continue
+    if (PAGER_LINE_RE.test(t)) continue
+    // R53/F10：行内按空白/分隔切块，导航词命中 ≥2 块、或占比 ≥0.5（≥3 块时）→ 判导航残片整行丢
+    const blocks = t.split(/[\s|·、，,;；]+/).filter(Boolean)
+    const navHits = blocks.filter((b) => NAV_TOKEN_RE.test(b)).length
+    if (navHits >= 2 || (blocks.length >= 3 && navHits / blocks.length >= 0.5)) continue
+    // R53/F10：门户变体——每个导航词独占一行（「机构职能」「政务动态」…），整行皆短导航词即丢；
+    // 长度 ≤12 限定了只杀裸词行，正常句子哪怕含导航词也不会命中
+    if (t.length <= 12 && blocks.length > 0 && blocks.every((b) => NAV_TOKEN_RE.test(b))) continue
     kept.push(t)
   }
   let text = kept.join(" ").replace(/\s+/g, " ").trim()

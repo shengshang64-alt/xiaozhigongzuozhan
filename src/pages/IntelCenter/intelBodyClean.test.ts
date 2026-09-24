@@ -102,4 +102,38 @@ describe("displayizeIntel", () => {
     expect(displayizeIntel("句".repeat(100), 50)).toBe(`${"句".repeat(50)}…`)
     expect(displayizeIntel("")).toBe("")
   })
+  it("R53/F10：门户导航残片整段判垃圾返回空（真实广东医保局案例）", () => {
+    const raw = "网站支持IPv6 长者助手 机构职能 政务动态 政务公开 政务服务 互动交流 国务院“互联网+督查”平台专题征集 庆祝中国共产党成立105周年 2026年全省医疗保障工作年中座谈会在汕尾召开 强基固本提能力 蓄势赋能促发展 ——全省医保规划财务工作培训班成功举办 1 2 3 4 要闻速递 工作动态 政声传递 各地动态"
+    expect(displayizeIntel(raw)).toBe("")
+  })
+  it("R53/F10：分页指示行整行剔除", () => {
+    expect(displayizeIntel("首页 上一页 1 2 3 4 下一页")).toBe("")
+    expect(displayizeIntel("1 2 3 4 5")).toBe("")
+  })
+  it("R53/F10：门户变体——每词独占一行的导航区逐行剔除，真实文章标题保留（真实 cn-witmed 案例）", () => {
+    const raw = [
+      "广东省医疗保障局",
+      "网站支持IPv6",
+      "长者助手",
+      "机构职能",
+      "政务动态",
+      "政务公开",
+      "政务服务",
+      "互动交流",
+      "要闻速递",
+      "工作动态",
+      "政声传递",
+      "各地动态",
+      "医保码五大使用场景，一“码”全搞定",
+      "医保个人账户里的钱，到底怎么用？",
+    ].join("\n")
+    const out = displayizeIntel(raw, 120)
+    expect(out).not.toContain("机构职能")
+    expect(out).not.toContain("长者助手")
+    expect(out).toContain("医保码五大使用场景")
+  })
+  it("R53/F10：正常摘要不误杀（连写长句含单个导航词、含空格但导航占比低）", () => {
+    expect(displayizeIntel("国家卫生健康委发布电子病历评级新标准，政务服务事项同步纳入互联互通测评范围")).toContain("电子病历评级新标准")
+    expect(displayizeIntel("四川省医保局印发门诊统筹新规 覆盖全省城乡居民")).toContain("门诊统筹新规")
+  })
 })

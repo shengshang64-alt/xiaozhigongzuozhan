@@ -187,6 +187,14 @@ const INTEL_TAG_BY_TYPE: Record<string, string> = {
 
 function mapIntelRow(row: IntelItemRow): IntelItem {
   const when = row.published_at || row.created || ""
+  // R53/F10：采集解析出的「未来日期」（招标截止时间/栏目占位 2027-01-01 被当发布日）不可信 → 不显示
+  const pubDay = when.slice(0, 10)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const limit = new Date(today)
+  limit.setDate(limit.getDate() + 1)
+  const pubMs = pubDay ? new Date(`${pubDay}T00:00:00`).getTime() : NaN
+  const future = Number.isFinite(pubMs) && pubMs > limit.getTime()
   // 抓取入库的 content_snippet/summary 常带被从中间截断的半截 HTML/CSS 残片；
   // 展示层走 displayizeIntel（深度清洗）而非仅去成对标签的 cleanIntelLine，避免残留乱码
   const snippet = displayizeIntel(row.content_snippet || "", 120)
@@ -195,7 +203,7 @@ function mapIntelRow(row: IntelItemRow): IntelItem {
     id: row.id,
     title: cleanIntelLine(row.title),
     source: row.source_name || "情报中心",
-    publishedAt: when.slice(0, 10),
+    publishedAt: pubDay && !future ? pubDay : "",
     tag: INTEL_TAG_BY_TYPE[row.item_type] ?? "情报",
     summary: cleanedSummary || snippet || "暂无摘要，进入情报中心用 AI 摘要打标",
   }
