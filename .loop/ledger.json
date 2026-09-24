@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 48,
+  "round": 49,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -16,10 +16,10 @@
     {
       "id": "r44-parse-quality-01",
       "module": "/bid-workspace",
-      "issue": "[R44体验审计·不可通过级·最高优先] 标书解析不理解标书重点。【R45 已修 F4/F5 显示层（closed: parse-display-bridge-01）；R46 已修 F3 失败横幅与7/7项口径矛盾（closed: parse-warning-banner-and-copy-01）；R47 已修 F7 分钟误当分值噪音（closed: score-scan-minute-noise-01，真项目13431未归类分值30→0），本簇缩窄为剩余 3 项】：F1 评分办法完全漏抽（原文确有'总分100·技术90+价格10'结构，tech_score 段却写'未找到分值表'）；F2 ★实质性条款只抽到★1-★10编号、无条款原文；F6 隐式硬约束24条大量半句截断碎片（'定要求的''又参''止时间'开头）。根因：F1/F2/F6 属解析提示词语义（改=红线#2 需用户拍板）。详见 .loop/reports/2026-09-24-2233.md",
+      "issue": "[R44体验审计·不可通过级·最高优先] 标书解析不理解标书重点。【R45修F4/F5显示层；R46修F3横幅；R47修F7分钟噪音；R49修F1评分办法漏抽(closed: parse-scoring-excerpt-01，真根因=本地喂料器代码缺陷非提示词，已更正前几轮误归因)】本簇缩窄为剩余 2 项：F2 ★实质性条款只抽到★1-★10编号、无条款原文；F6 隐式硬约束24条大量半句截断碎片（'定要求的''又参''止时间'开头）。F2/F6 是否属提示词语义待取证复算（R49教训：先本地复算喂料内容再定性，别急着归因红线#2）。详见 .loop/reports/2026-09-24-2233.md",
       "priority": "P0",
       "status": "open",
-      "evidence": "R44 只读取证：接口 GET /api/bid_projects/yslab52hxoplrxk dump parse_report 7 sections（.diag/r44_audit_probe.mjs + r44_parse_report.json），原文★11处均有实质内容、'评标方法'13次/'分值'8次/'总分'2次证明评分结构真实存在但解析漏抽",
+      "evidence": "R44 只读取证：接口 GET /api/bid_projects/yslab52hxoplrxk dump parse_report 7 sections（.diag/r44_audit_probe.mjs + r44_parse_report.json），原文★11处均有实质内容、'评标方法'13次/'分值'8次/'总分'2次证明评分结构真实存在但解析漏抽 | R49：F1 经本地复算证实为喂料定位器bug(目录行占槽+块上限4+单点重解析未用节选)，非提示词漏抽，已A类修复。",
       "diff": ""
     },
     {
@@ -205,6 +205,16 @@
     }
   ],
   "closed": [
+    {
+      "id": "parse-scoring-excerpt-01",
+      "module": "/bid-workspace",
+      "priority": "P0",
+      "status": "closedRound49",
+      "issue": "R44/F1 评分办法\"假阴性缺失\"：项目13431原文确有完整评分表(第四章9507-9948行，技术资信90分/价格10分/★参数20分/业绩/证书逐条分值)，但 tech_score 解析回\"未找到分值表\"。【重要更正】R44/R46/R47/R48 曾将其归因为\"提示词语义(红线#2需拍板)\"——实机复算证伪，真根因是本地喂料定位器的两处叠加代码缺陷，属A类可直接修。",
+      "fix": "①bidTypes.ts extractScoringSectionExcerpt：目录页码行(第四章…\\t32)白占块槽不作锚点(isTocEntry跳过) + 块上限4→8(评分章被\"评审标准/评分标准\"小标题切成多块，旧上限轮不到章后半的真表)；②useBidWorkspace.ts runReparseSection：单点「重新解析此项」对 tech_score/biz_score 与批量解析同口径用节选+scoringExcerptMode(此前该按钮漏用节选、走全文分段)。均不改提示词语义/不改schema/不删数据。",
+      "verify": "本地复算(.diag/r48b_excerpt_probe.cjs)：修后节选5243→11211字，含\"满分为100分/技术资信分90分/价格分10分/分值范围/★技术参数/低价优先法\"全部YES；sectionParse.test.ts +1 真实第四章结构回归用例；vitest 280/280、build通过、eslint 145=基线。端到端AI抽取需点「重新解析此项」(耗AI额度)由用户实机确认。",
+      "evidence": ".diag/r48b_tender.txt(13431原文146263字) + .diag/r48b_out2.txt(修后节选探针) + .diag/r48b_region.txt(第四章区间H/B/S标注)"
+    },
     {
       "id": "team-mislock-guard-01",
       "module": "/team · pb_hooks",
@@ -755,5 +765,5 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "Round48 测试脏数据清理清单（只列不改）：五表全量接口直查。建议删6条(测试客户vnu60+5条助手会话，删除安全预检通过)、待定6条、翻案不删3类(竞品/模板名/情报未来日期)。未删任何数据、未改代码。等用户勾选；回继续=转去出解析提示词(F1/F2/F6)修订方案"
+  "lastRoundSummary": "Round49 修 F1 评分办法\"假阴性缺失\"(A类·代码)：真根因是本地评分章节定位器——目录页码行白占块槽+块上限仅4，章后半逐条分值表永远轮不到，喂给AI的节选里根本没有表；且单点「重新解析此项」按钮压根没走节选路径。修 bidTypes.ts(跳过目录行+上限8) + useBidWorkspace.ts(重解析对齐批量口径)。节选5243→11211字含全部真表，vitest280/build/lint145基线。重要更正：F1非提示词问题(前几轮归因错)，剩F2/F6待同样先复算再定性。"
 }

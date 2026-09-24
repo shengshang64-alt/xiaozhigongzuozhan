@@ -4617,6 +4617,9 @@ export function buildTenderParseMessages(tenderText: string, cfg: ParseConfig, o
  * 背景：逐项分段解析时每段只看 ~14k 窗口，评分表跨段断裂/窗口内无完整表是「评分解析不到」主因；
  * 用标题同义词（评标办法/评分办法/评分标准/评审细则/技术评分表/商务评分表/附件…）扫描标题行，
  * 命中后取到下一个章/件级标题为止；多处命中（正文+前附表/附件）合并，单块 ≤30000 字、总 ≤40000 字。
+ * R48b 修「评分办法假阴性解析不到」：①跳过目录页码行（如「第四章 评标方法和标准（综合评分法)\t32」）
+ * 不作锚点——否则它白占块槽位；②块上限 4→8——评分章内「评审标准/评分标准」等小标题会把章切成多块，
+ * 旧上限被目录stub+前附表叙述+章首块用完，真正的逐条分值表块（多在章后半）永远轮不到，AI 便回「缺失」。
  * 返回空串 = 本地未定位到（调用方回退全文分段解析，行为同现状）。
  */
 export function extractScoringSectionExcerpt(text: string): string {
@@ -4627,13 +4630,15 @@ export function extractScoringSectionExcerpt(text: string): string {
   const headingRe =
     /^\s*(?:第\s*[0-9一二三四五六七八九十百]+\s*(?:章|部分|篇)[\s、.．]*)?(?:附\s*件\s*[0-9一二三四五六七八九十甲乙丙丁]*[\s、.．:：]*)?(?:[0-9]+(?:\.[0-9]+)*\s*)?(?:评标办法|评标方法|评标方案|评分办法|计分办法|评审办法|评审因素|评审要素|评分标准|评标标准|评审标准|评分细则|评标细则|详细评审|综合评分|技术评分|商务评分|价格评分|打分表|评分表|评分见附件)/
   const isHeadingLine = (line: string) => headingRe.test(line) && line.length <= 60 && !/[。；;]/.test(line)
+  // R48b：目录页码行（行尾「\t数字」或「 数字」= 页码）不是正文标题，跳过不作锚点，避免白占块槽位
+  const isTocEntry = (line: string) => /[\t ]\d{1,4}\s*$/.test(line)
   // 块终止行：下一个章/件/部分级标题（不用「一、二、」中文序号作边界——评分办法内部小节常用该格式，误切会把评分表本身切掉；也不用小数编号）
   const isChapterBoundary = (line: string) =>
     /^\s*(?:第\s*[0-9一二三四五六七八九十百]+\s*(?:章|部分|篇)|附\s*件\s*[0-9一二三四五六七八九十]+\s*[、.．:：]?\s*\S{0,40}$)/.test(line)
   const blocks: string[] = []
   let i = 0
-  while (i < lines.length && blocks.length < 4) {
-    if (!isHeadingLine(lines[i].trim())) {
+  while (i < lines.length && blocks.length < 8) {
+    if (!isHeadingLine(lines[i].trim()) || isTocEntry(lines[i])) {
       i += 1
       continue
     }

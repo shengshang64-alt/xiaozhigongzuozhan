@@ -2490,8 +2490,15 @@ export function useBidWorkspace() {
       setReparseBusyKey(key)
       try {
         // 单 key 版解析 prompt：复用裁剪逻辑，只要求输出该项；第八轮改造 1：同样走分段
-        const { report, failedChunks } = await parseTenderChunked(text, [key], "key", (chunk) =>
-          buildSectionParseMessages(key, chunk),
+        // R48b：与批量解析同口径——tech_score/biz_score 优先用本地定位的评分章节节选作专属输入
+        // （避开全文 14k 窗口把跨段评分表截断，导致单点重解析误报「缺失」）；未命中回退全文分段，行为同现状
+        const scoringExcerpt = key === "tech_score" || key === "biz_score" ? extractScoringSectionExcerpt(text) : ""
+        const useExcerpt = Boolean(scoringExcerpt)
+        const { report, failedChunks } = await parseTenderChunked(
+          useExcerpt ? scoringExcerpt : text,
+          [key],
+          "key",
+          (chunk) => buildSectionParseMessages(key, chunk, useExcerpt ? { scoringExcerptMode: true } : undefined),
         )
         const fresh = report.sections.find((s) => s.key === key)
         if (!fresh || !fresh.content.trim()) {
