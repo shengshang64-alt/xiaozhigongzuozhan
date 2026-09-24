@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 50,
+  "round": 51,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -12,15 +12,6 @@
       "evidence": "R47 写回归测试时实跑发现（scoreItemsScan.test.ts 内已注释标注既有行为）；修复需动 cleanName 的 markerIdx 语义，建议与 F1/F2/F6 提示词批次一并评估",
       "plan": "贴身式匹配时 markerIdx 后移一字（match[0] 首字符为汉字时 +1）；需同时验证 nameSimilar 交叉比对不受影响",
       "round": 47
-    },
-    {
-      "id": "r44-parse-quality-01",
-      "module": "/bid-workspace",
-      "issue": "[R44体验审计·不可通过级·最高优先] 标书解析不理解标书重点。【R45修F4/F5显示层；R46修F3横幅；R47修F7分钟噪音；R49修F1评分办法漏抽(closed: parse-scoring-excerpt-01，真根因=本地喂料器代码缺陷非提示词)；R50修F2 ★条款无原文(closed: star-clause-body-01，含覆盖矩阵按条归行，实机+288单测验证)】本簇缩窄为剩余 1 项：F6 隐式硬约束碎片句（24 条中开头被截断，如「6. 止时间前未完成投标文件传输的」「8. 字且不陈述其不同意见和理由的」）——与 F1/F2 同族，优先按 R49/R50 路径先本地复算定性再修。",
-      "priority": "P0",
-      "status": "open",
-      "evidence": "R50 实机复核：硬约束列表仍有截断碎片句；报告 .loop/reports/2026-09-25-0454.md",
-      "diff": ""
     },
     {
       "id": "r44-intel-hygiene-02",
@@ -205,6 +196,16 @@
     }
   ],
   "closed": [
+    {
+      "id": "r44-parse-quality-01",
+      "module": "/bid-workspace",
+      "priority": "P0",
+      "status": "closed",
+      "issue": "标书解析不理解标书重点簇：F1 评分办法漏抽 / F2 ★条款无原文 / F6 硬约束碎片句",
+      "fix": "F1: bidTypes评分章节定位器跳过目录行+块上限4→8(R49)；F2: extractStarClauses标记行吸收正文(R50)+矩阵按条归行；F6: extractImplicitConstraints接回换行断句按完整句提取(R51)",
+      "verify": "真实13431实机逐项核对+探针before/after存证(.diag/r48b_tender.txt复算)；293/293单测；截图 _shots/R50 R51",
+      "evidence": "报告 .loop/reports/2026-09-24-2350.md(R44起) 2026-09-25-0010(R49) 2026-09-25-0454(R50) 2026-09-25-0712(R51)；提交 86d…/72f7678/2b12214/c6e2266"
+    },
     {
       "id": "star-clause-body-01",
       "module": "/bid-workspace",
@@ -775,5 +776,5 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "Round50 修 F2 ★实质性条款正文丢失(A类·代码)：extractStarClauses 标记行后吸收≤4行/≤600字、空行不断条、结构边界截止（中断会话遗留半成品，本轮验证收尾）；覆盖矩阵改按条归行修 11条→28行 行爆炸。实机13431重新扫描：分区11条全带原文、矩阵12行；288单测/build/eslint145=基线全过。簇缩窄为 F6 一项，下轮建议修 F6。"
+  "lastRoundSummary": "Round51 修 F6 隐式硬约束碎片句(A类·代码)：extractImplicitConstraints 先接回换行断句再按完整句提取，超长句锚定关键词按标点裁剪，排除「备份份数」误报。24→21条全完整句，实机+293单测验证。P0簇 r44-parse-quality-01 收官(F1/F2/F6全闭)。下轮建议 F9 情报类型判定。"
 }
