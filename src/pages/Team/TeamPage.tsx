@@ -22,6 +22,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { TEAM_ROLE_LABELS } from "@/lib/teamAuth"
+// R47/F19：误操作护栏（与服务端 team_auth.pb.js PATCH 同口径：不能动自己/不能停用降级最后一个可用管理员）
+import { memberLockReason } from "./memberGuard"
 import type { UseTeam } from "./useTeam"
 
 const ROLE_BADGE_VARIANT: Record<string, "success" | "neutral" | "warning"> = {
@@ -79,6 +81,8 @@ export function TeamPage(p: UseTeam) {
               {p.members.map((m) => {
                 const isSelf = p.currentProfile?.id === m.user_id
                 const busy = p.busyId === m.id
+                // R47/F19：命中护栏时提前禁用角色/启停控件并说明原因（不等点了吃 400）
+                const lockReason = memberLockReason(m, p.members, p.currentProfile?.id)
                 return (
                   <div key={m.id} className="flex flex-wrap items-center gap-3 py-3">
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#2BC0A8] to-primary text-sm font-semibold text-white">
@@ -92,7 +96,8 @@ export function TeamPage(p: UseTeam) {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Select value={m.role} onValueChange={(v) => void p.changeRole(m, v as never)} disabled={busy || isSelf}>
+                      <span title={lockReason ?? undefined}>
+                        <Select value={m.role} onValueChange={(v) => void p.changeRole(m, v as never)} disabled={busy || !!lockReason}>
                         <SelectTrigger className="h-9 w-[110px]">
                           <SelectValue />
                         </SelectTrigger>
@@ -104,12 +109,13 @@ export function TeamPage(p: UseTeam) {
                           ))}
                         </SelectContent>
                       </Select>
+                      </span>
                       <Button
                         variant={m.active ? "outline" : "secondary"}
                         size="sm"
-                        disabled={busy || isSelf}
+                        disabled={busy || !!lockReason}
                         onClick={() => void p.toggleActive(m)}
-                        title={isSelf ? "不能停用自己" : m.active ? "停用该成员" : "启用该成员"}
+                        title={lockReason ?? (isSelf ? "不能停用自己" : m.active ? "停用该成员" : "启用该成员")}
                       >
                         {m.active ? "停用" : "启用"}
                       </Button>

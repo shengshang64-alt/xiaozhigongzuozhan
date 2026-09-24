@@ -7,6 +7,7 @@ import type { ParseReport } from "./bidTypes"
 // ①AI 漏抽的评分项 ②分值不一致 ③各类合计 ≠ 总分/100 的口径问题。
 // 局限（诚实声明）：pdfjs 表格抽取后行结构不可控，本扫描是核对辅助而非真值来源；
 // 漏报长表合并行、误报含「分」的普通句子均有可能，逐条提示供人工复核。
+// R47/F7：时长「30分钟」不是分值——所有分值正则排除后接「钟」（真实项目 13431「投标截止时间：30分钟内」曾被误判为 30 分评分项）。
 // ---------------------------------------------------------------------------
 
 export type ScannedScoreItem = {
@@ -26,7 +27,7 @@ const CATEGORY_HEADER_RULES: { cat: ScanCategory; re: RegExp }[] = [
 ]
 
 const SCORE_MARKER =
-  /[（(](\d+(?:\.\d+)?)\s*分[)）)]|[:：]\s*(\d+(?:\.\d+)?)\s*分(?!数)|^\s*(\d+(?:\.\d+)?)\s*分(?!数)|\s(\d+(?:\.\d+)?)\s*分(?!数)|[\u4e00-\u9fa5](\d+(?:\.\d+)?)\s*分(?!数)/
+  /[（(](\d+(?:\.\d+)?)\s*分[)）)]|[:：]\s*(\d+(?:\.\d+)?)\s*分(?!数|钟)|^\s*(\d+(?:\.\d+)?)\s*分(?!数|钟)|\s(\d+(?:\.\d+)?)\s*分(?!数|钟)|[\u4e00-\u9fa5](\d+(?:\.\d+)?)\s*分(?!数|钟)/
 
 // 贴身数字分值的假阳性字（值得/加分/扣分/每个5分…）
 const BAD_PREV = new Set(["得", "加", "减", "扣", "每", "值", "足"])
@@ -34,11 +35,11 @@ const BAD_PREV = new Set(["得", "加", "减", "扣", "每", "值", "足"])
 function pickScore(line: string): number | null {
   const paren = line.match(/[（(](\d+(?:\.\d+)?)\s*分[)）)]/)
   if (paren) return Number(paren[1])
-  const colon = line.match(/[:：]\s*(\d+(?:\.\d+)?)\s*分(?!数)/)
+  const colon = line.match(/[:：]\s*(\d+(?:\.\d+)?)\s*分(?!数|钟)/)
   if (colon) return Number(colon[1])
-  const loose = line.match(/(?:^|\s)(\d+(?:\.\d+)?)\s*分(?!数)/)
+  const loose = line.match(/(?:^|\s)(\d+(?:\.\d+)?)\s*分(?!数|钟)/)
   if (loose) return Number(loose[1])
-  const attached = line.match(/([\u4e00-\u9fa5])(\d+(?:\.\d+)?)\s*分(?!数)/)
+  const attached = line.match(/([\u4e00-\u9fa5])(\d+(?:\.\d+)?)\s*分(?!数|钟)/)
   if (attached && !BAD_PREV.has(attached[1])) return Number(attached[2])
   return null
 }

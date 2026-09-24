@@ -274,6 +274,26 @@ routerAdd("PATCH", "/api/team/members/{id}", function (e) {
     try { rec = $app.findRecordById("team_members", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
     var body = e.requestInfo().body || {}
+    // R47/F19（团队管理误操作护栏）：在应用变更前拦两种“权限减少”操作——
+    // 1) 不能停用/改角色自己的档案（前端 isSelf 只是藏按钮，这里防直连接口把自己锁出门）；
+    // 2) 不能停用/降级最后一个可用管理员（否则 /api/team/* 写接口全 403，系统无法自救）。
+    // 改姓名、对非最后管理员的常规启停/升降级均不受影响；不新增字段、不改集合 schema。
+    var willActive = body.active !== undefined ? Boolean(body.active) : Boolean(rec.get("active"))
+    var willRole = String(rec.get("role"))
+    if (body.role !== undefined && ["admin", "editor", "viewer"].indexOf(String(body.role)) !== -1) willRole = String(body.role)
+    var losesAdminRights = (Boolean(rec.get("active")) && !willActive) || (String(rec.get("role")) === "admin" && willRole !== "admin")
+    if (losesAdminRights) {
+      if (String(rec.get("user_id")) === String(caller.id)) {
+        return e.json(400, { error: "self_lockout", message: "不能停用或修改自己的账号角色，如需移交权限请先由其他管理员操作" })
+      }
+      var admins = []
+      try { admins = $app.findRecordsByFilter("team_members", "role = 'admin' && active = true", "-created", 50, 0) } catch (_) { admins = [] }
+      var otherActiveAdmins = 0
+      for (var ai = 0; ai < admins.length; ai++) { if (String(admins[ai].id) !== String(rec.id)) otherActiveAdmins++ }
+      if (otherActiveAdmins === 0) {
+        return e.json(400, { error: "last_admin", message: "该账号是最后一个可用管理员，停用或降级会导致团队失去管理权限，已拦截" })
+      }
+    }
     if (body.name !== undefined && String(body.name).trim()) rec.set("name", String(body.name).trim())
     if (body.role !== undefined && ["admin", "editor", "viewer"].indexOf(String(body.role)) !== -1) rec.set("role", String(body.role))
     if (body.active !== undefined) rec.set("active", Boolean(body.active))
