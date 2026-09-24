@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 34,
+  "round": 35,
   "backlog": [
     {
       "id": "prompt-matrix-02",
@@ -91,25 +91,25 @@
     {
       "id": "lint-debt-01",
       "module": "/bid-workspace",
-      "issue": "bidTypes.ts 8 处历史 lint(no-useless-assignment/irregular-whitespace/useless-escape) 清零，本轮防翻车改动未新增错误",
+      "issue": "bidTypes.ts 历史 lint 安全子集（R35 已清 5/10）；残余 5 项为有意保留（控制符正则/全角空格/提示词串转义），不再自动清",
       "standard": [
         "A4"
       ],
       "priority": "P3",
       "status": "open",
-      "evidence": "",
-      "diff": ""
+      "evidence": "R35 清除 bidTypes.ts 安全子集 5 项：3741 no-useless-assignment(ok 死存储,初值 false→true 行为等价) + 4217/4234 字符类[]内冗余 \\. ×4(类内 . 本即字面量,去转义正则匹配完全等价)。四门全过: vitest 234/234(sectionParse/bidFormatCheck 直接背书被改函数与正则行为未变)、tsc exit0、vite build exit0、eslint src 150→145(errors 134→129,净-5,净新增0)。残余 5 项有意不修: 2848/2850 no-control-regex(\\x00 是有意的空字节清洗正则,非缺陷)、3813 no-irregular-whitespace(全角空格 U+3000 在正则类内,改动易碎收益低)、7063 no-useless-escape ×2(在提示词模板串内,去转义虽字节相同但避'碰提示词'观感、边际收益不值)",
+      "diff": "仅 bidTypes.ts: (1)3741 let ok=false + try{parse;ok=true}catch{ok=false} 改为 let ok=true + try{parse}catch{ok=false}(两条路径取值均在 3748 读取,等价); (2)TEMPLATE_HEADING_RE 与 title.replace 两处字符类 [..0-9\\.、] → [..0-9.、]。非结构重构(红线#6 不违),未碰提示词文本"
     },
     {
       "id": "crm-b04-others",
       "module": "all",
-      "issue": "/api/opportunities、/api/follow_records 等自定义路由 totalItems 同样谎报=本页条数(实测 opportunities: items=1 totalItems=1)；当前无 UI 依赖，危害低，可照 customers.pb.js 同款批量修",
+      "issue": "/api/opportunities、/api/follow_records 等自定义路由 totalItems 谎报=本页条数；前端已用启发式防御，且当前集合为空危害极低，推迟到有真实分页需求时再批量修",
       "standard": [
         "A2"
       ],
       "priority": "P3",
       "status": "open",
-      "evidence": "",
+      "evidence": "R35 取证决定本轮不做: (1) local-user opportunities=0/follow_records=0(直连 7000 实测 perPage=1000 仍 0), totalItems 当前 0=0 并未谎报, 修空集合零可见价值且需重启 PocketBase; (2) 前端 useCustomerManagement 已用启发式 mTotal>items.length?mTotal:(items.length<PER_PAGE?items.length:null) 对谎报做防御, 只有集合>perPage 时才可能显形; (3) 扫 15 个路由批量改=大爆炸半径违背'小而可回滚'. 纠正 R34 报告'下一轮统一首页在跟/本月真数'之不精确表述: 在跟商机(stage≠won/lost)/本月跟进(日期筛)是过滤子集, totalItems(全量总数)无法替代, 首页这两项本就该保持客户端聚合",
       "diff": ""
     },
     {

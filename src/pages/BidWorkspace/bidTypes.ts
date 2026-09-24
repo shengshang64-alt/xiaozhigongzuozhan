@@ -3738,10 +3738,11 @@ function stripStandaloneJsonBlocks(text: string): string {
     }
     const span = text.slice(chunkStart, end)
     let parsed: unknown = null
-    let ok = false
+    // lint-debt-01: ok 初值 false 会被 try/catch 立即覆盖（3741 处 no-useless-assignment）；
+    // 改为初值 true、仅在 catch 里置 false，两条路径的取值都在下方 3748 读取，行为完全等价
+    let ok = true
     try {
       parsed = JSON.parse(span)
-      ok = true
     } catch {
       ok = false
     }
@@ -4214,7 +4215,7 @@ export function retrieveTenderFragments(tenderText: string, query: TenderFragmen
 // ---------------------------------------------------------------------------
 
 /** 范本标题行模式：中文数字 / 阿拉伯数字 / 点号编号开头，标题主体 2-40 字的行 */
-const TEMPLATE_HEADING_RE = /^[一二三四五六七八九十0-9\.、]+[、\.]?.{2,40}$/
+const TEMPLATE_HEADING_RE = /^[一二三四五六七八九十0-9.、]+[、.]?.{2,40}$/
 
 /**
  * 第十七轮 17D：从历史标书范本全文抽取目录结构标题行（零 AI）——
@@ -4231,7 +4232,7 @@ export function extractTemplateOutlineLines(templateText: string, limit = 80): s
     const line = rawLine.replace(/\s+/g, "").trim()
     if (!line || !TEMPLATE_HEADING_RE.test(line)) continue
     // 去掉前导编号（中文数字 / 阿拉伯数字 / 点号 / 顿号），只留标题本体
-    const title = line.replace(/^[一二三四五六七八九十0-9\.、]+[、\.]?/, "").trim()
+    const title = line.replace(/^[一二三四五六七八九十0-9.、]+[、.]?/, "").trim()
     if (title.length < 2 || title.length > 40 || seen.has(title)) continue
     seen.add(title)
     out.push(title)
