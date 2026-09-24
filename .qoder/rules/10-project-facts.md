@@ -58,7 +58,7 @@ pnpm test       # vitest run（已有 20 个 *.test.ts）
 
 | 来源 | 角色 |
 |---|---|
-| `AI-ITERATION.md` | **唯一迭代入口手册**（v2），协议以它为准 |
+| `AI-ITERATION.md` | **唯一迭代入口手册**（v3，含 R1–R10 回归/专项轮/归因纪律），协议以它为准；`Qoder迭代提示词.md` 只是场景启动器 |
 | `.loop/ledger.json` | **主账本**（round / backlog / closed / blocked / noProgressStreak） |
 | `.nightrun/state.json` + `.nightrun/MORNING_REPORT.md` | 历史夜跑，**只读**，未结项并入主账本 |
 | `.nightrun/ledger.json` | 历史夜跑缺陷账本，**只读** |
