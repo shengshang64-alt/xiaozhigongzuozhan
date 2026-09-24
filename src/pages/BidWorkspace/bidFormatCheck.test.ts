@@ -5,6 +5,8 @@ import {
   formatCheckReport,
   numberConflictHits,
   structuredNumberConflictHits,
+  deviationCommitHits,
+  normalizeFormatCheckReport,
 } from "./bidTypes"
 import type { DeviationRow, DeviationTable } from "./bidTypes"
 import type { Chapter, OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
@@ -169,5 +171,53 @@ describe("structuredNumberConflictHits（偏离表 / 大纲 × 事实表 结构�
 
   it("无事实基准时静默返回空", () => {
     expect(structuredNumberConflictHits([], ol("任意标题"), dev("任意条款", "任意响应"))).toHaveLength(0)
+  })
+})
+
+// prompt-fabscan-03（子集 · R33）：交卷体检补「承诺不够」（偏离表负偏离），与 param_escalation（加码）成镜像
+const devRow = (clause_text: string, response_level: string, clause_id = "c1"): DeviationTable =>
+  ({
+    rows: [
+      {
+        clause_id,
+        clause_text,
+        source: "招标技术要求",
+        response_node: "第三章",
+        response_level,
+        response_summary: "",
+        bid_ref: "",
+      } as DeviationRow,
+    ],
+  }) as DeviationTable
+
+describe("deviationCommitHits（承诺不够 / 偏离表负偏离 surfaced 到交卷体检）", () => {
+  it("普通条款判为偏离 → deviation_undercommit（提醒影响评分）", () => {
+    const hits = deviationCommitHits(devRow("提供7×24小时运维支持", "deviation"))
+    expect(hits.some((h) => h.rule === "deviation_undercommit" && h.chapter.startsWith("偏离表"))).toBe(true)
+    expect(hits[0].quote).toContain("影响评分")
+  })
+
+  it("★/强制条款判为偏离 → 升级为废标风险措辞", () => {
+    const hits = deviationCommitHits(devRow("★系统可用性需达到99.99%", "deviation"))
+    expect(hits.some((h) => h.rule === "deviation_undercommit")).toBe(true)
+    expect(hits[0].quote).toContain("废标")
+  })
+
+  it("完全响应 / 部分响应 → 不报（只报明确负偏离）", () => {
+    expect(deviationCommitHits(devRow("免费质保期3年", "full"))).toHaveLength(0)
+    expect(deviationCommitHits(devRow("免费质保期3年", "partial"))).toHaveLength(0)
+  })
+
+  it("无偏离表 / 空行 → 静默返回空", () => {
+    expect(deviationCommitHits(null)).toHaveLength(0)
+    expect(deviationCommitHits({ rows: [] } as unknown as DeviationTable)).toHaveLength(0)
+  })
+
+  it("新规则 deviation_undercommit 在白名单存活（normalize 不丢弃）", () => {
+    const report = normalizeFormatCheckReport({
+      hits: [{ chapter: "偏离表 · c1", rule: "deviation_undercommit", quote: "x", level: "warn" }],
+      checked_at: "",
+    })
+    expect(report?.hits[0]?.rule).toBe("deviation_undercommit")
   })
 })

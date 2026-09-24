@@ -2107,7 +2107,7 @@ export const FORMAT_CHECK_LABEL: Record<FormatCheckKey, string> = {
 }
 
 /** 交叉警告规则（暗标页数 × 目标页数联动生成，不在禁则勾选清单内）；number_conflict 为循环 8 A4 本地数字口径核对 */
-export type FormatCheckRule = FormatCheckKey | "sealed_pages_cross" | "number_conflict" | "param_escalation" | "metric_conflict" | "meta_leftover"
+export type FormatCheckRule = FormatCheckKey | "sealed_pages_cross" | "number_conflict" | "param_escalation" | "metric_conflict" | "meta_leftover" | "deviation_undercommit"
 
 export const FORMAT_RULE_LABEL: Record<FormatCheckRule, string> = {
   ...FORMAT_CHECK_LABEL,
@@ -2116,6 +2116,7 @@ export const FORMAT_RULE_LABEL: Record<FormatCheckRule, string> = {
   param_escalation: "参数加码（承诺优于招标档位，过度响应＝额外验收义务）",
   metric_conflict: "指标口径唯一性（跨章同指标多值）",
   meta_leftover: "占位元话语与绝对化承诺残留",
+  deviation_undercommit: "承诺不够（偏离表负偏离：响应低于招标要求）",
 }
 
 export type FormatCheckHit = { chapter: string; rule: FormatCheckRule; quote: string; level: "warn" | "info" }
@@ -2615,6 +2616,39 @@ export function structuredNumberConflictHits(
     }
   }
 
+  return hits
+}
+
+// ---------------------------------------------------------------------------
+// prompt-fabscan-03（子集 · 纯本地零 AI）：交卷体检补「承诺不够」维度
+// 与 param_escalation（承诺加码＝超配）互补：扫偏离表里已判为「偏离」的负偏离行，
+// 在导出前最后一道关（交卷体检）surface 出来，让操作者逐条确认是否影响评分／是否触废标。
+// 守审计中立（R6）：只读 response_map 既有结构化字段，不依赖生成模式、不改 AI 提示词、不做导出门禁（只 warn）。
+// 待办残差（C 类，需拍板）：整改建议按章聚合回灌、覆盖审计四态（改 AI 提示词语义）、疑似编造未清零禁导出。
+// ---------------------------------------------------------------------------
+
+/** 废标级信号：★/▲ 实质性响应条款（本库既有约定）+ [强制] 前缀 + 明确「实质性响应/废标/无效标」字样 */
+const MANDATORY_CLAUSE_RE = /[★☆▲△]|\[强制\]|实质性响应|废标|无效标/
+
+/** 承诺不够（偏离表负偏离）：response_level==="deviation" 的行 surfaced 到交卷体检，每行 1 条、总 ≤30 */
+export function deviationCommitHits(deviationTable: DeviationTable | null): FormatCheckHit[] {
+  const hits: FormatCheckHit[] = []
+  for (const row of deviationTable?.rows ?? []) {
+    if (hits.length >= 30) break
+    if (row.response_level !== "deviation") continue
+    const clause = (row.clause_text ?? "").trim()
+    const cid = (row.clause_id ?? "").trim()
+    const brief = (clause || cid).slice(0, 40)
+    const mandatory = MANDATORY_CLAUSE_RE.test(clause) || MANDATORY_CLAUSE_RE.test(cid)
+    hits.push({
+      chapter: `偏离表 · ${(cid || clause).slice(0, 16) || "未编号条款"}`,
+      rule: "deviation_undercommit",
+      quote: (mandatory
+        ? `「${brief}」为★/强制条款却判为偏离（承诺低于招标要求），可能触发不符合性／废标，导出前务必复核`
+        : `「${brief}」判为偏离（承诺低于招标要求），确认是否影响评分`).slice(0, 80),
+      level: "warn",
+    })
+  }
   return hits
 }
 

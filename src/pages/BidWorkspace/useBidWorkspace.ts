@@ -152,6 +152,8 @@ import {
   numberConflictHits,
   // numeric-consistency-01：同一核对扩展到结构化面（事实表 × 偏离表/大纲）
   structuredNumberConflictHits,
+  // prompt-fabscan-03（子集）：偏离表负偏离 surfaced 到交卷体检（只读既有 response_map、零 AI、只 warn）
+  deviationCommitHits,
   // content-guard-02：本地零 AI 全文一致性拦截（指标口径唯一性 / 占位与绝对化承诺残留）
   metricConflictHits,
   metaLeftoverHits,
@@ -1523,6 +1525,8 @@ export function useBidWorkspace() {
     }
     // content-guard-02：不依赖事实表的全文一致性拦截（只扫正文自身），随体检白拿、零 AI
     report.hits.push(...metricConflictHits(cur.bid_chapters), ...metaLeftoverHits(cur.bid_chapters))
+    // prompt-fabscan-03（子集）：承诺不够（偏离表负偏离）补进交卷体检，与 param_escalation（加码）成镜像；不依赖事实表，只读既有结构化字段
+    report.hits.push(...deviationCommitHits(cur.response_map))
     return report
   }, [])
 

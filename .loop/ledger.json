@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 32,
+  "round": 33,
   "backlog": [
     {
       "id": "prompt-matrix-02",
@@ -19,13 +19,13 @@
     {
       "id": "prompt-fabscan-03",
       "module": "/bid-workspace",
-      "issue": "合并稿 v1.0 第三批(§七/要求4)：输出前对标核查升级——P7.1 逐条对标核查四态(完全/部分/未响应/无法确认+整改建议按章聚合回灌)与 P7.2 编造内容扫描(数字/名称/承诺值/占位符/矛盾五类对象交叉比对，疑似编造未清零禁导出)接入交卷体检；与 content-guard-03(LLM 语义增量)合并评估防重叠；检查器保持模式中立(R6 否决不变)",
+      "issue": "合并稿 v1.0 第三批(§七/要求4)·剩余均为 C 类需拍板：P7.1 覆盖审计四态升级（需改 AI 提示词语义＝红线#2）+ 整改建议按章聚合回灌（新交互范式）；P7.2 编造内容扫描（数字/名称/承诺值/占位符/矛盾五类对象交叉比对，部分需原文/KB 基线、与 content-guard-03 防重叠）+ 疑似编造未清零禁导出（改导出行为硬门禁）。P7.1 的「承诺不够」纯本地切片已于 R33 交付（closed: bid-undercommit-01）。检查器保持模式中立（R6 否决不变）",
       "standard": [
         "D14"
       ],
       "priority": "P1",
       "status": "open",
-      "evidence": "",
+      "evidence": "R33 交付其纯本地零 AI 子集（closed: bid-undercommit-01）：偏离表负偏离 surfaced 到交卷体检，与 param_escalation（加码）成镜像。剩余四态升级/回灌/编造扫描/禁导出均触 C 类（改提示词语义、新交互范式、导出硬门禁），需用户拍板才动",
       "diff": ""
     },
     {
@@ -162,6 +162,18 @@
     }
   ],
   "closed": [
+    {
+      "id": "bid-undercommit-01",
+      "module": "/bid-workspace",
+      "issue": "prompt-fabscan-03 P7.1 纯本地子集：交卷体检补「承诺不够」维度——与 param_escalation（承诺加码）成镜像。原现状：偏离表标签页头部有 full/partial/deviation 计数，但导出前最后一道关（交卷体检 format_report）只提醒加码不提醒不够；负偏离贴着★/强制条款=可能废标却不在体检里",
+      "standard": [
+        "D14"
+      ],
+      "priority": "P1",
+      "status": "done",
+      "evidence": "四道门全过：vitest 234/234（+5 新用例，含★升级/full·partial 不报/null 静默/白名单存活）/ tsc -b exit0 / vite build exit0(1.99s) / eslint git-stash 基线对比净新增0（改动前后同 27 problems=15 errors均历史 lint-debt-01）；运行时浏览器动态 import 真实 dev 模块(?t= 破缓存)六夹具全对：普通偏离→提醒「影响评分」、★偏离→提醒「废标」、full/partial/null→不报、deviation_undercommit 经 normalizeFormatCheckReport 白名单存活、新 label 解析正确。未登录态逐真实项目点开面板复测（同 R32 降级说明）：因需一个含 deviation 行的真实项目，改以 vitest+真实模块动态 import 取运行时证据",
+      "diff": "第33轮·纯本地零 AI、零数据模型、零 LLM、无导出门禁（只 warn）、守审计中立（R6）。bidTypes.ts +35：FormatCheckRule 加 deviation_undercommit，FORMAT_RULE_LABEL 加 label（白名单自动存活、老报告不受影响）；新增 MANDATORY_CLAUSE_RE（★/▲/[强制]/实质性响应/废标/无效标，复用库内既有约定，不含噪声过大的「必须」）+ deviationCommitHits(DeviationTable|null)（扫 response_level===\"deviation\" 行，每行1条总≤30，★/强制升级废标措辞）。useBidWorkspace.ts +4：import deviationCommitHits；buildFormatReportFor 在 metric/meta 后 append（不依赖事实表，只读既有 response_map）。bidFormatCheck.test.ts +50：devRow  helper + 5 vitest 用例。prompt-fabscan-03 回写 backlog：收窄为剩余 C 类（四态升级/回灌/编造扫描/禁导出）"
+    },
     {
       "id": "content-guard-01",
       "module": "/bid-workspace",
