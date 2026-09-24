@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { CompanyTemplateHint } from "@/components/common/CompanyTemplateHint"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
-import { daysUntil, STAGE_LABEL, type BidProjectRecord, type BidStage } from "@/pages/BidWorkspace/bidTypes"
+import { daysUntil, displayStageLabel, effectiveHospital, type BidProjectRecord, type BidStage } from "@/pages/BidWorkspace/bidTypes"
 
 type ListView = "active" | "archived" | "trash"
 
@@ -150,12 +150,12 @@ function ProjectCard({
           <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">已归档 · 只读留档</span>
         ) : (
           <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${STAGE_BADGE[proj.stage] ?? STAGE_BADGE.pending_parse}`}>
-            {STAGE_LABEL[proj.stage] ?? "待解析"}
+            {displayStageLabel(proj)}
           </span>
         )}
       </div>
       <p className="mt-2 truncate text-xs text-muted-foreground">
-        {proj.hospital || "采购人未填写"}
+        {effectiveHospital(proj) || "采购人未填写"}
         {proj.tender_no ? ` · ${proj.tender_no}` : ""}
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">

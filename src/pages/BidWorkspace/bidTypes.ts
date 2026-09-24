@@ -3181,6 +3181,38 @@ export function deriveStage(rec: Partial<BidProjectRecord> & { stage?: BidStage 
   return "pending_parse"
 }
 
+/** R45/F4（体验审计）：视图层显示阶段——stage 仍为 pending_parse 但已有解析产物时不再显示「待解析」。
+ * 阶段状态机不变（BidStage 枚举、deriveStage、归档/闸门判定均不动），仅消卡片「待解析」与解析报告已存在的矛盾文案 */
+export function displayStageLabel(rec: Pick<BidProjectRecord, "stage"> & Partial<Pick<BidProjectRecord, "parse_report">>): string {
+  if (rec.stage === "pending_parse" && (rec.parse_report?.sections?.length ?? 0) > 0) return "已解析 · 待编制"
+  return STAGE_LABEL[rec.stage] ?? "待解析"
+}
+
+/** R45/F5（体验审计）：解析完成后的保守回填提取——只认解析正文里的精确标签形态（「采购人名称：/项目（招标）编号：/开标时间|日期：」）；
+ * 无命中留空、占位写法（某编号）不取、出处后缀剔除；是否覆盖由调用方保证（仅填空白字段，绝不改用户已填值） */
+export function parseBackfillFields(report: ParseReport | null): { hospital: string; tender_no: string; bid_open_date: string } {
+  const blank = { hospital: "", tender_no: "", bid_open_date: "" }
+  if (!report) return blank
+  const all = report.sections.map((s) => s.content).join("\n")
+  const labelValue = (re: RegExp): string => {
+    const m = all.match(re)
+    const v = (m?.[1] ?? "").replace(/\s*[（(]?\s*出处[：:].*$/, "").trim()
+    return /^某/.test(v) ? "" : v
+  }
+  const hospital = labelValue(/采购人名称[：:]\s*([^\n（(，。；;]{2,40})/)
+  const tender_no = labelValue(/(?:项目|招标)编号[：:]\s*([^\s，。；;、（(：:）)]{3,40})/)
+  let bid_open_date = ""
+  const dm = all.match(/开标(?:时间|日期)[：:]\s*20(\d{2})[年\-/.](\d{1,2})[月\-/.](\d{1,2})日/)
+  if (dm) bid_open_date = `20${dm[1]}-${dm[2].padStart(2, "0")}-${dm[3].padStart(2, "0")}`
+  return { hospital, tender_no, bid_open_date }
+}
+
+/** R45/F5（体验审计）：展示层取采购人——已存 hospital 优先，为空则从本项目解析报告的 purchaser_info 派生（零写入、纯读）。
+ * 解决存量项目（解析早于回填代码上线）卡片一直显「采购人未填写」的问题；下次解析会由 parseBackfillFields 正式回填字段 */
+export function effectiveHospital(rec: Pick<BidProjectRecord, "hospital"> & Partial<Pick<BidProjectRecord, "parse_report">>): string {
+  return rec.hospital?.trim() || parseBackfillFields(rec.parse_report ?? null).hospital
+}
+
 // ------------------------------ 第九轮改造 1：交卷闸门（确认留痕，不拦导航只拦导出） ------------------------------
 
 export type GateKind = "parse" | "outline" | "compose" | "check" | "eval"

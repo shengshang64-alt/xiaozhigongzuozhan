@@ -24,7 +24,7 @@ import {
   RESPONSE_LEVEL_LABEL,
   REVIEW_STATUS_LABEL,
   SEVERITY_LABEL,
-  STAGE_LABEL,
+  displayStageLabel,
   VOID_STATUS_LABEL,
   effectiveVoidStatus,
   isBizPart,
@@ -858,5 +858,5 @@ export async function exportDeviationDocx(project: BidProjectRecord): Promise<vo
 }
 
 export function stageOf(project: BidProjectRecord): string {
-  return STAGE_LABEL[project.stage] ?? "待解析"
+  return displayStageLabel(project)
 }

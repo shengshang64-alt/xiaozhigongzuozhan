@@ -1,7 +1,7 @@
 import { Hospital, Link2 } from "lucide-react"
 import type { ReactNode } from "react"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
-import { STAGE_LABEL } from "@/pages/BidWorkspace/bidTypes"
+import { displayStageLabel, effectiveHospital } from "@/pages/BidWorkspace/bidTypes"
 
 type OpportunityLinkBarProps = Pick<
   UseBidWorkspace,
@@ -28,9 +28,9 @@ export function OpportunityLinkBar({ activeProject, activeOppOptions, oppOptions
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-foreground">{proj.project_name}</p>
             <p className="mt-0.5 truncate text-xs text-muted-foreground">
-              {proj.hospital || "采购人未填写"}
+              {effectiveHospital(proj) || "采购人未填写"}
               {proj.tender_no ? ` · ${proj.tender_no}` : ""}
-              <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs">{STAGE_LABEL[proj.stage] ?? "待解析"}</span>
+              <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs">{displayStageLabel(proj)}</span>
             </p>
           </div>
         </div>

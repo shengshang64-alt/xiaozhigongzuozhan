@@ -33,6 +33,7 @@ import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/rhLogin"
 import { listCompetitors, enrichProgress, type CompetitorRow } from "@/pages/Competitors/competitorsCore"
 import {
+  effectiveHospital,
   parseSectionDef,
   scoringItemsFromReport,
   sectionText,
@@ -244,7 +245,7 @@ export function BidWarRoom({ activeProject, missCount = 0, riskCount = 0 }: { ac
             <span className="truncate text-sm font-normal text-muted-foreground">{proj.project_name}</span>
           </DialogTitle>
           <DialogDescription>
-            {proj.hospital || "采购人未填写"}
+            {effectiveHospital(proj) || "采购人未填写"}
             {proj.bid_open_date ? ` · 开标 ${proj.bid_open_date}` : ""} · 一屏聚合招标要点、编制进度、风险灯、竞品与情报
           </DialogDescription>
         </DialogHeader>

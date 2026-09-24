@@ -209,9 +209,10 @@ import {
   starClausesEnabled,
   starClausesPromptBlock,
   starClauseSectionFrom,
+  displayStageLabel,
+  parseBackfillFields,
   stepEntryMissing,
   stripOverlap,
-  STAGE_LABEL,
   summarizeOrchestration,
   techChapters,
   techOutlineNodes,
@@ -2336,11 +2337,24 @@ export function useBidWorkspace() {
             ...mergeStar(report, prevReport),
             ...(warnings.length ? { warnings: warnings.map((w) => w.slice(0, 100)).slice(0, 20) } : {}),
           }
-          updateProject({ tender_text: text, parse_report: finalReport, parse_config: cfg })
+          // R45/F5（体验审计）：解析完成后自动回填空白的立项基础信息——仅当现值为空且解析正文有精确标签命中才写，
+          // 绝不覆盖用户已填值；保守口径见 parseBackfillFields 注释（无命中留空、占位「某编号」不取）
+          const curProject = activeProjectRef.current
+          const backfill: Partial<BidProjectRecord> = {}
+          let backfillToast = ""
+          if (curProject) {
+            const bf = parseBackfillFields(finalReport)
+            const filled: string[] = []
+            if (!curProject.hospital?.trim() && bf.hospital) { backfill.hospital = bf.hospital; filled.push("采购人") }
+            if (!curProject.tender_no?.trim() && bf.tender_no) { backfill.tender_no = bf.tender_no; filled.push("项目编号") }
+            if (!curProject.bid_open_date?.trim() && bf.bid_open_date) { backfill.bid_open_date = bf.bid_open_date; filled.push("开标日期") }
+            if (filled.length) backfillToast = `，已自动回填${filled.join("、")}`
+          }
+          updateProject({ tender_text: text, parse_report: finalReport, parse_config: cfg, ...backfill })
           writeStageSnapshot("parse", "招标文件解析完成", { parse_report: finalReport })
           setActiveStep(2)
           toast.success(
-            `解析完成：${okCount} 项成功${report.sections.length - okCount ? `，${report.sections.length - okCount} 项未解析可在报告中单独重解析` : ""}${starLines.length ? `，另本地扫描出 ★/▲ 重点条款 ${starClauseCount(starLines)} 条（零费用）` : ""}，请人工核对`,
+            `解析完成：${okCount} 项成功${report.sections.length - okCount ? `，${report.sections.length - okCount} 项未解析可在报告中单独重解析` : ""}${starLines.length ? `，另本地扫描出 ★/▲ 重点条款 ${starClauseCount(starLines)} 条（零费用）` : ""}${backfillToast}，请人工核对`,
           )
         } else {
           setToolParseWarnings(warnings)
@@ -5918,7 +5932,7 @@ export function useBidWorkspace() {
   const toolHasResult = toolKind === "parse" ? !!toolParseResult : toolKind === "dup" ? !!toolDupResult : toolKind === "void" ? !!toolVoidResult : !!toolEvalResult
 
   // ------------------------------ 派生数据 ------------------------------
-  const stageLabel = activeProject ? STAGE_LABEL[activeProject.stage] : ""
+  const stageLabel = activeProject ? displayStageLabel(activeProject) : ""
 
   // 下游环节依赖的解析项缺失清单（用于中文提示 + 跳转按钮，不静默失败）
   const outlineMissingTitles = useMemo(() => {
