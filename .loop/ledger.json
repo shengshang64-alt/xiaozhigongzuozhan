@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 49,
+  "round": 50,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -16,10 +16,10 @@
     {
       "id": "r44-parse-quality-01",
       "module": "/bid-workspace",
-      "issue": "[R44体验审计·不可通过级·最高优先] 标书解析不理解标书重点。【R45修F4/F5显示层；R46修F3横幅；R47修F7分钟噪音；R49修F1评分办法漏抽(closed: parse-scoring-excerpt-01，真根因=本地喂料器代码缺陷非提示词，已更正前几轮误归因)】本簇缩窄为剩余 2 项：F2 ★实质性条款只抽到★1-★10编号、无条款原文；F6 隐式硬约束24条大量半句截断碎片（'定要求的''又参''止时间'开头）。F2/F6 是否属提示词语义待取证复算（R49教训：先本地复算喂料内容再定性，别急着归因红线#2）。详见 .loop/reports/2026-09-24-2233.md",
+      "issue": "[R44体验审计·不可通过级·最高优先] 标书解析不理解标书重点。【R45修F4/F5显示层；R46修F3横幅；R47修F7分钟噪音；R49修F1评分办法漏抽(closed: parse-scoring-excerpt-01，真根因=本地喂料器代码缺陷非提示词)；R50修F2 ★条款无原文(closed: star-clause-body-01，含覆盖矩阵按条归行，实机+288单测验证)】本簇缩窄为剩余 1 项：F6 隐式硬约束碎片句（24 条中开头被截断，如「6. 止时间前未完成投标文件传输的」「8. 字且不陈述其不同意见和理由的」）——与 F1/F2 同族，优先按 R49/R50 路径先本地复算定性再修。",
       "priority": "P0",
       "status": "open",
-      "evidence": "R44 只读取证：接口 GET /api/bid_projects/yslab52hxoplrxk dump parse_report 7 sections（.diag/r44_audit_probe.mjs + r44_parse_report.json），原文★11处均有实质内容、'评标方法'13次/'分值'8次/'总分'2次证明评分结构真实存在但解析漏抽 | R49：F1 经本地复算证实为喂料定位器bug(目录行占槽+块上限4+单点重解析未用节选)，非提示词漏抽，已A类修复。",
+      "evidence": "R50 实机复核：硬约束列表仍有截断碎片句；报告 .loop/reports/2026-09-25-0454.md",
       "diff": ""
     },
     {
@@ -205,6 +205,16 @@
     }
   ],
   "closed": [
+    {
+      "id": "star-clause-body-01",
+      "module": "/bid-workspace",
+      "priority": "P0",
+      "status": "closed",
+      "issue": "F2 ★实质性条款只抽到★1-★10编号、无条款原文（评标2分/条共20分无响应依据）",
+      "fix": "bidTypes.extractStarClauses：标记行起条后吸收≤4行正文(≤600字)，空行不断条，STAR_BOUNDARY_RE 结构边界截止；complianceMatrix.buildComplianceRows 按条归行(标记行起新条、正文并入)",
+      "verify": "实机13431重新扫描：分区11条带正文、矩阵12行；截图 _shots/R50/；单测+7(3 遗留+4 本轮)",
+      "evidence": ".diag/r50_star_after.txt vs .diag/r50_star.txt；.loop/reports/2026-09-25-0454.md；提交 72f7678 / 2b12214"
+    },
     {
       "id": "parse-scoring-excerpt-01",
       "module": "/bid-workspace",
@@ -765,5 +775,5 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "Round49 修 F1 评分办法\"假阴性缺失\"(A类·代码)：真根因是本地评分章节定位器——目录页码行白占块槽+块上限仅4，章后半逐条分值表永远轮不到，喂给AI的节选里根本没有表；且单点「重新解析此项」按钮压根没走节选路径。修 bidTypes.ts(跳过目录行+上限8) + useBidWorkspace.ts(重解析对齐批量口径)。节选5243→11211字含全部真表，vitest280/build/lint145基线。重要更正：F1非提示词问题(前几轮归因错)，剩F2/F6待同样先复算再定性。"
+  "lastRoundSummary": "Round50 修 F2 ★实质性条款正文丢失(A类·代码)：extractStarClauses 标记行后吸收≤4行/≤600字、空行不断条、结构边界截止（中断会话遗留半成品，本轮验证收尾）；覆盖矩阵改按条归行修 11条→28行 行爆炸。实机13431重新扫描：分区11条全带原文、矩阵12行；288单测/build/eslint145=基线全过。簇缩窄为 F6 一项，下轮建议修 F6。"
 }
