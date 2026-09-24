@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  historyQuotesFor,
   importChecklistLines,
   isCatalogLine,
   lineKey,
@@ -296,5 +297,48 @@ describe("normalizeDraftItemsFromCatalog", () => {
     expect(normalizeDraftItemsFromCatalog(null, [])).toEqual({ items: [], filtered: 0 })
     expect(normalizeDraftItemsFromCatalog({ items: "bad" }, catalog).items).toEqual([])
     expect(normalizeDraftItemsFromCatalog({ items: [{ product_id: "p-1" }] }, []).filtered).toBe(1)
+  })
+})
+
+// quote-history-01（最小切片）：同客户历史报价检索
+describe("historyQuotesFor（同商机历史报价）", () => {
+  const rec = (over: Partial<QuoteRecord>): QuoteRecord =>
+    ({
+      id: "q1",
+      quote_name: "n",
+      opportunity_id: "",
+      opportunity_name: "",
+      updated: "2026-01-01",
+      groups: [],
+      ...over,
+    }) as unknown as QuoteRecord
+
+  it("同 opportunity_id 命中；排除自身；无关商机不命中", () => {
+    const cur = rec({ id: "me", opportunity_id: "opp1" })
+    const all = [cur, rec({ id: "a", opportunity_id: "opp1" }), rec({ id: "b", opportunity_id: "opp2" })]
+    expect(historyQuotesFor(cur, all).map((q) => q.id)).toEqual(["a"])
+  })
+
+  it("老单无 id 但同 opportunity_name → 兼容命中", () => {
+    const cur = rec({ id: "me", opportunity_name: "××医院智慧园区" })
+    const all = [cur, rec({ id: "old", opportunity_name: "××医院智慧园区" }), rec({ id: "x", opportunity_name: "其他" })]
+    expect(historyQuotesFor(cur, all).map((q) => q.id)).toEqual(["old"])
+  })
+
+  it("当前单未关联商机（id/名字都空）→ 静默空", () => {
+    expect(historyQuotesFor(rec({ id: "me" }), [rec({ id: "a", opportunity_id: "opp1" })])).toHaveLength(0)
+    expect(historyQuotesFor(null, [])).toHaveLength(0)
+  })
+
+  it("按 updated 降序，最多 limit 份", () => {
+    const cur = rec({ id: "me", opportunity_id: "opp1" })
+    const all = [
+      cur,
+      rec({ id: "old", opportunity_id: "opp1", updated: "2025-01-01" }),
+      rec({ id: "mid", opportunity_id: "opp1", updated: "2026-05-01" }),
+      rec({ id: "new", opportunity_id: "opp1", updated: "2026-09-01" }),
+    ]
+    expect(historyQuotesFor(cur, all).map((q) => q.id)).toEqual(["new", "mid", "old"])
+    expect(historyQuotesFor(cur, all, 2).map((q) => q.id)).toEqual(["new", "mid"])
   })
 })

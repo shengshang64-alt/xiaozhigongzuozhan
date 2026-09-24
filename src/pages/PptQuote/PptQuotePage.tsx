@@ -169,6 +169,8 @@ export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
             onRefreshProducts={p.refreshProducts}
             onDeleteProduct={p.deleteProduct}
             onAiDraft={p.openQuoteAi}
+            historyQuotes={p.historyQuotes}
+            onImportHistory={p.importQuoteHistory}
             onExportXlsx={p.exportQuoteExcel}
             onExportWord={p.exportQuoteWord}
             syncOppAmount={p.syncOppAmountOnSave}

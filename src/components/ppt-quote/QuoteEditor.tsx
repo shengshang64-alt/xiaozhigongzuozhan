@@ -1,9 +1,10 @@
 import { useState } from "react"
-import { ArrowLeft, FileSpreadsheet, FileText, FolderPlus, Import, Library, Plus, Sparkles, Trash2 } from "lucide-react"
+import { ArrowLeft, ChevronDown, FileSpreadsheet, FileText, FolderPlus, History, Import, Library, Plus, Sparkles, Trash2 } from "lucide-react"
 import {
   formatMoney,
   isCatalogLine,
   itemSubtotal,
+  quoteTotal,
   type ProductItem,
   type QuoteItem,
   type QuoteRecord,
@@ -53,6 +54,9 @@ type QuoteEditorProps = {
   openCheckProductPicker: () => void
   openChecklistImport: () => void
   addManualItem: (groupId: string) => void
+  // quote-history-01（最小切片）：同一客户（同商机）历史报价参考与一键导入明细
+  historyQuotes?: QuoteRecord[]
+  onImportHistory?: (source: QuoteRecord) => void
 }
 
 const cellInput =
@@ -158,6 +162,8 @@ export function QuoteEditor({
   openCheckProductPicker,
   openChecklistImport,
   addManualItem,
+  historyQuotes,
+  onImportHistory,
 }: QuoteEditorProps) {
   // 价格待录入：所有分组中 price<=0 的行数（用于"后录"提示）
   const pendingPriceCount = quote.groups.reduce(
@@ -165,6 +171,9 @@ export function QuoteEditor({
     0,
   )
   const totalItems = quote.groups.reduce((n, g) => n + g.items.length, 0)
+  // quote-history-01：历史报价参考面板默认展开（有历史记录才渲染）
+  const [historyOpen, setHistoryOpen] = useState(true)
+  const histQuotes = historyQuotes ?? []
 
   return (
     <section className="py-6 pb-16">
@@ -264,6 +273,48 @@ export function QuoteEditor({
           >
             立即保存
           </button>
+        </div>
+      ) : null}
+
+      {histQuotes.length > 0 ? (
+        <div className="mt-4 rounded-lg border border-border bg-muted/40 px-4 py-3">
+          <button
+            type="button"
+            onClick={() => setHistoryOpen((v) => !v)}
+            className="flex w-full items-center gap-2 text-sm font-medium text-foreground"
+          >
+            <History className="h-4 w-4 shrink-0 text-primary" />
+            该客户的历史报价（{histQuotes.length}）
+            <span className="text-xs font-normal text-muted-foreground">{historyOpen ? "可一键导入明细作参考" : "点击展开"}</span>
+            <ChevronDown
+              className={`ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform ${historyOpen ? "" : "-rotate-90"}`}
+            />
+          </button>
+          {historyOpen ? (
+            <ul className="mt-2.5 space-y-1.5">
+              {histQuotes.map((q) => (
+                <li
+                  key={q.id}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs"
+                >
+                  <span className="min-w-0 max-w-[40%] truncate font-medium text-foreground" title={q.quote_name}>
+                    {q.quote_name}
+                  </span>
+                  <span className="text-muted-foreground">{q.version || "v1"}</span>
+                  <span className="text-muted-foreground">{String(q.updated ?? "").slice(0, 10)}</span>
+                  <span className="text-muted-foreground">合计 ¥{formatMoney(quoteTotal(q.groups))}</span>
+                  <button
+                    type="button"
+                    onClick={() => onImportHistory?.(q)}
+                    className="ml-auto inline-flex items-center gap-1 rounded-md border border-primary/40 px-2 py-0.5 font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <Import className="h-3 w-3" />
+                    导入明细
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       ) : null}
 

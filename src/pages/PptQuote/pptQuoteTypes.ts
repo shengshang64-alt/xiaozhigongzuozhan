@@ -352,6 +352,27 @@ export function deepCopyGroups(groups: QuoteGroup[]): QuoteGroup[] {
   }))
 }
 
+/**
+ * quote-history-01（最小切片）：同一客户的历史报价参考。
+ * 匹配口径保守：同 opportunity_id（非空）或同 opportunity_name（非空，兼容存量只记了名字的老单）；
+ * 排除自身；按 updated 降序，最多 limit 份。纯检索零 AI，不做任何智能推荐。
+ */
+export function historyQuotesFor(current: QuoteRecord | null, all: QuoteRecord[], limit = 5): QuoteRecord[] {
+  if (!current) return []
+  const oppId = (current.opportunity_id ?? "").trim()
+  const oppName = (current.opportunity_name ?? "").trim()
+  if (!oppId && !oppName) return []
+  return (all ?? [])
+    .filter((q) => {
+      if (!q || q.id === current.id) return false
+      const id = (q.opportunity_id ?? "").trim()
+      const name = (q.opportunity_name ?? "").trim()
+      return (!!oppId && id === oppId) || (!!oppName && name === oppName)
+    })
+    .sort((a, b) => String(b.updated ?? "").localeCompare(String(a.updated ?? "")))
+    .slice(0, limit)
+}
+
 /** 记录字段容错：JSON 字段可能是字符串或缺失，统一洗成可用结构 */
 const SLIDE_LAYOUTS: string[] = ["auto", "bullets", "section", "image-right", "image-left", "banner", "chart", "kpi"]
 

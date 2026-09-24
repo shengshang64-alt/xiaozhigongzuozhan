@@ -35,6 +35,7 @@ import {
   deepCopyGroups,
   emptySlide,
   groupSubtotal,
+  historyQuotesFor,
   makeDefaultGroups,
   mergeItemsIntoGroups,
   normalizeDraftItemsFromCatalog,
@@ -1916,6 +1917,17 @@ export function usePptQuote() {
   }, [loadCheckProducts, loadChecklists, userId])
   const closeChecklistImport = useCallback(() => setChecklistImportOpen(false), [])
 
+  // quote-history-01（最小切片）：同一客户（同商机）的历史报价参考 + 一键导入明细（纯检索零 AI，deepCopyGroups 重生 id 防冲突）
+  const historyQuotes = useMemo(() => historyQuotesFor(activeQuote, quoteList), [activeQuote, quoteList])
+  const importQuoteHistory = useCallback(
+    (source: QuoteRecord) => {
+      if (!source) return
+      mutateQuote((q) => ({ ...q, groups: [...q.groups, ...deepCopyGroups(source.groups)] }))
+      toast.success(`已导入「${source.quote_name}」的明细，可在对应分组内增删调整`)
+    },
+    [mutateQuote],
+  )
+
   const loadProducts = useCallback(async (uid: string) => {
     setProductLoading(true)
     try {
@@ -2134,6 +2146,8 @@ export function usePptQuote() {
     backToQuoteList,
     deleteQuote,
     copyQuoteAsVersion,
+    historyQuotes,
+    importQuoteHistory,
     newQuoteOpen,
     setNewQuoteOpen,
     nqName,

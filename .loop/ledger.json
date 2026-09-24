@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 39,
+  "round": 40,
   "backlog": [
     {
       "id": "prompt-matrix-02",
@@ -115,7 +115,7 @@
     {
       "id": "quote-history-01",
       "module": "/ppt-quote",
-      "issue": "B2 报价历史库：项目结单沉淀报价明细，报价页按医院等级+床位数+模块组合给参考区间；先做历史报价列表+手工参考，渐进增强",
+      "issue": "B2 报价历史库二期：项目结单沉淀报价明细，按医院等级+床位数+模块组合给参考区间（智能推荐）。一期最小切片（同商机历史报价参考+一键导入）已于 R40 交付（closed: quote-history-min-01）",
       "standard": [
         "B8"
       ],
@@ -150,6 +150,16 @@
     }
   ],
   "closed": [
+    {
+      "id": "quote-history-min-01",
+      "module": "/ppt-quote",
+      "issue": "报价历史参考最小切片（quote-history-01 一期，R39 清单首推、用户回「继续」按既定默认授权）：报价编辑器当前单关联商机时展示同客户历史报价（≤5 份、updated 降序、含总额）+一键导入明细致 deepCopyGroups 重生 id；未关联静默；零 AI/零 schema/零新依赖",
+      "status": "done",
+      "evidence": "R40: vitest 255/255(+4 含 id 命中/老单名字兼容/无商机静默/降序limit)；build exit0；eslint src 145=基线净新增 0；实机新建临时单→编辑器渲染 console 零错、无商机时面板正确不现、自动保存/删除链路正常，临时单已删库回 0 套。降级注：本机商机 0 条，面板显形+导入点击两条路径由单测锈死推定，待真实数据即可见",
+      "diff": "pptQuoteTypes.ts +historyQuotesFor；usePptQuote.ts +historyQuotes/importQuoteHistory；QuoteEditor.tsx +可折叠历史面板；PptQuotePage.tsx 透传；报告 .loop/reports/2026-09-24-2040.md",
+      "priority": "P2",
+      "closedRound": 40
+    },
     {
       "id": "quote-vs-ceiling-b-01",
       "module": "/bid-workspace,/ppt-quote",
@@ -610,6 +620,6 @@
       "decision": "2026-09-22 用户拍板：本地单用户自用部署维持现状，不碰 pb_hooks 红线；若将来对外部署或多用户化，需单独立项并豁免红线+重启 PB 专门做；论断已逐条坐实(model_gateway.pb.js L18/88/187)非误报"
     }
   ],
-  "noProgressStreak": 1,
-  "lastRoundSummary": "Round39 收敛确认/决策清单轮（无代码改动，noProgressStreak 0→1）：三通道复核无漏网 A/B——四门 R38 全绿；TODO/FIXME 13 命中全为体检扫描器正则/提示词字符串本身误报、console.log 0；本机商机/标书/报价均 0 条无数据可走查。产出带排序的 C 类决策清单（.loop/reports/2026-09-24-2015.md）：首推 quote-history-01 最小切片（历史报价参考＋一键导入，零 AI 零 schema 零新依赖、每日高频价值），并写明其二期（等级+床位参考区间）缓；content-guard-03 建议待有真实标书后再启动（AI 费用+误报率无法校准）；fabscan 四态升级需豁免红线#2、禁导出建议放弃（违 R6 先例）；kb-semantic-01 冻结（触红线#1+embedding 费用）；perf-02/ux-05/gap-pool-01 缓；prompt-extract-01 继续搁置、将来搭车做。已定默认：用户若只回「继续」＝做首推报价历史最小切片。blocked: hook-security-01 不变。"
+  "noProgressStreak": 0,
+  "lastRoundSummary": "Round40 改造轮（C 类已授权·售前工程师视角）：用户回「继续」按 R39 既定默认＝做首推项报价历史参考最小切片——报价编辑器关联商机时展示同客户历史报价（同 opportunity_id 或同商机名兼容老单、排除自身、updated 降序≤5）+一键导入明细（deepCopyGroups 重生 id、走既有 mutateQuote 自动保存链路）；未关联商机面板静默不渲染。零 AI/零 PB schema/零新依赖/无需重启。四门全绿：vitest 255/255(+4)/build exit0/eslint src 145=基线净新增 0/实机临时单验证 console 零错后已删库回 0 套。quote-history-01 收窄为二期（等级+床位参考区间）继续 open，closed+quote-history-min-01。noProgressStreak 1→0。诚实降级：本机商机 0 条，面板显形+导入实点击待真实数据补验。顺手发现待选 B 类小修：新建报价弹窗文案说预置四分组但实际空分组。待拍板池余：content-guard-03、fabscan-03残余、kb-semantic-01(建议冻结)、ux-05、perf-02、prompt-extract-01。blocked: hook-security-01 不变。"
 }
