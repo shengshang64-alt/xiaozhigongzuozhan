@@ -4519,25 +4519,62 @@ export const PRE_OUTPUT_SELFCHECK_RULES: string[] = [
 const IMPLICIT_CONSTRAINT_PATTERN = /(不得超过|不得少于|不低于|至少|必须包含|必须涵盖|视为|总页数|页数不|份数)/
 
 /**
+ * R51/F6：把被换行切断的句子接回来——上一行未以句末标点收尾时并入下一行。
+ * PDF 转译常在字中间换行（如「截止时间」被拆成两行），不接回就会产出
+ * 「止时间前未完成…」「知书，中标…」这类碎片句。缓冲超 300 字强制落段，防表格行粘连成巨段。
+ */
+function joinWrappedLines(text: string): string[] {
+  const paragraphs: string[] = []
+  let buf = ""
+  for (const rawLine of text.split(/\n+/)) {
+    const line = rawLine.trim()
+    if (!line) continue
+    buf += line
+    if (/[。；;！？：]["”'’]?\)?」?』?$/.test(line) || buf.length >= 300) {
+      paragraphs.push(buf)
+      buf = ""
+    }
+  }
+  if (buf) paragraphs.push(buf)
+  return paragraphs
+}
+
+/** 句内裁剪：以关键词为锚，尽量贴住逗号/顿号等句内边界切，避免从字中间下手 */
+function clipAround(s: string, anchor: number, max = 110): string {
+  if (s.length <= max) return s
+  let start = Math.max(0, anchor - 20)
+  for (let i = anchor; i >= start && i > 0; i--) {
+    if (/[,，、：;]/.test(s[i - 1])) {
+      start = i
+      break
+    }
+  }
+  const end = Math.min(s.length, start + max)
+  const head = start > 0 ? "…" : ""
+  const tail = end < s.length ? "…" : ""
+  return head + s.slice(start, end) + tail
+}
+
+/**
  * 改造 3：从招标文件全文本地抽取「隐式硬约束」（零 AI）——
- * 命中固定句式的行/句取 ≤60 字原文摘录，去重后最多 limit 条。
+ * 命中固定句式的完整句取为摘录（R51/F6：先接回换行断句再按句提取，超长句锚定关键词按句内标点裁剪），
+ * 去重后最多 limit 条。「备份」后的「份数」是功能描述不是投标约束，排除。
  */
 export function extractImplicitConstraints(tenderText: string, limit = 40): string[] {
   const text = (tenderText ?? "").trim()
   if (!text) return []
   const out: string[] = []
   const seen = new Set<string>()
-  const lines = text.split(/\n+/)
-  for (const rawLine of lines) {
+  for (const para of joinWrappedLines(text)) {
     if (out.length >= limit) break
-    for (const piece of rawLine.split(/[。；;]/)) {
+    for (const piece of para.split(/(?<=[。；;])/)) {
       if (out.length >= limit) break
       const s = piece.replace(/\s+/g, "").trim()
       if (s.length < 8) continue
       const m = s.match(IMPLICIT_CONSTRAINT_PATTERN)
       if (!m || m.index === undefined) continue
-      const start = Math.max(0, m.index - 15)
-      const excerpt = s.slice(start, start + 60)
+      if (s.slice(Math.max(0, m.index - 1), m.index) === "备") continue
+      const excerpt = clipAround(s, m.index)
       if (seen.has(excerpt)) continue
       seen.add(excerpt)
       out.push(excerpt)
