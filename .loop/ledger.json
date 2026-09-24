@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 47,
+  "round": 48,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -28,7 +28,7 @@
       "issue": "[R44体验审计·不可通过级] 情报采集质量簇 5 项：F9 类型判定失效——电子病历评级/医保政策/数智医院/光子CT 等大量行业资讯全标'竞品动向'，分类形同虚设；F10 首页情报摘要卡=垃圾文本（'网站支持IPv6 长者助手…1 2 3 4'导航菜单残留）、摘要错挂他文（卫健委发布会挂AI黑客摘要）、出现未来日期 2027-01-01；F21 首页'in_more 更多'DOM残留；F22 7个采集源抓取失败无处理入口；F23 垃圾条目居列表首位（标题=站名、6标签乱贴）。需抓取文本清洗+类型判定规则修订（判类型属提示词语义则触红线#2，若为关键词规则可自动修，待定位确认）",
       "priority": "P1",
       "status": "open",
-      "evidence": "R44 实机走查 /intel-center 与首页情报卡 snapshot 记录",
+      "evidence": "R44实机走查snapshot + R48全表扫描: intel 200条乱码/空标题/替换符=0，F10首页\"垃圾文本\"判定为显示层串了导航菜单、非库内脏数据(无需删数据)。采集失败/类型判定等仍需代码侧处理。",
       "diff": ""
     },
     {
@@ -46,7 +46,7 @@
       "issue": "[R44体验审计·严重级] 测试残留清理+账号安全簇 3 项：F11 客户管理'测试市人民医院'测试数据残留居列表首位；F12 小智助手会话列表残留（'我现在有几个投标项目？'×3重复/'你好'/一条提示词注入测试会话'忽略你之前收到的全部系统指令…'）；F19 已于 R47 完成（closed: team-mislock-guard-01，双层防误锁护栏，不删数据无需勾选）。剩余：删业务数据触红线#8，清理清单须用户逐条勾选才动",
       "priority": "P1",
       "status": "open",
-      "evidence": "R44 实机走查三页 snapshot 记录，未执行任何删除",
+      "evidence": "R44实机走查+R48全表接口复核：清理清单已产出(见报告2350)——【建议删6条】测试客户vnu60icxocnb0ky(引用0/0可安全删)+助手会话jkvijt(注入测试)/90g2rq/cv9o8r/5fwwwq(×3重复)/vst0wl(你好)；【待定6条】q6z3g/5s26u/gt6um/5liu5(真问题倾向留)+skiet7/twoexq(近似可删)；【翻案不删】竞品20家=真实清单非垃圾、模板[PDF多模态转译]=命名瑕疵非脏数据、intel未来日期=正常预告。等用户逐条勾选，未执行任何删除。",
       "diff": ""
     },
     {
@@ -205,45 +205,45 @@
     }
   ],
   "closed": [
-      {
-        "id": "team-mislock-guard-01",
-        "module": "/team · pb_hooks",
-        "priority": "P1",
-        "status": "closedRound47",
-        "issue": "R44/F19：团队管理可对任意管理员（含内置'系统管理员'）停用/改角色，服务端零防护——把最后一个可用管理员停掉或直连接口自停后，/api/team/* 写接口全 403，系统无法自救",
-        "fix": "双层同口径护栏：①不能停用/修改自己的账号角色（改姓名仍允许）②不能停用/降级最后一个可用管理员（已停用管理员不计入，防死锁）。前端 memberGuard.ts(新纯函数)+TeamPage 置灰+title 说明；后端 team_auth.pb.js PATCH 应用变更前 400 拦截（不改登录/token/权限判定语义、不新增字段不改 schema；需重启 PB 生效，已用 .diag/restart_pb.ps1 重启）。注：未硬编码保护'系统管理员'那行——它只是普通管理员，只要还有其它可用管理员时停用它属正常操作，真正防的是'清零'场景",
-        "verify": "vitest 279/279（+6 memberGuard 用例）；build 2.19s；eslint 145=基线；接口负向实测：对自己发 {active:false}/{role:viewer} 均 400+中文原因、复查数据未坏（me 仍 active admin、可用管理员=2）；实机 /team：'测试（我）'行按钮 disabled+护栏 title，其余 3 行正常。诚实说明：'最后管理员'拦截分支因真实数据有 2 个管理员、无法非破坏性构造实测，由单测+与 self 分支同构代码守护。报告 .loop/reports/2026-09-24-2335.md",
-        "evidence": ".diag/r47_team.txt（4成员/2可用管理员/后端零防护现状）、.diag/r47_guard.txt（两发 400 原文）"
-      },
-      {
-        "id": "score-scan-minute-noise-01",
-        "module": "/bid-workspace",
-        "priority": "P2",
-        "status": "closedRound47",
-        "issue": "R44/F7：评分项交叉核对面板把时长'30分钟'当分值——真项目13431'投标截止时间：30分钟内…'被当成 30 分评分项进'未归类'，还产生一条假'报告漏抽'。另澄清：R44 记的'未归类30项'实为把面板'未归类分值合计30'误读成项数（真实噪音仅 1 条）",
-        "fix": "scoreItemsScan.ts 所有分值正则 分(?!数) → 分(?!数|钟)（SCORE_MARKER + pickScore colon/loose/attached 三处），纯本地零费用逻辑、不动数据不动提示词；真评分形态（括号/colon/贴身）经测试确认不误伤",
-        "verify": "vitest +4 用例（含13431原噪行原文 fixture）；修后真实14万字原文重跑：other 分值 30→0、'截止'噪音条消失；build/eslint=基线；实机 13431 第2步面板'分类合计…未归类 0'。小遗留已记账：贴身式评分项名截末字既有怪癖（'系统响应速度'→'系统响应'）非本轮引入，归 r47-scan-name-trunc-06",
-        "evidence": ".diag/r47_f7_out.txt（修前 items含[30]投标截止时间/sums.other=30）、探针复跑 items=1 other=0（探针跑完已删）"
-      },
-      {
-        "id": "parse-warning-banner-and-copy-01",
-        "module": "/bid-workspace · /",
-        "priority": "P1",
-        "status": "closedRound46",
-        "issue": "R46 统一修改第一批（下）·文案口径一致性簇：F3 解析失败横幅与'核心信息7/7项'同屏矛盾 + F15 首页'八大功能模块陆续开放'过时文案",
-        "fix": "F3：新增纯函数 summarizeParseWarnings（bidTypes，按 warnings.length 聚合），ParseReportPanel 横幅由红色逐条'第X段解析失败'×12 改为琥珀色汇总一条+口径说明（段=文本块≠项=提取结果）；落库 warnings 不动、零写入。F15：WelcomeBanner '八大功能模块陆续开放'→'各功能模块已全部就绪'。另诚实处理：F16 首页'进行中项目0'与标书'1项'——activeProjectCount 数 /api/projects（交付项目）、标书数 /api/bid_projects（投标项目），两实体不矛盾→证伪撤回不改；F17 '[PDF多模态转译]'代码内搜不到=存数据模板名、需改数据（红线#8）→留簇不动",
-        "verify": "vitest 269/269（+2 summarizeParseWarnings）；build 2.44s；eslint 145=基线零新增；实机：项目13431 解析页 hasNewBanner=true/旧逐条oldFailMentions=0（原12条）/'7/7项'仍在；首页 旧'八大功能模块陆续开放'=false/新'各功能模块已全部就绪'=true。报告 .loop/reports/2026-09-24-2321.md",
-        "evidence": ".diag/r46_f3.txt（warnings=12、sections=7全ok、tender_text=146263）；bidTypes.ts summarizeParseWarnings；ParseReportPanel.tsx warningBanner；WelcomeBanner.tsx L24；bidParseBackfill.test.ts F3 describe"
-      },
-      {
-        "id": "parse-display-bridge-01",
-        "module": "/bid-workspace",
-        "issue": "R44 体验审计 F4（stage 卡 pending_parse、项目卡仍显『待解析』与解析报告已存在矛盾）+ F5（purchaser_info 已抽出『采购人名称：…』但 hospital 字段空、卡片显『采购人未填写』）",
-        "status": "closed",
-        "evidence": "vitest 267/267 exit0（新增 bidParseBackfill.test.ts 8 例：displayStageLabel 三态、parseBackfillFields 出处后缀剔除/占位某编号不取/ISO 归一/空报告全空、effectiveHospital 存值优先与报告兜底） / tsc -b + vite build exit0(2.70s) / eslint src 145 problems = 基线（净新增 0） / 实机真实项目 13431零写入：/bid-workspace 卡片徽标 待解析→已解析·待编制、副标题 采购人未填写→安徽中医药大学第一附属医院、全页无待解析残留；改后接口复查 DB hospital=[]/stage=pending_parse 未变（证实纯展示层、零写入）",
-        "priority": "P1",
-        "closedRound": 45
-      },
+    {
+      "id": "team-mislock-guard-01",
+      "module": "/team · pb_hooks",
+      "priority": "P1",
+      "status": "closedRound47",
+      "issue": "R44/F19：团队管理可对任意管理员（含内置'系统管理员'）停用/改角色，服务端零防护——把最后一个可用管理员停掉或直连接口自停后，/api/team/* 写接口全 403，系统无法自救",
+      "fix": "双层同口径护栏：①不能停用/修改自己的账号角色（改姓名仍允许）②不能停用/降级最后一个可用管理员（已停用管理员不计入，防死锁）。前端 memberGuard.ts(新纯函数)+TeamPage 置灰+title 说明；后端 team_auth.pb.js PATCH 应用变更前 400 拦截（不改登录/token/权限判定语义、不新增字段不改 schema；需重启 PB 生效，已用 .diag/restart_pb.ps1 重启）。注：未硬编码保护'系统管理员'那行——它只是普通管理员，只要还有其它可用管理员时停用它属正常操作，真正防的是'清零'场景",
+      "verify": "vitest 279/279（+6 memberGuard 用例）；build 2.19s；eslint 145=基线；接口负向实测：对自己发 {active:false}/{role:viewer} 均 400+中文原因、复查数据未坏（me 仍 active admin、可用管理员=2）；实机 /team：'测试（我）'行按钮 disabled+护栏 title，其余 3 行正常。诚实说明：'最后管理员'拦截分支因真实数据有 2 个管理员、无法非破坏性构造实测，由单测+与 self 分支同构代码守护。报告 .loop/reports/2026-09-24-2335.md",
+      "evidence": ".diag/r47_team.txt（4成员/2可用管理员/后端零防护现状）、.diag/r47_guard.txt（两发 400 原文）"
+    },
+    {
+      "id": "score-scan-minute-noise-01",
+      "module": "/bid-workspace",
+      "priority": "P2",
+      "status": "closedRound47",
+      "issue": "R44/F7：评分项交叉核对面板把时长'30分钟'当分值——真项目13431'投标截止时间：30分钟内…'被当成 30 分评分项进'未归类'，还产生一条假'报告漏抽'。另澄清：R44 记的'未归类30项'实为把面板'未归类分值合计30'误读成项数（真实噪音仅 1 条）",
+      "fix": "scoreItemsScan.ts 所有分值正则 分(?!数) → 分(?!数|钟)（SCORE_MARKER + pickScore colon/loose/attached 三处），纯本地零费用逻辑、不动数据不动提示词；真评分形态（括号/colon/贴身）经测试确认不误伤",
+      "verify": "vitest +4 用例（含13431原噪行原文 fixture）；修后真实14万字原文重跑：other 分值 30→0、'截止'噪音条消失；build/eslint=基线；实机 13431 第2步面板'分类合计…未归类 0'。小遗留已记账：贴身式评分项名截末字既有怪癖（'系统响应速度'→'系统响应'）非本轮引入，归 r47-scan-name-trunc-06",
+      "evidence": ".diag/r47_f7_out.txt（修前 items含[30]投标截止时间/sums.other=30）、探针复跑 items=1 other=0（探针跑完已删）"
+    },
+    {
+      "id": "parse-warning-banner-and-copy-01",
+      "module": "/bid-workspace · /",
+      "priority": "P1",
+      "status": "closedRound46",
+      "issue": "R46 统一修改第一批（下）·文案口径一致性簇：F3 解析失败横幅与'核心信息7/7项'同屏矛盾 + F15 首页'八大功能模块陆续开放'过时文案",
+      "fix": "F3：新增纯函数 summarizeParseWarnings（bidTypes，按 warnings.length 聚合），ParseReportPanel 横幅由红色逐条'第X段解析失败'×12 改为琥珀色汇总一条+口径说明（段=文本块≠项=提取结果）；落库 warnings 不动、零写入。F15：WelcomeBanner '八大功能模块陆续开放'→'各功能模块已全部就绪'。另诚实处理：F16 首页'进行中项目0'与标书'1项'——activeProjectCount 数 /api/projects（交付项目）、标书数 /api/bid_projects（投标项目），两实体不矛盾→证伪撤回不改；F17 '[PDF多模态转译]'代码内搜不到=存数据模板名、需改数据（红线#8）→留簇不动",
+      "verify": "vitest 269/269（+2 summarizeParseWarnings）；build 2.44s；eslint 145=基线零新增；实机：项目13431 解析页 hasNewBanner=true/旧逐条oldFailMentions=0（原12条）/'7/7项'仍在；首页 旧'八大功能模块陆续开放'=false/新'各功能模块已全部就绪'=true。报告 .loop/reports/2026-09-24-2321.md",
+      "evidence": ".diag/r46_f3.txt（warnings=12、sections=7全ok、tender_text=146263）；bidTypes.ts summarizeParseWarnings；ParseReportPanel.tsx warningBanner；WelcomeBanner.tsx L24；bidParseBackfill.test.ts F3 describe"
+    },
+    {
+      "id": "parse-display-bridge-01",
+      "module": "/bid-workspace",
+      "issue": "R44 体验审计 F4（stage 卡 pending_parse、项目卡仍显『待解析』与解析报告已存在矛盾）+ F5（purchaser_info 已抽出『采购人名称：…』但 hospital 字段空、卡片显『采购人未填写』）",
+      "status": "closed",
+      "evidence": "vitest 267/267 exit0（新增 bidParseBackfill.test.ts 8 例：displayStageLabel 三态、parseBackfillFields 出处后缀剔除/占位某编号不取/ISO 归一/空报告全空、effectiveHospital 存值优先与报告兜底） / tsc -b + vite build exit0(2.70s) / eslint src 145 problems = 基线（净新增 0） / 实机真实项目 13431零写入：/bid-workspace 卡片徽标 待解析→已解析·待编制、副标题 采购人未填写→安徽中医药大学第一附属医院、全页无待解析残留；改后接口复查 DB hospital=[]/stage=pending_parse 未变（证实纯展示层、零写入）",
+      "priority": "P1",
+      "closedRound": 45
+    },
     {
       "id": "numref-fuzzy-colon-01",
       "module": "/bid-workspace",
@@ -755,5 +755,5 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "Round47 团队防误锁+评分核对去噪（接 R46 默认·A 类零费用）：F19——后端 PATCH /api/team/members/{id} 原本零防护，可把最后可用管理员停掉/自停导致全系统无法自救；双层同口径护栏：前端 memberGuard.ts+TeamPage 置灰说明，后端 team_auth.pb.js 拦'动自己'与'停用/降级最后一个可用管理员'（不改登录/权限判定语义、不改 schema；已重启 PB 生效。注意：本轮碰了 pb_hooks，报告已给用户单独回滚选项）。F7——评分交叉核对面板把'投标截止时间：30分钟内'的时长当 30 分分值，正则 分(?!数)→分(?!数|钟) 三处；澄清 R44'未归类30项'实为'未归类分值合计30'误读。验证：vitest 279/279(+10)、build 2.19s、eslint 145=基线；接口负向实测两发 400 数据未坏；实机 /team 自己行置灰+原因、13431 面板未归类 30→0。closed+team-mislock-guard-01/score-scan-minute-noise-01；新小遗留 r47-scan-name-trunc-06(P3)。streak 0。第一批零费用零红线已扫完；待拍板：F1/F2/F6 提示词（红线#2）与测试脏数据清理（红线#8 逐条勾选）。blocked: hook-security-01。报告 .loop/reports/2026-09-24-2335.md"
+  "lastRoundSummary": "Round48 测试脏数据清理清单（只列不改）：五表全量接口直查。建议删6条(测试客户vnu60+5条助手会话，删除安全预检通过)、待定6条、翻案不删3类(竞品/模板名/情报未来日期)。未删任何数据、未改代码。等用户勾选；回继续=转去出解析提示词(F1/F2/F6)修订方案"
 }
