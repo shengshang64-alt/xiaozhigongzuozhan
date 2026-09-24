@@ -13,6 +13,7 @@ import {
   STAR_CLAUSE_SECTION,
   sectionSnippet,
   sectionStatus,
+  summarizeParseWarnings,
   type ParseReport,
   type ParseSection,
   type ParseSectionStatus,
@@ -78,15 +79,16 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
   // 第七轮改造 3：本地正则抽取的招标隐式硬约束（零 AI，解析完成即显示）
   const implicitList = useMemo(() => extractImplicitConstraints(tenderText ?? ""), [tenderText])
 
-  // 第八轮改造 1：分段解析失败提示横幅（顶部）
+  // 第八轮改造 1 / R46-F3：分段解析失败提示横幅。旧版逐条列「第 X 段解析失败」（红色），与侧栏「N/N 项」同屏读来自相矛盾；
+  // 改为聚合一条琥珀色提示，说清“段（文本块）≠ 项（提取结果）”两个口径（仅展示层，不改数据/不碰提示词）
+  const warningSummary = summarizeParseWarnings(warnings)
   const warningBanner =
-    warnings && warnings.length > 0 ? (
-      <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 shadow-sm">
-        {warnings.map((w) => (
-          <p key={w} className="text-xs leading-relaxed text-destructive">
-            {w}
-          </p>
-        ))}
+    warningSummary ? (
+      <div className="mb-3 rounded-md border border-amber-300/60 bg-amber-50 px-4 py-3 shadow-sm text-amber-800">
+        <p className="text-xs font-semibold leading-relaxed">{warningSummary.headline}</p>
+        <p className="mt-1 text-xs leading-relaxed text-amber-700">
+          （说明：“{warningSummary.failedChunks} 段”指招标全文切分后的文本块数，与下方“核心信息项数”不同口径；若某项内容明显缺失，可在该项处“重新解析”补齐。）
+        </p>
       </div>
     ) : null
 

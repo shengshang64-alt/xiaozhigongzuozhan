@@ -1,12 +1,12 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 45,
+  "round": 46,
   "backlog": [
     {
       "id": "r44-parse-quality-01",
       "module": "/bid-workspace",
-      "issue": "[R44体验审计·不可通过级·最高优先] 标书解析不理解标书重点。【R45 已修 F4/F5 显示层部分（closed: parse-display-bridge-01），本簇缩窄为剩余 5 项】：F1 评分办法完全漏抽（原文确有'总分100·技术90+价格10'结构，tech_score 段却写'未找到分值表'）；F2 ★实质性条款只抽到★1-★10编号、无条款原文（正文★1=日均门诊量15000+等实质要求）；F3 同屏'12段解析失败'横幅与'核心信息7/7成功'矛盾（待核 12 段口径与报告 7 sections 的差距来源）；F6 隐式硬约束24条大量半句截断碎片（'定要求的''又参''止时间'开头）；F7 评分项交叉核对面板噪音（'投标截止时间'误判为30分评分项、未归类30项）。根因：F1/F2/F6 属解析提示词语义（改=红线#2 需用户拍板），F3/F7 属代码层可自动修。详见 .loop/reports/2026-09-24-2233.md",
+      "issue": "[R44体验审计·不可通过级·最高优先] 标书解析不理解标书重点。【R45 已修 F4/F5 显示层（closed: parse-display-bridge-01）；R46 已修 F3 失败横幅与7/7项口径矛盾（closed: parse-warning-banner-and-copy-01），本簇缩窄为剩余 4 项】：F1 评分办法完全漏抽（原文确有'总分100·技术90+价格10'结构，tech_score 段却写'未找到分值表'）；F2 ★实质性条款只抽到★1-★10编号、无条款原文；F6 隐式硬约束24条大量半句截断碎片（'定要求的''又参''止时间'开头）；F7 评分项交叉核对面板噪音（'投标截止时间'误判为30分评分项、未归类30项）。根因：F1/F2/F6 属解析提示词语义（改=红线#2 需用户拍板），F7 属代码层可自动修。详见 .loop/reports/2026-09-24-2233.md",
       "priority": "P0",
       "status": "open",
       "evidence": "R44 只读取证：接口 GET /api/bid_projects/yslab52hxoplrxk dump parse_report 7 sections（.diag/r44_audit_probe.mjs + r44_parse_report.json），原文★11处均有实质内容、'评标方法'13次/'分值'8次/'总分'2次证明评分结构真实存在但解析漏抽",
@@ -195,6 +195,16 @@
     }
   ],
   "closed": [
+      {
+        "id": "parse-warning-banner-and-copy-01",
+        "module": "/bid-workspace · /",
+        "priority": "P1",
+        "status": "closedRound46",
+        "issue": "R46 统一修改第一批（下）·文案口径一致性簇：F3 解析失败横幅与'核心信息7/7项'同屏矛盾 + F15 首页'八大功能模块陆续开放'过时文案",
+        "fix": "F3：新增纯函数 summarizeParseWarnings（bidTypes，按 warnings.length 聚合），ParseReportPanel 横幅由红色逐条'第X段解析失败'×12 改为琥珀色汇总一条+口径说明（段=文本块≠项=提取结果）；落库 warnings 不动、零写入。F15：WelcomeBanner '八大功能模块陆续开放'→'各功能模块已全部就绪'。另诚实处理：F16 首页'进行中项目0'与标书'1项'——activeProjectCount 数 /api/projects（交付项目）、标书数 /api/bid_projects（投标项目），两实体不矛盾→证伪撤回不改；F17 '[PDF多模态转译]'代码内搜不到=存数据模板名、需改数据（红线#8）→留簇不动",
+        "verify": "vitest 269/269（+2 summarizeParseWarnings）；build 2.44s；eslint 145=基线零新增；实机：项目13431 解析页 hasNewBanner=true/旧逐条oldFailMentions=0（原12条）/'7/7项'仍在；首页 旧'八大功能模块陆续开放'=false/新'各功能模块已全部就绪'=true。报告 .loop/reports/2026-09-24-2321.md",
+        "evidence": ".diag/r46_f3.txt（warnings=12、sections=7全ok、tender_text=146263）；bidTypes.ts summarizeParseWarnings；ParseReportPanel.tsx warningBanner；WelcomeBanner.tsx L24；bidParseBackfill.test.ts F3 describe"
+      },
       {
         "id": "parse-display-bridge-01",
         "module": "/bid-workspace",
@@ -715,5 +725,5 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "Round45 统一修改第一批（上）（接 R44 用户『先记录后统一修改』指令·零费用零红线）：修标书解析 F4/F5 显示断点——新增 displayStageLabel（pending_parse+已有报告→「已解析·待编制」，状态机不动）/ parseBackfillFields（解析完成按精确标签保守回填空白字段，占位某编号不取）/ effectiveHospital（展示层读取兜底，存量项目零写入立即显采购人），4 处显示点接线。验证：vitest 267/267（+8锈）、build、eslint 145=基线；实机真实项目 13431 卡片待解析→已解析·待编制、采购人未填写→安徽中医药大学第一附属医院，改后 DB 字段实测未变（零写入属实）。另 R44 的 F8 竞品矩阵错位经 DOM 实测证伪已撤回（r44-competitor-matrix-03 缩窄为仅余 F20 降 P3）。closed+parse-display-bridge-01；streak 0。待拍板：F1/F2/F6 解析提示词语义（红线#2）、测试数据清理（红线#8）。blocked: hook-security-01。下一轮默认：回「继续」＝统一修改第一批（下）：核修 F3 失败横幅矛盾 + F15/F16/F17 纯前端文案口径簇。"
+  "lastRoundSummary": "Round46 统一修改第一批（下）·文案口径一致性簇（接 R45 默认·零费用零红线）：修 F3——标书解析页顶部红色逐条'第X段解析失败'×12 与侧栏'核心信息7/7项'同屏自相矛盾，新增纯函数 summarizeParseWarnings（按 warnings.length 聚合）、ParseReportPanel 横幅改一条琥珀色汇总+段≠项口径说明，落库 warnings 不动零写入；修 F15——首页'八大功能模块陆续开放'→'各功能模块已全部就绪'（模块已全上线且实际12个，去数字免制造新口径问题）。诚实翻案：F16 首页'进行中项目0'与标书'1项'非矛盾——activeProjectCount 数 /api/projects（交付项目）、标书数 /api/bid_projects（投标项目），两实体各数各的不该相等→证伪撤回不改；F17 '[PDF多模态转译]'代码内搜不到=存数据里的模板名、需改数据（红线#8）→留簇不动。验证：vitest 269/269（+2 summarizeParseWarnings）、build 2.44s、eslint 145=基线；实机：项目13431 解析页旧逐条oldFailMentions 12→0且新汇总在、'7/7项'不打架；首页新旧文案反转。closed+parse-warning-banner-and-copy-01；r44-parse-quality-01 现剩 F1/F2/F6（提示词红线#2待拍板）+F7（代码层）。streak 0。第一批零费用零红线基本清完，下一轮默认 F19 系统管理员停用防护+核 F7 费用预检口径；解析漏抽根因与测试数据清理两堆均需用户点头。"
 }

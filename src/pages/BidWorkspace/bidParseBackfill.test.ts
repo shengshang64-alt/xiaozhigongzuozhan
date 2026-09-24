@@ -1,7 +1,7 @@
 // R45 回归锈：displayStageLabel（F4「待解析」与解析报告并存矛盾）与 parseBackfillFields（F5 保守回填口径）
 // 真实形态来自项目 13431 的 parse_report（体验审计 R44 取证），fixture 不带原文敏感内容。
 import { describe, expect, it } from "vitest"
-import { displayStageLabel, effectiveHospital, parseBackfillFields } from "./bidTypes"
+import { displayStageLabel, effectiveHospital, parseBackfillFields, summarizeParseWarnings } from "./bidTypes"
 import type { ParseReport } from "./bidTypes"
 
 const report = (content: string): ParseReport =>
@@ -47,5 +47,19 @@ describe("effectiveHospital（R45/F5 存量展示兜底）", () => {
     expect(effectiveHospital({ hospital: "用户已填医院", parse_report: report("采购人名称：报告里的") })).toBe("用户已填医院")
     expect(effectiveHospital({ hospital: "", parse_report: null })).toBe("")
     expect(effectiveHospital({ hospital: "", parse_report: report("无任何标签的一行") })).toBe("")
+  })
+})
+
+describe("summarizeParseWarnings（R46/F3 段与项口径不矛盾）", () => {
+  it("无 warnings → null（不显横幅）", () => {
+    expect(summarizeParseWarnings(undefined)).toBeNull()
+    expect(summarizeParseWarnings([])).toBeNull()
+  })
+  it("多条逐段失败 → 聚合为一条、文案含失败段数与“已自动跳过”口径", () => {
+    const s = summarizeParseWarnings(["第 12 段解析失败", "第 13 段解析失败", "第 14 段解析失败"])
+    expect(s).not.toBeNull()
+    expect(s?.failedChunks).toBe(3)
+    expect(s?.headline).toContain("3 段")
+    expect(s?.headline).toContain("已自动跳过")
   })
 })

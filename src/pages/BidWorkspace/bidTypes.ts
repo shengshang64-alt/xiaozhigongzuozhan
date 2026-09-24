@@ -206,6 +206,18 @@ export function clearParseWarnings(report: ParseReport): ParseReport {
   return { scope: report.scope, sections: report.sections }
 }
 
+/** R46/F3（体验审计）：把逐段失败 warnings 聚合为一条不矛盾的横幅文案。
+ * 背景：旧横幅把多条「第 X 段解析失败」直接列在顶部，与侧栏「核心信息 7/7 项」同屏——
+ * 段＝招标全文切分的文本块、项＝提取出的核心信息，两个口径不同，但用户读来像自相矛盾。改为汇总一条，口径说清。无 warnings 返回 null。 */
+export function summarizeParseWarnings(warnings: string[] | undefined): { failedChunks: number; headline: string } | null {
+  const n = warnings?.length ?? 0
+  if (n <= 0) return null
+  return {
+    failedChunks: n,
+    headline: `招标全文按段落切分解析，其中 ${n} 段本次未读取成功（多为超长/图表段），已自动跳过；下列核心信息仍从其余成功段落中提取。`,
+  }
+}
+
 /** 循环 8 A5：warnings 落库前容错（只留非空字符串、每条 ≤100 字、≤20 条；空清单返回 undefined 不写键） */
 export function sanitizeParseWarnings(raw: unknown): string[] | undefined {
   if (!Array.isArray(raw)) return undefined

@@ -21,7 +21,7 @@ export function WelcomeBanner({ dateLabel, greeting, displayName }: WelcomeBanne
           <span className="text-primary">售前工作台</span>
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-          今日待办、项目进度与行业情报一屏掌握，八大功能模块陆续开放，陪你跑赢每一个售前项目。
+          今日待办、项目进度与行业情报一屏掌握，各功能模块已全部就绪，陪你跑赢每一个售前项目。
         </p>
       </header>
     </section>
