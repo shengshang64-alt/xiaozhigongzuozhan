@@ -6,6 +6,7 @@ import {
   numberConflictHits,
   structuredNumberConflictHits,
   deviationCommitHits,
+  overPriceCeilingHits,
   normalizeFormatCheckReport,
 } from "./bidTypes"
 import type { DeviationRow, DeviationTable } from "./bidTypes"
@@ -219,5 +220,76 @@ describe("deviationCommitHits（承诺不够 / 偏离表负偏离 surfaced 到�
       checked_at: "",
     })
     expect(report?.hits[0]?.rule).toBe("deviation_undercommit")
+  })
+})
+
+// numeric-consistency-02（做法 A）：投标报价 vs 最高限价/预算 方向性废标核对
+const devSum = (response_summary: string): DeviationTable =>
+  ({
+    rows: [
+      {
+        clause_id: "c1",
+        clause_text: "投标总报价",
+        source: "招标",
+        response_node: "第三章",
+        response_level: "full",
+        response_summary,
+        bid_ref: "",
+      } as DeviationRow,
+    ],
+  }) as DeviationTable
+
+describe("overPriceCeilingHits（投标报价超最高限价/预算 → 废标风险）", () => {
+  it("报价 > 预算 → over_price_ceiling，文案带【废标风险】与超幅%", () => {
+    const hits = overPriceCeilingHits(["预算金额：3500万元"], chObj("我方投标总报价为人民币 3600 万元"), null)
+    expect(hits.some((h) => h.rule === "over_price_ceiling")).toBe(true)
+    expect(hits[0].quote).toContain("废标")
+    expect(hits[0].quote).toContain("预算金额")
+    expect(hits[0].quote).toContain("3%")
+  })
+
+  it("报价 ≤ 预算 → 不报", () => {
+    expect(overPriceCeilingHits(["预算金额：3500万元"], chObj("我方投标总报价 3500 万元"), null)).toHaveLength(0)
+    expect(overPriceCeilingHits(["预算金额：3500万元"], chObj("我方投标总报价 3200 万元"), null)).toHaveLength(0)
+  })
+
+  it("存在最高限价时以限价为准（高于预算仍可能不废标）", () => {
+    const facts = ["预算金额：3500万元", "最高限价：3600万元"]
+    expect(overPriceCeilingHits(facts, chObj("我方投标总报价 3550 万元"), null)).toHaveLength(0)
+    const hits = overPriceCeilingHits(facts, chObj("我方投标总报价 3650 万元"), null)
+    expect(hits.some((h) => h.rule === "over_price_ceiling" && h.quote.includes("最高限价"))).toBe(true)
+  })
+
+  it("元 / 万元 混用正确归一到元比较", () => {
+    expect(overPriceCeilingHits(["预算金额：3500万元"], chObj("我方投标总报价 38000000 元"), null).length).toBeGreaterThan(0)
+    expect(overPriceCeilingHits(["预算金额：3500万元"], chObj("我方投标报价 35000000 元"), null)).toHaveLength(0)
+  })
+
+  it("千分位金额可解析：36,000,000 元 = 3600 万 > 3500 万", () => {
+    expect(overPriceCeilingHits(["预算金额：3500万元"], chObj("我方投标总报价 36,000,000 元"), null).length).toBeGreaterThan(0)
+  })
+
+  it("取不到限价/预算事实 → 静默不报", () => {
+    expect(overPriceCeilingHits(["项目周期：180天"], chObj("我方投标总报价 9999 万元"), null)).toHaveLength(0)
+  })
+
+  it("『报价不得超过预算X』约束句（未给具体报价）不当报价、不误报", () => {
+    // 若无方向/约束过滤，“不得超过预算的120% 即 1200万”会把 1200万 当成报价误报（实际 > 1000万 限价）
+    expect(
+      overPriceCeilingHits(["预算金额：1000万元"], chObj("根据规定投标报价不得超过预算的120%，即不得超过1200万元"), null),
+    ).toHaveLength(0)
+  })
+
+  it("偏离表响应里写了超限价报价 → 从偏离表面报出", () => {
+    const hits = overPriceCeilingHits(["预算金额：3500万元"], [], devSum("我方投标总报价 3700 万元"))
+    expect(hits.some((h) => h.rule === "over_price_ceiling" && h.chapter.startsWith("偏离表"))).toBe(true)
+  })
+
+  it("新规则 over_price_ceiling 在白名单存活（normalize 不丢弃）", () => {
+    const report = normalizeFormatCheckReport({
+      hits: [{ chapter: "第一章", rule: "over_price_ceiling", quote: "x", level: "warn" }],
+      checked_at: "",
+    })
+    expect(report?.hits[0]?.rule).toBe("over_price_ceiling")
   })
 })

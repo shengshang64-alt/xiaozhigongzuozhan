@@ -2107,7 +2107,7 @@ export const FORMAT_CHECK_LABEL: Record<FormatCheckKey, string> = {
 }
 
 /** 交叉警告规则（暗标页数 × 目标页数联动生成，不在禁则勾选清单内）；number_conflict 为循环 8 A4 本地数字口径核对 */
-export type FormatCheckRule = FormatCheckKey | "sealed_pages_cross" | "number_conflict" | "param_escalation" | "metric_conflict" | "meta_leftover" | "deviation_undercommit"
+export type FormatCheckRule = FormatCheckKey | "sealed_pages_cross" | "number_conflict" | "param_escalation" | "metric_conflict" | "meta_leftover" | "deviation_undercommit" | "over_price_ceiling"
 
 export const FORMAT_RULE_LABEL: Record<FormatCheckRule, string> = {
   ...FORMAT_CHECK_LABEL,
@@ -2117,6 +2117,7 @@ export const FORMAT_RULE_LABEL: Record<FormatCheckRule, string> = {
   metric_conflict: "指标口径唯一性（跨章同指标多值）",
   meta_leftover: "占位元话语与绝对化承诺残留",
   deviation_undercommit: "承诺不够（偏离表负偏离：响应低于招标要求）",
+  over_price_ceiling: "投标报价超最高限价/预算（废标风险）",
 }
 
 export type FormatCheckHit = { chapter: string; rule: FormatCheckRule; quote: string; level: "warn" | "info" }
@@ -2648,6 +2649,102 @@ export function deviationCommitHits(deviationTable: DeviationTable | null): Form
         : `「${brief}」判为偏离（承诺低于招标要求），确认是否影响评分`).slice(0, 80),
       level: "warn",
     })
+  }
+  return hits
+}
+
+// ---------------------------------------------------------------------------
+// numeric-consistency-02（做法 A · 纯本地零 AI）：投标报价 vs 最高限价/预算 交叉核对
+// 与通用 number_conflict（同 topic 多值）互补：报价是另一个 topic，本规则做「跨 topic + 方向性」判定——
+// 仅当标书正文/偏离表里出现的投标报价 > 事实里的最高限价/预算 才报（废标级，只 warn、不阻断、零 AI、零新数据模型）。
+// 局限（做法 A 固有）：仅当报价数字被写进标书正文/偏离表响应时才报得出；真实报价总额在 /ppt-quote，接入属做法 B（更重）。
+// ---------------------------------------------------------------------------
+
+/** 硬天花板（最高限价/控制价）优先于软天花板（预算/估算价/概算）；报价只信关键词同行，保守防把预算复述当报价 */
+const PRICE_HARD_RE = /最高限价|限价|控制价|最高投标/
+const PRICE_CEILING_TOPIC_RE = /最高限价|限价|控制价|最高投标|预算|估算价|概算/
+const QUOTE_TOPIC_RE = /投标报价|投标总价|投标总报价|投标价|总报价|报价总额|开标一览|报价记录/
+
+/** 元归一：NUM_UNIT_RE 钱单位仅 万元/元；其余返回 null（数量/百分比/日期不参与报价核对） */
+function priceToYuan(value: number, unit: string): number | null {
+  if (unit === "万元") return value * 10000
+  if (unit === "元") return value
+  return null
+}
+
+/** 元金额回显：≥亿按亿元、≥万按万元，toFixed 去尾零 */
+function fmtYuan(y: number): string {
+  if (y >= 1e8) return `${+(y / 1e8).toFixed(2)} 亿元`
+  if (y >= 1e4) return `${+(y / 1e4).toFixed(2)} 万元`
+  return `${y} 元`
+}
+
+/** 投标报价 > 最高限价/预算 → 废标风险（纯函数、零 AI；取不到限价/预算或报价时静默不报，总 ≤15 条） */
+export function overPriceCeilingHits(
+  factLines: string[],
+  chapters: Chapter[],
+  deviationTable: DeviationTable | null,
+): FormatCheckHit[] {
+  const hits: FormatCheckHit[] = []
+  let hardCeiling = -1
+  let softCeiling = -1
+  for (const rawLine of factLines ?? []) {
+    const line = (rawLine ?? "").trim()
+    if (!line || line.includes("【需人工确认】")) continue
+    const topic = factTopicOf(line)
+    if (!PRICE_CEILING_TOPIC_RE.test(topic)) continue
+    const head = line.match(/^[^：:=]{2,20}[：:=]/)
+    const body = head ? line.slice(head[0].length) : line
+    for (const n of extractNumRefs(body.replace(/,/g, ""))) {
+      const y = priceToYuan(n.value, n.unit)
+      if (y === null) continue
+      if (PRICE_HARD_RE.test(topic)) hardCeiling = Math.max(hardCeiling, y)
+      else softCeiling = Math.max(softCeiling, y)
+    }
+  }
+  const ceiling = hardCeiling >= 0 ? hardCeiling : softCeiling
+  const ceilingSrc = hardCeiling >= 0 ? "最高限价/控制价" : "预算金额"
+  if (ceiling < 0) return hits
+
+  const seen = new Set<string>()
+  const emit = (label: string, text: string) => {
+    if (hits.length >= 15) return
+    for (const n of extractNumRefs(text.replace(/,/g, ""))) {
+      const y = priceToYuan(n.value, n.unit)
+      if (y === null || y <= ceiling) continue
+      const pct = Math.round(((y - ceiling) / ceiling) * 100)
+      const exact = `${label}|${n.value}${n.unit}`
+      if (seen.has(exact)) continue
+      seen.add(exact)
+      hits.push({
+        chapter: label,
+        rule: "over_price_ceiling",
+        quote: `【废标风险】投标报价 ${n.value}${n.unit} 超${ceilingSrc} ${fmtYuan(ceiling)}（高 ${pct}%），导出前必核`.slice(0, 80),
+        level: "warn",
+      })
+    }
+  }
+
+  for (let ci = 0; ci < (chapters ?? []).length; ci++) {
+    if (hits.length >= 15) break
+    const c = chapters[ci]
+    const content = c.content ?? ""
+    if (!content.trim()) continue
+    const title = (c.title ?? "").trim() || `第${ci + 1}章`
+    for (const line of content.split(/\r?\n/)) {
+      if (!line.trim() || NUM_ID_LINE_RE.test(line)) continue
+      // 只认「关键词同行」；若行是“报价不得超过预算 X”式的约束句（未给出我方具体报价）则跳过，避免把预算复述当报价
+      if (!QUOTE_TOPIC_RE.test(line)) continue
+      if (/不得超过|不超过|不得超|以内|以下/.test(line) && !/我方|投标总报价为|投标报价为|报价为|人民币/.test(line)) continue
+      emit(title, line)
+    }
+  }
+  for (const row of deviationTable?.rows ?? []) {
+    if (hits.length >= 15) break
+    const summary = (row.response_summary ?? "").trim()
+    if (summary && QUOTE_TOPIC_RE.test(summary)) {
+      emit(`偏离表 · ${(row.clause_id || row.clause_text || "").trim().slice(0, 16) || "未编号条款"}`, summary)
+    }
   }
   return hits
 }

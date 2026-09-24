@@ -154,6 +154,8 @@ import {
   structuredNumberConflictHits,
   // prompt-fabscan-03（子集）：偏离表负偏离 surfaced 到交卷体检（只读既有 response_map、零 AI、只 warn）
   deviationCommitHits,
+  // numeric-consistency-02（做法 A）：投标报价 vs 最高限价/预算 方向性废标核对（纯本地、零 AI、只 warn）
+  overPriceCeilingHits,
   // content-guard-02：本地零 AI 全文一致性拦截（指标口径唯一性 / 占位与绝对化承诺残留）
   metricConflictHits,
   metaLeftoverHits,
@@ -1522,6 +1524,8 @@ export function useBidWorkspace() {
       report.hits.push(...numberConflictHits(factLines, cur.bid_chapters))
       // numeric-consistency-01：同一事实基准核对偏离表响应值与大纲标题（结构化面，独立 ≤30 上限，不挤占正文命中）
       report.hits.push(...structuredNumberConflictHits(factLines, cur.bid_outline, cur.response_map))
+      // numeric-consistency-02（做法 A）：投标报价超最高限价/预算＝废标级，跨 topic 方向性核对（零 AI、只 warn、零新数据模型）
+      report.hits.push(...overPriceCeilingHits(factLines, cur.bid_chapters, cur.response_map))
     }
     // content-guard-02：不依赖事实表的全文一致性拦截（只扫正文自身），随体检白拿、零 AI
     report.hits.push(...metricConflictHits(cur.bid_chapters), ...metaLeftoverHits(cur.bid_chapters))

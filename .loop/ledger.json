@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 36,
+  "round": 37,
   "backlog": [
     {
       "id": "prompt-matrix-02",
@@ -31,13 +31,13 @@
     {
       "id": "numeric-consistency-02",
       "module": "/bid-workspace,/ppt-quote",
-      "issue": "数值一致性残差：投标报价 vs 预算/最高限价对账（报价不得超预算＝废标级）。R32 已覆盖 大纲·正文·偏离表×事实表；报价面未做——bid_amount 仅结单中标金额（万元）非投标期报价，把 /ppt-quote 报价清单接入标书交卷体检需跨模块数据管道，倾向 C 类，需拍板",
+      "issue": "数值一致性残差＝做法 B：把 /ppt-quote 报价清单真实总额接进标书交卷体检（跨模块数据管道：标书包↔商机↔报价单对齐取数），突破做法 A「仅报价写进正文才报得出」的局限。报价未超限价的方向核对已由 R37 交付（closed: quote-vs-ceiling-01）；本残差属重 C 类，需用户再拍板才动",
       "standard": [
         "D14"
       ],
       "priority": "P2",
       "status": "open",
-      "evidence": "R36 用户从决策清单选定此为首推方向（防废标级）。取证坐实：①限价/预算已可取——招标提取提示词（bidTypes L4395-4396）明确把金额/限价列为必提硬指标（形「预算金额：3500 万元」），buildFactBaseline 能解析，无需新数据模型；②报价真实总额在 /ppt-quote QuoteRecord（关联 opportunity、非 bid_project），未接进标书体检；③现有 numberConflictHits 只在同一 topic 数值不同时报警，报价是另一 topic → 跨词、只看'报价>限价'的方向性废标规则确实不存在（=缺口）。可复用 extractNumRefs+元/万元归一；level 只有 warn|info，废标沿用 warn+【废标风险】文案，不加新级不改 UI。已出方案 .loop/reports/2026-09-24-2005-方案-报价vs限价.md：做法 A（纯本地、零红线、局限=仅当报价写进正文才报得出）/ B（接 /ppt-quote 真总额、跨模块管道、重），推荐先 A。待用户拍板 A1/A2/B/换 才动代码（本轮未改任何业务代码）",
+      "evidence": "R36 用户从决策清单选定此为首推方向（防废标级）。取证坐实：①限价/预算已可取——招标提取提示词（bidTypes L4395-4396）明确把金额/限价列为必提硬指标（形「预算金额：3500 万元」），buildFactBaseline 能解析，无需新数据模型；②报价真实总额在 /ppt-quote QuoteRecord（关联 opportunity、非 bid_project），未接进标书体检；③现有 numberConflictHits 只在同一 topic 数值不同时报警，报价是另一 topic → 跨词、只看'报价>限价'的方向性废标规则确实不存在（=缺口）。可复用 extractNumRefs+元/万元归一；level 只有 warn|info，废标沿用 warn+【废标风险】文案，不加新级不改 UI。已出方案 .loop/reports/2026-09-24-2005-方案-报价vs限价.md：做法 A（纯本地、零红线、局限=仅当报价写进正文才报得出）/ B（接 /ppt-quote 真总额、跨模块管道、重），推荐先 A。待用户拍板 A1/A2/B/换 才动代码。R37 用户回「继续」＝按 R36 既定默认拍板 A1，做法 A 已交付（closed: quote-vs-ceiling-01，四门全绿 vitest 243/243、eslint 净新增 0）；剩余＝做法 B（接 /ppt-quote 真总额、跨模块管道），仍 C 类待拍板；本机标书库 0 条，真实项目 0 误报复核待有真数据后补",
       "diff": ""
     },
     {
@@ -150,6 +150,18 @@
     }
   ],
   "closed": [
+    {
+      "id": "quote-vs-ceiling-01",
+      "module": "/bid-workspace",
+      "issue": "numeric-consistency-02 做法 A（用户回「继续」＝按 R36 方案默认拍板 A1）：投标报价超最高限价/预算＝废标级，新增交卷体检规则 over_price_ceiling——跨 topic 方向性核对（正文/偏离表响应里出现的投标报价 > 事实里的最高限价/控制价，硬天花板优先、无则退用预算并注明口径），纯本地零 AI、只 warn 不阻断、零新数据模型零提示词改动",
+      "standard": [
+        "D14"
+      ],
+      "priority": "P1",
+      "status": "done",
+      "evidence": "vitest 243/243 exit0（本文件新增 9 用例：报价>预算报警含【废标风险】+超幅%+口径词、报价≤限价不报、硬限价存在时以限价为准、元/万元混用归一、千分位可解析、取不到限价静默、「报价不得超过预算X」约束句不当报价不误报、偏离表响应面报出、normalize 白名单存活） / tsc -b exit0 / vite build exit0(2.03s) / eslint src 145 problems(129e/16w) = R35 基线完全一致、净新增 0（bidTypes 命中 5 项均 lint-debt-01 有意保留项）。诚实降级：本机标书项目库 0 条（/api/projects 直连实测 totalItems=0），无法按方案第 4 节逐真实项目动态 import 复核 0 误报，由 9 个单测用例（含 3 个防误报反例）覆盖。局限（做法 A 固有）：仅当报价数字写进标书正文/偏离表响应才报得出；真实报价总额在 /ppt-quote，接入属做法 B（残差留 numeric-consistency-02）",
+      "diff": "bidTypes.ts：新增纯函数 overPriceCeilingHits(+PRICE_HARD_RE/PRICE_CEILING_TOPIC_RE/QUOTE_TOPIC_RE/priceToYuan/fmtYuan，复用既有 extractNumRefs+factTopicOf)，FormatCheckRule 并集扩 over_price_ceiling + FORMAT_RULE_LABEL 补文案（白名单随 Record<FormatCheckRule,…> 派生自动生效）；useBidWorkspace.ts：交卷体检事实表分支内 report.hits.push(...overPriceCeilingHits(factLines, cur.bid_chapters, cur.response_map))，独立 ≤15 条上限；bidFormatCheck.test.ts：+9 用例。未动 pb_hooks/未动提示词/未动数据模型/未动导出门禁"
+    },
     {
       "id": "crm-consistency-01",
       "module": "/",
@@ -586,6 +598,6 @@
       "decision": "2026-09-22 用户拍板：本地单用户自用部署维持现状，不碰 pb_hooks 红线；若将来对外部署或多用户化，需单独立项并豁免红线+重启 PB 专门做；论断已逐条坐实(model_gateway.pb.js L18/88/187)非误报"
     }
   ],
-  "noProgressStreak": 1,
-  "lastRoundSummary": "Round36 收敛/决策轮（无代码改动，noProgressStreak+1）：R35 已提交 fba3a53。取证盘点 11 个 open 项，分类结论——真正可自动的 A/B 仅剩 prompt-extract-01（内部提示词搬迁，用户已预批但零可见价值+重碰高危大文件）与 perf-02（需大数据才见效）；其余全是 C 类需拍板：numeric-consistency-02（报价vs限价交叉核对·废标级S0·★首推）、content-guard-03+fabscan-03残余（编造扫描/覆盖审计·需LLM+KB有成本）、quote-history-01（报价历史复用）、kb-semantic-01（语义检索·改schema触红线#1）、ux-05/gap-pool-01（小新能力）。低价值已延后：lint-debt-01残差(5项有意保留)、crm-b04-others(实测0条)。按协议'剩下全是C类=停止自动推进'，本轮出决策清单交用户，未硬凑低价值改动。blocked: hook-security-01(deferred-by-user)。下一步等用户从C类点方向，推荐首做 numeric-consistency-02(先写1页方案)。"
+  "noProgressStreak": 0,
+  "lastRoundSummary": "Round37 改造轮（C 类已授权子集·评标专家视角）：用户回「继续」按 R36 方案默认拍板 A1，交付 numeric-consistency-02 做法 A＝交卷体检新增 over_price_ceiling 规则（投标报价>最高限价/预算→【废标风险】warn，跨 topic 方向性、硬天花板优先、纯本地零 AI、不阻断、零新数据模型零提示词改动）。四门全绿：vitest 243/243（+9 用例含 3 防误报反例）/ tsc-vite build exit0 / eslint src 145=R35 基线净新增 0。诚实降级：本机标书项目 0 条，逐真实项目复核改为单测覆盖。残差＝做法 B（接 /ppt-quote 真报价总额，重 C 类待拍板）。noProgressStreak 1→0。待拍板池余：content-guard-03/fabscan-03残余（需LLM+KB）、quote-history-01、kb-semantic-01（触红线#1）、ux-05、perf-02、prompt-extract-01。blocked: hook-security-01。"
 }
