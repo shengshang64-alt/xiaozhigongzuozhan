@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 35,
+  "round": 36,
   "backlog": [
     {
       "id": "prompt-matrix-02",
@@ -37,7 +37,7 @@
       ],
       "priority": "P2",
       "status": "open",
-      "evidence": "",
+      "evidence": "R36 用户从决策清单选定此为首推方向（防废标级）。取证坐实：①限价/预算已可取——招标提取提示词（bidTypes L4395-4396）明确把金额/限价列为必提硬指标（形「预算金额：3500 万元」），buildFactBaseline 能解析，无需新数据模型；②报价真实总额在 /ppt-quote QuoteRecord（关联 opportunity、非 bid_project），未接进标书体检；③现有 numberConflictHits 只在同一 topic 数值不同时报警，报价是另一 topic → 跨词、只看'报价>限价'的方向性废标规则确实不存在（=缺口）。可复用 extractNumRefs+元/万元归一；level 只有 warn|info，废标沿用 warn+【废标风险】文案，不加新级不改 UI。已出方案 .loop/reports/2026-09-24-2005-方案-报价vs限价.md：做法 A（纯本地、零红线、局限=仅当报价写进正文才报得出）/ B（接 /ppt-quote 真总额、跨模块管道、重），推荐先 A。待用户拍板 A1/A2/B/换 才动代码（本轮未改任何业务代码）",
       "diff": ""
     },
     {
@@ -586,6 +586,6 @@
       "decision": "2026-09-22 用户拍板：本地单用户自用部署维持现状，不碰 pb_hooks 红线；若将来对外部署或多用户化，需单独立项并豁免红线+重启 PB 专门做；论断已逐条坐实(model_gateway.pb.js L18/88/187)非误报"
     }
   ],
-  "noProgressStreak": 0,
-  "lastRoundSummary": "Round32 numeric-consistency-01（P1，全文数值一致性检查器·结构化面，用户点名废标级）：把本地零 AI 数字口径核对从已有「事实表 × 正文」扩展到偏离表与大纲——①抽 buildFactBaseline 共用基准（numberConflictHits 改用、去重）；②新增 structuredNumberConflictHits 纯函数：偏离表以 clause_text 为 topic 锚比对 response_summary 响应值、大纲以节点标题同行锚定，复用全部误报控制（比较语境/编号行/跨单位豁免/方向加码判定），命中沿用既有 number_conflict/param_escalation rule（不动白名单/数据模型）、chapter 标注来源面；仅告警不阻断零写库；新增 6 用例。四门：vitest 229/229/tsc 0/eslint 新增 0(build 0)，运行时 dev 动态 import 六夹具全对 0 报错。残差：投标报价 vs 预算（bid_amount 仅结单金额非投标期报价、跨 /ppt-quote 需管道）→ numeric-consistency-02（倾向 C 类待拍板）。下一轮候选：prompt-fabscan-03（对标核查四态+编造扫描，P1，含'禁导出'需评估是否触 C 类）。"
+  "noProgressStreak": 1,
+  "lastRoundSummary": "Round36 收敛/决策轮（无代码改动，noProgressStreak+1）：R35 已提交 fba3a53。取证盘点 11 个 open 项，分类结论——真正可自动的 A/B 仅剩 prompt-extract-01（内部提示词搬迁，用户已预批但零可见价值+重碰高危大文件）与 perf-02（需大数据才见效）；其余全是 C 类需拍板：numeric-consistency-02（报价vs限价交叉核对·废标级S0·★首推）、content-guard-03+fabscan-03残余（编造扫描/覆盖审计·需LLM+KB有成本）、quote-history-01（报价历史复用）、kb-semantic-01（语义检索·改schema触红线#1）、ux-05/gap-pool-01（小新能力）。低价值已延后：lint-debt-01残差(5项有意保留)、crm-b04-others(实测0条)。按协议'剩下全是C类=停止自动推进'，本轮出决策清单交用户，未硬凑低价值改动。blocked: hook-security-01(deferred-by-user)。下一步等用户从C类点方向，推荐首做 numeric-consistency-02(先写1页方案)。"
 }
