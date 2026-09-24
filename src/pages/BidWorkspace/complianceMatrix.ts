@@ -62,6 +62,30 @@ function linesOf(report: ParseReport | null | undefined, key: string): string[] 
     .filter(Boolean)
 }
 
+// 与 bidTypes 的 STAR_MARK_RE 同义（此处本地副本，避免为读一个正则引高危大文件）
+const STAR_MARK_RE = /[★☆▲△]/
+
+/**
+ * R50/F2：★条款自 extractStarClauses 起为多行字符串（标记行+正文行），存储按 \n 连接。
+ * 矩阵必须按「条」归行：标记行起一条，后续非标记行并入；否则逐行拆分会把 11 条撑成
+ * 28 行（光杆 ★N 行+正文行+吸收碎片行各占一行），「未覆盖」计数虚高。
+ * 旧数据（单行"★N"）每行都含标记 → 每行各自成条，行为与旧版一致。
+ */
+function clausesOf(report: ParseReport | null | undefined, key: string): string[] {
+  const clauses: string[] = []
+  let cur: string[] = []
+  for (const line of linesOf(report, key)) {
+    if (STAR_MARK_RE.test(line)) {
+      if (cur.length) clauses.push(cur.join(" "))
+      cur = [line]
+    } else if (cur.length) {
+      cur.push(line)
+    }
+  }
+  if (cur.length) clauses.push(cur.join(" "))
+  return clauses
+}
+
 /** 从解析报告推导矩阵行（纯函数；同文本去重，截断提示行不算条款） */
 export function buildComplianceRows(report: ParseReport | null | undefined): ComplianceRow[] {
   const rows: ComplianceRow[] = []
@@ -74,7 +98,7 @@ export function buildComplianceRows(report: ParseReport | null | undefined): Com
     seen.add(id)
     rows.push({ id, kind, text, mandatory })
   }
-  for (const line of linesOf(report, "star_clauses")) push("star", line, true)
+  for (const clause of clausesOf(report, "star_clauses")) push("star", clause, true)
   for (const line of linesOf(report, "void_items")) push("void", line, true)
   for (const line of linesOf(report, "qualification")) {
     const mandatory = line.includes("[强制]") || line.includes("［强制］")
