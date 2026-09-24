@@ -465,8 +465,11 @@ export function useHome() {
         apiFetch<ListResponse<{ id: string; created: string }>>(`/api/follow_records?rh_user_id=${enc}&page=1&perPage=${HOME_STATS_PER_PAGE}`).catch(() => null),
         apiFetch<ListResponse<BidReviewRow>>(`/api/bid_projects?rh_user_id=${enc}&page=1&perPage=${HOME_STATS_PER_PAGE}`).catch(() => null),
       ])
-      // D1：hook 模板 totalItems=页内条数不可信，客户数改用本页条数（perPage=200 上限，拉满显示 200+）
+      // D1：opp/follow/bid 是本页客户端聚合（在跟/本月为过滤子集，totalItems 给不了）→ 保留 200+ 上限提示
       const customerRows = cRes?.items ?? []
+      // crm-consistency-01：/api/customers 已返回真总数 totalItems（实测 perPage 变化仍稳定），首页客户数直接采信，
+      // 消除「客户 >200 时首页显示 200+、客户管理页显示真实数」的两页口径不一致；缺字段/失败时回退本页条数
+      const customerTotal = typeof cRes?.totalItems === "number" && cRes.totalItems > 0 ? cRes.totalItems : customerRows.length
       const opps = oRes?.items ?? []
       const followRows = fRes?.items ?? []
       const bidRows = bRes?.items ?? []
@@ -477,8 +480,8 @@ export function useHome() {
       // 直接字典序比较会漏算每月 1 日（空格 0x20 < T）；统一 replace(" ", "T") 后再比较
       const monthStartIso = monthStart.toISOString()
       setCrmStats({
-        customerCount: customerRows.length,
-        customerCountCapped: customerRows.length >= HOME_STATS_PER_PAGE,
+        customerCount: customerTotal,
+        customerCountCapped: false,
         activeOppCount: opps.filter((o) => o.stage !== "won" && o.stage !== "lost").length,
         activeOppCountCapped: opps.length >= HOME_STATS_PER_PAGE,
         monthFollowCount: followRows.filter((r) => (r.created ?? "").replace(" ", "T") >= monthStartIso).length,

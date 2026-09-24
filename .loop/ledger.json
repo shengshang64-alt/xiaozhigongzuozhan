@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 33,
+  "round": 34,
   "backlog": [
     {
       "id": "prompt-matrix-02",
@@ -25,7 +25,7 @@
       ],
       "priority": "P1",
       "status": "open",
-      "evidence": "R33 交付其纯本地零 AI 子集（closed: bid-undercommit-01）：偏离表负偏离 surfaced 到交卷体检，与 param_escalation（加码）成镜像。剩余四态升级/回灌/编造扫描/禁导出均触 C 类（改提示词语义、新交互范式、导出硬门禁），需用户拍板才动",
+      "evidence": "R33 交付其纯本地零 AI 子集（closed: bid-undercommit-01）：偏离表负偏离 surfaced 到交卷体检，与 param_escalation（加码）成镜像。剩余四态升级/回灌/编造扫描/禁导出均触 C 类（改提示词语义、新交互范式、导出硬门禁），需用户拍板才动。R34 复核确认：剩余无干净纯本地零误报切片（占位符/矛盾/数字冲突/加码/不够 均已被 meta_leftover·metric_conflict·number_conflict·param_escalation·deviation_undercommit 覆盖；「承诺值/绩效数字是否编造」必须靠原文/KB 接地才能判＝属 content-guard-03 的 LLM 增量，纯本地硬扫会大量误报），故本轮不再改此面板、改选 crm-consistency-01，避免连续堆叠同一体检面板",
       "diff": ""
     },
     {
@@ -113,18 +113,6 @@
       "diff": ""
     },
     {
-      "id": "crm-consistency-01",
-      "module": "/",
-      "issue": "首页 useHome.ts:439 客户数仍用「本页条数 + 200 上限」；/api/customers 现已返回真总数，可统一采信，消除「客户>200 时首页显示 200+、客户管理页显示真实数」的两页口径差异",
-      "standard": [
-        "B8"
-      ],
-      "priority": "P3",
-      "status": "open",
-      "evidence": "",
-      "diff": ""
-    },
-    {
       "id": "quote-history-01",
       "module": "/ppt-quote",
       "issue": "B2 报价历史库：项目结单沉淀报价明细，报价页按医院等级+床位数+模块组合给参考区间；先做历史报价列表+手工参考，渐进增强",
@@ -162,6 +150,18 @@
     }
   ],
   "closed": [
+    {
+      "id": "crm-consistency-01",
+      "module": "/",
+      "issue": "首页客户数与客户管理页口径不一致：首页 useHome.ts 客户数用「本页条数 + 200 上限」（早期 hook 模板 totalItems 谎报才退用本页条数），而 /api/customers 现已返回真总数。客户 >200 时首页显示「200+」而客户管理页显示真实数",
+      "standard": [
+        "B8"
+      ],
+      "priority": "P3",
+      "status": "done",
+      "evidence": "取证：直连后端实测 /api/customers totalItems 不随 perPage/page 变化（perPage=50&page=2 仍 totalItems=161）→ 路由已返真总数；当前 local-user 161 家 <200 上限，bug 潜伏（两页暂都显161），但客户已 161 且在增长，跨 200 即显形。四门：tsc -b exit0 / vite build exit0 / eslint useHome 改前=改后=3 problems（净新增0，3 error 为历史存量）。运行时浏览器实登首页：客户 chip 渲「客户 161」（无 +，走 totalItems 真总数路径端到端跑通），与 API totalItems=161、客户管理页 p.totalCustomers=161 三处口径一致；console 仅 vite connected 无 error。诚实项：>200 场景未实机复现（不臆造客户数据污染库），由代码逻辑+API 分页实测（totalItems 跨页稳定）背书",
+      "diff": "第34轮·纯前端零新依赖零红线、B 类一致性。useHome.ts loadCrmOverview：新增 customerTotal = cRes.totalItems>0 ? totalItems : 本页条数（失败/缺字段回退）；setCrmStats customerCount 改用 customerTotal、customerCountCapped 固定 false。在跟商机/本月跟进为过滤子集（totalItems 给不了），保留客户端计算与 200+ 提示不动；未碰 statsCapped（其 customers 字段全仓未被消费）。未改后端/未改路由/未改客户管理页"
+    },
     {
       "id": "bid-undercommit-01",
       "module": "/bid-workspace",
