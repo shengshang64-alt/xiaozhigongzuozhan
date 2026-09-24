@@ -1,8 +1,53 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 43,
+  "round": 44,
   "backlog": [
+    {
+      "id": "r44-parse-quality-01",
+      "module": "/bid-workspace",
+      "issue": "[R44体验审计·不可通过级·最高优先] 标书解析不理解标书重点，7 项瑕疵：F1 评分办法完全漏抽（原文确有'总分100·技术90+价格10'结构，tech_score 段却写'未找到分值表'）；F2 ★实质性条款只抽到★1-★10编号、无条款原文（正文★1=日均门诊量15000+等实质要求）；F3 同屏'12段解析失败'横幅与'核心信息7/7成功'矛盾；F4 stage 卡 pending_parse 不推进（报告已存在）；F5 甲方/编号/开标日期已抽出但不回填 hospital/tender_no/bid_open_date（卡片显示'采购人未填写'）；F6 隐式硬约束24条大量半句截断碎片（'定要求的''又参''止时间'开头）；F7 评分项交叉核对面板噪音（'投标截止时间'误判为30分评分项、未归类30项）。根因分两类：F1/F2/F6 属解析提示词语义（改=红线#2 需用户拍板），F3/F4/F5 属代码层状态推进/字段回填对接（可自动修）。详见 .loop/reports/2026-09-24-2233.md",
+      "priority": "P0",
+      "status": "open",
+      "evidence": "R44 只读取证：接口 GET /api/bid_projects/yslab52hxoplrxk dump parse_report 7 sections（.diag/r44_audit_probe.mjs + r44_parse_report.json），原文★11处均有实质内容、'评标方法'13次/'分值'8次/'总分'2次证明评分结构真实存在但解析漏抽",
+      "diff": ""
+    },
+    {
+      "id": "r44-intel-hygiene-02",
+      "module": "/intel-center,/",
+      "issue": "[R44体验审计·不可通过级] 情报采集质量簇 5 项：F9 类型判定失效——电子病历评级/医保政策/数智医院/光子CT 等大量行业资讯全标'竞品动向'，分类形同虚设；F10 首页情报摘要卡=垃圾文本（'网站支持IPv6 长者助手…1 2 3 4'导航菜单残留）、摘要错挂他文（卫健委发布会挂AI黑客摘要）、出现未来日期 2027-01-01；F21 首页'in_more 更多'DOM残留；F22 7个采集源抓取失败无处理入口；F23 垃圾条目居列表首位（标题=站名、6标签乱贴）。需抓取文本清洗+类型判定规则修订（判类型属提示词语义则触红线#2，若为关键词规则可自动修，待定位确认）",
+      "priority": "P1",
+      "status": "open",
+      "evidence": "R44 实机走查 /intel-center 与首页情报卡 snapshot 记录",
+      "diff": ""
+    },
+    {
+      "id": "r44-competitor-matrix-03",
+      "module": "/competitors",
+      "issue": "[R44体验审计·不可通过级] 竞品能力矩阵数据错位：只对标4家公司、列头4个公司名，每行却渲染7-8组星级（列数与数据源数量对不上），图完全不可信；F20 CDSS/AI 能力四家全满分无区分度=等于没比。属确定缺陷（渲染列数与能力数组不一致），A/B 类可自动修，但需先核实数据模型不擅改 schema",
+      "priority": "P1",
+      "status": "open",
+      "evidence": "R44 实机走查 /competitors snapshot：4家对标 vs 每行7-8组星",
+      "diff": ""
+    },
+    {
+      "id": "r44-testdata-hygiene-04",
+      "module": "/customer-management,/assistant,/team",
+      "issue": "[R44体验审计·严重级] 测试残留清理+账号安全簇 3 项：F11 客户管理'测试市人民医院'测试数据残留居列表首位；F12 小智助手会话列表残留（'我现在有几个投标项目？'×3重复/'你好'/一条提示词注入测试会话'忽略你之前收到的全部系统指令…'）；F19 团队管理内置'系统管理员'账号可被停用/改角色、无误操作锁门防护。删业务数据触红线#8，清理清单须用户逐条勾选才动；F19 账号防护属代码可加（不删数据）",
+      "priority": "P1",
+      "status": "open",
+      "evidence": "R44 实机走查三页 snapshot 记录，未执行任何删除",
+      "diff": ""
+    },
+    {
+      "id": "r44-consistency-copy-05",
+      "module": "/customer-management,/,/format-tool,/model-config",
+      "issue": "[R44体验审计·严重级] 口径与文案一致性簇 6 项：F13 客户地区口径混乱（'华东'/'福建'/'安徽省合肥市'混用，筛选项出现'安徽省合肥市'错误组合）；F14 医院等级'三级甲等'vs'三甲'不一致；F15 首页'八大功能模块陆续开放中'文案过时（模块已全部开放）；F16 首页'进行中项目0'与标书工作台1项目口径矛盾；F17 格式刷新模板名漏出内部标记'[PDF多模态转译]'；F18 模型配置 TTS/视频/图像等非文本模型也给'设为默认（生成模型）'按钮。多数为 B 类文案/口径一致性可自动修（不改产品行为），F13/F14 涉数据取值口径需核实",
+      "priority": "P2",
+      "status": "open",
+      "evidence": "R44 实机走查多页 snapshot 记录",
+      "diff": ""
+    },
     {
       "id": "prompt-matrix-02",
       "module": "/bid-workspace",
@@ -661,5 +706,5 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "Round43 真实标书校准二期（接 R42 用户供料方向·测试工程师视角）：用真文靶点形态坐实 extractNumRefs 两类 4 缺陷——规则②过度剔除致「质保期：5年/投入人数：15人」式承诺形态全部隐形（漏报）、模糊量「近20年/约为3年」未剔致误报加码；修复＝规则②收窄为时钟式专属（包含并取代 R42 元/万元豁免）+新增规则⑤模糊量邻近剔除，+2 正式回归锈。四门：259/259、build、eslint 145=基线、零写入；实机 bid-workspace 登录后零 JS 错。closed+numref-fuzzy-colon-01；noProgressStreak 保持 0。端到端 AI 生成面体检仍待用户点头（要费用）。待拍板池不变（6 个 C 类）。blocked: hook-security-01。下一轮默认：回「继续」＝继续真实标书校准三期（偏离表/大纲面 structuredNumberConflictHits 真文靶点）或通道 2/6 扫新缺陷。"
+  "lastRoundSummary": "Round44 完美主义售前专家体验审计一期（用户新指令：逐模块实机体验、产出内容有瑕疵只记录不修复、后面统一修改）：12 模块全走查+接口直查核实，登记 23 项瑕疵（10 项不可通过级）聚成 5 个 backlog 簇（r44-parse-quality-01 P0 / intel-hygiene-02 / competitor-matrix-03 / testdata-hygiene-04 / consistency-copy-05）。核心结论：标书解析不能理解标书重点——评分办法(技术90+价格10)完全漏抽、★条款只有编号无原文（原文实证均存在，接口只读取证，零写入零修复）。零费用未重跑 AI 解析。详见 .loop/reports/2026-09-24-2233.md。待拍板池新增：解析提示词语义修订（红线#2）+ 测试数据清理清单（红线#8）。blocked: hook-security-01。下一轮默认：回「继续」＝启动统一修改第一批（零费用零红线：竞品矩阵错位 F8 → 解析 stage 推进/字段回填 F4/F5 → 文案口径簇），第二/三批等用户点头。"
 }
