@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 74,
+  "round": 75,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -204,6 +204,16 @@
       "evidence": "R58 静态审计(代理全量扫描)：核心导出链(标书/方案/PPT/报价/情报xlsx/竞品CSV)全部闭环无死代码无截断；断点集中AI内容出口。报告 .loop/reports/2026-09-25-1045.md",
       "plan": "剩⑤：出方案（技能产出→采用→写回方案/标书/竞品档案的交互与数据流）；问答持久化另行评估",
       "round": 58
+    },
+    {
+      "id": "ui-redesign-phase3",
+      "module": "/全站",
+      "issue": "UI重构阶段3：逐页改造(方案 docs/redesign/)：①作战驾驶舱(今日作战聚合)②情报中心三栏处理台③标书作战室密度④方案编辑器三栏⑤知识库⑥客户档案+其余页。红线：只改信息架构与视觉，业务行为与数据等价，每页可回退",
+      "priority": "P2",
+      "status": "open",
+      "evidence": "docs/redesign/ 设计方案+静态原型；R75 审计：7诊断中2已修/2本轮修/3 open",
+      "plan": "逐页推进，每页一轮+实机截图对比；完成后跑全量回归等价验证",
+      "round": 75
     }
   ],
   "closed": [
@@ -914,5 +924,5 @@
     }
   ],
   "noProgressStreak": 1,
-  "lastRoundSummary": "R74/C-lot-splitting 标包识别落地(C类经用户同意)：lots 分区+extractLotsFromText 本地扫描(第X包/标段X/包N+预算就近归属,零AI)+解析流挂载(star同款,AI结果优先)+bidOutline/bidChapter/bidSection 多包上下文注入。356/356单测；实机验证解析配置出现「标包划分」勾选项。真实多包件招标文件端到端未跑(库内无此类文件)。"
+  "lastRoundSummary": "R75 UI重构落地启动：设计文档收编docs/redesign/；差距审计(7诊断:2已修/2本轮修/3进阶段3)；阶段2外壳完成——导航按作战阶段七组重排+模块更名、Dialog 94vh可滚动可达性、body tabular-nums。356/356。阶段3逐页改造(驾驶舱→情报→标书→方案→知识库)入队，只改信息架构与视觉不改业务。"
 }
