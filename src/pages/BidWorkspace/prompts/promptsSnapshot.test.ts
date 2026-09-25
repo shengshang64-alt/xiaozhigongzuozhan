@@ -15,6 +15,11 @@ import {
   buildCoverageAuditMessages,
   buildOutlineLevel1Messages,
   buildOutlineChildrenMessages,
+  buildTenderParseMessages,
+  buildSectionParseMessages,
+  buildBidOutlineMessages,
+  buildOutlineFixMessages,
+  buildBidChapterMessages,
 } from "../bidTypes"
 import type { DupPair, DefenseQuestion } from "../bidTypes"
 
@@ -186,6 +191,50 @@ describe("R65 提示词搬迁快照（prompts/* 只搬不改字）", () => {
         sectionWords: 800,
         globalFacts: "【全局事实】本项目工期：90 天",
       }),
+    ).toMatchSnapshot()
+  })
+
+  it("R69 第五批：buildTenderParseMessages 内容与搬迁时一致", () => {
+    expect(buildTenderParseMessages("某医院一体化系统招标文件全文……", { scope: "key" } as never, ["overview"])).toMatchSnapshot()
+  })
+
+  it("R69 第五批：buildSectionParseMessages 内容与搬迁时一致", () => {
+    expect(buildSectionParseMessages("overview", "某医院一体化系统招标文件全文……")).toMatchSnapshot()
+  })
+
+  it("R69 第五批：buildBidOutlineMessages 内容与搬迁时一致", () => {
+    expect(
+      buildBidOutlineMessages("医院一体化核心业务系统", "安徽中医药大学第一附属医院", null, false, 2, undefined, {
+        globalFacts: "【全局事实】本项目工期：90 天",
+      }),
+    ).toMatchSnapshot()
+  })
+
+  it("R69 第五批：buildOutlineFixMessages 内容与搬迁时一致", () => {
+    expect(
+      buildOutlineFixMessages(
+        [{ id: "n1", title: "第五章 安全设计", children: [], part: "tech" }] as never,
+        2,
+        12,
+        800,
+        ["叶子数低于目标"],
+      ),
+    ).toMatchSnapshot()
+  })
+
+  it("R69 第五批：buildBidChapterMessages 内容与搬迁时一致", () => {
+    const outline = [{ id: "n5", title: "第五章 安全设计", children: [], part: "tech" }] as never
+    expect(
+      buildBidChapterMessages(
+        "医院一体化核心业务系统",
+        "安徽中医药大学第一附属医院",
+        null,
+        outline,
+        [{ title: "第五章 安全设计", node_id: "n5", sections: ["5.1 总体架构", "5.2 安全域划分"], gen_status: "done", content: "安全体系按等保三级设计……" }],
+        0,
+        (nodes) => (nodes ?? []).map((n) => n.title).join("\n"),
+        { globalFacts: "【全局事实】本项目工期：90 天", wordBudget: 2000, figures: false },
+      ),
     ).toMatchSnapshot()
   })
 })
