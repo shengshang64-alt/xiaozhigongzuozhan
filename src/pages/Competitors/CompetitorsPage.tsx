@@ -1,6 +1,6 @@
 // 竞品分析页视图：图表总览 / 厂商列表 + 竞品档案详情 + 新增/编辑弹窗 + 软著基线导入。
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Award, BarChart3, Boxes, Brain, CalendarRange, Check, ChevronDown, Crosshair, Download, ExternalLink, FileBadge, FileText, LayoutGrid, List, MessageCircle, Newspaper, Pencil, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Trash2, TrendingUp } from "lucide-react"
+import { Award, BarChart3, Boxes, Brain, CalendarRange, Check, ChevronDown, Copy, Crosshair, Download, ExternalLink, FileBadge, FileText, LayoutGrid, List, MessageCircle, Newspaper, Pencil, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Trash2, TrendingUp } from "lucide-react"
 import { PageHeader } from "@/components/shell/PageHeader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
+import { analysisReportToText } from "./analysisReport"
 import { CompetitorCharts } from "@/components/competitors/CompetitorCharts"
 import { CompetitorCompare } from "@/components/competitors/CompetitorCompare"
 import { CHART_COLORS } from "@/lib/echarts"
@@ -272,9 +274,26 @@ function AIAnalysisSection({ row, modelRef }: { row: CompetitorRow; modelRef: Mo
                   </ul>
                 </div>
               )}
-              <Button size="sm" onClick={handleApply} disabled={accepted.size === 0 || analysis.applied} className="w-full gap-1">
-                {analysis.applied ? <><Check className="h-3.5 w-3.5" />已采纳</> : <><Sparkles className="h-3.5 w-3.5" />采纳 {accepted.size} 项更新</>}
-              </Button>
+              <div className="flex gap-1.5">
+                <Button size="sm" onClick={handleApply} disabled={accepted.size === 0 || analysis.applied} className="min-w-0 flex-1 gap-1">
+                  {analysis.applied ? <><Check className="h-3.5 w-3.5" />已采纳</> : <><Sparkles className="h-3.5 w-3.5" />采纳 {accepted.size} 项更新</>}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  title="把威胁变化/更新建议/行动建议/材料清单拼成纯文本复制"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(analysisReportToText(row.name, analysis.result!)).then(
+                      () => toast.success("已复制分析报告"),
+                      () => toast.error("复制失败，请手动选择文本"),
+                    )
+                  }}
+                  className="shrink-0 gap-1"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  复制报告
+                </Button>
+              </div>
             </div>
           )}
         </div>

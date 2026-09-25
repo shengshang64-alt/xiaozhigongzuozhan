@@ -1,6 +1,7 @@
 // 弹药库页签（轮次 D-3）：approved QA 对列表 + 新增表单 + 行内编辑 + 删除确认。
 import { useState } from "react"
-import { Check, Loader2, Plus, ShieldCheck, Pencil, Trash2, X } from "lucide-react"
+import { Check, Copy, Loader2, Plus, ShieldCheck, Pencil, Trash2, X } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { KB_CATEGORIES } from "@/lib/kbPolicy"
@@ -223,6 +224,20 @@ export function QaAmmoPanel({ approvedPairs, loading, createQaPair, updateQaPair
                   <div className="flex items-start gap-2">
                     <p className="min-w-0 flex-1 text-sm font-semibold text-foreground">{row.question}</p>
                     <span className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void navigator.clipboard.writeText("问：" + row.question + "\n答：" + row.answer).then(
+                            () => toast.success("已复制问答，可直接发给客户"),
+                            () => toast.error("复制失败，请手动选择文本"),
+                          )
+                        }}
+                        aria-label="复制这条问答"
+                        title="复制问答"
+                        className="rounded p-1 text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
                       <button
                         type="button"
                         onClick={() => startEdit(row)}

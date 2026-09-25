@@ -1,13 +1,14 @@
 // 问知识库抽屉（轮次 D 改造）：三页签胶囊——问答 / 弹药库 / 待补答。
 // 问答页签：对话流 + 弹药库命中标记 + [资料N] 内联引用溯源；弹药库与待补答由子面板承接。
 import { useEffect, useRef, useState } from "react"
-import { BookMarked, HelpCircle, Loader2, MessageCircleQuestion, Send, ShieldCheck, Sparkles, Trash2, X } from "lucide-react"
+import { BookMarked, Check, Copy, HelpCircle, Loader2, MessageCircleQuestion, Send, ShieldCheck, Sparkles, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { SkillPickerFor } from "@/components/common/SkillPicker"
 import { ModelSelect } from "@/components/model-config/ModelSelect"
 import { KbMarkdown } from "@/components/knowledge/KbMarkdown"
 import { CitedAnswer, hasCitationMarkers } from "@/components/knowledge/CitedAnswer"
+import { qaAnswerToText } from "@/components/knowledge/qaCopyText"
 import { QaAmmoPanel } from "@/components/knowledge/QaAmmoPanel"
 import { QaGapPanel } from "@/components/knowledge/QaGapPanel"
 import type { QaChatMsg, QaCitation, QaScope } from "@/pages/Knowledge/useKnowledge"
@@ -96,6 +97,17 @@ export function QaDrawer({
   // 轮次 4 B1：本轮会话里已点过「答得不对」的消息 id（按钮变「已反馈」禁用）
   const [reportedMsgIds, setReportedMsgIds] = useState<string[]>([])
   const [reportingMsgId, setReportingMsgId] = useState<string | null>(null)
+  // R59/①：回答一键复制（干净文本，[资料N] 折为文末来源列表）
+  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null)
+  const copyAnswer = (m: QaChatMsg) => {
+    void navigator.clipboard.writeText(qaAnswerToText(m.content, m.citations)).then(
+      () => {
+        setCopiedMsgId(m.id)
+        window.setTimeout(() => setCopiedMsgId((cur) => (cur === m.id ? null : cur)), 2000)
+      },
+      () => window.alert("复制失败，请手动选择文本复制"),
+    )
+  }
   useEffect(() => {
     if (qaOpen && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -258,21 +270,40 @@ export function QaDrawer({
                             ) : (
                               <KbMarkdown content={m.content} />
                             )}
-                            {/* 轮次 4 B1：直答卡 / LLM 引用回答卡底部「答得不对」负反馈通道 */}
-                            {m.qaLevel === "high" || (m.citations && m.citations.length > 0) ? (
-                              <div className="mt-2 border-t border-border pt-1.5">
+                            {/* R59/①：复制回答出口 + 轮次 4 B1「答得不对」负反馈通道 */}
+                            {m.content ? (
+                              <div className="mt-2 flex items-center gap-1 border-t border-border pt-1.5">
                                 <button
                                   type="button"
-                                  onClick={() => handleReportWrong(m.id)}
-                                  disabled={reportingMsgId === m.id || reportedMsgIds.includes(m.id)}
-                                  className="rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:pointer-events-none disabled:opacity-70"
+                                  onClick={() => copyAnswer(m)}
+                                  className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                                 >
-                                  {reportedMsgIds.includes(m.id)
-                                    ? "已反馈"
-                                    : reportingMsgId === m.id
-                                      ? "反馈中…"
-                                      : "答得不对"}
+                                  {copiedMsgId === m.id ? (
+                                    <>
+                                      <Check className="h-3 w-3 text-primary" />
+                                      已复制
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy className="h-3 w-3" />
+                                      复制回答
+                                    </>
+                                  )}
                                 </button>
+                                {m.qaLevel === "high" || (m.citations && m.citations.length > 0) ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleReportWrong(m.id)}
+                                    disabled={reportingMsgId === m.id || reportedMsgIds.includes(m.id)}
+                                    className="rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:pointer-events-none disabled:opacity-70"
+                                  >
+                                    {reportedMsgIds.includes(m.id)
+                                      ? "已反馈"
+                                      : reportingMsgId === m.id
+                                        ? "反馈中…"
+                                        : "答得不对"}
+                                  </button>
+                                ) : null}
                               </div>
                             ) : null}
                           </>
