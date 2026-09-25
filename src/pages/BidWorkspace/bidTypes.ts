@@ -3505,7 +3505,7 @@ export function extractJsonLoose(text: string): unknown {
   return parseJsonTolerant(candidate, repairJsonCandidate)
 }
 
-function asString(v: unknown): string {
+export function asString(v: unknown): string {
   if (v === null || v === undefined) return ""
   return String(v)
 }
@@ -3515,7 +3515,7 @@ function asNumber(v: unknown): number {
   return Number.isFinite(n) ? n : 0
 }
 
-function asArray(v: unknown): unknown[] {
+export function asArray(v: unknown): unknown[] {
   return Array.isArray(v) ? v : []
 }
 
@@ -6514,7 +6514,7 @@ export function collectTechLeafRefs(nodes: OutlineNode[]): TechLeafRef[] {
 }
 
 /** 某节点下全部叶子 id（自身无 children 时即自身） */
-function collectLeafIdsUnder(node: OutlineNode): string[] {
+export function collectLeafIdsUnder(node: OutlineNode): string[] {
   const kids = node.children ?? []
   if (!kids.length) return [node.id]
   const out: string[] = []
@@ -6535,57 +6535,8 @@ export function orchestrationProjectBrief(report: ParseReport | null): string {
   return clipText(blocks.join("\n\n"), 4000)
 }
 
-/**
- * 改造 2.1：预编排批量 prompt——正文编排助手口径、克制判断，输出每叶 {table, figure} JSON。
- * 循环 2 批 2-1：输入增全局事实表行与评分项清单，输出增 facts（本节必守事实，从输入事实行挑选）/
- * writing_focus（一句话写作焦点+对应评分点）/ figure.caption（图注）；缺省不传时行为与现状一致。
- */
-export function buildOrchestrationMessages(
-  batch: TechLeafRef[],
-  projectBrief: string,
-  opts?: { factsLines?: string[]; scoringItems?: ScoringItem[] },
-): LlmMessage[] {
-  const factsLines = (opts?.factsLines ?? []).map((l) => l.trim()).filter(Boolean).slice(0, 40)
-  const scoringItems = (opts?.scoringItems ?? []).slice(0, 40)
-  const system = [
-    "你是投标文件正文编排助手，负责在动笔前为技术标大纲的每个叶子节点做克制的版面编排判断：这一节正文放一个表格是否真能提升清晰度、这一节是否值得配一张架构图/流程图/界面示意图，并为这一节挑选必守事实、给出写作焦点。",
-    "编排铁律（克制优先，宁缺毋滥）：",
-    "1. table.needed=true 仅当该节内容天然是多维对照信息（参数对照、配置清单、人员分工、进度计划、指标承诺、设备清单等）、表格确实能提升评标专家阅读清晰度时才给；纯论述、纯方案描述一律 needed=false、purpose 留空；",
-    "2. figure.needed=true 仅当该节是具象工程场景（系统架构、业务流程、界面功能布局）且一张图能让评标专家快速理解时才给；抽象论述（项目理解、需求分析、保障措施、管理制度等）一律 needed=false；",
-    "3. figure.priority 取 3-5 的整数（5=最该配图）；priority 低于 3 的一律置 needed=false，禁止为凑数抬高优先级；",
-    "4. figure.type 按内容选 architecture/flow/demo；figure.title 用「××架构图 / ××流程图 / ××界面示意」式具体命名（≤20 字）；reason ≤30 字说明配图价值；table.purpose ≤40 字说明表格呈现什么；",
-    "5. 只依据叶子标题、上级章、项目概述与给定的事实表行、评分项清单判断，禁止编造输入里没有的内容；拿不准就 needed=false；",
-    "6. facts：从下面【全局事实表行】里挑选本节正文写作必须遵守的事实行（原样照抄整行，≤5 条；只挑与本节主题直接相关的，禁止改写数值、禁止编造；没有可挑的输出空数组）；",
-    "7. writing_focus：一句话（≤50 字）点明本节的写作焦点与对应评分点——对照下面【评分项清单】写出对应评分项名，没有对应评分点时聚焦本节标题的实质性响应；",
-    "8. figure.needed=true 时必须同时给 figure.caption：图注（≤40 字），说明这张图呈现什么、如何支撑本节正文；",
-    "9. 相邻小节不连续同类型图：清单中相邻的两个叶子都值得配图时，figure.type 尽量错开（architecture/flow/demo 交替），程序选定后还会做邻接同类型查重。",
-    "输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式（items 与输入叶子清单一一对应，node_id 原样回填）：",
-    '{"items":[{"node_id":"叶子ID","facts":["事实行1"],"writing_focus":"写作焦点（对应评分点）","table":{"needed":false,"purpose":""},"figure":{"needed":true,"type":"architecture","title":"图名","caption":"图注","priority":4,"reason":"理由"}}]}',
-  ].join("\n")
-  const user = [
-    projectBrief ? `【项目概述】\n${projectBrief}` : "",
-    factsLines.length
-      ? `【全局事实表行（facts 只能从这里原样挑选，禁止编造）】\n${factsLines.map((l, i) => `${i + 1}. ${l}`).join("\n")}`
-      : "",
-    scoringItems.length
-      ? `【评分项清单（writing_focus 对应评分点从这里选）】\n${scoringItems
-          .map((s, i) => `${i + 1}. ${s.item}（${s.score} 分）`)
-          .join("\n")}`
-      : "",
-    `【本批叶子清单（共 ${batch.length} 个，逐个判断；相邻叶子配图类型尽量错开）】\n${batch
-      .map((l, i) => `${i + 1}. node_id=${l.nodeId}｜标题：${l.title}｜上级章：${l.chapter}`)
-      .join("\n")}`,
-    "请为清单中每个叶子输出编排判断 JSON（node_id 原样回填，漏判按 needed=false、facts 空数组处理）。",
-  ]
-    .filter((s) => s !== "")
-    .join("\n\n")
-  return [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ]
-}
+export { buildOrchestrationMessages, PROMPT_VERSION as ORCHESTRATION_PROMPT_VERSION } from "./prompts/orchestration"
 
-/** 单批编排输出清洗：只收本批合法 nodeId；table 无 purpose 视为不需要；figure priority<3 或无标题强制 needed=false；facts ≤5 条、writing_focus/caption 截断保留 */
 export function sanitizeOrchestrationBatch(rawText: string, validIds: Set<string>): Record<string, LeafOrchestration> {
   const data = extractJsonLoose(rawText)
   const rec = (data ?? {}) as Record<string, unknown>
@@ -6890,258 +6841,15 @@ export type CoverageAuditEntry = {
   suggestion: string
 }
 
-/** 覆盖审计 prompt：一次调用核对全部技术叶，输出逐节 JSON 报告（正文摘录截断在调用方完成以控 token） */
-export function buildCoverageAuditMessages(leaves: CoverageAuditLeafInput[]): LlmMessage[] {
-  const blocks = leaves
-    .map((l, i) =>
-      [
-        `【第${i + 1}节】leaf_id: ${l.leaf_id}`,
-        `标题：${l.title}（所属章：${l.chapter}）`,
-        `写作焦点：${l.writing_focus.trim() || "（未设置）"}`,
-        l.facts.length
-          ? `必守事实：\n${l.facts.map((f, j) => `${j + 1}. ${f}`).join("\n")}`
-          : "必守事实：（无）",
-        `表格计划：${l.table_plan.trim() || "（无）"}`,
-        `正文摘录（前 800 字截断）：${l.body_excerpt.trim() || "（正文为空）"}`,
-      ].join("\n"),
-    )
-    .join("\n\n")
-  const system = [
-    "你是标书质量审核专家，逐节核对写作方案计划的内容（写作焦点、必守事实、表格计划）是否在该节正文中落实。",
-    "判定口径：",
-    "1. 计划要点在正文中全部有对应落实 → covered=full；",
-    "2. 部分要点落实、存在遗漏 → covered=partial，missing_points 逐条列出遗漏的计划要点；",
-    "3. 正文为空或计划几乎全部未落实 → covered=missing，missing_points 列出全部未落实要点；",
-    "4. 未设置任何计划（焦点/事实/表格均空）的节，按正文是否实质响应节标题判定。",
-    "missing_points 每条不超过 40 字、最多 6 条，必须是计划或标题响应中可核对的要点，禁止编造额外要求；covered=full 时输出空数组。",
-    "suggestion 写不超过 60 字的补写建议（full 时可为空串）。",
-    "输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式：",
-    '[{"leaf_id":"","covered":"full","missing_points":[],"suggestion":""}]',
-  ].join("\n")
-  const user = `${clipText(blocks, 24000)}\n\n请逐节核对写作方案是否在正文中落实，输出 JSON 数组（每个 leaf_id 都要出现在返回里）。`
-  return [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ]
-}
+export { buildCoverageAuditMessages, resolveLeafSection, sanitizeCoverageAudit, PROMPT_VERSION as COVERAGE_AUDIT_PROMPT_VERSION } from "./prompts/coverageAudit"
 
-/** 审计输出清洗：只收输入清单内的 leaf_id；covered 归一三档（非法值按 missing_points 判）；按输入文档序去重输出 */
-export function sanitizeCoverageAudit(rawText: string, inputLeaves: CoverageAuditLeafInput[]): CoverageAuditEntry[] {
-  const data = extractJsonLoose(rawText)
-  const rec = data as Record<string, unknown> | null
-  const arr = asArray(Array.isArray(data) ? data : (rec?.items ?? rec?.results ?? rec?.audit))
-  const byId = new Map<string, Record<string, unknown>>()
-  for (const row of arr) {
-    if (!row || typeof row !== "object") continue
-    const r = row as Record<string, unknown>
-    const id = asString(r.leaf_id ?? r.leafId ?? r.node_id).trim()
-    if (id && !byId.has(id)) byId.set(id, r)
-  }
-  const out: CoverageAuditEntry[] = []
-  for (const leaf of inputLeaves) {
-    const row = byId.get(leaf.leaf_id)
-    if (!row) continue
-    const rawLevel = asString(row.covered).trim().toLowerCase()
-    const points = asArray(row.missing_points ?? row.missingPoints)
-      .map((x) => asString(x).trim().slice(0, 60))
-      .filter(Boolean)
-      .slice(0, 6)
-    const level: CoverageLevel =
-      rawLevel === "full" || rawLevel === "partial" || rawLevel === "missing"
-        ? (rawLevel as CoverageLevel)
-        : points.length
-          ? "partial"
-          : "full"
-    const covered: CoverageLevel = level === "full" && points.length ? "partial" : level
-    out.push({
-      leaf_id: leaf.leaf_id,
-      title: leaf.title,
-      covered,
-      missing_points: covered === "full" ? [] : points,
-      suggestion: asString(row.suggestion).trim().slice(0, 120),
-    })
-  }
-  return out
-}
-
-/**
- * 叶子定位：返回叶子所属顶层章 nodeId 与其二级小节标题（章自身即叶子时 sectionTitle 为空串）。
- * 供「补写」把审计叶子映射回既有条级重写（章 nodeId + sectionIdx）链路，不新造生成通道。
- */
-export function resolveLeafSection(
-  outline: OutlineNode[],
-  leafId: string,
-): { chapterId: string; sectionTitle: string } | null {
-  for (const top of outline ?? []) {
-    if (top.id === leafId) return { chapterId: top.id, sectionTitle: "" }
-    for (const sec of top.children ?? []) {
-      if (sec.id === leafId) return { chapterId: top.id, sectionTitle: sec.title }
-      if (collectLeafIdsUnder(sec).includes(leafId)) return { chapterId: top.id, sectionTitle: sec.title }
-    }
-  }
-  return null
-}
-
-// ---------------------------------------------------------------------------
 // 第十六轮 B2 改造 2.3：长标书分步大纲（leafGoal 超阈值时：顶层章一次 + 技术章逐章展开）
 // ---------------------------------------------------------------------------
 
 /** 分步触发阈值：目标叶子数超过该值时大纲生成自动改走分步（单次大 JSON 输出在长规模下易截断/失衡） */
 export const STAGED_OUTLINE_LEAF_GOAL = 40
 
-/**
- * 分步大纲 call1：只生成顶层章清单——商务骨架章（含一级小节）+ 技术章（仅标题、children 为空）。
- * 商务章仍由模型按招标要求增删（与单次生成同口径），技术章的章内展开交给 call2 逐章做。
- */
-export function buildOutlineLevel1Messages(
-  projectName: string,
-  hospital: string,
-  report: ParseReport | null,
-  opts?: {
-    globalFacts?: string
-    implicitConstraints?: string[]
-    techChapterHint?: number
-    /** 用户反馈轮项 3：是否输出商务标骨架章（缺省 true；false 时商务段整体替换为「不输出任何商务章节」） */
-    includeBiz?: boolean
-  },
-): LlmMessage[] {
-  const includeBiz = opts?.includeBiz !== false
-  const scoringText = combinedScoringText(report)
-  const bizText = sectionText(report, "biz_score")
-  const respText = sectionText(report, "response_req")
-  const qualText = sectionText(report, "qualification")
-  const starText = sectionText(report, STAR_CLAUSE_SECTION.key).trim()
-  // 2026-09-23 用户反馈轮（目录不一致）：分步大纲 call1 同步接入招标目录要求锚点（与整份生成路径同源同口径）
-  const outlineReqTextL1 = sectionText(report, BID_OUTLINE_REQ_KEY).trim()
-  const implicitList = opts?.implicitConstraints ?? []
-  const techHint = Math.max(4, Math.min(16, Math.round(opts?.techChapterHint ?? 8)))
-  const numbered: string[] = includeBiz
-    ? [
-        "顶层章分「商务部分」与「技术部分」两组：商务章在前、技术章在后，每个顶层章对象必须带 part 字段（\"biz\"=商务章、\"tech\"=技术章）；",
-        "商务部分输出 6-10 个骨架章（part=\"biz\"）：投标函及报价、法定代表人授权、资质与证照证明、财务审计报告、同类项目业绩、商务条款响应/偏离表、售后服务承诺函、中小企业声明等，按下面【响应文件要求】【资质要求】【商务评分办法】的实际内容增删；商务章 children 只列一级小节名（不展开三级），正文由投标人线下填写；",
-      ]
-    : [
-        "顶层章全部为技术部分：每个顶层章对象必须带 part 字段（一律 \"tech\"）；",
-        "本次不输出任何商务部分章节（part=\"biz\"），大纲仅含技术标章节；投标函、资质证照、商务偏离表等商务内容由投标人线下自行处理，禁止为其安排任何章节；",
-      ]
-  numbered.push(
-    `技术部分（part=\"tech\"）输出 ${techHint} 个左右的顶层章、children 一律为空数组（章内小节由后续步骤逐章展开，本次禁止展开）：以评分办法为纲，把下面技术评分的重要评分项分组成章，章与章之间范围互斥、合起来覆盖全部技术评分项与响应文件要求；`,
-    "技术章常规骨架参考：项目理解与需求分析、总体建设方案、详细技术方案（可按系统拆多章）、项目实施组织与进度计划、质量保障与测试验收、培训方案、售后服务与运维保障、应急预案；再按本招标文件增删；",
-    "标题只写名称、不带编号、不以标点结尾；章标题必须具体（主题词+落点词），禁止「概述/说明/介绍/相关内容/其他」式空泛命名；",
-    // 2026-09-23 用户反馈轮（目录幻觉）：与整份生成路径同口径的事实来源排他条款
-    "事实来源排他（防幻觉）：顶层章的主题与顺序只能来自下面【技术评分办法】【商务评分办法】【响应文件要求】【招标文件规定的投标文件目录】【★/▲ 重点条款】等注入内容与常规骨架参考；禁止编造注入内容中不存在的评分项、分值、条款编号或目录要求；招标已规定响应目录时，技术/商务顶层章必须遵循其顺序与层级，禁止另起炉灶；无注入依据的方面用常规骨架命名，不得假称招标要求；",
-  )
-  if (starText) {
-    numbered.push(
-      `下面【★/▲ 重点条款】为实质性响应条款，任何一条未响应都可能直接废标：必须让每条重点条款都有明确的顶层章落点${
-        includeBiz ? "（商务类落商务章、技术类落技术章）" : "（一律落技术章）"
-      }，禁止只靠通用章笼统带过；`,
-    )
-  }
-  if (implicitList.length) {
-    numbered.push(
-      `下面【招标隐式硬约束】共 ${implicitList.length} 条（如页数/份数/装订/格式等刚性要求），任何一条被违反都可能废标，必须有对应顶层章落点；`,
-    )
-  }
-  numbered.push(
-    "输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式：",
-    '{"outline":[{"title":"商务章标题","part":"biz","children":[{"title":"小节标题","children":[]}]},{"title":"技术章标题","part":"tech","children":[]}]}',
-  )
-  const system = [
-    `你是一位深耕医疗信息化行业十余年的资深投标顾问，擅长按评分办法组织技术标结构。当前任务：为投标项目「${projectName}」（采购人：${hospital || "未填写"}）生成响应大纲的【顶层章清单】（本次只到章一级）。`,
-    "硬性要求：",
-    ...numbered.map((t, i) => `${i + 1}. ${t}`),
-  ].join("\n")
-  const stableParts = [
-    `【技术评分办法（逐项分值）】\n${scoringText || "（未解析到技术评分）"}`,
-    // 用户反馈轮项 3：不含商务章时商务评分办法不再注入（避免误导模型输出商务章）
-    ...(includeBiz ? [`【商务评分办法】\n${bizText || "（未解析到商务评分）"}`] : []),
-    `【响应文件要求】\n${respText || "（未解析到响应要求）"}`,
-    `【资质要求】\n${qualText || "（无）"}`,
-  ]
-  if (opts?.globalFacts) stableParts.push(opts.globalFacts)
-  if (implicitList.length) {
-    stableParts.push(
-      `【招标隐式硬约束（任何一条被违反都可能废标）】\n${implicitList.map((t, i) => `${i + 1}. ${t}`).join("\n")}`,
-    )
-  }
-  if (starText) stableParts.push(`【★/▲ 重点条款（实质性响应条款，每条必须有顶层章落点）】\n${clipText(starText, 6000)}`)
-  if (outlineReqTextL1) {
-    stableParts.push(`【招标文件规定的投标文件目录（顶层章必须遵循其顺序与层级）】\n${clipText(outlineReqTextL1, 4000)}`)
-  }
-  return [
-    { role: "system", content: system },
-    { role: "user", content: stableParts.join("\n\n") },
-    {
-      role: "user",
-      content: includeBiz
-        ? "请输出这份投标文件响应大纲的顶层章清单 JSON（商务骨架章在前且含一级小节，技术章在后且 children 为空数组，顶层章带 part 字段）。"
-        : "请输出这份投标文件响应大纲的顶层章清单 JSON（全部为技术章且 children 为空数组，顶层章 part 一律为 tech，不输出任何商务章节）。",
-    },
-  ]
-}
+export { buildOutlineLevel1Messages, PROMPT_VERSION as OUTLINE_LEVEL1_PROMPT_VERSION } from "./prompts/outlineLevel1"
 
-/**
- * 分步大纲 call2：为单个技术章展开章内节/条（最多两层，输出即该章 children）。
- * 注入该章标题 + 评分相关节 + 其余技术章标题（防跨章重复）+ 叶子配额（全局目标均分，±2 容差）。
- */
-export function buildOutlineChildrenMessages(
-  chapterTitle: string,
-  otherChapterTitles: string[],
-  report: ParseReport | null,
-  opts: { quota: number; level: 0 | 1 | 2 | 3; sectionWords: number; globalFacts?: string },
-): LlmMessage[] {
-  const scoringText = combinedScoringText(report)
-  // R31：编号技术评分项注入，章内叶子用 [响应:Rx] 标注承接（与整份大纲 prompt 同一编号源）
-  const numberedTechItems = numberScoringItems(report).filter((s) => s.category === "tech")
-  const numberedScoringText = numberedTechItems.length ? numberedScoringDetailLines(numberedTechItems) : scoringText
-  const techText = sectionText(report, "delivery_req")
-  const quota = Math.max(1, Math.round(opts.quota))
-  const lo = Math.max(1, quota - 2)
-  const hi = quota + 2
-  const depthRule =
-    opts.level === 2
-      ? "层级硬约束：本章恰好一层子节点（章—节），只输出节节点、每个节节点 children 为空数组，禁止第三层；"
-      : opts.level === 3
-        ? "层级硬约束：本章恰好两层子节点（章—节—条），每个节下至少 1 个条级节点，条节点 children 为空数组；"
-        : "层级自定（一层「节」或两层「节—条」，最多到条为止）：按本章内容复杂度决定，节必须有、条可选；"
-  const numbered: string[] = [
-    depthRule,
-    `叶子规模配额：本章叶子节点（无子节点的末端节点）总数必须落在 ${lo}-${hi} 个（配额 ${quota} 个），每个叶子将承载约 ${opts.sectionWords} 字正文；不足时按系统/模块/阶段/保障维度拆分补足，超出时合并相近叶子；`,
-    "内容以评分办法为纲：下面技术评分中与本章主题相关的评分项，每项都要落到具体节/条标题；与本章无关的评分项不要抢写（由其他章承担）；",
-    // R31：分步大纲同步承接标注，保证覆盖矩阵对长标书同样可对账
-    numberedTechItems.length
-      ? "承接标注（R31）：每个叶子节点（无 children 的节/条）必须在 description 字段标注其承接的评分编号，格式 `[响应:R1]` 或 `[响应:R1,R3]`（多个逗号分隔，编号取自下面【技术评分办法】行首 [Rx]）；非叶子节点不标注；不承接任何评分项的叶子可省略 description；"
-      : "",
-  ]
-  if (otherChapterTitles.length) {
-    numbered.push(
-      `其他技术章标题如下，本章的节/条标题禁止与它们或它们的职责范围重复：${otherChapterTitles.map((t) => `「${t}」`).join("、")}；`,
-    )
-  }
-  numbered.push(
-    "标题只写名称、不带编号、不以标点结尾；节/条标题必须用具体响应式命名：主题词+落点词（设计/范围/保障/机制/流程等），形如「设备兼容性设计」「知识更新机制」；禁止「概述/说明/介绍/相关内容/其他」式空泛标题；",
-    `输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式（outline 数组即本章的 children，不要输出章节点本身；叶子节点带 description 承接标注${numberedTechItems.length ? "，形如 \"description\":\"[响应:R2]\"" : ""}）：`,
-    numberedTechItems.length
-      ? '{"outline":[{"title":"节标题","children":[{"title":"条标题","children":[],"description":"[响应:R2,R5]"}]}]}'
-      : '{"outline":[{"title":"节标题","children":[{"title":"条标题","children":[]}]}]}',
-  )
-  const system = [
-    "你是资深投标顾问，正在为医疗信息化投标文件的某一个技术章展开章内大纲（节/条两级以内）。整份大纲的顶层章已定，本次只展开当前章。",
-    `当前要展开的技术章：「${chapterTitle}」。`,
-    "硬性要求：",
-    ...numbered.filter((x) => x !== "").map((t, i) => `${i + 1}. ${t}`),
-  ].join("\n")
-  const user = [
-    `【技术评分办法（编号逐项分值，只取与本章相关的展开）】\n${clipText(numberedScoringText, 4000) || "（未解析到技术评分）"}`,
-    `【技术需求与交货服务要求】\n${clipText(techText, 4000) || "（未解析）"}`,
-    opts.globalFacts ?? "",
-    `请为技术章「${chapterTitle}」输出章内节/条大纲 JSON（叶子 ${lo}-${hi} 个，outline 数组即本章 children）。`,
-  ]
-    .filter((s) => s !== "")
-    .join("\n\n")
-  return [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ]
-}
+export { buildOutlineChildrenMessages, PROMPT_VERSION as OUTLINE_CHILDREN_PROMPT_VERSION } from "./prompts/outlineChildren"
+

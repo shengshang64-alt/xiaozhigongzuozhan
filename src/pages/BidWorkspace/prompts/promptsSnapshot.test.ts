@@ -11,6 +11,10 @@ import {
   buildSectionResizeMessages,
   buildEvalMessages,
   buildBidRefineMessages,
+  buildOrchestrationMessages,
+  buildCoverageAuditMessages,
+  buildOutlineLevel1Messages,
+  buildOutlineChildrenMessages,
 } from "../bidTypes"
 import type { DupPair, DefenseQuestion } from "../bidTypes"
 
@@ -137,6 +141,51 @@ describe("R65 提示词搬迁快照（prompts/* 只搬不改字）", () => {
         "当前章节正文：安全体系按等保三级设计……",
         { globalFacts: "【全局事实】本项目工期：90 天" },
       ),
+    ).toMatchSnapshot()
+  })
+
+  it("R68 第四批：buildOrchestrationMessages 内容与搬迁时一致", () => {
+    expect(
+      buildOrchestrationMessages(
+        [{ nodeId: "n1", title: "3.1 集成平台", chapter: "第三章 集成平台" }],
+        "【项目概述】医院一体化核心业务系统，预算 2500 万。",
+        { factsLines: ["本项目工期：90 天"], scoringItems: [] },
+      ),
+    ).toMatchSnapshot()
+  })
+
+  it("R68 第四批：buildCoverageAuditMessages 内容与搬迁时一致", () => {
+    expect(
+      buildCoverageAuditMessages([
+        {
+          leaf_id: "n1",
+          title: "3.1 集成平台",
+          chapter: "第三章 集成平台",
+          writing_focus: "ESB 总线选型与接口清单",
+          facts: ["本项目工期：90 天"],
+          table_plan: "接口台账表",
+          body_excerpt: "集成平台采用 ESB 架构，统一承载 HIS/LIS/PACS 接口……",
+        },
+      ]),
+    ).toMatchSnapshot()
+  })
+
+  it("R68 第四批：buildOutlineLevel1Messages 内容与搬迁时一致", () => {
+    expect(
+      buildOutlineLevel1Messages("医院一体化核心业务系统", "安徽中医药大学第一附属医院", null, {
+        globalFacts: "【全局事实】本项目工期：90 天",
+      }),
+    ).toMatchSnapshot()
+  })
+
+  it("R68 第四批：buildOutlineChildrenMessages 内容与搬迁时一致", () => {
+    expect(
+      buildOutlineChildrenMessages("第五章 安全设计", ["第四章 集成平台", "第六章 实施方案"], null, {
+        quota: 6,
+        level: 2,
+        sectionWords: 800,
+        globalFacts: "【全局事实】本项目工期：90 天",
+      }),
     ).toMatchSnapshot()
   })
 })
