@@ -5914,37 +5914,7 @@ export function buildBidRefineMessages(
   ]
 }
 
-/**
- * 循环 5 A1：小节级局部扩缩写——只对给定小节切片片段做定向扩写/缩写（不重生成整节）。
- * expand 目标 ≈ 现长 ×1.5、shrink ≈ ×0.6，具体目标字数以 targetChars 传入为准；
- * 调用方复用第十五轮条级重写的确定性切片与原位替换机制（sliceSectionPieces / rebuildSectionContent）。
- */
-export function buildSectionResizeMessages(
-  leafTitle: string,
-  sliceText: string,
-  mode: "expand" | "shrink",
-  targetChars: number,
-): LlmMessage[] {
-  const target = Math.max(100, Math.round(targetChars))
-  const verb = mode === "expand" ? "扩写" : "缩写"
-  const system = [
-    `你是医疗信息化行业资深标书编辑，正在对投标文件的「${leafTitle}」小节做局部「${verb}」。`,
-    "硬规则（每条必须遵守）：",
-    "1. 只处理给定片段本身，禁止改写其他小节、禁止输出片段之外的内容；",
-    "2. 保持事实口径与片段一致：金额、工期、人数、指标值等硬数据不得改动，禁止编造新数值；",
-    mode === "expand"
-      ? "3. 扩写须基于片段已有内容展开：补充实施细节、操作步骤、保障措施与风险考虑，禁止空话套话、禁止重复已有句子凑字数；"
-      : "3. 缩写须保留全部硬指标与承诺要点，不丢评分点：合并重复表述、删去空话，关键响应内容一条不能少；",
-    "4. 写作风格与片段上下文保持一致：正式投标口径、纯文本，禁止 markdown 符号与装饰符号；",
-    `5. 处理后正文长度控制在约 ${target} 字（±10%）。`,
-    "输出铁律：只输出处理后的正文，不输出任何解释、标题、编号或开场白。",
-  ].join("\n")
-  const user = `【目标长度】约 ${target} 字\n【待${verb}片段】\n${sliceText}`
-  return [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ]
-}
+export { buildSectionResizeMessages, PROMPT_VERSION as SECTION_RESIZE_PROMPT_VERSION } from "./prompts/sectionResize"
 
 /** 快捷评标工具：从「评分项:分值」行文本解析评分办法 */
 export function parseScoringLines(text: string): ScoringItem[] {
@@ -6123,79 +6093,12 @@ export function defenseRefChapterText(chapters: Chapter[], refTitles: string[], 
   )
 }
 
-export function buildDefenseQuestionsMessages(
-  scoringText: string,
-  voidText: string,
-  chapterDigest: string,
-  globalFacts: string,
-): LlmMessage[] {
-  const system = [
-    "你是医疗信息化项目资深评标专家兼投标顾问，需要在开标后的讲标答辩环节前，帮投标人预判评标专家最可能提出的问题。",
-    "出题铁律：",
-    "1. 出 8-15 个问题，优先覆盖：评分办法中分值高的项、废标条款相关项、标书章节中可能被追问的细节（参数响应、实施方案、售后承诺、业绩资质）；",
-    "2. intent 一句话写明该问题考察什么；answer_points 给 3-5 条答辩要点，必须基于标书实际内容，禁止编造标书中没有的承诺；",
-    "3. ref_chapters 列出回答该问题可引用的标书章节标题，只能从给定章节标题中选；",
-    "4. 问题表述模拟真实评标专家口吻，具体、可追问，禁止空泛。",
-    globalFacts,
-    "输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式：",
-    '{"questions":[{"question":"","intent":"","answer_points":["",""],"ref_chapters":[""]}]}',
-  ]
-    .filter((s) => s.trim())
-    .join("\n")
-  const user = `【评分办法】\n${clipText(scoringText, 4000) || "（未提供）"}\n\n【废标条款】\n${clipText(voidText, 3000) || "（未提供）"}\n\n【标书章节标题与摘要】\n${clipText(chapterDigest, 9000)}\n\n请出 8-15 个专家问题并输出 JSON。`
-  return [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ]
-}
+export { buildDefenseQuestionsMessages, PROMPT_VERSION as DEFENSE_QUESTIONS_PROMPT_VERSION } from "./prompts/defenseQuestions"
 
 export { buildDefenseAnswerMessages, PROMPT_VERSION as DEFENSE_ANSWER_PROMPT_VERSION } from "./prompts/defenseAnswer"
-export function buildDefenseOutlineMessages(
-  outlineText: string,
-  scoringText: string,
-  globalFacts: string,
-): LlmMessage[] {
-  const system = [
-    "你是医疗信息化行业资深售前顾问，请基于标书大纲与评分办法，为投标人编排讲标 PPT 大纲。",
-    "大纲铁律：",
-    "1. 输出 10-15 页，页序按「项目理解 → 总体方案 → 各分系统亮点（按评分办法分值权重排序，高分项靠前）→ 实施与质保 → 服务承诺」组织；",
-    "2. 每页 bullets 3-6 条，内容取自标书对应章节，突出量化承诺与差异化亮点，禁止空泛形容词；",
-    "3. page_title 简短（15 字内），能直接当 PPT 页标题。",
-    globalFacts,
-    "输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式：",
-    '{"pages":[{"page_title":"","bullets":["",""]}]}',
-  ]
-    .filter((s) => s.trim())
-    .join("\n")
-  const user = `【标书大纲树】\n${clipText(outlineText, 8000)}\n\n【评分办法（含分值权重）】\n${clipText(scoringText, 4000) || "（未提供）"}\n\n请输出讲标大纲 JSON。`
-  return [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ]
-}
+export { buildDefenseOutlineMessages, PROMPT_VERSION as DEFENSE_OUTLINE_PROMPT_VERSION } from "./prompts/defenseOutline"
 
-export function buildSpeechNotesMessages(pages: DefenseOutlinePage[], globalFacts: string): LlmMessage[] {
-  const system = [
-    "你是医疗信息化项目投标主讲人，请为讲标 PPT 大纲撰写讲标稿要点。",
-    "撰写铁律：",
-    "1. opening 为 150 字内开场白（问候 + 项目理解 + 信心表达），closing 为 100 字内收尾（承诺 + 致谢）；",
-    "2. sections 与大纲页一一对应，每页给 2-3 句口语化讲述要点（points），说清这页要讲什么、强调哪个数字，不要照抄 bullets；",
-    "3. 全文口语化、像现场讲出来的稿子，禁止书面套话。",
-    globalFacts,
-    "输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式：",
-    '{"opening":"","sections":[{"title":"页标题","points":["",""]}],"closing":""}',
-  ]
-    .filter((s) => s.trim())
-    .join("\n")
-  const outlineText = pages
-    .map((pg, i) => `第${i + 1}页 ${pg.page_title}\n${pg.bullets.map((b) => `- ${b}`).join("\n")}`)
-    .join("\n\n")
-  const user = `【讲标大纲】\n${clipText(outlineText, 9000)}\n\n请输出讲标稿要点 JSON。`
-  return [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ]
-}
+export { buildSpeechNotesMessages, PROMPT_VERSION as SPEECH_NOTES_PROMPT_VERSION } from "./prompts/speechNotes"
 
 // ---------------------------------------------------------------------------
 // 第七轮改造 5：交卷体检（实质响应覆盖审计）

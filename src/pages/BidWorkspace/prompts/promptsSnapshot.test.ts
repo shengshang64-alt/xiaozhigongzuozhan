@@ -5,6 +5,10 @@ import {
   buildDefenseAnswerMessages,
   buildFactSettingsMessages,
   buildJsonRepairMessages,
+  buildDefenseQuestionsMessages,
+  buildDefenseOutlineMessages,
+  buildSpeechNotesMessages,
+  buildSectionResizeMessages,
 } from "../bidTypes"
 import type { DupPair, DefenseQuestion } from "../bidTypes"
 
@@ -62,7 +66,52 @@ describe("R65 提示词搬迁快照（prompts/* 只搬不改字）", () => {
       import("./defenseAnswer"),
       import("./factSettings"),
       import("./jsonRepair"),
+      import("./defenseQuestions"),
+      import("./defenseOutline"),
+      import("./speechNotes"),
+      import("./sectionResize"),
     ])
     for (const m of mods) expect(m.PROMPT_VERSION).toBeGreaterThanOrEqual(1)
+  })
+
+  it("R66 第二批：buildDefenseQuestionsMessages 内容与搬迁时一致", () => {
+    expect(
+      buildDefenseQuestionsMessages(
+        "技术方案 20 分；实施团队 15 分",
+        "1. 未按要求盖章的投标无效",
+        "第五章 安全设计：等级保护三级，数据库审计……",
+        "【全局事实】本项目工期：90 天",
+      ),
+    ).toMatchSnapshot()
+  })
+
+  it("R66 第二批：buildDefenseOutlineMessages 内容与搬迁时一致", () => {
+    expect(
+      buildDefenseOutlineMessages(
+        "1. 项目概述\n2. 总体设计\n3. 安全体系",
+        "技术方案 20 分；实施团队 15 分",
+        "【全局事实】本项目工期：90 天",
+      ),
+    ).toMatchSnapshot()
+  })
+
+  it("R66 第二批：buildSpeechNotesMessages 内容与搬迁时一致", () => {
+    expect(
+      buildSpeechNotesMessages(
+        [{ page_title: "总体设计", bullets: ["双活架构", "信创适配"] }],
+        "【全局事实】本项目工期：90 天",
+      ),
+    ).toMatchSnapshot()
+  })
+
+  it("R66 第二批：buildSectionResizeMessages 内容与搬迁时一致", () => {
+    expect(
+      buildSectionResizeMessages(
+        "3.2 安全体系",
+        "当前安全体系小节正文切片……",
+        "expand",
+        1200,
+      ),
+    ).toMatchSnapshot()
   })
 })
