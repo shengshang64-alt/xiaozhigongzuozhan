@@ -24,6 +24,10 @@ import {
   buildBidOutlineMessages,
   buildOutlineFixMessages,
   buildBidChapterMessages,
+  buildEvalFormatMessages,
+  buildSubmissionCheckMessages,
+  buildFactCheckMessages,
+  buildFactPatchMessages,
 } from "../bidTypes"
 import type { DupPair, DefenseQuestion } from "../bidTypes"
 
@@ -286,6 +290,41 @@ describe("R65 提示词搬迁快照（prompts/* 只搬不改字）", () => {
   it("R70 第六批：buildEvalCommercialMessages 内容与搬迁时一致", () => {
     expect(
       buildEvalCommercialMessages("【全局事实】本项目工期：90 天", "【商务要求】工期 90 天", "投标文件段落：工期 90 天。"),
+    ).toMatchSnapshot()
+  })
+
+  it("R72 第七批：buildEvalFormatMessages 内容与搬迁时一致", () => {
+    expect(
+      buildEvalFormatMessages(
+        [{ title: "第五章 安全设计", node_id: "n5", sections: ["5.1 总体架构"], gen_status: "done", content: "……" }],
+        { outlineText: "1. 项目概述", implicitConstraints: ["投标截止时间前未完成传输的视为撤回"] },
+      ),
+    ).toMatchSnapshot()
+  })
+
+  it("R72 第七批：buildSubmissionCheckMessages 内容与搬迁时一致", () => {
+    expect(
+      buildSubmissionCheckMessages(
+        [{ item: "技术方案", score: 20, criteria: "按方案完整性评分" }],
+        ["未按要求盖章的投标无效"],
+        "【交卷摘要】共 5 章",
+        "【★实质性条款】★1 系统响应",
+      ),
+    ).toMatchSnapshot()
+  })
+
+  it("R72 第七批：buildFactCheckMessages 内容与搬迁时一致", () => {
+    expect(
+      buildFactCheckMessages("【事实】本项目工期：90 天", "《第五章 实施方案》…工期 6 个月……"),
+    ).toMatchSnapshot()
+  })
+
+  it("R72 第七批：buildFactPatchMessages 内容与搬迁时一致", () => {
+    expect(
+      buildFactPatchMessages(
+        [{ fact: "本项目工期：90 天", chapter: "第五章 实施方案", evidence: "正文写 6 个月" }] as never,
+        [{ title: "第五章 实施方案", node_id: "n9", sections: [], gen_status: "done", content: "工期 6 个月……" }],
+      ),
     ).toMatchSnapshot()
   })
 })

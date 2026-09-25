@@ -1,4 +1,3 @@
-import type { LlmMessage } from "@/lib/llm"
 import { parseJsonTolerant } from "@/lib/jsonTolerant"
 import type { Chapter, FigureSpec, OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
 import { makeUid } from "@/pages/SolutionStudio/solutionTypes"
@@ -4670,48 +4669,8 @@ export type BidRefineKind = "rewrite" | "expand" | "condense"
 // 评标三路调用不带技能块：审计要保持中立，沿用交卷体检格局
 // ---------------------------------------------------------------------------
 
-/**
- * 格式规范路 prompt：检查章节结构完整性 / 编号连续性 / 排版惯例 / 页数份数装订类硬约束响应。
- * 入参 = 大纲树 + 各章标题与小节标题清单 + 每章正文前 200 字采样 + 隐式硬约束清单（本地零 AI 抽取）。
- */
-export function buildEvalFormatMessages(
-  chapters: Chapter[],
-  opts: { outlineText: string; implicitConstraints: string[] },
-): LlmMessage[] {
-  const chapterLines = chapters
-    .map((c, i) => {
-      const sections = (c.sections ?? []).filter((s) => s.trim())
-      const sample = (c.content ?? "").replace(/\s+/g, " ").trim().slice(0, 200)
-      return `第${i + 1}章 ${c.title}\n小节：${sections.length ? sections.join("；") : "（无小节标题）"}\n正文采样：${sample || "（本章正文为空）"}`
-    })
-    .join("\n\n")
-  const constraints = opts.implicitConstraints.length
-    ? opts.implicitConstraints.map((c, i) => `${i + 1}. ${c}`).join("\n")
-    : "（未从招标文件中抽取到页数/份数/装订类硬约束）"
-  const system = [
-    "你是医疗信息化项目评标委员会的格式规范审查专家，对投标文件做格式符合性检查（不评内容质量、不打分）。",
-    "检查范围（只查这四类）：",
-    "1. 章节结构完整性：大纲树里有的章在正文中缺失或正文为空、章节层级明显残缺；",
-    "2. 编号连续性：章/小节编号跳号、重号、错序；",
-    "3. 排版惯例：正文残留装饰符号（【】★◆■●✓→等）、Markdown 符号残留（# * - > 等标题/列表/加粗符号）、明显乱码；",
-    "4. 硬约束响应：招标文件中页数/份数/装订/密封/签字盖章类硬约束，投标文件是否有对应响应或承诺。",
-    "severity 判级：结构性缺章或硬约束完全未响应=critical；编号混乱、响应不完整=major；个别排版残留=minor。",
-    "防误报硬规则：判定仅基于文本解析，图片、扫描件、签章效果一律看不到；章节标题、目录项、附件清单等结构性线索存在即不判缺失；拿不准的不输出，宁缺毋滥；没有发现问题就输出空数组，禁止为凑数编造问题。",
-    "location 写问题所在位置（如「第3章 实施方案」或「全文」，不超过 30 字）；suggestion 写不超过 60 字的修复建议。",
-    "输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式：",
-    '{"format_issues":[{"issue":"","severity":"major","location":"","suggestion":""}]}',
-  ].join("\n")
-  const user = [
-    `【投标文件大纲树】\n${clipText(opts.outlineText, 4000)}`,
-    `【各章标题、小节清单与正文采样】\n${clipText(chapterLines, MAX_TENDER_CHARS)}`,
-    `【招标文件隐式硬约束清单（本地抽取）】\n${clipText(constraints, 3000)}`,
-    "请逐项检查并输出 JSON。",
-  ].join("\n\n")
-  return [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ]
-}
+export { buildEvalFormatMessages, PROMPT_VERSION as EVAL_FORMAT_PROMPT_VERSION } from "./prompts/evalFormat"
+
 
 /** 商务要素核对涉及的解析分区（商务/报价相关项；含旧 key 兼容存量报告） */
 export const COMMERCIAL_SECTION_KEYS = [
@@ -5005,7 +4964,7 @@ export function normalizeSubmissionCheck(raw: unknown, scoring?: ScoringItem[]):
 }
 
 /** bigram 重合度：关键词救援定位用（关键词的 2-gram 在段落中出现的比例） */
-function bigramOverlap(keyword: string, text: string): number {
+export function bigramOverlap(keyword: string, text: string): number { // R72 搬迁：prompts/submissionCheck 引用
   const k = normalizePara(keyword)
   const t = normalizePara(text)
   if (k.length < 2 || !t.length) return 0
@@ -5016,74 +4975,9 @@ function bigramOverlap(keyword: string, text: string): number {
   return hit / (grams.size || 1)
 }
 
-/**
- * 审计入参压缩：逐章「标题 + 前 400 字」；超限时先用评分项 / 废标条款关键词
- * bigram 定位相关章节段落，相关章优先注入更多内容。
- */
-export function buildSubmissionDigest(
-  chapters: Chapter[],
-  scoring: ScoringItem[],
-  voidClauses: string[],
-  maxChars = 13000,
-): string {
-  const filled = chapters.map((c, i) => ({ no: i + 1, c })).filter(({ c }) => (c.content ?? "").trim())
-  if (!filled.length) return ""
-  const head = (c: Chapter, n: number) => c.content.replace(/\s+/g, " ").trim().slice(0, n)
-  const base = filled.map(({ no, c }) => `第${no}章 ${c.title}\n${head(c, 400)}`).join("\n\n")
-  if (base.length <= maxChars) return base
-  const keywords = [...scoring.map((s) => s.item), ...voidClauses]
-    .map((k) => k.trim())
-    .filter((k) => k.length >= 4)
-    .slice(0, 60)
-  const ranked = filled
-    .map(({ no, c }) => {
-      const paras = splitParagraphs(c.content, 30).slice(0, 40)
-      const relevant = paras.filter((p) => keywords.some((k) => bigramOverlap(k, p) >= 0.5)).slice(0, 3)
-      const titleHit = keywords.some((k) => bigramOverlap(k, c.title) >= 0.5)
-      return { no, c, relevant, score: relevant.length + (titleHit ? 1 : 0) }
-    })
-    .sort((a, b) => b.score - a.score || a.no - b.no)
-  const blocks: string[] = []
-  let total = 0
-  for (const r of ranked) {
-    const body = r.score > 0 ? r.relevant.join("\n") || head(r.c, 300) : head(r.c, 200)
-    const block = `第${r.no}章 ${r.c.title}${r.score > 0 ? "（关键词命中，附相关段落）" : ""}\n${body}`
-    if (total + block.length > maxChars) break
-    blocks.push(block)
-    total += block.length + 2
-  }
-  return blocks.join("\n\n")
-}
+export { buildSubmissionCheckMessages, PROMPT_VERSION as SUBMISSION_CHECK_PROMPT_VERSION } from "./prompts/submissionCheck"
+export { buildSubmissionDigest } from "./prompts/submissionCheck"
 
-/** 交卷体检 prompt：评标委员会视角逐条判「实质响应」；输出仅 index/covered/evidence，禁长 reason 防截断 */
-export function buildSubmissionCheckMessages(
-  scoring: ScoringItem[],
-  voidClauses: string[],
-  digest: string,
-  starBlock?: string,
-): LlmMessage[] {
-  const checklist = [
-    ...scoring.map((s, i) => `${i + 1}. [评分项] ${s.item}${s.criteria.trim() ? `（评审标准：${s.criteria.trim()}）` : ""}`),
-    ...voidClauses.map((c, i) => `${scoring.length + i + 1}. [废标条款] ${c}`),
-  ].join("\n")
-  const total = scoring.length + voidClauses.length
-  const system = [
-    "你是医疗信息化项目评标委员会资深专家，投标人在交卷前请你对其投标文件做「实质响应」覆盖审计，逐条判断每个评分项与废标条款是否已被实质响应。",
-    "审计铁律：",
-    "1. 实质响应 = 投标文件给出了对应的措施、承诺、数据或证明材料，仅仅出现关键词或标题呼应不算实质响应；",
-    "2. 废标条款从严判定：看不出明确正面规避或满足的响应，一律 covered=false；",
-    "3. 评分项按评审标准判定：有可得分的实质内容才算 covered=true；",
-    `4. 全部 ${total} 条审计项每条都要输出一行，index 与清单编号一致；evidence 摘录支撑判定的投标文件关键原文（不超过 30 字），未覆盖时可留空；`,
-    "5. covered=false 时必须在 suggestion 给出不超过 40 字的补写建议（补什么内容、放哪一章）；covered=true 时 suggestion 留空；",
-    "6. 禁止编写长 reason、禁止解释文字、禁止 markdown 代码围栏，只输出严格 JSON 数组，格式：",
-    '[{"index":1,"covered":true,"evidence":"","suggestion":""}]',
-  ].join("\n")
-  const user = `【审计清单（共 ${total} 条）】\n${clipText(checklist, 6000)}\n\n${starBlock && starBlock.trim() ? `${starBlock.trim()}\n\n` : ""}【投标文件章节内容（压缩摘要）】\n${digest}\n\n请逐条审计并输出 JSON 数组。`
-  return [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ]
-}
 
 /**
  * AI 输出 → 交卷体检结果。解析不出任何有效条目时抛错——
@@ -5195,52 +5089,9 @@ export function factTopicOf(line: string): string {
   return (m ? m[1] : t).trim().slice(0, 20)
 }
 
-/**
- * 改造 1.3 本地检索：对每条事实取主题词在各章 content 内 indexOf 命中段落切片
- * （每段 ≤400 字、每事实 ≤3 段），拼成核对材料；零 AI 调用。
- */
-export function collectFactEvidence(factLines: string[], chapters: Chapter[], maxPerFact = 3): string {
-  const blocks: string[] = []
-  for (const line of factLines) {
-    const topic = factTopicOf(line)
-    if (!topic) continue
-    const hits: string[] = []
-    for (const ch of chapters) {
-      const content = ch.content ?? ""
-      if (!content.trim()) continue
-      let idx = content.indexOf(topic)
-      let guard = 0
-      while (idx >= 0 && hits.length < maxPerFact && guard < 6) {
-        const from = Math.max(0, idx - 120)
-        hits.push(`《${ch.title}》…${content.slice(from, idx + 280).replace(/\s+/g, " ")}…`)
-        idx = content.indexOf(topic, idx + topic.length + 200)
-        guard += 1
-      }
-      if (hits.length >= maxPerFact) break
-    }
-    blocks.push(`【事实】${line.trim()}\n${hits.length ? hits.map((h) => `- ${h}`).join("\n") : "- （正文中未检索到该主题词）"}`)
-  }
-  return clipText(blocks.join("\n\n"), 12000)
-}
+export { buildFactCheckMessages, PROMPT_VERSION as FACT_CHECK_PROMPT_VERSION } from "./prompts/factCheck"
+export { collectFactEvidence } from "./prompts/factCheck"
 
-/** 改造 1.3：「事实一致性核对」prompt——输入事实表 + 命中段落，输出矛盾清单 JSON */
-export function buildFactCheckMessages(factsBlock: string, evidenceText: string): LlmMessage[] {
-  const system = [
-    "你是投标文件一致性审查专家，负责核对标书正文与「全局事实设定」是否口径一致。",
-    "核对铁律：",
-    "1. 只依据给定段落判断，段落里出现的数值/名称/承诺与事实口径不一致（如工期天数不同、响应时限更长、人员数量更少、型号数量对不上）才算矛盾；",
-    "2. 段落未提及该事实、或表述与事实一致/更优的，不算矛盾，禁止为凑数编造；",
-    "3. quote 原样摘录矛盾句（≤80 字），chapter 用给定段落标注的章名，suggestion 给出应改成的统一口径（≤60 字）；",
-    "4. 无任何矛盾时输出空数组 []。",
-    "输出严格 JSON 数组，禁止解释文字、禁止 markdown 代码围栏，格式：",
-    '[{"fact":"事实行","chapter":"章名","quote":"矛盾原句","suggestion":"修改建议"}]',
-  ].join("\n")
-  const user = `${factsBlock}\n\n【各章命中事实关键词的段落】\n${evidenceText || "（正文中未检索到任何事实关键词）"}\n\n请逐条核对并输出矛盾清单 JSON 数组。`
-  return [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ]
-}
 
 /** AI 输出 → 矛盾清单（解析失败返回空数组，由调用方给绿态文案） */
 export function sanitizeFactConflicts(rawText: string): FactConflict[] {
@@ -5274,48 +5125,8 @@ export type FactPatchItem = {
   new_text: string
 }
 
-/**
- * 「一键修复」prompt——输入矛盾清单 + 各矛盾所在章的正文截段（每章前 6000 字），
- * 输出 [{chapter, old_text, new_text}] 替换补丁；铁律要求 old_text 原样复制、唯一命中、
- * new_text 最小改动（本地校验见 useBidWorkspace.runFactPatch，不唯一/缺失一律跳过）。
- */
-export function buildFactPatchMessages(conflicts: FactConflict[], chapters: Chapter[]): LlmMessage[] {
-  const usedTitles: string[] = []
-  const blocks: string[] = []
-  for (const c of conflicts) {
-    const t = (c.chapter ?? "").trim()
-    if (!t || usedTitles.includes(t)) continue
-    usedTitles.push(t)
-    const ch =
-      (chapters ?? []).find((x) => (x.title ?? "").trim() === t) ??
-      (chapters ?? []).find((x) => {
-        const xt = (x.title ?? "").trim()
-        return xt !== "" && (xt.includes(t) || t.includes(xt))
-      })
-    blocks.push(`【章名：${t}】\n${clipText(ch?.content ?? "（未找到该章正文）", 6000)}`)
-  }
-  const conflictLines = (conflicts ?? [])
-    .map(
-      (c, i) =>
-        `${i + 1}. 事实口径：${c.fact}\n   所在章：${c.chapter || "（未标注）"}\n   矛盾原句：「${c.quote}」\n   修改建议：${c.suggestion || "（无）"}`,
-    )
-    .join("\n")
-  const system = [
-    "你是投标文件正文修复专家。给你「事实口径矛盾清单」与矛盾所在章的正文截段，请生成精确的替换补丁，把正文中与事实口径矛盾的句子改成与口径一致。",
-    "修复铁律：",
-    "1. old_text 必须从下面正文截段中逐字原样复制（含标点与空格），并且必须在该章全文中只出现一次；严禁改写、缩写、拼接跨句或自造正文里没有的片段；",
-    "2. new_text 是在 old_text 基础上做最小改动后的文本：只修改与事实口径矛盾的数值/名称/期限等成分，其余文字保持原样，长度与 old_text 相近；",
-    "3. 只修复矛盾清单涉及的句子，清单以外的内容一律不动；正文截段里找不到矛盾原句、或拿不准怎么改的条目，直接不输出该条，禁止硬凑；",
-    "4. chapter 填矛盾清单标注的章名原文；",
-    "5. 输出严格 JSON 数组，禁止解释文字、禁止 markdown 代码围栏，格式：",
-    '[{"chapter":"章名","old_text":"原样复制自正文的片段","new_text":"修改后的片段"}]',
-  ].join("\n")
-  const user = `【事实口径矛盾清单】\n${conflictLines || "（无矛盾）"}\n\n【矛盾所在章正文截段】\n${blocks.join("\n\n") || "（无正文截段）"}\n\n请输出替换补丁 JSON 数组。`
-  return [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ]
-}
+export { buildFactPatchMessages, PROMPT_VERSION as FACT_PATCH_PROMPT_VERSION } from "./prompts/factPatch"
+
 
 /** AI 输出 → 替换补丁清单（解析失败抛错交由调用方 JSON 修复重试；空改/超长条目过滤，上限 50 条） */
 export function sanitizeFactPatches(rawText: string): FactPatchItem[] {
