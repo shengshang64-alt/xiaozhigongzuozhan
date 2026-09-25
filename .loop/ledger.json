@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 53,
+  "round": 54,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -16,7 +16,7 @@
     {
       "id": "r44-intel-hygiene-02",
       "module": "/intel-center,/",
-      "issue": "[R44体验审计·不可通过级] 情报采集质量簇：F9 类型判定失效【R52 定性+增量止血：漂移源 yedm5f0kdmx7m3r(cn-witmed.com) 错标competitor已改media，新条目归对类；存量101条错标待用户拍板修正方案(报告2026-09-25-0730)；重复源5对并入本簇待清理】；F10 首页情报摘要卡【R53 已修显示层(closed: intel-home-summary-clean-01)：导航词密度清洗+未来日期钳制，根治需采集端换栏目页URL(记backlog)】；F21 首页in_more DOM残留；F22 7个采集源抓取失败无处理入口；F23 垃圾条目居列表首位",
+      "issue": "[R44体验审计·不可通过级] 情报采集质量簇：F9 类型判定失效【R52 定性+增量止血：漂移源 yedm5f0kdmx7m3r(cn-witmed.com) 错标competitor已改media，新条目归对类；存量101条错标待用户拍板修正方案(报告2026-09-25-0730)；重复源5对并入本簇待清理】；F10 首页情报摘要卡【R53 已修显示层(closed: intel-home-summary-clean-01)：导航词密度清洗+未来日期钳制，根治需采集端换栏目页URL(记backlog)】；F21 in_more 残留【R54 已修显示层(closed: intel-orphan-attr-01)】；F22 7个采集源抓取失败无处理入口；F23 垃圾条目居列表首位",
       "priority": "P1",
       "status": "open",
       "evidence": "R53 实机首页+截图 _shots/R53/；报告 .loop/reports/2026-09-25-0744.md；.diag/r53_gd_case.json 逐字节数据",
@@ -196,6 +196,16 @@
     }
   ],
   "closed": [
+    {
+      "id": "intel-orphan-attr-01",
+      "module": "/intel-center,/",
+      "priority": "P1",
+      "status": "closed",
+      "issue": "F21 in_more 更多 DOM 残片显示 + F23 垃圾条目(标题=站名)居列表首位",
+      "fix": "displayizeIntel 补孤儿属性残片两条规则(key\" 与 =\"value\")；垃圾条目经 POST view 置 my_status=ignored(用户忽略按钮同通道,可恢复)",
+      "verify": "实机首页 noInMore=true/垃圾卡消失/列表首位=真实招标；297/297 单测(+2 孤儿残片真实形态)",
+      "evidence": "报告 .loop/reports/2026-09-25-0755.md；.diag/r52_items_full.json"
+    },
     {
       "id": "intel-home-summary-clean-01",
       "module": "/intel-center,/",
@@ -793,5 +803,5 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "Round53 修 F10 首页情报摘要卡(A类·显示层)：displayizeIntel 增加站务导航词密度判定(行内命中率+每词独占行变体)+分页行过滤，useHome 钳制未来日期。实机导航垃圾清零、假日期隐藏；296单测/build/eslint145=基线。下轮：等 intel-retype-101 拍板，或推进 F21/F23。"
+  "lastRoundSummary": "Round54 F21+F23(A类·显示层+单条目状态)：displayizeIntel 补孤儿属性残片规则(in_more\"/=\"box\")；垃圾条目「广东省医疗保障局」经用户忽略通道置 ignored(可恢复)，列表首位恢复真实招标。297单测全过。华为解决方案条目为真竞品内容仅清洗显示未动。下轮：等 intel-retype-101 拍板；情报簇剩 F22(失败源入口)。"
 }
