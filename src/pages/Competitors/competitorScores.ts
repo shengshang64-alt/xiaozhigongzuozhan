@@ -131,6 +131,57 @@ export function finalScores(row: CompetitorRow, rows: CompetitorRow[]): number[]
 }
 
 /** 导出对比矩阵 CSV（含 BOM，Excel 中文不乱码） */
+
+// ---------------------------------------------------------------------------
+// R71/F24：对比重点速览——把能力矩阵自动提炼成 3-4 条「人话结论」，
+// 解决"满屏数字看不到重点"（售前 2 分钟内要知道：赢哪、输哪、防谁）。
+// 纯本地计算零 AI；只描述已选竞品范围内的对比事实，不做无依据推断。
+// ---------------------------------------------------------------------------
+
+export type CompareTakeaway = { kind: "lead" | "gap" | "threat"; text: string }
+
+export type TakeawayEntry = { name: string; scores: number[]; copyrights: number; positioning: string }
+
+export function buildCompareTakeaways(entries: TakeawayEntry[]): CompareTakeaway[] {
+  const out: CompareTakeaway[] = []
+  const self = entries.find((e) => e.name === "智业软件") ?? entries[0]
+  if (!self) return out
+  const rivals = entries.filter((e) => e !== self)
+  if (!rivals.length) return out
+
+  // ① 领先维度（我方为唯一领先者且分值≥4，最多取 2 条）
+  const leads: string[] = []
+  for (let d = 0; d < CAPABILITY_DIMS.length && leads.length < 2; d++) {
+    const mx = Math.max(...entries.map((e) => e.scores[d] ?? 0))
+    const mine = self.scores[d] ?? 0
+    if (mine === mx && mine >= 4 && rivals.every((r) => (r.scores[d] ?? 0) < mine)) {
+      leads.push(`「${CAPABILITY_DIMS[d]}」${mine} 分（其余对手最高 ${Math.max(...rivals.map((r) => r.scores[d] ?? 0))} 分）`)
+    }
+  }
+  if (leads.length) out.push({ kind: "lead", text: `我方领先：${leads.join("；")}` })
+
+  // ② 最大差距维度（最强对手与我方分差最大的维度）
+  let worst = { dim: "", rival: "", diff: 0 }
+  for (let d = 0; d < CAPABILITY_DIMS.length; d++) {
+    const mine = self.scores[d] ?? 0
+    for (const r of rivals) {
+      const diff = (r.scores[d] ?? 0) - mine
+      if (diff > worst.diff) worst = { dim: CAPABILITY_DIMS[d], rival: r.name, diff }
+    }
+  }
+  if (worst.diff > 0) {
+    out.push({ kind: "gap", text: `最大差距：${worst.dim}落后 ${worst.rival} ${worst.diff} 分（我方 ${self.scores[CAPABILITY_DIMS.indexOf(worst.dim as (typeof CAPABILITY_DIMS)[number])]} 分）——标书中需重点应对` })
+  }
+
+  // ③ 头号威胁（六维合计最高的竞品 + 其定位摘要首句）
+  const totals = rivals.map((r) => ({ name: r.name, total: r.scores.reduce((a, b) => a + (b || 0), 0), pos: (r.positioning || "").replace(/\s+/g, " ").slice(0, 60) }))
+  totals.sort((a, b) => b.total - a.total)
+  if (totals.length && (!self || totals[0].total > self.scores.reduce((a, b) => a + (b || 0), 0))) {
+    out.push({ kind: "threat", text: `最需关注：${totals[0].name}（六维合计 ${totals[0].total} 分）${totals[0].pos ? `——${totals[0].pos}` : ""}` })
+  }
+  return out
+}
+
 export function buildCompareCsv(entries: { name: string; scores: number[] }[]): string {
   const head = ["能力维度", ...entries.map((e) => e.name)].join(",")
   const lines = CAPABILITY_DIMS.map((dim, r) => [dim, ...entries.map((e) => e.scores[r] ?? "")].join(","))

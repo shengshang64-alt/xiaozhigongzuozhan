@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { estimateScores, CAPABILITY_DIMS } from "./competitorScores"
+import { estimateScores, buildCompareTakeaways, CAPABILITY_DIMS } from "./competitorScores"
 import type { CompetitorRow } from "./competitorsCore"
 
 function row(patch: Partial<CompetitorRow>): CompetitorRow {
@@ -64,3 +64,29 @@ describe("estimateScores · 启发式去饱和（R63/F20）", () => {
 function finalOfBoth(a: CompetitorRow, b: CompetitorRow): number[][] {
   return [estimateScores(a, [a, b]), estimateScores(b, [a, b])]
 }
+
+
+describe("buildCompareTakeaways · 对比重点速览（R71/F24）", () => {
+  const mk = (name: string, scores: number[], copyrights: number, positioning: string) => ({ name, scores, copyrights, positioning })
+  const self = mk("智业软件", [4, 3, 3, 4, 4, 4], 340, "区域型 HIS 厂商")
+  const strong = mk("东软集团", [5, 5, 4, 3, 4, 2], 2860, "老牌全域 HIT 厂商，覆盖全国")
+  const weak = mk("某小厂", [2, 2, 2, 2, 2, 5], 20, "本地化小团队")
+
+  it("产出 领先/差距/头号威胁 三类结论", () => {
+    const out = buildCompareTakeaways([self, strong, weak])
+    expect(out.some((t) => t.kind === "gap" && t.text.includes("集成平台"))).toBe(true)
+    expect(out.some((t) => t.kind === "threat" && t.text.includes("东软集团"))).toBe(true)
+    expect(out.some((t) => t.kind === "lead")).toBe(true)
+  })
+
+  it("我方全维领先时无差距条目", () => {
+    const best = mk("智业软件", [5, 5, 5, 5, 5, 5], 340, "")
+    const out = buildCompareTakeaways([best, weak])
+    expect(out.some((t) => t.kind === "gap")).toBe(false)
+    expect(out.some((t) => t.kind === "lead")).toBe(true)
+  })
+
+  it("只有我方时返回空", () => {
+    expect(buildCompareTakeaways([self])).toEqual([])
+  })
+})

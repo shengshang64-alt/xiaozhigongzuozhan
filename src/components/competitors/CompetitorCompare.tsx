@@ -1,7 +1,7 @@
 // 竞品对比分析工作区：顶部多选选择器 + KPI + 能力雷达/矩阵（左）+ AI 差异化话术可复制（右）。
 // 数据全部来自真实竞品档案；能力分为档案启发式估算（界面注明），话术由模型网关生成。
 import { useCallback, useMemo, useState } from "react"
-import { BarChart3, Check, Copy, Download, MessageSquare, Plus, RefreshCw, Sparkles } from "lucide-react"
+import { BarChart3, Check, Copy, Crosshair, Download, MessageSquare, Plus, RefreshCw, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import type { EChartsOption } from "echarts"
 import { EChart } from "@/components/common/EChart"
@@ -17,6 +17,7 @@ import {
   buildCompareCsv,
   compareColor,
   finalScores,
+  buildCompareTakeaways,
 } from "@/pages/Competitors/competitorScores"
 import { useCompetitorTalks, type TalkKind } from "@/pages/Competitors/useCompetitorTalks"
 
@@ -106,6 +107,20 @@ export function CompetitorCompare({
     [entries],
   )
   const selfLead = selfEntry ? dimBest.filter((b) => b.leaders.some((l) => l.row.id === selfEntry.row.id)).length : 0
+
+  // R71/F24：对比重点速览——把矩阵提炼成人话结论（领先/差距/头号威胁）
+  const takeaways = useMemo(
+    () =>
+      buildCompareTakeaways(
+        entries.map((e) => ({
+          name: e.row.name,
+          scores: e.scores,
+          copyrights: e.row.software_copyrights || 0,
+          positioning: e.row.positioning || "",
+        })),
+      ),
+    [entries],
+  )
   const threatPending = competitors.filter((e) => !e.row.threat_notes?.trim()).length
 
   // ------------------------------ 雷达图 ------------------------------
@@ -204,6 +219,39 @@ export function CompetitorCompare({
           </div>
         </CardContent>
       </Card>
+
+      {/* R71/F24：对比重点速览（自动提炼，零 AI） */}
+      {takeaways.length > 0 ? (
+        <Card className="border-primary/30 bg-primary/[0.04]">
+          <CardContent className="p-4">
+            <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-wide text-primary">
+              <Crosshair className="h-3.5 w-3.5" />
+              对比重点
+            </p>
+            <ul className="space-y-1.5 text-sm leading-relaxed text-foreground">
+              {takeaways.map((t, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span
+                    className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
+                      t.kind === "lead" ? "bg-green-500" : t.kind === "gap" ? "bg-destructive" : "bg-amber-500"
+                    }`}
+                  />
+                  <span>
+                    {t.kind === "lead" ? (
+                      <strong className="font-semibold text-green-700">领先·</strong>
+                    ) : t.kind === "gap" ? (
+                      <strong className="font-semibold text-destructive">差距·</strong>
+                    ) : (
+                      <strong className="font-semibold text-amber-700">防·</strong>
+                    )}
+                    {t.text}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* KPI 行 */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

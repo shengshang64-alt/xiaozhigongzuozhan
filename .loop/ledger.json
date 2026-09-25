@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 70,
+  "round": 71,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -894,5 +894,5 @@
     }
   ],
   "noProgressStreak": 1,
-  "lastRoundSummary": "R70 提示词搬迁第六批 6/7：bidSection(9.3K最大)/bidContinue/deviationMap/commercialPair 四组搬迁。本批跨区 re-export 密集，连锁修复4处（被吞re-export还原/BidRefineKind本地声明澄清/依赖import补齐）。344/344+快照24份。bidTypes 214K(累计净减约71K)。"
+  "lastRoundSummary": "R71/F24 竞品分析重点卡(用户实测反馈,B类)：buildCompareTakeaways 从能力矩阵提炼3条人话结论(我方领先/最大差距点名对手/头号威胁带定位摘要)，对比分析页顶部重点卡，零AI随勾选实时更新。347/347。"
 }
