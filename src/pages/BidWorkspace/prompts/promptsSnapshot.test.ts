@@ -15,6 +15,10 @@ import {
   buildCoverageAuditMessages,
   buildOutlineLevel1Messages,
   buildOutlineChildrenMessages,
+  buildBidSectionMessages,
+  buildBidContinueMessages,
+  buildDeviationMapMessages,
+  buildEvalCommercialMessages,
   buildTenderParseMessages,
   buildSectionParseMessages,
   buildBidOutlineMessages,
@@ -235,6 +239,53 @@ describe("R65 提示词搬迁快照（prompts/* 只搬不改字）", () => {
         (nodes) => (nodes ?? []).map((n) => n.title).join("\n"),
         { globalFacts: "【全局事实】本项目工期：90 天", wordBudget: 2000, figures: false },
       ),
+    ).toMatchSnapshot()
+  })
+
+  it("R70 第六批：buildBidSectionMessages 内容与搬迁时一致", () => {
+    expect(
+      buildBidSectionMessages(
+        "医院一体化核心业务系统",
+        "安徽中医药大学第一附属医院",
+        null,
+        [{ id: "n5", title: "第五章 安全设计", children: [], part: "tech" }],
+        [{ title: "第五章 安全设计", node_id: "n5", sections: ["5.1 总体架构"], gen_status: "done", content: "……" }],
+        0,
+        (nodes: { title: string }[]) => (nodes ?? []).map((n) => n.title).join("\n"),
+        { globalFacts: "【全局事实】本项目工期：90 天", wordBudget: 1500, figures: false, sectionName: "5.1 总体架构", sectionNo: "5.1", sectionIndex: 0, sectionCount: 3 },
+      ),
+    ).toMatchSnapshot()
+  })
+
+  it("R70 第六批：buildBidContinueMessages 内容与搬迁时一致", () => {
+    expect(
+      buildBidContinueMessages(
+        "医院一体化核心业务系统",
+        "安徽中医药大学第一附属医院",
+        null,
+        "第五章 安全设计",
+        5,
+        "已写正文……",
+        2000,
+        "【全局事实】本项目工期：90 天",
+      ),
+    ).toMatchSnapshot()
+  })
+
+  it("R70 第六批：buildDeviationMapMessages 内容与搬迁时一致", () => {
+    expect(
+      buildDeviationMapMessages(
+        [{ id: "R1", source: "招标第三章", text: "系统响应时间不超过 3 秒" }],
+        [{ id: "n1", title: "第五章 安全设计", children: [], part: "tech" }],
+        [{ title: "第五章 安全设计", node_id: "n1", sections: [], gen_status: "done", content: "响应时间 2 秒。" }],
+        "【全局事实】本项目工期：90 天",
+      ),
+    ).toMatchSnapshot()
+  })
+
+  it("R70 第六批：buildEvalCommercialMessages 内容与搬迁时一致", () => {
+    expect(
+      buildEvalCommercialMessages("【全局事实】本项目工期：90 天", "【商务要求】工期 90 天", "投标文件段落：工期 90 天。"),
     ).toMatchSnapshot()
   })
 })
