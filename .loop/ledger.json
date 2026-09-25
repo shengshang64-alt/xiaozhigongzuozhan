@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 62,
+  "round": 63,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -27,7 +27,7 @@
       "module": "/competitors",
       "issue": "[R44体验审计] 原记 F8'能力矩阵数据错位（4家却渲染7-8列）'——R45 实机 DOM 精确测量证伪：列头=1能力列+4公司列、每行4组星级，列数与对标公司数完全对齐，F8 不可复现予以撤回。本簇仅保留真实存在的 F20：CDSS/AI 维度四家均被启发式打满分（5/5/5/5）、区分度不足——属 estimateScores 关键词启发式饱和（非渲染 bug），修需调评分算法口径，降为 P3",
       "priority": "P3",
-      "status": "open",
+      "status": "closed",
       "evidence": "R45 取证反转：evaluate_script 实测 thead=[能力维度,智业软件,东软集团,万达信息,久远银海]、6行×4列对齐；实心星分布有区分度（如实施交付 2/3/4/4）仅 CDSS/AI 全 5；localStorage 无评分覆盖（zx_comp_scores_v1=null，启发式直出）",
       "diff": ""
     },
@@ -206,6 +206,16 @@
     }
   ],
   "closed": [
+    {
+      "id": "r44-competitor-matrix-03",
+      "module": "/competitors",
+      "priority": "P3",
+      "status": "closed",
+      "issue": "F20 CDSS/AI 维度启发式四家全满分无区分度（estimateScores 关键词饱和）",
+      "fix": "短英文关键词(ai/app/esb/hl7/fhir/emr/itss/saas)词边界匹配 + 命中密度分级 hitsToScore(无命中2/单命中3/全命中5)，软著中位数加成保留",
+      "verify": "真实20家档案复算：AI维旧18家满分→新2/3/4/5分布；319/319单测(+4含边界/分级/区分度/价格维不变)",
+      "evidence": ".diag/r63_rows.json 复算数据；competitorScores.test.ts"
+    },
     {
       "id": "assistant-writeback",
       "module": "/assistant",
@@ -873,5 +883,5 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "R62/⑤ 助手技能采用落地(C类经用户同意)：用户消息盖 skillName 戳(confirmSkillFill 传递,会话内存)；ChatStream 技能产出卡按类型给落点——跟进邮件→客户选择器存 follow_records(既有接口零schema)/周报→docx下载/竞品分析→复制+跳档案。315/315单测+门禁绿+助手页实机加载正常。真实技能流走查未跑(省AI额度,用户自验路径已给)。"
+  "lastRoundSummary": "R63/F20 竞品能力矩阵去饱和(P3,A类)：estimateScores 短英文关键词词边界匹配+命中密度分级(单命中3/全命中5)，真实20家档案验证 AI 维从 18 家满分降为 2/3/4/5 合理分布且与软著规模正相关。319/319 单测。"
 }
