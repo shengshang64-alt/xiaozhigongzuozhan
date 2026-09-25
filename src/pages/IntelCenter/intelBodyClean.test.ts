@@ -132,6 +132,14 @@ describe("displayizeIntel", () => {
     expect(out).not.toContain("长者助手")
     expect(out).toContain("医保码五大使用场景")
   })
+  it("R54/F21：孤儿属性残片剔除（in_more\" 与 =\"box\" 真实形态）", () => {
+    const out1 = displayizeIntel("in_more\" 更多 09-24 洪石陈：AI重构医院网络安全防范全流程")
+    expect(out1).not.toContain("in_more")
+    expect(out1).toContain("洪石陈")
+    const out2 = displayizeIntel('="box" 一院多区 通过构建多院区云网边资源一体化底座助力公立医院')
+    expect(out2).not.toContain("box")
+    expect(out2).toContain("一院多区")
+  })
   it("R53/F10：正常摘要不误杀（连写长句含单个导航词、含空格但导航占比低）", () => {
     expect(displayizeIntel("国家卫生健康委发布电子病历评级新标准，政务服务事项同步纳入互联互通测评范围")).toContain("电子病历评级新标准")
     expect(displayizeIntel("四川省医保局印发门诊统筹新规 覆盖全省城乡居民")).toContain("门诊统筹新规")

@@ -89,6 +89,9 @@ export function displayizeIntel(raw: string, max = 120): string {
     .replace(/[\w:.-]+\s*=\s*"[^"]*"/g, " ")
     .replace(/[\w:.-]+\s*=\s*'[^']*'/g, " ")
     .replace(/[\w:.-]+\s*=\s*[^\s"'<>]+/g, " ")
+    // R54/F21：孤儿残片——key 丢等号的 `in_more"`、value 丢 key 的 `="box"`（CHIMA/华为页实测形态）
+    .replace(/="[^"]*"/g, " ")
+    .replace(/\b[\w:.-]{2,}"/g, " ")
     .replace(/[<>]/g, " ") // 角度括号一律视为噪声
     .replace(/[\w/.-]*\.(?:jpg|jpeg|png|gif|webp|bmp)["']?/gi, " ") // 图片路径残片（含尾随半截引号）
     // 注：不删全/半角引号——中文引号 “” 是合法正文；标签残留中的 ASCII 引号已被上面「属性对」规则成对吃掉
