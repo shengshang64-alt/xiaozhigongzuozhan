@@ -17,6 +17,13 @@ describe("scanScoreItems · 分钟≠分值（R47/F7）", () => {
     const r = scanScoreItems(["技术方案（20分）", "实施团队：15分", "售后服务质量10分"].join("\n"))
     expect(r.items.map((i) => i.score).sort((a, b) => a - b)).toEqual([10, 15, 20])
   })
+  it("R61/r47-scan-name-trunc-06：中文贴身式行项名不再截掉末字", () => {
+    const r = scanScoreItems(["3.系统响应速度15分", "4.数据备份能力10分"].join("\n"))
+    expect(r.items.map((i) => i.name)).toEqual(["系统响应速度", "数据备份能力"])
+    // 贴身假阳性字（值得/加分/扣分）与括号/冒号式不受影响
+    const r2 = scanScoreItems(["技术方案（20分）", "实施团队：15分", "每答对一项得5分"].join("\n"))
+    expect(r2.items.map((i) => i.name)).toEqual(["技术方案", "实施团队"])
+  })
   it("同屏混合：评分行保留、时长行剔除（回归到 13431 修后预期）", () => {
     const r = scanScoreItems(["技术部分（60分）", "投标截止时间：30分钟内", "系统响应速度15分"].join("\n"))
     expect(r.items).toHaveLength(1)

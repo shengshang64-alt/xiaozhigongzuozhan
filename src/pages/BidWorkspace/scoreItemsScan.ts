@@ -86,7 +86,10 @@ export function scanScoreItems(text: string): {
     }
     const score = pickScore(line)
     if (score === null || score <= 0 || score > 100) continue
-    const markerIdx = line.search(SCORE_MARKER)
+    // R61/r47-scan-name-trunc-06：贴身式（汉字+数字分）的匹配把分值前一个汉字含进起点，
+    // 该汉字属于项名——markerIdx 后移一字，名字不再截尾（如「系统响应速度15分」全名保留）
+    const markerMatch = SCORE_MARKER.exec(line)
+    const markerIdx = markerMatch ? markerMatch.index + (/^[\u4e00-\u9fa5]/.test(markerMatch[0]) ? 1 : 0) : -1
     const name = cleanName(line, markerIdx)
     if (!name || name.length < 2) continue
     if (/^(序号|评分因素|评分项|评审因素|分值|评分标准)$/.test(name)) continue
