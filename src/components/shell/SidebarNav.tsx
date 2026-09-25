@@ -20,35 +20,47 @@ import { getCachedTeamProfile } from "@/lib/teamAuth"
 type NavItem = { path: string; label: string; icon: typeof FileText; adminOnly?: boolean }
 type NavSection = { title: string; items: NavItem[] }
 
-// 导航分组与「界面重构原型」对齐：概览 / 核心工作 / 资源与知识 / 系统
+// 导航分组与《小智工作站-重构设计方案》对齐（docs/redesign/）：按售前作战阶段重排
+// 总览 → 发现 → 研判 → 制胜 → 决胜 → 沉淀 → 支撑（导航即作战地图）
 const NAV_SECTIONS: NavSection[] = [
   {
-    title: "概览",
-    items: [{ path: "/", label: "工作台", icon: LayoutGrid }],
+    title: "总览",
+    items: [{ path: "/", label: "作战驾驶舱", icon: LayoutGrid }],
   },
   {
-    title: "核心工作",
+    title: "发现",
+    items: [{ path: "/intel-center", label: "情报中心", icon: Search }],
+  },
+  {
+    title: "研判",
+    items: [{ path: "/customer-management", label: "客户管理", icon: Users }],
+  },
+  {
+    title: "制胜",
     items: [
-      { path: "/solution-studio", label: "方案编制", icon: FileText },
-      { path: "/bid-workspace", label: "标书工作", icon: FileCheck2 },
+      { path: "/solution-studio", label: "方案工作室", icon: FileText },
       { path: "/ppt-quote", label: "PPT 与报价", icon: Monitor },
+    ],
+  },
+  {
+    title: "决胜",
+    items: [
+      { path: "/bid-workspace", label: "标书工作台", icon: FileCheck2 },
       { path: "/format-tool", label: "格式刷新", icon: Type },
     ],
   },
   {
-    title: "资源与知识",
+    title: "沉淀",
     items: [
-      { path: "/intel-center", label: "情报中心", icon: Search },
-      { path: "/competitors", label: "竞品分析", icon: Building2 },
-      { path: "/customer-management", label: "客户管理", icon: Users },
       { path: "/knowledge", label: "知识库", icon: BookOpen },
+      { path: "/competitors", label: "竞品分析", icon: Building2 },
     ],
   },
   {
-    title: "系统",
+    title: "支撑",
     items: [
-      { path: "/model-config", label: "模型配置", icon: Settings },
       { path: "/assistant", label: "小智助手", icon: Bot },
+      { path: "/model-config", label: "模型配置", icon: Settings },
       { path: "/team", label: "团队管理", icon: UserCog, adminOnly: true },
     ],
   },

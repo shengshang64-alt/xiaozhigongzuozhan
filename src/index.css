@@ -63,6 +63,7 @@ body {
      烧主题前 token 未定义时这两行按无效值优雅回退, 无副作用. */
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
+  font-feature-settings: "tnum" 1;
 }
 
 /* 中英混排对齐:一行里英文(尤其 ds 的 display/像素字体如 Press Start 2P)和中文(系统黑体)

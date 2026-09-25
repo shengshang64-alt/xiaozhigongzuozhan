@@ -1,0 +1,1409 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小智工作站 · 静态原型</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230E7490'/%3E%3Cpath d='M9 22V10l7 7 7-7v12' stroke='white' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap">
+<style>
+:root{
+  --primary-50:#ECF8FA;--primary-100:#D2F0F5;--primary-200:#A6E0EA;--primary-300:#6CC8D8;
+  --primary-400:#33A9C0;--primary-500:#158BA3;--primary-600:#0E7490;--primary-700:#0C5E75;
+  --primary-800:#0E4E61;--primary-900:#104252;--primary-950:#042B38;
+  --page:#F2F6F7;--subtle:#E9EFF1;--card:#FFFFFF;--border:#DCE5E8;--border-strong:#C5D2D7;
+  --ink:#0F2A33;--text:#334B55;--muted:#647B85;--faint:#8BA0A9;
+  --success:#1F9D6E;--success-bg:#E5F6EE;--warning:#C9832A;--warning-bg:#FBF0DD;
+  --danger:#CF4747;--danger-bg:#FBEAEA;--info:#2E79B9;--info-bg:#E8F1F9;
+  --purple:#7B5BB0;--purple-bg:#F0EBF7;
+  --chart-1:#0E7490;--chart-2:#2E79B9;--chart-3:#7B5BB0;--chart-4:#C9832A;--chart-5:#1F9D6E;
+  --sidebar:#0A242E;--sidebar-2:#0C2B37;--sidebar-text:#9DB9C3;--sidebar-active:#143D4C;
+  --r-card:10px;--r-ctl:8px;--r-sm:6px;
+  --sh-sm:0 1px 2px rgba(15,42,51,.05);--sh-card:0 1px 3px rgba(15,42,51,.06),0 1px 2px rgba(15,42,51,.04);
+  --sh-pop:0 10px 28px rgba(15,42,51,.14);
+  --font:"Noto Sans SC",-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;
+  --sb-w:232px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--page);color:var(--text);font-size:13.5px;line-height:1.6;-webkit-font-smoothing:antialiased;font-feature-settings:"tnum" 1}
+::selection{background:var(--primary-200)}a{color:var(--primary-600);text-decoration:none;cursor:pointer}
+button{font-family:var(--font);cursor:pointer}ul{list-style:none}
+::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:#c3d0d5;border-radius:100px;border:2px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ===== 登录 ===== */
+.login-wrap{min-height:100vh;display:grid;grid-template-columns:1.1fr 1fr}
+.login-art{background:linear-gradient(150deg,#0E4E61,#0A242E);color:#fff;padding:64px;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden}
+.login-art::after{content:"";position:absolute;right:-120px;bottom:-120px;width:420px;height:420px;border-radius:50%;border:1px solid rgba(255,255,255,.08)}
+.login-art::before{content:"";position:absolute;right:-40px;top:-80px;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,rgba(51,169,192,.25),transparent 70%)}
+.login-art .lb{display:flex;align-items:center;gap:12px;position:relative;z-index:2}
+.login-art .lb .lg{width:42px;height:42px;border-radius:11px;background:linear-gradient(145deg,var(--primary-400),var(--primary-600));display:flex;align-items:center;justify-content:center}
+.login-art .lb b{font-size:18px}
+.login-art h2{font-size:34px;font-weight:800;line-height:1.35;margin-bottom:18px;position:relative;z-index:2}
+.login-art p{color:#9fc0cb;font-size:14px;position:relative;z-index:2;max-width:400px}
+.login-art .lf{position:relative;z-index:2;color:#7fa0ab;font-size:12px}
+.login-form{display:flex;align-items:center;justify-content:center;padding:48px}
+.login-card{width:100%;max-width:360px}
+.login-card h3{font-size:23px;color:var(--ink);font-weight:800;margin-bottom:6px}
+.login-card .sub{color:var(--muted);font-size:13px;margin-bottom:28px}
+
+/* ===== 外壳布局 ===== */
+.app{display:flex;min-height:100vh}
+.sidebar{width:var(--sb-w);background:linear-gradient(180deg,var(--sidebar-2),var(--sidebar));flex:none;display:flex;flex-direction:column;position:fixed;top:0;bottom:0;left:0;z-index:40;overflow-y:auto;transition:transform .2s}
+.sb-brand{display:flex;align-items:center;gap:11px;padding:14px 16px 12px;flex:none}
+.sb-brand .lg{width:36px;height:36px;border-radius:10px;background:linear-gradient(145deg,var(--primary-400),var(--primary-600));display:flex;align-items:center;justify-content:center;flex:none}
+.sb-brand b{font-size:15px;color:#fff;font-weight:700;line-height:1.2;display:block}
+.sb-brand span{font-size:10.5px;color:#7fa0ab;letter-spacing:.5px}
+.sb-nav{flex:none;padding:4px 12px 12px}
+.sb-group{margin-top:10px}
+.sb-group .gt{font-size:10.5px;color:#67828c;font-weight:700;padding:0 10px 6px;letter-spacing:1px}
+.sb-item{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:var(--r-sm);color:var(--sidebar-text);font-size:13.5px;font-weight:500;margin-bottom:2px;transition:.13s;cursor:pointer}
+.sb-item svg{width:17px;height:17px;flex:none;opacity:.85}
+.sb-item:hover{background:rgba(255,255,255,.06);color:#dce9ee}
+.sb-item.active{background:var(--sidebar-active);color:#fff;font-weight:700;box-shadow:inset 2px 0 0 var(--primary-400)}
+.sb-item.active svg{opacity:1}
+.sb-user{flex:none;padding:12px 14px;border-top:1px solid rgba(255,255,255,.07);display:flex;align-items:center;gap:10px}
+.av{width:32px;height:32px;border-radius:50%;background:linear-gradient(145deg,var(--primary-400),var(--primary-700));color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex:none}
+.sb-user .nm{font-size:13px;color:#e6eff2;font-weight:600;line-height:1.2}
+.sb-user .rl{font-size:11px;color:#7fa0ab}
+
+.main{flex:1;margin-left:var(--sb-w);display:flex;flex-direction:column;min-width:0}
+.topbar{height:56px;background:rgba(255,255,255,.86);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;padding:0 22px;position:sticky;top:0;z-index:30}
+.crumb{font-size:12.5px;color:var(--faint);display:flex;align-items:center;gap:7px}
+.crumb b{color:var(--ink);font-weight:700;font-size:13.5px}
+.topbar .sp{flex:1}
+.icon-btn{width:34px;height:34px;border-radius:var(--r-sm);border:1px solid transparent;background:transparent;display:flex;align-items:center;justify-content:center;color:var(--muted);position:relative}
+.icon-btn:hover{background:var(--subtle);color:var(--ink)}
+.icon-btn .dot{position:absolute;top:7px;right:8px;width:7px;height:7px;border-radius:50%;background:var(--danger);border:1.5px solid #fff}
+.search-box{display:flex;align-items:center;gap:8px;background:var(--subtle);border:1px solid transparent;border-radius:var(--r-sm);padding:7px 12px;font-size:12.5px;color:var(--faint);min-width:200px}
+.search-box:hover{border-color:var(--border-strong)}
+.model-pill{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--primary-800);background:var(--primary-50);border:1px solid var(--primary-100);padding:6px 11px;border-radius:100px}
+.content{padding:24px 26px 60px;flex:1}
+
+/* ===== 通用组件 ===== */
+.page-head{display:flex;align-items:flex-start;gap:16px;margin-bottom:22px;flex-wrap:wrap}
+.page-head h1{font-size:21px;font-weight:800;color:var(--ink);letter-spacing:-.2px}
+.page-head p{font-size:13px;color:var(--muted);margin-top:3px}
+.page-head .sp{flex:1}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:var(--r-ctl);font-size:13.5px;font-weight:600;border:1px solid transparent;background:none}
+.btn svg{width:15px;height:15px}
+.btn-primary{background:var(--primary-600);color:#fff}.btn-primary:hover{background:var(--primary-700)}
+.btn-ghost{background:#fff;border-color:var(--border-strong);color:var(--text)}.btn-ghost:hover{background:var(--subtle)}
+.btn-soft{background:var(--primary-50);color:var(--primary-700)}.btn-soft:hover{background:var(--primary-100)}
+.btn-danger{background:var(--danger-bg);color:var(--danger)}
+.btn-sm{padding:6px 11px;font-size:12.5px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);box-shadow:var(--sh-sm)}
+.card-h{padding:15px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.card-h b{font-size:14.5px;color:var(--ink);font-weight:700}
+.card-h .sp{flex:1}
+.card-b{padding:18px}
+.grid{display:grid;gap:16px}.g2{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}
+.kpi{background:#fff;border:1px solid var(--border);border-radius:var(--r-card);padding:16px 18px;box-shadow:var(--sh-sm);position:relative;overflow:hidden}
+.kpi .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.kpi .ic{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center}
+.kpi .v{font-size:27px;font-weight:800;color:var(--ink);line-height:1.1}
+.kpi .l{font-size:12.5px;color:var(--muted);margin-top:3px}
+.kpi .delta{font-size:11.5px;font-weight:700}
+.tag{display:inline-flex;align-items:center;gap:5px;padding:2.5px 9px;border-radius:100px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.t-info{background:var(--info-bg);color:var(--info)}.t-success{background:var(--success-bg);color:var(--success)}
+.t-warning{background:var(--warning-bg);color:var(--warning)}.t-danger{background:var(--danger-bg);color:var(--danger)}
+.t-purple{background:var(--purple-bg);color:var(--purple)}.t-muted{background:var(--subtle);color:var(--muted)}
+.input,.select,textarea.input{width:100%;padding:9px 13px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);font-family:var(--font);font-size:13.5px;background:#fff;color:var(--ink);outline:none}
+.input:focus,.select:focus{border-color:var(--primary-500);box-shadow:0 0 0 3px var(--primary-100)}
+.field{margin-bottom:15px}.field label{display:block;font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:6px}
+.tabs{display:inline-flex;background:var(--subtle);border-radius:var(--r-ctl);padding:3px;gap:2px}
+.tab{padding:7px 15px;border-radius:6px;font-size:13px;font-weight:600;color:var(--muted);background:none;border:none;display:flex;align-items:center;gap:6px}
+.tab.active{background:#fff;color:var(--primary-700);box-shadow:var(--sh-sm)}
+.progress{height:7px;background:var(--subtle);border-radius:100px;overflow:hidden}
+.progress > i{display:block;height:100%;border-radius:100px;background:linear-gradient(90deg,var(--primary-500),var(--primary-400))}
+table.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{background:var(--subtle);text-align:left;padding:10px 14px;font-weight:700;color:var(--ink);font-size:12.5px;border-bottom:1px solid var(--border);white-space:nowrap}
+.tbl td{padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
+.tbl tr:hover td{background:var(--primary-50)}
+.switch{width:38px;height:21px;border-radius:100px;background:var(--border-strong);position:relative;border:none;transition:.15s;flex:none}
+.switch.on{background:var(--primary-600)}.switch::after{content:"";position:absolute;top:2.5px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.15s;box-shadow:var(--sh-sm)}
+.switch.on::after{left:19px}
+.alert{padding:12px 15px;border-radius:var(--r-ctl);font-size:12.5px;display:flex;gap:9px;align-items:flex-start}
+.alert svg{flex:none;margin-top:1px}
+.ic{width:16px;height:16px;flex:none}
+.meta-line .ic{width:12.5px;height:12.5px}
+.mini-actions .ic{width:13px;height:13px}
+.tree-row .ic{width:13px;height:13px}
+.col-h .ic{width:15px;height:15px}
+.card-h .ic{width:15px;height:15px}
+.icon-btn .ic{width:17px;height:17px}
+.alert-info{background:var(--info-bg);color:#1f5b86}.alert-warn{background:var(--warning-bg);color:#8a5a17}
+.alert-danger{background:var(--danger-bg);color:#9c3535}.alert-success{background:var(--success-bg);color:#17704f}
+
+/* 三栏工作台 */
+.three{display:grid;grid-template-columns:218px 1fr 320px;gap:16px;align-items:start;height:calc(100vh - 56px - 48px)}
+.col{background:#fff;border:1px solid var(--border);border-radius:var(--r-card);display:flex;flex-direction:column;overflow:hidden;box-shadow:var(--sh-sm);min-height:0}
+.col-h{padding:13px 16px;border-bottom:1px solid var(--border);font-weight:700;color:var(--ink);font-size:13.5px;display:flex;align-items:center;gap:8px}
+.col-b{padding:14px;overflow-y:auto;flex:1}
+.filter-block{margin-bottom:18px}.filter-block .ft{font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px}
+.optrow{display:flex;flex-wrap:wrap;gap:6px}
+.opt{padding:5px 11px;border-radius:6px;font-size:12px;font-weight:600;background:var(--subtle);color:var(--muted);border:1px solid transparent}
+.opt.on{background:var(--primary-50);color:var(--primary-700);border-color:var(--primary-200)}
+.list-card{border:1px solid var(--border);border-radius:var(--r-ctl);padding:12px 13px;margin-bottom:10px;transition:.13s}.list-card[onclick]{cursor:pointer}
+.list-card:hover{border-color:var(--primary-300);box-shadow:var(--sh-sm)}
+.list-card.on{border-color:var(--primary-500);background:var(--primary-50);box-shadow:inset 2px 0 0 var(--primary-600)}
+.list-card h5{font-size:13.5px;color:var(--ink);font-weight:700;line-height:1.45;margin-bottom:7px}
+.meta-line{font-size:11.5px;color:var(--faint);display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:7px}
+.mini-actions{display:flex;gap:5px;margin-top:10px;flex-wrap:wrap}
+.mini-actions button{font-size:11.5px;padding:4px 9px;border-radius:6px;border:1px solid var(--border);background:#fff;color:var(--muted);font-weight:600}
+.mini-actions button:hover{border-color:var(--primary-400);color:var(--primary-700)}
+
+/* 步骤条 */
+.stepper{display:flex;align-items:center;background:#fff;border:1px solid var(--border);border-radius:var(--r-card);padding:14px 18px;margin-bottom:18px;overflow-x:auto;box-shadow:var(--sh-sm)}
+.step{display:flex;align-items:center;gap:9px;cursor:pointer;flex:none}
+.step .num{width:28px;height:28px;border-radius:50%;background:var(--subtle);color:var(--muted);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex:none}
+.step .nm{font-size:13px;font-weight:600;color:var(--muted);white-space:nowrap}
+.step.done .num{background:var(--success);color:#fff}
+.step.active .num{background:var(--primary-600);color:#fff;box-shadow:0 0 0 4px var(--primary-100)}
+.step.active .nm{color:var(--ink);font-weight:700}
+.step-line{width:34px;height:2px;background:var(--border);margin:0 12px;flex:none}
+.step-line.done{background:var(--success)}
+
+/* 看板 */
+.kanban{display:flex;gap:14px;overflow-x:auto;padding-bottom:10px;align-items:flex-start}
+.kcol{width:268px;flex:none;background:var(--subtle);border-radius:var(--r-card);padding:11px;min-height:200px}
+.kcol-h{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:700;color:var(--ink);padding:3px 4px 10px}
+.kcol-h .cnt{margin-left:auto;background:#fff;border-radius:100px;padding:1px 8px;font-size:11.5px;color:var(--muted)}
+.kcard{background:#fff;border:1px solid var(--border);border-radius:var(--r-ctl);padding:11px 12px;margin-bottom:9px;box-shadow:var(--sh-sm);cursor:grab}
+.kcard h6{font-size:13px;color:var(--ink);font-weight:700;margin-bottom:6px}
+.kcard .amt{font-size:12px;font-weight:700;color:var(--primary-700)}
+
+/* 大纲树 */
+.tree-node{margin-bottom:2px}
+.tree-row{display:flex;align-items:center;gap:7px;padding:7px 9px;border-radius:var(--r-sm);font-size:13px;color:var(--text);cursor:pointer}
+.tree-row:hover{background:var(--subtle)}
+.tree-row.on{background:var(--primary-50);color:var(--primary-800);font-weight:700}
+.tree-row .caret{width:14px;color:var(--faint);flex:none}
+.tree-row .tt{flex:1}
+.tree-row .st{font-size:11px;color:var(--success);font-weight:700}
+.tree-children{padding-left:18px;border-left:1px dashed var(--border);margin-left:15px}
+
+/* 对话 */
+.chat-layout{display:grid;grid-template-columns:240px 1fr;gap:16px;height:calc(100vh - 56px - 48px)}
+.chat-list{background:#fff;border:1px solid var(--border);border-radius:var(--r-card);padding:12px;overflow-y:auto;box-shadow:var(--sh-sm)}
+.chat-main{background:#fff;border:1px solid var(--border);border-radius:var(--r-card);display:flex;flex-direction:column;overflow:hidden;box-shadow:var(--sh-sm)}
+.chat-body{flex:1;overflow-y:auto;padding:22px;display:flex;flex-direction:column;gap:18px}
+.msg{display:flex;gap:11px;max-width:80%}
+.msg .bub{padding:11px 15px;border-radius:12px;font-size:13.5px;line-height:1.7}
+.msg.user{align-self:flex-end;flex-direction:row-reverse}
+.msg.user .bub{background:var(--primary-600);color:#fff;border-top-right-radius:4px}
+.msg.bot .bub{background:var(--subtle);color:var(--text);border-top-left-radius:4px}
+.chat-input{border-top:1px solid var(--border);padding:14px 16px;display:flex;gap:10px}
+.chat-input input{flex:1}
+.session-item{padding:9px 11px;border-radius:var(--r-sm);font-size:12.5px;color:var(--text);cursor:pointer;margin-bottom:3px;line-height:1.4}
+.session-item:hover{background:var(--subtle)}.session-item.on{background:var(--primary-50);color:var(--primary-800);font-weight:600}
+.session-item .tm{font-size:11px;color:var(--faint);margin-top:2px}
+
+/* toast & modal */
+#toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:10px 18px;border-radius:var(--r-ctl);font-size:13px;font-weight:600;opacity:0;pointer-events:none;transition:.22s;z-index:99;box-shadow:var(--sh-pop)}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.modal-mask{position:fixed;inset:0;background:rgba(10,30,38,.45);display:flex;align-items:center;justify-content:center;z-index:80;padding:24px}
+.modal{background:#fff;border-radius:var(--r-card);width:100%;max-width:520px;max-height:94vh;overflow-y:auto;box-shadow:var(--sh-pop)}
+.modal-h{padding:17px 20px;border-bottom:1px solid var(--border);font-size:16px;font-weight:800;color:var(--ink)}
+.modal-b{padding:20px}.modal-f{padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;position:sticky;bottom:0;background:#fff}
+.spacer{flex:1}.mt{margin-top:14px}.mb{margin-bottom:14px}.muted{color:var(--muted)}.faint{color:var(--faint)}
+.center{display:flex;align-items:center;justify-content:center}.col-center{display:flex;flex-direction:column;align-items:center}
+.empty{padding:44px 20px;text-align:center;color:var(--faint)}.empty svg{width:44px;height:44px;opacity:.4;margin-bottom:12px}
+.empty p{font-size:13px;margin-bottom:14px}
+.doc-content{font-size:13.5px;line-height:1.85;color:var(--text)}
+.doc-content p{margin-bottom:12px}.doc-content h4{color:var(--ink);margin:18px 0 9px;font-size:14.5px}
+.badge-dot{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600}
+.badge-dot::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+
+@media(max-width:1100px){.three{grid-template-columns:200px 1fr}.three .col.detail{display:none}.g4{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:860px){.sidebar{transform:translateX(-100%)}.main{margin-left:0}.three{grid-template-columns:1fr;height:auto}.g3,.g2{grid-template-columns:1fr}.chat-layout{grid-template-columns:1fr;height:auto}.login-wrap{grid-template-columns:1fr}.login-art{display:none}}
+
+/* ===== 响应式 ===== */
+.menu-btn{display:none}.sb-backdrop{display:none}
+@media(max-width:920px){
+  .menu-btn{display:flex}
+  .sidebar{transform:translateX(-100%);box-shadow:var(--sh-pop)}
+  .sidebar.open{transform:none}
+  .sidebar.open ~ .sb-backdrop{display:block;position:fixed;inset:0;background:rgba(7,24,31,.46);z-index:39}
+  .main{margin-left:0}
+  .search-box,.model-pill{display:none}
+  .topbar{padding:0 12px;gap:8px}
+  .content{padding:16px 13px 50px}
+  .three{grid-template-columns:1fr!important;height:auto;gap:14px}
+  .three .col{overflow:visible;max-height:none}
+  .three .col-b{overflow:visible;flex:none}
+  .g4{grid-template-columns:repeat(2,1fr)}
+  .g3,.g2{grid-template-columns:1fr}
+  .page-head h1{font-size:19px}
+  .step-line{width:18px;margin:0 7px}
+  .chat-layout{grid-template-columns:1fr;height:auto}
+}
+@media(max-width:480px){
+  .g4{grid-template-columns:1fr}
+  body{font-size:14px}
+  .input,.select,textarea.input{font-size:16px}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast"></div>
+
+<script>
+/* ============================================================
+   路由 & 渲染框架
+   ============================================================ */
+function toast(msg){var t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(function(){t.classList.remove('show')},1900);}
+function go(hash){location.hash=hash;}
+function icon(name){
+  var p={
+    home:'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10',
+    radar:'M12 12l8-5M12 12v9M12 12L4 7m8 5l3.5-8.2M12 12L8.5 3.8M12 2a10 10 0 100 20 10 10 0 000-20z',
+    users:'M16 19v-1a4 4 0 00-4-4H6a4 4 0 00-4 4v1M9 10a3.5 3.5 0 100-7 3.5 3.5 0 000 7zm13 9v-1a4 4 0 00-3-3.8M16 3.2a3.5 3.5 0 010 6.6',
+    doc:'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm0 0v6h6M8 13h8M8 17h5',
+    ppt:'M12 4v16m-7-8h14M4 4h16v16H4z',
+    format:'M4 7V4h16v3M9 20h6M12 4v16',
+    book:'M4 19.5A2.5 2.5 0 016.5 17H20V3H6.5A2.5 2.5 0 004 5.5v14zm0 0A2.5 2.5 0 006.5 22H20v-5H6.5A2.5 2.5 0 004 19.5z',
+    trophy:'M8 21h8M12 17v4M7 4h10v5a5 5 0 01-10 0V4zM7 6H4v2a3 3 0 003 3m10-5h3v2a3 3 0 01-3 3',
+    bot:'M12 8V4H8m4 4h4a2 2 0 012 2v6a2 2 0 01-2 2H8a2 2 0 01-2-2v-6a2 2 0 012-2zm-2 5h.01m4 .01h.01M9 2v2',
+    settings:'M12 15a3 3 0 100-6 3 3 0 000 6zm8.9-3a8.9 8.9 0 00-.2-1.8l2-1.5-2-3.4-2.3 1a9 9 0 00-3.1-1.8L15 2H9l-.5 2.5A9 9 0 005.4 6.3l-2.3-1-2 3.4 2 1.5a8.9 8.9 0 000 3.6l-2 1.5 2 3.4 2.3-1a9 9 0 003.1 1.8L9 22h6l.5-2.5a9 9 0 003.1-1.8l2.3 1 2-3.4-2-1.5c.1-.6.2-1.2.2-1.8z',
+    search:'M11 19a8 8 0 100-16 8 8 0 000 16zm10 2l-4.3-4.3',
+    bell:'M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0',
+    plus:'M12 5v14M5 12h14', spark:'M12 2l2.4 7.4H22l-6 4.4 2.3 7.2-6.3-4.6-6.3 4.6L8 13.8 2 9.4h7.6z',
+    back:'M19 12H5m7-7l-7 7 7 7', check:'M20 6L9 17l-5-5', x:'M18 6L6 18M6 6l12 12',
+    alert:'M12 9v4m0 4h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z',
+    upload:'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12',
+    chevron:'M9 18l6-6-6-6', down:'M6 9l6 6 6-6', star:'M12 2l2.4 7.4H22l-6 4.4 2.3 7.2-6.3-4.6-6.3 4.6L8 13.8 2 9.4h7.6z',
+    money:'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6',
+    shield:'M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z',
+    target:'M12 22a10 10 0 100-20 10 10 0 000 20zm0-6a4 4 0 100-8 4 4 0 000 8zm0-2a2 2 0 100-4 2 2 0 000 4z',
+    calendar:'M3 9h18M7 2v4m10-4v4M5 5h14a2 2 0 012 2v13a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z',
+    edit:'M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4 9.5-9.5z',
+    send:'M22 2L11 13M22 2l-7 20-4-9-9-4 22-2z',
+    refresh:'M23 4v6h-6M1 20v-6h6M3.5 9a9 9 0 0114.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0020.5 15',menu:'M4 6h16M4 12h16M4 18h16',chart:'M4 20V10M10 20V4M16 20v-7M22 20H2',clipboard:'M9 4h6a1 1 0 011 1v1h3v15H5V6h3V5a1 1 0 011-1zM9 11h6M9 15h4',gavel:'M14 4l6 6m-3-3l-7 7-3-3 7-7M3 21h13M9 14l-3 3',bookopen:'M12 6c-2-1.3-4.5-2-7-2v14c2.5 0 5 .7 7 2m0-14c2-1.3 4.5-2 7-2v14c-2.5 0-5 .7-7 2m0-14v14',video:'M3 6a2 2 0 012-2h9a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6zm16 3l4-2v10l-4-2'
+  };
+  return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="'+(p[name]||'')+'"/></svg>';
+}
+
+/* 导航定义（按作战阶段分组） */
+var NAV=[
+  {g:'总览',items:[{h:'#/',n:'作战驾驶舱',i:'home'},{h:'#/calendar',n:'作战日历',i:'calendar'},{h:'#/analytics',n:'售前经营分析',i:'chart'}]},
+  {g:'发现',items:[{h:'#/intel',n:'情报中心',i:'radar'}]},
+  {g:'研判',items:[{h:'#/customers',n:'客户管理',i:'users'},{h:'#/research',n:'需求调研',i:'clipboard'},{h:'#/kanban',n:'商机看板',i:'target'},{h:'#/decision',n:'投标决策评审',i:'gavel'}]},
+  {g:'制胜',items:[{h:'#/solutions',n:'方案工作室',i:'doc'},{h:'#/ppt',n:'PPT 与报价',i:'ppt'},{h:'#/ledger',n:'资源台账中心',i:'bookopen'},{h:'#/approval',n:'成本与报价审批',i:'money'}]},
+  {g:'决胜',items:[{h:'#/bids',n:'标书工作台',i:'book'},{h:'#/rehearsal',n:'述标演练',i:'video'},{h:'#/format',n:'格式刷新',i:'format'}]},
+  {g:'沉淀',items:[{h:'#/knowledge',n:'知识库',i:'book'},{h:'#/competitors',n:'竞品分析',i:'trophy'},{h:'#/reviews',n:'复盘库',i:'refresh'}]},
+  {g:'支撑',items:[{h:'#/assistant',n:'小智助手',i:'bot'},{h:'#/models',n:'模型配置',i:'settings'},{h:'#/team',n:'团队管理',i:'users'}]}
+];
+
+function shell(active, crumb, body){
+  var nav=NAV.map(function(gr){
+    return '<div class="sb-group"><div class="gt">'+gr.g+'</div>'+gr.items.map(function(it){
+      return '<div class="sb-item'+(active===it.h?' active':'')+'" onclick="go(\''+it.h+'\')">'+icon(it.i)+'<span>'+it.n+'</span></div>';
+    }).join('')+'</div>';
+  }).join('');
+  return '<div class="app">'+
+    '<aside class="sidebar">'+
+      '<div class="sb-brand"><div class="lg">'+icon('spark')+'</div><div><b>小智工作站</b><span>PRESALES DESK · 团队版</span></div></div>'+
+      '<div class="sb-nav">'+nav+'</div>'+
+      '<div class="sb-user"><div class="av">系</div><div><div class="nm">系统管理员</div><div class="rl">医疗售前工程师 · 管理员</div></div></div>'+
+    '</aside>'+
+    '<div class="sb-backdrop" onclick="document.querySelector(\'.sidebar\').classList.remove(\'open\')"></div>'+
+    '<div class="main">'+
+      '<div class="topbar">'+
+        '<button class="icon-btn menu-btn" onclick="document.querySelector(\'.sidebar\').classList.add(\'open\')">'+icon('menu')+'</button>'+
+        '<div class="crumb">售前工作台 <span>/</span> <b>'+crumb+'</b></div>'+
+        '<div class="sp"></div>'+
+        '<div class="search-box" onclick="toast(\'演示：全局搜索 ⌘K\')">'+icon('search')+'搜索 客户 / 项目 / 情报… <span class="spacer"></span><span class="faint">⌘K</span></div>'+
+        '<div class="model-pill">'+icon('bot')+'ange · agnes-3.0-flash</div>'+
+        '<button class="icon-btn" onclick="toast(\'演示：通知中心\')">'+icon('bell')+'<span class="dot"></span></button>'+
+        '<button class="icon-btn" onclick="go(\'#/assistant\')" title="AI 副驾">'+icon('bot')+'</button>'+
+      '</div>'+
+      '<div class="content">'+body+'</div>'+
+    '</div>'+
+  '</div>';
+}
+
+/* ===== 视图表（分批注入） ===== */
+var views={};
+
+/* ===== 登录 ===== */
+views['#/login']=function(){
+  return '<div class="login-wrap">'+
+    '<div class="login-art">'+
+      '<div class="lb"><div class="lg">'+icon('spark')+'</div><b>小智工作站 · 团队版</b></div>'+
+      '<div><h2>从一条情报，<br>到一份能投出去的标书</h2><p>医疗信息化售前与投标全流程协作平台——有数据、有护栏、有闭环，陪你跑赢每一个售前项目。</p></div>'+
+      '<div class="lf">数据保存在本机，账号与角色由管理员在工作站内维护</div>'+
+    '</div>'+
+    '<div class="login-form"><div class="login-card">'+
+      '<h3>欢迎回来</h3><div class="sub">使用管理员创建的团队账号登录</div>'+
+      '<div class="field"><label>邮箱</label><input class="input" value="admin@team.local"></div>'+
+      '<div class="field"><label>密码（至少 8 位）</label><input class="input" type="password" value="Admin#12345"></div>'+
+      '<button class="btn btn-primary" style="width:100%;justify-content:center;padding:11px" onclick="go(\'#/\')">登 录</button>'+
+      '<p class="muted center" style="font-size:12px;margin-top:18px">演示账号已预填，直接点击登录</p>'+
+    '</div></div>'+
+  '</div>';
+};
+
+/* ===== 作战驾驶舱 ===== */
+views['#/']=function(){
+  var body=
+  /* 欢迎横幅 */
+  '<div class="card mb" style="overflow:hidden">'+
+    '<div style="display:flex;gap:20px;padding:20px 22px;align-items:center;background:linear-gradient(120deg,#0E4E61,#0C5E75 55%,#0E7490);color:#fff;flex-wrap:wrap">'+
+      '<div style="flex:1;min-width:260px">'+
+        '<div style="font-size:12px;color:#a9d3de;margin-bottom:7px">9月25日 星期五</div>'+
+        '<div style="font-size:22px;font-weight:800;margin-bottom:6px">晚上好，系统管理员</div>'+
+        '<div style="font-size:13px;color:#c2e0e8">今日待办、项目进度与行业情报已就绪，你有 <b style="color:#ffd9a8">1 个项目</b>待编制、<b style="color:#ffd9a8">3 条待办</b>到期。</div>'+
+      '</div>'+
+      '<div style="display:flex;gap:10px">'+
+        '<button class="btn" style="background:rgba(255,255,255,.13);color:#fff" onclick="go(\'#/intel\')">'+icon('radar')+'处理情报</button>'+
+        '<button class="btn" style="background:#fff;color:var(--primary-700)" onclick="go(\'#/bid\')">'+icon('book')+'继续标书</button>'+
+      '</div>'+
+    '</div>'+
+  '</div>'+
+
+  /* KPI 行 */
+  '<div class="grid g4 mb">'+
+    '<div class="kpi"><div class="top"><div class="ic" style="background:var(--primary-50);color:var(--primary-600)">'+icon('book')+'</div><span class="tag t-warning">1 待编制</span></div><div class="v">1</div><div class="l">进行中项目</div></div>'+
+    '<div class="kpi"><div class="top"><div class="ic" style="background:var(--info-bg);color:var(--info)">'+icon('radar')+'</div><span class="delta" style="color:var(--success)">+38 今日</span></div><div class="v">499</div><div class="l">情报总数 · 待确认 214</div></div>'+
+    '<div class="kpi"><div class="top"><div class="ic" style="background:var(--success-bg);color:var(--success)">'+icon('users')+'</div><span class="delta" style="color:var(--success)">+6 本月</span></div><div class="v">161</div><div class="l">医院客户总数</div></div>'+
+    '<div class="kpi"><div class="top"><div class="ic" style="background:var(--danger-bg);color:var(--danger)">'+icon('alert')+'</div><span class="tag t-danger">需关注</span></div><div class="v" style="color:var(--danger)">3</div><div class="l">今日到期 / 风险项</div></div>'+
+  '</div>'+
+
+  '<div class="grid g3 mb">'+
+    /* 商机漏斗 */
+    '<div class="card" style="grid-column:span 1"><div class="card-h"><b>商机阶段分布</b><span class="spacer"></span><span class="faint" style="font-size:11.5px">在跟商机</span></div><div class="card-b">'+
+      funnel([['线索发现',12,'var(--chart-2)'],['建立联系',8,'var(--chart-2)'],['需求确认',6,'var(--primary-500)'],['方案报价',4,'var(--primary-600)'],['投标中',2,'var(--primary-700)']])+
+      '<div class="alert alert-info mt" style="font-size:12px">'+icon('target')+'<div>2 个商机处于投标阶段，重点推进，截标前每日查看。</div></div>'+
+    '</div></div>'+
+    /* 今日待办 */
+    '<div class="card"><div class="card-h"><b>今日作战</b><span class="spacer"></span><span class="tag t-danger">3 到期</span></div><div class="card-b" style="padding-top:10px">'+
+      todoItem(true,'完成标书项目 13431 的 AI 解析核对','今天 · 标书',false)+
+      todoItem(false,'电话回访安徽中医药大学第一附属医院信息科','今天 · 跟进','danger')+
+      todoItem(false,'提交方案建设清单给负责人评审','今天 · 方案','danger')+
+      todoItem(false,'整理本周竞品中标动态','明天 · 情报',null)+
+      '<button class="btn btn-soft btn-sm mt" style="width:100%;justify-content:center" onclick="toast(\'演示：添加待办\')">'+icon('plus')+'添加待办</button>'+
+    '</div></div>'+
+    /* 胜负复盘 */
+    '<div class="card"><div class="card-h"><b>胜负复盘</b></div><div class="card-b center" style="flex-direction:column">'+
+      donut(68)+
+      '<div style="display:flex;gap:18px;margin-top:14px;width:100%;justify-content:center">'+
+        '<span class="badge-dot" style="color:var(--success)">中标 17</span>'+
+        '<span class="badge-dot" style="color:var(--danger)">失单 8</span>'+
+      '</div>'+
+      '<div class="alert alert-warn mt" style="width:100%;font-size:12px"><div><b style="display:block">失单原因 Top</b>价格偏高 · 资质不符 · 响应超时</div></div>'+
+    '</div></div>'+
+  '</div>'+
+
+  '<div class="grid g3">'+
+    /* 情报速览 */
+    '<div class="card" style="grid-column:span 1"><div class="card-h"><b>情报速览</b><span class="spacer"></span><a onclick="go(\'#/intel\')" style="font-size:12px;font-weight:600">全部 ›</a></div><div class="card-b" style="padding:6px 18px 14px">'+
+      intelMini('招标中标','石河子大学第一附属医院血液净化装置采购项目（二次）中标公告','新疆 · 08:00')+
+      intelMini('招标中标','汉川市中医医院医疗设备采购项目（透析机）成交公告','湖北 · 08:00')+
+      intelMini('政策','国家卫健委：进一步推进电子病历分级评价工作','北京 · 昨天')+
+    '</div></div>'+
+    /* 进行中项目 */
+    '<div class="card"><div class="card-h"><b>进行中项目</b><span class="spacer"></span><a onclick="go(\'#/bids\')" style="font-size:12px;font-weight:600">全部 ›</a></div><div class="card-b">'+
+      '<div class="list-card on" onclick="go(\'#/bid\')"><h5>13431 · 安徽中医药大学第一附属医院</h5><div class="meta-line"><span class="tag t-warning">已解析 · 待编制</span></div><div style="margin-top:10px"><div class="progress"><i style="width:28%"></i></div><div class="meta-line" style="margin-top:6px"><span>投标进度 28%</span><span class="spacer"></span><span>截标 10/15</span></div></div></div>'+
+    '</div></div>'+
+    /* 最新动态 */
+    '<div class="card"><div class="card-h"><b>最新动态</b></div><div class="card-b" style="padding:8px 18px 16px">'+
+      feed('情报采集','伊犁州中医医院第六批医疗设备采购项目招标公告','刚刚')+
+      feed('情报采集','温州医科大学附属第二医院检验项目外服招标公告','刚刚')+
+      feed('客户','新增客户：测试市人民医院','2 小时前')+
+      feed('标书','项目 13431 完成 AI 解析报告','昨天')+
+    '</div></div>'+
+  '</div>';
+  return shell('#/','作战驾驶舱',body);
+};
+
+/* 驾驶舱小部件 */
+function funnel(rows){
+  var max=rows[0][1];
+  return rows.map(function(r){
+    return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:11px">'+
+      '<div style="width:62px;font-size:12px;color:var(--muted);flex:none">'+r[0]+'</div>'+
+      '<div style="flex:1;background:var(--subtle);border-radius:5px;height:20px;position:relative;overflow:hidden"><div style="width:'+Math.round(r[1]/max*100)+'%;height:100%;background:'+r[2]+';border-radius:5px"></div></div>'+
+      '<b style="width:18px;text-align:right;font-size:12.5px;color:var(--ink)">'+r[1]+'</b>'+
+    '</div>';
+  }).join('');
+}
+function donut(pct){
+  var r=34,c=2*Math.PI*r,off=c*(1-pct/100);
+  return '<div style="position:relative;width:96px;height:96px"><svg width="96" height="96" viewBox="0 0 96 96">'+
+    '<circle cx="48" cy="48" r="'+r+'" fill="none" stroke="var(--subtle)" stroke-width="11"/>'+
+    '<circle cx="48" cy="48" r="'+r+'" fill="none" stroke="var(--success)" stroke-width="11" stroke-linecap="round" stroke-dasharray="'+c+'" stroke-dashoffset="'+off+'" transform="rotate(-90 48 48)"/>'+
+    '</svg><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><b style="font-size:21px;color:var(--ink)">'+pct+'%</b><span style="font-size:10.5px;color:var(--faint)">中标率</span></div></div>';
+}
+function todoItem(done,text,meta,flag){
+  return '<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--border)">'+
+    '<div onclick="this.querySelector(\'svg\');toast(\'演示：标记完成\')" style="width:18px;height:18px;border-radius:5px;border:1.5px solid '+(done?'var(--success)':'var(--border-strong)')+';background:'+(done?'var(--success)':'#fff')+';flex:none;margin-top:2px;display:flex;align-items:center;justify-content:center;color:#fff">'+(done?icon('check'):'')+'</div>'+
+    '<div style="flex:1"><div style="font-size:13px;color:'+(done?'var(--faint)':'var(--ink)')+';text-decoration:'+(done?'line-through':'none')+'">'+text+'</div><div class="meta-line" style="margin-top:2px"><span class="tag '+(flag==='danger'?'t-danger':'t-muted')+'">'+meta+'</span></div></div>'+
+  '</div>';
+}
+function intelMini(tag,title,meta){
+  var cls=tag==='政策'?'t-purple':'t-info';
+  return '<div style="padding:11px 0;border-bottom:1px solid var(--border)"><span class="tag '+cls+'">'+tag+'</span><div style="font-size:12.5px;color:var(--ink);margin:6px 0 3px;line-height:1.5">'+title+'</div><div class="faint" style="font-size:11px">'+meta+'</div></div>';
+}
+function feed(type,text,time){
+  return '<div style="display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)"><div class="av" style="width:26px;height:26px;font-size:11px">'+type[0]+'</div><div style="flex:1"><div style="font-size:12px;color:var(--text);line-height:1.5">'+text+'</div><div class="faint" style="font-size:10.5px;margin-top:2px">'+type+' · '+time+'</div></div></div>';
+}
+
+
+/* ===== 情报中心（三栏处理台） ===== */
+views['#/intel']=function(){
+  var head='<div class="page-head"><div><h1>情报中心</h1><p>政策动态、竞品动向、招标中标、行业媒体四类情报聚合；确认 / 忽略 / 收藏每人独立</p></div><div class="spacer"></div>'+
+    '<button class="btn btn-primary" onclick="toast(\'演示：手动录入情报\')">'+icon('plus')+'手动录入</button>'+
+    '<button class="btn btn-ghost" onclick="toast(\'演示：批量管理\')">批量管理</button>'+
+    '<button class="btn btn-soft" onclick="toast(\'演示：AI 情报周报生成中…\')">'+icon('spark')+'AI 情报周报</button>'+
+  '</div>';
+
+  var filters=
+    '<div class="filter-block"><div class="ft">情报类型</div><div class="optrow">'+
+      '<span class="opt on">全部</span><span class="opt">政策</span><span class="opt">招标中标</span><span class="opt">竞品</span><span class="opt">行业媒体</span></div></div>'+
+    '<div class="filter-block"><div class="ft">处理状态</div><div class="optrow">'+
+      '<span class="opt on">待确认</span><span class="opt">已确认</span><span class="opt">已忽略</span><span class="opt">已收藏</span></div></div>'+
+    '<div class="filter-block"><div class="ft">时间范围</div><div class="optrow">'+
+      '<span class="opt">今天</span><span class="opt on">近 7 天</span><span class="opt">近 30 天</span><span class="opt">全部</span></div></div>'+
+    '<div class="filter-block"><div class="ft">标签</div><div class="optrow">'+
+      '<span class="opt">招标</span><span class="opt">中标</span><span class="opt">采购</span><span class="opt">电子病历</span><span class="opt">医保</span><span class="opt">医疗AI</span></div></div>'+
+    '<div class="filter-block"><div class="ft">区域</div><div class="optrow">'+
+      '<span class="opt on">全部区域</span><span class="opt">上海</span><span class="opt">浙江</span><span class="opt">安徽</span><span class="opt">新疆</span><span class="opt">湖北</span></div></div>';
+
+  var cards=[
+    ['招标中标','石河子大学第一附属医院血液净化装置的体外循环管路采购项目（二次）中标(成交)结果公告','新疆','中国政府采购网 · 09-25 08:00',true],
+    ['招标中标','石河子大学第一附属医院血液滤过器耗材采购项目（二次）中标(成交)结果公告','新疆','中国政府采购网 · 09-25 08:00',false],
+    ['招标中标','汉川市中医医院医疗设备采购项目（透析机）成交公告','湖北','中国政府采购网 · 09-25 08:00',false],
+    ['招标中标','2026年伊犁州中医医院第六批医疗设备采购项目（清洗设备等）公开招标公告','新疆','中国政府采购网 · 刚刚',false],
+    ['招标中标','温州医科大学附属第二医院部分检验项目外送服务公开招标公告','浙江','中国政府采购网 · 刚刚',false],
+    ['招标中标','青浦区中心医院医疗设备第六批的公开招标公告','上海','中国政府采购网 · 刚刚',false]
+  ].map(function(c,idx){
+    return '<div class="list-card'+(c[4]?' on':'')+'" onclick="toast(\'演示：查看情报详情\')">'+
+      '<div style="display:flex;gap:6px;margin-bottom:7px"><span class="tag t-info">'+c[0]+'</span><span class="tag t-warning">待确认</span><span class="tag t-purple">公共</span></div>'+
+      '<h5>'+c[1]+'</h5>'+
+      '<div class="meta-line">'+icon('target')+c[2]+' · '+c[3]+'</div>'+
+      '<div class="mini-actions"><button onclick="event.stopPropagation();toast(\'演示：AI 摘要打标\')">'+icon('spark')+'AI摘要</button><button onclick="event.stopPropagation();toast(\'已确认\')">确认</button><button onclick="event.stopPropagation();toast(\'已忽略\')">忽略</button><button onclick="event.stopPropagation();toast(\'演示：查看原文\')">原文</button></div>'+
+    '</div>';
+  }).join('');
+
+  var detail=
+    '<div class="col-h">情报详情</div><div class="col-b">'+
+      '<span class="tag t-info">招标中标</span> <span class="tag t-purple">公共情报</span>'+
+      '<h4 style="font-size:15px;color:var(--ink);margin:12px 0;line-height:1.55">石河子大学第一附属医院血液净化装置的体外循环管路采购项目（二次）中标(成交)结果公告</h4>'+
+      '<div class="meta-line mb" style="font-size:12px">'+icon('target')+'新疆 · 中国政府采购网 · 医院搜索</div>'+
+
+      '<div class="card mb" style="box-shadow:none"><div class="card-h" style="padding:11px 14px"><b style="font-size:13px">招标要素</b></div><div class="card-b" style="padding:13px 14px;font-size:12.5px">'+
+        '<div style="display:flex;justify-content:space-between;padding:5px 0"><span class="muted">采购人</span><b>石河子大学第一附属医院</b></div>'+
+        '<div style="display:flex;justify-content:space-between;padding:5px 0"><span class="muted">项目类型</span><b>医疗耗材采购</b></div>'+
+        '<div style="display:flex;justify-content:space-between;padding:5px 0"><span class="muted">公告类型</span><b>中标结果</b></div>'+
+        '<div style="display:flex;justify-content:space-between;padding:5px 0"><span class="muted">发布时间</span><b>09-25 08:00</b></div>'+
+      '</div></div>'+
+
+      '<div class="alert alert-info mb">'+icon('spark')+'<div><b style="display:block;margin-bottom:3px">AI 摘要（售前视角）</b>本项目为血液净化装置体外循环管路耗材二次采购中标结果，可关注中标供应商与中标价格，作为同类耗材报价与竞品分析参考。<div class="faint" style="font-size:10.5px;margin-top:5px">AI 生成 · 可编辑 · 出处：原文</div></div></div>'+
+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+        '<button class="btn btn-primary btn-sm" style="justify-content:center" onclick="toast(\'演示：一键转商机，已预填客户\')">'+icon('target')+'转商机</button>'+
+        '<button class="btn btn-soft btn-sm" style="justify-content:center" onclick="go(\'#/bid\')">'+icon('book')+'建标书任务</button>'+
+      '</div>'+
+      '<div class="mini-actions mt" style="justify-content:center"><button onclick="toast(\'已确认\')">确认</button><button onclick="toast(\'已忽略\')">忽略</button><button onclick="toast(\'已收藏\')">'+icon('star')+'收藏</button></div>'+
+    '</div>';
+
+  var body=head+
+    '<div class="three">'+
+      '<div class="col"><div class="col-h">'+icon('search')+'筛选</div><div class="col-b">'+filters+'</div></div>'+
+      '<div class="col"><div class="col-h">情报列表 <span class="spacer"></span><span class="faint" style="font-size:11.5px;font-weight:500">共 499 · 待确认 214</span></div><div class="col-b">'+cards+'</div></div>'+
+      '<div class="col detail" style="background:#fff">'+detail+'</div>'+
+    '</div>';
+  return shell('#/intel','情报中心',body);
+};
+
+/* ===== 商机看板 ===== */
+views['#/kanban']=function(){
+  var cols=[
+    ['线索发现',3,'var(--chart-2)',[['石河子大学第一附属医院','耗材采购 · 待联系'],['伊犁州中医医院','设备采购 · 第六批']]],
+    ['建立联系',2,'var(--chart-2)',[['汉川市中医医院','透析机采购']]],
+    ['需求确认',2,'var(--primary-500)',[['青浦区中心医院','医疗设备第六批']]],
+    ['方案报价',2,'var(--primary-600)',[['温州医科大学附属第二医院','检验外送服务']]],
+    ['投标中',1,'var(--primary-700)',[['安徽中医药大学第一附属医院','一体化核心业务系统 · 2500万']]],
+    ['已中标',1,'var(--success)',[['测试市人民医院','信息化升级一期']]],
+    ['已失单',1,'var(--danger)',[['某市第二人民医院','价格偏高']]]
+  ].map(function(c){
+    var cards=c[3].map(function(k){
+      return '<div class="kcard" draggable="true" onclick="toast(\'演示：查看商机详情\')"><h6>'+k[0]+'</h6><div class="muted" style="font-size:11.5px">'+k[1]+'</div><div class="meta-line" style="margin-top:7px"><span class="tag t-muted">下次跟进 09-26</span></div></div>';
+    }).join('');
+    return '<div class="kcol"><div class="kcol-h"><span style="width:8px;height:8px;border-radius:50%;background:'+c[2]+';display:inline-block"></span>'+c[0]+'<span class="cnt">'+c[1]+'</span></div>'+cards+
+      '<button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;font-size:12px" onclick="toast(\'演示：在此阶段新建商机\')">'+icon('plus')+'新建</button></div>';
+  }).join('');
+  var body='<div class="page-head"><div><h1>商机看板</h1><p>按阶段列排布，点卡片看详情，拖动卡片换阶段；拖到中标 / 失单需确认并补跟进</p></div><div class="spacer"></div><button class="btn btn-primary" onclick="toast(\'演示：新建商机\')">'+icon('plus')+'新建商机</button></div>'+
+    '<div class="alert alert-success mb">'+icon('check')+'<div>本月新增商机 6 个，2 个进入投标阶段；当前漏斗健康，重点推进投标中的 2500 万项目。</div></div>'+
+    '<div class="kanban">'+cols+'</div>';
+  return shell('#/kanban','商机看板',body);
+};
+
+
+/* ===== 客户管理（列表 + 档案详情） ===== */
+views['#/customers']=function(){
+  var head='<div class="page-head"><div><h1>客户管理</h1><p>医院客户档案与商机跟进，把每家目标医院跟到位，数据保存在服务端</p></div><div class="spacer"></div>'+
+    '<button class="btn btn-soft" onclick="toast(\'演示：AI 批量补全档案\')">'+icon('spark')+'批量补全</button>'+
+    '<button class="btn btn-primary" onclick="toast(\'演示：新建客户\')">'+icon('plus')+'新建客户</button></div>';
+
+  var filters=
+    '<div class="filter-block"><div class="ft">医院类型</div><div class="optrow"><span class="opt on">全部</span><span class="opt">综合医院</span><span class="opt">中医院</span><span class="opt">妇幼</span><span class="opt">专科</span><span class="opt">基层</span></div></div>'+
+    '<div class="filter-block"><div class="ft">地区</div><div class="optrow"><span class="opt on">全部</span><span class="opt">安徽</span><span class="opt">福建</span><span class="opt">浙江</span><span class="opt">上海</span></div></div>'+
+    '<div class="filter-block"><div class="ft">排序</div><div class="optrow"><span class="opt on">最近更新</span><span class="opt">按名称</span><span class="opt">缺项优先</span></div></div>'+
+    '<div class="alert alert-info" style="font-size:11.5px">'+icon('users')+'<div>共 <b>161</b> 家医院，已加载 20，滚动加载更多。</div></div>';
+
+  var list=[
+    ['测试市人民医院','三级甲等','安徽 · 合肥','综合医院','缺 6 项',false],
+    ['三明市第一医院','三级甲等','福建','综合医院','缺 5 项',false],
+    ['漳州市医院','三级甲等','福建','综合医院','缺 5 项',false],
+    ['福建医科大学附属第一医院滨海院区','三级甲等','福建','综合医院','缺 7 项',false],
+    ['芜湖市第四人民医院','三级乙等','安徽','综合医院','缺 9 项',false],
+    ['安徽中医药大学第一附属医院','三级甲等','安徽','综合医院','缺 8 项',true],
+    ['安徽医科大学第二附属医院','三级甲等','安徽','综合医院','缺 8 项',false],
+    ['宣城市人民医院','三级甲等','安徽','综合医院','缺 7 项',false]
+  ].map(function(c){
+    return '<div class="list-card'+(c[5]?' on':'')+'" onclick="toast(\'演示：打开客户档案\')">'+
+      '<div style="display:flex;gap:10px"><div class="av" style="background:linear-gradient(145deg,#2E79B9,#1f5b86)">'+c[0][0]+'</div><div style="flex:1;min-width:0"><h5 style="margin-bottom:4px">'+c[0]+'</h5><div class="meta-line"><span class="tag t-success">'+c[1]+'</span>'+c[2]+' · '+c[3]+'</div></div></div>'+
+      '<div class="meta-line" style="margin-top:7px"><span class="tag t-warning">'+c[4]+'</span></div>'+
+    '</div>';
+  }).join('');
+
+  var detail=
+    '<div class="col-h">'+icon('users')+'客户档案</div><div class="col-b">'+
+      '<div style="display:flex;gap:11px;align-items:center;margin-bottom:12px"><div class="av" style="width:44px;height:44px;font-size:17px;background:linear-gradient(145deg,#2E79B9,#1f5b86)">安</div><div><b style="font-size:16px;color:var(--ink);display:block">安徽中医药大学第一附属医院</b><div class="meta-line"><span class="tag t-success">三级甲等</span><span class="tag t-info">综合医院 · 中医</span><span class="tag t-muted">安徽合肥</span></div></div></div>'+
+
+      '<div class="tabs mb" style="width:100%"><button class="tab active">档案</button><button class="tab">联系人</button><button class="tab">跟进时间线</button><button class="tab">商机</button></div>'+
+
+      '<h4 style="font-size:13px;margin:6px 0 8px">基本信息</h4>'+
+      '<div style="font-size:12.5px">'+
+        '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span class="muted">地址</span><b>合肥市蜀山区梅山路117号</b></div>'+
+        '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span class="muted">医院类型</span><b>三级甲等中医医院</b></div>'+
+        '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span class="muted">开放床位</span><b>2,600 张</b></div>'+
+        '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span class="muted">信息化现状</span><b>HIS / EMR 已上线</b></div>'+
+      '</div>'+
+
+      '<h4 style="font-size:13px;margin:16px 0 8px">关键联系人</h4>'+
+      '<div class="list-card" style="margin-bottom:7px;padding:10px 12px"><div style="display:flex;align-items:center;gap:9px"><div class="av" style="width:28px;height:28px;font-size:11px">信</div><div style="flex:1"><b style="font-size:13px;color:var(--ink)">信息科 · 张主任</b><div class="faint" style="font-size:11px">决策关键人</div></div></div></div>'+
+      '<div class="list-card" style="padding:10px 12px"><div style="display:flex;align-items:center;gap:9px"><div class="av" style="width:28px;height:28px;font-size:11px;background:linear-gradient(145deg,#7B5BB0,#5d4389)">李</div><div style="flex:1"><b style="font-size:13px;color:var(--ink)">信息科 · 李工</b><div class="faint" style="font-size:11px">技术对接</div></div></div></div>'+
+
+      '<h4 style="font-size:13px;margin:16px 0 8px">跟进时间线</h4>'+
+      '<div style="position:relative;padding-left:18px">'+
+        '<div style="position:absolute;left:5px;top:6px;bottom:6px;width:2px;background:var(--border)"></div>'+
+        tl('09-24','现场调研，确认一体化核心业务系统需求，预算 2500 万','var(--success)')+
+        tl('09-20','电话沟通信息科，了解招标时间安排','var(--primary-500)')+
+        tl('09-15','首次拜访，介绍公司产品与同类案例','var(--info)')+
+      '</div>'+
+
+      '<h4 style="font-size:13px;margin:16px 0 8px">关联商机</h4>'+
+      '<div class="list-card on" style="padding:11px 12px" onclick="go(\'#/bid\')"><h5 style="margin-bottom:5px">一体化核心业务系统建设</h5><div class="meta-line"><span class="tag t-primary" style="background:var(--primary-50);color:var(--primary-700)">投标中</span><b style="color:var(--primary-700);font-size:12.5px">2,500 万</b></div></div>'+
+
+      '<div class="alert alert-warn mt">'+icon('spark')+'<div><b style="display:block;margin-bottom:2px">AI 跟进建议</b>建议本周再次电话确认评分细则，重点准备 ★ 技术参数逐条响应与同类中医医院业绩。<button class="btn btn-soft btn-sm mt" onclick="toast(\'演示：记录跟进\')">'+icon('plus')+'记录跟进</button></div></div>'+
+    '</div>';
+
+  var body=head+'<div class="three">'+
+    '<div class="col"><div class="col-h">筛选</div><div class="col-b">'+filters+'</div></div>'+
+    '<div class="col"><div class="col-h">客户列表 <span class="spacer"></span><span class="faint" style="font-size:11.5px;font-weight:500">161 家</span></div><div class="col-b">'+list+'</div></div>'+
+    '<div class="col detail">'+detail+'</div>'+
+  '</div>';
+  return shell('#/customers','客户管理',body);
+};
+function tl(date,text,color){
+  return '<div style="position:relative;padding-bottom:15px"><div style="position:absolute;left:-16px;top:4px;width:10px;height:10px;border-radius:50%;background:'+color+';border:2px solid #fff;box-shadow:0 0 0 1px var(--border)"></div><b style="font-size:11.5px;color:var(--ink)">'+date+'</b><div class="muted" style="font-size:12px;line-height:1.5;margin-top:2px">'+text+'</div></div>';
+}
+
+
+/* ===== 方案工作室（列表） ===== */
+views['#/solutions']=function(){
+  var head='<div class="page-head"><div><h1>方案工作室</h1><p>维护建设清单 → AI 生成多级大纲 → 逐章产出正文 → 自检 → 导出 Word</p></div><div class="spacer"></div>'+
+    '<div class="tabs"><button class="tab">建设清单</button><button class="tab active">方案编制</button></div>'+
+    '<button class="btn btn-primary" onclick="toast(\'演示：新建方案向导（选类型 · 填医院 · 生成大纲）\')">'+icon('plus')+'新建方案</button></div>';
+
+  var kpi='<div class="grid g4 mb">'+
+    '<div class="kpi"><div class="v">3</div><div class="l">全部方案 · 覆盖 5 类</div></div>'+
+    '<div class="kpi"><div class="v" style="color:var(--warning)">2</div><div class="l">编写中 · 大纲 / 生成中</div></div>'+
+    '<div class="kpi"><div class="v" style="color:var(--success)">1</div><div class="l">已完成交付 · 可导出</div></div>'+
+    '<div class="kpi"><div class="v">8</div><div class="l">行业系统库 · 已就绪</div></div></div>';
+
+  var filters='<div class="card mb"><div class="card-b" style="display:flex;gap:8px;flex-wrap:wrap;padding:13px 16px"><span class="opt on">全部</span><span class="opt">规划方案</span><span class="opt">可研方案</span><span class="opt">初设方案</span><span class="opt">定制方案</span><span class="opt">标准方案</span></div></div>';
+
+  var cards=[
+    ['安徽中医药大学第一附属医院一体化核心业务系统建设方案','定制方案','编写中','t-warning','12 / 26 章成稿','46%'],
+    ['某市区域医疗健康信息化三年建设规划','规划方案','编写中','t-warning','8 / 20 章成稿','32%'],
+    ['三甲医院电子病历应用水平五级建设可行性研究','可研方案','已交付','t-success','22 / 22 章成稿','100%']
+  ].map(function(c){
+    return '<div class="card" style="cursor:pointer" onclick="go(\'#/solution\')"><div class="card-b">'+
+      '<div style="display:flex;gap:8px;margin-bottom:9px"><span class="tag t-purple">'+c[1]+'</span><span class="tag '+c[3]+'">'+c[2]+'</span></div>'+
+      '<b style="font-size:14.5px;color:var(--ink);line-height:1.5;display:block;margin-bottom:12px">'+c[0]+'</b>'+
+      '<div class="progress"><i style="width:'+c[5]+'"></i></div><div class="meta-line" style="margin-top:7px"><span>'+c[4]+'</span><span class="spacer"></span><span>'+c[5]+'</span></div>'+
+    '</div></div>';
+  }).join('');
+
+  var sys='<div class="card mt"><div class="card-h"><b>行业系统库</b><span class="tag t-success">已就绪</span></div><div class="card-b" style="display:flex;gap:8px;flex-wrap:wrap;padding:14px 18px"><span class="tag t-muted">HIS</span><span class="tag t-muted">EMR</span><span class="tag t-muted">LIS</span><span class="tag t-muted">PACS</span><span class="tag t-muted">集成平台</span><span class="tag t-muted">数据中心</span><span class="tag t-muted">互联网医院</span><span class="tag t-muted">移动护理</span></div></div>';
+
+  var body=head+kpi+filters+'<div class="grid g3">'+cards+'</div>'+sys;
+  return shell('#/solutions','方案工作室',body);
+};
+
+/* ===== 方案编辑器 ===== */
+views['#/solution']=function(){
+  var head='<div class="page-head"><div><h1>一体化核心业务系统建设方案</h1><p>定制方案 · 安徽中医药大学第一附属医院 · 自动保存，刷新不丢</p></div><div class="spacer"></div>'+
+    '<button class="btn btn-ghost" onclick="toast(\'演示：生成设置\')">'+icon('settings')+'生成设置</button>'+
+    '<button class="btn btn-soft" onclick="toast(\'演示：回写商机\')">'+icon('target')+'回写商机</button>'+
+    '<button class="btn btn-primary" onclick="toast(\'演示：导出 Word（封面 · 目录 · 页眉 · 正文）\')">'+icon('doc')+'导出 Word</button></div>';
+
+  var outline=
+    '<div class="col-h">'+icon('doc')+'方案大纲<span class="spacer"></span><button class="btn btn-soft btn-sm" onclick="toast(\'演示：AI 生成大纲\')">AI</button></div>'+
+    '<div class="col-b" style="padding:11px">'+
+      treeNode('第一章 项目概述','成稿','var(--success)',true,[
+        leaf('1.1 项目背景','成稿'),leaf('1.2 建设目标','成稿'),leaf('1.3 建设原则','成稿')])+
+      treeNode('第二章 现状与需求分析','部分','var(--warning)',false,[
+        leaf('2.1 信息化现状','成稿'),leaf('2.2 需求分析','生成中')])+
+      treeNode('第三章 总体设计','部分','var(--warning)',true,[
+        leaf('3.1 设计依据','成稿'),leaf('3.2 总体架构','当前',true),leaf('3.3 技术路线','未开始',false,true)])+
+      treeNode('第四章 核心业务系统设计','未开始','var(--faint)',false,[])+
+      treeNode('第五章 实施方案','未开始','var(--faint)',false,[])+
+      treeNode('第六章 运维保障','未开始','var(--faint)',false,[])+
+      '<button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;margin-top:8px" onclick="toast(\'演示：添加章节\')">'+icon('plus')+'添加章</button>'+
+    '</div>';
+
+  var editor=
+    '<div class="col-h">3.2 总体架构<span class="spacer"></span>'+
+      '<button class="btn btn-primary btn-sm" onclick="toast(\'演示：生成本章正文…\')">'+icon('spark')+'生成本章</button></div>'+
+    '<div class="col-b"><div class="doc-content">'+
+      '<div class="mini-actions mb"><button onclick="toast(\'演示：改写\')">改写</button><button onclick="toast(\'演示：扩写\')">扩写</button><button onclick="toast(\'演示：精简\')">精简</button><button onclick="toast(\'演示：五维自检\')">自检</button></div>'+
+      '<h4>一、总体架构设计</h4>'+
+      '<p>围绕医院“以患者为中心、以临床为核心、以数据为驱动”的建设目标，本方案采用“一体化平台 + 标准化中台 + 智能化应用”的总体架构，自下而上分为基础设施层、数据资源层、集成平台层、业务应用层与统一门户层五个层次。</p>'+
+      '<p>各业务系统基于统一的集成平台互联互通，通过企业服务总线（ESB）与临床数据中心（CDR）实现数据共享与业务协同，消除信息孤岛；统一门户为医护人员提供单点登录与一站式工作台。</p>'+
+      '<p>架构设计遵循开放性、标准化、高可用与可扩展原则，全面支持信创环境适配，满足电子病历应用水平五级与互联互通四级甲等的相关要求。<span class="tag t-purple" style="margin-left:6px">AI 生成 · 可编辑</span></p>'+
+      '<div class="alert alert-info mt">'+icon('shield')+'<div>本章已注入 <b>全局事实表 13 条</b>与 ★/▲ 重点条款，关键指标（RPO / RTO / 可用性）与全文保持一致。</div></div>'+
+    '</div></div>';
+
+  var side=
+    '<div class="col-h">'+icon('spark')+'素材与自检</div><div class="col-b">'+
+      '<h4 style="font-size:12.5px;margin:4px 0 8px">素材弹药（本地推导 · 零成本）</h4>'+
+      '<div class="list-card" style="padding:9px 11px;margin-bottom:7px"><b style="font-size:12px;color:var(--ink)">同类中医医院一体化案例</b><div class="faint" style="font-size:11px;margin-top:2px">推荐引用 · 项目案例</div></div>'+
+      '<div class="list-card" style="padding:9px 11px;margin-bottom:7px"><b style="font-size:12px;color:var(--ink)">集成平台技术白皮书</b><div class="faint" style="font-size:11px;margin-top:2px">产品资料</div></div>'+
+      '<div class="list-card" style="padding:9px 11px"><b style="font-size:12px;color:var(--ink)">互联互通测评要求摘要</b><div class="faint" style="font-size:11px;margin-top:2px">政策法规</div></div>'+
+
+      '<h4 style="font-size:12.5px;margin:18px 0 8px">章节五维自检</h4>'+
+      selfScore('需求覆盖',95)+selfScore('合规性',88)+selfScore('一致性',92)+selfScore('完整性',80)+selfScore('专业性',90)+
+      '<div class="alert alert-success mt" style="font-size:12px">'+icon('check')+'<div>综合评分 <b>89</b>（本地规则重算），建议补充完整性后定稿。</div></div>'+
+    '</div>';
+
+  var body=head+'<div class="three" style="grid-template-columns:240px 1fr 280px">'+
+    '<div class="col">'+outline+'</div>'+
+    '<div class="col">'+editor+'</div>'+
+    '<div class="col detail">'+side+'</div>'+
+  '</div>';
+  return shell('#/solutions','方案工作室',body);
+};
+function treeNode(title,st,color,open,children){
+  return '<div class="tree-node"><div class="tree-row"><span class="caret">'+(open?icon('down'):icon('chevron'))+'</span><span class="tt">'+title+'</span><span class="st" style="color:'+color+'">'+st+'</span></div>'+
+    (open?'<div class="tree-children">'+children.join('')+'</div>':'')+'</div>';
+}
+function leaf(title,st,current,last){
+  return '<div class="tree-row'+(current?' on':'')+'"><span class="caret"></span><span class="tt">'+title+'</span>'+(st==='当前'?'<span class="st">当前</span>':st==='未开始'?'':'<span class="st" style="color:var(--success)">✓</span>')+'</div>';
+}
+function selfScore(label,val){
+  var col=val>=90?'var(--success)':val>=80?'var(--primary-500)':'var(--warning)';
+  return '<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span class="muted">'+label+'</span><b style="color:'+col+'">'+val+'</b></div><div class="progress" style="height:6px"><i style="width:'+val+'%;background:'+col+'"></i></div></div>';
+}
+
+
+/* ===== 标书工作台（列表） ===== */
+views['#/bids']=function(){
+  var head='<div class="page-head"><div><h1>标书工作台</h1><p>标书生成、查重与废标项检查，全流程覆盖投标关键节点</p></div><div class="spacer"></div>'+
+    '<div class="tabs"><button class="tab active">投标项目</button><button class="tab">快捷工具</button></div>'+
+    '<button class="btn btn-primary" onclick="toast(\'演示：新建投标项目\')">'+icon('plus')+'新建投标项目</button></div>';
+
+  var kpi='<div class="grid g4 mb">'+
+    '<div class="kpi"><div class="v">1</div><div class="l">投标项目 · 已结束 0</div></div>'+
+    '<div class="kpi"><div class="v">—</div><div class="l">中标率 · 暂无已结束</div></div>'+
+    '<div class="kpi"><div class="v">0</div><div class="l">中标金额合计（万元）</div></div>'+
+    '<div class="kpi"><div class="v" style="color:var(--warning)">1</div><div class="l">结果待回填</div></div></div>';
+
+  var body=head+kpi+
+    '<div class="card"><div class="card-h"><b>投标全流程工作台</b><span class="spacer"></span><span class="faint" style="font-size:12px">进行中 1 · 已归档 0</span></div><div class="card-b">'+
+      '<div class="card" style="cursor:pointer;box-shadow:none" onclick="go(\'#/bid\')"><div class="card-b" style="display:flex;gap:18px;align-items:center">'+
+        '<div style="width:54px;height:54px;border-radius:10px;background:var(--primary-50);color:var(--primary-700);display:flex;align-items:center;justify-content:center;flex:none"><b style="font-size:16px">13431</b></div>'+
+        '<div style="flex:1"><b style="font-size:15px;color:var(--ink);display:block;margin-bottom:5px">安徽中医药大学第一附属医院</b><div class="meta-line"><span class="tag t-warning">已解析 · 待编制</span><span class="tag t-muted">0/0 章成稿</span></div></div>'+
+        '<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();go(\'#/bid\')">进入流水线</button>'+
+      '</div></div>'+
+      '<p class="faint mt" style="font-size:11.5px">'+icon('shield')+' 招标文件在浏览器本地解析，不会上传原文件</p>'+
+    '</div></div>';
+  return shell('#/bids','标书工作台',body);
+};
+
+/* ===== 标书作战室（7 阶段） ===== */
+var BID_STAGES=['招标文件','AI 解析报告','投标文件编制','标书查重','废标项检查','模拟评标','归档导出'];
+views['#/bid']=function(){
+  var st=2;
+  var m=location.hash.match(/stage=(\d)/); if(m) st=+m[1];
+  /* stepper */
+  var steps=BID_STAGES.map(function(n,i){
+    var cls=i<st?'done':i===st?'active':'';
+    var s='<div class="step '+cls+'" onclick="go(\'#/bid?stage='+i+'\')"><div class="num">'+(i<st?icon('check'):i+1)+'</div><div class="nm">'+n+'</div></div>';
+    if(i<BID_STAGES.length-1) s+='<div class="step-line '+(i<st?'done':'')+'"></div>';
+    return s;
+  }).join('');
+
+  var info='<div class="page-head" style="margin-bottom:16px"><a onclick="go(\'#/bids\')" class="icon-btn" style="border:1px solid var(--border)">'+icon('back')+'</a><div><h1>13431 · 安徽中医药大学第一附属医院</h1><p>一体化核心业务系统建设 · 预算 2,500 万 · 已解析 · 待编制</p></div><div class="spacer"></div><span class="tag t-purple">作战室</span><span class="tag t-muted">关联商机：未关联</span></div>';
+
+  var panel={0:bidS1,1:bidS2,2:bidS3,3:bidS4,4:bidS5,5:bidS6,6:bidS7}[st]();
+
+  var body=info+'<div class="stepper">'+steps+'</div>'+panel;
+  return shell('#/bids','标书工作台',body);
+};
+
+function bidS1(){
+  return '<div class="grid g2"><div class="card"><div class="card-h"><b>招标文件</b></div><div class="card-b">'+
+    '<div class="alert alert-success mb">'+icon('check')+'<div>招标文件已上传并在浏览器本地解析完成。</div></div>'+
+    '<table class="tbl"><tbody>'+
+      '<tr><td class="muted">文件大小</td><td><b>9.2 MB</b></td></tr>'+
+      '<tr><td class="muted">总页数</td><td><b>845 页</b></td></tr>'+
+      '<tr><td class="muted">总字数</td><td><b>67.6 万字</b></td></tr>'+
+      '<tr><td class="muted">解析分段</td><td><b>63 段</b></td></tr>'+
+    '</tbody></table></div></div>'+
+    '<div class="card"><div class="card-h"><b>解析配置</b></div><div class="card-b">'+
+      '<p class="muted" style="font-size:12.5px">勾选需要 AI 解析的分区，解析报告以勾选内容为准。</p>'+
+      ['核心信息','技术评分办法','废标条款','★/▲ 重点条款','隐式硬约束','商务要求'].map(function(t,i){
+        return '<label style="display:flex;align-items:center;gap:9px;padding:8px 0;font-size:13px"><button class="switch on" onclick="this.classList.toggle(\'on\');return false"></button>'+t+'</label>';
+      }).join('')+
+      '<button class="btn btn-primary mt" style="width:100%;justify-content:center" onclick="go(\'#/bid?stage=1\')">'+icon('spark')+'开始解析</button>'+
+    '</div></div></div>';
+}
+function bidS2(){
+  var core=[
+    ['项目概述','采购人、预算、地址、工期、实施内容'],
+    ['技术评分要求','★ 技术参数实质性响应评审（20 分），每项 2 分'],
+    ['项目信息','医院信息化升级，建设一体化核心业务系统'],
+    ['甲方信息','安徽中医药大学第一附属医院'],
+    ['交货和服务要求','合同签订后 36 个月工期'],
+    ['响应文件要求','加密电子投标文件，电子交易系统制作'],
+    ['★★/▲ 重点条款','共 11 条']
+  ].map(function(c,i){
+    return '<div class="list-card" style="padding:10px 12px;margin-bottom:8px"><div style="display:flex;align-items:center;gap:9px"><span class="tag t-success">成功</span><b style="flex:1;font-size:13px;color:var(--ink)">'+c[0]+'</b><button class="btn btn-ghost btn-sm">编辑</button></div><div class="muted" style="font-size:11.5px;margin-top:5px">'+c[1]+'</div></div>';
+  }).join('');
+
+  var overview=
+    ['项目基本信息：一体化核心业务系统建设，服务类，预算 2,500 万元，合肥市蜀山区梅山路117号','背景目的：建设医院一体化核心业务系统，提升信息化水平','规模预算：预算金额 2,500 万元，最高限价 2,500 万元','时间安排：合同履行期 36 个月','实施内容：含 HIS、EMR、LIS、PACS 等子系统','技术特点：兼容两院系统、数据统一、支持信创适配']
+   .map(function(t,i){return '<div style="display:flex;gap:9px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px"><span class="tag t-primary" style="flex:none">'+(i+1)+'</span><div style="flex:1">'+t+' <span class="faint">（出处：第一章 / 第三章）</span></div></div>';}).join('');
+
+  var hard=
+    '<div class="alert alert-danger mb">'+icon('alert')+'<div><b>隐式硬约束 21 条</b>（本地抽取 · 零 AI，自动注入大纲与章节），违反任一条可能废标。</div></div>'+
+    ['投标文件无法导入电子开评标系统，视为无效投标','投标截止前未完成传输，视为撤回投标文件','未按规定缴纳履约保证金，视为放弃中标资格','社保证明材料至少含养老保险']
+   .map(function(t,i){return '<div style="display:flex;gap:9px;padding:7px 0;font-size:12.5px"><span class="tag t-danger" style="flex:none">'+(i+1)+'</span><span>'+t+'</span></div>';}).join('')+
+    '<button class="btn btn-ghost btn-sm mt" onclick="toast(\'演示：展开全部 21 条硬约束\')">展开全部 21 条</button>';
+
+  return '<div class="grid" style="grid-template-columns:330px 1fr;gap:16px;align-items:start">'+
+    '<div class="card"><div class="card-h"><b>核心信息 7/7</b><span class="tag t-success">解析进度 7/7</span></div><div class="card-b">'+core+'</div></div>'+
+    '<div style="display:flex;flex-direction:column;gap:16px">'+
+      '<div class="card"><div class="card-h"><b>项目概述</b><span class="spacer"></span><button class="btn btn-soft btn-sm">带入技能</button><button class="btn btn-ghost btn-sm">重新解析</button></div><div class="card-b">'+overview+'<p class="tag t-purple mt">内容可人工修改，后续环节以核对后的报告为准</p></div></div>'+
+      '<div class="card"><div class="card-b">'+hard+'</div></div>'+
+    '</div></div>';
+}
+function bidS3(){
+  function swRow(t,on){return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;font-size:13px"><button class="switch '+(on?'on':'')+'" onclick="this.classList.toggle(\'on\');return false"></button><span style="flex:1">'+t+'</span></div>';}
+  return '<div class="grid" style="grid-template-columns:1fr 300px;gap:16px;align-items:start">'+
+    '<div style="display:flex;flex-direction:column;gap:16px">'+
+      '<div class="card"><div class="card-h"><b>生成设置</b><span class="tag t-success">自动保存</span></div><div class="card-b">'+
+        '<div class="ft muted" style="font-size:12px;margin-bottom:7px">生成模式（越界扩写的新增承诺越克越严）</div>'+
+        '<div class="optrow mb"><span class="opt on">严格响应（默认 · 最安全）</span><span class="opt">场景扩展</span><span class="opt">大量充实</span></div>'+
+        '<div class="grid g3" style="gap:10px"><div class="field" style="margin:0"><label>目标页数</label><input class="input" placeholder="约 264 页"></div><div class="field" style="margin:0"><label>每小节字数</label><input class="input" value="800"></div><div class="field" style="margin:0"><label>目录级数</label><select class="select"><option>三级</option></select></div></div>'+
+        '<div class="mt">'+swRow('逐条应答强化（注入 ★/▲ 条款，正面应答）',true)+swRow('素材优先注入（检索知识库，注明来源）',true)+swRow('章节配图（架构 / 流程 / 界面示意）',false)+'</div>'+
+      '</div></div>'+
+      '<div class="card"><div class="card-h"><b>方案大纲</b><span class="spacer"></span><button class="btn btn-soft btn-sm" onclick="toast(\'演示：AI 以评分办法为纲生成大纲\')">AI 生成大纲</button><button class="btn btn-ghost btn-sm">引入方案底稿</button></div><div class="card-b"><div class="alert alert-info mb">'+icon('check')+'<div><b>需求响应覆盖 37/37</b>，招标要求条款已在大纲叶子节点有落点。</div></div><p class="muted" style="font-size:12.5px">大纲可改名、增删、移动，确认后逐章串行生成正文，保持全文口径一致。</p><button class="btn btn-primary mt" onclick="toast(\'演示：开始逐章生成（可中断）\')">'+icon('spark')+'开始生成正文</button></div></div>'+
+    '</div>'+
+    '<div class="card"><div class="card-h"><b>格式与事实</b></div><div class="card-b">'+
+      '<div class="alert alert-info" style="font-size:12px">A4 · 正文仿宋四号 · 暗标关 · 检查项 14/14</div>'+
+      '<h4 style="font-size:13px;margin:14px 0 8px">全局事实表（13 条 · 自动抽取）</h4>'+
+      ['预算 / 最高限价：2,500 万','工期：36 个月','采购人：安徽中医药大学第一附属医院','子系统：HIS/EMR/LIS/PACS'].map(function(t){return '<div class="list-card" style="padding:8px 11px;margin-bottom:7px;font-size:12px">'+t+'</div>';}).join('')+
+    '</div></div>'+
+  '</div>';
+}
+function bidS4(){
+  return '<div class="grid g2"><div class="card"><div class="card-h"><b>查重报告</b><span class="tag t-warning">总重复率 8.6%</span></div><div class="card-b">'+
+    '<div class="progress mb"><i style="width:8.6%;background:var(--warning)"></i></div>'+
+    '<table class="tbl"><thead><tr><th>重复来源</th><th>重复段落</th><th>占比</th></tr></thead><tbody>'+
+      '<tr><td>历史标书 · 项目 12876</td><td>项目概述通用段落</td><td><span class="tag t-warning">3.2%</span></td></tr>'+
+      '<tr><td>公司标准方案模板</td><td>技术路线描述</td><td><span class="tag t-warning">2.8%</span></td></tr>'+
+      '<tr><td>历史标书 · 项目 13012</td><td>运维保障章节</td><td><span class="tag t-muted">2.6%</span></td></tr>'+
+    '</tbody></table><button class="btn btn-primary mt" onclick="toast(\'演示：对重复段落定向改写\')">定向改写重复段</button></div></div>'+
+    '<div class="card"><div class="card-h"><b>查重设置</b></div><div class="card-b"><p class="muted" style="font-size:12.5px">选择比对范围，重复率超过阈值时高亮提醒。</p>'+
+      '<button class="switch on" onclick="this.classList.toggle(\'on\');return false"></button> 与历史标书比对<br style="clear:both"><button class="switch on" style="margin-top:10px" onclick="this.classList.toggle(\'on\');return false"></button> 与公司模板比对'+
+      '<div class="field mt"><label>重复率阈值</label><input class="input" value="15%"></div>'+
+      '<div class="alert alert-info" style="font-size:12px">'+icon('shield')+'<div>当前重复率 8.6%，低于阈值，可进入下一阶段。</div></div>'+
+    '</div></div></div>';
+}
+function bidS5(){
+  var rows=[
+    ['资质证书在有效期内','success','已核验，营业执照 / 行业资质齐全'],
+    ['投标保证金 / 履约保证金','warning','保证金凭证待上传，截止前确认'],
+    ['投标文件密封与标记','success','加密电子投标，标记规范'],
+    ['页数 / 份数 / 装订要求','success','符合 21 条硬约束'],
+    ['签字与盖章完整','success','电子签章已完成'],
+    ['★/▲ 重点条款逐条响应','danger','11 条中 2 条响应不充分，需补充'],
+    ['投标函 / 商务偏离表','success','商务标骨架完整']
+  ].map(function(r){
+    var tag=r[1]==='success'?'t-success':r[1]==='warning'?'t-warning':'t-danger';
+    var lb=r[1]==='success'?'通过':r[1]==='warning'?'待确认':'未通过';
+    return '<div class="list-card" style="padding:11px 13px;margin-bottom:9px"><div style="display:flex;align-items:center;gap:9px"><span class="tag '+tag+'">'+lb+'</span><b style="flex:1;font-size:13.5px;color:var(--ink)">'+r[0]+'</b><button class="btn btn-ghost btn-sm">定位</button></div><div class="muted" style="font-size:11.5px;margin-top:5px">'+r[2]+'</div></div>';
+  }).join('');
+  return '<div class="alert alert-danger mb">'+icon('alert')+'<div><b>发现 1 项高风险、1 项待确认</b>：★/▲ 条款 2 条响应不充分，可能导致废标或失分，请在编制阶段补充。</div></div>'+
+    '<div class="card"><div class="card-h"><b>废标项检查清单</b><span class="spacer"></span><button class="btn btn-soft btn-sm" onclick="toast(\'演示：重新检查\')">'+icon('refresh')+'重新检查</button></div><div class="card-b">'+rows+'</div></div>';
+}
+function bidS6(){
+  function bar(label,val,col){return '<div style="margin-bottom:13px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:5px"><span class="muted">'+label+'</span><b style="color:'+col+'">'+val+'</b></div><div class="progress"><i style="width:'+val+'%;background:'+col+'"></i></div></div>';}
+  return '<div class="grid g2"><div class="card"><div class="card-h"><b>模拟评标结果</b><span class="tag t-success">预估总分 87.4</span></div><div class="card-b">'+
+    bar('技术评分（满分 70）',62,'var(--primary-600)')+bar('商务评分（满分 20）',17,'var(--chart-2)')+bar('价格评分（满分 10）',8.4,'var(--success)')+
+    '<div class="alert alert-success mt">'+icon('trophy')+'<div>预估具备竞争力，技术标为主要得分项，建议补强 ★ 条款响应。</div></div></div></div>'+
+    '<div class="card"><div class="card-h"><b>评分点与失分点</b></div><div class="card-b">'+
+      '<h4 style="font-size:13px">主要得分点</h4><p class="muted" style="font-size:12.5px">一体化架构完整、同类中医医院案例充分、信创适配。</p>'+
+      '<h4 style="font-size:13px;margin-top:14px">主要失分点</h4><p class="muted" style="font-size:12.5px">★ 技术参数 2 条响应不充分（-4 分）、报价略高于均值。</p>'+
+      '<button class="btn btn-primary mt" onclick="toast(\'演示：按失分点优化\')">按失分点优化</button>'+
+    '</div></div></div>';
+}
+function bidS7(){
+  var gates=[['parse 解析','success'],['outline 大纲','success'],['compose 编制','warning'],['check 检查','danger'],['eval 评标','success']];
+  var g=gates.map(function(g2){return '<div class="list-card" style="padding:11px 13px;margin-bottom:9px;display:flex;align-items:center;gap:10px"><span class="tag t-'+g2[1]+'">'+(g2[1]==='success'?'已满足':g2[1]==='warning'?'部分':'未满足')+'</span><b style="flex:1;font-size:13.5px;color:var(--ink)">'+g2[0]+'</b></div>';}).join('');
+  return '<div class="grid g2"><div class="card"><div class="card-h"><b>交卷闸门</b></div><div class="card-b">'+
+    '<div class="alert alert-danger mb">'+icon('alert')+'<div>check 闸门未满足，<b>导出已被拦截</b>；如需强制放行须填写备注。</div></div>'+g+
+    '<button class="btn btn-ghost" onclick="toast(\'演示：强制放行（必填备注）\')">强制放行并填备注</button></div></div>'+
+    '<div class="card"><div class="card-h"><b>归档导出</b></div><div class="card-b center" style="flex-direction:column;padding:30px">'+
+      '<div style="width:60px;height:60px;border-radius:14px;background:var(--primary-50);color:var(--primary-600);display:flex;align-items:center;justify-content:center;margin-bottom:14px">'+icon('doc')+'</div>'+
+      '<button class="btn btn-primary" style="width:100%;justify-content:center;margin-bottom:9px" onclick="toast(\'演示：导出投标文件 Word\')">'+icon('doc')+'导出投标文件 Word</button>'+
+      '<button class="btn btn-ghost" style="width:100%;justify-content:center;margin-bottom:9px" onclick="toast(\'演示：归档项目\')">归档项目</button>'+
+      '<p class="faint" style="font-size:11.5px;text-align:center">导出含目录 / 页眉页码，暗标不输出页码；SVG 配图转 PNG。</p>'+
+    '</div></div></div>';
+}
+
+
+/* ===== 知识库（双库 + 目录 + RAG 问答） ===== */
+views['#/knowledge']=function(){
+  var head='<div class="page-head"><div><h1>知识库</h1><p>上传文档自动解析建索引，团队 / 个人双库隔离；检索问答带引用，缺口可反哺</p></div><div class="spacer"></div>'+
+    '<div class="tabs"><button class="tab active">团队知识库</button><button class="tab">个人知识库</button></div>'+
+    '<button class="btn btn-soft" onclick="toast(\'演示：新建分类\')">'+icon('folder')+'新建分类</button>'+
+    '<button class="btn btn-primary" onclick="toast(\'演示：上传文档（支持 Word/PDF/Excel/PPT）\')">'+icon('upload')+'上传文档</button></div>';
+
+  var tree=
+    ['产品资料','项目案例','政策法规','技术白皮书','标书模板','公司资质'].map(function(t,i){
+      return '<div class="tree-row'+(i===3?' on':'')+'"><span class="caret">'+icon('down')+'</span><span class="tt">'+t+'</span><span class="st">'+[18,42,26,15,9,12][i]+'</span></div>';
+    }).join('');
+
+  var docs=
+    '<div class="col-h">'+icon('folder')+'技术白皮书<span class="spacer"></span><span class="faint" style="font-size:11.5px;font-weight:500">15 篇</span></div>'+
+    '<div class="col-b" style="padding:9px">'+
+    [['医院一体化核心业务系统技术白皮书',true],['集成平台与数据中台建设指南',false],['电子病历五级建设技术要求',false],['互联网医院建设方案参考',false],['信创环境适配实施手册',false]].map(function(d){
+      return '<div class="list-card'+(d[1]?' on':'')+'" style="padding:10px 12px"><b style="font-size:12.5px;color:var(--ink);display:block;margin-bottom:4px">'+d[0]+'</b><div class="meta-line"><span class="tag t-muted">PDF · 28 页</span></div></div>';
+    }).join('')+'</div>';
+
+  var reader=
+    '<div class="col-h">'+icon('doc')+'文档阅读</div><div class="col-b"><div class="doc-content">'+
+      '<h3>医院一体化核心业务系统技术白皮书</h3>'+
+      '<div class="meta-line mb"><span class="tag t-purple">技术白皮书</span><span class="faint">上传：产品部 · 09-18 · 已建索引</span></div>'+
+      '<h4>1. 总体架构</h4><p>一体化核心业务系统采用分层解耦架构，通过统一集成平台实现 HIS、EMR、LIS、PACS 等系统互联互通，临床数据中心汇聚全院诊疗数据，支撑临床决策与运营分析。</p>'+
+      '<h4>2. 关键能力</h4><p>平台支持高并发门诊与住院业务，核心业务可用性不低于 99.9%，RPO ≤ 15 分钟、RTO ≤ 30 分钟，全面适配国产服务器、数据库与中间件。</p>'+
+      '<p class="faint" style="font-size:11.5px">引用编号：[白皮书 · 第 2 章]、[白皮书 · 第 4 章]</p>'+
+    '</div></div>';
+
+  var qa=
+    '<div class="col-h">'+icon('spark')+'检索问答</div>'+
+    '<div style="display:flex;flex-direction:column;height:calc(100% - 47px)">'+
+      '<div style="flex:1;overflow:auto;padding:14px">'+
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"><span class="opt" onclick="toast(\'演示：检索并回答\')">可用性指标是多少？</span><span class="opt" onclick="toast(\'演示：检索并回答\')">支持信创吗？</span></div>'+
+        '<div style="text-align:right;margin-bottom:12px"><span style="display:inline-block;background:var(--primary-600);color:#fff;padding:8px 12px;border-radius:10px 10px 2px 10px;font-size:12.5px">一体化系统的可用性和容灾指标？</span></div>'+
+        '<div style="margin-bottom:12px"><span class="tag t-success">弹药库直答 · 零成本</span><div style="background:var(--subtle);padding:10px 12px;border-radius:2px 10px 10px 10px;font-size:12.5px;line-height:1.6;margin-top:6px">核心业务可用性不低于 <b>99.9%</b>，<b>RPO ≤ 15 分钟</b>、<b>RTO ≤ 30 分钟</b>。<div class="faint" style="font-size:10.5px;margin-top:6px">出处：技术白皮书 第 4 章 [1]；建设指南 第 2 章 [2]</div></div></div>'+
+        '<div class="alert alert-warn" style="font-size:11.5px">'+icon('alert')+'<div>部分问题资料不足，<button class="btn btn-soft btn-sm" onclick="toast(\'演示：缺口已记录并反哺\')">'+icon('plus')+'记录缺口反哺</button></div></div>'+
+      '</div>'+
+      '<div style="padding:11px 13px;border-top:1px solid var(--border);display:flex;gap:8px"><input class="input" placeholder="向知识库提问，回答带引用…" style="flex:1"><button class="btn btn-primary btn-sm" onclick="toast(\'演示：RAG 检索回答\')">发送</button></div>'+
+    '</div>';
+
+  var body=head+'<div class="three" style="grid-template-columns:210px 1fr 330px">'+
+    '<div class="col"><div class="col-h">'+icon('folder')+'目录</div><div class="col-b" style="padding:10px">'+tree+'</div></div>'+
+    '<div class="col" style="display:grid;grid-template-rows:47px 1fr">'+docs+'</div>'+
+    '<div class="col detail" style="display:flex;flex-direction:column">'+qa+'</div>'+
+  '</div>';
+  return shell('#/knowledge','知识库',body);
+};
+
+/* ===== 格式刷新（4 步向导） ===== */
+views['#/format']=function(){
+  var st=2; var m=location.hash.match(/stage=(\d)/); if(m) st=+m[1];
+  var names=['上传文档','选择模板','预览对比','导出结果'];
+  var steps=names.map(function(n,i){
+    var s='<div class="step '+(i<st?'done':i===st?'active':'')+'" onclick="go(\'#/format?stage='+i+'\')"><div class="num">'+(i<st?icon('check'):i+1)+'</div><div class="nm">'+n+'</div></div>';
+    if(i<3) s+='<div class="step-line '+(i<st?'done':'')+'"></div>'; return s;
+  }).join('');
+  var panel;
+  if(st===0){
+    panel='<div class="card"><div class="card-b center" style="flex-direction:column;padding:46px"><div style="width:64px;height:64px;border-radius:14px;background:var(--primary-50);color:var(--primary-600);display:flex;align-items:center;justify-content:center;margin-bottom:14px">'+icon('upload')+'</div><b style="margin-bottom:6px">拖拽 Word 文档到此处</b><p class="muted" style="font-size:12.5px">支持 .docx，仅调整格式不改正文内容</p><button class="btn btn-primary mt" onclick="go(\'#/format?stage=1\')">选择文件</button></div></div>';
+  }else if(st===1){
+    panel='<div class="grid g3">'+[['公文标准','标题黑体 / 正文仿宋三号'],['投标文件','正文仿宋四号 / 固定行距'],['方案报告','正文宋体小四 / 1.5 倍行距']].map(function(t,i){
+      return '<div class="card'+(i===1?' on':'')+'" style="cursor:pointer"><div class="card-b"><b style="font-size:14px;color:var(--ink)">'+t[0]+'</b><p class="muted" style="font-size:12px;margin-top:6px">'+t[1]+'</p></div></div>';
+    }).join('')+'</div><button class="btn btn-primary mt" onclick="go(\'#/format?stage=2\')">使用此模板</button>';
+  }else if(st===2){
+    panel='<div class="grid g2"><div class="card"><div class="card-h"><b>刷新前</b></div><div class="card-b doc-content" style="opacity:.75"><h4 style="font-family:Arial">标题（字体混乱）</h4><p style="font-size:13px;line-height:1.2">正文行距不一、缩进错乱、字号不统一，标题与正文字体混杂。</p></div></div><div class="card"><div class="card-h"><b>刷新后</b><span class="tag t-success">已规范</span></div><div class="card-b doc-content"><h4 style="font-family:SimHei">标题（黑体 · 统一）</h4><p style="font-size:14px;line-height:1.6;text-indent:2em">正文仿宋四号、固定行距、首行缩进两字符，标题层级、页码与页眉自动规范。</p></div></div></div><button class="btn btn-primary mt" onclick="go(\'#/format?stage=3\')">确认无误，导出</button>';
+  }else{
+    panel='<div class="card"><div class="card-b center" style="flex-direction:column;padding:42px"><div style="width:60px;height:60px;border-radius:50%;background:var(--success-bg);color:var(--success);display:flex;align-items:center;justify-content:center;margin-bottom:14px">'+icon('check')+'</div><b style="margin-bottom:6px">格式刷新完成</b><p class="muted" style="font-size:12.5px">已按「投标文件」模板规范全文</p><button class="btn btn-primary mt" onclick="toast(\'演示：下载刷新后的 Word\')">'+icon('download')+'下载 Word</button></div></div>';
+  }
+  var head='<div class="page-head"><div><h1>格式刷新</h1><p>一键把 Word 按标准模板规范字体、字号、行距、缩进与页码，不改动正文</p></div></div>';
+  var body=head+'<div class="stepper">'+steps+'</div>'+panel;
+  return shell('#/format','格式刷新',body);
+};
+
+
+/* ===== 竞品分析（替代崩溃页） ===== */
+views['#/competitors']=function(){
+  var head='<div class="page-head"><div><h1>竞品分析</h1><p>竞品档案、能力对比与中标动态，知己知彼；原页面已修复，可正常使用</p></div><div class="spacer"></div>'+
+    '<div class="tabs"><button class="tab">竞品档案</button><button class="tab active">竞品对比</button></div>'+
+    '<button class="btn btn-primary" onclick="toast(\'演示：新建竞品档案\')">'+icon('plus')+'新建竞品</button></div>';
+
+  var pick='<div class="card mb"><div class="card-b" style="display:flex;gap:8px;flex-wrap:wrap;padding:13px 16px;align-items:center"><span class="muted" style="font-size:12.5px">对比对象：</span><span class="opt on">我方</span><span class="opt on">卫宁健康</span><span class="opt on">创业慧康</span><span class="opt on">东软集团</span><span class="opt">东华软件</span><span class="opt">万达信息</span></div></div>';
+
+  function cell(v){ if(v===2) return '<span style="color:var(--success);font-weight:700">●●</span>'; if(v===1) return '<span style="color:var(--warning)">●</span>'; return '<span class="faint">—</span>'; }
+  var dims=[
+    ['HIS / EMR',2,2,2,2],['集成平台 / CDR',2,2,1,2],['互联网医院',2,2,1,1],['信创适配',2,1,1,2],['中医医院案例',2,1,1,1],['区域医疗',1,2,2,2]
+  ];
+  var rows=dims.map(function(d){
+    return '<tr><td style="text-align:left"><b>'+d[0]+'</b></td><td>'+cell(d[1])+'</td><td>'+cell(d[2])+'</td><td>'+cell(d[3])+'</td><td>'+cell(d[4])+'</td></tr>';
+  }).join('');
+
+  var table='<div class="card mb"><div class="card-h"><b>能力对比矩阵</b><span class="tag t-success">●● 强</span><span class="tag t-warning">● 一般</span></div><div class="card-b" style="padding:6px 10px 16px"><table class="tbl center"><thead><tr><th style="text-align:left;width:28%">能力维度</th><th style="width:18%">我方</th><th style="width:18%">卫宁健康</th><th style="width:18%">创业慧康</th><th style="width:18%">东软集团</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+
+  var profiles=[
+    ['卫宁健康','医疗信息化龙头，产品线全、区域医疗强','短板：中医医院案例相对少，报价偏高'],
+    ['创业慧康','区域卫生与公卫见长，华东客户多','短板：一体化核心系统整合一般'],
+    ['东软集团','大型综合医院与信创能力强，品牌硬','短板：实施周期长、成本高']
+  ].map(function(p){
+    return '<div class="card"><div class="card-b"><b style="font-size:14px;color:var(--ink);display:block;margin-bottom:7px">'+p[0]+'</b><p class="muted" style="font-size:12px;line-height:1.55">'+p[1]+'</p><div class="alert alert-warn mt" style="font-size:11.5px"><div>'+p[2]+'</div></div></div></div>';
+  }).join('');
+
+  var strategy='<div class="alert alert-info mt">'+icon('target')+'<div><b>竞争策略建议：</b>本项目主打「中医医院一体化 + 信创适配」差异化，突出同类中医医院业绩与快速交付，规避与龙头在区域医疗上的正面价格竞争。</div></div>';
+
+  var body=head+pick+table+'<div class="grid g3">'+profiles+'</div>'+strategy;
+  return shell('#/competitors','竞品分析',body);
+};
+
+/* ===== 小智助手 ===== */
+views['#/assistant']=function(){
+  var head='<div class="page-head"><div><h1>小智助手</h1><p>跨模块 AI 副驾，理解当前业务上下文；技能可开关，记忆可查看可删除</p></div><div class="spacer"></div><button class="btn btn-ghost" onclick="toast(\'演示：新建会话\')">'+icon('plus')+'新会话</button></div>';
+
+  var sessions=
+    '<div class="col-h">'+icon('chat')+'会话</div><div class="col-b" style="padding:9px">'+
+    [['标书 13431 条款解读',true],['安徽中医药客户跟进策略',false],['本周情报周报',false],['报价成本测算',false]].map(function(s){
+      return '<div class="list-card'+(s[1]?' on':'')+'" style="padding:10px 12px"><b style="font-size:12.5px;color:var(--ink)">'+s[0]+'</b></div>';
+    }).join('')+'</div>';
+
+  var chat=
+    '<div class="col-h">'+icon('spark')+'标书 13431 条款解读<span class="spacer"></span><span class="tag t-info">上下文：标书作战室</span></div>'+
+    '<div style="display:flex;flex-direction:column;height:calc(100% - 47px)">'+
+      '<div style="flex:1;overflow:auto;padding:16px">'+
+        '<div style="margin-bottom:13px"><span class="tag t-purple">技能：标书解析</span><div style="background:var(--subtle);padding:10px 13px;border-radius:2px 10px 10px 10px;font-size:12.5px;line-height:1.65;margin-top:6px">已读取项目 13431 的 AI 解析报告，你可以问我：★ 条款有哪些、评分办法、废标风险点，或让我起草某章节。</div></div>'+
+        '<div style="text-align:right;margin-bottom:13px"><span style="display:inline-block;background:var(--primary-600);color:#fff;padding:8px 12px;border-radius:10px 10px 2px 10px;font-size:12.5px">这个项目有哪些 ★ 实质性条款？</span></div>'+
+        '<div style="margin-bottom:13px"><div style="background:var(--subtle);padding:10px 13px;border-radius:2px 10px 10px 10px;font-size:12.5px;line-height:1.65">共解析出 <b>11 条 ★★/▲ 重点条款</b>，其中技术参数实质性响应评审占 20 分、每项 2 分。任一条不满足将被扣分或废标，建议在大纲中逐条落点、正面应答。<div class="faint" style="font-size:10.5px;margin-top:6px">出处：AI 解析报告 · 技术评分要求</div></div></div>'+
+      '</div>'+
+      '<div style="padding:11px 13px;border-top:1px solid var(--border)"><div style="display:flex;gap:7px;margin-bottom:8px;flex-wrap:wrap"><span class="opt" onclick="toast(\'演示：调用技能\')">标书解析</span><span class="opt" onclick="toast(\'演示：调用技能\')">方案生成</span><span class="opt" onclick="toast(\'演示：调用技能\')">情报周报</span></div><div style="display:flex;gap:8px"><input class="input" placeholder="输入问题，可 @ 引用当前模块数据…" style="flex:1"><button class="btn btn-primary btn-sm" onclick="toast(\'演示：发送\')">发送</button></div></div>'+
+    '</div>';
+
+  var side=
+    '<div class="col-h">'+icon('settings')+'记忆与技能</div><div class="col-b">'+
+      '<h4 style="font-size:12.5px;margin:4px 0 8px">长期记忆</h4>'+
+      ['本项目预算 2,500 万、工期 36 个月','客户为三甲中医医院，关注信创','报价策略：避免与龙头正面价格战'].map(function(t){
+        return '<div class="list-card" style="padding:9px 11px;margin-bottom:7px;font-size:12px;display:flex;gap:7px;align-items:flex-start"><span style="flex:1">'+t+'</span><button class="btn btn-ghost btn-sm" onclick="toast(\'演示：删除记忆\')">×</button></div>';
+      }).join('')+
+      '<h4 style="font-size:12.5px;margin:16px 0 8px">技能开关</h4>'+
+      [['标书解析',1],['方案生成',1],['情报周报',1],['报价测算',0],['客户画像',1]].map(function(s){
+        return '<div style="display:flex;align-items:center;gap:9px;padding:6px 0;font-size:12.5px"><button class="switch '+(s[1]?'on':'')+'" onclick="this.classList.toggle(\'on\');return false"></button><span style="flex:1">'+s[0]+'</span></div>';
+      }).join('')+
+    '</div>';
+
+  var body=head+'<div class="three" style="grid-template-columns:220px 1fr 280px">'+
+    '<div class="col">'+sessions+'</div>'+
+    '<div class="col detail" style="display:flex;flex-direction:column">'+chat+'</div>'+
+    '<div class="col">'+side+'</div>'+
+  '</div>';
+  return shell('#/assistant','小智助手',body);
+};
+
+
+/* ===== PPT 与报价 ===== */
+views['#/ppt']=function(){
+  var tab='ppt'; var m=location.hash.match(/tab=(\w+)/); if(m) tab=m[1];
+  var head='<div class="page-head"><div><h1>PPT 与报价</h1><p>汇报 PPT 生产线与报价清单多版本管理，方案确认后一键产出</p></div><div class="spacer"></div>'+
+    '<div class="tabs"><button class="tab'+(tab==='ppt'?' active':'')+'" onclick="go(\'#/ppt\')">汇报 PPT</button><button class="tab'+(tab==='price'?' active':'')+'" onclick="go(\'#/ppt?tab=price\')">报价清单</button></div>'+
+    '<button class="btn btn-primary" onclick="toast(\'演示：新建\')">'+icon('plus')+'新建</button></div>';
+
+  var panel;
+  if(tab==='ppt'){
+    var tpl=[['售前汇报 PPT','面向客户领导，突出价值与案例'],['投标述标 PPT','配合述标，10-15 页精简'],['产品介绍 PPT','产品能力与界面演示'],['工作总结 PPT','项目复盘与汇报']].map(function(t){
+      return '<div class="card" style="cursor:pointer" onclick="toast(\'演示：进入 PPT 生产线（大纲 → 逐页生成 → 导出）\')"><div class="card-b center" style="flex-direction:column;padding:24px 18px"><div style="width:52px;height:38px;border-radius:5px;background:var(--primary-50);color:var(--primary-600);display:flex;align-items:center;justify-content:center;margin-bottom:11px">'+icon('doc')+'</div><b style="font-size:13.5px;color:var(--ink);margin-bottom:5px">'+t[0]+'</b><p class="muted" style="font-size:11.5px;text-align:center">'+t[1]+'</p></div></div>';
+    }).join('');
+    panel='<div class="alert alert-info mb">'+icon('spark')+'<div>PPT 生产线：选择模板 → AI 依据方案生成大纲 → 逐页生成（可改写）→ 导出 PPTX，数据与方案、报价口径一致。</div></div><div class="grid g4">'+tpl+'</div>';
+  }else{
+    function vrow(name,cost,price,status,cls){
+      var margin=Math.round((price-cost)/price*100);
+      return '<tr><td style="text-align:left"><b>'+name+'</b></td><td>'+cost+' 万</td><td><b>'+price+' 万</b></td><td><span class="tag '+(margin>=30?'t-success':'t-warning')+'">毛利 '+margin+'%</span></td><td><span class="tag '+cls+'">'+status+'</span></td><td><button class="btn btn-ghost btn-sm" onclick="toast(\'演示：查看 / 复制版本\')">查看</button></td></tr>';
+    }
+    panel='<div class="grid g4 mb"><div class="kpi"><div class="v">3</div><div class="l">报价版本</div></div><div class="kpi"><div class="v">1,820</div><div class="l">最新成本（万）</div></div><div class="kpi"><div class="v" style="color:var(--success)">27%</div><div class="l">最新毛利率</div></div><div class="kpi"><div class="v">2,500</div><div class="l">最高限价（万）</div></div></div>'+
+      '<div class="card"><div class="card-h"><b>报价清单版本</b><span class="spacer"></span><button class="btn btn-soft btn-sm" onclick="toast(\'演示：成本测算（BOM + 人力 + 运维）\')">'+icon('spark')+'成本测算</button><button class="btn btn-primary btn-sm" onclick="toast(\'演示：新建报价版本\')">'+icon('plus')+'新版本</button></div><div class="card-b" style="padding:6px 12px 14px"><table class="tbl center"><thead><tr><th style="text-align:left;width:24%">版本</th><th style="width:14%">成本</th><th style="width:14%">报价</th><th style="width:16%">毛利率</th><th style="width:16%">状态</th><th style="width:16%">操作</th></tr></thead><tbody>'+
+        vrow('V1 · 保守报价',1750,2480,'已存档','t-muted')+
+        vrow('V2 · 竞争报价',1750,2380,'当前使用','t-primary')+
+        vrow('V3 · 冲刺报价',1750,2280,'待评审','t-warning')+
+      '</tbody></table><div class="alert alert-warn mt" style="font-size:12px">'+icon('alert')+'<div>V3 毛利率 23%，低于公司 25% 红线，提交需负责人审批。</div></div></div></div>';
+  }
+  return shell('#/ppt','PPT 与报价',head+panel);
+};
+
+/* ===== 模型配置 ===== */
+views['#/models']=function(){
+  var head='<div class="page-head"><div><h1>模型配置</h1><p>管理员配置公共模型供全员使用；个人可填自己的 Key，仅自己可见</p></div><div class="spacer"></div>'+
+    '<div class="tabs"><button class="tab active">公共模型</button><button class="tab">个人模型</button></div>'+
+    '<button class="btn btn-primary" onclick="toast(\'演示：添加模型（供应商 · Base URL · Key · 模型名）\')">'+icon('plus')+'添加模型</button></div>';
+
+  var models=[
+    ['Doubao Pro','火山引擎','256K','文本 / 视觉','默认',true],
+    ['DeepSeek V3','DeepSeek','128K','文本','启用',true],
+    ['GPT-4o 兼容','OpenAI 兼容','128K','文本 / 视觉','启用',false],
+    ['本地 Ollama','本地','32K','文本','停用',false]
+  ].map(function(m2){
+    return '<div class="list-card" style="padding:13px 15px;margin-bottom:10px"><div style="display:flex;align-items:center;gap:12px"><div class="av" style="background:linear-gradient(145deg,#0E7490,#0C5E75)">'+m2[0][0]+'</div><div style="flex:1"><b style="font-size:14px;color:var(--ink)">'+m2[0]+'</b><div class="meta-line" style="margin-top:3px"><span class="tag t-muted">'+m2[1]+'</span><span class="tag t-muted">上下文 '+m2[2]+'</span><span class="tag t-info">'+m2[3]+'</span></div></div>'+(m2[4]==='默认'?'<span class="tag t-primary">默认</span>':'')+'<button class="switch '+(m2[5]?'on':'')+'" onclick="this.classList.toggle(\'on\');toast(\'演示：启停模型\');return false"></button></div></div>';
+  }).join('');
+
+  function usage(label,val,pct,col){return '<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:5px"><span class="muted">'+label+'</span><b>'+val+'</b></div><div class="progress"><i style="width:'+pct+'%;background:'+col+'"></i></div></div>';}
+  var usageCard='<div class="card"><div class="card-h"><b>本月用量</b><span class="tag t-muted">公共池</span></div><div class="card-b">'+
+    usage('Doubao Pro · Tokens','8.4 M',72,'var(--primary-600)')+
+    usage('DeepSeek V3 · Tokens','3.1 M',34,'var(--chart-2)')+
+    usage('估算成本','¥ 1,286',48,'var(--warning)')+
+    '<div class="alert alert-info" style="font-size:12px">'+icon('shield')+'<div>弹药库直答与本地推导不计 token，已优先使用以降低成本。</div></div></div></div>';
+
+  var body=head+'<div class="grid" style="grid-template-columns:1fr 320px;gap:16px;align-items:start"><div class="card"><div class="card-b">'+models+'</div></div>'+usageCard+'</div>';
+  return shell('#/models','模型配置',body);
+};
+
+/* ===== 团队管理 ===== */
+views['#/team']=function(){
+  var head='<div class="page-head"><div><h1>团队管理</h1><p>成员、业务角色与技术角色管理；技术角色分管理员 / 编辑 / 只读，业务角色按场景分配</p></div><div class="spacer"></div><button class="btn btn-primary" onclick="toast(\'演示：邀请成员（邮箱 · 初始密码 · 角色）\')">'+icon('plus')+'邀请成员</button></div>';
+
+  var rows=[
+    ['系统管理员','admin@team.local','管理员 / 售前负责人','admin','启用','t-success'],
+    ['只读用户','viewer@team.local','只读 / 评审','viewer','启用','t-success'],
+    ['编辑测试','e2e-editor@team.local','编辑 / 售前顾问','editor','启用','t-success'],
+    ['真实用户','1971600574@qq.com','编辑 / 售前顾问','editor','启用','t-success']
+  ].map(function(r){
+    var roleCls=r[3]==='admin'?'t-purple':r[3]==='editor'?'t-primary':'t-muted';
+    return '<tr><td style="text-align:left"><div style="display:flex;align-items:center;gap:10px"><div class="av">'+r[0][0]+'</div><b style="color:var(--ink)">'+r[0]+'</b></div></td><td style="text-align:left" class="muted">'+r[1]+'</td><td style="text-align:left">'+r[2]+'</td><td><span class="tag '+roleCls+'">'+r[3]+'</span></td><td><span class="tag '+r[5]+'">'+r[4]+'</span></td><td><button class="btn btn-ghost btn-sm" onclick="toast(\'演示：编辑成员角色 / 重置密码\')">编辑</button></td></tr>';
+  }).join('');
+
+  var roles=
+    '<div class="card mb"><div class="card-h"><b>技术角色权限</b></div><div class="card-b" style="padding:6px 16px 14px"><table class="tbl center"><thead><tr><th style="text-align:left;width:26%">角色</th><th style="width:26%">数据</th><th style="width:24%">AI 操作</th><th style="width:24%">管理配置</th></tr></thead><tbody>'+
+      '<tr><td style="text-align:left"><b>管理员</b></td><td>全部读写</td><td>可用</td><td>全部（成员 / 模型 / 信息源）</td></tr>'+
+      '<tr><td style="text-align:left"><b>编辑</b></td><td>业务数据读写</td><td>可用</td><td>不可</td></tr>'+
+      '<tr><td style="text-align:left"><b>只读</b></td><td>只读</td><td>个人助手可用</td><td>不可</td></tr>'+
+    '</tbody></table></div></div>';
+
+  var body=head+roles+'<div class="card"><div class="card-h"><b>团队成员（4）</b></div><div class="card-b" style="padding:6px 12px 14px"><table class="tbl center"><thead><tr><th style="text-align:left;width:22%">成员</th><th style="text-align:left;width:24%">邮箱</th><th style="text-align:left;width:22%">业务角色</th><th style="width:11%">技术角色</th><th style="width:10%">状态</th><th style="width:11%">操作</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+  return shell('#/team','团队管理',body);
+};
+
+
+/* ===== 投标决策评审 ===== */
+views['#/decision']=function(){
+  var head='<div class="page-head"><div><h1>投标决策评审</h1><p>13431 · 安徽中医药大学第一附属医院 · AI 解析完成，待评审决策</p></div><div class="spacer"></div><button class="btn btn-ghost" onclick="toast(\'演示：评审记录\')">评审记录</button></div>';
+
+  var left='<div class="col-h">五维评分（自动）</div><div class="col-b">'+
+    selfScore('资质符合度',92)+selfScore('同类业绩匹配',88)+selfScore('技术功能覆盖',80)+
+    selfScore('客户关系 / 倾向性',72)+selfScore('成本毛利 / 产能',85)+
+    '<div class="alert alert-info" style="font-size:11.5px">'+icon('shield')+'<div>判定类计算 temperature=0，结果可复现、可追溯。</div></div></div>';
+
+  var mid='<div class="col-h">综合结论</div><div class="col-b center" style="flex-direction:column">'+
+    '<div style="position:relative;width:104px;height:104px;margin-bottom:6px">'+bigRing(84)+'</div>'+
+    '<span class="tag t-success" style="font-size:13px;padding:5px 14px">建议 GO · 综合 84</span>'+
+    '<div style="width:100%;margin-top:16px;text-align:left"><h4 style="font-size:12.5px;margin:0 0 8px">一票否决核查</h4>'+
+      '<div class="meta-line" style="font-size:12.5px"><span class="tag t-success">通过</span>资质门槛满足</div>'+
+      '<div class="meta-line" style="font-size:12.5px"><span class="tag t-success">通过</span>保证金可缴纳</div>'+
+      '<div class="meta-line" style="font-size:12.5px"><span class="tag t-success">通过</span>毛利高于红线</div>'+
+    '</div></div>';
+
+  var right='<div class="col-h">倾向性参数 & 评审</div><div class="col-b">'+
+    '<h4 style="font-size:12.5px;margin:0 0 8px">疑似排他 / 内定信号</h4>'+
+    '<div class="list-card" style="padding:9px 11px;margin-bottom:7px;font-size:12px"><span class="tag t-warning">排他</span>参数指定特定品牌型号特征</div>'+
+    '<div class="list-card" style="padding:9px 11px;margin-bottom:7px;font-size:12px"><span class="tag t-warning">排他</span>要求罕见专有接口</div>'+
+    '<div class="list-card" style="padding:9px 11px;margin-bottom:12px;font-size:12px"><span class="tag t-info">信号</span>代理与某厂商往来密切</div>'+
+    '<h4 style="font-size:12.5px;margin:0 0 8px">评审意见</h4>'+
+    '<div class="list-card" style="padding:9px 11px;font-size:12px">张工：资质业绩具备，建议投，补 2 条定制响应。</div>'+
+    '<div class="grid g3 mt" style="gap:7px"><button class="btn btn-primary btn-sm" style="justify-content:center" onclick="toast(\'已立项，进入投标编制\');go(\'#/bid\')">通过 GO</button><button class="btn btn-soft btn-sm" style="justify-content:center" onclick="toast(\'演示：暂缓补材料\')">暂缓</button><button class="btn btn-sm" style="justify-content:center;background:var(--danger-bg);color:var(--danger)" onclick="toast(\'演示：放弃并填原因\')">放弃</button></div>'+
+  '</div>';
+
+  var body=head+'<div class="three"><div class="col">'+left+'</div><div class="col">'+mid+'</div><div class="col detail">'+right+'</div></div>';
+  return shell('#/decision','投标决策评审',body);
+};
+function bigRing(val){
+  var r=42,c=2*Math.PI*r,off=c*(1-val/100);
+  return '<svg width="104" height="104" viewBox="0 0 104 104"><circle cx="52" cy="52" r="'+r+'" fill="none" stroke="var(--subtle)" stroke-width="10"/><circle cx="52" cy="52" r="'+r+'" fill="none" stroke="var(--success)" stroke-width="10" stroke-linecap="round" stroke-dasharray="'+c+'" stroke-dashoffset="'+off+'" transform="rotate(-90 52 52)"/></svg><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:var(--ink)">'+val+'</div>';
+}
+
+/* ===== 需求调研工作台 ===== */
+views['#/research']=function(){
+  var head='<div class="page-head"><div><h1>需求调研工作台</h1><p>拜访素材 AI 整理为纪要、需求清单与决策链，一键带入方案</p></div><div class="spacer"></div><button class="btn btn-primary" onclick="toast(\'演示：新建调研\')">'+icon('plus')+'新建调研</button></div>';
+
+  var left='<div class="col-h">调研与素材</div><div class="col-b">'+
+    '<div class="list-card on" style="padding:10px 12px"><b style="font-size:12.5px;color:var(--ink)">09-24 现场调研</b><div class="faint" style="font-size:11px;margin-top:3px">安徽中医药一附院</div></div>'+
+    '<div class="list-card" style="padding:10px 12px"><b style="font-size:12.5px;color:var(--ink)">09-15 首次拜访</b></div>'+
+    '<h4 style="font-size:12px;margin:14px 0 8px">本次素材</h4>'+
+    '<div class="meta-line" style="font-size:12px"><span class="tag t-info">录音 38 分</span></div>'+
+    '<div class="meta-line" style="font-size:12px"><span class="tag t-muted">照片 12</span><span class="tag t-muted">笔记 4</span></div>'+
+    '<button class="btn btn-soft btn-sm mt" style="width:100%;justify-content:center" onclick="toast(\'演示：上传素材\')">'+icon('upload')+'上传素材</button></div>';
+
+  var mid='<div class="col-h">AI 纪要与需求清单</div><div class="col-b">'+
+    '<div class="alert alert-info mb" style="font-size:12px">'+icon('spark')+'<div><b>纪要：</b>现状 HIS/EMR 已上线，需一体化升级，强调两院兼容、数据统一与信创适配。</div></div>'+
+    '<table class="tbl"><thead><tr><th>需求项</th><th>系统</th><th>优先级</th></tr></thead><tbody>'+
+      '<tr><td>一体化核心业务平台</td><td>HIS/EMR</td><td><span class="tag t-danger">高</span></td></tr>'+
+      '<tr><td>集成平台 + 临床数据中心</td><td>集成/CDR</td><td><span class="tag t-danger">高</span></td></tr>'+
+      '<tr><td>统一门户 / 单点登录</td><td>门户</td><td><span class="tag t-warning">中</span></td></tr>'+
+      '<tr><td>移动医生 / 移动护理</td><td>移动</td><td><span class="tag t-warning">中</span></td></tr>'+
+      '<tr><td>运营决策分析（BI）</td><td>数据</td><td><span class="tag t-muted">低</span></td></tr>'+
+    '</tbody></table></div>';
+
+  var right='<div class="col-h">决策链与痛点</div><div class="col-b">'+
+    '<h4 style="font-size:12.5px;margin:0 0 8px">决策链地图</h4>'+
+    '<div class="list-card" style="padding:9px 11px;font-size:12px;margin-bottom:7px"><b>院领导</b><div class="faint" style="font-size:11px">最终拍板 · 关注价值与风险</div></div>'+
+    '<div class="list-card" style="padding:9px 11px;font-size:12px;margin-bottom:7px"><b>信息科 张主任</b><span class="tag t-danger" style="margin-left:5px">关键人</span></div>'+
+    '<div class="list-card" style="padding:9px 11px;font-size:12px;margin-bottom:12px"><b>临床科室 / 财务</b><div class="faint" style="font-size:11px">使用与预算意见</div></div>'+
+    '<h4 style="font-size:12.5px;margin:0 0 8px">痛点 / 机会</h4><p class="muted" style="font-size:12px">信息孤岛、数据口径不一、信创压力——正是一体化切入点。</p>'+
+    '<button class="btn btn-primary mt" style="width:100%;justify-content:center" onclick="go(\'#/solutions\')">需求 → 方案建设清单</button>'+
+    '<button class="btn btn-soft btn-sm mt" style="width:100%;justify-content:center" onclick="toast(\'演示：决策链写入客户联系人\')">决策链 → 客户档案</button></div>';
+
+  var body=head+'<div class="three"><div class="col">'+left+'</div><div class="col">'+mid+'</div><div class="col detail">'+right+'</div></div>';
+  return shell('#/research','需求调研',body);
+};
+
+/* ===== 资源台账中心 ===== */
+views['#/ledger']=function(){
+  var tab='qual'; var m=location.hash.match(/tab=(\w+)/); if(m) tab=m[1];
+  var head='<div class="page-head"><div><h1>资源台账中心</h1><p>资质、业绩、功能点、保证金统一台账，投标时自动匹配调取</p></div><div class="spacer"></div>'+
+    '<button class="btn btn-ghost" onclick="toast(\'演示：批量导入\')">批量导入</button>'+
+    '<button class="btn btn-primary" onclick="toast(\'演示：新增台账记录\')">'+icon('plus')+'新增</button></div>';
+
+  var kpi='<div class="grid g4 mb"><div class="kpi"><div class="v" style="color:var(--warning)">2</div><div class="l">证书 30 天内到期</div></div><div class="kpi"><div class="v">3</div><div class="l">本项目可匹配同类业绩</div></div><div class="kpi"><div class="v" style="color:var(--warning)">2</div><div class="l">功能需定制 / 不支持</div></div><div class="kpi"><div class="v">1</div><div class="l">保证金待退还</div></div></div>';
+
+  var tabs='<div class="tabs mb">'+
+    '<button class="tab'+(tab==='qual'?' active':'')+'" onclick="go(\'#/ledger\')">资质证书</button>'+
+    '<button class="tab'+(tab==='perf'?' active':'')+'" onclick="go(\'#/ledger?tab=perf\')">业绩合同</button>'+
+    '<button class="tab'+(tab==='func'?' active':'')+'" onclick="go(\'#/ledger?tab=func\')">功能点矩阵</button>'+
+    '<button class="tab'+(tab==='bond'?' active':'')+'" onclick="go(\'#/ledger?tab=bond\')">保证金</button></div>';
+
+  var content;
+  if(tab==='qual'){
+    content='<table class="tbl"><thead><tr><th>证书名称</th><th>编号</th><th>有效期至</th><th>状态</th></tr></thead><tbody>'+
+      '<tr><td>营业执照</td><td>9134****MA</td><td>长期</td><td><span class="tag t-success">有效</span></td></tr>'+
+      '<tr><td>软件企业认定</td><td>RY-2021-086</td><td>2027-06-30</td><td><span class="tag t-success">有效</span></td></tr>'+
+      '<tr><td>ISO 9001 质量体系</td><td>ISO-09001</td><td>2026-10-18</td><td><span class="tag t-warning">23 天</span></td></tr>'+
+      '<tr><td>信创产品认证</td><td>XC-1128</td><td>2026-10-09</td><td><span class="tag t-warning">14 天</span></td></tr>'+
+      '<tr><td>ISO 27001 信息安全</td><td>ISO-27001</td><td>2028-03-15</td><td><span class="tag t-success">有效</span></td></tr>'+
+    '</tbody></table>';
+  }else if(tab==='perf'){
+    content='<table class="tbl"><thead><tr><th>项目 / 医院</th><th>金额</th><th>系统类型</th><th>年份</th></tr></thead><tbody>'+
+      '<tr><td>某省中医医院一体化核心业务系统</td><td><b>2,180 万</b></td><td>HIS/EMR/集成</td><td>2024</td></tr>'+
+      '<tr><td>某市三甲医院集成平台与 CDR</td><td>1,560 万</td><td>集成/CDR</td><td>2023</td></tr>'+
+      '<tr><td>某中医院信息化升级（含信创）</td><td>1,920 万</td><td>HIS/EMR/信创</td><td>2024</td></tr>'+
+      '<tr><td>某区域医疗数据中心</td><td>3,200 万</td><td>数据中心</td><td>2022</td></tr>'+
+    '</tbody></table><div class="alert alert-success mt" style="font-size:12px">'+icon('check')+'<div>前 3 项与本项目（三甲中医 · 一体化）高度匹配，已按评分排序，可一键生成业绩一览表。</div></div>';
+  }else if(tab==='func'){
+    content='<table class="tbl"><thead><tr><th>功能点</th><th>所属子系统</th><th>支持程度</th></tr></thead><tbody>'+
+      '<tr><td>门诊挂号 / 收费</td><td>HIS</td><td><span class="tag t-success">原生</span></td></tr>'+
+      '<tr><td>电子病历书写 / 质控</td><td>EMR</td><td><span class="tag t-success">原生</span></td></tr>'+
+      '<tr><td>临床数据中心 CDR</td><td>集成</td><td><span class="tag t-info">配置</span></td></tr>'+
+      '<tr><td>两院数据统一视图</td><td>数据</td><td><span class="tag t-warning">定制</span></td></tr>'+
+      '<tr><td>专有设备接口对接</td><td>集成</td><td><span class="tag t-warning">定制</span></td></tr>'+
+    '</tbody></table><div class="alert alert-info mt" style="font-size:12px">'+icon('doc')+'<div>功能点逐条对标招标参数，自动生成技术偏离表：满足 35 · 定制 2 · 不支持 0。</div></div>';
+  }else{
+    content='<table class="tbl"><thead><tr><th>项目</th><th>类型 / 金额</th><th>状态</th></tr></thead><tbody>'+
+      '<tr><td>13431 安徽中医药一附院</td><td>投标保证金 · 40 万</td><td><span class="tag t-warning">待缴纳 · 5 天</span></td></tr>'+
+      '<tr><td>测试市人民医院一期</td><td>履约保证金 · 20 万</td><td><span class="tag t-success">已退还</span></td></tr>'+
+      '<tr><td>某市第二人民医院</td><td>投标保证金 · 15 万</td><td><span class="tag t-danger">逾期未退</span></td></tr>'+
+    '</tbody></table>';
+  }
+
+  var match='<div class="card mt"><div class="card-h"><b>投标匹配 · 项目 13431</b><span class="tag t-success">资质全部满足</span></div><div class="card-b"><div class="grid g3">'+
+    '<div style="font-size:12.5px"><b>资质核验</b><p class="muted" style="margin-top:4px">营业执照 / 行业资质 / 信创认证均符合招标门槛。</p></div>'+
+    '<div style="font-size:12.5px"><b>推荐业绩</b><p class="muted" style="margin-top:4px">三甲中医一体化 ×2、集成平台 ×1，可直接插入。</p></div>'+
+    '<div style="font-size:12.5px"><b>技术偏离</b><p class="muted" style="margin-top:4px">满足 35 · 定制 2，逐条对应参数行。</p></div>'+
+  '</div></div></div>';
+
+  var body=head+kpi+tabs+'<div class="card"><div class="card-b">'+content+'</div></div>'+match;
+  return shell('#/ledger','资源台账中心',body);
+};
+
+/* ===== 作战日历 ===== */
+function calTab(el){var label=el.textContent;el.parentNode.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active')});el.classList.add('active');toast('演示：切换到「'+label+'」视图');}
+views['#/calendar']=function(){
+  var head='<div class="page-head"><div><h1>作战日历</h1><p>跨项目截标、开标、澄清、述标、保证金节点统一视图</p></div><div class="spacer"></div><div class="tabs"><button class="tab active" onclick="calTab(this)">月</button><button class="tab" onclick="calTab(this)">周</button><button class="tab" onclick="calTab(this)">列表</button></div></div>';
+  var cal='<div class="card"><div class="card-h"><b>2026 年 9 月</b><span class="spacer"></span><button class="icon-btn" onclick="toast(&#39;演示：上一月&#39;)">‹</button><button class="icon-btn" onclick="toast(&#39;演示：下一月&#39;)">›</button></div><div class="card-b" style="padding:8px 12px 14px"><table class="tbl center"><thead><tr><th>一</th><th>二</th><th>三</th><th>四</th><th>五</th><th>六</th><th>日</th></tr></thead><tbody>'+
+    '<tr><td style="height:64px;color:var(--faint)">31</td><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td></tr>'+
+    '<tr><td>7</td><td>8</td><td>9</td><td>10</td><td>11</td><td>12</td><td>13</td></tr>'+
+    '<tr><td>14</td><td><div class="tag t-danger" style="margin:2px 0">15 截标</div></td><td>16</td><td>17</td><td>18</td><td>19</td><td>20</td></tr>'+
+    '<tr><td>21</td><td>22</td><td>23</td><td>24</td><td style="background:var(--primary-50)"><b>25</b></td><td>26</td><td>27</td></tr>'+
+    '<tr><td>28</td><td>29</td><td>30</td><td style="color:var(--faint)">1</td><td style="color:var(--faint)">2</td><td style="color:var(--faint)">3</td><td style="color:var(--faint)">4</td></tr>'+
+  '</tbody></table></div></div>';
+  var side='<div class="card mb"><div class="card-h"><b>即将到来</b></div><div class="card-b" style="padding:12px 16px">'+
+    '<div class="list-card" style="padding:10px 12px;margin-bottom:8px"><b style="font-size:12.5px">13431 截标</b><div class="meta-line"><span class="tag t-danger">20 天</span></div></div>'+
+    '<div class="list-card" style="padding:10px 12px;margin-bottom:8px"><b style="font-size:12.5px">保证金缴纳</b><div class="meta-line"><span class="tag t-warning">5 天</span></div></div>'+
+    '<div class="list-card" style="padding:10px 12px"><b style="font-size:12.5px">述标演练</b><div class="meta-line"><span class="tag t-info">12 天</span></div></div>'+
+  '</div></div><div class="card"><div class="card-h"><b>冲突提醒</b></div><div class="card-b"><div class="alert alert-warning" style="font-size:12px;margin:0">'+icon('alert')+'<div>10/15 两个项目同日开标，述标人力冲突，请提前调配。</div></div></div></div>';
+  var body=head+'<div class="grid" style="grid-template-columns:1fr 300px;align-items:start">'+cal+side+'</div>';
+  return shell('#/calendar','作战日历',body);
+};
+
+
+/* ===== 成本与报价审批 ===== */
+views['#/approval']=function(){
+  var head='<div class="page-head"><div><h1>成本与报价审批</h1><p>13431 · 成本测算 → 多版本报价 → 毛利红线 → 分级审批锁定</p></div><div class="spacer"></div><button class="btn btn-ghost" onclick="toast(\'演示：审批历史\')">审批历史</button></div>';
+
+  var cost='<div class="card"><div class="card-h"><b>成本构成</b></div><div class="card-b" style="padding:8px 14px 14px"><table class="tbl"><tbody>'+
+    '<tr><td>软件许可 / 第三方</td><td style="text-align:right">620 万</td></tr>'+
+    '<tr><td>硬件 / 信创适配</td><td style="text-align:right">480 万</td></tr>'+
+    '<tr><td>人力（开发 / 实施）</td><td style="text-align:right">520 万</td></tr>'+
+    '<tr><td>差旅 + 三年运维</td><td style="text-align:right">200 万</td></tr>'+
+    '<tr><td><b>合计成本</b></td><td style="text-align:right"><b>1,820 万</b></td></tr>'+
+  '</tbody></table></div></div>';
+
+  var price='<div class="card"><div class="card-h"><b>报价版本与毛利</b><span class="tag t-muted">限价 2,500 万</span></div><div class="card-b">'+
+    '<table class="tbl"><thead><tr><th>版本</th><th>报价</th><th>毛利</th><th></th></tr></thead><tbody>'+
+      '<tr><td>V1 保守</td><td>2,480</td><td><span class="tag t-success">27%</span></td><td><button class="btn btn-ghost btn-sm" onclick="toast(\'演示：选用此版本\')">选用</button></td></tr>'+
+      '<tr><td>V2 竞争</td><td>2,380</td><td><span class="tag t-success">24%</span></td><td><span class="tag t-success">当前</span></td></tr>'+
+      '<tr><td>V3 冲刺</td><td>2,280</td><td><span class="tag t-danger">20%</span></td><td><button class="btn btn-ghost btn-sm" onclick="toast(\'演示：低于红线，需总经理审批\')">选用</button></td></tr>'+
+    '</tbody></table>'+
+    '<div class="field mt" style="margin-bottom:0"><label>折扣测算 <span id="margin" style="color:var(--primary-700)">95 折</span></label><input type="range" min="70" max="100" value="95" oninput="document.getElementById(\'margin\').textContent=this.value+\' 折\'"></div>'+
+  '</div></div>';
+
+  var flow2='<div class="card"><div class="card-h"><b>审批流（留痕）</b></div><div class="card-b">'+
+    '<div style="position:relative;padding-left:20px"><div style="position:absolute;left:6px;top:8px;bottom:8px;width:2px;background:var(--border)"></div>'+
+      apStep('工程师提交 V2 竞争报价','已发','var(--success)')+
+      apStep('部门负责人审批','审批中','var(--warning)')+
+      apStep('财务复核（毛利 24% < 25%）','待触发','var(--faint)',true)+
+      apStep('报价锁定为投标价','待触发','var(--faint)')+
+    '</div>'+
+    '<button class="btn btn-primary mt" style="width:100%;justify-content:center" onclick="toast(\'演示：通过并锁定报价\')">通过并锁定</button>'+
+    '<button class="btn btn-ghost btn-sm mt" style="width:100%;justify-content:center" onclick="toast(\'演示：驳回并注明\')">驳回</button>'+
+  '</div></div>';
+
+  var body=head+'<div class="grid" style="grid-template-columns:1fr 1fr 290px;align-items:start">'+cost+price+flow2+'</div>';
+  return shell('#/approval','成本与报价审批',body);
+};
+function apStep(t,st,color,last){
+  return '<div style="position:relative;padding-bottom:16px"><div style="position:absolute;left:-17px;top:4px;width:10px;height:10px;border-radius:50%;background:'+color+';border:2px solid #fff;box-shadow:0 0 0 1px var(--border)"></div><b style="font-size:12.5px;color:var(--ink);display:block">'+t+'</b><span class="faint" style="font-size:11px">'+st+'</span></div>';
+}
+
+/* ===== 述标演练 ===== */
+views['#/rehearsal']=function(){
+  var head='<div class="page-head"><div><h1>述标演练</h1><p>AI 扮演评委围绕 PPT 追问，计时打分，临场前反复演练</p></div><div class="spacer"></div><button class="btn btn-primary" onclick="toast(\'演示：开始新一轮演练\')">'+icon('video')+'开始演练</button></div>';
+
+  var set2='<div class="col-h">演练设置</div><div class="col-b">'+
+    '<div class="field"><label>述标时长</label><select class="select"><option>15 分钟</option></select></div>'+
+    '<div class="field"><label>评委角色</label><div class="optrow"><span class="opt on">技术</span><span class="opt on">院领导</span><span class="opt on">招标专家</span><span class="opt">商务</span></div></div>'+
+    '<b style="font-size:12px;display:block;margin:8px 0">PPT（12 页 · 第 4 页）</b>'+
+    '<div style="height:96px;border:1px solid var(--border);border-radius:8px;background:var(--subtle);display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:12px">总体架构页</div>'+
+  '</div>';
+
+  var main2='<div class="col-h">模拟现场 <span class="spacer"></span><span class="tag t-warning">计时 08:32</span></div><div class="col-b">'+
+    '<div style="background:var(--subtle);border-radius:9px;padding:10px 13px;font-size:12.5px;margin-bottom:9px;line-height:1.6"><b>技术评委：</b>你们的 RPO、RTO 是多少？如何保证 99.9% 可用性？</div>'+
+    '<div style="background:var(--primary-50);border:1px solid var(--primary-200);border-radius:9px;padding:10px 13px;font-size:12.5px;margin-bottom:9px;line-height:1.6"><b>我方：</b>RPO ≤ 15 分钟、RTO ≤ 30 分钟，通过双机热备与异地容灾保障。</div>'+
+    '<div style="background:var(--subtle);border-radius:9px;padding:10px 13px;font-size:12.5px;margin-bottom:9px;line-height:1.6"><b>院领导：</b>做过哪些同类中医医院？</div>'+
+    '<div style="display:flex;gap:8px;margin-top:6px"><input class="input" placeholder="输入应答，或点击麦克风语音…" style="flex:1"><button class="btn btn-primary btn-sm" onclick="toast(\'演示：发送应答\')">应答</button></div>'+
+  '</div>';
+
+  var score2='<div class="col-h">评分与改进</div><div class="col-b">'+
+    selfScore('应答准确',90)+selfScore('重点突出',78)+selfScore('时间控制',74)+selfScore('表达流畅',86)+
+    '<h4 style="font-size:12.5px;margin:14px 0 7px">高频问题（12）</h4>'+
+    '<p class="muted" style="font-size:11.5px">可用性指标、信创适配、同类业绩、数据迁移、报价构成……</p>'+
+    '<button class="btn btn-soft btn-sm mt" style="width:100%;justify-content:center" onclick="toast(\'演示：优质应答存入知识库\')">优质应答 → 知识库</button>'+
+  '</div>';
+
+  var body=head+'<div class="three" style="grid-template-columns:230px 1fr 280px"><div class="col">'+set2+'</div><div class="col">'+main2+'</div><div class="col detail">'+score2+'</div></div>';
+  return shell('#/rehearsal','述标演练',body);
+};
+
+/* ===== 中标 / 失单复盘库 ===== */
+views['#/reviews']=function(){
+  var head='<div class="page-head"><div><h1>中标 / 失单复盘库</h1><p>结果回填后结构化复盘胜负因子，反哺策略、模板与产品</p></div><div class="spacer"></div><button class="btn btn-primary" onclick="toast(\'演示：发起复盘\')">'+icon('plus')+'发起复盘</button></div>';
+
+  var list='<div class="col-h">复盘列表</div><div class="col-b">'+
+    '<div class="list-card" style="padding:10px 12px;margin-bottom:8px"><span class="tag t-success">中标</span><b style="font-size:12.5px;color:var(--ink);display:block;margin-top:6px">测试市人民医院一期 · 1,200 万</b></div>'+
+    '<div class="list-card on" style="padding:10px 12px;margin-bottom:8px"><span class="tag t-danger">失单</span><b style="font-size:12.5px;color:var(--ink);display:block;margin-top:6px">某市第二人民医院</b></div>'+
+    '<div class="list-card" style="padding:10px 12px"><span class="tag t-danger">失单</span><b style="font-size:12.5px;color:var(--ink);display:block;margin-top:6px">某区域平台项目</b></div>'+
+  '</div>';
+
+  var factors='<div class="col-h">胜负因子（引导式打分）</div><div class="col-b" style="padding:10px 14px"><table class="tbl"><tbody>'+
+    '<tr><td>资质 / 业绩</td><td><span class="tag t-success">+ 优势</span></td></tr>'+
+    '<tr><td>技术方案 / 功能</td><td><span class="tag t-success">+ 优势</span></td></tr>'+
+    '<tr><td>报价</td><td><span class="tag t-danger">− 偏高 6%</span></td></tr>'+
+    '<tr><td>客户关系</td><td><span class="tag t-warning">△ 一般</span></td></tr>'+
+    '<tr><td>响应时效 / 格式</td><td><span class="tag t-success">+ 规范</span></td></tr>'+
+  '</tbody></table><div class="field mt"><label>关键经过 / 评委关注点</label><textarea class="input" rows="3">技术获认可，报价高于对手 6%，客户关系偏弱。</textarea></div></div>';
+
+  var ai='<div class="col-h">AI 归纳与反哺</div><div class="col-b">'+
+    '<div class="alert alert-info mb" style="font-size:12px">'+icon('spark')+'<div>本单主要输在报价与关系，技术为加分项；建议同类项目优化报价策略、提前经营关系。</div></div>'+
+    '<button class="btn btn-soft btn-sm" style="width:100%;justify-content:center;margin-bottom:8px" onclick="toast(\'演示：写入竞争策略\')">失单原因 → 竞争策略</button>'+
+    '<button class="btn btn-soft btn-sm" style="width:100%;justify-content:center;margin-bottom:8px" onclick="toast(\'演示：存入最佳实践\')">中标要素 → 模板库</button>'+
+    '<button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center" onclick="go(\'#/analytics\')">数据进入经营分析</button>'+
+  '</div>';
+
+  var body=head+'<div class="three" style="grid-template-columns:250px 1fr 280px"><div class="col">'+list+'</div><div class="col">'+factors+'</div><div class="col detail">'+ai+'</div></div>';
+  return shell('#/reviews','复盘库',body);
+};
+
+/* ===== 售前经营分析 ===== */
+views['#/analytics']=function(){
+  var head='<div class="page-head"><div><h1>售前经营分析</h1><p>漏斗、趋势、人效与中标预测，管理者一屏看全盘</p></div><div class="spacer"></div><select class="select" style="width:130px"><option>本季度</option><option>本年度</option></select></div>';
+
+  var kpi='<div class="grid g4 mb">'+
+    '<div class="kpi"><div class="v">1.86 亿</div><div class="l">在跟商机金额</div></div>'+
+    '<div class="kpi"><div class="v" style="color:var(--primary-700)">4,200 万</div><div class="l">季度加权中标预测</div></div>'+
+    '<div class="kpi"><div class="v">68%</div><div class="l">中标率（滚动 12 月）</div></div>'+
+    '<div class="kpi"><div class="v" style="color:var(--success)">+12%</div><div class="l">人均商机金额同比</div></div></div>';
+
+  var funnel2='<div class="card"><div class="card-h"><b>商机金额漏斗（万元）</b></div><div class="card-b">'+
+    funnel([['线索',9800,'var(--chart-2)'],['联系',6200,'var(--chart-2)'],['需求',4600,'var(--primary-500)'],['方案',3200,'var(--primary-600)'],['投标',2500,'var(--primary-700)']])+
+    '<h4 style="font-size:13px;margin:14px 0 7px">阶段转化率</h4><table class="tbl"><tbody>'+
+      '<tr><td>线索→联系</td><td style="text-align:right">67%</td></tr><tr><td>需求→方案</td><td style="text-align:right">67%</td></tr><tr><td>投标→中标</td><td style="text-align:right"><b>68%</b></td></tr>'+
+    '</tbody></table></div></div>';
+
+  var trend='<div class="card mb"><div class="card-h"><b>新增商机 / 中标金额走势</b></div><div class="card-b">'+
+    trendBars()+'</div></div>'+
+    '<div class="card"><div class="card-h"><b>中标贡献排名</b></div><div class="card-b" style="padding:8px 14px 14px"><table class="tbl"><thead><tr><th>成员</th><th>中标金额</th><th>中标率</th></tr></thead><tbody>'+
+      '<tr><td>张工</td><td>2,180 万</td><td><span class="tag t-success">72%</span></td></tr>'+
+      '<tr><td>李工</td><td>1,560 万</td><td><span class="tag t-success">66%</span></td></tr>'+
+      '<tr><td>王工</td><td>980 万</td><td><span class="tag t-warning">58%</span></td></tr>'+
+    '</tbody></table></div></div>';
+
+  var body=head+kpi+'<div class="grid g2" style="align-items:start">'+funnel2+trend+'</div>';
+  return shell('#/analytics','售前经营分析',body);
+};
+function trendBars(){
+  var months=[['4',42,18],['5',55,26],['6',48,22],['7',68,34],['8',72,30],['9',86,42]];
+  var max=90;
+  return '<div style="display:flex;gap:14px;align-items:flex-end;height:150px;padding:0 6px">'+months.map(function(m2){
+    return '<div style="flex:1;display:flex;gap:4px;align-items:flex-end;height:100%"><div title="商机" style="flex:1;height:'+Math.round(m2[1]/max*100)+'%;background:var(--primary-500);border-radius:4px 4px 0 0"></div><div title="中标" style="flex:1;height:'+Math.round(m2[2]/max*100)+'%;background:var(--chart-2);border-radius:4px 4px 0 0"></div></div><div style="position:absolute"></div>';
+  }).join('')+'</div><div style="display:flex;gap:14px;padding:6px 6px 0"><div style="flex:1;text-align:center;font-size:11px;color:var(--faint)">4月</div><div style="flex:1;text-align:center;font-size:11px;color:var(--faint)">5月</div><div style="flex:1;text-align:center;font-size:11px;color:var(--faint)">6月</div><div style="flex:1;text-align:center;font-size:11px;color:var(--faint)">7月</div><div style="flex:1;text-align:center;font-size:11px;color:var(--faint)">8月</div><div style="flex:1;text-align:center;font-size:11px;color:var(--faint)">9月</div></div>'+
+    '<div class="meta-line mt" style="font-size:11.5px"><span class="tag t-primary">商机</span><span class="tag t-info">中标</span>整体上行，9 月为年内高点。</div>';
+}
+
+/*VIEWS*/
+
+/* ===== 路由解析 ===== */
+function render(){
+  var h=location.hash||'#/';
+  var key=h.split('?')[0];
+  var fn=views[key]||views['#/'];
+  document.getElementById('app').innerHTML=fn();
+  var _sb=document.querySelector('.sidebar');if(_sb)_sb.classList.remove('open');
+  window.scrollTo(0,0);
+}
+window.addEventListener('hashchange',render);
+if(!location.hash) location.hash='#/';
+render();
+</script>
+</body>
+</html>

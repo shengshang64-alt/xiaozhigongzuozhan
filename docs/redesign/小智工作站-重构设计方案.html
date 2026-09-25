@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小智工作站 · 重构设计方案</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230E7490'/%3E%3Cpath d='M9 22V10l7 7 7-7v12' stroke='white' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap">
+<style>
+/* ============================================================
+   设计令牌（与静态原型共用同一套 token）
+   ============================================================ */
+:root{
+  /* 品牌主色 · 医疗青 */
+  --primary-50:#ECF8FA; --primary-100:#D2F0F5; --primary-200:#A6E0EA;
+  --primary-300:#6CC8D8; --primary-400:#33A9C0; --primary-500:#158BA3;
+  --primary-600:#0E7490; --primary-700:#0C5E75; --primary-800:#0E4E61;
+  --primary-900:#104252; --primary-950:#042B38;
+  /* 中性冷灰 */
+  --page:#F2F6F7; --subtle:#E9EFF1; --card:#FFFFFF;
+  --border:#DCE5E8; --border-strong:#C5D2D7;
+  --ink:#0F2A33; --text:#334B55; --muted:#647B85; --faint:#8BA0A9;
+  /* 语义色 */
+  --success:#1F9D6E; --success-bg:#E5F6EE;
+  --warning:#C9832A; --warning-bg:#FBF0DD;
+  --danger:#CF4747;  --danger-bg:#FBEAEA;
+  --info:#2E79B9;   --info-bg:#E8F1F9;
+  --purple:#7B5BB0; --purple-bg:#F0EBF7;
+  /* 图表 */
+  --chart-1:#0E7490; --chart-2:#2E79B9; --chart-3:#7B5BB0; --chart-4:#C9832A; --chart-5:#1F9D6E;
+  /* 侧栏 */
+  --sidebar:#0A242E; --sidebar-2:#0C2B37; --sidebar-text:#A9C3CC; --sidebar-active:#123947;
+  /* 形状与阴影 */
+  --r-card:10px; --r-ctl:8px; --r-sm:6px;
+  --sh-sm:0 1px 2px rgba(15,42,51,.05);
+  --sh-card:0 1px 3px rgba(15,42,51,.06),0 1px 2px rgba(15,42,51,.04);
+  --sh-pop:0 10px 28px rgba(15,42,51,.14);
+  --font:"Noto Sans SC",-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--font);background:var(--page);color:var(--text);font-size:14px;line-height:1.7;-webkit-font-smoothing:antialiased;font-feature-settings:"tnum" 1}
+::selection{background:var(--primary-200)}
+a{color:var(--primary-600);text-decoration:none}
+.wrap{max-width:1180px;margin:0 auto;padding:0 32px}
+
+/* ===== 文档布局：左侧锚点导航 ===== */
+.layout{display:grid;grid-template-columns:200px 1fr;gap:48px;max-width:1180px;margin:0 auto;padding:0 32px}
+.toc{position:sticky;top:0;align-self:start;height:100vh;padding:40px 0;display:flex;flex-direction:column}
+.toc .brand{display:flex;align-items:center;gap:10px;margin-bottom:36px}
+.toc .brand .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(145deg,var(--primary-500),var(--primary-700));display:flex;align-items:center;justify-content:center;flex:none}
+.toc .brand b{font-size:14px;color:var(--ink);font-weight:700;line-height:1.2;display:block}
+.toc .brand span{font-size:11px;color:var(--faint)}
+.toc nav{display:flex;flex-direction:column;gap:2px}
+.toc nav a{color:var(--muted);font-size:13px;padding:7px 12px;border-radius:var(--r-sm);border-left:2px solid transparent;font-weight:500;transition:.15s}
+.toc nav a:hover{background:var(--subtle);color:var(--ink)}
+.toc nav a.active{color:var(--primary-700);background:var(--primary-50);border-left-color:var(--primary-600);font-weight:700}
+.toc .meta{margin-top:auto;font-size:11px;color:var(--faint);padding-top:20px}
+
+/* ===== 封面 ===== */
+.cover{padding:72px 0 48px;border-bottom:1px solid var(--border);margin-bottom:8px}
+.cover .kicker{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--primary-700);background:var(--primary-50);border:1px solid var(--primary-100);padding:5px 12px;border-radius:100px;margin-bottom:24px}
+.cover h1{font-size:40px;font-weight:900;color:var(--ink);line-height:1.2;letter-spacing:-.5px;margin-bottom:16px}
+.cover h1 em{font-style:normal;color:var(--primary-600)}
+.cover p.lead{font-size:16px;color:var(--muted);max-width:640px;line-height:1.8}
+.cover .facts{display:flex;gap:32px;margin-top:36px;flex-wrap:wrap}
+.cover .facts div span{display:block;font-size:26px;font-weight:700;color:var(--ink);line-height:1}
+.cover .facts div small{font-size:12px;color:var(--faint)}
+
+/* ===== 章节 ===== */
+section.chap{padding:52px 0;border-bottom:1px solid var(--border)}
+.sec-no{font-size:12px;font-weight:700;color:var(--primary-600);letter-spacing:1px}
+h2{font-size:25px;font-weight:800;color:var(--ink);margin:6px 0 10px;letter-spacing:-.3px}
+.sec-desc{color:var(--muted);font-size:14px;margin-bottom:30px;max-width:720px}
+h3{font-size:16px;font-weight:700;color:var(--ink);margin:32px 0 14px;display:flex;align-items:center;gap:8px}
+h3::before{content:"";width:4px;height:15px;background:var(--primary-600);border-radius:2px}
+h4{font-size:13.5px;font-weight:700;color:var(--ink);margin:20px 0 8px}
+p{margin-bottom:10px}
+ul,ol{padding-left:20px;margin-bottom:12px}
+li{margin-bottom:6px}
+strong{color:var(--ink);font-weight:700}
+code{font-family:"SF Mono",Consolas,monospace;font-size:12px;background:var(--subtle);padding:2px 6px;border-radius:5px;color:var(--primary-800)}
+
+/* 卡片/面板 */
+.panel{background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);padding:20px;box-shadow:var(--sh-sm)}
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(2,1fr)} .g3{grid-template-columns:repeat(3,1fr)} .g4{grid-template-columns:repeat(4,1fr)}
+.note{background:var(--primary-50);border:1px solid var(--primary-100);border-radius:var(--r-ctl);padding:14px 16px;font-size:13px;color:var(--primary-800);margin:16px 0}
+.note.warn{background:var(--warning-bg);border-color:#f0dcb8;color:#8a5a17}
+.note b{display:block;margin-bottom:3px}
+
+table{width:100%;border-collapse:collapse;font-size:13px;margin:14px 0;background:var(--card);border-radius:var(--r-card);overflow:hidden;box-shadow:var(--sh-sm)}
+table th{background:var(--subtle);text-align:left;padding:10px 14px;font-weight:700;color:var(--ink);font-size:12.5px;border-bottom:1px solid var(--border)}
+table td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:top}
+table tr:last-child td{border-bottom:none}
+table .p0{color:var(--danger);font-weight:700} .p1{color:var(--warning);font-weight:700}
+
+/* 色板 */
+.swatch{border-radius:var(--r-ctl);overflow:hidden;border:1px solid var(--border);background:var(--card)}
+.swatch .chip{height:64px}
+.swatch .info{padding:9px 12px}
+.swatch .info b{font-size:12px;color:var(--ink);display:block}
+.swatch .info span{font-size:11px;color:var(--faint);font-family:Consolas,monospace}
+
+/* 字体样张 */
+.type-spec{display:flex;flex-direction:column;gap:0}
+.type-spec .row{display:flex;align-items:baseline;gap:20px;padding:14px 0;border-bottom:1px solid var(--border)}
+.type-spec .row:last-child{border-bottom:none}
+.type-spec .tag{width:120px;flex:none;font-size:11px;color:var(--faint);font-family:Consolas,monospace}
+.type-spec .sample{color:var(--ink)}
+
+/* 组件示例 */
+.demo{background:var(--subtle);border-radius:var(--r-ctl);padding:24px;display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:var(--r-ctl);font-size:13.5px;font-weight:600;border:1px solid transparent;cursor:pointer;font-family:var(--font)}
+.btn-primary{background:var(--primary-600);color:#fff} .btn-primary:hover{background:var(--primary-700)}
+.btn-ghost{background:#fff;border-color:var(--border-strong);color:var(--text)}
+.btn-soft{background:var(--primary-50);color:var(--primary-700)}
+.chip-tag{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:100px;font-size:12px;font-weight:600}
+.kpi-mini{background:#fff;border:1px solid var(--border);border-radius:var(--r-ctl);padding:14px 16px;min-width:130px}
+.kpi-mini .v{font-size:24px;font-weight:800;color:var(--ink);line-height:1}
+.kpi-mini .l{font-size:12px;color:var(--muted);margin-top:4px}
+
+/* 流程/链路图 */
+.flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;margin:18px 0}
+.flow .node{flex:1;min-width:120px;background:var(--card);border:1px solid var(--border);border-radius:var(--r-ctl);padding:12px 14px;position:relative}
+.flow .node b{font-size:13px;color:var(--ink);display:block;margin-bottom:3px}
+.flow .node span{font-size:11.5px;color:var(--muted);line-height:1.5}
+.flow .arrow{display:flex;align-items:center;padding:0 6px;color:var(--primary-400);flex:none}
+
+/* 线框缩略 */
+.wire{border:1px solid var(--border);border-radius:var(--r-ctl);overflow:hidden;background:#fff}
+.wire .bar{height:26px;background:var(--subtle);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 10px;gap:5px}
+.wire .bar i{width:7px;height:7px;border-radius:50%;background:var(--border-strong);display:block}
+.wire .body{padding:12px;display:grid;gap:8px}
+.wire .ln{height:10px;border-radius:4px;background:var(--subtle)}
+.wire .ln.w50{width:50%}.wire .ln.w70{width:70%}.wire .ln.w30{width:30%}
+.wire .blk{height:42px;border-radius:6px;background:var(--primary-50);border:1px dashed var(--primary-200)}
+.wire-cap{font-size:12px;color:var(--muted);text-align:center;margin-top:8px;font-weight:600}
+
+.footer{padding:40px 0 64px;color:var(--faint);font-size:12.5px}
+.pill{display:inline-block;padding:2px 9px;border-radius:100px;font-size:11px;font-weight:700}
+.pill.success{background:var(--success-bg);color:var(--success)}
+.pill.danger{background:var(--danger-bg);color:var(--danger)}
+.pill.warning{background:var(--warning-bg);color:var(--warning)}
+.pill.info{background:var(--info-bg);color:var(--info)}
+
+@media(max-width:900px){
+  .layout{grid-template-columns:1fr;gap:0}.toc{position:static;height:auto;padding:24px 0}.toc nav{flex-direction:row;flex-wrap:wrap}.g3,.g4{grid-template-columns:repeat(2,1fr)}.cover h1{font-size:30px}
+}
+</style>
+</head>
+<body>
+<div class="layout">
+  <!-- ===== 左侧目录 ===== -->
+  <aside class="toc">
+    <div class="brand">
+      <div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 18V6l7 7 7-7v12" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div><b>小智工作站</b><span>重构设计方案 v1.0</span></div>
+    </div>
+    <nav id="tocnav">
+      <a href="#s1">01 现状理解</a>
+      <a href="#s2">02 场景与主链路</a>
+      <a href="#s3">03 设计理念</a>
+      <a href="#s4">04 信息架构</a>
+      <a href="#s5">05 设计系统</a>
+      <a href="#s6">06 页面规划</a>
+      <a href="#s7">07 关键交互</a>
+      <a href="#s8">08 落地路线</a>
+    </nav>
+    <div class="meta">医疗信息化售前工作台<br>2026 · 09 · 25</div>
+  </aside>
+
+  <!-- ===== 右侧正文 ===== -->
+  <main>
+    <header class="cover">
+      <span class="kicker"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 2l2.4 7.4H22l-6 4.4 2.3 7.2-6.3-4.6-6.3 4.6L8 13.8 2 9.4h7.6z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>REDESIGN PROPOSAL</span>
+      <h1>从功能罗列，到<em>售前作战指挥室</em></h1>
+      <p class="lead">小智工作站 · 团队版（医疗信息化售前工作台）体验重构方案。以"一条情报 → 一份能投出去的标书"的真实作战链路为主线，重构信息架构、视觉系统与关键交互，让系统从"能跑的工具箱"变成"有节奏、有护栏、有闭环的指挥系统"。</p>
+      <div class="facts">
+        <div><span>12</span><small>业务模块</small></div>
+        <div><span>3</span><small>核心作战链路</small></div>
+        <div><span>7</span><small>投标阶段流水线</small></div>
+        <div><span>62</span><small>AI 提示词资产</small></div>
+      </div>
+    </header>
+    <!-- ============ 01 现状理解 ============ -->
+    <section class="chap" id="s1">
+      <div class="sec-no">01 / CURRENT STATE</div>
+      <h2>现状理解：一个业务深度被界面拖累的系统</h2>
+      <p class="sec-desc">系统的业务内核相当扎实——投标 7 阶段流水线、AI 解析报告、隐式硬约束抽取、条款全覆盖、RAG 知识库，这些都是真正解决售前痛点的能力。但界面层仍停留在"把功能摆出来"的阶段，掩盖了系统的专业价值。</p>
+
+      <h3>它是什么</h3>
+      <div class="grid g2">
+        <div class="panel">
+          <h4>产品定位</h4>
+          <p>AI 驱动的医疗信息化售前与投标全流程协作平台。把"从一条情报线索，到一份能拿去投标的标书"这条链路，从散落在个人电脑的 Word / Excel / 微信记录，收敛成有数据、有护栏、有闭环的系统。</p>
+        </div>
+        <div class="panel">
+          <h4>技术底座</h4>
+          <p>React 19 + TypeScript + Vite，Tailwind + Radix / shadcn 组件，PocketBase 本地后端（SQLite + pb_hooks），AI 能力经统一模型网关接入，导出在浏览器端完成。</p>
+        </div>
+      </div>
+
+      <h3>值得保留的内核</h3>
+      <div class="grid g3">
+        <div class="panel"><span class="pill success">护栏</span><p style="margin-top:10px"><strong>投标 7 阶段流水线</strong>，把废标风险从"依赖人的记忆"变成"系统的核对清单"，交卷闸门拦导出。</p></div>
+        <div class="panel"><span class="pill info">AI</span><p style="margin-top:10px"><strong>AI 解析报告</strong>结构化提取招标要素并逐项标注出处，可人工核对，后续环节以核对后的报告为准。</p></div>
+        <div class="panel"><span class="pill warning">零成本</span><p style="margin-top:10px"><strong>隐式硬约束本地抽取</strong>（零 AI），"视为无效"类刚性要求自动注入大纲与章节生成。</p></div>
+      </div>
+
+      <h3>体验层面的七个问题</h3>
+      <table>
+        <thead><tr><th style="width:24%">问题</th><th style="width:44%">具体表现</th><th style="width:32%">影响</th></tr></thead>
+        <tbody>
+          <tr><td><strong>模块平铺，缺少作战主线</strong></td><td>12 个模块按"核心工作 / 资源 / 系统"分组，但分组依据是功能属性，不是售前推进顺序，用户需自行脑补流程。</td><td>新成员上手慢，链路易在模块间断开</td></tr>
+          <tr><td><strong>竞品分析页面直接崩溃</strong></td><td><code>CompetitorCompare.tsx</code> 存在语法错误（缺分号），Vite 编译失败，整个竞品模块被错误遮罩覆盖，无法使用。</td><td><span class="pill danger">功能不可用</span></td></tr>
+          <tr><td><strong>信息密度过低</strong></td><td>卡片圆角大、留白多、一屏承载信息少，大量垂直空间被空态与说明文字占用，需频繁滚动。</td><td>效率低，不像专业作战工具</td></tr>
+          <tr><td><strong>视觉语言朴素、层级模糊</strong></td><td>卡片样式雷同、阴影单一、主色用法不统一，数据大字与正文层级关系弱，缺少精密的网格与对齐。</td><td>专业感、可信度不足</td></tr>
+          <tr><td><strong>首屏价值未被利用</strong></td><td>真实有 499 条情报、161 家客户，但首页商机 / 项目 / 待办均显示 0，空态占据核心位置，"今天该干什么"不清晰。</td><td>驾驶舱名不副实</td></tr>
+          <tr><td><strong>数据口径不一致</strong></td><td>客户数显示"已加载 20"而非真实总数 161；多处 totalItems 返回本页条数。</td><td>可能误导决策</td></tr>
+          <tr><td><strong>关键操作可达性差</strong></td><td>解析配置弹窗在 883px 视口下"开始解析"按钮点不到；新建方案 / 客户长表单提交按钮不可见。</td><td>核心流程被卡住</td></tr>
+        </tbody>
+      </table>
+      <div class="note warn"><b>重构判断</b>本次不是重写业务，而是在<strong>保留全部业务行为与数据</strong>的前提下，重做"信息架构 + 视觉系统 + 交互骨架"，让已有的强大能力被看见、被顺畅地用起来。</div>
+    </section>
+
+    <!-- ============ 02 场景与主链路 ============ -->
+    <section class="chap" id="s2">
+      <div class="sec-no">02 / SCENARIOS</div>
+      <h2>场景与主链路：围绕售前怎么打仗来组织</h2>
+      <p class="sec-desc">系统的价值不在单个模块，而在端到端打通的作战链路。重构以三类用户视角、三条主链路为骨架，所有页面都回答"我在链路的哪一步、下一步去哪"。</p>
+
+      <h3>谁在用，关心什么</h3>
+      <div class="grid g3">
+        <div class="panel"><span class="pill info">主要用户</span><h4 style="margin-top:10px">售前工程师</h4><p style="font-size:13px">跟商机、编方案、响应招标。关心：情报别漏、方案出得快、技术参数逐条响应到位。</p></div>
+        <div class="panel"><span class="pill info">关键角色</span><h4 style="margin-top:10px">标书专员</h4><p style="font-size:13px">生产投标文件、控废标风险。关心：招标解析准、废标项清零、格式合规、交卷有体检。</p></div>
+        <div class="panel"><span class="pill info">决策视角</span><h4 style="margin-top:10px">售前负责人</h4><p style="font-size:13px">决定投哪个、看整体进展。关心：商机漏斗、项目进度、中标率与失单原因、模型成本。</p></div>
+      </div>
+
+      <h3>链路 A · 项目获取到投标交付（主链路）</h3>
+      <div class="flow">
+        <div class="node"><b>情报中心</b><span>采购意向 / 招标公告</span></div>
+        <div class="arrow">›</div>
+        <div class="node"><b>客户管理</b><span>商机建档 · 阶段流转 · 跟进</span></div>
+        <div class="arrow">›</div>
+        <div class="node"><b>方案工作室</b><span>建设清单 · 大纲 · 正文</span></div>
+        <div class="arrow">›</div>
+        <div class="node"><b>PPT 与报价</b><span>演示文稿 · 报价清单</span></div>
+        <div class="arrow">›</div>
+        <div class="node"><b>标书工作台</b><span>解析 · 编制 · 查重 · 自查 · 评标 · 归档</span></div>
+        <div class="arrow">›</div>
+        <div class="node"><b>结果回流</b><span>中标 / 失单 · 业绩沉淀</span></div>
+      </div>
+
+      <h3>链路 B · 知识资产沉淀到复用</h3>
+      <div class="flow">
+        <div class="node"><b>上传文档</b><span>单文件 / 整目录，保留结构</span></div>
+        <div class="arrow">›</div>
+        <div class="node"><b>解析建索引</b><span>摘要 · 关键词 · 分块</span></div>
+        <div class="arrow">›</div>
+        <div class="node"><b>团队 / 个人双库</b><span>七档分类</span></div>
+        <div class="arrow">›</div>
+        <div class="node"><b>检索问答</b><span>命中弹药库直答，否则 RAG 带引用</span></div>
+        <div class="arrow">›</div>
+        <div class="node"><b>缺口反哺</b><span>待补答 → 弹药库</span></div>
+      </div>
+
+      <h3>链路 C · 情报驱动商机</h3>
+      <div class="flow">
+        <div class="node"><b>定时抓取</b><span>政策 / 竞品 / 招标 / 媒体</span></div>
+        <div class="arrow">›</div>
+        <div class="node"><b>清洗去重</b><span>服务端去重 · 解码</span></div>
+        <div class="arrow">›</div>
+        <div class="node"><b>AI 摘要打标</b><span>售前视角 · 自动判类型地区</span></div>
+        <div class="arrow">›</div>
+        <div class="node"><b>人工确认</b><span>确认 / 忽略 / 收藏，每人独立</span></div>
+        <div class="arrow">›</div>
+        <div class="node"><b>一键转商机</b><span>抽取金额医院，预填客户</span></div>
+      </div>
+
+      <h3>八个高频应用场景（界面设计的落点）</h3>
+      <table>
+        <thead><tr><th style="width:5%">#</th><th style="width:24%">场景</th><th style="width:46%">用户想完成什么</th><th style="width:25%">重构后的界面落点</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>晨会作战</td><td>开工 30 秒知道今天有哪些到期事项、临期项目、新情报</td><td>驾驶舱「今日作战」</td></tr>
+          <tr><td>2</td><td>情报研判</td><td>批量浏览新抓情报，AI 摘要打标，确认或一键转商机 / 建标书</td><td>情报中心三栏处理台</td></tr>
+          <tr><td>3</td><td>客户跟进</td><td>查医院档案、记跟进、推进商机阶段，不漏下次跟进</td><td>客户档案 + 商机看板</td></tr>
+          <tr><td>4</td><td>方案编制</td><td>按评级目标勾选建设清单，AI 出大纲，逐章成稿并自检</td><td>方案工作室编辑器</td></tr>
+          <tr><td>5</td><td>投标作战</td><td>解析招标文件、编制标书、查重、废标自查、模拟评标</td><td>标书 7 阶段作战室</td></tr>
+          <tr><td>6</td><td>报价决策</td><td>编制多版本报价、测算成本毛利折扣，导出 Excel / Word</td><td>报价清单工作台</td></tr>
+          <tr><td>7</td><td>知识问答</td><td>基于团队沉淀的资料带引用作答，缺口沉淀为弹药</td><td>知识库 RAG 问答</td></tr>
+          <tr><td>8</td><td>随时差遣</td><td>用自然语言查站内数据、生成内容，AI 记住工作习惯</td><td>小智助手常驻副驾</td></tr>
+        </tbody>
+      </table>
+    </section>
+    <!-- ============ 03 设计理念 ============ -->
+    <section class="chap" id="s3">
+      <div class="sec-no">03 / DESIGN CONCEPT</div>
+      <h2>设计理念：冷静、精密、有掌控感</h2>
+      <p class="sec-desc">医疗投标是零容错的法律级交付，界面应传递"尽在掌握"的确定感，而不是花哨的科技装饰。AI 能力退后一步、随叫随到，把舞台让给用户的判断。</p>
+
+      <h3>一个隐喻：作战指挥室</h3>
+      <div class="grid g3">
+        <div class="panel"><h4>冷静 Calm</h4><p style="font-size:13px">深色导航锚定全局，浅色工作区专注内容；克制的强调色，只在需要判断与行动时出现。</p></div>
+        <div class="panel"><h4>精密 Precise</h4><p style="font-size:13px">4px 网格、像素级对齐、tabular 数字、清晰的层级与密度，像仪表盘一样可信。</p></div>
+        <div class="panel"><h4>掌控 In Control</h4><p style="font-size:13px">进度、风险、成本、护栏始终可见；长操作可中断，关键动作有确认，结果可追溯。</p></div>
+      </div>
+
+      <h3>五条设计原则</h3>
+      <div class="grid g2">
+        <div class="panel"><strong>1 · 场景优先于功能</strong><p style="font-size:13px;margin-top:6px">导航与首页按作战链路组织，每个页面让用户知道"我在哪、下一步去哪"，而不是面对一堆功能入口。</p></div>
+        <div class="panel"><strong>2 · 一屏闭合一个判断</strong><p style="font-size:13px;margin-top:6px">提高信息密度，相关信息聚合在一屏；用筛选与分区代替无尽滚动，主指标首屏可见。</p></div>
+        <div class="panel"><strong>3 · 护栏显性化</strong><p style="font-size:13px;margin-top:6px">废标风险、条款覆盖率、闸门状态、成本确认都在界面上有位置，让风险藏不住。</p></div>
+        <div class="panel"><strong>4 · AI 是副驾不是主角</strong><p style="font-size:13px;margin-top:6px">AI 能力嵌入工作流自然触发，结果可人工修改；AI 生成态、出处、费用清晰标注。</p></div>
+        <div class="panel"><strong>5 · 空态是行动邀请</strong><p style="font-size:13px;margin-top:6px">空态说明"为什么空、去做什么"并给出一键入口；失败可重试，绝不留无意义空白。</p></div>
+        <div class="panel"><strong>6 · 延续品牌、克制焕新</strong><p style="font-size:13px;margin-top:6px">保留"智"字与青色基因，升级为更沉稳的医疗青；不追逐会过时的视觉潮流。</p></div>
+      </div>
+
+      <h3>明确不做（避免 AI 套路化）</h3>
+      <div class="note"><span style="font-size:13px">不做满屏渐变与玻璃拟态；不做千篇一律的圆角卡片 + 统一灰阴影；不做全大写眉标、"A · B · C"式元信息、按钮后缀箭头；不为装饰而堆砌图标与动效。强调色数量克制，同属一个体系。</span></div>
+    </section>
+
+    <!-- ============ 04 信息架构 ============ -->
+    <section class="chap" id="s4">
+      <div class="sec-no">04 / INFORMATION ARCHITECTURE</div>
+      <h2>信息架构：按作战阶段重排导航</h2>
+      <p class="sec-desc">把原来"按功能属性"的分组，改为"按售前推进顺序"的分组。导航即作战地图，从左到右、从上到下就是项目推进的方向。</p>
+
+      <h3>导航分组（前后对比）</h3>
+      <div class="grid g2">
+        <div class="panel" style="opacity:.75">
+          <h4 style="color:var(--faint)">现状 · 按功能属性分组</h4>
+          <ul style="font-size:13px">
+            <li>概览：工作台</li>
+            <li>核心工作：方案编制、标书工作、PPT 与报价、格式刷新</li>
+            <li>资源与知识：情报中心、竞品分析、客户管理、知识库</li>
+            <li>系统：模型配置、小智助手、团队管理</li>
+          </ul>
+          <p style="font-size:12px;color:var(--danger)">情报排在客户之后，与"情报驱动商机"的真实顺序相反；方案排在标书前但缺少阶段感。</p>
+        </div>
+        <div class="panel" style="border-color:var(--primary-300);box-shadow:var(--sh-card)">
+          <h4 style="color:var(--primary-700)">重构后 · 按作战阶段分组</h4>
+          <ul style="font-size:13px">
+            <li><strong>总览</strong>：作战驾驶舱</li>
+            <li><strong>发现</strong>：情报中心</li>
+            <li><strong>研判</strong>：客户管理（档案 · 商机看板）</li>
+            <li><strong>制胜</strong>：方案工作室、PPT 与报价</li>
+            <li><strong>决胜</strong>：标书工作台、格式刷新</li>
+            <li><strong>沉淀</strong>：知识库、竞品分析</li>
+            <li><strong>支撑</strong>：小智助手、模型配置、团队管理</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3>全局框架：固定外壳 + 内容区</h3>
+      <div class="panel">
+        <div class="grid" style="gap:10px">
+          <p style="margin:0"><strong>① 侧边导航（深色，常驻可折叠）</strong>：作战阶段分组 + 模块，当前位置高亮；底部为用户与角色。</p>
+          <p style="margin:0"><strong>② 顶部全局条</strong>：面包屑 / 页面标题（左）；全局搜索 ⌘K、AI 副驾唤起、通知、模型快速切换、用户菜单（右）。</p>
+          <p style="margin:0"><strong>③ 内容工作区</strong>：列表页用「筛选区 + 列表 + 详情」三栏；作战页用「阶段步骤条 + 主工作面板 + 上下文侧栏」。</p>
+          <p style="margin:0"><strong>④ AI 副驾（全局浮层 / 侧栏）</strong>：任何页面可唤起，联动当前页面上下文执行任务。</p>
+        </div>
+      </div>
+
+      <h3>页面层级与路由</h3>
+      <table>
+        <thead><tr><th style="width:22%">作战阶段</th><th style="width:30%">页面</th><th style="width:48%">主要视图</th></tr></thead>
+        <tbody>
+          <tr><td>总览</td><td><code>/</code> 作战驾驶舱</td><td>今日作战 · 关键指标 · 商机漏斗 · 风险预警 · 情报速览 · 项目进度</td></tr>
+          <tr><td>发现</td><td><code>/intel</code> 情报中心</td><td>情报处理台 · 信息源管理 · AI 周报 · 手动录入</td></tr>
+          <tr><td>研判</td><td><code>/customers</code> 客户管理</td><td>客户列表 · 客户档案详情 · 商机看板</td></tr>
+          <tr><td>制胜</td><td><code>/solutions</code> 方案工作室</td><td>建设清单 · 方案列表 · 方案编辑器（大纲 / 逐章 / 自检）</td></tr>
+          <tr><td>制胜</td><td><code>/ppt-quote</code> PPT 与报价</td><td>PPT 生产线 · 报价清单（多版本 / 测算）</td></tr>
+          <tr><td>决胜</td><td><code>/bids</code> 标书工作台</td><td>项目列表 · 7 阶段作战室</td></tr>
+          <tr><td>决胜</td><td><code>/format</code> 格式刷新</td><td>4 步向导（上传 · 模板 · 对比 · 套用）</td></tr>
+          <tr><td>沉淀</td><td><code>/knowledge</code> 知识库</td><td>双库目录 · 文档阅读 · RAG 问答 · 弹药库</td></tr>
+          <tr><td>沉淀</td><td><code>/competitors</code> 竞品分析</td><td>竞品档案 · 竞品对比（修复）· 证据</td></tr>
+          <tr><td>支撑</td><td><code>/assistant</code> 小智助手</td><td>对话 · 记忆 · 技能</td></tr>
+          <tr><td>支撑</td><td><code>/models</code> 模型配置</td><td>公共 / 个人模型 · 用量</td></tr>
+          <tr><td>支撑</td><td><code>/team</code> 团队管理</td><td>成员 · 角色 · 启停</td></tr>
+        </tbody>
+      </table>
+    </section>
+    <!-- ============ 05 设计系统 ============ -->
+    <section class="chap" id="s5">
+      <div class="sec-no">05 / DESIGN SYSTEM</div>
+      <h2>设计系统：一套可复用的作战语言</h2>
+      <p class="sec-desc">所有颜色、字号、间距、圆角、阴影均以令牌（CSS Variables）定义，组件与图表自动继承，支持换肤且不允许硬编码。以下令牌与静态原型完全一致。</p>
+
+      <h3>品牌主色 · 医疗青</h3>
+      <p style="font-size:13px;color:var(--muted)">在现有青蓝基因上向沉稳、专业收敛：主色用于主按钮、选中态、图表主色与关键链接。</p>
+      <div class="grid g4" style="margin-top:14px">
+        <div class="swatch"><div class="chip" style="background:var(--primary-50)"></div><div class="info"><b>primary-50</b><span>#ECF8FA</span></div></div>
+        <div class="swatch"><div class="chip" style="background:var(--primary-100)"></div><div class="info"><b>primary-100</b><span>#D2F0F5</span></div></div>
+        <div class="swatch"><div class="chip" style="background:var(--primary-200)"></div><div class="info"><b>primary-200</b><span>#A6E0EA</span></div></div>
+        <div class="swatch"><div class="chip" style="background:var(--primary-300)"></div><div class="info"><b>primary-300</b><span>#6CC8D8</span></div></div>
+        <div class="swatch"><div class="chip" style="background:var(--primary-400)"></div><div class="info"><b>primary-400</b><span>#33A9C0</span></div></div>
+        <div class="swatch"><div class="chip" style="background:var(--primary-500)"></div><div class="info"><b>primary-500</b><span>#158BA3</span></div></div>
+        <div class="swatch"><div class="chip" style="background:var(--primary-600)"></div><div class="info" style="color:#fff"><b style="color:#fff">primary-600 主色</b><span style="color:#cfe6ee">#0E7490</span></div></div>
+        <div class="swatch"><div class="chip" style="background:var(--primary-700)"></div><div class="info"><b>primary-700</b><span>#0C5E75</span></div></div>
+      </div>
+
+      <h3>中性色 · 冷调灰</h3>
+      <p style="font-size:13px;color:var(--muted)">带轻微青色倾向的中性色，比纯灰更协调、更有医疗的洁净感。</p>
+      <div class="grid g4" style="margin-top:14px">
+        <div class="swatch"><div class="chip" style="background:var(--page)"></div><div class="info"><b>page 页面底</b><span>#F2F6F7</span></div></div>
+        <div class="swatch"><div class="chip" style="background:var(--subtle)"></div><div class="info"><b>subtle 次级底</b><span>#E9EFF1</span></div></div>
+        <div class="swatch"><div class="chip" style="background:var(--border)"></div><div class="info"><b>border 边框</b><span>#DCE5E8</span></div></div>
+        <div class="swatch"><div class="chip" style="background:var(--ink)"></div><div class="info"><b style="color:#fff">ink 主文字</b><span style="color:#cdd8dc">#0F2A33</span></div></div>
+      </div>
+
+      <h3>语义色与图表色</h3>
+      <div class="grid g4">
+        <div class="swatch"><div class="chip" style="background:var(--success)"></div><div class="info"><b>success 成功</b><span>#1F9D6E</span></div></div>
+        <div class="swatch"><div class="chip" style="background:var(--warning)"></div><div class="info"><b>warning 警告</b><span>#C9832A</span></div></div>
+        <div class="swatch"><div class="chip" style="background:var(--danger)"></div><div class="info"><b>danger 风险</b><span>#CF4747</span></div></div>
+        <div class="swatch"><div class="chip" style="background:var(--info)"></div><div class="info"><b>info 信息</b><span>#2E79B9</span></div></div>
+      </div>
+      <div class="grid g5" style="grid-template-columns:repeat(5,1fr);margin-top:14px">
+        <div class="swatch"><div class="chip" style="background:var(--chart-1)"></div><div class="info"><b>chart-1</b></div></div>
+        <div class="swatch"><div class="chip" style="background:var(--chart-2)"></div><div class="info"><b>chart-2</b></div></div>
+        <div class="swatch"><div class="chip" style="background:var(--chart-3)"></div><div class="info"><b>chart-3</b></div></div>
+        <div class="swatch"><div class="chip" style="background:var(--chart-4)"></div><div class="info"><b>chart-4</b></div></div>
+        <div class="swatch"><div class="chip" style="background:var(--chart-5)"></div><div class="info"><b>chart-5</b></div></div>
+      </div>
+
+      <h3>侧边导航 · 深墨青</h3>
+      <div class="swatch"><div class="chip" style="background:linear-gradient(180deg,var(--sidebar-2),var(--sidebar))"></div><div class="info"><b>sidebar 深墨青</b><span>#0A242E → #0C2B37 · 文字 #A9C3CC · 选中 #123947</span></div></div>
+
+      <h3>字体系统</h3>
+      <div class="panel type-spec">
+        <div class="row"><div class="tag">字体族</div><div class="sample" style="font-size:13px">Noto Sans SC（自托管）+ PingFang SC / Microsoft YaHei 系统回退；数字启用 tabular-nums，保证仪表盘数字等宽对齐。</div></div>
+        <div class="row"><div class="tag">数据大字 28 / 700</div><div class="sample" style="font-size:28px;font-weight:800">499 <span style="font-size:13px;font-weight:500;color:var(--muted)">情报总数</span></div></div>
+        <div class="row"><div class="tag">页面标题 20 / 800</div><div class="sample" style="font-size:20px;font-weight:800">标书工作台</div></div>
+        <div class="row"><div class="tag">区块标题 15 / 700</div><div class="sample" style="font-size:15px;font-weight:700">AI 解析报告</div></div>
+        <div class="row"><div class="tag">正文 14 / 400</div><div class="sample" style="font-size:14px">投标文件是法律级交付物，任何一处疏漏都可能导致废标。</div></div>
+        <div class="row"><div class="tag">辅助 12 / 400</div><div class="sample" style="font-size:12px;color:var(--muted)">中国政府采购网 · 医院搜索 · 2026-09-25</div></div>
+      </div>
+      <h3>间距、网格与形状</h3>
+      <div class="grid g3">
+        <div class="panel"><h4>间距（4px 基准）</h4><p style="font-size:13px">4 · 8 · 12 · 16 · 20 · 24 · 32 · 40。卡片内边距 16–20，区块间距 24–32。</p></div>
+        <div class="panel"><h4>圆角（克制）</h4><p style="font-size:13px">卡片 10px · 控件 8px · 小元素 6px；相比现状更收敛，传递精密感。</p></div>
+        <div class="panel"><h4>阴影（分层轻柔）</h4><p style="font-size:13px">卡片极轻阴影，弹层用较深投影；不使用统一的 rgba(0,0,0,.1)。</p></div>
+      </div>
+
+      <h3>核心组件</h3>
+      <h4>按钮</h4>
+      <div class="demo">
+        <button class="btn btn-primary" onclick="toast('演示：主按钮')">新建投标项目</button>
+        <button class="btn btn-ghost" onclick="toast('演示：次级按钮')">导入</button>
+        <button class="btn btn-soft" onclick="toast('演示：弱按钮')">AI 摘要打标</button>
+        <button class="btn" style="background:var(--danger-bg);color:var(--danger)" onclick="toast('演示：危险操作')">删除</button>
+        <button class="btn btn-ghost" disabled style="opacity:.5;cursor:not-allowed">禁用态</button>
+      </div>
+
+      <h4>输入、筛选与标签</h4>
+      <div class="demo" style="flex-direction:column;align-items:stretch">
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <input style="flex:1;min-width:200px;padding:9px 14px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);font-family:var(--font);font-size:13.5px" placeholder="搜索项目名 / 招标编号 / 客户医院">
+          <select style="padding:9px 14px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);font-family:var(--font);font-size:13.5px;background:#fff"><option>全部类型</option><option>招标中标</option></select>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+          <span class="chip-tag" style="background:var(--info-bg);color:var(--info)">招标中标</span>
+          <span class="chip-tag" style="background:var(--success-bg);color:var(--success)">已确认</span>
+          <span class="chip-tag" style="background:var(--warning-bg);color:var(--warning)">待确认</span>
+          <span class="chip-tag" style="background:var(--danger-bg);color:var(--danger)">废标风险</span>
+          <span class="chip-tag" style="background:var(--purple-bg);color:var(--purple)">公共</span>
+          <span class="chip-tag" style="background:var(--subtle);color:var(--muted)">安徽</span>
+        </div>
+      </div>
+
+      <h4>KPI 指标卡与进度</h4>
+      <div class="demo">
+        <div class="kpi-mini"><div class="v">499</div><div class="l">情报总数</div></div>
+        <div class="kpi-mini"><div class="v" style="color:var(--primary-600)">161</div><div class="l">客户总数</div></div>
+        <div class="kpi-mini"><div class="v" style="color:var(--danger)">3</div><div class="l">废标风险项</div></div>
+        <div style="flex:1;min-width:180px">
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px"><span>条款覆盖</span><span style="color:var(--success);font-weight:700">37 / 37</span></div>
+          <div style="height:8px;background:var(--subtle);border-radius:100px;overflow:hidden"><div style="width:100%;height:100%;background:linear-gradient(90deg,var(--primary-500),var(--success));border-radius:100px"></div></div>
+        </div>
+      </div>
+
+      <h4>状态徽章、步骤与 AI 生成态</h4>
+      <div class="demo">
+        <span class="pill success">成功</span>
+        <span class="pill warning">解析中…</span>
+        <span class="pill danger">未通过</span>
+        <span class="pill info">已解析 · 待编制</span>
+        <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--purple);background:var(--purple-bg);padding:4px 11px;border-radius:100px;font-weight:600">AI 生成 · 可编辑</span>
+        <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">出处：第一章一</span>
+      </div>
+    </section>
+
+    <!-- ============ 06 页面规划 ============ -->
+    <section class="chap" id="s6">
+      <div class="sec-no">06 / PAGE BLUEPRINTS</div>
+      <h2>页面规划：六类核心布局</h2>
+      <p class="sec-desc">根据场景确定布局范式，而非所有页面共用一套卡片栅格。以下为核心页面的线框规划，静态原型按此实现。</p>
+      <div class="grid g3">
+        <div>
+          <div class="wire">
+            <div class="bar"><i></i><i></i><i></i></div>
+            <div class="body">
+              <div class="blk" style="height:34px"></div>
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px"><div class="ln" style="height:30px"></div><div class="ln" style="height:30px"></div><div class="ln" style="height:30px"></div><div class="ln" style="height:30px"></div></div>
+              <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:6px"><div class="ln" style="height:70px"></div><div class="ln" style="height:70px"></div></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px"><div class="ln" style="height:50px"></div><div class="ln" style="height:50px"></div></div>
+            </div>
+          </div>
+          <div class="wire-cap">作战驾驶舱</div>
+        </div>
+        <div>
+          <div class="wire">
+            <div class="bar"><i></i><i></i><i></i></div>
+            <div class="body" style="grid-template-columns:1fr 1.4fr 1fr;display:grid">
+              <div class="ln" style="height:150px"></div>
+              <div style="display:grid;gap:6px"><div class="ln" style="height:34px"></div><div class="ln" style="height:34px"></div><div class="ln" style="height:34px"></div><div class="ln" style="height:34px"></div></div>
+              <div class="ln" style="height:150px"></div>
+            </div>
+          </div>
+          <div class="wire-cap">情报处理台（三栏）</div>
+        </div>
+        <div>
+          <div class="wire">
+            <div class="bar"><i></i><i></i><i></i></div>
+            <div class="body">
+              <div class="ln w70" style="height:18px"></div>
+              <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:6px"><div class="ln" style="height:110px"></div><div class="ln" style="height:110px"></div></div>
+            </div>
+          </div>
+          <div class="wire-cap">标书作战室</div>
+        </div>
+        <div>
+          <div class="wire">
+            <div class="bar"><i></i><i></i><i></i></div>
+            <div class="body" style="grid-template-columns:.9fr 1.5fr .9fr;display:grid">
+              <div class="ln" style="height:150px"></div>
+              <div style="display:grid;gap:6px"><div class="ln w50"></div><div class="ln"></div><div class="ln"></div><div class="ln w70"></div><div class="ln"></div></div>
+              <div class="ln" style="height:150px"></div>
+            </div>
+          </div>
+          <div class="wire-cap">方案编辑器</div>
+        </div>
+        <div>
+          <div class="wire">
+            <div class="bar"><i></i><i></i><i></i></div>
+            <div class="body">
+              <div class="ln w50" style="height:18px"></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px"><div class="ln" style="height:60px"></div><div class="ln" style="height:60px"></div></div>
+              <div class="ln" style="height:44px"></div>
+            </div>
+          </div>
+          <div class="wire-cap">客户档案</div>
+        </div>
+        <div>
+          <div class="wire">
+            <div class="bar"><i></i><i></i><i></i></div>
+            <div class="body" style="grid-template-columns:1fr 1.3fr;display:grid">
+              <div class="ln" style="height:150px"></div>
+              <div style="display:grid;gap:6px"><div class="ln w70"></div><div class="ln"></div><div class="ln w50"></div><div class="ln" style="height:40px"></div></div>
+            </div>
+          </div>
+          <div class="wire-cap">知识库</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 07 关键交互 ============ -->
+    <section class="chap" id="s7">
+      <div class="sec-no">07 / KEY INTERACTIONS</div>
+      <h2>关键交互：让护栏与 AI 可感知</h2>
+      <p class="sec-desc">交互设计的重点是"状态可见、风险可控、操作可达"，尤其针对长任务、成本与废标风险。</p>
+      <div class="grid g2">
+        <div class="panel"><h4>长任务：进度 + 可中断</h4><p style="font-size:13px">批量生成逐章串行，显示当前章节、进度百分比与预估；提供"停止"，停止后在飞请求不再计费，已生成内容自动保存。</p></div>
+        <div class="panel"><h4>AI 费用：先确认后执行</h4><p style="font-size:13px">每轮 AI 调用前弹费用确认（模型、预估 token / 费用），追问沿用上下文；杜绝零弹窗扣费。</p></div>
+        <div class="panel"><h4>交卷闸门：留痕不拦导航、拦导出</h4><p style="font-size:13px">parse / outline / compose / check / eval 五闸门状态常驻；未满足可继续浏览，但导出被拦截，强制放行需填备注。</p></div>
+        <div class="panel"><h4>看板：拖拽流转 + 终态确认</h4><p style="font-size:13px">商机卡片拖拽换阶段，拖到中标 / 失单需确认并补跟进记录，结果回流驾驶舱复盘。</p></div>
+        <div class="panel"><h4>可达性：弹窗与长表单</h4><p style="font-size:13px">弹窗 max-height 94vh 可滚动、底部操作区 sticky；长表单提交按钮始终可见，修复按钮点不到的问题。</p></div>
+        <div class="panel"><h4>反馈：Toast 与空态</h4><p style="font-size:13px">操作结果以轻提示反馈（已保存 / 已发布 / 失败可重试）；空态给出一键行动入口而非留白。</p></div>
+      </div>
+    </section>
+
+    <!-- ============ 08 落地路线 ============ -->
+    <section class="chap" id="s8">
+      <div class="sec-no">08 / ROADMAP</div>
+      <h2>落地路线：先原型验证，再逐页改造</h2>
+      <p class="sec-desc">建议以静态原型对齐方向，再在不改变业务行为与数据的前提下逐页落地，每步可验证、可回退。</p>
+      <div class="flow">
+        <div class="node"><b>阶段 1</b><span>设计方案 + 高保真静态原型，对齐视觉与信息架构（本次交付）</span></div>
+        <div class="arrow">›</div>
+        <div class="node"><b>阶段 2</b><span>落地设计令牌与外壳（侧栏 / 顶栏 / 主题），修复竞品崩溃与可达性</span></div>
+        <div class="arrow">›</div>
+        <div class="node"><b>阶段 3</b><span>改造核心作战页：驾驶舱、情报、标书、方案、客户、知识库</span></div>
+        <div class="arrow">›</div>
+        <div class="node"><b>阶段 4</b><span>其余页面与交互收尾，回归验证数据与业务行为等价</span></div>
+      </div>
+      <div class="note"><b>交付物</b>① 本设计方案；②《小智工作站-静态原型》——可点击的多页面高保真原型，覆盖 12 个模块的核心场景，使用示例数据演示。</div>
+      <div class="footer">小智工作站 · 重构设计方案 v1.0 · 2026-09-25 · 医疗信息化售前工作台</div>
+    </section>
+  </main>
+</div>
+<script>
+// 目录高亮
+const links=[...document.querySelectorAll('#tocnav a')];
+const secs=links.map(a=>document.querySelector(a.getAttribute('href')));
+const obs=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){const id='#'+e.target.id;links.forEach(a=>a.classList.toggle('active',a.getAttribute('href')===id));}})},{rootMargin:'-20% 0px -70% 0px'});
+secs.forEach(s=>s&&obs.observe(s));
+</script>
+</body>
+</html>
