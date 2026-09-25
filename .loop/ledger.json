@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 67,
+  "round": 68,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -95,9 +95,9 @@
       ],
       "priority": "P2",
       "status": "open",
-      "evidence": "R67：prompts/ 累计11文件+快照13个；331/331；bidTypes 累计净减约12K字符",
+      "evidence": "R68：prompts/ 15文件+快照17个；335/335",
       "diff": "",
-      "plan": "已完成 11/34 构造器(批1:5+批2:4+批3:2)。教训固化：终点锚=下一项文档注释首行；依赖扫描需全文标识符对照而非局部grep；被吞的 re-export 行要还回 bidTypes。剩余23个构造器后续批次同模式推进。"
+      "plan": "已完成 15/34 构造器(4批)。剩余：eval商用对(commercial耦合)/orchestrator邻近杂项/解析类(tenderParse/sectionParse)/大纲(轮廓fix/bidOutline)/编排修复/事实核对等——同模式推进，每批≤5。"
     },
     {
       "id": "ux-05",
@@ -894,5 +894,5 @@
     }
   ],
   "noProgressStreak": 1,
-  "lastRoundSummary": "R67 提示词搬迁第三批 3/7：buildEvalMessages+buildBidRefineMessages 程序化搬迁，依赖导入三轮补齐(truthPreamble/BID_STYLE_RULES/FULLTEXT_GUARD_RULES/PARAM_RESPONSE_BOUNDARY_RULES/PRE_OUTPUT_SELFCHECK_RULES/ScoringItem/BidRefineKind/MAX_TENDER_CHARS)。331/331+快照13份。bidTypes 272.5K。"
+  "lastRoundSummary": "R68 提示词搬迁第四批 4/7：orchestration/coverageAudit/outlineLevel1/outlineChildren 四构造器搬迁，依赖审计算法化(脚本自动扫描标识符生成import)后一次成型；私有helper补export×3，伴生函数随迁re-export。335/335+快照17份。bidTypes 259.7K(累计净减约25K)。"
 }
