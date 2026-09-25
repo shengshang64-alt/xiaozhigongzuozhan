@@ -10,6 +10,8 @@ import {
   type FormatFontSize,
 } from "@/pages/BidWorkspace/bidTypes"
 import { extractFormatSpecFromFile, specToFormatSettings, type FormatSpec } from "./formatSpec"
+import { refreshDocxFile } from "./refreshDocx"
+import type { FormatScope } from "./formatDiff"
 
 // ---------------------------------------------------------------------------
 // 格式刷新工具 · 状态层（第一阶段：识别 → 手动微调 → 存为模板 → 模板库）
@@ -57,6 +59,9 @@ export function useFormatTool() {
   const [listLoading, setListLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [uploading, setUploading] = useState(false)
+  // R58：第 1 步上传的「待刷新原文档」引用（仅内存，不落库）——导出刷新后文档用
+  const [sourceFile, setSourceFile] = useState<File | null>(null)
+  const [exporting, setExporting] = useState(false)
 
   // 当前编辑中的模板
   const [name, setName] = useState("")
@@ -89,6 +94,7 @@ export function useFormatTool() {
       const extracted = await extractFormatSpecFromFile(file)
       const mapped = specToFormatSettings(extracted)
       setSpec(extracted)
+      setSourceFile(file)
       setSettings(mapped.settings)
       setNotes(mapped.notes)
       setEditingId(null)
@@ -99,12 +105,38 @@ export function useFormatTool() {
     } finally {
       setUploading(false)
     }
-     
+
   }, [name])
+
+  // ---- R58：按当前模板配置改写原文档并下载（文字 0 改动）----
+  const exportRefreshed = useCallback(async (scopes: FormatScope[]) => {
+    if (!sourceFile) {
+      toast.error("请先在第 1 步上传要刷新的 .docx 文档")
+      return
+    }
+    setExporting(true)
+    try {
+      const { blob, notes } = await refreshDocxFile(sourceFile, settings, scopes)
+      const downloadName = sourceFile.name.replace(/\.docx$/i, "") + "-格式刷新.docx"
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = downloadName
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 4000)
+      toast.success(`已导出「${downloadName}」，正文文字 0 改动`)
+      if (notes.length) toast.info(notes[0], { description: notes.length > 1 ? `另有 ${notes.length - 1} 条提示` : undefined })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "导出失败，请确认文档是未加密的 .docx")
+    } finally {
+      setExporting(false)
+    }
+  }, [sourceFile, settings])
 
   // ---- 从零手动定义 ----
   const startBlank = useCallback(() => {
     setSpec(null)
+    setSourceFile(null)
     setNotes([])
     setSettings(clone(DEFAULT_FORMAT_SETTINGS))
     setName("")
@@ -215,6 +247,9 @@ export function useFormatTool() {
     editingId,
     // 动作
     handleRecognize,
+    exportRefreshed,
+    exporting,
+    sourceFile,
     startBlank,
     editTemplate,
     patchSettings,

@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react"
 import {
   AlertTriangle,
   Check,
+  FileDown,
   FileSearch,
   FileText,
   Plus,
@@ -238,9 +239,20 @@ export function FormatToolPage(vm: UseFormatTool) {
                 <Save className="mr-1.5 h-4 w-4" />
                 {vm.busy ? "保存中…" : vm.editingId ? "更新模板" : "保存为模板"}
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!vm.sourceFile || vm.exporting}
+                title={vm.sourceFile ? "按当前模板配置改写原文档样式并下载" : "先在第 1 步上传要刷新的 .docx 文档"}
+                onClick={() => void vm.exportRefreshed(scopes)}
+                className="border-primary/50 text-primary hover:bg-primary/5"
+              >
+                <FileDown className="mr-1.5 h-4 w-4" />
+                {vm.exporting ? "导出中…" : "导出刷新后文档"}
+              </Button>
             </div>
             <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-              保存后在标书工作台「格式与暗标设置」或方案导出设置中选择该模板套用；{vm.editingId ? "正在编辑已选模板，改完点「更新模板」保存。" : "配置即套用时生效的样式基准。"}
+              「导出刷新后文档」按当前选中的模板配置直接改写原文档样式（文字 0 改动、范围随上方勾选）；保存后在标书工作台「格式与暗标设置」或方案导出设置中也可选该模板套用。{vm.editingId ? "正在编辑已选模板，改完点「更新模板」保存。" : ""}
             </p>
           </div>
 
