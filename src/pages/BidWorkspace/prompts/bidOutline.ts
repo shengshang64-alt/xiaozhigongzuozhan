@@ -38,6 +38,7 @@ export function buildBidOutlineMessages(
   const respText = sectionText(report, "response_req")
   const techText = sectionText(report, "delivery_req")
   const qualText = sectionText(report, "qualification")
+  const lotsBlock = lotsContext(report)
   // 第十二轮遗留清偿：大纲编制接入 ★/▲ 重点条款（本地扫描产物，零新增 AI 调用）
   const starText = sectionText(report, STAR_CLAUSE_SECTION.key).trim()
   // 第十七轮 17A：招标规定的投标文件目录（既有解析项产物，零新增 AI 调用）
@@ -157,6 +158,7 @@ export function buildBidOutlineMessages(
     stableParts.push(`【合同关键条款（商务骨架章编排依据）】\n${clipText(contractText, 3000)}`)
   }
   if (opts?.globalFacts) stableParts.push(opts.globalFacts)
+  if (lotsBlock) stableParts.push(lotsBlock)
   if (implicitList.length) {
     stableParts.push(
       `【招标隐式硬约束（任何一条被违反都可能废标）】\n${implicitList.map((t, i) => `${i + 1}. ${t}`).join("\n")}`,
@@ -192,4 +194,15 @@ export function buildBidOutlineMessages(
     { role: "user", content: stableParts.join("\n\n") },
     { role: "user", content: taskParts.join("\n\n") },
   ]
+}
+
+/** R74/C-lot-splitting：多包件上下文——解析报告含「标包划分」分区时注入（用户可编辑该分区确认投标所投包件） */
+function lotsContext(report: Parameters<typeof sectionText>[0]): string {
+  const lots = sectionText(report, "lots").trim()
+  if (!lots) return ""
+  return `
+
+【标包划分（多包件招标）】
+${lots.slice(0, 1200)}
+（本项目划分多个标包：正文必须只针对上述标包中招标文件指定/用户确认的包件范围撰写，禁止混入其他包件的货物、参数与报价。）`
 }

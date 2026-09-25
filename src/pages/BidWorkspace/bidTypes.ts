@@ -92,6 +92,8 @@ export const PARSE_EXTRA_SECTIONS: ParseSectionDef[] = [
   { key: "contract_terms", title: "合同关键条款", guide: "合同授予条件、签订时限与履约保证金、合同解除与终止条款、质保期与缺陷责任期衔接，每行一条" },
   // 第十七轮 17B：编制依据与规范编号清单（规范库补选与正文注入依据）
   { key: "compilation_basis", title: "编制依据与规范", guide: "招标文件中要求或提及的编制依据、标准规范清单（国家标准/行业标准/技术文件/法律法规的编号与名称），每行一条「编号 名称」，保留原文编号格式" },
+  // R74/C-lot-splitting：多包件招标的标包划分（本地扫描 + AI 解析双路，用户在报告中人工确认本次投标所投包件）
+  { key: "lots", title: "标包划分", guide: "招标文件划分的标包/标段/包件清单：每个包一条，含包号、包名称、预算金额或最高限价、主要内容摘要，逐条保留原文表述；未划分标包的文件此区为空" },
 ]
 
 /** 第十二轮改造 2：★/▲ 重点条款（本地扫描产出，不走 LLM 解析、不计入 requestedKeys） */
@@ -257,6 +259,96 @@ export function requestedKeys(cfg: ParseConfig | null | undefined): string[] {
 
 export function parseConfigCount(cfg: ParseConfig | null | undefined): number {
   return requestedKeys(cfg).length
+}
+
+// ------------------------------ R74/C-lot-splitting：标包划分本地扫描（零 AI 费用） ------------------------------
+
+/** 标包标题行：「第1包 / 第一包 / 标段一 / 包2 / 分包3」等（编号可汉字可数字），或含「标段/包件号」的表头行 */
+const LOT_HEADER_RE = /^(?:第|[一二三四五六七八九十百]{1,4}包|[0-9]{1,3}包).{0,3}?(?:包|标段)|^(?:标段|包件?|分包)\s*[一二三四五六七八九十百0-9]{1,4}(?:[:：（(]|\s|$)|^(?:标段|包件)\s*号/
+const LOT_NO_RE = /(第\s*([一二三四五六七八九十百0-9]{1,4})\s*(?:包|标段|包件))|(标段\s*([一二三四五六七八九十百0-9]{1,4}))|((?:包|标段|分包|包件)\s*([0-9]{1,3}))/
+/** 预算/限价行：与当前包块关联 */
+const LOT_BUDGET_RE = /(预算金额|最高限价|预算|控制价|限价)[^0-9]{0,8}([0-9][0-9,，.]*)\s*(万元|元)/
+
+const CN_NUM: Record<string, number> = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10, 百: 100 }
+
+/** 汉字/数字编号 → int（「十」=10、「二十三」=23、超复杂忽略返回 0） */
+export function lotNumberCnToInt(raw: string): number {
+  const digits = raw.replace(/[^0-9一二三四五六七八九十百]/g, "")
+  if (/^[0-9]+$/.test(digits)) return Number(digits)
+  // 汉字编号简单求值（十位组合：二十三=23；含「百」按字面×）
+  let total = 0
+  let cur = 0
+  for (const ch of digits) {
+    if (ch === "十") {
+      cur = cur || 1
+      total += cur * 10
+      cur = 0
+    } else if (ch === "百") {
+      cur = cur || 1
+      total += cur * 100
+      cur = 0
+    } else {
+      cur = CN_NUM[ch] ?? 0
+      // 个位紧跟十/百已在上面累加；这里暂存待遇十/百或结束
+      if (!/[十百]/.test(digits.slice(digits.indexOf(ch) + 1))) {
+        total += cur
+        cur = 0
+      }
+    }
+  }
+  return total + cur
+}
+
+/**
+ * R74/C-lot-splitting：从招标原文本地扫描「标包/标段/包件」划分（纯函数，零 AI 费用）。
+ * 逐行找标包标题行开新包，收集该包块内的名称/预算/内容摘录行（预算行就近归属），
+ * 输出每包一条「第N包：名称；预算金额 X 万元；主要内容…」；无划分返回 []。
+ * 局限（诚实声明）：PDF 表格转译可能把包信息拆行错位，漏识别的由 AI 解析兜底；复杂捆绑（包内分包）v1 不展开。
+ */
+export function extractLotsFromText(text: string): string[] {
+  const out: string[] = []
+  type Lot = { no: string; lines: string[] }
+  let lots: Lot[] = []
+  for (const rawLine of (text ?? "").split(/\n+/)) {
+    const line = rawLine.replace(/[\s\u3000]+/g, " ").trim()
+    if (!line || line.length > 200) continue
+    if (LOT_HEADER_RE.test(line)) {
+      const noM = line.match(LOT_NO_RE)
+      const label = noM ? (noM[1] || noM[3] || noM[5] || line.slice(0, 12)) : line.slice(0, 12)
+      lots.push({ no: String(label).trim(), lines: [line] })
+      continue
+    }
+    if (!lots.length) continue
+    // 预算行就近归属当前包；普通行作为内容摘录（每包最多 6 行）
+    if (LOT_BUDGET_RE.test(line) || lots[lots.length - 1].lines.length < 7) {
+      lots[lots.length - 1].lines.push(line)
+    }
+  }
+  lots = lots.filter((l) => l.lines.length >= 1 && l.no)
+  for (const lot of lots) {
+    const budget = lot.lines.map((l) => l.match(LOT_BUDGET_RE)).find(Boolean)
+    const budgetText = budget ? `；预算/限价 ${budget[2]}${budget[3]}` : ""
+    const content = lot.lines
+      .slice(1)
+      .filter((l) => !LOT_BUDGET_RE.test(l))
+      .join("；")
+      .slice(0, 160)
+    const head = lot.lines[0].slice(0, 80)
+    out.push(`${head}${budgetText}${content && content !== head ? `；${content}` : ""}`)
+  }
+  return out.slice(0, 40)
+}
+
+/** 标包分区组装（镜像 starClauseSectionFrom；无标包返回 null 不落分区） */
+export function lotsSectionFrom(lots: string[]): ParseSection | null {
+  if (!lots.length) return null
+  return {
+    key: "lots",
+    title: "标包划分",
+    content: lots.join("\n"),
+    status: "ok",
+    snippet: `共 ${lots.length} 包`,
+  }
 }
 
 // ------------------------------ 第十二轮改造 2：★/▲ 重点条款本地扫描（零 AI 费用） ------------------------------

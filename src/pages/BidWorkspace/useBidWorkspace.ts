@@ -101,7 +101,9 @@ import {
   extractTemplateOutlineLines,
   extractRequirementClauses,
   extractScoringSectionExcerpt,
+  extractLotsFromText,
   extractStarClauses,
+  lotsSectionFrom,
   factSettingsSourceText,
   findGateRecord,
   // R31（prompt-matrix-02）：评分细项编号大纲承接对账（纯本地零 AI）
@@ -2266,12 +2268,20 @@ export function useBidWorkspace() {
       // 第十二轮改造 2：★/▲ 重点条款本地扫描（零 AI 费用）；未勾选则不扫描、保留旧节不动
       const starOn = starClausesEnabled(cfg)
       const starLines = starOn && text.trim() ? extractStarClauses(text) : []
+      // R74/C-lot-splitting：标包划分本地扫描（零 AI 费用，随 ★ 勾选一并执行）；无划分则不落分区
+      const lotsLines = starOn && text.trim() ? extractLotsFromText(text) : []
       const prevReport = source === "project" ? activeProjectRef.current?.parse_report ?? null : null
       const mergeStar = (base: ParseReport, prev: ParseReport | null): ParseReport => {
         const fresh = starOn ? starClauseSectionFrom(starLines) : null
         const carried = prev?.sections.find((s) => s.key === "star_clauses" && s.content.trim()) ?? null
         const next = fresh ?? carried
-        return next ? upsertParseSection(base, next) : base
+        const withStar = next ? upsertParseSection(base, next) : base
+        // R74/C-lot-splitting：标包分区同样本地产出；AI 解析若已产出 lots 区则 AI 结果优先（base 已含）
+        if (starOn && lotsLines.length && !withStar.sections.find((s) => s.key === "lots" && s.content.trim())) {
+          const lotsSection = lotsSectionFrom(lotsLines)
+          if (lotsSection) return upsertParseSection(withStar, lotsSection)
+        }
+        return withStar
       }
       try {
         // Issue 2 重构 + OpenBidKit 借鉴：逐项独立提示词 + 并发池解析——每个勾选解析项各一次独立 LLM

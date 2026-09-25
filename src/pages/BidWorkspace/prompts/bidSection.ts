@@ -23,6 +23,7 @@ export function buildBidSectionMessages(
   const chapterNo = chapterIndex + 1
   const scoringDetail = scoringDetailLines(opts.scoring ?? [])
   const techText = sectionText(report, "delivery_req")
+  const lotsBlock = lotsContext(report)
     .split(/\n+/)
     .slice(0, 20)
     .join("\n")
@@ -206,7 +207,8 @@ export function buildBidSectionMessages(
     .filter((s) => s !== "")
     .join("\n\n")
   const taskUser = [
-    factsBlock && directedOn ? factsBlock : "",
+
+    lotsBlock,    factsBlock && directedOn ? factsBlock : "",
     opts.tenderFragments
       ? `【招标原文相关段落（本小节写作的首要依据，参数、指标、要求以原文为准）】\n${opts.tenderFragments}`
       : "",
@@ -244,3 +246,14 @@ export function buildBidSectionMessages(
 }
 
 /** 继续生成：把现有正文末尾作为上下文，要求 LLM 从断点续写补足本章篇幅预算；返回值追加到现有正文末尾 */
+
+/** R74/C-lot-splitting：多包件上下文——解析报告含「标包划分」分区时注入（用户可编辑该分区确认投标所投包件） */
+function lotsContext(report: Parameters<typeof sectionText>[0]): string {
+  const lots = sectionText(report, "lots").trim()
+  if (!lots) return ""
+  return `
+
+【标包划分（多包件招标）】
+${lots.slice(0, 1200)}
+（本项目划分多个标包：正文必须只针对上述标包中招标文件指定/用户确认的包件范围撰写，禁止混入其他包件的货物、参数与报价。）`
+}
