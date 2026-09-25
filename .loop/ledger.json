@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 64,
+  "round": 65,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -95,8 +95,9 @@
       ],
       "priority": "P2",
       "status": "open",
-      "evidence": "",
-      "diff": ""
+      "evidence": "R65：prompts/ 5文件+快照测试；325/325；bidTypes 284746→279634 字符(净-5112)",
+      "diff": "",
+      "plan": "第一批已完成(5/34 构造器：dupJudge/voidCheck/defenseAnswer/factSettings/jsonRepair)。后续批次每批≤5：第二批候选=buildDefenseQuestions/buildDefenseOutline/buildSpeechNotes/buildDupJudge邻近的eval类/sectionResize。搬迁走 .diag 脚本模式(锚点切割)，每批快照锁字。"
     },
     {
       "id": "ux-05",
@@ -893,5 +894,5 @@
     }
   ],
   "noProgressStreak": 1,
-  "lastRoundSummary": "R64 ux-05 核查即关：助手记忆编辑/删除前后端均已实现(assistant_memory 全CRUD路由+MemoryPanel编辑按钮+updateMemory/deleteMemory)，账本条目过时；「失效标记」子项需 schema 变更属红线不做(删除已可清理陈旧事实)。本轮零代码，streak=1。"
+  "lastRoundSummary": "R65 提示词搬迁第一批 1/7(prompt-extract-01,用户已拍板)：dupJudge/voidCheck/defenseAnswer/factSettings/jsonRepair 五构造器原样搬 prompts/*，bidTypes re-export+PROMPT_VERSION，MAX_BID_CHARS 补 export；快照测试锁字(5快照基线)。325/325。零字改动。"
 }
