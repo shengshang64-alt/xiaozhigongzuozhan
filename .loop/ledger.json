@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 63,
+  "round": 64,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -106,7 +106,7 @@
         "A3"
       ],
       "priority": "P3",
-      "status": "open",
+      "status": "closed",
       "evidence": "",
       "diff": ""
     },
@@ -206,6 +206,16 @@
     }
   ],
   "closed": [
+    {
+      "id": "ux-05",
+      "module": "/assistant",
+      "priority": "P3",
+      "status": "closed",
+      "issue": "记忆提供编辑/删除/失效，清理陈旧矛盾事实",
+      "fix": "核查即关：编辑/删除已实现(assistant_memory.pb.js 全CRUD + MemoryPanel 行内编辑 + useAssistant updateMemory/deleteMemory)",
+      "verify": "代码证据：路由 63-220 行 + MemoryPanel aria-label 编辑/保存/取消 + hook 导出",
+      "evidence": "「失效标记」子项需加字段=红线，删除功能已可清理陈旧事实；R64 记录"
+    },
     {
       "id": "r44-competitor-matrix-03",
       "module": "/competitors",
@@ -882,6 +892,6 @@
       "decision": "2026-09-25 用户回「同意」，R62 落地"
     }
   ],
-  "noProgressStreak": 0,
-  "lastRoundSummary": "R63/F20 竞品能力矩阵去饱和(P3,A类)：estimateScores 短英文关键词词边界匹配+命中密度分级(单命中3/全命中5)，真实20家档案验证 AI 维从 18 家满分降为 2/3/4/5 合理分布且与软著规模正相关。319/319 单测。"
+  "noProgressStreak": 1,
+  "lastRoundSummary": "R64 ux-05 核查即关：助手记忆编辑/删除前后端均已实现(assistant_memory 全CRUD路由+MemoryPanel编辑按钮+updateMemory/deleteMemory)，账本条目过时；「失效标记」子项需 schema 变更属红线不做(删除已可清理陈旧事实)。本轮零代码，streak=1。"
 }
