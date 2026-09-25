@@ -11,6 +11,7 @@ import {
   type ModelRef,
 } from "@/lib/modelGateway"
 import { useCostConfirm } from "@/hooks/useCostConfirm"
+import { normalizeRegion } from "./customerNormalize"
 import { useScopeSkills } from "@/hooks/useScopeSkills"
 import { injectSkillBlock, skillBlockFor } from "@/lib/skillCore"
 import {
@@ -475,8 +476,12 @@ export function useCustomerManagement() {
   }, [searchText, userId])
 
   const regionOptions = useMemo(() => {
+    // R57/F13：筛选项走省级归一（「安徽省合肥市」→「安徽」），非地区值（「部门」）不进选项
     const set = new Set<string>()
-    for (const c of customers) if (c.region) set.add(c.region)
+    for (const c of customers) {
+      const r = normalizeRegion(c.region)
+      if (r) set.add(r)
+    }
     return Array.from(set).sort()
   }, [customers])
 
@@ -491,7 +496,7 @@ export function useCustomerManagement() {
       : customers
     let list = base.filter((c) => {
       if (typeFilter && c.hospital_type !== typeFilter) return false
-      if (regionFilter && c.region !== regionFilter) return false
+      if (regionFilter && normalizeRegion(c.region) !== regionFilter) return false
       return true
     })
     list = [...list].sort((a, b) =>

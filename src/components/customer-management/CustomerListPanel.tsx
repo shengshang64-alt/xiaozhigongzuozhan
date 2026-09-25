@@ -1,4 +1,5 @@
 import { Building2, Loader2, Search, Sparkles, MapPin, Target, Wand2 } from "lucide-react"
+import { normalizeHospitalLevel } from "@/pages/CustomerManagement/customerNormalize"
 import { computeMissingFields, HOSPITAL_TYPES, type CustomerRow } from "@/pages/CustomerManagement/customerTypes"
 
 // 缺失字段 key → 中文名（供缺失徽标 title 展示；与 computeMissingFields 返回的 key 对齐）
@@ -233,7 +234,7 @@ export function CustomerListPanel({
                       </div>
                       {customer.level && (
                         <span className="badge-neutral shrink-0">
-                          {customer.level}
+                          {normalizeHospitalLevel(customer.level)}
                         </span>
                       )}
                     </div>

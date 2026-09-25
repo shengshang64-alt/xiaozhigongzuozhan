@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { normalizeHospitalLevel } from "@/pages/CustomerManagement/customerNormalize"
 import { ExternalLink, Loader2, Pencil, Phone, Plus, Trash2, UserRound, Wand2 } from "lucide-react"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { AiBadge } from "@/components/customer-management/AiBadge"
@@ -77,7 +78,7 @@ export function CustomerProfileCard({
             <h3 className="text-lg font-semibold text-foreground">{customer.hospital_name}</h3>
             {customer.level && (
               <span className="badge-neutral">
-                {customer.level}
+                {normalizeHospitalLevel(customer.level)}
                 {aiFields.includes("level") ? " · AI" : ""}
               </span>
             )}
