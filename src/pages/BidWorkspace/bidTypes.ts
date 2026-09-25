@@ -4282,7 +4282,7 @@ export function chapterWordBudgets(chapters: { title: string; sections?: string[
 // ------------------------------ Prompt 构造 ------------------------------
 
 export const MAX_TENDER_CHARS = 14000
-const MAX_BID_CHARS = 12000
+export const MAX_BID_CHARS = 12000 // R65 搬迁：prompts/voidCheck 引用，值与语义不变
 
 export function clipText(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}\n（后文因篇幅截断）` : text
@@ -5685,52 +5685,9 @@ export function buildDeviationMapMessages(
   ]
 }
 
-export function buildDupJudgeMessages(pairs: DupPair[]): LlmMessage[] {
-  const blocks = pairs
-    .map(
-      (pr, i) =>
-        `【段落对 ${i + 1}】本地相似度 ${Math.round(pr.similarity * 100)}%\n本标书段落（${pr.target_chapter}）：\n${pr.target_text.slice(0, 500)}\n历史标书段落（来源项目「${pr.source_project}」${pr.source_chapter}）：\n${pr.source_text.slice(0, 500)}`,
-    )
-    .join("\n\n")
-  const system = [
-    "你是标书查重评审专家。评标中不同投标人的标书出现大段雷同可能被认定为串通投标（废标风险），同一团队复用自家历史标书也需要改写降低雷同度。",
-    // 公司招投标培训（第一期）④电子标：评标串标认定重点特征
-    "公司培训要点：电子评标认定串标的重点比对维度——标书风格与表述雷同、错误与 typo 异常一致、报价呈规律性、文档属性（作者/公司/机器码）相同；复判时重点看这些维度的雷同风险，ai_note 对 high/medium 给出差异化改写的具体方向（改写哪些表述、换哪种句式结构）；",
-    "对每个段落对给出复判：ai_verdict 取 high（实质性雷同，必须改写）/ medium（表达相近，建议改写）/ low（仅术语或通用表述重合，可保留）；ai_note 用一句话说明判断依据与改写建议。",
-    "输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式：",
-    '{"results":[{"index":1,"ai_verdict":"high","ai_note":""}]}',
-  ].join("\n")
-  const user = `${blocks}\n\n请逐段复判并输出 JSON（index 与段落对编号一致）。`
-  return [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ]
-}
+export { buildDupJudgeMessages, PROMPT_VERSION as DUP_JUDGE_PROMPT_VERSION } from "./prompts/dupJudge"
 
-/** 第九轮改造 2：输出契约升级——双向定位（source_location/response_location）+ severity + suggestion + evidence */
-export function buildVoidCheckMessages(clauses: string[], bidText: string, starBlock?: string): LlmMessage[] {
-  const clauseLines = clauses.map((c, i) => `${i + 1}. ${c}`).join("\n")
-  const system = [
-    "你是资深开标评审专家，负责投标前的废标风险合规自查。对每条废标条款，在投标文件中查找对应响应或满足证据，并输出合规核销矩阵条目：",
-    "clause 照抄条款原文；source_location 写该条款在招标文件中的位置描述（如「第三章 评标办法 2.1 条」，不超过 30 字）；response 摘录投标文件中的对应响应原文摘要（不超过 80 字）；response_location 写响应所在的投标章节位置（如「第2章 资质证明」，不超过 30 字，找不到响应时留空）；",
-    "status 取 compliant（已明确响应/满足）/ partial（有响应但不完整或存疑）/ non_compliant（未找到任何响应或明确不满足）；",
-    "severity 取 critical / major / minor——废标条款默认 severity=critical，仅当条款本身属轻微程序性要求（如份数、装订、封面格式类）才可降档为 major 或 minor；",
-    "suggestion 给出不超过 60 字的可操作整改建议（status=compliant 时可留空）；evidence 摘录支撑判定的投标文件原文（不超过 120 字）。",
-    "防误报硬规则：",
-    "1. 每条 partial / non_compliant 判定必须附证据：evidence 字段摘录投标文件中支撑该判定的原文（不超过 120 字）；找不到任何可摘录的原文依据时，不得输出该条的风险判定；",
-    "2. 投标文件中存在「章节标题 / 目录项 / 附件清单 / 表格条目」等结构性文本线索提到相应材料（证书、报告、授权书、证明材料等）时，不得判 non_compliant——文本解析看不到图片与扫描件附件，此类情况判 compliant 并在 suggestion 中注明「依据目录/附件清单线索，需人工核对原件」；",
-    "3. 每条条款都必须输出一行结果（含 compliant），禁止遗漏；判定要保守：拿不准就标 partial，宁可多提醒。",
-    // 公司招投标培训（第一期）④电子标技能培训：公司真实废标案例补查
-    "公司经验补查（电子标实际废标案例总结）：若投标文件正文出现下列硬伤，额外输出条款以「【公司经验】」开头的检查项——①模板占位文字残留（如「请填入您的内容」「复制内容后右键只保留文本」等模板指引语）；②投标金额大小写数字不符；③分项报价合计与总价不符；同样受防误报硬规则约束（必须附 evidence 原文摘录，找不到依据不得输出）；未发现问题时不必输出这些额外项。",
-    "输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式：",
-    '{"items":[{"clause":"条款原文","source_location":"","response":"","response_location":"","status":"compliant","severity":"critical","suggestion":"","evidence":""}]}',
-  ].join("\n")
-  const user = `【废标条款清单】\n${clauseLines}\n\n${starBlock && starBlock.trim() ? `${starBlock.trim()}\n\n` : ""}【投标文件正文】\n${clipText(bidText, MAX_BID_CHARS)}\n\n请逐条比对并输出 JSON。`
-  return [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ]
-}
+export { buildVoidCheckMessages, PROMPT_VERSION as VOID_CHECK_PROMPT_VERSION } from "./prompts/voidCheck"
 
 /** 第六轮升级（改造 6）：逐章「标题+前 400 字摘要」入参；评分办法命中的关键章节注入前 1500 字；瑕疵制扣分 */
 export function buildEvalMessages(
@@ -6192,34 +6149,7 @@ export function buildDefenseQuestionsMessages(
   ]
 }
 
-export function buildDefenseAnswerMessages(
-  question: DefenseQuestion,
-  refChapterText: string,
-  globalFacts: string,
-): LlmMessage[] {
-  const system = [
-    "你是医疗信息化项目投标主讲人，正在准备讲标答辩环节的现场应答。",
-    "请针对给定专家问题写一段答辩口径的完整答案：200-400 字，口语化但专业，先给结论再分要点展开；内容必须来自标书相关章节的实际表述，禁止编造标书中没有的参数或承诺。",
-    globalFacts,
-    "直接输出答案正文纯文本，禁止 markdown 符号、禁止解释说明。",
-  ]
-    .filter((s) => s.trim())
-    .join("\n")
-  const user = [
-    `【专家问题】${question.question}`,
-    question.intent ? `【考察点】${question.intent}` : "",
-    question.answer_points.length ? `【答辩要点】\n${question.answer_points.map((pt) => `- ${pt}`).join("\n")}` : "",
-    `【标书相关章节内容】\n${refChapterText || "（未找到相关正文，请基于答辩要点谨慎作答）"}`,
-    "请写出完整答辩答案。",
-  ]
-    .filter(Boolean)
-    .join("\n\n")
-  return [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ]
-}
-
+export { buildDefenseAnswerMessages, PROMPT_VERSION as DEFENSE_ANSWER_PROMPT_VERSION } from "./prompts/defenseAnswer"
 export function buildDefenseOutlineMessages(
   outlineText: string,
   scoringText: string,
@@ -6525,26 +6455,7 @@ export function factSettingsSourceText(report: ParseReport | null): string {
   return clipText(blocks.join("\n\n"), 8000)
 }
 
-/** 改造 1.2：「AI 生成事实设定」prompt——投标一致性专家口径，输出一行一条「主题：统一口径」清单 */
-export function buildFactSettingsMessages(reportText: string): LlmMessage[] {
-  const system = [
-    "你是投标文件一致性专家，负责在动笔前为整个投标团队定下「全局事实设定」——全文所有章节必须统一遵守的口径清单。",
-    "提炼铁律：",
-    "1. 一行一条，格式「主题：统一口径」，主题 2-12 字，口径给出确定数值/名称/表述（能引用招标原文数字的必须原样引用）；",
-    "2. 重点覆盖最容易前后不一致的项：工期/交货期、响应时间（到场/故障响应/解决时限）、人员配置（人数/驻场/角色）、设备型号与数量、质保期/运维期、验收标准、项目经理及关键人、项目名称与编号、采购人、预算金额、投标保证金、服务地点、关键时间节点；",
-    "3. 只输出材料中有依据的事实，材料没写的禁止编造；同一主题只保留一条；",
-    "4. 事实不是要求摘录：「招标要求工期不超过 90 天」是要求不是事实，必须改写为「本项目工期：90 天（满足招标不超过 90 天要求）」这类以「本项目…」口径落定的事实句，禁止把要求原句直接当口径；",
-    "5. 一条一事：每行只承载一个独立事实，人员配置与工期、金额与期限等多个取值必须拆成多行分别落定；",
-    "6. 工期/交货期类事实必须包含：材料中找不到明确数值时，该行口径必须写「【需人工确认】」，严禁编造天数或日期；",
-    "7. 输入材料含【历史标书范本摘录】时，同一主题的口径优先采用范本摘录中的数值与表述（范本是历史真实投标口径），范本未提及的再采用招标解析口径；",
-    "8. 输出 10-30 条，按重要性排序；直接输出清单纯文本，禁止任何解释、禁止 markdown 代码围栏。",
-  ].join("\n")
-  const user = `【招标文件解析报告关键节】\n${reportText || "（解析报告为空）"}\n\n请输出全局事实设定清单（一行一条「主题：统一口径」）。`
-  return [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ]
-}
+export { buildFactSettingsMessages, PROMPT_VERSION as FACT_SETTINGS_PROMPT_VERSION } from "./prompts/factSettings"
 
 /** AI 输出的事实清单 → 行数组（去编号/列表符号，过滤空行与超长行，上限 40 条） */
 export function parseFactSettingsLines(raw: string): string[] {
@@ -6713,29 +6624,7 @@ export function sanitizeFactPatches(rawText: string): FactPatchItem[] {
   return out
 }
 
-// ---------------------------------------------------------------------------
-// 循环 2 批 1-2：LLM JSON 修复重试（本地宽松解析失败后的一次「只修语法不改内容」修复调用）
-// ---------------------------------------------------------------------------
-
-/**
- * JSON 语法修复 prompt——只修语法不改内容、截断按已有结构补全闭合、只输出 JSON；
- * 费用由各入口原有的费用确认覆盖，不单独弹确认。
- */
-export function buildJsonRepairMessages(badText: string): LlmMessage[] {
-  const system = [
-    "你是 JSON 语法修复器。用户给你一段 JSON 解析失败的模型输出文本，你只允许修复语法问题，严禁改动任何内容。",
-    "修复铁律：",
-    "1. 只修语法不改内容：不得增删改任何字段名、字段值、数字与文字表述；",
-    "2. 文本被截断时按已有结构补全闭合括号与引号，严禁编造新条目或新内容；",
-    "3. 剥除 markdown 代码围栏与解释文字，只保留 JSON 本体；",
-    "4. 只输出修复后的合法 JSON，禁止任何解释、禁止代码围栏。",
-  ].join("\n")
-  const user = `【解析失败的原始输出】\n${clipText(badText ?? "", 12000)}\n\n请输出修复后的合法 JSON。`
-  return [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ]
-}
+export { buildJsonRepairMessages, PROMPT_VERSION as JSON_REPAIR_PROMPT_VERSION } from "./prompts/jsonRepair"
 
 // ---------------------------------------------------------------------------
 // 第十六轮 B2 改造 2.1：预编排（表格/配图）——类型、本地工具与批量编排 prompt
