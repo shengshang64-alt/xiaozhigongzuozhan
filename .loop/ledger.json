@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 66,
+  "round": 67,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -95,9 +95,9 @@
       ],
       "priority": "P2",
       "status": "open",
-      "evidence": "R66：prompts/ 累计9文件+快照11个；329/329；bidTypes 276320 字符(累计净减约8400)",
+      "evidence": "R67：prompts/ 累计11文件+快照13个；331/331；bidTypes 累计净减约12K字符",
       "diff": "",
-      "plan": "已完成 9/34 构造器(第一批5+第二批4：defenseQuestions/defenseOutline/speechNotes/sectionResize)。第三批候选：buildEvalMessages(需先导出 Chapter/extractScoringFromText/clauseMatchesTitle)+buildBidRefineMessages(与eval同区)。程序化脚本模式注意：终点锚必须是下一项的文档注释首行或 re-export 行，防吞中间函数；依赖扫描要排除文档注释命中。"
+      "plan": "已完成 11/34 构造器(批1:5+批2:4+批3:2)。教训固化：终点锚=下一项文档注释首行；依赖扫描需全文标识符对照而非局部grep；被吞的 re-export 行要还回 bidTypes。剩余23个构造器后续批次同模式推进。"
     },
     {
       "id": "ux-05",
@@ -894,5 +894,5 @@
     }
   ],
   "noProgressStreak": 1,
-  "lastRoundSummary": "R66 提示词搬迁第二批 2/7：defenseQuestions/defenseOutline/speechNotes/sectionResize 四构造器程序化搬迁(锚点切割脚本)，快照+4 锁字。第一版脚本三个真问题被 tsc 抓住(eval 吞 BidRefine/defQ 吞 re-export/Chapter 未导出)——回滚修正后干净落地，buildEvalMessages 移第三批(需导出 Chapter/extractScoringFromText/clauseMatchesTitle)。329/329。"
+  "lastRoundSummary": "R67 提示词搬迁第三批 3/7：buildEvalMessages+buildBidRefineMessages 程序化搬迁，依赖导入三轮补齐(truthPreamble/BID_STYLE_RULES/FULLTEXT_GUARD_RULES/PARAM_RESPONSE_BOUNDARY_RULES/PRE_OUTPUT_SELFCHECK_RULES/ScoringItem/BidRefineKind/MAX_TENDER_CHARS)。331/331+快照13份。bidTypes 272.5K。"
 }
