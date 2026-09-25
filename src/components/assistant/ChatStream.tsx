@@ -1,8 +1,12 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import Markdown from "react-markdown"
 import type { Components } from "react-markdown"
 import { toast } from "sonner"
-import { Bot, Copy, Loader2, RotateCcw, Search, Sparkles, X } from "lucide-react"
+import { Bot, CalendarCheck2, Copy, ExternalLink, FileDown, Loader2, RotateCcw, Search, Sparkles, Users, X } from "lucide-react"
+import { Document, Packer, Paragraph, TextRun } from "docx"
+import { getPocketBaseUrl } from "@/lib/pb"
+import { vibexAuthHeaders } from "@/lib/rhLogin"
 import type { ChatMsg } from "@/lib/assistantCore"
 
 const MD_COMPONENTS: Components = {
@@ -105,8 +109,11 @@ export function ChatStream({ messages, sendState, fetchBadge, compact, onQuickAs
         </div>
       ) : (
         <div className="flex flex-col gap-4">
-          {messages.map((m) =>
-            m.role === "user" ? (
+          {messages.map((m, idx) => {
+            // R62/⑤：采用动作——回看上一条用户消息的技能戳（技能名仅会话内存）
+            const prevUser = idx > 0 ? messages[idx - 1] : undefined
+            const skillName = m.role === "assistant" && !m.failed ? prevUser?.role === "user" ? prevUser.skillName : undefined : undefined
+            return m.role === "user" ? (
               <div key={m.id} className="flex justify-end">
                 <div className="max-w-[85%] whitespace-pre-wrap rounded-xl rounded-tr-sm bg-primary px-3.5 py-2.5 text-sm leading-relaxed text-primary-foreground shadow-md">
                   {m.content}
@@ -168,10 +175,13 @@ export function ChatStream({ messages, sendState, fetchBadge, compact, onQuickAs
                       ) : null}
                     </div>
                   ) : null}
+                  {skillName ? (
+                    <SkillAdoptRow skillName={skillName} content={m.content} />
+                  ) : null}
                 </div>
               </article>
-            ),
-          )}
+            )
+          })}
 
           {busy ? (
             <div className="flex items-start gap-2.5">
@@ -202,6 +212,157 @@ export function ChatStream({ messages, sendState, fetchBadge, compact, onQuickAs
           ) : null}
         </div>
       )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// R62/⑤：技能产出「采用」动作——按技能类型给落点（写回经既有接口，零 schema 变更）
+// ---------------------------------------------------------------------------
+
+const ADOPTABLE = new Set(["写客户跟进邮件", "生成周报总结", "竞品深度分析"])
+
+type CustomerOption = { id: string; hospital_name: string }
+
+function SkillAdoptRow({ skillName, content }: { skillName: string; content: string }) {
+  const navigate = useNavigate()
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [customers, setCustomers] = useState<CustomerOption[] | null>(null)
+  const [customerId, setCustomerId] = useState("")
+  const [saving, setSaving] = useState(false)
+
+  if (!ADOPTABLE.has(skillName)) return null
+
+  const loadCustomers = () => {
+    if (customers) return
+    fetch(`${getPocketBaseUrl()}/api/customers?perPage=200&page=1`, { headers: vibexAuthHeaders() })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d: { items?: CustomerOption[] }) => setCustomers(d.items ?? []))
+      .catch(() => {
+        toast.error("客户列表加载失败")
+        setCustomers([])
+      })
+  }
+
+  const saveFollowRecord = () => {
+    if (!customerId) {
+      toast.error("请先选客户")
+      return
+    }
+    setSaving(true)
+    fetch(`${getPocketBaseUrl()}/api/follow_records`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...vibexAuthHeaders() },
+      body: JSON.stringify({ customer_id: customerId, record_type: "邮件跟进", content }),
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status))
+        toast.success("已存入该客户的跟进记录，可到客户管理查看")
+        setPickerOpen(false)
+      })
+      .catch(() => toast.error("保存失败，请稍后重试"))
+      .finally(() => setSaving(false))
+  }
+
+  const downloadWeeklyDocx = () => {
+    const paras = content
+      .split(/\n+/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => new Paragraph({ children: [new TextRun(l)] }))
+    const doc = new Document({ sections: [{ children: [new Paragraph({ children: [new TextRun({ text: "售前周报", bold: true, size: 32 })] }), ...paras] }] })
+    void Packer.toBlob(doc).then((blob) => {
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `售前周报-${new Date().toISOString().slice(0, 10)}.docx`
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 4000)
+      toast.success("周报 Word 已下载")
+    })
+  }
+
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+      {skillName === "写客户跟进邮件" ? (
+        <>
+          <button
+            type="button"
+            onClick={() => {
+              setPickerOpen((v) => !v)
+              loadCustomers()
+            }}
+            className="inline-flex items-center gap-1 rounded-md border border-primary/40 px-2.5 py-1 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <Users className="h-3 w-3" />
+            存为客户跟进记录
+          </button>
+          {pickerOpen ? (
+            <span className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 shadow-sm">
+              {customers === null ? (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  客户加载中…
+                </span>
+              ) : customers.length === 0 ? (
+                <span className="text-xs text-muted-foreground">还没有客户，先到客户管理新建</span>
+              ) : (
+                <>
+                  <select
+                    value={customerId}
+                    onChange={(e) => setCustomerId(e.target.value)}
+                    className="max-w-[220px] rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <option value="">选客户…</option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.hospital_name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={saveFollowRecord}
+                    disabled={saving || !customerId}
+                    className="rounded bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {saving ? "存档中…" : "存档"}
+                  </button>
+                </>
+              )}
+            </span>
+          ) : null}
+        </>
+      ) : null}
+      {skillName === "生成周报总结" ? (
+        <button
+          type="button"
+          onClick={downloadWeeklyDocx}
+          className="inline-flex items-center gap-1 rounded-md border border-primary/40 px-2.5 py-1 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <FileDown className="h-3 w-3" />
+          下载 Word
+        </button>
+      ) : null}
+      {skillName === "竞品深度分析" ? (
+        <button
+          type="button"
+          onClick={() => {
+            void navigator.clipboard.writeText(content).then(() => toast.success("分析已复制，去档案粘贴即用"))
+            navigate("/competitors")
+          }}
+          className="inline-flex items-center gap-1 rounded-md border border-primary/40 px-2.5 py-1 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <ExternalLink className="h-3 w-3" />
+          复制并去竞品档案
+        </button>
+      ) : null}
+      {skillName === "写客户跟进邮件" && !pickerOpen ? (
+        <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+          <CalendarCheck2 className="h-3 w-3" />
+          存档后到客户管理时间线查看
+        </span>
+      ) : null}
     </div>
   )
 }

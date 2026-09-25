@@ -727,12 +727,12 @@ export function useAssistant(options?: UseAssistantOptions) {
   )
 
   const sendMessage = useCallback(
-    (text?: string) => {
+    (text?: string, skillName?: string) => {
       const content = (text ?? draftInput).trim()
       if (!content || sendingRef.current) return
       if (!requireLogin()) return
       setDraftInput("")
-      const userMsg: ChatMsg = { id: localId("me"), role: "user", content }
+      const userMsg: ChatMsg = { id: localId("me"), role: "user", content, skillName: skillName || undefined }
       setConvMessages((prev) => [...prev, userMsg])
       convMessagesRef.current = [...convMessagesRef.current, userMsg]
       costConfirm.runWithCostConfirm(() => {
@@ -808,7 +808,7 @@ export function useAssistant(options?: UseAssistantOptions) {
       return
     }
     setSkillFill(null)
-    sendMessage(fillTemplate(fill.template, fill.values))
+    sendMessage(fillTemplate(fill.template, fill.values), fill.skillName)
   }, [skillFill, sendMessage])
 
   const cancelSkillFill = useCallback(() => setSkillFill(null), [])
