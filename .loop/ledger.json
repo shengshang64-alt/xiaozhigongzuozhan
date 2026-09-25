@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 68,
+  "round": 69,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -95,9 +95,9 @@
       ],
       "priority": "P2",
       "status": "open",
-      "evidence": "R68：prompts/ 15文件+快照17个；335/335",
+      "evidence": "R69：prompts/ 20文件+快照22个；340/340；bidTypes 约230.7K→再减（累计净减约54K）",
       "diff": "",
-      "plan": "已完成 15/34 构造器(4批)。剩余：eval商用对(commercial耦合)/orchestrator邻近杂项/解析类(tenderParse/sectionParse)/大纲(轮廓fix/bidOutline)/编排修复/事实核对等——同模式推进，每批≤5。"
+      "plan": "已完成 20/34 构造器(5批)。剩余14个：bidSection/buildContinue/deviationMap/orchestration邻近杂项/commercial对/factCheck/factPatch/defenseMisc/submissionCheck/directedFacts等。流程三件套固化：①跨度导出预检②切割③tsc+快照双门。"
     },
     {
       "id": "ux-05",
@@ -894,5 +894,5 @@
     }
   ],
   "noProgressStreak": 1,
-  "lastRoundSummary": "R68 提示词搬迁第四批 4/7：orchestration/coverageAudit/outlineLevel1/outlineChildren 四构造器搬迁，依赖审计算法化(脚本自动扫描标识符生成import)后一次成型；私有helper补export×3，伴生函数随迁re-export。335/335+快照17份。bidTypes 259.7K(累计净减约25K)。"
+  "lastRoundSummary": "R69 提示词搬迁第五批 5/7：tenderParse/sectionParse/bidOutline/outlineFix/bidChapter 五构造器搬迁（最大单函数10.5K字符），含接口与伴生函数随迁+re-export+本地type import三件套。先\"跨度导出预检\"后切割的新流程成型（防吞夹层）。340/340，快照22份。"
 }
