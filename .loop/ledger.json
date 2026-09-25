@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 73,
+  "round": 74,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -207,6 +207,16 @@
     }
   ],
   "closed": [
+    {
+      "id": "lot-splitting",
+      "module": "/bid-workspace",
+      "priority": "P1",
+      "status": "closed",
+      "issue": "标书拆分自动识别标包（多包件招标支持，用户需求）",
+      "fix": "PARSE_EXTRA_SECTIONS 加 lots 分区；extractLotsFromText 本地扫描(标包标题行+预算就近归属)；解析流 star 同款挂载(AI结果优先)；bidOutline/bidChapter/bidSection 提示词注入多包上下文(分区非空时)",
+      "verify": "5/5 新单测(三种包号形态/预算归属/无包空数组/编号归一/分区组装)；356/356；实机解析配置出现「标包划分」勾选项(截图 _shots/R74/)",
+      "evidence": "方案 .loop/plans/C-lot-splitting.md；提交 5481959；真实多包件文件端到端待用户实测"
+    },
     {
       "id": "prompt-extract-01",
       "module": "/bid-workspace",
@@ -901,15 +911,8 @@
       "issue": "C类·技能产出一键采用/写回：跟进邮件→存客户跟进记录(follow_records零schema)；竞品分析→复制+跳档案；周报→复制+docx下载。方案 .loop/plans/C-assistant-writeback.md",
       "status": "done",
       "decision": "2026-09-25 用户回「同意」，R62 落地"
-    },
-    {
-      "id": "lot-splitting",
-      "module": "/bid-workspace",
-      "issue": "C类·标书拆分自动识别标包：解析新增lots分区(本地正则抽取+AI兜底)+解析报告展示+大纲上下文注入(用户确认投标哪个包)。方案 .loop/plans/C-lot-splitting.md，零schema变更",
-      "status": "needs_user_decision",
-      "decision": ""
     }
   ],
   "noProgressStreak": 1,
-  "lastRoundSummary": "R73 C类方案：标书拆分自动识别标包（多包件支持v1：本地抽取lots分区+AI兜底+大纲上下文注入）——方案落盘 plans/C-lot-splitting.md 等确认；零schema变更，2-3轮交付。"
+  "lastRoundSummary": "R74/C-lot-splitting 标包识别落地(C类经用户同意)：lots 分区+extractLotsFromText 本地扫描(第X包/标段X/包N+预算就近归属,零AI)+解析流挂载(star同款,AI结果优先)+bidOutline/bidChapter/bidSection 多包上下文注入。356/356单测；实机验证解析配置出现「标包划分」勾选项。真实多包件招标文件端到端未跑(库内无此类文件)。"
 }
