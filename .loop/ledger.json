@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 55,
+  "round": 57,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -43,7 +43,7 @@
     {
       "id": "r44-consistency-copy-05",
       "module": "/customer-management,/,/format-tool,/model-config",
-      "issue": "[R44体验审计·严重级] 口径与文案一致性簇 6 项：F13 客户地区口径混乱（'华东'/'福建'/'安徽省合肥市'混用，筛选项出现'安徽省合肥市'错误组合）；F14 医院等级'三级甲等'vs'三甲'不一致；F15 首页'八大功能模块陆续开放中'文案过时（模块已全部开放）；F16 首页'进行中项目0'与标书工作台1项目口径矛盾；F17 格式刷新模板名漏出内部标记'[PDF多模态转译]'；F18 模型配置 TTS/视频/图像等非文本模型也给'设为默认（生成模型）'按钮。多数为 B 类文案/口径一致性可自动修（不改产品行为），F13/F14 涉数据取值口径需核实",
+      "issue": "[R44体验审计·严重级] 口径与文案一致性簇 6 项：F13/F14【R57 已修显示层归一(closed: crm-normalize-01)：customerNormalize 地区剥省级+等级归全称，库数据未动】；F15 首页'八大功能模块陆续开放中'文案过时（模块已全部开放）；F16 首页'进行中项目0'与标书工作台1项目口径矛盾；F17 格式刷新模板名漏出内部标记'[PDF多模态转译]'；F18 模型配置 TTS/视频/图像等非文本模型也给'设为默认（生成模型）'按钮。多数为 B 类文案/口径一致性可自动修（不改产品行为），F13/F14 涉数据取值口径需核实",
       "priority": "P2",
       "status": "open",
       "evidence": "R44 实机走查多页 snapshot 记录",
@@ -196,6 +196,16 @@
     }
   ],
   "closed": [
+    {
+      "id": "crm-normalize-01",
+      "module": "/customer-management",
+      "priority": "P2",
+      "status": "closed",
+      "issue": "F13 地区口径混乱(筛选项含市级/非地区值) + F14 等级三甲vs三级甲等不一致",
+      "fix": "新增 customerNormalize.ts(CANONICAL_REGIONS+normalizeRegion/normalizeHospitalLevel)；regionOptions/过滤比较/两处等级徽标接线；纯展示层零数据改动",
+      "verify": "实机下拉=全部地区/华东/安徽/福建，选安徽命中合肥客户，徽标三级甲等；302/302单测(+6含防误杀)；截图 _shots/R57/",
+      "evidence": "报告 .loop/reports/2026-09-25-1010.md；提交 f54f165"
+    },
     {
       "id": "intel-retype-101",
       "module": "/intel-center",
@@ -803,8 +813,15 @@
       "issue": "后端安全三项(08报告 1.1/1.2/1.3)：API Key XOR+硬编码 SECRET 升级 AES-GCM+环境变量、LLM 接口速率限制、token 用量 llm_usage 落库",
       "status": "deferred-by-user",
       "decision": "2026-09-22 用户拍板：本地单用户自用部署维持现状，不碰 pb_hooks 红线；若将来对外部署或多用户化，需单独立项并豁免红线+重启 PB 专门做；论断已逐条坐实(model_gateway.pb.js L18/88/187)非误报"
+    },
+    {
+      "id": "format-refresh-export",
+      "module": "/format-tool",
+      "issue": "C类·格式刷新补全产出能力：①导出刷新后docx(fflate解包→精确改写styles.xml+sectPr→重打包) ②选中已存模板直接应用为新文档格式。方案 .loop/plans/C-format-refresh-export.md",
+      "status": "needs_user_decision",
+      "decision": ""
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "Round55 执行方案①：临时超级用户(停机~1分钟,用后即删,改动前冷备份281MB)修正存量140条 item_type competitor→media，140/140成功零删除。竞品桶恢复50条真实竞品，F9 全链路闭环(源→增量→存量)。可见条数500→379系内置懒迁移清理非本轮删除。下轮：F22 先出方案；随后文案一致性簇。"
+  "lastRoundSummary": "R56 C类方案：格式刷新补全产出能力(导出docx+模板应用)已落plans/等确认；R57 B类落地 F13/F14 客户口径归一：customerNormalize(地区剥省级/等级简称归全称)接进筛选与徽标，302单测+实机验证(选安徽命中合肥客户)，零数据改动。"
 }
