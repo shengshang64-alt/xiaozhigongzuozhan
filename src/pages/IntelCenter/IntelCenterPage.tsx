@@ -71,9 +71,17 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
               启用源 {enabledCount}/{p.sources.length}
             </span>
             {errorCount > 0 && (
-              <span className="rounded-full bg-destructive/10 px-2.5 py-1 font-medium text-destructive">
-                {errorCount} 个源抓取失败
-              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setSrcOpen(true)
+                  document.getElementById("intel-src-status")?.scrollIntoView({ behavior: "smooth", block: "center" })
+                }}
+                title="点击查看失败的源并重试"
+                className="rounded-full bg-destructive/10 px-2.5 py-1 font-medium text-destructive transition-colors hover:bg-destructive/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                {errorCount} 个源抓取失败 · 点击处理
+              </button>
             )}
             <span className="rounded-full bg-muted px-2.5 py-1 text-muted-foreground">
               当前筛选 {p.totalItems} 条
@@ -273,6 +281,7 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
             <div className="rounded-lg border border-border bg-card p-4 shadow-md">
               <button
                 type="button"
+                id="intel-src-status"
                 aria-expanded={srcOpen}
                 onClick={() => setSrcOpen((v) => !v)}
                 className="flex w-full items-center gap-1.5 text-left"
