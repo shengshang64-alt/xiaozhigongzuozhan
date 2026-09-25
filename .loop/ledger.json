@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 72,
+  "round": 73,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -901,8 +901,15 @@
       "issue": "C类·技能产出一键采用/写回：跟进邮件→存客户跟进记录(follow_records零schema)；竞品分析→复制+跳档案；周报→复制+docx下载。方案 .loop/plans/C-assistant-writeback.md",
       "status": "done",
       "decision": "2026-09-25 用户回「同意」，R62 落地"
+    },
+    {
+      "id": "lot-splitting",
+      "module": "/bid-workspace",
+      "issue": "C类·标书拆分自动识别标包：解析新增lots分区(本地正则抽取+AI兜底)+解析报告展示+大纲上下文注入(用户确认投标哪个包)。方案 .loop/plans/C-lot-splitting.md，零schema变更",
+      "status": "needs_user_decision",
+      "decision": ""
     }
   ],
   "noProgressStreak": 1,
-  "lastRoundSummary": "R72 提示词搬迁第七批收官：evalFormat/submissionCheck/factCheck/factPatch 四构造器花括号配平法搬迁，孤儿注释清理+bigramOverlap补export。全部28个build*Messages归位prompts/（24快照→26份新增4），351/351。prompt-extract-01 关闭。bidTypes 264.7K字节（累计瘦身约19%）。"
+  "lastRoundSummary": "R73 C类方案：标书拆分自动识别标包（多包件支持v1：本地抽取lots分区+AI兜底+大纲上下文注入）——方案落盘 plans/C-lot-splitting.md 等确认；零schema变更，2-3轮交付。"
 }
