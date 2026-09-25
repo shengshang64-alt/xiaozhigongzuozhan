@@ -28,7 +28,7 @@ export function compareColor(index: number): string {
   return COMPARE_COLORS[index % COMPARE_COLORS.length]
 }
 
-/** 各维度的档案关键词：命中越多分越高 */
+/** 各维度的档案关键词：命中越多分越高。短英文词（ai/app/esb…）按词边界匹配，防 "maintenance" 误命中 "ai" */
 const DIM_KEYWORDS: string[][] = [
   ["电子病历", "emr", "病案", "病历评级", "五级评审", "四级甲等"],
   ["集成平台", "esb", "互联互通", "hl7", "fhir", "接口平台", "数据中心", "全民健康", "区域卫生"],
@@ -37,6 +37,19 @@ const DIM_KEYWORDS: string[][] = [
   ["实施", "交付", "运维", "服务网络", "本地化", "itss", "驻场"],
   ["性价比", "低价", "普惠", "轻量化", "saas"],
 ]
+
+const LATIN_KW_RE = /^[a-z0-9]+$/
+
+function keywordHit(text: string, kw: string): boolean {
+  if (LATIN_KW_RE.test(kw)) return new RegExp(`\\b${kw}\\b`).test(text)
+  return text.includes(kw)
+}
+
+/** R63/F20：命中密度分级——单命中 3 分起步、命中全表才满分，替代「3 命中即 5 分」的饱和映射 */
+function hitsToScore(hits: number, total: number): number {
+  if (hits <= 0) return 2
+  return clamp5(3 + Math.round((hits / Math.max(1, total)) * 2))
+}
 
 function haystack(row: CompetitorRow): string {
   return [
@@ -52,8 +65,8 @@ function clamp5(v: number): number {
 
 /**
  * 启发式估算六维评分（1-5）：
- * - 前五个维度：档案文本关键词命中数映射 2+hits（封顶 5），无命中给基线 2；
- *   软著规模 ≥ 行业中位数再 +1（封顶 5）。
+ * - 前五个维度：档案文本关键词命中密度分级（R63/F20：无命中 2、单命中 3、全命中才 5），
+ *   短英文关键词按词边界匹配；软著规模 ≥ 行业中位数再 +1（封顶 5）。
  * - 价格竞争力：软著规模越大本方定价能力越强 → 得分越低（保守代理指标）。
  * 返回数组与 CAPABILITY_DIMS 一一对应。
  */
@@ -73,8 +86,8 @@ export function estimateScores(row: CompetitorRow, rows: CompetitorRow[]): numbe
       continue
     }
     let hits = 0
-    for (const kw of DIM_KEYWORDS[d]) if (text.includes(kw)) hits += 1
-    let s = hits > 0 ? clamp5(2 + hits) : 2
+    for (const kw of DIM_KEYWORDS[d]) if (keywordHit(text, kw)) hits += 1
+    let s = hitsToScore(hits, DIM_KEYWORDS[d].length)
     if (big) s = clamp5(s + 1)
     scores.push(s)
   }
