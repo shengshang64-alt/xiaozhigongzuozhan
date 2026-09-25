@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 61,
+  "round": 62,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -206,6 +206,16 @@
     }
   ],
   "closed": [
+    {
+      "id": "assistant-writeback",
+      "module": "/assistant",
+      "priority": "P1",
+      "status": "closed",
+      "issue": "⑤技能产出（跟进邮件/周报/竞品分析）无一键采用/写回通道",
+      "fix": "ChatMsg.skillName 会话内存戳 + SkillAdoptRow 按技能类型路由：邮件→follow_records 客户选择器存档；周报→docx 下载；竞品→复制+navigate",
+      "verify": "315/315 单测；build/lint/tsc 绿；助手页实机加载正常无报错；真实技能生成流未跑(省额度)",
+      "evidence": "方案 .loop/plans/C-assistant-writeback.md；提交 R62-commit"
+    },
     {
       "id": "r47-scan-name-trunc-06",
       "module": "/bid-workspace",
@@ -858,10 +868,10 @@
       "id": "assistant-writeback",
       "module": "/assistant",
       "issue": "C类·技能产出一键采用/写回：跟进邮件→存客户跟进记录(follow_records零schema)；竞品分析→复制+跳档案；周报→复制+docx下载。方案 .loop/plans/C-assistant-writeback.md",
-      "status": "needs_user_decision",
-      "decision": ""
+      "status": "done",
+      "decision": "2026-09-25 用户回「同意」，R62 落地"
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "R61 修 r47-scan-name-trunc-06(P3,A类)：贴身式匹配起点后移一字，评分项名不再截尾(系统响应速度15分全名保留)；假阳性字/括号冒号式单测防回归，315/315。解析面板项名可读性提升，不影响分值与交叉核对(nameSimilar包含式兼容)。"
+  "lastRoundSummary": "R62/⑤ 助手技能采用落地(C类经用户同意)：用户消息盖 skillName 戳(confirmSkillFill 传递,会话内存)；ChatStream 技能产出卡按类型给落点——跟进邮件→客户选择器存 follow_records(既有接口零schema)/周报→docx下载/竞品分析→复制+跳档案。315/315单测+门禁绿+助手页实机加载正常。真实技能流走查未跑(省AI额度,用户自验路径已给)。"
 }
