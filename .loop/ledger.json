@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 71,
+  "round": 72,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -94,7 +94,7 @@
         "A4"
       ],
       "priority": "P2",
-      "status": "open",
+      "status": "closed",
       "evidence": "R70：prompts/ 24文件+快照24个；344/344；bidTypes 214K",
       "diff": "",
       "plan": "已完成 24/34 构造器(6批)。剩余约10个：bidChapter区杂项/defenseMisc/submissionCheck/factCheck/factPatch/directedFacts/sectionResize邻近等——跨度预检必须把\"区间的re-export行\"也算进内容清点（本批教训）。"
@@ -207,6 +207,16 @@
     }
   ],
   "closed": [
+    {
+      "id": "prompt-extract-01",
+      "module": "/bid-workspace",
+      "priority": "P2",
+      "status": "closed",
+      "issue": "提示词纯搬迁式抽离：32+ 个 build*Messages 原样搬到 prompts/ 分任务文件（用户 2026-09-22 拍板解除红线、只搬不改字）",
+      "fix": "7 批搬迁 28 个 build*Messages 至 prompts/ 分任务文件（bidTypes 留 re-export，各带 PROMPT_VERSION，快照26份锁字）；花括号配平+跨度导出预检+孤儿注释清理三步法固化",
+      "verify": "351/351 单测（每批+5左右含快照防改字）；tsc/build/eslint145=基线每批全绿；bidTypes 字节数 285K→264.7K（若含中文注释编码则字符级净减更多）",
+      "evidence": "提交 R65 8be12a3/R66/R67/R68/R69/R70/R72 系列；prompts/ 28 文件"
+    },
     {
       "id": "ux-05",
       "module": "/assistant",
@@ -894,5 +904,5 @@
     }
   ],
   "noProgressStreak": 1,
-  "lastRoundSummary": "R71/F24 竞品分析重点卡(用户实测反馈,B类)：buildCompareTakeaways 从能力矩阵提炼3条人话结论(我方领先/最大差距点名对手/头号威胁带定位摘要)，对比分析页顶部重点卡，零AI随勾选实时更新。347/347。"
+  "lastRoundSummary": "R72 提示词搬迁第七批收官：evalFormat/submissionCheck/factCheck/factPatch 四构造器花括号配平法搬迁，孤儿注释清理+bigramOverlap补export。全部28个build*Messages归位prompts/（24快照→26份新增4），351/351。prompt-extract-01 关闭。bidTypes 264.7K字节（累计瘦身约19%）。"
 }
