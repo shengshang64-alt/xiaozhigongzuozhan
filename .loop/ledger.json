@@ -1,14 +1,14 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 60,
+  "round": 61,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
       "module": "/bid-workspace",
       "issue": "R47 发现的小怪癖（非本轮引入）：评分项本地扫描对'中文贴身式'行（如'系统响应速度15分'），cleanName 把分值前一个汉字算进 SCORE_MARKER 起点→项名截掉末字（显示'系统响应'）。仅影响面板项名展示可读性，不影响分值/核对结果",
       "priority": "P3",
-      "status": "open",
+      "status": "closed",
       "evidence": "R47 写回归测试时实跑发现（scoreItemsScan.test.ts 内已注释标注既有行为）；修复需动 cleanName 的 markerIdx 语义，建议与 F1/F2/F6 提示词批次一并评估",
       "plan": "贴身式匹配时 markerIdx 后移一字（match[0] 首字符为汉字时 +1）；需同时验证 nameSimilar 交叉比对不受影响",
       "round": 47
@@ -206,6 +206,16 @@
     }
   ],
   "closed": [
+    {
+      "id": "r47-scan-name-trunc-06",
+      "module": "/bid-workspace",
+      "priority": "P3",
+      "status": "closed",
+      "issue": "评分项本地扫描贴身式行（系统响应速度15分）cleanName 截掉项名末字",
+      "fix": "scoreItemsScan：SCORE_MARKER 匹配起点为汉字时 markerIdx+1，汉字归还项名",
+      "verify": "315/315 单测(+1 全名断言+假阳性/括号冒号防回归)；旧测试 toContain(系统响应) 兼容不破",
+      "evidence": "提交 R61-commit；scoreItemsScan.test.ts"
+    },
     {
       "id": "ai-copy-exits-01",
       "module": "/knowledge,/intel-center,/competitors",
@@ -853,5 +863,5 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "R60 F22 闭环(B类)：失败源处理入口实际已存在(信息源状态折叠区+管理面板立即抓取/启用停用/失败原因)，补最后一块——顶部「N个源抓取失败」徽章变可点(展开+滚动定位)。⑤助手写回C方案落盘 plans/C-assistant-writeback.md 待确认。"
+  "lastRoundSummary": "R61 修 r47-scan-name-trunc-06(P3,A类)：贴身式匹配起点后移一字，评分项名不再截尾(系统响应速度15分全名保留)；假阳性字/括号冒号式单测防回归，315/315。解析面板项名可读性提升，不影响分值与交叉核对(nameSimilar包含式兼容)。"
 }
