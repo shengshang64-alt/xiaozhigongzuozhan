@@ -9,6 +9,8 @@ import {
   buildDefenseOutlineMessages,
   buildSpeechNotesMessages,
   buildSectionResizeMessages,
+  buildEvalMessages,
+  buildBidRefineMessages,
 } from "../bidTypes"
 import type { DupPair, DefenseQuestion } from "../bidTypes"
 
@@ -111,6 +113,29 @@ describe("R65 提示词搬迁快照（prompts/* 只搬不改字）", () => {
         "当前安全体系小节正文切片……",
         "expand",
         1200,
+      ),
+    ).toMatchSnapshot()
+  })
+
+  it("R67 第三批：buildEvalMessages 内容与搬迁时一致", () => {
+    expect(
+      buildEvalMessages(
+        "技术方案 20 分；实施团队 15 分",
+        [{ title: "第五章 安全设计", content: "等级保护三级，数据库审计全覆盖， BorderGuard 防泄漏。", node_id: "n5", sections: [], gen_status: "done" }],
+      ),
+    ).toMatchSnapshot()
+  })
+
+  it("R67 第三批：buildBidRefineMessages 内容与搬迁时一致", () => {
+    expect(
+      buildBidRefineMessages(
+        "expand",
+        "医院一体化核心业务系统",
+        "安徽中医药大学第一附属医院",
+        "第五章 安全设计",
+        5,
+        "当前章节正文：安全体系按等保三级设计……",
+        { globalFacts: "【全局事实】本项目工期：90 天" },
       ),
     ).toMatchSnapshot()
   })

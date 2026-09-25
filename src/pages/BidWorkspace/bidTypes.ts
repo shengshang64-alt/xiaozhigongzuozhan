@@ -5689,47 +5689,7 @@ export { buildDupJudgeMessages, PROMPT_VERSION as DUP_JUDGE_PROMPT_VERSION } fro
 
 export { buildVoidCheckMessages, PROMPT_VERSION as VOID_CHECK_PROMPT_VERSION } from "./prompts/voidCheck"
 
-/** 第六轮升级（改造 6）：逐章「标题+前 400 字摘要」入参；评分办法命中的关键章节注入前 1500 字；瑕疵制扣分 */
-export function buildEvalMessages(
-  scoringText: string,
-  chapters: Chapter[],
-  opts?: { globalFacts?: string; outlineText?: string },
-): LlmMessage[] {
-  const scoringNames = extractScoringFromText(scoringText).map((s) => s.item).filter(Boolean)
-  const filled = chapters.map((c, i) => ({ no: i + 1, c })).filter(({ c }) => (c.content ?? "").trim())
-  const blocks = filled.map(({ no, c }) => {
-    const isKey =
-      filled.length === 1 ||
-      scoringNames.some((n) => clauseMatchesTitle(n, c.title) || (c.sections ?? []).some((s) => clauseMatchesTitle(n, s)))
-    const limit = filled.length === 1 ? MAX_BID_CHARS : isKey ? 1500 : 400
-    const body = c.content.replace(/\s+/g, " ").trim().slice(0, limit)
-    return `第${no}章 ${c.title}${isKey && filled.length > 1 ? "（评分办法命中的关键章节，附更多内容）" : ""}\n${body}`
-  })
-  const digest = clipText(blocks.join("\n\n"), MAX_TENDER_CHARS)
-  const system = [
-    "你是医疗信息化项目评标委员会资深专家，现在要对一份技术标做模拟评标。",
-    "评标方法（瑕疵制扣分）：",
-    "1. 每个评分项默认满分，再按评分标准逐项检视：每发现一处瑕疵，按评分标准中的扣分阶梯扣分（未响应扣满该档、响应不完整或缺量化承诺按对应档扣、表述笼统酌情轻扣），每项得分不得低于 0 分、不得超过该项分值；",
-    "2. 每项 reason 必须引用投标文件中的具体表现（哪一章写了什么、缺了什么承诺或数据），禁止编造评委偏好、禁止使用评分标准之外的扣分理由；",
-    "3. suggestion 给出可操作的改进建议（补什么内容、加什么承诺、放什么证明）；",
-    "4. summary 给出总体评价：预估得分区间、最大失分风险、3 条最重要的改进方向，并必须附「模拟评标结果仅供参考，实际得分以评标委员会评审为准」的不确定性声明；禁止下「确定中标 / 必然中标」类结论。",
-    "输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式：",
-    '{"items":[{"scoring_item":"评分项名","max_score":0,"ai_score":0,"reason":"","suggestion":""}],"summary":""}',
-  ].join("\n")
-  const user = [
-    `【评分办法（逐项分值）】\n${scoringText}`,
-    opts?.outlineText ? `【投标文件大纲树（仅供定位章节）】\n${clipText(opts.outlineText, 4000)}` : "",
-    opts?.globalFacts ?? "",
-    `【待评标投标文件内容（逐章摘要，关键章节附更多内容）】\n${digest}`,
-    "请逐项打分并输出 JSON。",
-  ]
-    .filter((s) => s !== "")
-    .join("\n\n")
-  return [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ]
-}
+export { buildEvalMessages, PROMPT_VERSION as EVAL_PROMPT_VERSION } from "./prompts/eval"
 
 export type BidRefineKind = "rewrite" | "expand" | "condense"
 
@@ -5866,57 +5826,8 @@ export function buildEvalCommercialMessages(
   ]
 }
 
-/** 改造 2：投标文件口径的改写/扩写/精简 prompt（含全局事实 + 本章评分细则 + 写作风格硬条款） */
-export function buildBidRefineMessages(
-  kind: BidRefineKind,
-  projectName: string,
-  hospital: string,
-  chapterTitle: string,
-  chapterNo: number,
-  content: string,
-  opts?: { globalFacts?: string; scoring?: ScoringItem[]; tenderFragments?: string },
-): LlmMessage[] {
-  const action =
-    kind === "rewrite"
-      ? "改写：保持原有信息量与结构，换用更专业、更符合投标文件口径的表达，消除口语与重复，突出实质性响应与量化承诺"
-      : kind === "expand"
-        ? "扩写：补充医疗信息化行业细节、量化指标、实施要点与风险考虑，篇幅增加约 50%"
-        : "精简：压缩到约 60% 篇幅，只保留关键响应内容，不丢失小节结构"
-  const scoringDetail = scoringDetailLines(opts?.scoring ?? [])
-  const system = [
-    `你是医疗信息化行业资深标书编辑，当前处理对象是投标文件《${projectName}》（采购人：${hospital || "未填写"}）第${chapterNo}章「${chapterTitle}」的正文。`,
-    truthPreamble(),
-    `请对该章正文执行「${action}」。`,
-    scoringDetail
-      ? `本章须逐条响应的评分细则（改写/扩写时保持并强化对这些细则的响应；精简时禁止删除已响应评分细则的内容）：\n${scoringDetail}`
-      : "",
-    opts?.globalFacts ? `事实信息必须与下面【全局事实】一致，禁止编造不同数值。\n${opts.globalFacts}` : "",
-    opts?.tenderFragments
-      ? "处理必须优先依据下面【招标原文相关段落】：扩写补充的参数、指标、要求以原文为准，与原文冲突的表述一律按原文修正。\n【招标原文相关段落】\n" + opts.tenderFragments
-      : "",
-    "写作风格硬条款（每条必须遵守）：",
-    ...BID_STYLE_RULES.map((t, i) => `${i + 1}. ${t}`),
-    "全文一致性与合规底线（每条必须遵守）：",
-    ...FULLTEXT_GUARD_RULES.map((t, i) => `${i + 1}. ${t}`),
-    // docs/05 §2 落地（第 14 轮）：改写/扩写同样不得触碰实质性变更（防止「扩写」把参数改高）
-    "技术参数响应边界与实质性变更禁令（每条必须遵守）：",
-    ...PARAM_RESPONSE_BOUNDARY_RULES.map((t, i) => `${i + 1}. ${t}`),
-    // docs/07 §5.3/§5.4 落地（第 18 轮）：改写/扩写也补输出前自检与历史缺陷反例（只加约束、不改语义）
-    "输出前自检与历史缺陷反例（每条必须遵守）：",
-    ...PRE_OUTPUT_SELFCHECK_RULES.map((t, i) => `${i + 1}. ${t}`),
-    "输出铁律：直接输出处理后的完整正文纯文本，小节标题行保持「N.M 小节名」格式，禁止 markdown 符号、禁止任何解释说明或开场白。",
-  ]
-    .filter((s) => s !== "")
-    .join("\n")
-  return [
-    { role: "system", content: system },
-    { role: "user", content: `【原文】\n${content}` },
-  ]
-}
+export { buildBidRefineMessages, PROMPT_VERSION as BID_REFINE_PROMPT_VERSION } from "./prompts/bidRefine"
 
-export { buildSectionResizeMessages, PROMPT_VERSION as SECTION_RESIZE_PROMPT_VERSION } from "./prompts/sectionResize"
-
-/** 快捷评标工具：从「评分项:分值」行文本解析评分办法 */
 export function parseScoringLines(text: string): ScoringItem[] {
   return text
     .split(/\n+/)
@@ -6528,6 +6439,7 @@ export function sanitizeFactPatches(rawText: string): FactPatchItem[] {
 }
 
 export { buildJsonRepairMessages, PROMPT_VERSION as JSON_REPAIR_PROMPT_VERSION } from "./prompts/jsonRepair"
+export { buildSectionResizeMessages, PROMPT_VERSION as SECTION_RESIZE_PROMPT_VERSION } from "./prompts/sectionResize"
 
 // ---------------------------------------------------------------------------
 // 第十六轮 B2 改造 2.1：预编排（表格/配图）——类型、本地工具与批量编排 prompt

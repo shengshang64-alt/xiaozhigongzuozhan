@@ -1,0 +1,60 @@
+// ---------------------------------------------------------------------------
+// R67 提示词搬迁第三批，自 bidTypes.ts 原样搬迁：只搬不改字（快照锁字见 promptsSnapshot.test.ts）
+// ---------------------------------------------------------------------------
+
+import { scoringDetailLines, truthPreamble, BID_STYLE_RULES, FULLTEXT_GUARD_RULES, PARAM_RESPONSE_BOUNDARY_RULES, PRE_OUTPUT_SELFCHECK_RULES } from "../bidTypes"
+import type { BidRefineKind, ScoringItem } from "../bidTypes"
+import type { LlmMessage } from "@/lib/llm"
+
+export const PROMPT_VERSION = 1
+
+/** 改造 2：投标文件口径的改写/扩写/精简 prompt（含全局事实 + 本章评分细则 + 写作风格硬条款） */
+export function buildBidRefineMessages(
+  kind: BidRefineKind,
+  projectName: string,
+  hospital: string,
+  chapterTitle: string,
+  chapterNo: number,
+  content: string,
+  opts?: { globalFacts?: string; scoring?: ScoringItem[]; tenderFragments?: string },
+): LlmMessage[] {
+  const action =
+    kind === "rewrite"
+      ? "改写：保持原有信息量与结构，换用更专业、更符合投标文件口径的表达，消除口语与重复，突出实质性响应与量化承诺"
+      : kind === "expand"
+        ? "扩写：补充医疗信息化行业细节、量化指标、实施要点与风险考虑，篇幅增加约 50%"
+        : "精简：压缩到约 60% 篇幅，只保留关键响应内容，不丢失小节结构"
+  const scoringDetail = scoringDetailLines(opts?.scoring ?? [])
+  const system = [
+    `你是医疗信息化行业资深标书编辑，当前处理对象是投标文件《${projectName}》（采购人：${hospital || "未填写"}）第${chapterNo}章「${chapterTitle}」的正文。`,
+    truthPreamble(),
+    `请对该章正文执行「${action}」。`,
+    scoringDetail
+      ? `本章须逐条响应的评分细则（改写/扩写时保持并强化对这些细则的响应；精简时禁止删除已响应评分细则的内容）：\n${scoringDetail}`
+      : "",
+    opts?.globalFacts ? `事实信息必须与下面【全局事实】一致，禁止编造不同数值。\n${opts.globalFacts}` : "",
+    opts?.tenderFragments
+      ? "处理必须优先依据下面【招标原文相关段落】：扩写补充的参数、指标、要求以原文为准，与原文冲突的表述一律按原文修正。\n【招标原文相关段落】\n" + opts.tenderFragments
+      : "",
+    "写作风格硬条款（每条必须遵守）：",
+    ...BID_STYLE_RULES.map((t, i) => `${i + 1}. ${t}`),
+    "全文一致性与合规底线（每条必须遵守）：",
+    ...FULLTEXT_GUARD_RULES.map((t, i) => `${i + 1}. ${t}`),
+    // docs/05 §2 落地（第 14 轮）：改写/扩写同样不得触碰实质性变更（防止「扩写」把参数改高）
+    "技术参数响应边界与实质性变更禁令（每条必须遵守）：",
+    ...PARAM_RESPONSE_BOUNDARY_RULES.map((t, i) => `${i + 1}. ${t}`),
+    // docs/07 §5.3/§5.4 落地（第 18 轮）：改写/扩写也补输出前自检与历史缺陷反例（只加约束、不改语义）
+    "输出前自检与历史缺陷反例（每条必须遵守）：",
+    ...PRE_OUTPUT_SELFCHECK_RULES.map((t, i) => `${i + 1}. ${t}`),
+    "输出铁律：直接输出处理后的完整正文纯文本，小节标题行保持「N.M 小节名」格式，禁止 markdown 符号、禁止任何解释说明或开场白。",
+  ]
+    .filter((s) => s !== "")
+    .join("\n")
+  return [
+    { role: "system", content: system },
+    { role: "user", content: `【原文】\n${content}` },
+  ]
+}
+
+
+/** 快捷评标工具：从「评分项:分值」行文本解析评分办法 */
