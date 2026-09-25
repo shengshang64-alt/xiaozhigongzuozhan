@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 58,
+  "round": 59,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -197,15 +197,25 @@
     {
       "id": "ai-output-delivery-01",
       "module": "/knowledge,/assistant,/competitors,/intel-center",
-      "issue": "[R58 全模块产出闭环审计] AI 生成内容交付链断点簇（按用户影响排序）：①知识库问答零出口——AI带引用回答无复制/导出，sessionStorage 50条即焚，手动复制带[资料N]脏标记(QaDrawer.tsx:240-310,useKnowledge.ts:110)；②竞品深度分析报告本体无出口——威胁变化/行动项只能看，采纳仅覆盖档案字段(CompetitorsPage.tsx:192-296)；③弹药库答案不可复制(QaAmmoPanel.tsx:226-241)；④情报单条AI摘要无快捷复制(IntelDetailPanel.tsx:139-142)；⑤小智助手技能产出(跟进邮件/竞品分析/周报)无一键采用/写回通道——涉及跨模块交互先出方案(useAssistant.ts:816-886)。①③④为补复制按钮级B类可直接做；②报告本体复制B类；⑤C类先出方案。",
+      "issue": "[R58审计/R59分批修复] AI 生成内容交付链：①知识库问答复制【R59 已修(closed: ai-copy-exits-01)】；③弹药库答案复制【R59 已修】；④情报单条摘要复制【R59 已修】；②竞品深度分析报告复制【R59 已修】；⑤小智助手技能产出一键采用/写回——C 类先出方案(跨模块交互)；附：问答会话 sessionStorage 50 条即焚(涉数据模型,另行评估)。",
       "priority": "P1",
       "status": "open",
       "evidence": "R58 静态审计(代理全量扫描)：核心导出链(标书/方案/PPT/报价/情报xlsx/竞品CSV)全部闭环无死代码无截断；断点集中AI内容出口。报告 .loop/reports/2026-09-25-1045.md",
-      "plan": "①先修：QaDrawer 答...回答加「复制回答」(剥离[资料N]内联标记,引用折为文末列表)；③弹药库答案行加复制；④IntelDetailPanel 摘要加复制；②竞品分析结果卡加「复制报告」；⑤另出方案",
+      "plan": "剩⑤：出方案（技能产出→采用→写回方案/标书/竞品档案的交互与数据流）；问答持久化另行评估",
       "round": 58
     }
   ],
   "closed": [
+    {
+      "id": "ai-copy-exits-01",
+      "module": "/knowledge,/intel-center,/competitors",
+      "priority": "P1",
+      "status": "closed",
+      "issue": "AI 生成内容只能看拿不走：问答回答/弹药库答案/情报摘要/竞品分析报告均无复制出口",
+      "fix": "qaCopyText(剥[资料N]+来源折叠)/analysisReport(结构化报告拼装)两个纯函数+四处按钮接线(QaDrawer/QaAmmoPanel/IntelDetailPanel/CompetitorsPage)",
+      "verify": "314/314 单测(+5)；tsc/build/eslint145=基线；服务器模块已供新代码；实机点击未完成如实记录(自动化摩擦)",
+      "evidence": "报告 .loop/reports/2026-09-25-1150.md；提交 abc2ff9"
+    },
     {
       "id": "format-refresh-export",
       "module": "/format-tool",
@@ -836,5 +846,5 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "Round58 格式刷新导出落地(用户催办,方案即行)：refreshDocx 按 scopes 精确改写 styles.xml+sectPr 重打包下载，文字0改动；属性级合并修误删 w:after；无 Normal 时从零建 rPrDefault。309单测含真docx往返。全模块产出闭环审计：核心导出链全闭环；断点=知识库问答零出口/助手无采用通道/竞品报告无出口/弹药库不可复制/情报摘要无快捷复制。"
+  "lastRoundSummary": "Round59 AI产出补出口×4(B类)：问答回答复制([资料N]剥为来源列表,qaCopyText)/弹药库问答复制/情报摘要复制/竞品分析复制报告(analysisReport)。314单测+编译构建绿。实机点击未完成(自动化对抽屉页签失效,如实记录)。簇剩⑤助手写回(C类先出方案)。"
 }
