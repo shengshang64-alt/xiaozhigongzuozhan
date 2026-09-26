@@ -138,7 +138,7 @@ export function ScoreMappingPanel({
           暂无评分点数据——完成「AI 解析评分点」环节后，这里会列出评分项与正文的双向映射；缺失显示橙色，废标项显示红色。
         </p>
       ) : (
-        <ul className="max-h-[52vh] space-y-1.5 overflow-y-auto pr-0.5">
+        <ul className="max-h-[calc(100vh-380px)] min-h-[300px] space-y-1.5 overflow-y-auto pr-0.5">
           {techItems.map((x) => {
             const on = !!x.hitChapter
             const picked = x.coveredBy.length > 0

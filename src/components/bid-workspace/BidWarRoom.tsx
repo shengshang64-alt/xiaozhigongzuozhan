@@ -250,7 +250,7 @@ export function BidWarRoom({ activeProject, missCount = 0, riskCount = 0 }: { ac
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[68vh] pr-3">
+        <ScrollArea className="max-h-[72vh] pr-3">
           <div className="grid gap-4 lg:grid-cols-2">
             {/* 检查器红黄灯 */}
             <SectionCard icon={<ShieldAlert className="h-4 w-4" />} title="风险信号灯" hint="各检查器最新状态，点击查看对应步骤详情">
