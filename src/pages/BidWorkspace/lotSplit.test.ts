@@ -50,3 +50,25 @@ describe("lotsSectionFrom · 分区组装（R74）", () => {
     expect(lotsSectionFrom([])).toBeNull()
   })
 })
+
+
+describe("extractLotsFromText · 真实表格行形态（R78 池州校准）", () => {
+  it("「N 标包X 名称 预算」表格行逐包识别，保证金引用行剔除、同号合并不重复", () => {
+    const text = [
+      "1.2采购内容及标包划分情况：",
+      "序号 标包名称 采购内容 预算",
+      "1 标包一 一体化智慧医院、住院、电子病历、医技、药房等系统升级改造，三年质保 853.30 1名",
+      "2 标包二 急救、三中心、手麻、血透等系统升级改造，三年质保 766.98 1名",
+      "3 标包三 货物：银医自助、PDA、移动护理等硬件，三年质保 592.48 1名",
+      "1.2.2本项目划分3个标包，每个标包中标人数量均为1名",
+      "标包一：人民币50000元；",
+      "标包二：人民币40000元；",
+    ].join("\n")
+    const lots = extractLotsFromText(text)
+    expect(lots).toHaveLength(3)
+    expect(lots[0]).toContain("853.30")
+    expect(lots[0]).toContain("一体化智慧医院")
+    expect(lots.join("|")).not.toContain("50000")
+    expect(lots[2]).not.toContain("标包一：")
+  })
+})

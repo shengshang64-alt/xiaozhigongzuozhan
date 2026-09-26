@@ -263,9 +263,10 @@ export function parseConfigCount(cfg: ParseConfig | null | undefined): number {
 
 // ------------------------------ R74/C-lot-splitting：标包划分本地扫描（零 AI 费用） ------------------------------
 
-/** 标包标题行：「第1包 / 第一包 / 标段一 / 包2 / 分包3」等（编号可汉字可数字），或含「标段/包件号」的表头行 */
-const LOT_HEADER_RE = /^(?:第|[一二三四五六七八九十百]{1,4}包|[0-9]{1,3}包).{0,3}?(?:包|标段)|^(?:标段|包件?|分包)\s*[一二三四五六七八九十百0-9]{1,4}(?:[:：（(]|\s|$)|^(?:标段|包件)\s*号/
-const LOT_NO_RE = /(第\s*([一二三四五六七八九十百0-9]{1,4})\s*(?:包|标段|包件))|(标段\s*([一二三四五六七八九十百0-9]{1,4}))|((?:包|标段|分包|包件)\s*([0-9]{1,3}))/
+/** 标包标题行（R78 真实文件池州校准）：①「第1包/第一包/标段一」行首式 ②表格行「1 标包一 名称 预算」
+ * ③「标包一/标段2/分包3」独词式（需行首或空白前缀，防「各标包/件标包」误命中）④「标段号」表头 */
+const LOT_HEADER_RE = /(?:^|\s)(?:第\s*[0-9一二三四五六七八九十百]{1,4}\s*(?:包|标段|包件)|(?:标包|标段|分包|包件)\s*[0-9一二三四五六七八九十百]{1,4})(?!\s*[页内容]|划分)/
+const LOT_NO_RE = /((?:标包|标段|分包|包件)\s*([0-9一二三四五六七八九十百]{1,4}))|(第\s*([0-9一二三四五六七八九十百]{1,4})\s*(?:包|标段|包件))/
 /** 预算/限价行：与当前包块关联 */
 const LOT_BUDGET_RE = /(预算金额|最高限价|预算|控制价|限价)[^0-9]{0,8}([0-9][0-9,，.]*)\s*(万元|元)/
 
@@ -306,35 +307,43 @@ export function lotNumberCnToInt(raw: string): number {
  * 局限（诚实声明）：PDF 表格转译可能把包信息拆行错位，漏识别的由 AI 解析兜底；复杂捆绑（包内分包）v1 不展开。
  */
 export function extractLotsFromText(text: string): string[] {
-  const out: string[] = []
-  type Lot = { no: string; lines: string[] }
-  let lots: Lot[] = []
+  type Lot = { key: string; head: string; lines: string[] }
+  const lots: Lot[] = []
+  const byKey = new Map<string, Lot>()
+  let cur: Lot | null = null
   for (const rawLine of (text ?? "").split(/\n+/)) {
-    const line = rawLine.replace(/[\s\u3000]+/g, " ").trim()
+    const line = rawLine.replace(/\s+/g, " ").trim()
     if (!line || line.length > 200) continue
+    // 保证金金额/形式引用行（含「标包一：人民币50000元」）：既不是包定义也不入包内容
+    if (/保证金/.test(line)) continue
     if (LOT_HEADER_RE.test(line)) {
       const noM = line.match(LOT_NO_RE)
-      const label = noM ? (noM[1] || noM[3] || noM[5] || line.slice(0, 12)) : line.slice(0, 12)
-      lots.push({ no: String(label).trim(), lines: [line] })
-      continue
+      if (noM) {
+        const key = (noM[2] || noM[4] || noM[6] || noM[1]).replace(/\s/g, "")
+        const exist = byKey.get(key)
+        if (exist) {
+          // 同号再现（如保证金清单里的重复引用）：并入既有包，不新开
+          cur = exist
+          continue
+        }
+        cur = { key, head: line.slice(0, 80), lines: [] }
+        lots.push(cur)
+        byKey.set(key, cur)
+        continue
+      }
     }
-    if (!lots.length) continue
-    // 预算行就近归属当前包；普通行作为内容摘录（每包最多 6 行）
-    if (LOT_BUDGET_RE.test(line) || lots[lots.length - 1].lines.length < 7) {
-      lots[lots.length - 1].lines.push(line)
-    }
+    if (!cur) continue
+    if (cur.lines.length < 6) cur.lines.push(line)
   }
-  lots = lots.filter((l) => l.lines.length >= 1 && l.no)
+  const out: string[] = []
   for (const lot of lots) {
     const budget = lot.lines.map((l) => l.match(LOT_BUDGET_RE)).find(Boolean)
-    const budgetText = budget ? `；预算/限价 ${budget[2]}${budget[3]}` : ""
+    const budgetText = budget && !lot.head.includes(budget[2]) ? `；预算/限价 ${budget[2]}${budget[3]}` : ""
     const content = lot.lines
-      .slice(1)
       .filter((l) => !LOT_BUDGET_RE.test(l))
       .join("；")
       .slice(0, 160)
-    const head = lot.lines[0].slice(0, 80)
-    out.push(`${head}${budgetText}${content && content !== head ? `；${content}` : ""}`)
+    out.push(`${lot.head}${budgetText}${content ? `；${content}` : ""}`)
   }
   return out.slice(0, 40)
 }
@@ -4121,7 +4130,7 @@ export function parseChapterOutput(text: string, figuresEnabled: boolean): { con
 // ------------------------------ 本地查重粗筛（n-gram + Jaccard，成本控制：只送可疑段落给 AI） ------------------------------
 
 function normalizePara(s: string): string {
-  return s.replace(/[\s　，。、；：""''（）()《》【】\-—_.,;:'"!?！？·]/g, "")
+  return s.replace(/\s+/g, " ").trim()
 }
 
 function shingles(s: string, n = 3): Set<string> {
