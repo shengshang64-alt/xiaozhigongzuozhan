@@ -1,4 +1,4 @@
-import { Copy, Loader2, Plus, ReceiptText, Search, Trash2 } from "lucide-react"
+import { BadgeCheck, Copy, Loader2, Plus, ReceiptText, Search, Trash2 } from "lucide-react"
 import { CompanyTemplateHint } from "@/components/common/CompanyTemplateHint"
 import { formatMoney, quoteTotal, type QuoteRecord } from "@/pages/PptQuote/pptQuoteTypes"
 
@@ -11,6 +11,8 @@ type QuoteListPanelProps = {
   onOpen: (quote: QuoteRecord) => void
   onCopy: (quote: QuoteRecord) => void
   onDelete: (quote: QuoteRecord) => void
+  /** R79 quote-history-2 第一步：标记/取消「成交参考样本」（PATCH 沉淀字段，由调用方落库） */
+  onToggleWonSample: (quote: QuoteRecord) => void
 }
 
 function updatedText(iso: string): string {
@@ -29,6 +31,7 @@ export function QuoteListPanel({
   onOpen,
   onCopy,
   onDelete,
+  onToggleWonSample,
 }: QuoteListPanelProps) {
   return (
     <section className="pb-16">
@@ -111,6 +114,12 @@ export function QuoteListPanel({
                     <span className="badge-neutral shrink-0">
                       {quote.version || "v1"}
                     </span>
+                    {quote.won_sample ? (
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success-bg px-2 py-0.5 text-[10px] font-semibold text-[#17704f]" title="已标记为成交参考样本，可作报价历史区间依据">
+                        <BadgeCheck className="h-3 w-3" />
+                        成交样本
+                      </span>
+                    ) : null}
                   </div>
                 </button>
                 <p className="mt-2 text-2xl font-bold tabular-nums text-primary">
@@ -129,6 +138,20 @@ export function QuoteListPanel({
                       className="rounded-md border border-primary/40 px-2.5 py-1 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     >
                       打开编辑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onToggleWonSample(quote)}
+                      aria-label={quote.won_sample ? "取消成交参考样本" : "标记为成交参考样本"}
+                      title={quote.won_sample ? "取消成交参考样本" : "标记为成交参考样本（沉淀报价历史）"}
+                      className={
+                        "rounded-md p-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary " +
+                        (quote.won_sample
+                          ? "text-[#17704f] hover:bg-success-bg"
+                          : "text-muted-foreground hover:bg-primary/10 hover:text-primary")
+                      }
+                    >
+                      <BadgeCheck className="h-3.5 w-3.5" />
                     </button>
                     <button
                       type="button"

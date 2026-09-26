@@ -126,6 +126,11 @@ export type QuoteRecord = {
   // 轮次 F 轨 2：报价 ↔ 商机关联（存量记录无此字段，sanitizeQuote 归一为空串）
   opportunity_id: string
   opportunity_name: string
+  // R79 quote-history-2 第一步：结单沉淀样本标记与元数据（存量无此字段，sanitizeQuote 归一）
+  won_sample?: boolean
+  hospital_level?: string
+  beds_total?: number
+  modules_summary?: string
   groups: QuoteGroup[]
   tax_note: string
   version: string
@@ -531,6 +536,10 @@ export function sanitizeQuote(rec: QuoteRecord): QuoteRecord {
   const list = Array.isArray(groups) ? (groups as Partial<QuoteGroup>[]) : []
   return {
     ...rec,
+    won_sample: rec.won_sample === true,
+    hospital_level: String(rec.hospital_level ?? ""),
+    beds_total: Number(rec.beds_total ?? 0),
+    modules_summary: String(rec.modules_summary ?? ""),
     groups: list.map((g) => ({
       id: g.id || makeUid(),
       name: String(g.name ?? "分组"),

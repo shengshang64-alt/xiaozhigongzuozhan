@@ -146,6 +146,7 @@ export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
             onOpen={p.openQuote}
             onCopy={p.copyQuoteAsVersion}
             onDelete={p.deleteQuote}
+            onToggleWonSample={p.toggleWonSample}
           />
         ) : p.activeQuote ? (
           <QuoteEditor

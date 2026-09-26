@@ -1919,6 +1919,45 @@ export function usePptQuote() {
 
   // quote-history-01（最小切片）：同一客户（同商机）的历史报价参考 + 一键导入明细（纯检索零 AI，deepCopyGroups 重生 id 防冲突）
   const historyQuotes = useMemo(() => historyQuotesFor(activeQuote, quoteList), [activeQuote, quoteList])
+  // R79 quote-history-2 第一步：标记/取消「成交参考样本」——PATCH 沉淀字段（won_sample + 客户档案派生元数据）
+  const toggleWonSample = useCallback(
+    async (quote: QuoteRecord) => {
+      const next = !quote.won_sample
+      let hospital_level = quote.hospital_level ?? ""
+      let beds_total = quote.beds_total ?? 0
+      let modules_summary = quote.modules_summary ?? ""
+      if (next) {
+        // 从报价分组名聚合模块摘要（每分组取名，≤500 字）
+        modules_summary = (quote.groups ?? []).map((g) => g.name).filter(Boolean).join(",").slice(0, 500)
+        // 关联客户档案派生医院等级/床位：经商机名匹配客户
+        try {
+          const keyword = (quote.opportunity_name || quote.quote_name).slice(0, 12)
+          const res = await apiFetch<{ items: { id: string; hospital_name: string; level?: string; beds_total?: number }[] }>(
+            `/api/customers?q=${encodeURIComponent(keyword)}&perPage=5`,
+          )
+          const cust = (res.items ?? [])[0]
+          if (cust) {
+            hospital_level = String(cust.level ?? hospital_level)
+            beds_total = Number(cust.beds_total ?? beds_total)
+          }
+        } catch {
+          // 客户匹配失败不阻断标记，等级/床位留原值
+        }
+      }
+      try {
+        await apiFetch(`/api/quotes/${quote.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ won_sample: next, hospital_level, beds_total, modules_summary }),
+        })
+        setQuoteList((prev) => prev.map((q) => (q.id === quote.id ? { ...q, won_sample: next, hospital_level, beds_total, modules_summary } : q)))
+        toast.success(next ? "已标记为成交参考样本（报价历史沉淀）" : "已取消成交参考样本")
+      } catch {
+        toast.error("标记失败，请稍后重试")
+      }
+    },
+    [],
+  )
+
   const importQuoteHistory = useCallback(
     (source: QuoteRecord) => {
       if (!source) return
@@ -2148,6 +2187,7 @@ export function usePptQuote() {
     copyQuoteAsVersion,
     historyQuotes,
     importQuoteHistory,
+    toggleWonSample,
     newQuoteOpen,
     setNewQuoteOpen,
     nqName,

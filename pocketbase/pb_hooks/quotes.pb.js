@@ -37,6 +37,11 @@ onBootstrap(function (e) {
       addField({ name: 'version', type: 'text' })
       addField({ name: 'opportunity_id', type: 'text', max: 64 })
       addField({ name: 'opportunity_name', type: 'text', max: 200 })
+      // R79 quote-history-2 第一步：结单沉淀样本元数据（医院等级/床位/模块组合 + 成交样本标记）
+      addField({ name: 'won_sample', type: 'bool' })
+      addField({ name: 'hospital_level_txt', type: 'text', max: 20 })
+      addField({ name: 'beds_total', type: 'number' })
+      addField({ name: 'modules_summary', type: 'text', max: 500 })
       addField({ name: "created", type: "autodate", onCreate: true })
       addField({ name: "updated", type: "autodate", onCreate: true, onUpdate: true })
       if (changed) {
@@ -196,6 +201,11 @@ routerAdd("POST", "/api/quotes", function (e) {
     rec.set("version", body.version === undefined || body.version === null ? "" : String(body.version))
     rec.set("opportunity_id", body.opportunity_id === undefined || body.opportunity_id === null ? "" : String(body.opportunity_id))
     rec.set("opportunity_name", body.opportunity_name === undefined || body.opportunity_name === null ? "" : String(body.opportunity_name))
+    // R79：结单沉淀字段透传（won_sample bool / hospital_level text / beds_total number / modules_summary text）
+    rec.set("won_sample", body.won_sample === true)
+    rec.set("hospital_level_txt", body.hospital_level === undefined || body.hospital_level === null ? "" : String(body.hospital_level).slice(0, 20))
+    rec.set("beds_total", body.beds_total === undefined || body.beds_total === null || isNaN(Number(body.beds_total)) ? 0 : Number(body.beds_total))
+    rec.set("modules_summary", body.modules_summary === undefined || body.modules_summary === null ? "" : String(body.modules_summary).slice(0, 500))
     $app.save(rec)
     return e.json(200, rec.publicExport())
   } catch (err) {
@@ -228,6 +238,11 @@ routerAdd("PATCH", "/api/quotes/{id}", function (e) {
     if ("groups" in body) rec.set("groups", body.groups)
     if ("tax_note" in body) rec.set("tax_note", body.tax_note === undefined || body.tax_note === null ? "" : String(body.tax_note))
     if ("version" in body) rec.set("version", body.version === undefined || body.version === null ? "" : String(body.version))
+    // R79：结单沉淀字段 PATCH 透传
+    if ("won_sample" in body) rec.set("won_sample", body.won_sample === true)
+    if ("hospital_level" in body) rec.set("hospital_level_txt", body.hospital_level === null ? "" : String(body.hospital_level).slice(0, 20))
+    if ("beds_total" in body) rec.set("beds_total", isNaN(Number(body.beds_total)) ? 0 : Number(body.beds_total))
+    if ("modules_summary" in body) rec.set("modules_summary", body.modules_summary === null ? "" : String(body.modules_summary).slice(0, 500))
     if ("opportunity_id" in body) rec.set("opportunity_id", body.opportunity_id === undefined || body.opportunity_id === null ? "" : String(body.opportunity_id))
     if ("opportunity_name" in body) rec.set("opportunity_name", body.opportunity_name === undefined || body.opportunity_name === null ? "" : String(body.opportunity_name))
     $app.save(rec)
