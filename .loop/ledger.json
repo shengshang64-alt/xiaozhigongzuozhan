@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 78,
+  "round": 79,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -227,6 +227,16 @@
     }
   ],
   "closed": [
+    {
+      "id": "quote-history-2-step1",
+      "module": "/ppt-quote",
+      "priority": "P2",
+      "status": "closed",
+      "issue": "报价历史库二期第一步：结单沉淀通道（标记成交参考+等级/床位/模块元数据）",
+      "fix": "quotes.pb.js addField×4+POST/PATCH透传；前端 QuoteRecord 类型+sanitizeQuote+列表 BadgeCheck 标记按钮（模块摘要自动聚合）",
+      "verify": "API 往返实测(POST带字段→GET读回)；实机点击→徽标「成交样本」+API确认 won_sample=true；357/357单测；截图 _shots/R79/",
+      "evidence": "方案 .loop/plans/C-quote-history-2.md；提交 910a1ab；第二步(区间推荐)等样本≥2"
+    },
     {
       "id": "lot-splitting",
       "module": "/bid-workspace",
@@ -934,5 +944,5 @@
     }
   ],
   "noProgressStreak": 1,
-  "lastRoundSummary": "R78 标包识别真实文件校准(用户授权使用本地文件)：发现池州二院多标包招标文件(标包一/二/三文件夹+.doc主文件)，Word COM转文本后实测——原正则抓不到「N 标包X」表格行形态(抽0包)！修正则+保证金行剔除+同号合并后，真实3标包全对(853.30/766.98/592.48)。358/358(探针+真实回归固化)。eslint顺带-2历史全角空格错。quote-history-2 判断：只做第一步沉淀(历史方案报价挖掘另立v3提案)。"
+  "lastRoundSummary": "R79 报价历史二期第一步(结单沉淀通道)落地：quotes 集合自愈补4字段(won_sample/hospital_level_txt/beds_total/modules_summary)，POST/PATCH透传，PB重启后API往返实测通过(含一次字段自愈竞态EOF已自稳)。前端报价列表「标记为成交参考样本」按钮实机点击闭环——徽标+API持久化。357/357。第二步(参考区间推荐)等沉淀样本≥2后自动可开，v3提案=挖掘历史方案报价。"
 }
