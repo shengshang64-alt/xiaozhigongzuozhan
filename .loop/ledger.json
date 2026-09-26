@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 77,
+  "round": 78,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -214,6 +214,16 @@
       "evidence": "docs/redesign/ 设计方案+静态原型；R75 审计：7诊断中2已修/2本轮修/3 open",
       "plan": "进度：阶段3-1 驾驶舱横幅✓(R76)；阶段3-2 情报三栏核验即关(R77:三栏/转商机/建标书/AI摘要均已存在,与原型一致)。下一步：标书作战室密度/方案三栏/知识库。",
       "round": 75
+    },
+    {
+      "id": "quote-history-3-mining",
+      "module": "/ppt-quote,/knowledge",
+      "issue": "v3提案：本地有4085份docx(含友商招标文件库/B标书2022-2026五年/产品报价体系)——可挖掘历史方案的模块组合与报价数据，为报价参考区间积累样本；涉及大量文档解析与价格表格识别，独立立项评估",
+      "priority": "P3",
+      "status": "open",
+      "evidence": "R78 判断：vault 路径 D:/重要文件/A重要客户情况；quote-history-2 第一步沉淀通道已获批待做",
+      "plan": "用户需要时再立项；quote-history-2 第一步(结单沉淀)按用户授权可直接做",
+      "round": 78
     }
   ],
   "closed": [
@@ -921,15 +931,8 @@
       "issue": "C类·技能产出一键采用/写回：跟进邮件→存客户跟进记录(follow_records零schema)；竞品分析→复制+跳档案；周报→复制+docx下载。方案 .loop/plans/C-assistant-writeback.md",
       "status": "done",
       "decision": "2026-09-25 用户回「同意」，R62 落地"
-    },
-    {
-      "id": "quote-history-2",
-      "module": "/ppt-quote",
-      "issue": "C类·报价历史二期两步走：①结单沉淀(标记成交参考+医院等级/床位/模块元数据,B类) ②参考区间推荐(匹配≥2样本才显示,绝不输出弱依据数字)。方案 .loop/plans/C-quote-history-2.md。关键前置事实：库内报价存档0份。",
-      "status": "needs_user_decision",
-      "decision": ""
     }
   ],
   "noProgressStreak": 1,
-  "lastRoundSummary": "R77 双项：①UI阶段3-2 情报三栏核验即关——三栏布局/转商机/建标书任务/AI摘要均已存在，与原型一致，无真缺口；②报价历史二期 C方案落盘 plans/C-quote-history-2.md：关键事实=库内报价存档0份，直接做参考区间=编数字，方案改两步走(先结单沉淀B类→后参考区间C类,样本≥2才显示)。等用户确认。"
+  "lastRoundSummary": "R78 标包识别真实文件校准(用户授权使用本地文件)：发现池州二院多标包招标文件(标包一/二/三文件夹+.doc主文件)，Word COM转文本后实测——原正则抓不到「N 标包X」表格行形态(抽0包)！修正则+保证金行剔除+同号合并后，真实3标包全对(853.30/766.98/592.48)。358/358(探针+真实回归固化)。eslint顺带-2历史全角空格错。quote-history-2 判断：只做第一步沉淀(历史方案报价挖掘另立v3提案)。"
 }
