@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 83,
+  "round": 84,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -228,6 +228,16 @@
     }
   ],
   "closed": [
+    {
+      "id": "intel-f22-entry",
+      "module": "/intel-center",
+      "priority": "P1",
+      "status": "closed",
+      "issue": "F22 采集源抓取失败无处理入口",
+      "fix": "取证确认入口已完整(侧栏信息源状态/管理面板立即抓取启停/失败原因)；本轮升级顶部失败徽章：点击直达管理面板(openSourcesPanel)+滚动定位",
+      "verify": "实机：失败徽章可见且可点；管理面板立即抓取按钮存在；357/357 单测",
+      "evidence": "报告 .loop/reports/2026-09-26-1600.md"
+    },
     {
       "id": "kb-b01-perf",
       "module": "/knowledge",
@@ -962,5 +972,5 @@
     }
   ],
   "noProgressStreak": 1,
-  "lastRoundSummary": "R83 UI阶段3-3 作战室密度第2批：作战室对话框滚动区 68→72vh，评分交叉核对列表视口自适应。357/357。阶段3密度批次继续：知识库/方案三栏等已核验或后续批次。"
+  "lastRoundSummary": "R84/F22 失败源处理入口取证完整并升级：可点徽章→滚动定位侧栏信息源状态→直达信息源管理面板(立即抓取/启停/失败原因显示)。357/357。情报簇 F22 关闭，簇内全部收官。"
 }
