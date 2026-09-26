@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 76,
+  "round": 77,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -212,7 +212,7 @@
       "priority": "P2",
       "status": "open",
       "evidence": "docs/redesign/ 设计方案+静态原型；R75 审计：7诊断中2已修/2本轮修/3 open",
-      "plan": "进度：阶段3-1 驾驶舱横幅✓(R76)。下一步：②情报三栏处理台③标书作战室密度④方案三栏⑤知识库。每页一轮+截图对比。",
+      "plan": "进度：阶段3-1 驾驶舱横幅✓(R76)；阶段3-2 情报三栏核验即关(R77:三栏/转商机/建标书/AI摘要均已存在,与原型一致)。下一步：标书作战室密度/方案三栏/知识库。",
       "round": 75
     }
   ],
@@ -921,8 +921,15 @@
       "issue": "C类·技能产出一键采用/写回：跟进邮件→存客户跟进记录(follow_records零schema)；竞品分析→复制+跳档案；周报→复制+docx下载。方案 .loop/plans/C-assistant-writeback.md",
       "status": "done",
       "decision": "2026-09-25 用户回「同意」，R62 落地"
+    },
+    {
+      "id": "quote-history-2",
+      "module": "/ppt-quote",
+      "issue": "C类·报价历史二期两步走：①结单沉淀(标记成交参考+医院等级/床位/模块元数据,B类) ②参考区间推荐(匹配≥2样本才显示,绝不输出弱依据数字)。方案 .loop/plans/C-quote-history-2.md。关键前置事实：库内报价存档0份。",
+      "status": "needs_user_decision",
+      "decision": ""
     }
   ],
   "noProgressStreak": 1,
-  "lastRoundSummary": "R76 UI重构阶段3-1 驾驶舱横幅(B类)：WelcomeBanner 从静态口号改为行动摘要(进行中项目/逾期待办/情报待确认真实计数)+处理情报/继续标书快捷入口；有行动项才显示，无则退回文案。356/356。设计原型对标(方案02场景1晨会作战)。"
+  "lastRoundSummary": "R77 双项：①UI阶段3-2 情报三栏核验即关——三栏布局/转商机/建标书任务/AI摘要均已存在，与原型一致，无真缺口；②报价历史二期 C方案落盘 plans/C-quote-history-2.md：关键事实=库内报价存档0份，直接做参考区间=编数字，方案改两步走(先结单沉淀B类→后参考区间C类,样本≥2才显示)。等用户确认。"
 }
