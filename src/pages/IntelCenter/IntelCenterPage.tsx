@@ -76,8 +76,9 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
                 onClick={() => {
                   setSrcOpen(true)
                   document.getElementById("intel-src-status")?.scrollIntoView({ behavior: "smooth", block: "center" })
+                  p.openSourcesPanel()
                 }}
-                title="点击查看失败的源并重试"
+                title="点击打开信息源管理，查看失败的源并重试"
                 className="rounded-full bg-destructive/10 px-2.5 py-1 font-medium text-destructive transition-colors hover:bg-destructive/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 {errorCount} 个源抓取失败 · 点击处理
