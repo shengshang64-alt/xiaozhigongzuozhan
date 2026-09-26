@@ -139,7 +139,7 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
     <>
     {warningBanner}
     <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[300px_1fr]">
-      <aside className="flex max-h-[560px] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-md">
+      <aside className="flex max-h-[calc(100vh-320px)] min-h-[560px] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-md">
         <header className="flex min-h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3">
           <h2 className="text-sm font-semibold text-foreground">核心信息</h2>
           <div className="flex shrink-0 items-center gap-2">
