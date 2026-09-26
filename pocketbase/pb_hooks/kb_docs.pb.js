@@ -162,8 +162,13 @@ routerAdd("GET", "/api/kb_docs", function (e) {
       ? $app.findRecordsByFilter("kb_docs", filter, sort, perPage, (page - 1) * perPage, params)
       : $app.findRecordsByFilter("kb_docs", "", sort, perPage, (page - 1) * perPage)
     var items = []
+    // R80/B-01：slim=1 时正文置空（知识库列表页只取元数据，正文按需走 /api/kb_docs/{id} 单条补拉）；
+    // 不带 slim 参数的调用行为完全不变（向后兼容）
+    var slim = String(query.slim || "") === "1"
     for (var i = 0; i < records.length; i++) {
-      items.push(records[i].publicExport())
+      var item = records[i].publicExport()
+      if (slim) item.content = ""
+      items.push(item)
     }
     return e.json(200, { items: items, page: page, perPage: perPage, totalItems: items.length })
   } catch (err) {

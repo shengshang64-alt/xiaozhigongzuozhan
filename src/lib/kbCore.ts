@@ -61,6 +61,8 @@ async function kbFetch<T>(path: string, init?: RequestInit): Promise<T> {
 export type ListKbDocsOptions = {
   /** kb_docs list 路由 q=：title / source_file_name like 匹配 */
   q?: string
+  /** R80/B-01：slim=1 时服务端把 content 置空（列表瘦身），正文按需走 getKbDoc 单条补拉 */
+  slim?: boolean
   /** 缺省 500（与历史行为一致；hook 模板服务端上限 200/页） */
   perPage?: number
   /**
@@ -92,6 +94,11 @@ export const KB_LIST_PER_PAGE = 200
  */
 const KB_LIST_PAGE_BATCH = 3
 
+/** R80/B-01：单条取全文（列表瘦身后的正文保真通道） */
+export function getKbDoc(id: string): Promise<KbDocRow> {
+  return kbFetch<KbDocRow>(`/api/kb_docs/${encodeURIComponent(id)}`)
+}
+
 export async function listKbDocs(opts?: ListKbDocsOptions): Promise<KbDocRow[]> {
   // list 路由不按 rh_user_id 过滤（团队文档全员可见），个人文档隔离在前端做。
   // 循环7 C2-2：服务端把 perPage 钳到 200 且原实现只拉第 1 页，>200 文档会被截断；
@@ -107,6 +114,7 @@ export async function listKbDocs(opts?: ListKbDocsOptions): Promise<KbDocRow[]> 
     const params = new URLSearchParams({ page: String(page), perPage: String(perPage) })
     if (opts?.q) params.set("q", opts.q)
     if (opts?.fields) params.set("fields", opts.fields)
+    if (opts?.slim) params.set("slim", "1")
     const data = await kbFetch<{ items: KbDocRow[]; perPage?: number }>(
       `/api/kb_docs?${params.toString()}`,
     )

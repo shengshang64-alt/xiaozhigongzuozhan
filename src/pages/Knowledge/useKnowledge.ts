@@ -25,6 +25,7 @@ import {
   KB_QA_SYSTEM_PROMPT,
   KB_LIST_MAX_PAGES,
   KB_LIST_PER_PAGE,
+  getKbDoc,
   listKbDocs,
   searchKbDocs,
   updateKbDoc,
@@ -229,9 +230,25 @@ export function useKnowledge() {
     docsRef.current = docs
   }, [docs])
 
+  /** R80/B-01：按需补拉单篇正文并回填 docs（列表瘦身后的正文保真通道） */
+  const loadDocContent = useCallback(async (docId: string): Promise<string> => {
+    const cached = docsRef.current.find((d) => d.id === docId)
+    if (cached && (cached.content ?? "").length > 0) return cached.content
+    try {
+      const full = await getKbDoc(docId)
+      setDocs((prev) => prev.map((d) => (d.id === docId ? { ...d, content: full.content } : d)))
+      docsRef.current = docsRef.current.map((d) => (d.id === docId ? { ...d, content: full.content } : d))
+      return full.content
+    } catch {
+      return cached?.content ?? ""
+    }
+  }, [])
+
   const refreshDocs = useCallback(async () => {
     try {
-      const rows = await listKbDocs()
+      // R80/B-01 性能：列表走 slim=1（服务端把 content 置空，传输量降 ~90%），正文按需单条补拉
+      //（loadDocContent → /api/kb_docs/{id} 全量）。消费点保真：阅读/编辑/删除回收桶共用该通道。
+      const rows = await listKbDocs({ slim: true })
       setDocs(rows)
       setDocsLoading(false)
       // kb-cap-01：命中翻页安全上限说明仍有文档未返回。旧实现只 console.warn＝对用户静默丢数据，
@@ -350,6 +367,14 @@ export function useKnowledge() {
   }, [categoryScopedDocs, sortKey])
 
   const selectedDoc = useMemo(() => docs.find((d) => d.id === selectedDocId) ?? null, [docs, selectedDocId])
+
+  // R80/B-01：选中文档变化时按需补拉正文（阅读器/编辑器/删除回收桶共用保真通道）
+  useEffect(() => {
+    if (!selectedDocId) return
+    void loadDocContent(selectedDocId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDocId])
+
 
   // ------------------------------ 目录树 ------------------------------
   const folderTree = useMemo(() => {
@@ -566,15 +591,16 @@ export function useKnowledge() {
     [userId],
   )
 
-  const startEdit = useCallback(() => {
+  const startEdit = useCallback(async () => {
     if (!selectedDoc) return
     if (!canEditDoc(selectedDoc)) {
       toast.error("这篇笔记仅本人可编辑")
       return
     }
+    await loadDocContent(selectedDoc.id)
     setEditDraft(selectedDoc.content ?? "")
     setEditMode(true)
-  }, [selectedDoc, canEditDoc])
+  }, [selectedDoc, canEditDoc, loadDocContent])
 
   const cancelEdit = useCallback(() => {
     setEditMode(false)
@@ -640,6 +666,7 @@ export function useKnowledge() {
       return
     }
     try {
+      if ((doc.content ?? "").length === 0) await loadDocContent(doc.id)
       await deleteKbDoc(doc.id)
       // 循环 9 C1：删除成功落本地回收桶（仅本机可恢复；未登录不落桶）
       pushKbTrash(userIdRef.current, {
@@ -666,7 +693,7 @@ export function useKnowledge() {
     } catch {
       toast.error("删除失败，请稍后重试")
     }
-  }, [docAction, docActionDraft, deleteStrongStage, selectedDocId, refreshDocs])
+  }, [docAction, docActionDraft, deleteStrongStage, selectedDocId, refreshDocs, loadDocContent])
 
   const closeDocAction = useCallback(() => {
     setDocAction(null)
@@ -781,6 +808,7 @@ export function useKnowledge() {
     for (const id of okIds) {
       const d = docs.find((x) => x.id === id)
       if (!d) continue
+      if ((d.content ?? "").length === 0) await loadDocContent(d.id)
       pushKbTrash(userIdRef.current, {
         doc_id: d.id,
         title: d.title,
@@ -804,7 +832,7 @@ export function useKnowledge() {
     }
     await refreshDocs()
     toast[fail ? "error" : "success"](fail ? `已删除 ${ok} 篇，${fail} 篇失败请重试` : `已删除 ${ok} 篇文档`)
-  }, [batchSelectedIds, docs, runBatchQueue, refreshDocs, selectedDocId])
+  }, [batchSelectedIds, docs, loadDocContent, runBatchQueue, refreshDocs, selectedDocId])
 
   // ------------------------------ 循环 9 C1：最近删除本地回收桶 ------------------------------
   const [trashItems, setTrashItems] = useState<KbTrashItem[]>([])
