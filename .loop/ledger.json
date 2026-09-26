@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 79,
+  "round": 80,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -227,6 +227,16 @@
     }
   ],
   "closed": [
+    {
+      "id": "kb-b01-perf",
+      "module": "/knowledge",
+      "priority": "P2",
+      "status": "closed",
+      "issue": "知识库首屏加载 40-61s（后实测 25-30s），全量拉含正文",
+      "fix": "kb_docs.pb.js list 加 slim=1 参数(content置空,向后兼容)；useKnowledge refreshDocs 走 slim；新增 getKbDoc 单条补拉；阅读器 selectedDoc effect 自动补拉；删除/批删前正文保真",
+      "verify": "实测首屏约2s(2173篇目录全渲染)；slim/非slim双模式 API 验证；357/357 单测；截图 _shots/R80/",
+      "evidence": "提交 R80-commit；报告 .loop/reports/2026-09-26-0205.md"
+    },
     {
       "id": "quote-history-2-step1",
       "module": "/ppt-quote",
@@ -944,5 +954,5 @@
     }
   ],
   "noProgressStreak": 1,
-  "lastRoundSummary": "R79 报价历史二期第一步(结单沉淀通道)落地：quotes 集合自愈补4字段(won_sample/hospital_level_txt/beds_total/modules_summary)，POST/PATCH透传，PB重启后API往返实测通过(含一次字段自愈竞态EOF已自稳)。前端报价列表「标记为成交参考样本」按钮实机点击闭环——徽标+API持久化。357/357。第二步(参考区间推荐)等沉淀样本≥2后自动可开，v3提案=挖掘历史方案报价。"
+  "lastRoundSummary": "R80/B-01 知识库首屏瘦身落地(P2,S3)：kb_docs list 路由加 slim=1(向后兼容)裁 content，知识库列表改 slim 拉元数据，正文按需 getKbDoc 单条补拉；阅读器 effect 自动补拉+删除回收桶保真。实测首屏 25-30s→约2s(团队2173篇目录全渲染)。357/357。"
 }
