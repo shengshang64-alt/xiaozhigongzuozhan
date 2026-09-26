@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 80,
+  "round": 81,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -133,7 +133,8 @@
       "priority": "P2",
       "status": "open",
       "evidence": "",
-      "diff": ""
+      "diff": "",
+      "plan": "方案已落盘 plans/C-content-guard.md（等确认后开工：新增 prompts/consistencyGuard.ts + 交卷体检调用链）"
     },
     {
       "id": "lint-debt-01",
@@ -951,8 +952,15 @@
       "issue": "C类·技能产出一键采用/写回：跟进邮件→存客户跟进记录(follow_records零schema)；竞品分析→复制+跳档案；周报→复制+docx下载。方案 .loop/plans/C-assistant-writeback.md",
       "status": "done",
       "decision": "2026-09-25 用户回「同意」，R62 落地"
+    },
+    {
+      "id": "content-guard",
+      "module": "/bid-workspace",
+      "issue": "C类·内容护栏AI增量：一致性规则2/3/4(量化依据/量级自洽/政策时效)逐章AI核对，结果并入交卷体检面板(复用FormatIssue,零schema)。方案 .loop/plans/C-content-guard.md",
+      "status": "needs_user_decision",
+      "decision": ""
     }
   ],
   "noProgressStreak": 1,
-  "lastRoundSummary": "R80/B-01 知识库首屏瘦身落地(P2,S3)：kb_docs list 路由加 slim=1(向后兼容)裁 content，知识库列表改 slim 拉元数据，正文按需 getKbDoc 单条补拉；阅读器 effect 自动补拉+删除回收桶保真。实测首屏 25-30s→约2s(团队2173篇目录全渲染)。357/357。"
+  "lastRoundSummary": "R81 C类方案：内容护栏 AI 增量（一致性规则2/3/4：量化依据/量级自洽/政策时效）——交卷体检新增逐章 AI 核对，复用 FormatIssue 结构与 KB 共享缓存，零 schema 变更，只报不拦。方案落盘 plans/C-content-guard.md 等确认。"
 }
