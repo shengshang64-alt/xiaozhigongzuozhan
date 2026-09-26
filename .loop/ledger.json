@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 84,
+  "round": 85,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -225,6 +225,16 @@
       "evidence": "R78 判断：vault 路径 D:/重要文件/A重要客户情况；quote-history-2 第一步沉淀通道已获批待做",
       "plan": "用户需要时再立项；quote-history-2 第一步(结单沉淀)按用户授权可直接做",
       "round": 78
+    },
+    {
+      "id": "ui-redesign-phase3",
+      "module": "/全站",
+      "issue": "UI重构阶段3进度（核验+密度）：3-1 驾驶舱横幅✓(R76) 3-2 情报三栏✓(核验即关) 3-3 标书作战室✓(R82侧栏+R83对话框/评分列表) 3-4 方案编辑器✓(核验即关,三栏+五维自检已齐) 3-5 知识库✓(核验即关,三栏)。剩余：整体视觉密度(卡片/留白)按自然迭代逐步收敛，不动业务。",
+      "priority": "P3",
+      "status": "open",
+      "evidence": "R85 代码取证 EditorWorkspace 三栏+ScoreCard；知识库截图 _shots/R80/",
+      "plan": "后续随自然迭代收敛视觉密度；新增页面直接按 docs/redesign/ 设计系统实现",
+      "round": 85
     }
   ],
   "closed": [
@@ -972,5 +982,5 @@
     }
   ],
   "noProgressStreak": 1,
-  "lastRoundSummary": "R84/F22 失败源处理入口取证完整并升级：可点徽章→滚动定位侧栏信息源状态→直达信息源管理面板(立即抓取/启停/失败原因显示)。357/357。情报簇 F22 关闭，簇内全部收官。"
+  "lastRoundSummary": "R85 UI阶段3-4 方案编辑器核验即关：EditorWorkspace 已是三栏(大纲树200px/成稿编辑/素材弹药300px可折叠+窄屏抽屉)，ChapterEditor 内嵌五维自检评分卡(ChapterScoreCard)与素材插入回执——与设计方案线框一致，无真缺口。阶段3-5 知识库已是三栏(目录/列表/阅读区)同口径核验即关。357/357。"
 }
