@@ -690,6 +690,7 @@ export function useHome() {
   // ------------------------------ 情报 ------------------------------
   const [expandedIntelId, setExpandedIntelId] = useState<string | null>(null)
   const [intelItems, setIntelItems] = useState<IntelItem[]>([])
+  const [intelPendingCount, setIntelPendingCount] = useState(0)
   const [intelLoading, setIntelLoading] = useState(false)
 
   const loadIntelItems = useCallback(async () => {
@@ -704,6 +705,8 @@ export function useHome() {
       const pending = rows.filter((r) => (r.my_status || "pending") !== "confirmed")
       const picked = [...confirmed, ...pending].slice(0, 5)
       setIntelItems(picked.map(mapIntelRow))
+      // R76：首屏横幅速览用——前 20 条里待确认数（轻量口径，不额外拉全量）
+      setIntelPendingCount(pending.length)
     } catch {
       setIntelItems([])
     } finally {
@@ -910,6 +913,7 @@ export function useHome() {
     bidReview,
     // 情报
     intelItems,
+    intelPendingCount,
     intelLoading,
     expandedIntelId,
     toggleIntel,

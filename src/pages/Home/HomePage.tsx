@@ -28,6 +28,11 @@ export function HomePage(p: ReturnType<typeof useHome>) {
         dateLabel={todayLabel}
         greeting={p.greeting}
         displayName={displayName}
+        summaryLines={[
+          p.activeProjectCount > 0 ? `有 ${p.activeProjectCount} 个项目进行中` : "",
+          p.overdueTodoCount > 0 ? `${p.overdueTodoCount} 条待办已逾期` : "",
+          p.intelPendingCount > 0 ? `${p.intelPendingCount} 条情报待确认` : "",
+        ].filter(Boolean)}
       />
 
       <MustSeeTodayBar
