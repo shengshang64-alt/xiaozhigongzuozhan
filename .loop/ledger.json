@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 85,
+  "round": 86,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -982,5 +982,5 @@
     }
   ],
   "noProgressStreak": 1,
-  "lastRoundSummary": "R85 UI阶段3-4 方案编辑器核验即关：EditorWorkspace 已是三栏(大纲树200px/成稿编辑/素材弹药300px可折叠+窄屏抽屉)，ChapterEditor 内嵌五维自检评分卡(ChapterScoreCard)与素材插入回执——与设计方案线框一致，无真缺口。阶段3-5 知识库已是三栏(目录/列表/阅读区)同口径核验即关。357/357。"
+  "lastRoundSummary": "R86 收敛总报告：A/B 类可做项清零，剩余 open 全部为 C 类待拍板或需用户输入/积累，自动推进按手册停止。"
 }
