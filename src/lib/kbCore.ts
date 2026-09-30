@@ -72,6 +72,11 @@ export type ListKbDocsOptions = {
    * 下方解析对缺失 content 容错为空串。
    */
   fields?: string
+  /**
+   * T9 冷加载渐进直显：每拉完一批（KB_LIST_PAGE_BATCH 页）回调一次已积累的快照副本，
+   * 让列表在首批（约 600 篇 / 3-6s）就能开始渲染，不必等全量 30s+。可选参数，不影响既有调用。
+   */
+  onBatch?: (accumulated: KbDocRow[]) => void
 }
 
 /**
@@ -149,6 +154,14 @@ export async function listKbDocs(opts?: ListKbDocsOptions): Promise<KbDocRow[]> 
       if (rows.length < effectivePerPage) {
         done = true
         break
+      }
+    }
+    // T9：批间快照回调（副本，防调用方持有后被追加污染）；回调异常不中断拉取主链路
+    if (opts?.onBatch && all.length > 0) {
+      try {
+        opts.onBatch([...all])
+      } catch {
+        /* 渐进直显属体验增强，静默降级 */
       }
     }
     // 撞满安全上限且末批最后一页仍满页，才说明仍有文档未返回（旧串行版同条件）
@@ -420,14 +433,17 @@ function computeKbChunks(content: string): KbChunk[] {
   return chunks
 }
 
-// 模块级缓存：doc.updated 变化才重切
-const kbChunkCache = new Map<string, { updated: string; chunks: KbChunk[] }>()
+// 模块级缓存：doc.updated 或正文长度变化才重切
+// R87 回归修复：slim 列表 content 为空串，loadDocContent 补拉正文回填时 updated 不变；
+// 只校验 updated 会把空 chunks 永久缓存，该文档从此退出全文检索（知识库问答静默降级）
+const kbChunkCache = new Map<string, { updated: string; len: number; chunks: KbChunk[] }>()
 
 export function chunkKbDoc(doc: KbDocRow): KbChunk[] {
+  const len = (doc.content ?? "").length
   const cached = kbChunkCache.get(doc.id)
-  if (cached && cached.updated === (doc.updated ?? "")) return cached.chunks
+  if (cached && cached.updated === (doc.updated ?? "") && cached.len === len) return cached.chunks
   const chunks = computeKbChunks(doc.content ?? "")
-  kbChunkCache.set(doc.id, { updated: doc.updated ?? "", chunks })
+  kbChunkCache.set(doc.id, { updated: doc.updated ?? "", len, chunks })
   return chunks
 }
 

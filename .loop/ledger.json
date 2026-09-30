@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 86,
+  "round": 87,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -192,9 +192,19 @@
         "A1"
       ],
       "priority": "P2",
-      "status": "open",
-      "evidence": "",
-      "diff": ""
+      "status": "closed",
+      "evidence": "R87 评测证伪本条前提：①现网检索早已非『关键词二元组』，kbCore.searchKbDocs 为 BM25+IDF+短语邻接+标题强匹配的块级成熟方案；②6998 篇真实语料、20 条『正文稀有词』探针评测：full 形态 gold@5=19/20（检索质量达标），无需 embedding 增强；③真正的断点是 slim 列表使 QA 全文通道 0/20——已由 R87 kb-slim-qa-regression-01 修复。embedding 试点（AI 预算+schema 变更成本）边际收益趋零，撤销不实施；若日后长尾语义召回（同义改写类查询）实证不足再重开新条。",
+      "diff": "无代码改动（评测裁决撤销）"
+    },
+    {
+      "id": "kb-slim-qa-regression-01",
+      "module": "/knowledge",
+      "issue": "R80/B-01 列表 slim=1 后知识库问答全文检索通道静默断裂（评测坐实：真实语料 6998 篇、正文稀有词探针 20 条，修复前现网 slim 形态 gold@5=0/20，用户被误导『知识库中没找到』并误入待补答队列）；连带修复 chunkKbDoc 模块级缓存只校验 updated 的正确性 bug——loadDocContent 补拉正文（updated 不变）时空 chunks 被永久缓存，该文档永久退出全文检索",
+      "priority": "P0",
+      "status": "closed",
+      "round": 87,
+      "evidence": "评测 harness（kbSearchSlimEval，探针词及任意二元组均不在标题/关键词、df≤3 稀有词，gold 由构造保证）：full 19/20 vs slim 0/20；修复=chunkKbDoc 缓存纳入正文长度校验 + useKnowledge 增 QA 全文语料通道（scopeDocs 优先按需加载的 listKbDocs 全量语料，与助手/方案工坊/竞品证据通道对齐；refreshDocs 一切变更入口失效重取；qaIndexing 期间入口禁用并显示『正在准备全文深度检索索引』）。四道门禁：vitest 598/598（新增 kbChunkCache.test.ts 3 用例锁定缓存失效行为）；tsc+build pass；eslint 全量 162=改动前快照同条件对照 162（errors 145=账本基线 145 持平零净增，注：D0 读数 158 为口径差已被对照实验推翻）；浏览器实机：稀有词提问『幼年皮肌炎是什么病？』→中间态提示→费用确认弹窗出现（取消，零 AI 调用零写入），console 零 error，截图 _shots/R87/kb-qa-result.png",
+      "diff": "src/lib/kbCore.ts（chunkKbDoc 缓存键+len 校验，9 行）；src/pages/Knowledge/useKnowledge.ts（qaCorpusRef/ensureQaCorpus/qaIndexing 新增，scopeDocs 语料优先、refreshDocs 失效、sendQaQuestion/askAiAnyway 转 async、快速筛选注释修正，约 40 行）；src/components/knowledge/QaDrawer.tsx（qaIndexing 提示条+禁用+类型）；src/pages/Knowledge/KnowledgePage.tsx（透传）；src/lib/kbChunkCache.test.ts（新增回归 3 用例）"
     },
     {
       "id": "ai-output-delivery-01",

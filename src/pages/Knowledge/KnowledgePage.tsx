@@ -103,6 +103,7 @@ export function KnowledgePage(p: ReturnType<typeof useKnowledge>) {
           sortKey={p.sortKey}
           setSortKey={p.setSortKey}
           docsLoading={p.docsLoading}
+          docsCalibrating={p.docsCalibrating}
           libTab={p.libTab}
           searchQuery={p.searchQuery}
           openUpload={p.openUpload}
@@ -187,6 +188,7 @@ export function KnowledgePage(p: ReturnType<typeof useKnowledge>) {
         setQaInput={p.setQaInput}
         qaMessages={p.qaMessages}
         qaSending={p.qaSending}
+        qaIndexing={p.qaIndexing}
         sendQaQuestion={p.sendQaQuestion}
         clearQa={p.clearQa}
         openCitation={p.openCitation}

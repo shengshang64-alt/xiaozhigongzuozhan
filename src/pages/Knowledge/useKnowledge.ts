@@ -244,12 +244,61 @@ export function useKnowledge() {
     }
   }, [])
 
+  // R87：QA 全文检索语料通道——列表是 slim 形态（content 空串），searchKbDocs 的正文通道需要全文。
+  // 首次提问时懒加载一次全量 listKbDocs()（不带 slim），会话内复用；
+  // refreshDocs（一切数据变更入口）失效并重取。与助手/方案工坊/竞品证据同用全量通道，行为对齐。
+  const qaCorpusRef = useRef<KbDocRow[] | null>(null)
+  const qaCorpusPromiseRef = useRef<Promise<void> | null>(null)
+  const [qaIndexing, setQaIndexing] = useState(false)
+  const ensureQaCorpus = useCallback(async (): Promise<void> => {
+    if (qaCorpusRef.current) return
+    if (!qaCorpusPromiseRef.current) {
+      setQaIndexing(true)
+      qaCorpusPromiseRef.current = listKbDocs()
+        .then((rows) => {
+          qaCorpusRef.current = rows
+        })
+        .catch(() => {
+          /* 失败不缓存：本轮退回列表元数据通道，下一次提问自动重试 */
+        })
+        .finally(() => {
+          qaCorpusPromiseRef.current = null
+          setQaIndexing(false)
+        })
+    }
+    await qaCorpusPromiseRef.current
+  }, [])
+
+  // T9 渐进直显：冷加载时首批数据到达即结束 loading 开始渲染，其余后台补齐（列表头部有同步提示）
+  const [docsCalibrating, setDocsCalibrating] = useState(false)
+
   const refreshDocs = useCallback(async () => {
+    // R87：数据变更（增删改/上传/移动）后失效 QA 全文语料，下一次提问重取，防旧正文滞留检索层
+    qaCorpusRef.current = null
     try {
       // R80/B-01 性能：列表走 slim=1（服务端把 content 置空，传输量降 ~90%），正文按需单条补拉
       //（loadDocContent → /api/kb_docs/{id} 全量）。消费点保真：阅读/编辑/删除回收桶共用该通道。
-      const rows = await listKbDocs({ slim: true })
-      setDocs(rows)
+      // T9：渐进更新前把已按需拉过的正文回写进新列表，避免正在读的文档内容被打回空串
+      const mergeLoadedContent = (rows: KbDocRow[]) => {
+        const loaded = docsRef.current.filter((d) => (d.content ?? "").length > 0)
+        if (loaded.length === 0) return rows
+        const map = new Map(loaded.map((d) => [d.id, d.content]))
+        return rows.map((r) => (map.has(r.id) ? { ...r, content: map.get(r.id) ?? r.content ?? "" } : r))
+      }
+      let shownFirst = false
+      const rows = await listKbDocs({
+        slim: true,
+        onBatch: (partial) => {
+          // 仅冷启动（屏幕上还没有任何数据）时渐进直显；有缓存直显时不收缩列表，等全量一次替换
+          if (shownFirst || partial.length === 0 || docsRef.current.length > 0) return
+          shownFirst = true
+          setDocs(partial)
+          setDocsLoading(false)
+          setDocsCalibrating(true)
+        },
+      })
+      setDocsCalibrating(false)
+      setDocs(mergeLoadedContent(rows))
       setDocsLoading(false)
       // kb-cap-01：命中翻页安全上限说明仍有文档未返回。旧实现只 console.warn＝对用户静默丢数据，
       // 现改为显式告知（否则「资料明明传上去了却搜不到」会被误判成没上传成功）。
@@ -262,6 +311,7 @@ export function useKnowledge() {
       void saveKbCache(userIdRef.current, visibleKbDocs(rows, userIdRef.current))
     } catch {
       setDocsLoading(false)
+      setDocsCalibrating(false)
       toast.error("知识库文档加载失败，请稍后重试")
     }
   }, [])
@@ -333,7 +383,7 @@ export function useKnowledge() {
     if (!q) return base
     // 性能第一批：列表快速筛选只扫元数据（title/summary/keywords/folder），
     // 不再对每篇 content 做全文 includes（1730 篇 × 每次按键 = 卡顿主因）；
-    // 需要全文语义检索请走顶部 BM25 搜索（searchKbDocs 已覆盖 content）。
+    // 全文语义检索走问答通道（R87：scopeDocs 优先全文语料，searchKbDocs 覆盖 content）。
     return base.filter(
       (d) =>
         d.title.toLowerCase().includes(q) ||
@@ -1122,7 +1172,9 @@ export function useKnowledge() {
 
   const scopeDocs = useCallback(
     (scope: QaScope): KbDocRow[] => {
-      const rows = visibleKbDocs(docsRef.current, userIdRef.current)
+      // R87：检索语料优先全文副本（slim 列表正文为空，仅元数据通道可用）；语料未就绪时退回列表
+      const source = qaCorpusRef.current?.length ? qaCorpusRef.current : docsRef.current
+      const rows = visibleKbDocs(source, userIdRef.current)
       if (scope === "team") return rows.filter((d) => d.visibility !== "personal")
       if (scope === "personal") return rows.filter((d) => d.visibility === "personal")
       return rows
@@ -1405,9 +1457,9 @@ export function useKnowledge() {
   }, [])
 
   const sendQaQuestion = useCallback(
-    (text?: string) => {
+    async (text?: string) => {
       const question = (text ?? qaInput).trim()
-      if (!question || qaSending) return
+      if (!question || qaSending || qaIndexing) return
       if (!requireLogin()) return
       setQaInput("")
 
@@ -1431,6 +1483,8 @@ export function useKnowledge() {
         return
       }
 
+      // R87：冷启动先备好全文语料再检索（首次有网络等待，qaIndexing 期间入口已禁用）
+      await ensureQaCorpus()
       const hits = searchKbDocs(scopeDocs(qaScopeRef.current), question, 5)
       if (hits.length === 0) {
         // D-3：检索 0 命中自动入待补答队列
@@ -1453,15 +1507,16 @@ export function useKnowledge() {
         void executeQaTurn(question, hits, match ? match.pair : null)
       }, costText)
     },
-    [qaInput, qaSending, requireLogin, scopeDocs, costConfirm, costText, executeQaTurn, enqueueQaGap, pushQaUserMsg],
+    [qaInput, qaSending, qaIndexing, requireLogin, scopeDocs, costConfirm, costText, executeQaTurn, enqueueQaGap, pushQaUserMsg, ensureQaCorpus],
   )
 
   /** high 直答后用户点「仍要问 AI」：跳过弹药库，走原检索 + LLM 流程 */
   const askAiAnyway = useCallback(
-    (question: string) => {
+    async (question: string) => {
       const q = (question ?? "").trim()
-      if (!q || qaSending) return
+      if (!q || qaSending || qaIndexing) return
       if (!requireLogin()) return
+      await ensureQaCorpus()
       const hits = searchKbDocs(scopeDocs(qaScopeRef.current), q, 5)
       if (hits.length === 0) {
         pushQaUserMsg(q)
@@ -1481,7 +1536,7 @@ export function useKnowledge() {
         void executeQaTurn(q, hits, null)
       }, costText)
     },
-    [qaSending, requireLogin, scopeDocs, costConfirm, costText, executeQaTurn, pushQaUserMsg],
+    [qaSending, qaIndexing, requireLogin, scopeDocs, costConfirm, costText, executeQaTurn, pushQaUserMsg, ensureQaCorpus],
   )
 
   const openCitation = useCallback(
@@ -1523,6 +1578,7 @@ export function useKnowledge() {
     // 数据
     docs,
     docsLoading,
+    docsCalibrating,
     refreshDocs,
     teamCount,
     personalCount,
@@ -1611,6 +1667,7 @@ export function useKnowledge() {
     setQaInput,
     qaMessages,
     qaSending,
+    qaIndexing,
     openQa,
     closeQa,
     clearQa,

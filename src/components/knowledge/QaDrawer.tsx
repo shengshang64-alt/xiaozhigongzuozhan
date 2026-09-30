@@ -25,7 +25,9 @@ type QaDrawerProps = {
   setQaInput: (v: string) => void
   qaMessages: QaChatMsg[]
   qaSending: boolean
-  sendQaQuestion: (text?: string) => void
+  // R87：sendQaQuestion 转 async（检索前等待全文语料）；qaIndexing=首次准备语料中
+  qaIndexing: boolean
+  sendQaQuestion: (text?: string) => void | Promise<void>
   clearQa: () => void
   openCitation: (citation: QaCitation) => void
   models: ModelRef[]
@@ -73,6 +75,7 @@ export function QaDrawer({
   setQaInput,
   qaMessages,
   qaSending,
+  qaIndexing,
   sendQaQuestion,
   clearQa,
   openCitation,
@@ -359,6 +362,12 @@ export function QaDrawer({
                   正在检索并生成回答…
                 </div>
               ) : null}
+              {qaIndexing && !qaSending ? (
+                <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                  正在准备全文深度检索索引…
+                </div>
+              ) : null}
             </div>
 
             <footer className="shrink-0 border-t border-border px-4 py-3">
@@ -379,7 +388,7 @@ export function QaDrawer({
                 />
                 <Button
                   onClick={() => sendQaQuestion()}
-                  disabled={qaSending || !qaInput.trim()}
+                  disabled={qaSending || qaIndexing || !qaInput.trim()}
                   aria-label="发送"
                   className="h-10 gap-1.5 bg-primary px-4 text-primary-foreground shadow-sm transition-all hover:scale-105 hover:shadow-md"
                 >
