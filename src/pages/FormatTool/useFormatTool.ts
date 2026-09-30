@@ -54,6 +54,13 @@ function stripExt(name: string): string {
   return name.replace(/\.[^.]+$/, "").slice(0, 60) || "未命名模板"
 }
 
+/** R88/F17：模板名显示层剥内部标记（如「[PDF多模态转译]」前缀）。
+ * 仅渲染时剥除，库数据与编辑回填保持原值——与 R57 显示层归一同口径，不动数据。 */
+export function stripInternalTemplateMarks(name: string): string {
+  const stripped = (name ?? "").replace(/\s*(?:\[|【)[^\]】\n]*(?:\]|】)\s*/g, " ").trim()
+  return stripped.length > 0 ? stripped : (name ?? "")
+}
+
 export function useFormatTool() {
   const [templates, setTemplates] = useState<FormatTemplateRecord[]>([])
   const [listLoading, setListLoading] = useState(true)

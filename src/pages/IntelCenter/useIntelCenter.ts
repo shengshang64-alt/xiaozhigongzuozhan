@@ -4,7 +4,7 @@ import { toast } from "sonner"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, vibexAuthHeaders, type RhAccountInfo } from "@/lib/rhLogin"
 import { buildIntelToOppQuery } from "@/lib/intelToOpp"
-import { cleanIntelBody, cleanIntelLine } from "./intelBodyClean"
+import { cleanIntelBody, cleanIntelLine, looksJunkIntel } from "./intelBodyClean"
 import { exportIntelItemsXlsx } from "@/lib/intelExports"
 import type { LlmMessage } from "@/lib/llm"
 import {
@@ -634,6 +634,10 @@ export function useIntelCenter() {
     arr.sort((a, b) => {
       const f = Number(isItemFocused(b)) - Number(isItemFocused(a))
       if (f !== 0) return f
+      // F23 垃圾条目沉底（仅排序，不隐藏；关注项优先权不变）
+      const j = Number(looksJunkIntel(a.title ?? "", a.content_snippet ?? "")) -
+               Number(looksJunkIntel(b.title ?? "", b.content_snippet ?? ""))
+      if (j !== 0) return j
       if (listSortKey === "title") return (a.title ?? "").localeCompare(b.title ?? "", "zh-CN")
       const kind = listSortKey === "added" ? "added" : "published"
       return timeOf(b, kind).localeCompare(timeOf(a, kind))
@@ -902,6 +906,147 @@ export function useIntelCenter() {
     },
     [requireLogin, refreshItems, loadSources],
   )
+
+  // T3 一键重试：自动抓取有 30 分钟单源冷却，持续失败的源只能手动重试才能提前恢复；
+  // 逐个串行补抓（单源出站超时 15s），全部结束后一次拉取最新状态统计恢复数。
+  const [retryingFailed, setRetryingFailed] = useState(false)
+  const retryFailedSources = useCallback(async () => {
+    if (!requireLogin()) return
+    const targets = sources.filter((s) => s.enabled && s.last_status === "error")
+    if (targets.length === 0) {
+      toast.info("当前没有抓取失败的信息源")
+      return
+    }
+    setRetryingFailed(true)
+    for (const s of targets) {
+      setFetchingSourceId(s.id)
+      try {
+        await apiFetch<{ ok: boolean }>("/api/intel/fetch-now", {
+          method: "POST",
+          body: JSON.stringify({ source_id: s.id }),
+        })
+      } catch {
+        // 请求级异常（断网/服务重启）不中断整轮重试，最终按服务端状态如实统计
+      }
+    }
+    setFetchingSourceId("")
+    let recovered = 0
+    try {
+      const fresh = await apiFetch<SourcesResponse>("/api/intel/sources")
+      const rows = fresh.items ?? []
+      setSources(rows)
+      const statusById = new Map(rows.map((x) => [x.id, x.last_status]))
+      recovered = targets.filter((t) => statusById.get(t.id) === "ok").length
+    } catch {
+      void loadSources()
+    }
+    if (recovered > 0) refreshItems()
+    const still = targets.length - recovered
+    toast[recovered > 0 ? "success" : "error"](
+      recovered > 0
+        ? `重试完成：${recovered} 个源恢复正常，${still} 个仍失败`
+        : `重试完成：${targets.length} 个源仍无法抓取（多为对方反爬或站点改版，可考虑停用）`
+    )
+    setRetryingFailed(false)
+  }, [requireLogin, sources, refreshItems, loadSources])
+
+  // T8 运维自助：存量情报回填（重抓正文 → summary/tags/region 重生成）是已有服务端接口，
+  // 此前只能脚本触发。这里扫描「缺描述 / 区域未知 / 摘要是垃圾」的列表条目，前端分批驱动补抓。
+  // 每请求 40 条、时间预算 95s，最多 3 轮（≈120 条封顶，未跑完的提示再点一次）；零 AI 费用。
+  const [enriching, setEnriching] = useState(false)
+  const [enrichPhase, setEnrichPhase] = useState("")
+  const runIntelEnrich = useCallback(async () => {
+    if (!requireLogin() || enriching) return
+    setEnriching(true)
+    setEnrichPhase("正在扫描待修复条目…")
+    try {
+      const todo: string[] = []
+      for (let page = 1; page <= 6 && todo.length < 120; page++) {
+        const data = await apiFetch<ItemsResponse>(
+          `/api/intel/items?page=${page}&per_page=50&item_status=pending,confirmed`,
+        )
+        const rows = data.items ?? []
+        for (const it of rows) {
+          const sum = (it.summary || "").trim()
+          const junkSum = !!sum && /<a\s|href=|https?:\/\//i.test(sum)
+          if (!sum || junkSum || !(it.region || "").trim()) todo.push(it.id)
+          if (todo.length >= 120) break
+        }
+        if (rows.length < 50) break
+      }
+      if (todo.length === 0) {
+        toast.info("没有发现待修复条目：近期条目的描述与区域都已齐备")
+        return
+      }
+      let processed = 0
+      let changed = 0
+      let cleared = 0
+      // queue = 尚未发送的条目 + 批内超时的回补项（pending_ids 只含已发送批内的超时条目，
+      // 若不保留 queue 会把 todo 里第 40 条之后从未请求过的条目静默丢掉）
+      let queue = todo
+      for (let round = 0; round < 3 && queue.length > 0; round++) {
+        setEnrichPhase(`回填中 第 ${round + 1} 轮（已处理 ${processed}/${todo.length}）…`)
+        const batch = queue.slice(0, 40)
+        queue = queue.slice(40)
+        const r = await apiFetch<{
+          ok: boolean
+          changed?: number
+          cleared_summary?: number
+          done_ids?: string[]
+          pending_ids?: string[]
+          message?: string
+        }>("/api/intel/enrich", {
+          method: "POST",
+          body: JSON.stringify({ item_ids: batch, budget_ms: 95000 }),
+        })
+        if (!r.ok) {
+          toast.error(r.message || "回填请求失败，请稍后重试")
+          return
+        }
+        changed += r.changed ?? 0
+        cleared += r.cleared_summary ?? 0
+        processed += (r.done_ids ?? []).length
+        queue = queue.concat(r.pending_ids ?? [])
+      }
+      // T4：先用 enrich 补齐正文/摘要，再做招标要素抽取（纯本地正则、零 AI 费用）——
+      // 此时证据文本更全；deadline/buyer/budget 等写入 structured 后，列表「截止」徽章与详情面板自动展示。
+      // 缺省全量模式幂等（只补空缺键），pending 非空时续跑，最多 3 轮。
+      setEnrichPhase("抽取招标要素（采购方/预算/截止/编号）…")
+      let ebUpdated = 0
+      let ebDeadline = 0
+      try {
+        for (let ebRound = 0; ebRound < 3; ebRound++) {
+          const er = await apiFetch<{
+            ok: boolean
+            updated?: number
+            hits?: { deadline?: number }
+            pending_ids?: string[]
+          }>("/api/intel/extract-bid", {
+            method: "POST",
+            body: JSON.stringify({ budget_ms: 110000 }),
+          })
+          if (!er.ok) break
+          ebUpdated += er.updated ?? 0
+          ebDeadline += er.hits?.deadline ?? 0
+          if ((er.pending_ids ?? []).length === 0) break
+        }
+      } catch {
+        // 要素抽取失败不阻断修复主流程（条目数据已回填生效）
+      }
+      refreshItems()
+      toast.success(
+        `数据修复完成：处理 ${processed} 条，更新 ${changed}` +
+          (cleared > 0 ? `，清掉垃圾摘要 ${cleared}` : "") +
+          (ebUpdated > 0 ? `；抽取招标要素 ${ebUpdated} 条（含截止 ${ebDeadline}）` : "") +
+          (queue.length > 0 ? `（还有 ${queue.length} 条未处理完，可再点一次续跑）` : ""),
+      )
+    } catch {
+      toast.error("数据修复失败：连不上情报服务")
+    } finally {
+      setEnriching(false)
+      setEnrichPhase("")
+    }
+  }, [requireLogin, enriching, refreshItems])
 
   // ------------------------------ 收藏 ------------------------------
   const [starRows, setStarRows] = useState<IntelStarRow[]>([])
@@ -1655,5 +1800,10 @@ export function useIntelCenter() {
     toggleSource,
     deleteSource,
     fetchSourceNow,
+    retryingFailed,
+    retryFailedSources,
+    enriching,
+    enrichPhase,
+    runIntelEnrich,
   }
 }

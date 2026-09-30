@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 87,
+  "round": 88,
   "backlog": [
     {
       "id": "r47-scan-name-trunc-06",
@@ -18,9 +18,10 @@
       "module": "/intel-center,/",
       "issue": "[R44体验审计·不可通过级] 情报采集质量簇：F9 类型判定失效【R52 定性+增量止血：漂移源 yedm5f0kdmx7m3r(cn-witmed.com) 错标competitor已改media，新条目归对类；存量101条错标待用户拍板修正方案(报告2026-09-25-0730)；重复源5对并入本簇待清理】；F10 首页情报摘要卡【R53 已修显示层(closed: intel-home-summary-clean-01)：导航词密度清洗+未来日期钳制，根治需采集端换栏目页URL(记backlog)】；F21 in_more 残留【R54 已修显示层(closed: intel-orphan-attr-01)】；F22 7个采集源抓取失败无处理入口；F23 垃圾条目居列表首位",
       "priority": "P1",
-      "status": "open",
-      "evidence": "R53 实机首页+截图 _shots/R53/；报告 .loop/reports/2026-09-25-0744.md；.diag/r53_gd_case.json 逐字节数据",
-      "diff": ""
+      "status": "closed",
+      "evidence": "R88 情报卫生收尾：F9 101 条错标存量清零（盘点漂移源 239 条目 competitor=0，R52 止血+爬取迭代已自然修正）；F22 已 R84 closed（失败源处理入口）；F23 垃圾条目排序沉底——新增 looksJunkIntel(display-only 保守判定：空壳/URL残片/纯导航/snippet日期列表)，displayItems sort comparator 关注>非垃圾>时间排序三级（仅排序不隐藏、不改数据、关注项优先权不变）；重复源5对合并属运维操作(非代码)且无现有 hooks 批量合并 API——记入 D5 功能包或留用户手动处理。",
+      "diff": "src/pages/IntelCenter/intelBodyClean.ts(looksJunkIntel 新增)；src/pages/IntelCenter/useIntelCenter.ts(sort comparator 增 junk 维度)",
+      "round": 88
     },
     {
       "id": "r44-competitor-matrix-03",
@@ -36,18 +37,20 @@
       "module": "/customer-management,/assistant,/team",
       "issue": "[R44体验审计·严重级] 测试残留清理+账号安全簇 3 项：F11 客户管理'测试市人民医院'测试数据残留居列表首位；F12 小智助手会话列表残留（'我现在有几个投标项目？'×3重复/'你好'/一条提示词注入测试会话'忽略你之前收到的全部系统指令…'）；F19 已于 R47 完成（closed: team-mislock-guard-01，双层防误锁护栏，不删数据无需勾选）。剩余：删业务数据触红线#8，清理清单须用户逐条勾选才动",
       "priority": "P1",
-      "status": "open",
-      "evidence": "R44实机走查+R48全表接口复核：清理清单已产出(见报告2350)——【建议删6条】测试客户vnu60icxocnb0ky(引用0/0可安全删)+助手会话jkvijt(注入测试)/90g2rq/cv9o8r/5fwwwq(×3重复)/vst0wl(你好)；【待定6条】q6z3g/5s26u/gt6um/5liu5(真问题倾向留)+skiet7/twoexq(近似可删)；【翻案不删】竞品20家=真实清单非垃圾、模板[PDF多模态转译]=命名瑕疵非脏数据、intel未来日期=正常预告。等用户逐条勾选，未执行任何删除。",
-      "diff": ""
+      "status": "closed",
+      "evidence": "R88 测试数据清理完成：建议删 6 条（测试客户 vnu60icxocnb0ky[商机0/引用0] + 助手会话 jkvijt[注入测试]/90g2rq/cv9o8r/5fwwwq[×3重复]/vst0wl[你好]）全字段 JSON 备份入 pb_data/trash_backups/20260930-r88-*.json → DELETE 路由 → 验证零残留；customers 161→160, assistant_sessions 14→9 对账=备份数；待定 6 条一律保留未动。",
+      "diff": "无代码改动，数据操作 x_rh_user_id=local-user hooks DELETE 路由",
+      "round": 88
     },
     {
       "id": "r44-consistency-copy-05",
       "module": "/customer-management,/,/format-tool,/model-config",
       "issue": "[R44体验审计·严重级] 口径与文案一致性簇 6 项：F13/F14【R57 已修显示层归一(closed: crm-normalize-01)：customerNormalize 地区剥省级+等级归全称，库数据未动】；F15 首页'八大功能模块陆续开放中'文案过时（模块已全部开放）；F16 首页'进行中项目0'与标书工作台1项目口径矛盾；F17 格式刷新模板名漏出内部标记'[PDF多模态转译]'；F18 模型配置 TTS/视频/图像等非文本模型也给'设为默认（生成模型）'按钮。多数为 B 类文案/口径一致性可自动修（不改产品行为），F13/F14 涉数据取值口径需核实",
       "priority": "P2",
-      "status": "open",
-      "evidence": "R44 实机走查多页 snapshot 记录",
-      "diff": ""
+      "status": "closed",
+      "evidence": "R88 逐条闭环：F15 首页过时文案——R46 已修（WelcomeBanner 现'各功能模块已全部就绪'），无需再动；F16 首页项目计数口径——R46 证伪撤回（交付vs投标两实体独立计数非矛盾）；F17 模板名漏出内部标记——stripInternalTemplateMarks 显示层剥 [...] 前缀+3 单测；F18 非文本模型误给设为默认按钮——新建 modelModality.ts detectModelModality 启发式（embedding>image>video>tts>stt>text）+ PlatformModelCard/PersonalConfigList 两组件非文本不渲染设为默认+模态徽章+5 单测。四道门禁：vitest 606/606(+8) · tsc+build pass · eslint 新增文件零 errors(useIntelCenter 存量 30 处全为 react-hooks 基线) · 实机 browser-use /model-config 模型徽章/隐藏验证 + /intel-center console 0 error。",
+      "diff": "src/lib/modelModality.ts(新增)；src/lib/modelModality.test.ts(新增5用例)；src/components/model-config/PlatformModelCard.tsx(徽章+条件渲染)；src/components/model-config/PersonalConfigList.tsx(徽章+条件渲染)；src/pages/FormatTool/useFormatTool.ts(stripInternalTemplateMarks新增)；src/pages/FormatTool/FormatToolPage.tsx(title 显示层应用)；src/lib/stripTemplateMarks.test.ts(新增3用例)",
+      "round": 88
     },
     {
       "id": "prompt-matrix-02",

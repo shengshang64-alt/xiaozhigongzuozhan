@@ -116,6 +116,26 @@ export function displayizeIntel(raw: string, max = 120): string {
   return text
 }
 
+/**
+ * R88/F23：判断一条情报条目是否"明显垃圾"（仅用于列表排序沉底，不改数据不隐藏）。
+ * 保守：只命中确定性极高的残片/导航/空壳条目，宁漏不误杀。
+ */
+export function looksJunkIntel(title: string, snippet: string): boolean {
+  const t = String(title ?? "").trim()
+  // 空标题 / 短于 4 字符(去标点后)
+  if (t.replace(/[\p{P}\p{S}\s]/gu, "").length < 4) return true
+  // URL 路径 / 静态资源残片
+  if (/^(?:https?:\/\/|[a-z]:\\|[./]|[a-z]{2,10}[/.])/i.test(t) && /\.(?:html?|jpe?g|png|gif|css|js|json|xml|pdf|zip|rar)\b/i.test(t)) return true
+  // 纯导航词聚合（标题每个词都命中 NAV_TOKEN_RE）
+  const words = t.split(/[\s|·、,，]+/).filter(Boolean)
+  if (words.length >= 2 && words.every((w) => NAV_TOKEN_RE.test(w))) return true
+  // snippet 主体是日期列表（同一条目 snippet 有 3 个以上 "20XX-XX-XX" 且标题也出现在 snippet 中→列表页抓取残片）
+  const snipStr = String(snippet ?? "")
+  const dateCnt = (snipStr.match(/20\d{2}-\d{2}-\d{2}/g) ?? []).length
+  if (dateCnt >= 3 && snipStr.includes(t.slice(0, 10))) return true
+  return false
+}
+
 // ---------------------------------------------------------------------------
 // 内部工具
 // ---------------------------------------------------------------------------

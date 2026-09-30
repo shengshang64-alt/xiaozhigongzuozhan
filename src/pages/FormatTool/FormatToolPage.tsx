@@ -31,6 +31,7 @@ import {
 } from "@/pages/BidWorkspace/bidTypes"
 import { computeFormatDiff, SCOPE_OPTIONS, type FormatScope } from "./formatDiff"
 import type { UseFormatTool } from "./useFormatTool"
+import { stripInternalTemplateMarks } from "./useFormatTool"
 import type { FormatSpec } from "./formatSpec"
 
 const HEADING_LABEL = ["一级标题", "二级标题", "三级标题", "四级标题", "五级标题", "六级标题"]
@@ -162,7 +163,7 @@ export function FormatToolPage(vm: UseFormatTool) {
                     <div className="min-w-0 flex-1">
                       <TemplateRadio
                         checked={vm.editingId === t.id}
-                        title={t.name}
+                        title={stripInternalTemplateMarks(t.name)}
                         desc={`${t.source_file_name ? `来源：${t.source_file_name}` : "手动定义"} · ${summaryOfTemplate(t.format_settings)}`}
                         isDefault={t.is_default}
                         onSelect={() => vm.editTemplate(t)}

@@ -1,4 +1,5 @@
 import { AlertTriangle, Cpu, FlaskConical, Loader2, Pencil, Plus, RefreshCw, Star, Trash2 } from "lucide-react"
+import { detectModelModality, isTextGenerationModel, modalityBadgeClass, modalityLabel } from "@/lib/modelModality"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -172,6 +173,7 @@ export function PersonalConfigList({
               <ul className="divide-y divide-border">
                 {(cfg.models ?? []).map((m) => {
                   const isDefault = cfg.default_model === m.id
+                  const modality = detectModelModality(m.id)
                   return (
                     <li key={m.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
                       <span
@@ -181,6 +183,11 @@ export function PersonalConfigList({
                       <span className={`min-w-0 flex-1 truncate font-mono text-sm ${m.enabled ? "text-foreground" : "text-muted-foreground"}`}>
                         {m.id}
                       </span>
+                      {modality !== "text" && (
+                        <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] leading-none ${modalityBadgeClass(modality)}`}>
+                          {modalityLabel(modality)}
+                        </span>
+                      )}
                       {isDefault && (
                         <span className="badge-neutral">
                           系统默认
@@ -192,16 +199,24 @@ export function PersonalConfigList({
                         labelText={`启用或停用 ${m.id}`}
                         onToggle={() => onToggleModel(cfg, m.id, !m.enabled)}
                       />
-                      <button
-                        type="button"
-                        disabled={busy || isDefault}
-                        onClick={() => onSetDefault(cfg, m.id)}
-                        title={isDefault ? "已是系统默认模型" : "设为默认后会自动启用该模型"}
-                        className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-card-foreground shadow-sm transition-colors hover:bg-secondary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <Star className="h-3 w-3" />
-                        设为默认
-                      </button>
+                      {(isTextGenerationModel(m.id) || isDefault) && (
+                        <button
+                          type="button"
+                          disabled={busy || isDefault || !isTextGenerationModel(m.id)}
+                          onClick={() => onSetDefault(cfg, m.id)}
+                          title={
+                            !isTextGenerationModel(m.id)
+                              ? "非文本模型不能作为系统默认生成模型"
+                              : isDefault
+                                ? "已是系统默认模型"
+                                : "设为默认后会自动启用该模型"
+                          }
+                          className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-card-foreground shadow-sm transition-colors hover:bg-secondary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Star className="h-3 w-3" />
+                          设为默认
+                        </button>
+                      )}
                       <button
                         type="button"
                         disabled={busy}

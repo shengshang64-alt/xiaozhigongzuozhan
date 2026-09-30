@@ -1,5 +1,6 @@
 import { FlaskConical, Loader2, Star } from "lucide-react"
 import type { GatewayConfig } from "@/lib/modelGateway"
+import { detectModelModality, isTextGenerationModel, modalityBadgeClass, modalityLabel } from "@/lib/modelModality"
 
 type PlatformModelCardProps = {
   config: GatewayConfig | null
@@ -61,15 +62,25 @@ export function PlatformModelCard({ config, busy, onToggleModel, onSetDefault, o
           <ul className="space-y-2">
             {(config.models ?? []).map((m) => {
               const isDefault = config.default_model === m.id
+              const modality = detectModelModality(m.id)
               return (
                 <li
                   key={m.id}
                   className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-background px-3 py-2.5 shadow-sm transition-shadow hover:shadow-md"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-foreground">{m.id}</p>
+                    <p className="flex items-center gap-1.5">
+                      <span className="truncate text-sm font-medium text-foreground">{m.id}</span>
+                      {modality !== "text" && (
+                        <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] leading-none ${modalityBadgeClass(modality)}`}>
+                          {modalityLabel(modality)}
+                        </span>
+                      )}
+                    </p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      长文本生成稳定，适合方案、标书与 PPT 内容
+                      {modality === "text"
+                        ? "长文本生成稳定，适合方案、标书与 PPT 内容"
+                        : `非文本模态（${modalityLabel(modality)}），不参与方案/标书正文生成`}
                     </p>
                   </div>
                   {isDefault && (
@@ -84,22 +95,26 @@ export function PlatformModelCard({ config, busy, onToggleModel, onSetDefault, o
                       labelText={`启用或停用 ${m.id}`}
                       onToggle={() => onToggleModel(config, m.id, !m.enabled)}
                     />
-                    <button
-                      type="button"
-                      disabled={busy || isDefault || !m.enabled}
-                      onClick={() => onSetDefault(config, m.id)}
-                      title={
-                        isDefault
-                          ? "已是系统默认模型"
-                          : !m.enabled
-                            ? "模型已停用，先启用后才能设为默认"
-                            : "设为默认后会自动启用该模型"
-                      }
-                      className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-card-foreground shadow-sm transition-colors hover:bg-secondary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <Star className="h-3.5 w-3.5" />
-                      设为默认
-                    </button>
+                    {(isTextGenerationModel(m.id) || isDefault) && (
+                      <button
+                        type="button"
+                        disabled={busy || isDefault || !m.enabled || !isTextGenerationModel(m.id)}
+                        onClick={() => onSetDefault(config, m.id)}
+                        title={
+                          !isTextGenerationModel(m.id)
+                            ? "非文本模型不能作为系统默认生成模型"
+                            : isDefault
+                              ? "已是系统默认模型"
+                              : !m.enabled
+                                ? "模型已停用，先启用后才能设为默认"
+                                : "设为默认后会自动启用该模型"
+                        }
+                        className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-card-foreground shadow-sm transition-colors hover:bg-secondary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Star className="h-3.5 w-3.5" />
+                        设为默认
+                      </button>
+                    )}
                     <button
                       type="button"
                       disabled={busy || !m.enabled}

@@ -2,6 +2,17 @@
 
 > 最新在最上面。每条一句话，点开的详细报告在 `.loop/reports/`。
 
+## 2026-09-30 19:30 · 第 88 轮（D2 数据治理与口径一致性——闭环）
+
+- **F18 模型模态识别**：新建 `src/lib/modelModality.ts`（启发式检测 embedding/image/video/tts/stt/text），PlatformModelCard + PersonalConfigList 非文本模型不渲染"设为默认"按钮+显示彩色模态徽章。实机截图验证：ASR/TTS/视频/图像模型各带正确徽章、无设默认按钮。
+- **F17 模板名显示层剥内部标记**：新增 `stripInternalTemplateMarks`（仅渲染时正则去 [...] / 【...】，库数据不动），FormatToolPage title 应用。
+- **F15/F16 确认闭环**：R46 已分别修复/证伪撤回。
+- **F23 垃圾条目排序沉底**：新增 `looksJunkIntel` 保守判定（空壳/URL/导航/日期列表=高置信垃圾），displayItems sort 增加 junk 维度沉底（不隐藏、不改数据、关注优先权不变）。
+- **测试数据清理**：6 条计划批准测试残留全走"全字段 JSON 备份 → DELETE → 对账"（customers 161→160, sessions 14→9），备份在 `pb_data/trash_backups/`。
+- **情报卫生 F9 存量清零**：盘点漂移源 competitor 错标=0，已由 R52+爬取自然修正；r44-intel-hygiene-02 整簇 closed。
+- **门禁**：vitest 606/606(+8) · build pass · eslint 新增零 errors · 实机 /model-config+/intel-center console 0 error，截图留存
+- **需要您做的**：无。
+
 ## 2026-09-30 19:20 · 第 87 轮（P0·知识库问答全文检索断链修复+语义检索评测撤销）
 
 - **评测坐实真凶**：用真实语料 6998 篇构造 20 条『只出现在正文』的稀有词探针跑 A/B——现网列表形态（slim，正文为空）命中率 **0/20**，带正文形态 **19/20**。R80 列表瘦身把问答的全文检索通道静默切断了：用户问正文里的内容会得到『知识库中没找到』，还误入待补答队列。这不是检索算法不行，是喂给它的数据被瘦身掉了。
