@@ -57,7 +57,7 @@ type SlideEditorProps = {
   /** 逐页联网搜图（默认拿本页 imageHint/标题作为 query） */
   onSearchImage?: (query?: string) => Promise<boolean>
   /** 逐页 AI 生图（默认拿本页 imageHint/标题作为提示词） */
-  onAIGenerateImage?: (prompt?: string) => Promise<boolean>
+  onAIGenerateImage?: (prompt?: string) => void
   /** 当前首选图搜 Provider，受控于上层 */
   autoFigureProvider?: ImageSearchProvider
   setAutoFigureProvider?: (v: ImageSearchProvider) => void

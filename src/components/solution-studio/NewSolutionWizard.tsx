@@ -103,6 +103,23 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
     const presets = info.systems.filter((s) => inPresets(s))
     setInfo({ ...info, systems: [...presets, ...customPreview.filter((s) => !presets.includes(s))] })
   }
+  // T5 内联必填校验：第二步「生成大纲」空值时当场标红，不再只靠 toast
+  const [submitTried, setSubmitTried] = useState(false)
+  // 重开向导时复位提示（React 官方推荐的「渲染期调整状态」，非 effect 内 setState）
+  const [prevOpen, setPrevOpen] = useState(p.wizardOpen)
+  if (prevOpen !== p.wizardOpen) {
+    setPrevOpen(p.wizardOpen)
+    if (p.wizardOpen) setSubmitTried(false)
+  }
+  const hospitalError = submitTried && !p.formHospital.trim()
+  const systemsError = submitTried && info.systems.length === 0 && customPreview.length === 0
+  const trySubmitInfo = () => {
+    commitCustomSystems()
+    setSubmitTried(true)
+    if (!p.formHospital.trim()) return
+    if (info.systems.length === 0 && customPreview.length === 0) return
+    p.submitWizardInfo()
+  }
   return (
     <Dialog open={p.wizardOpen} onOpenChange={(open) => !open && p.closeWizard()}>
       <DialogContent
@@ -126,8 +143,7 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
             p.setWizardStep(2)
           } else if (p.wizardStep === 2) {
             if (p.outlineLoading) return
-            commitCustomSystems()
-            p.submitWizardInfo()
+            trySubmitInfo()
           } else if (p.wizardStep === 3) {
             if (p.outlineLoading || p.confirming) return
             void p.confirmOutline()
@@ -172,6 +188,7 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
                   <button
                     key={t.key}
                     type="button"
+                    aria-pressed={selected}
                     onClick={() => p.setFormTypeKey(t.key)}
                     className={`rounded-lg border p-4 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                       selected
@@ -277,7 +294,10 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
                 value={p.formHospital}
                 onChange={(e) => p.setFormHospital(e.target.value)}
                 placeholder="如：XX 市人民医院"
+                aria-invalid={hospitalError}
+                className={hospitalError ? "border-destructive focus-visible:ring-destructive" : undefined}
               />
+              {hospitalError ? <p role="alert" className="mt-1 text-xs text-destructive">请填写医院名称</p> : null}
             </div>
             <div>
               <FieldLabel text="医院等级" />
@@ -330,6 +350,7 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
                     <button
                       key={sys}
                       type="button"
+                      aria-pressed={on}
                       onClick={() => toggleSystem(sys)}
                       className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
                         on
@@ -342,6 +363,9 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
                   )
                 })}
               </div>
+              {systemsError ? (
+                <p role="alert" className="mt-1 text-xs text-destructive">请至少勾选或填写一个建设系统</p>
+              ) : null}
               <Input
                 className="mt-2"
                 value={customSystemsDraft}
@@ -419,10 +443,7 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
             <div className="flex items-center gap-2">
               <SkillPickerFor scope="solution-outline" source={p.outlineSkills} align="right" />
               <Button
-                onClick={() => {
-                  commitCustomSystems()
-                  p.submitWizardInfo()
-                }}
+                onClick={trySubmitInfo}
                 disabled={p.outlineLoading}
                 className="bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
               >

@@ -1,6 +1,7 @@
 import { useMemo } from "react"
 import { TrendingUp } from "lucide-react"
 import type { BidProjectRecord } from "@/pages/BidWorkspace/bidTypes"
+import { formatMoney } from "@/lib/money"
 
 // R006（B-3 阶段一）：投标复盘汇总——纯统计零 AI。bid_result/bid_amount(万元)/lost_reason 字段
 // 早已存在，本组件只做聚合展示；落标原因结构化表单列为阶段二。
@@ -85,7 +86,7 @@ export function BidReviewSummary({ projects }: { projects: BidProjectRecord[] })
             value={stats.winRate === null ? "—" : `${stats.winRate}%`}
             hint={stats.winRate === null ? "暂无已结束项目" : `${stats.won}/${stats.finished} 个已结束项目`}
           />
-          <StatCard label="中标金额合计" value={`${stats.wonAmount.toLocaleString("zh-CN")}`} hint="单位：万元（按项目录入值累计）" />
+          <StatCard label="中标金额合计" value={formatMoney(stats.wonAmount)} hint="单位：万元（按项目录入值累计）" />
           <StatCard label="结果待回填" value={`${stats.pendingCount}`} hint="在项目详情录入中标/落标与金额" />
           <StatCard
             label="落标原因 Top3"

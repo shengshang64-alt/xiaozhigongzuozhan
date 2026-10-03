@@ -144,7 +144,7 @@ export const PROJECT_TYPES = ["方案", "标书", "PPT", "报价"] as const
 
 // home-02：今日必看行动条——置顶的首屏唯一强调整点，纯客户端归集已拉取数据（零新增请求/零后端）
 export type MustSeeGroup = "overdue" | "dueToday" | "active"
-export type MustSeeCategory = "todo" | "opp" | "project"
+export type MustSeeCategory = "todo" | "opp" | "project" | "qual"
 export type MustSeeItem = {
   id: string
   group: MustSeeGroup
@@ -178,10 +178,13 @@ type IntelItemRow = {
   created: string
 }
 
+// 2026-09-26 Q5 整改（全局质量规范）：item_type 是「信息源类型」不是「公告结果」——
+// bid 表示该条来自招标类信息源（可能还在招标，未必中标），旧映射 bid→"中标" 属于错标，
+// 曾把公开招标公告全部打上「中标」徽章。改为「招标」，与情报中心「招标中标」类目对齐。
 const INTEL_TAG_BY_TYPE: Record<string, string> = {
   policy: "政策",
   competitor: "竞品",
-  bid: "中标",
+  bid: "招标",
   media: "媒体",
 }
 
@@ -693,6 +696,23 @@ export function useHome() {
   const [intelPendingCount, setIntelPendingCount] = useState(0)
   const [intelLoading, setIntelLoading] = useState(false)
 
+  // Q20 配套（2026-09-28）：资质台账预警联动驾驶舱——已过期/30 天内到期的证书数。
+  // 拉取失败静默为 0（资质台账未建时不打扰首页），有风险才提示。
+  const [qualAlertCount, setQualAlertCount] = useState(0)
+  useEffect(() => {
+    let alive = true
+    apiFetch<{ alerts?: unknown[] }>("/api/qual_certs/summary")
+      .then((data) => {
+        if (alive) setQualAlertCount((data.alerts ?? []).length)
+      })
+      .catch(() => {
+        /* 资质台账未建或未登录：静默 */
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
   const loadIntelItems = useCallback(async () => {
     setIntelLoading(true)
     try {
@@ -720,25 +740,6 @@ export function useHome() {
 
   const toggleIntel = useCallback((intelId: string) => {
     setExpandedIntelId((prev) => (prev === intelId ? null : intelId))
-  }, [])
-
-  // ------------------------------ 占位入口 ------------------------------
-  const [assistantOpen, setAssistantOpen] = useState(false)
-  const [searchValue, setSearchValue] = useState("")
-
-  const toggleAssistant = useCallback(() => setAssistantOpen((prev) => !prev), [])
-
-  const handleSearchSubmit = useCallback(() => {
-    toast.info("全局搜索建设中，敬请期待")
-    setSearchValue("")
-  }, [])
-
-  const handleModuleClick = useCallback((label: string, built: boolean) => {
-    if (built) {
-      window.scrollTo({ top: 0, behavior: "smooth" })
-      return
-    }
-    toast.info(`「${label}」建设中，敬请期待`)
   }, [])
 
   // ------------------------------ 派生数据 ------------------------------
@@ -851,8 +852,22 @@ export function useHome() {
 
     active.sort((a, b) => (a.project?.deadline || "9999-12-31").localeCompare(b.project?.deadline || "9999-12-31"))
 
+    // 资质预警（Q20 配套）：已过期/临期证书进「今日必看」overdue 组置顶——过期证书与逾期待办
+    // 同属"已经出问题"的事，提示必须有出路（route 直达资质台账）
+    if (qualAlertCount > 0) {
+      overdue.push({
+        id: "qual_alerts",
+        group: "overdue",
+        category: "qual",
+        title: `${qualAlertCount} 项资质已过期或临期`,
+        meta: "资质台账",
+        detail: "证书过期直接废标，点击核实",
+        route: "/qual-certs",
+      })
+    }
+
     return { overdue, dueToday, active, total: overdue.length + dueToday.length + active.length }
-  }, [visibleTodos, followDueOpps, projects, nowTick])
+  }, [visibleTodos, followDueOpps, projects, nowTick, qualAlertCount])
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours()
@@ -914,16 +929,10 @@ export function useHome() {
     // 情报
     intelItems,
     intelPendingCount,
+    qualAlertCount,
     intelLoading,
     expandedIntelId,
     toggleIntel,
-    // 占位入口
-    assistantOpen,
-    toggleAssistant,
-    searchValue,
-    setSearchValue,
-    handleSearchSubmit,
-    handleModuleClick,
     // 活动流
     activityEvents,
     activityLoading,

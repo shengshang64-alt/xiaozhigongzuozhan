@@ -4,6 +4,13 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { formatDateTimeDisplay } from "@/lib/dateDisplay"
+import {
+  filterEvalRowIndexes,
+  isGapBidItem,
+  isLowScoreBidItem,
+  type EvalRowFilter,
+} from "@/components/bid-workspace/evalItemFilter"
 import type { EvalPath, UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import { EVAL_PATH_LABEL } from "@/pages/BidWorkspace/useBidWorkspace"
 import {
@@ -54,11 +61,16 @@ export function EvalResultView({
   /** 循环 6 A1：归档只读——人工打分输入禁用（仍展示既有分数），QuickToolsPanel 只读复用不传 */
   locked?: boolean
 }) {
+  const [filter, setFilter] = useState<EvalRowFilter>("none")
   if (!aiReview) return null
   const aiTotal = aiReview.total_score
   const manualTotal = manualReview?.total_score ?? 0
   const maxTotal = aiReview.items.reduce((sum, i) => sum + (i.max_score || 0), 0)
   const editable = !!onManualScore && !!manualReview
+  const lowCount = aiReview.items.filter((it) => isLowScoreBidItem(it)).length
+  const gapCount = editable ? aiReview.items.filter((it, i) => isGapBidItem(it, manualReview?.items[i])).length : 0
+  const activeFilter: EvalRowFilter = lowCount || gapCount ? filter : "none"
+  const visibleIdx = filterEvalRowIndexes(aiReview.items, manualReview?.items, activeFilter)
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -70,19 +82,48 @@ export function EvalResultView({
           <p className="text-2xl font-bold text-foreground">{editable ? manualTotal : "—"}</p>
           <p className="mt-1 text-xs text-muted-foreground">人工打分总分</p>
         </div>
-        <div className="rounded-lg border border-border bg-card p-4 text-center shadow-md">
-          <p className={`text-2xl font-bold ${editable && Math.abs(aiTotal - manualTotal) >= 5 ? "text-destructive" : "text-foreground"}`}>
+        <button
+          type="button"
+          onClick={() => setFilter((f) => (f === "gap" ? "none" : "gap"))}
+          disabled={!editable || !gapCount}
+          aria-pressed={activeFilter === "gap"}
+          title={editable && gapCount ? "点击只看 AI 与人工分差≥2 分的项" : undefined}
+          className={`rounded-lg border p-4 text-center shadow-md transition-colors ${
+            activeFilter === "gap" ? "border-destructive/50 bg-destructive/10" : "border-border bg-card"
+          } ${editable && gapCount ? "hover:bg-secondary" : "disabled:cursor-default"}`}
+        >
+          <p className={`text-2xl font-bold ${activeFilter === "gap" || (editable && Math.abs(aiTotal - manualTotal) >= 5) ? "text-destructive" : "text-foreground"}`}>
             {editable ? Math.round((aiTotal - manualTotal) * 10) / 10 : "—"}
           </p>
-          <p className="mt-1 text-xs text-muted-foreground">AI 与人工分差</p>
-        </div>
-        <div className="rounded-lg border border-border bg-card p-4 text-center shadow-md">
-          <p className="text-2xl font-bold text-foreground">
-            {aiReview.items.filter((i) => i.max_score > 0 && i.ai_score / i.max_score < 0.6).length}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">低得分率评分项</p>
-        </div>
+          <p className="mt-1 text-xs text-muted-foreground">AI 与人工分差{editable && gapCount ? ` · ${gapCount} 项≥2` : ""}</p>
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilter((f) => (f === "low" ? "none" : "low"))}
+          disabled={!lowCount}
+          aria-pressed={activeFilter === "low"}
+          title={lowCount ? "点击只看低得分率（得分率<60%）的项" : undefined}
+          className={`rounded-lg border p-4 text-center shadow-md transition-colors ${
+            activeFilter === "low" ? "border-destructive/50 bg-destructive/10" : "border-border bg-card"
+          } ${lowCount ? "hover:bg-secondary" : "disabled:cursor-default"}`}
+        >
+          <p className={`text-2xl font-bold ${activeFilter === "low" ? "text-destructive" : "text-foreground"}`}>{lowCount}</p>
+          <p className="mt-1 text-xs text-muted-foreground">低得分率评分项{lowCount ? " · 点击筛选" : ""}</p>
+        </button>
       </div>
+
+      {activeFilter !== "none" && (
+        <p className="flex items-center justify-between rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-foreground">
+          <span>
+            {activeFilter === "low"
+              ? `只看低得分率项（${visibleIdx.length}/${aiReview.items.length}）`
+              : `只看 AI 与人工分差≥2 分的项（${visibleIdx.length}/${aiReview.items.length}）`}
+          </span>
+          <button type="button" onClick={() => setFilter("none")} className="font-medium text-primary hover:underline">
+            显示全部
+          </button>
+        </p>
+      )}
 
       {aiReview.summary && (
         <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 shadow-md">
@@ -107,9 +148,10 @@ export function EvalResultView({
               </tr>
             </thead>
             <tbody>
-              {aiReview.items.map((item, i) => {
+              {visibleIdx.map((i) => {
+                const item = aiReview.items[i]
                 const manualItem = manualReview?.items[i]
-                const lowRate = item.max_score > 0 && item.ai_score / item.max_score < 0.6
+                const lowRate = isLowScoreBidItem(item)
                 const gap = editable && manualItem && manualItem.manual_score > 0 ? Math.abs(item.ai_score - manualItem.manual_score) : 0
                 return (
                   <tr key={i} className="border-b border-border/60 align-top last:border-0">
@@ -156,6 +198,13 @@ export function EvalResultView({
                   </tr>
                 )
               })}
+              {visibleIdx.length === 0 && (
+                <tr>
+                  <td className="px-3 py-6 text-center text-xs text-muted-foreground" colSpan={editable ? 6 : 5}>
+                    无符合条件的评分项
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -332,7 +381,7 @@ export function MockEvalPanel({
           <>
             <p className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground">
               <Gauge className="h-3.5 w-3.5 text-primary" />
-              评标时间：{new Date(aiReview.reviewed_at).toLocaleString("zh-CN")}
+              评标时间：{formatDateTimeDisplay(aiReview.reviewed_at)}
               {manualReview ? " · 人工打分即时保存，可直接在表格中填写" : " · 点「生成人工打分表」开始独立评分"}
             </p>
 

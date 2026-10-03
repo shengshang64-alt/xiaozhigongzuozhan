@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
-import { getPocketBaseUrl } from "@/lib/pb"
-import { decodeRhToken, vibexAuthHeaders, type RhAccountInfo } from "@/lib/rhLogin"
+import { decodeRhToken, type RhAccountInfo } from "@/lib/rhLogin"
+import { pbJsonRequest } from "@/lib/pbJson"
 import {
   chatViaGateway,
   costTextForModel,
@@ -12,6 +12,7 @@ import {
 } from "@/lib/modelGateway"
 import { useCostConfirm } from "@/hooks/useCostConfirm"
 import { normalizeRegion } from "./customerNormalize"
+import { localizeLlmError } from "@/lib/llmError"
 import { useScopeSkills } from "@/hooks/useScopeSkills"
 import { injectSkillBlock, skillBlockFor } from "@/lib/skillCore"
 import {
@@ -54,20 +55,7 @@ import {
 // ---------------------------------------------------------------------------
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${getPocketBaseUrl()}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...vibexAuthHeaders(),
-      ...(init?.headers ?? {}),
-    },
-  })
-  if (!res.ok) {
-    const err = new Error(`HTTP ${res.status}`) as Error & { httpStatus?: number }
-    err.httpStatus = res.status
-    throw err
-  }
-  return (await res.json()) as T
+  return pbJsonRequest<T>(path, init, { exposeHttpStatus: true })
 }
 
 type ListResponse<T> = { items: T[]; page: number; perPage: number; totalItems: number }
@@ -151,16 +139,18 @@ function normalizeBidRow(b: BidProjectLinkRow): BidProjectLinkRow {
   }
 }
 
-const LLM_ERROR_ZH: Record<string, string> = {
-  timeout: "AI 处理超时（可能服务器繁忙），请稍后重试",
-  not_found: "请求未能到达 AI，请检查网络后重试",
+// 文案基表在 @/lib/llmError（全站唯一），此处只覆写客户管理侧专属措辞。
+// 旧实现在未收录错误码时拼 `AI 调用失败：${error}`，会把内部码原样暴露给用户，
+// 收敛后统一走中文兜底（用户可见文案禁止暴露内部字段名/错误码）。
+const CUSTOMER_ERROR_ZH: Record<string, string> = {
   rh_login_required: "该操作当前不可用",
-  insufficient_balance: "RunningHub 账户余额不足，请充值后重试",
 }
 
 function mapLlmError(error?: string): string {
-  if (!error) return "AI 调用失败，请稍后重试"
-  return LLM_ERROR_ZH[error] ?? `AI 调用失败：${error}`
+  return localizeLlmError(error, {
+    generic: "AI 调用失败，请稍后重试",
+    copy: CUSTOMER_ERROR_ZH,
+  })
 }
 
 export interface OppDraft {
@@ -1730,6 +1720,35 @@ export function useCustomerManagement() {
     [userId],
   )
 
+  // T7（2026-09-27 质量台账）：客户删除通道——后端 DELETE /api/customers/{id} 早已存在但 UI 无入口，
+  // 建错的客户（如测试数据）无法清理。删除只移除客户记录本身；商机/跟进记录不级联删除，
+  // 确认弹窗文案中如实提示归属关系变化，不隐瞒也不虚报。
+  const [deletingCustomerId, setDeletingCustomerId] = useState<string | null>(null)
+  const deleteCustomer = useCallback(
+    async (customerId: string) => {
+      if (!userId) return
+      setDeletingCustomerId(customerId)
+      try {
+        await apiFetch<{ ok: boolean }>(`/api/customers/${encodeURIComponent(customerId)}`, {
+          method: "DELETE",
+        })
+        setCustomers((prev) => prev.filter((c) => c.id !== customerId))
+        // 服务端搜索结果缓存同步剔除，避免删除后搜索列表仍显示已删客户
+        setServerSearchRows((prev) => (prev ? prev.filter((c) => c.id !== customerId) : prev))
+        setTotalCustomers((t) => (t == null ? null : Math.max(t - 1, 0)))
+        // 详情面板正打开该客户则关闭，商机面板同步收起
+        setSelectedCustomerId((prev) => (prev === customerId ? null : prev))
+        setSelectedOpportunityId(null)
+        toast.success("客户已删除")
+      } catch {
+        toast.error("客户删除失败，请稍后重试")
+      } finally {
+        setDeletingCustomerId(null)
+      }
+    },
+    [userId],
+  )
+
   const deleteFollowRecord = useCallback(
     async (recordId: string) => {
       if (!userId) return
@@ -1916,6 +1935,9 @@ export function useCustomerManagement() {
     deleteFollowRecord,
     deletingOppId,
     deletingFollowId,
+    // T7 客户删除通道（后端 DELETE 路由既有，前端补入口）
+    deleteCustomer,
+    deletingCustomerId,
     // C1 删除前下游引用检测（确认弹窗文案升级用）
     deleteOppRefCounts,
     deleteRefsChecking,

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
-import { getPocketBaseUrl } from "@/lib/pb"
-import { vibexAuthHeaders } from "@/lib/rhLogin"
+import { pbJsonGet } from "@/lib/pbJson"
 import { BID_STAGE_LABEL, STAGE_LABEL, type OppStage } from "@/pages/CustomerManagement/customerTypes"
+import { formatRelativeTime as formatRelativeTimeCore } from "@/lib/relativeTime"
 
 // ---------------------------------------------------------------------------
 // 首页活动流 Logic 层：跨实体客户端聚合（零后端改动）。
@@ -25,33 +25,19 @@ const PER_ENTITY = 8
 const MAX_EVENTS = 20
 
 async function apiFetch<T>(path: string): Promise<T | null> {
-  try {
-    const res = await fetch(`${getPocketBaseUrl()}${path}`, {
-      headers: { "Content-Type": "application/json", ...vibexAuthHeaders() },
-    })
-    if (!res.ok) return null
-    return (await res.json()) as T
-  } catch {
-    return null
-  }
+  return pbJsonGet<T>(path)
 }
 
 type ListResponse<T> = { items: T[] }
 
 export function formatRelativeTime(iso: string): string {
-  if (!iso) return ""
-  const t = new Date(iso).getTime()
-  if (Number.isNaN(t)) return ""
-  const diff = Date.now() - t
-  if (diff < 60_000) return "刚刚"
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`
-  const d = new Date(t)
-  const today = new Date()
-  const yesterday = new Date(today.getTime() - 86_400_000)
-  const hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
-  if (d.toDateString() === yesterday.toDateString()) return `昨天 ${hm}`
-  return `${d.getMonth() + 1}月${d.getDate()}日`
+  return formatRelativeTimeCore(iso, (d) => {
+    const today = new Date()
+    const yesterday = new Date(today.getTime() - 86_400_000)
+    const hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+    if (d.toDateString() === yesterday.toDateString()) return `昨天 ${hm}`
+    return `${d.getMonth() + 1}月${d.getDate()}日`
+  })
 }
 
 export function useActivityFeed(userId: string | null) {

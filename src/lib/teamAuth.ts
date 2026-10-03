@@ -4,6 +4,8 @@
 // 姓名/角色档案在 /api/team/*（pocketbase/pb_hooks/team_auth.pb.js）。
 // 本文件不 import rhLogin（rhLogin 会反过来读这里的缓存，避免循环依赖）。
 import { getPocketBaseUrl } from "@/lib/pb"
+import { clearKbCache } from "@/lib/kbDocCache"
+import { clearLlmCache } from "@/lib/llmCache"
 
 export type TeamRole = "admin" | "editor" | "viewer"
 
@@ -37,10 +39,6 @@ export function getCachedTeamProfile(): TeamProfile | null {
   }
 }
 
-export function isTeamLoggedIn(): boolean {
-  return !!getTeamToken()
-}
-
 function storeSession(token: string, profile: TeamProfile): void {
   try {
     localStorage.setItem(TOKEN_KEY, token)
@@ -51,6 +49,8 @@ function storeSession(token: string, profile: TeamProfile): void {
 }
 
 export function clearTeamSession(): void {
+  // 先取当前登录用户 id：removeItem 之后就再也读不到了，缓存按用户分库必须拿 id 定位。
+  const uid = getCachedTeamProfile()?.id ?? null
   try {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(PROFILE_KEY)
@@ -58,6 +58,14 @@ export function clearTeamSession(): void {
     window.dispatchEvent(new Event("xiaozhi-team-logout"))
   } catch {
     // ignore
+  }
+  // R119 隐私收口：知识库文档快照（kb-doc-cache:<uid>，含病历/方案原文片段）与 LLM
+  // 应答缓存（llm-resp-cache:<uid>）都按登录用户分库存于 IndexedDB。退出/切换账号必须
+  // 一并失效，否则上一位用户的 PHI 会滞留本机磁盘、被同机下一位用户命中。清理本身是
+  // fire-and-forget：缓存只是加速层，失败绝不阻断登出（内部已 try/catch，不会 reject）。
+  if (uid) {
+    void clearKbCache(uid)
+    void clearLlmCache(uid)
   }
 }
 

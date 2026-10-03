@@ -4,6 +4,7 @@ import {
   KB_BUCKETS,
   deriveTrack,
   deriveBucket,
+  templateBucketOf,
   deriveTaxonomy,
   isKbTrack,
   isKbBucket,
@@ -70,7 +71,31 @@ describe("deriveBucket", () => {
   })
 })
 
+describe("templateBucketOf（R138 范本前缀硬规则）", () => {
+  it("soltpl: 一律方案素材——即便标题/路径含「招标/可研」也不落入标书弹药", () => {
+    expect(templateBucketOf("soltpl:2026\\漳州市医院新院区招标文件可研报告.docx")).toBe("方案素材")
+    // 与 deriveBucket 组合验证：硬规则优先于关键词猜（错桶复现样本）
+    expect(deriveBucket("方案范本/智慧医院/2026·漳州市医院新院区招标文件·建设方案/soltpl:x.docx")).toBe("标书弹药") // 旧行为：被「招标」劫持
+  })
+  it("bidtpl: 一律标书弹药——即便正文标题提及友商品牌也不落入竞品情报", () => {
+    expect(templateBucketOf("bidtpl:2022\\琼海市·技术标.docx")).toBe("标书弹药")
+  })
+  it("非范本键返回 null，交由常规规则", () => {
+    expect(templateBucketOf("售前知识库/某文档.docx")).toBe(null)
+    expect(templateBucketOf("")).toBe(null)
+  })
+})
+
 describe("deriveTaxonomy", () => {
+  it("sourceFileName 命中范本前缀时桶以证据为准，忽略路径猜测", () => {
+    expect(
+      deriveTaxonomy({
+        trackText: "智慧医院信息化建设方案",
+        pathName: "方案范本/智慧医院/某医院招标文件含可研",
+        sourceFileName: "soltpl:某医院/规划方案.docx",
+      }),
+    ).toEqual({ track: "智慧医院", bucket: "方案素材" })
+  })
   it("赛道取自 trackText、桶取自 pathName，各自独立", () => {
     expect(
       deriveTaxonomy({

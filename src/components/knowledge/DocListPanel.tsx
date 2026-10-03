@@ -1,12 +1,15 @@
 // 中栏文档列表：格式徽标 + 分类徽标 + 分类筛选 + 敏感/不进 AI 徽标 + 摘要首行 + 上传人 + 更新时间。
 // 用户反馈轮（2026-09-17 晚）：批量管理模式（多选移动/改分类/删除）、行快捷操作（移动/删除弹窗入口）、
 // 上传定位高亮（flashDocId）、搜索无结果清空动作。
-import { ArrowUpDown, CheckSquare, FileText, FolderInput, Loader2, ShieldAlert, Square, Trash2, Upload, User, X } from "lucide-react"
-import { useState } from "react"
+import { ArrowUpDown, CheckSquare, Download, FileText, FolderInput, Loader2, ShieldAlert, Square, Trash2, Upload, User, X } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { categoryOf, effectivePolicy, KB_CATEGORIES } from "@/lib/kbPolicy"
+import { exportToCsv } from "@/lib/exportCsv"
+import { formatRelativeTime } from "@/lib/relativeTime"
+import { localDateStamp } from "@/lib/dateStamp"
 import type { DocSortKey, LibTab } from "@/pages/Knowledge/useKnowledge"
 import type { KbTrashItem } from "@/pages/Knowledge/kbTrash"
 import type { KbDocRow } from "@/lib/kbCore"
@@ -18,6 +21,8 @@ type DocListPanelProps = {
   sortKey: DocSortKey
   setSortKey: (key: DocSortKey) => void
   docsLoading: boolean
+  /** T9 渐进直显：全量列表仍在后台同步中（当前展示的是首批数据） */
+  docsCalibrating: boolean
   libTab: LibTab
   searchQuery: string
   openUpload: () => void
@@ -48,6 +53,9 @@ type DocListPanelProps = {
   onPurgeTrash: (item: KbTrashItem) => void
 }
 
+/** 每窗渲染行数：约 3 屏高度，兼顾滚动流畅与 DOM 规模 */
+const LIST_WINDOW = 60
+
 const SORT_LABELS: Record<DocSortKey, string> = {
   updated: "最近更新",
   created: "最近上传",
@@ -55,18 +63,11 @@ const SORT_LABELS: Record<DocSortKey, string> = {
 }
 
 function formatTime(iso: string): string {
-  if (!iso) return ""
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ""
-  const diffMs = Date.now() - d.getTime()
-  const diffMin = Math.floor(diffMs / 60000)
-  if (diffMin < 1) return "刚刚"
-  if (diffMin < 60) return `${diffMin} 分钟前`
-  const diffHour = Math.floor(diffMin / 60)
-  if (diffHour < 24) return `${diffHour} 小时前`
-  const diffDay = Math.floor(diffHour / 24)
-  if (diffDay < 30) return `${diffDay} 天前`
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+  return formatRelativeTime(iso, (d, _diff, day) =>
+    day < 30
+      ? `${day} 天前`
+      : localDateStamp(d),
+  )
 }
 
 export function DocListPanel({
@@ -76,6 +77,7 @@ export function DocListPanel({
   sortKey,
   setSortKey,
   docsLoading,
+  docsCalibrating,
   libTab,
   searchQuery,
   openUpload,
@@ -105,14 +107,79 @@ export function DocListPanel({
 }: DocListPanelProps) {
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false)
   const selectedCount = batchSelectedIds.length
+  // T9 性能：窗口化渲染——一屏只挂 LIST_WINDOW 行，滚动到底自动续窗；
+  // 2000+ 篇全量挂载时 5.7 万 DOM 节点会让整页交互卡死（质量台账 T9 实锤）。
+  const [visibleCount, setVisibleCount] = useState(LIST_WINDOW)
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+  const total = sortedDocs.length
+  const firstId = sortedDocs[0]?.id ?? ""
+  // 筛选/排序/切签或数据源整体替换（列表头变化）时重置窗口：
+  // 采用 React 官方推荐的「渲染期调整状态」而非 effect 内 setState，避免级联渲染
+  const filterKey = `${libTab}|${categoryFilter}|${sortKey}|${searchQuery}|${firstId}`
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey)
+  if (prevFilterKey !== filterKey) {
+    setPrevFilterKey(filterKey)
+    setVisibleCount(LIST_WINDOW)
+  }
+  // 列表滚动位置随筛选条件复位（纯 DOM 操作，无 setState）
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 })
+  }, [filterKey])
+  // 上传定位高亮的文档落在窗口外时派生扩窗，保证 flash 可见（无 setState）
+  const flashIdx = flashDocId ? sortedDocs.findIndex((d) => d.id === flashDocId) : -1
+  const windowCount = flashIdx >= 0 ? Math.max(visibleCount, flashIdx + LIST_WINDOW) : visibleCount
+  // 哨兵进入视口即续窗（IntersectionObserver 为浏览器原生能力，不引入新依赖）
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el || typeof IntersectionObserver === "undefined") return
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((en) => en.isIntersecting)) setVisibleCount((v) => v + LIST_WINDOW)
+      },
+      { rootMargin: "400px" },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [windowCount, total])
+  const listSlice = sortedDocs.slice(0, windowCount)
+  const handleExportDocs = () => {
+    const headers = ["标题", "分类", "所在目录", "上传人", "更新时间"]
+    const rows = sortedDocs.map((d) => [
+      d.title,
+      d.doc_category || categoryOf(d) || "其他",
+      d.folder_path || "",
+      d.uploader_name || "",
+      d.updated || "",
+    ])
+    exportToCsv(`知识库文档_${localDateStamp()}.csv`, headers, rows)
+  }
+
   return (
     <section className="flex h-full min-h-0 flex-col rounded-xl border border-border bg-card shadow-md">
       <header className="flex min-h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-3">
         <h2 className="truncate text-sm font-semibold text-foreground">
           {searchQuery.trim() ? `搜索“${searchQuery.trim()}”` : "文档"}
           <span className="ml-1.5 text-xs font-normal text-muted-foreground">{sortedDocs.length} 篇</span>
+          {docsCalibrating ? (
+            <span className="ml-1.5 inline-flex items-center gap-1 text-xs font-normal text-muted-foreground" title="全量清单正在后台加载，可先浏览已加载部分">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              后台同步中…
+            </span>
+          ) : null}
         </h2>
         <div className="flex shrink-0 items-center gap-1.5">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={handleExportDocs}
+            disabled={sortedDocs.length === 0}
+            title="导出当前列表为 CSV（不含正文，仅元数据）"
+            className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <Download className="h-3.5 w-3.5" />
+            导出
+          </Button>
           <Button
             size="sm"
             variant="ghost"
@@ -219,7 +286,7 @@ export function DocListPanel({
           {batchBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> : null}
         </div>
       ) : null}
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2.5">
+      <div ref={scrollRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2.5">
         {docsLoading ? (
           <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin text-primary" />
@@ -249,7 +316,7 @@ export function DocListPanel({
             )}
           </div>
         ) : (
-          sortedDocs.map((doc) => {
+          listSlice.map((doc) => {
             const active = selectedDoc?.id === doc.id
             const checked = batchSelectedIds.includes(doc.id)
             const editable = canEditDoc(doc)
@@ -363,6 +430,18 @@ export function DocListPanel({
             )
           })
         )}
+        {!docsLoading && sortedDocs.length > 0 && windowCount < sortedDocs.length ? (
+          <div ref={sentinelRef} className="flex items-center justify-center py-3">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setVisibleCount((v) => Math.max(v, windowCount) + LIST_WINDOW)}
+              className="h-7 gap-1.5 px-3 text-xs text-muted-foreground hover:text-foreground"
+            >
+              加载更多 · 剩余 {sortedDocs.length - windowCount} 篇
+            </Button>
+          </div>
+        ) : null}
       </div>
       <ConfirmDialog
         open={batchDeleteOpen}

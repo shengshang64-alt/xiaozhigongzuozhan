@@ -2,6 +2,8 @@
 // 独立于 PptQuote 域的 quoteExports.ts，本文件只服务情报中心，避免跨域耦合。
 
 import * as XLSX from "xlsx"
+import { localDateCompact } from "@/lib/dateStamp"
+import { sanitizeFileBase } from "@/lib/fileName"
 
 /** 导出所需的最小行结构（IntelItemRow 结构化兼容，调用方直接传列表） */
 export interface IntelExportRow {
@@ -21,7 +23,7 @@ function fmtExportTime(iso: string): string {
 }
 
 function safeExportFileName(name: string): string {
-  return name.replace(/[\\/:*?"<>|]/g, "_").slice(0, 60)
+  return sanitizeFileBase(name)
 }
 
 /** 导出情报清单 xlsx，返回实际导出条数 */
@@ -42,8 +44,7 @@ export function exportIntelItemsXlsx(rows: IntelExportRow[]): number {
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, "情报清单")
   const now = new Date()
-  const pad = (n: number) => String(n).padStart(2, "0")
-  const dateStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`
+  const dateStr = localDateCompact(now)
   XLSX.writeFile(wb, `${safeExportFileName(`情报清单-${dateStr}`)}.xlsx`)
   return rows.length
 }

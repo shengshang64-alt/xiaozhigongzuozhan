@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import type { OutlineNode, OutlinePart } from "@/pages/SolutionStudio/solutionTypes"
 
@@ -19,6 +19,8 @@ function NodeRow({
   depth,
   prefix,
   index,
+  collapsed,
+  onToggleCollapse,
   onRename,
   onRequestDelete,
   onMove,
@@ -29,6 +31,8 @@ function NodeRow({
   depth: number
   prefix: string
   index: number
+  collapsed?: boolean
+  onToggleCollapse?: (id: string) => void
   onRename: OutlineTreeEditorProps["onRename"]
   onRequestDelete: (id: string, title: string) => void
   onMove: OutlineTreeEditorProps["onMove"]
@@ -44,6 +48,18 @@ function NodeRow({
           depth === 0 ? "mt-1" : ""
         }`}
       >
+        {depth === 0 && node.children?.length > 0 && onToggleCollapse ? (
+          <button
+            type="button"
+            onClick={() => onToggleCollapse(node.id)}
+            aria-label={collapsed ? "展开" : "折叠"}
+            className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+          >
+            {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          </button>
+        ) : (
+          <span className="w-5 shrink-0" />
+        )}
         <span
           className={`w-10 shrink-0 text-right font-mono text-xs ${
             depth === 0 ? "font-semibold text-primary" : "text-muted-foreground"
@@ -87,7 +103,7 @@ function NodeRow({
           </button>
         </div>
       </div>
-      {node.children?.length > 0 && (
+      {node.children?.length > 0 && !collapsed && (
         <ul className={`${depth === 0 ? "ml-4 border-l border-border pl-2" : "ml-4"}`}>
           {node.children.map((child, i) => (
             <NodeRow
@@ -105,6 +121,11 @@ function NodeRow({
           ))}
         </ul>
       )}
+      {node.children?.length > 0 && collapsed ? (
+        <span className="ml-16 text-[11px] text-muted-foreground">
+          {node.children.length} 个小节已折叠
+        </span>
+      ) : null}
     </li>
   )
 }
@@ -113,6 +134,13 @@ export function OutlineTreeEditor({ nodes, onRename, onRemove, onMove, onAddChil
   // 删除大纲节点（含其下级）前走模态确认，确认状态挂在顶层
   const [pendingRemoveNode, setPendingRemoveNode] = useState<{ id: string; title: string } | null>(null)
   const requestDelete = (id: string, title: string) => setPendingRemoveNode({ id, title })
+  // perf-02：可折叠分组
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
+  const toggleCollapse = (id: string) => setCollapsedIds((prev) => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
   return (
     <div className="rounded-lg border border-border bg-card shadow-md">
       <div className="flex min-h-14 items-center justify-between border-b border-border px-4">
@@ -120,14 +148,31 @@ export function OutlineTreeEditor({ nodes, onRename, onRemove, onMove, onAddChil
           <p className="text-sm font-semibold text-foreground">方案大纲</p>
           <p className="text-xs text-muted-foreground">可直接改名、增删、上下移动，确认后开始生成正文</p>
         </div>
-        <button
-          type="button"
-          onClick={onAddRoot}
-          className="flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          添加章
-        </button>
+        <div className="flex items-center gap-2">
+          {nodes.some((n) => n.children?.length > 0) ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (collapsedIds.size > 0) {
+                  setCollapsedIds(new Set())
+                } else {
+                  setCollapsedIds(new Set(nodes.filter((n) => n.children?.length > 0).map((n) => n.id)))
+                }
+              }}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {collapsedIds.size > 0 ? "全部展开" : "全部折叠"}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onAddRoot}
+            className="flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            添加章
+          </button>
+        </div>
       </div>
       <ul className="max-h-96 overflow-y-auto p-3">
         {nodes.length === 0 ? (
@@ -142,6 +187,8 @@ export function OutlineTreeEditor({ nodes, onRename, onRemove, onMove, onAddChil
               depth={0}
               prefix=""
               index={i}
+              collapsed={collapsedIds.has(n.id)}
+              onToggleCollapse={toggleCollapse}
               onRename={onRename}
               onRequestDelete={requestDelete}
               onMove={onMove}

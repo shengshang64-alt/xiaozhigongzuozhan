@@ -170,7 +170,14 @@ routerAdd("GET", "/api/kb_docs", function (e) {
       if (slim) item.content = ""
       items.push(item)
     }
-    return e.json(200, { items: items, page: page, perPage: perPage, totalItems: items.length })
+    var totalItems = items.length
+    try {
+      var countRecords = filter
+        ? $app.findRecordsByFilter("kb_docs", filter, sort, 100000, 0, params)
+        : $app.findRecordsByFilter("kb_docs", "", sort, 100000, 0)
+      totalItems = countRecords.length
+    } catch (err2) {}
+    return e.json(200, { items: items, page: page, perPage: perPage, totalItems: totalItems })
   } catch (err) {
     var msg = String(err && err.message || err)
     try { $app.logger().error("kb_docs list: " + msg) } catch (_) {}

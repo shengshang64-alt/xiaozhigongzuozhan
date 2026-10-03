@@ -7,6 +7,7 @@
 
 import {
   listKbDocs,
+  onKbMutation,
   searchKbDocs,
   visibleKbDocs,
   type KbDocRow,
@@ -23,6 +24,10 @@ interface KbCacheEntry {
   userId: string | null
   ts: number
   promise: Promise<KbDocRow[]>
+  /** 标记 promise 是否已 fulfilled（非阻塞 API 用） */
+  resolved: boolean
+  /** fulfilled 后的结果引用 */
+  data: KbDocRow[] | null
 }
 
 let kbCache: KbCacheEntry | null = null
@@ -32,6 +37,36 @@ export function invalidateKbCache(): void {
   kbCache = null
 }
 
+// R104 断链接线：知识库入库/删除/编辑（全部经 kbCore 三个变更函数广播）后
+// 立即失效共享缓存，标书/方案侧马上能组到最新语料，不再等 5 分钟 TTL。
+// 注册时机：缓存就在本文件，模块未加载则缓存不存在，不存在漏听时序问题。
+onKbMutation(invalidateKbCache)
+
+
+/** 缓存是否已命中且数据就绪（同 userId、TTL 内、promise 已 fulfilled）——纯 O(1) */
+export function isKbCacheWarm(userId: string | null): boolean {
+  return kbCache !== null && kbCache.userId === userId && kbCache.resolved && Date.now() - kbCache.ts < CACHE_TTL_MS
+}
+
+/** 非阻塞取缓存：仅当缓存已 fulfilled 时返回数据，in-flight 或冷缓存一律返回空数组（零等待）。
+ *  适用护栏/轻查等可降级路径，避免首次冷加载阻塞主流程。 */
+export function getCachedVisibleDocsNonBlocking(userId: string | null): Promise<KbDocRow[]> {
+  if (kbCache && kbCache.userId === userId && kbCache.resolved && kbCache.data) {
+    return Promise.resolve(kbCache.data)
+  }
+  return Promise.resolve([])
+}
+
+/** 预热缓存：fire-and-forget，已热则跳过，失败静默。
+ *  在项目选中/进入标书模块时调用，利用用户阅读/操作的窗口期后台拉全库。 */
+export function prewarmKbCache(userId: string | null): void {
+  if (isKbCacheWarm(userId)) return
+  // 触发 getCachedVisibleDocs 内部走正常缓存逻辑（写 cache + 共享 promise），
+  // 调用方无需 await；失败时缓存置 null，下次操作会重试。
+  getCachedVisibleDocs(userId).catch(() => { /* 预热失败静默：下次访问再走正式路径 */ })
+}
+
+
 /** 会话内共享的可见文档：并发调用复用同一 promise，TTL 内不重复拉全库 */
 export function getCachedVisibleDocs(userId: string | null): Promise<KbDocRow[]> {
   const now = Date.now()
@@ -39,13 +74,17 @@ export function getCachedVisibleDocs(userId: string | null): Promise<KbDocRow[]>
     return kbCache.promise
   }
   const promise = listKbDocs()
-    .then((rows) => visibleKbDocs(rows, userId))
+    .then((rows) => {
+      const data = visibleKbDocs(rows, userId)
+      if (kbCache && kbCache.userId === userId) { kbCache.resolved = true; kbCache.data = data }
+      return data
+    })
     .catch((err) => {
       // 失败不留缓存，下次重试；调用方按空数组降级
       kbCache = null
       throw err
     })
-  kbCache = { userId, ts: now, promise }
+  kbCache = { userId, ts: now, promise, resolved: false, data: null }
   return promise
 }
 

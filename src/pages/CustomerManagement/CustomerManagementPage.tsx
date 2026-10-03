@@ -127,6 +127,8 @@ export function CustomerManagementPage(p: ReturnType<typeof useCustomerManagemen
                   onSelectOpportunity={p.selectOpportunity}
                   onNewOpportunity={p.openNewOpportunity}
                   onEditCustomer={() => p.openEditCustomer(p.selectedCustomer!)}
+                  onDeleteCustomer={p.deleteCustomer}
+                  deletingCustomerId={p.deletingCustomerId}
                   onEnrichOne={p.enrichOneCustomer}
                   enrichingOneId={p.enrichingOneId}
                   chainAssets={p.chainAssets}

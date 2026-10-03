@@ -49,3 +49,5 @@ pocketbase/logs/
 .diag/
 _qa/
 pb_data_backup_*/
+# 专项轮 D 素材选取器的输出（每轮重新生成，含 3MB vault 索引，不入库）
+_eval/

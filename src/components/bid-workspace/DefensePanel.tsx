@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react"
 import { toast } from "sonner"
-import { ChevronDown, HelpCircle, Loader2, Mic, Presentation, Save, Send, Sparkles } from "lucide-react"
+import { ChevronDown, Download, HelpCircle, Loader2, Mic, Presentation, Save, Send, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -409,14 +409,48 @@ export function DefensePanel(p: DefensePanelProps) {
   const speechNotes = p.defense.speech_notes
   const anyBusy = p.defenseBusy !== ""
 
+  // R137 答辩手册导出：本地拼装 docx，零 AI 计费；归档只读不影响导出（只读操作）
+  const [handbookBusy, setHandbookBusy] = useState(false)
+  const hasDefenseContent = questions.length > 0 || outlinePages.length > 0 || !!speechNotes
+  const onExportHandbook = async () => {
+    if (!hasDefenseContent) {
+      toast.info("尚未生成讲标答辩内容，请先生成问题池 / 大纲 / 讲标稿")
+      return
+    }
+    setHandbookBusy(true)
+    try {
+      await import("@/pages/BidWorkspace/defenseHandbook").then((m) =>
+        m.exportDefenseHandbook(p.activeProject?.project_name ?? "", p.defense),
+      )
+      toast.success("已导出答辩手册")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "导出失败，请重试")
+    } finally {
+      setHandbookBusy(false)
+    }
+  }
+
   return (
     <section className="relative z-10 mx-auto -mt-8 max-w-7xl px-4 pb-14">
       <div className="rounded-xl border border-border bg-card p-4 shadow-md lg:p-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
-        <header>
-          <h2 className="text-lg font-semibold tracking-tight text-card-foreground">讲标与答辩</h2>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            基于本项目评分办法与标书正文，预判评标专家问题并备好答辩口径，编排讲标 PPT 大纲（可一键送进 PPT 与报价）与口语化讲标稿要点。三块内容均可编辑保存、可重复生成。
-          </p>
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold tracking-tight text-card-foreground">讲标与答辩</h2>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              基于本项目评分办法与标书正文，预判评标专家问题并备好答辩口径，编排讲标 PPT 大纲（可一键送进 PPT 与报价）与口语化讲标稿要点。三块内容均可编辑保存、可重复生成。
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={handbookBusy}
+            title="把问题池、讲标大纲与讲标稿要点汇总为一份可打印的 Word 手册（本地生成，不产生 AI 费用）"
+            onClick={() => void onExportHandbook()}
+            className="shrink-0 border-primary/40 text-primary hover:bg-primary/10 focus-visible:shadow-[var(--focus-ring)]"
+          >
+            {handbookBusy ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />}
+            导出答辩手册
+          </Button>
         </header>
 
         {/* 专家问题池 */}

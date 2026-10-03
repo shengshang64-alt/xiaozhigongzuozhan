@@ -176,6 +176,8 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               genOptions={p.genOptions}
               setClauseResponse={p.setClauseResponse}
               setMaterialBoost={p.setMaterialBoost}
+              setWordRefine={p.setWordRefine}
+              setAutoConsistencyAudit={p.setAutoConsistencyAudit}
               setComplianceMode={p.setComplianceMode}
               setIncludeBiz={p.setIncludeBiz}
               bizRemoveCount={p.bizRemoveCount}
@@ -222,6 +224,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               selectChapter={p.selectChapter}
               editingContent={p.editingContent}
               setEditingContent={p.setEditingContent}
+              autoSaveState={p.autoSaveState}
               chapterBusy={p.chapterBusy}
               generateChapter={p.generateChapter}
               regenerateChapter={p.regenerateChapter}
@@ -243,6 +246,11 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               pageInfo={p.pageInfo}
               startFillPages={p.startFillPages}
               pageFillBusy={p.pageFillBusy}
+              startWordRefineAll={p.startWordRefineAll}
+              wordRefineBusy={p.wordRefineBusy}
+              startAiFigures={p.startAiFigures}
+              aiFigureBusy={p.aiFigureBusy}
+              aiFigureProgress={p.aiFigureProgress}
               contentFocus={p.contentFocus}
               focusSectionInChapter={p.focusSectionInChapter}
               outlineClauseTotal={p.outlineClauseTotal}
@@ -264,6 +272,12 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               bidChapterSkills={p.bidChapterSkills}
               deviationSkills={p.deviationSkills}
               requestStep={p.requestStep}
+              bidSourceMode={p.bidSourceMode}
+              bidExternalText={p.bidExternalText}
+              bidExternalBusy={p.bidExternalBusy}
+              setBidSourceMode={p.setBidSourceMode}
+              setBidExternalText={p.setBidExternalText}
+              handleBidExternalFile={p.handleBidExternalFile}
             />
           )}
           {p.activeStep === 4 && (
@@ -278,6 +292,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
             />
           )}
           {p.activeStep === 5 && (
+            <>
             <VoidCheckPanel
               activeProject={p.activeProject}
               voidLoading={p.voidLoading}
@@ -289,7 +304,35 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               voidMissingTitles={p.voidMissingTitles}
               goParseStep={p.goParseStep}
               isArchivedLocked={p.isArchivedLocked}
+              bidSourceMode={p.bidSourceMode}
+              sealBusy={p.sealBusy}
+              sealResult={p.sealResult}
+              startSealCheck={p.startSealCheck}
             />
+            {/* T18+：文本审计卡同步挂第5步——错别字/逻辑检查只依赖正文成稿（比第6步准入门槛低），成稿即可审 */}
+            <SubmissionCheckPanel
+              activeProject={p.activeProject}
+              submissionLoading={p.submissionLoading}
+              submissionFailed={p.submissionFailed}
+              startSubmissionCheck={p.startSubmissionCheck}
+              jumpToSubmissionGap={p.jumpToSubmissionGap}
+              setSubmissionReviewStatus={p.setSubmissionReviewStatus}
+              coverageAudit={p.coverageAudit}
+              coverageAuditBusy={p.coverageAuditBusy}
+              startCoverageAudit={p.startCoverageAudit}
+              supplementFromAudit={p.supplementFromAudit}
+              reflowChapterFromAudit={p.reflowChapterFromAudit}
+              chapterReflowBusy={p.chapterReflowBusy}
+              isArchivedLocked={p.isArchivedLocked}
+              startFactPatch={p.startFactPatch}
+              factPatchBusy={p.factPatchBusy}
+              textAuditBusy={p.textAuditBusy}
+              startTextAudit={p.startTextAudit}
+              fixTyposBusy={p.fixTyposBusy}
+              startFixTypos={p.startFixTypos}
+              jumpToAuditChapter={p.jumpToAuditChapter}
+            />
+            </>
           )}
           {p.activeStep === 6 && (
             <>
@@ -318,9 +361,16 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                 coverageAuditBusy={p.coverageAuditBusy}
                 startCoverageAudit={p.startCoverageAudit}
                 supplementFromAudit={p.supplementFromAudit}
+                reflowChapterFromAudit={p.reflowChapterFromAudit}
+                chapterReflowBusy={p.chapterReflowBusy}
                 isArchivedLocked={p.isArchivedLocked}
                 startFactPatch={p.startFactPatch}
                 factPatchBusy={p.factPatchBusy}
+                textAuditBusy={p.textAuditBusy}
+                startTextAudit={p.startTextAudit}
+                fixTyposBusy={p.fixTyposBusy}
+                startFixTypos={p.startFixTypos}
+                jumpToAuditChapter={p.jumpToAuditChapter}
               />
               <DefensePanel
                 activeProject={p.activeProject}
@@ -477,6 +527,8 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
         setAllParseExtras={p.setAllParseExtras}
         parseConfigStar={p.parseConfigStar}
         setParseConfigStar={p.setParseConfigStar}
+        parseConfigChannel={p.parseConfigChannel}
+        setParseConfigChannel={p.setParseConfigChannel}
         parseConfigTotal={p.parseConfigTotal}
         saveParseConfig={p.saveParseConfig}
         confirmStartParse={p.confirmStartParse}

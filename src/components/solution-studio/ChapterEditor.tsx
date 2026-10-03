@@ -1,5 +1,5 @@
 import type { ReactNode, RefObject } from "react"
-import { AlertTriangle, CheckCircle2, ChevronsRight, ClipboardCheck, Loader2, Minimize2, PenLine, RefreshCw, ScanText, Sparkles, TextQuote, Undo2 } from "lucide-react"
+import { AlertTriangle, Check, CheckCircle2, ChevronsRight, ClipboardCheck, Loader2, Minimize2, PenLine, RefreshCw, ScanText, Sparkles, TextQuote, Undo2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { BidFigure } from "@/components/bid-workspace/BidFigure"
@@ -18,6 +18,8 @@ type ChapterEditorProps = Pick<
   | "refineChapter"
   | "bulkGenerating"
 > & {
+  /** 自动保存状态指示（仅方案编制注入，标书工作区可不传） */
+  autoSaveState?: "idle" | "saving" | "saved"
   chapterIndex: number
   figures?: FigureSpec[]
   /** 标书工作页注入：整章重写覆盖（不传则不渲染按钮，方案编制页不受影响） */
@@ -53,6 +55,7 @@ export function ChapterEditor({
   generateChapter,
   refineChapter,
   bulkGenerating,
+  autoSaveState = "idle",
   chapterIndex,
   figures,
   regenerateChapter,
@@ -92,6 +95,12 @@ export function ChapterEditor({
             {isBiz && (
               <span className="ml-2 rounded-full bg-muted px-2 py-0.5 align-middle text-xs font-medium text-muted-foreground">
                 商务·线下填写
+              </span>
+            )}
+            {autoSaveState !== "idle" && (
+              <span className={`ml-2 inline-flex items-center gap-1 text-[11px] font-normal transition-opacity duration-300 ${autoSaveState === "saved" ? "text-primary" : "text-muted-foreground"}`}>
+                {autoSaveState === "saving" ? (<><Loader2 className="h-3 w-3 animate-spin" />保存中</>)
+                  : (<><Check className="h-3 w-3" />已保存</>)}
               </span>
             )}
           </h2>

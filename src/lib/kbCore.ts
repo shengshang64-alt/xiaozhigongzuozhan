@@ -179,6 +179,33 @@ export function visibleKbDocs(rows: KbDocRow[], userId: string | null): KbDocRow
   return rows.filter((r) => r.visibility !== "personal" || (!!userId && r.rh_user_id === userId))
 }
 
+// ---------------------------------------------------------------------------
+// KB 变更广播（R104）：kb_docs 增/改/删入口全部汇聚在下方三个函数，成功后
+// 通知已注册监听（如 kbAssemble 共享组装缓存）即时失效，替代「变更后要等
+// TTL 过期才可见」的断链。注册方向 kbAssemble→kbCore，无循环依赖；
+// 监听器异常静默吞掉，绝不影响变更主链路。
+// ---------------------------------------------------------------------------
+type KbMutationListener = () => void
+const kbMutationListeners = new Set<KbMutationListener>()
+
+/** 注册 kb_docs 变更事件监听，返回取消函数（测试清场用；生产侧注册后常驻） */
+export function onKbMutation(cb: KbMutationListener): () => void {
+  kbMutationListeners.add(cb)
+  return () => {
+    kbMutationListeners.delete(cb)
+  }
+}
+
+function notifyKbMutation(): void {
+  for (const cb of kbMutationListeners) {
+    try {
+      cb()
+    } catch {
+      /* 监听失败不影响变更主链路 */
+    }
+  }
+}
+
 export async function createKbDoc(body: {
   rh_user_id: string
   title: string
@@ -195,7 +222,9 @@ export async function createKbDoc(body: {
   retrieval_weight?: number
   is_sensitive?: boolean
 }): Promise<KbDocRow> {
-  return kbFetch<KbDocRow>(`/api/kb_docs`, { method: "POST", body: JSON.stringify(body) })
+  const row = await kbFetch<KbDocRow>(`/api/kb_docs`, { method: "POST", body: JSON.stringify(body) })
+  notifyKbMutation()
+  return row
 }
 
 export async function updateKbDoc(
@@ -216,14 +245,17 @@ export async function updateKbDoc(
     >
   >,
 ): Promise<KbDocRow> {
-  return kbFetch<KbDocRow>(`/api/kb_docs/${encodeURIComponent(id)}`, {
+  const row = await kbFetch<KbDocRow>(`/api/kb_docs/${encodeURIComponent(id)}`, {
     method: "PATCH",
     body: JSON.stringify(body),
   })
+  notifyKbMutation()
+  return row
 }
 
 export async function deleteKbDoc(id: string): Promise<void> {
   await kbFetch<{ ok: boolean }>(`/api/kb_docs/${encodeURIComponent(id)}`, { method: "DELETE" })
+  notifyKbMutation()
 }
 
 // ---------------------------------------------------------------------------

@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
-import { getPocketBaseUrl } from "@/lib/pb"
-import { vibexAuthHeaders } from "@/lib/rhLogin"
+import { pbJsonRequest } from "@/lib/pbJson"
 import type { LlmMessage } from "@/lib/llm"
 import { useScopeSkills } from "@/hooks/useScopeSkills"
 import { skillCostSuffix } from "@/lib/skillCore"
 import { currentStudioCostText, llmGenerate } from "./studioLlm"
-import { exportTechParamsXlsx } from "./checklistExports"
 import { companySeedRows, industrySeedRows } from "./checklistSeed"
 import {
   calcTotal,
@@ -30,16 +28,9 @@ import {
 // ---------------------------------------------------------------------------
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${getPocketBaseUrl()}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...vibexAuthHeaders(),
-      ...(init?.headers ?? {}),
-    },
-  })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return (await res.json()) as T
+  // R115: was a private clone of the R109 single-source helper; delegate to it
+  // (same plain-throw contract: no httpStatus is attached).
+  return pbJsonRequest<T>(path, init)
 }
 
 type ListResponse<T> = { items: T[]; page: number; perPage: number; totalItems: number }
@@ -477,12 +468,14 @@ export function useChecklist(deps: {
     setSelectedProductIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }, [])
 
-  const exportSelectedTechParams = useCallback(() => {
+  const exportSelectedTechParams = useCallback(async () => {
     const rows = companyProducts.filter((p) => selectedProductIds.includes(p.id))
     if (!rows.length) {
       toast.error("请先勾选要导出的产品")
       return
     }
+    // R124：xlsx 导出库改为点击导出时才按需加载，方案工作室进页不再背 400+ kB
+    const { exportTechParamsXlsx } = await import("./checklistExports")
     const { exported, skipped } = exportTechParamsXlsx(rows)
     if (!exported) {
       toast.error("所选产品均未配置技术参数，无法导出参数响应表")

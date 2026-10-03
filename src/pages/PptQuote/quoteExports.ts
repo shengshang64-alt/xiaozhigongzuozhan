@@ -2,6 +2,10 @@ import * as XLSX from "xlsx"
 import { AlignmentType, Document, Packer, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } from "docx"
 import { formatMoney, groupSubtotal, itemSubtotal, quoteTotal, type QuoteItem, type QuoteRecord } from "./pptQuoteTypes"
 import { targetsLabel } from "@/pages/SolutionStudio/checklistTypes"
+import { triggerBlobDownload } from "@/lib/download"
+import { buildSafeFileName } from "@/lib/fileName"
+import { formatDateTime } from "@/lib/dateDisplay"
+import { localDateStamp } from "@/lib/dateStamp"
 
 // ---------------------------------------------------------------------------
 // 报价导出：Excel + Word，与建设清单 exportChecklistXlsx 同构 10 列。
@@ -44,8 +48,7 @@ export const QUOTE_EXPORT_HEADERS = [
 ] as const
 
 function safeFileName(name: string, ext: string): string {
-  const base = (name || "报价单").replace(/[\\/:*?"<>|]/g, "_").slice(0, 60)
-  return `${base}.${ext}`
+  return buildSafeFileName(name, ext, "报价单")
 }
 
 export async function exportQuoteXlsx(quote: QuoteRecord): Promise<void> {
@@ -115,7 +118,7 @@ export async function exportQuoteXlsx(quote: QuoteRecord): Promise<void> {
     str(r, 0, `税率与含税说明：${quote.tax_note.trim()}`)
     r += 1
   }
-  str(r, 0, `导出时间：${new Date().toLocaleString("zh-CN")}`)
+  str(r, 0, `导出时间：${formatDateTime(new Date())}`)
   r += 1
 
   ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: r - 1, c: 9 } })
@@ -273,7 +276,7 @@ export async function exportQuoteDocx(quote: QuoteRecord): Promise<void> {
   )
   const meta = [
     quote.ref_name ? `关联项目：${quote.ref_name}` : "",
-    `导出日期：${new Date().toLocaleDateString("zh-CN")}`,
+    `导出日期：${localDateStamp()}`,
   ]
     .filter(Boolean)
     .join("　　")
@@ -296,14 +299,7 @@ export async function exportQuoteDocx(quote: QuoteRecord): Promise<void> {
     ],
   })
   const blob = await Packer.toBlob(finalDoc)
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement("a")
-  a.href = url
-  a.download = safeFileName(`${quote.quote_name}${quote.version ? `-${quote.version}` : ""}`, "docx")
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 3000)
+  triggerBlobDownload(blob, safeFileName(`${quote.quote_name}${quote.version ? `-${quote.version}` : ""}`, "docx"))
 }
 
 function tailParagraphs(quote: QuoteRecord): Paragraph[] {

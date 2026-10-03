@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
-import { getPocketBaseUrl } from "@/lib/pb"
-import { decodeRhToken, vibexAuthHeaders } from "@/lib/rhLogin"
+import { decodeRhToken } from "@/lib/rhLogin"
+import { pbJsonGet } from "@/lib/pbJson"
 import { listKbDocs, visibleKbDocs } from "@/lib/kbCore"
 import { STAGE_LABEL, type OppStage } from "@/pages/CustomerManagement/customerTypes"
 
@@ -44,9 +44,12 @@ export const PAGE_NAV: PageNavItem[] = [
 export const QUICK_ACTIONS = [
   { key: "new-solution", label: "新建方案", hint: "去方案编制", route: "/solution-studio" },
   { key: "new-bid", label: "新建投标项目", hint: "去标书工作", route: "/bid-workspace" },
+  { key: "new-customer", label: "新建客户", hint: "去客户管理", route: "/customer-management" },
+  { key: "new-ppt", label: "新建 PPT", hint: "去 PPT 与报价", route: "/ppt-quote" },
   { key: "new-quote", label: "新建报价", hint: "去 PPT 与报价", route: "/ppt-quote" },
   { key: "ask-assistant", label: "问小智", hint: "打开小智助手", route: "/assistant" },
   { key: "add-intel", label: "录情报", hint: "去情报中心", route: "/intel-center" },
+  { key: "qual-certs", label: "资质台账", hint: "去资质台账核验有效期", route: "/qual-certs" },
 ]
 
 const RECENT_PAGES_KEY = "xz_recent_pages"
@@ -56,15 +59,7 @@ const PER_GROUP_LIMIT = 5
 const SEARCH_PER_ENTITY = 8
 
 async function apiFetch<T>(path: string): Promise<T | null> {
-  try {
-    const res = await fetch(`${getPocketBaseUrl()}${path}`, {
-      headers: { "Content-Type": "application/json", ...vibexAuthHeaders() },
-    })
-    if (!res.ok) return null
-    return (await res.json()) as T
-  } catch {
-    return null
-  }
+  return pbJsonGet<T>(path)
 }
 
 type ListResponse<T> = { items: T[] }

@@ -167,7 +167,7 @@ describe("R65 提示词搬迁快照（prompts/* 只搬不改字）", () => {
     ).toMatchSnapshot()
   })
 
-  it("R68 第四批：buildCoverageAuditMessages 内容与搬迁时一致", () => {
+  it("R101 四态修订：buildCoverageAuditMessages v2 口径快照", () => {
     expect(
       buildCoverageAuditMessages([
         {
@@ -208,6 +208,21 @@ describe("R65 提示词搬迁快照（prompts/* 只搬不改字）", () => {
 
   it("R69 第五批：buildSectionParseMessages 内容与搬迁时一致", () => {
     expect(buildSectionParseMessages("overview", "某医院一体化系统招标文件全文……")).toMatchSnapshot()
+  })
+
+  // T-解析审计（2026-09-28）：tech_score/biz_score 补「竖线表格行」说明后锁字；
+  // PROMPT_VERSION 1→2，改动=表格形态说明两句（见 sectionParse.ts 注释），快照基线同步生成
+  it("T-解析审计：buildSectionParseMessages tech_score 含竖线表格行说明", () => {
+    const msgs = buildSectionParseMessages("tech_score", "某医院信息化招标评分表……")
+    expect(msgs[0].content).toContain("竖线分隔格式")
+    expect(msgs[0].content).toContain("禁止忽略竖线后的列")
+    expect(msgs).toMatchSnapshot()
+  })
+
+  it("T-解析审计：buildSectionParseMessages biz_score 含竖线表格行说明", () => {
+    const msgs = buildSectionParseMessages("biz_score", "某医院信息化招标评分表……")
+    expect(msgs[0].content).toContain("竖线分隔格式")
+    expect(msgs).toMatchSnapshot()
   })
 
   it("R69 第五批：buildBidOutlineMessages 内容与搬迁时一致", () => {

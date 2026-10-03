@@ -55,11 +55,11 @@ describe("summarizeParseWarnings（R46/F3 段与项口径不矛盾）", () => {
     expect(summarizeParseWarnings(undefined)).toBeNull()
     expect(summarizeParseWarnings([])).toBeNull()
   })
-  it("多条逐段失败 → 聚合为一条、文案含失败段数与“已自动跳过”口径", () => {
-    const s = summarizeParseWarnings(["第 12 段解析失败", "第 13 段解析失败", "第 14 段解析失败"])
+  it("T12b：warnings 已是逐项人话文案 → 横幅直显首条、计数如实，不再编造「按段落切分」旧口径", () => {
+    const s = summarizeParseWarnings(["2 项 AI 解析未完成，已降级为关键词检索原文", "6 项解析失败（检测到服务商限流，已停止后续项）"])
     expect(s).not.toBeNull()
-    expect(s?.failedChunks).toBe(3)
-    expect(s?.headline).toContain("3 段")
-    expect(s?.headline).toContain("已自动跳过")
+    expect(s?.failedChunks).toBe(2)
+    expect(s?.headline).toBe("2 项 AI 解析未完成，已降级为关键词检索原文")
+    expect(s?.headline).not.toContain("按段落切分")
   })
 })

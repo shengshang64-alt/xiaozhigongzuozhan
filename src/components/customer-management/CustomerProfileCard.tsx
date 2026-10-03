@@ -1,8 +1,9 @@
 import { useState } from "react"
-import { normalizeHospitalLevel } from "@/pages/CustomerManagement/customerNormalize"
+import { normalizeHospitalLevel, normalizeRegion } from "@/pages/CustomerManagement/customerNormalize"
 import { ExternalLink, Loader2, Pencil, Phone, Plus, Trash2, UserRound, Wand2 } from "lucide-react"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { AiBadge } from "@/components/customer-management/AiBadge"
+import { formatMoney } from "@/lib/money"
 import {
   computeMissingFields,
   fmtMetric,
@@ -15,7 +16,12 @@ import {
 type CustomerProfileCardProps = {
   customer: CustomerRow
   onEdit: () => void
-  /** 单家定向智能补全（仅补当前客户、仅填空字段） */
+  /** T7：删除客户（本卡片内 ConfirmDialog 确认后调用） */
+  onDelete: (customerId: string) => void
+  /** 删除请求进行中（驱动删除按钮 loading） */
+  deleting: boolean
+  /** 该客户名下商机数（删除确认文案里如实提示归属变化） */
+  opportunityCount: number
   onEnrichOne: (customerId: string) => void
   /** 正在补全的客户 id（驱动本卡片按钮 loading） */
   enrichingOneId: string | null
@@ -47,6 +53,9 @@ const LEADERS: { key: keyof CustomerRow; label: string }[] = [
 export function CustomerProfileCard({
   customer,
   onEdit,
+  onDelete,
+  deleting,
+  opportunityCount,
   onEnrichOne,
   enrichingOneId,
   contactName,
@@ -69,6 +78,8 @@ export function CustomerProfileCard({
   const flatLeaders = leaders.length > 0 ? LEADERS.filter((l) => l.key === "it_lead") : LEADERS
   // 删除联系人前走模态确认，存 index + 展示名
   const [pendingRemoveContact, setPendingRemoveContact] = useState<{ idx: number; label: string } | null>(null)
+  // T7：删除整户确认弹窗（danger 态，与删除联系人/删除商机同一交互模式）
+  const [pendingDeleteCustomer, setPendingDeleteCustomer] = useState(false)
 
   return (
     <div className="rounded-lg border border-border bg-card p-4 shadow-md lg:p-5">
@@ -84,7 +95,8 @@ export function CustomerProfileCard({
             )}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            {[customer.hospital_type, customer.region].filter(Boolean).join(" · ") || "类型与地区待补充"}
+            {/* T1：地区展示走归一（脏值不显示），库内原始值不动 */}
+            {[customer.hospital_type, normalizeRegion(customer.region)].filter(Boolean).join(" · ") || "类型与地区待补充"}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -107,6 +119,16 @@ export function CustomerProfileCard({
           >
             <Pencil className="h-3.5 w-3.5 text-primary" />
             编辑档案
+          </button>
+          <button
+            type="button"
+            onClick={() => setPendingDeleteCustomer(true)}
+            disabled={deleting}
+            title="删除该客户（需确认，删除后不可恢复）"
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-destructive/30 bg-background px-2.5 py-1.5 text-xs font-medium text-destructive shadow-sm transition-colors hover:bg-destructive/10 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            {deleting ? "删除中…" : "删除"}
           </button>
         </div>
       </header>
@@ -230,7 +252,7 @@ export function CustomerProfileCard({
           {customer.annual_revenue > 0 && (
             <span className="text-muted-foreground">
               年营业收入：
-              <span className="font-medium text-foreground">{customer.annual_revenue.toLocaleString()} 万元</span>
+              <span className="font-medium text-foreground">{formatMoney(customer.annual_revenue)} 万元</span>
               {aiFields.includes("annual_revenue") && <span className="ml-0.5 text-primary">·AI</span>}
             </span>
           )}
@@ -292,18 +314,23 @@ export function CustomerProfileCard({
           <input
             value={contactName}
             onChange={(e) => setContactName(e.target.value)}
+            aria-label="联系人姓名"
             placeholder="姓名"
             className="h-9 w-24 rounded-md border border-border bg-background px-2.5 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           />
           <input
             value={contactTitle}
             onChange={(e) => setContactTitle(e.target.value)}
+            aria-label="联系人职务"
             placeholder="职务（如信息科主任）"
             className="h-9 w-40 rounded-md border border-border bg-background px-2.5 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           />
           <input
             value={contactPhone}
             onChange={(e) => setContactPhone(e.target.value)}
+            aria-label="联系人电话"
+            type="tel"
+            inputMode="tel"
             placeholder="电话"
             className="h-9 w-32 rounded-md border border-border bg-background px-2.5 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           />
@@ -330,6 +357,25 @@ export function CustomerProfileCard({
         onConfirm={() => {
           if (pendingRemoveContact) onRemoveContact(pendingRemoveContact.idx)
           setPendingRemoveContact(null)
+        }}
+      />
+      <ConfirmDialog
+        open={pendingDeleteCustomer}
+        onOpenChange={(o) => {
+          if (!o) setPendingDeleteCustomer(false)
+        }}
+        title="删除客户"
+        description={
+          `确定删除客户「${customer.hospital_name}」吗？删除后不可恢复。` +
+          (opportunityCount > 0
+            ? `该客户名下有 ${opportunityCount} 条商机与跟进记录不会被一并删除，但将失去客户归属展示。`
+            : "该客户名下暂无商机。")
+        }
+        confirmText={deleting ? "删除中…" : "确认删除"}
+        tone="danger"
+        onConfirm={() => {
+          setPendingDeleteCustomer(false)
+          onDelete(customer.id)
         }}
       />
     </div>

@@ -2,6 +2,7 @@
 // 问答页签：对话流 + 弹药库命中标记 + [资料N] 内联引用溯源；弹药库与待补答由子面板承接。
 import { useEffect, useRef, useState } from "react"
 import { BookMarked, Check, Copy, HelpCircle, Loader2, MessageCircleQuestion, Send, ShieldCheck, Sparkles, Trash2, X } from "lucide-react"
+import { copyTextToClipboard } from "@/lib/clipboard"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { SkillPickerFor } from "@/components/common/SkillPicker"
@@ -103,13 +104,13 @@ export function QaDrawer({
   // R59/①：回答一键复制（干净文本，[资料N] 折为文末来源列表）
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null)
   const copyAnswer = (m: QaChatMsg) => {
-    void navigator.clipboard.writeText(qaAnswerToText(m.content, m.citations)).then(
-      () => {
+    void copyTextToClipboard(qaAnswerToText(m.content, m.citations), {
+      onSuccess: () => {
         setCopiedMsgId(m.id)
         window.setTimeout(() => setCopiedMsgId((cur) => (cur === m.id ? null : cur)), 2000)
       },
-      () => window.alert("复制失败，请手动选择文本复制"),
-    )
+      errorMessage: "复制失败，请手动选择文本复制",
+    })
   }
   useEffect(() => {
     if (qaOpen && scrollRef.current) {

@@ -177,7 +177,7 @@ export function AppearanceDialog({ open, onClose }: AppearanceDialogProps) {
                       (active ? "border-primary" : "border-border hover:border-muted-foreground/40")
                     }
                   >
-                    <img src={img.src} alt="背景图" className="h-full w-full object-cover" />
+                    <img src={img.src} alt="背景图" loading="lazy" className="h-full w-full object-cover" />
                     {active && (
                       <span className="absolute inset-0 flex items-center justify-center bg-primary/25">
                         <Check className="h-4 w-4 text-white drop-shadow" />

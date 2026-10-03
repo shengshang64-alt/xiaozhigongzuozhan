@@ -2,7 +2,7 @@
 // R69 提示词搬迁第五批，自 bidTypes.ts 原样搬迁：只搬不改字（快照锁字见 promptsSnapshot.test.ts）
 // ---------------------------------------------------------------------------
 
-import { BID_OUTLINE_REQ_KEY, STAR_CLAUSE_SECTION, clipText, combinedScoringText, complianceOutlineRule, numberScoringItems, numberedScoringDetailLines, sectionText, sectionTextAny, truthPreamble } from "../bidTypes"
+import { buildLotsScopeHint, BID_OUTLINE_REQ_KEY, STAR_CLAUSE_SECTION, clipText, combinedScoringText, complianceOutlineRule, numberScoringItems, numberedScoringDetailLines, sectionText, sectionTextAny, truthPreamble } from "../bidTypes"
 import type { ComplianceMode, ParseReport, RequirementClause } from "../bidTypes"
 import type { LlmMessage } from "@/lib/llm"
 
@@ -39,6 +39,7 @@ export function buildBidOutlineMessages(
   const techText = sectionText(report, "delivery_req")
   const qualText = sectionText(report, "qualification")
   const lotsBlock = lotsContext(report)
+  const reqStructBlock = reqStructureContext(report)
   // 第十二轮遗留清偿：大纲编制接入 ★/▲ 重点条款（本地扫描产物，零新增 AI 调用）
   const starText = sectionText(report, STAR_CLAUSE_SECTION.key).trim()
   // 第十七轮 17A：招标规定的投标文件目录（既有解析项产物，零新增 AI 调用）
@@ -159,6 +160,7 @@ export function buildBidOutlineMessages(
   }
   if (opts?.globalFacts) stableParts.push(opts.globalFacts)
   if (lotsBlock) stableParts.push(lotsBlock)
+  if (reqStructBlock) stableParts.push(reqStructBlock)
   if (implicitList.length) {
     stableParts.push(
       `【招标隐式硬约束（任何一条被违反都可能废标）】\n${implicitList.map((t, i) => `${i + 1}. ${t}`).join("\n")}`,
@@ -200,9 +202,24 @@ export function buildBidOutlineMessages(
 function lotsContext(report: Parameters<typeof sectionText>[0]): string {
   const lots = sectionText(report, "lots").trim()
   if (!lots) return ""
+  const scope = report?.lots_scope
+  const hint = buildLotsScopeHint(scope?.selected, scope?.all?.length ?? 0)
   return `
 
 【标包划分（多包件招标）】
-${lots.slice(0, 1200)}
+${lots.slice(0, 1200)}${hint ? "\n\n" + hint : ""}
 （本项目划分多个标包：正文必须只针对上述标包中招标文件指定/用户确认的包件范围撰写，禁止混入其他包件的货物、参数与报价。）`
+}
+
+/** Q26/切片B：采购需求结构上下文——解析报告含「采购需求结构」分区时注入子系统清单，约束正文只落在所投系统范围内 */
+function reqStructureContext(report: Parameters<typeof sectionText>[0]): string {
+  const sys = sectionText(report, "req_structure").trim()
+  if (!sys) return ""
+  const scope = report?.lots_scope
+  const hint = buildLotsScopeHint(scope?.selected, scope?.all?.length ?? 0)
+  return `
+
+【采购需求子系统清单（本项目所投系统范围${hint ? "，已按所投包件范围约束" : ""}）】
+${sys.slice(0, 1600)}${hint ? "\n\n" + hint : ""}
+（正文须覆盖并限定于上述子系统：逐系统对应展开、不遗漏，也不得混入清单之外的系统；与标包划分同时存在时以所投保包内系统为准。）`
 }

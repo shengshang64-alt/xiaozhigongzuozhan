@@ -3,7 +3,7 @@ import { Loader2, Settings2, Sparkles, Star } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { SkillPickerFor } from "@/components/common/SkillPicker"
-import { PARSE_EXTRA_SECTIONS, PARSE_KEY_SECTIONS, type ParseScope } from "@/pages/BidWorkspace/bidTypes"
+import { PARSE_EXTRA_SECTIONS, PARSE_KEY_SECTIONS, type ParseChannel, type ParseScope } from "@/pages/BidWorkspace/bidTypes"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 
 type ParseConfigDialogProps = Pick<
@@ -17,6 +17,8 @@ type ParseConfigDialogProps = Pick<
   | "setAllParseExtras"
   | "parseConfigStar"
   | "setParseConfigStar"
+  | "parseConfigChannel"
+  | "setParseConfigChannel"
   | "parseConfigTotal"
   | "saveParseConfig"
   | "confirmStartParse"
@@ -51,6 +53,47 @@ export function ParseConfigDialog(p: ParseConfigDialogProps) {
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
+          {/* T14：解析素材通道——整文直读（默认，共享前缀吃提示词缓存）/ 关键词检索（兼容回退） */}
+          <div>
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-foreground">解析方式</p>
+              <p className="text-xs text-muted-foreground">
+                {p.parseConfigChannel === "whole"
+                  ? "整篇文件作为共享上下文逐项解析，信息最全，其余项享缓存价"
+                  : "按每项关键词检索相关章节片段后解析，超长文件或小上下文模型可用"}
+              </p>
+            </div>
+            <div className="mt-2 flex rounded-full border border-border bg-secondary p-1">
+              {(
+                [
+                  { value: "whole", label: "整文直读", tag: "默认·推荐" },
+                  { value: "retrieval", label: "关键词检索", tag: "兼容回退" },
+                ] as { value: ParseChannel; label: string; tag: string }[]
+              ).map((opt) => {
+                const active = p.parseConfigChannel === opt.value
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => p.setParseConfigChannel(opt.value)}
+                    className={`flex flex-1 items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                      active ? "bg-primary text-primary-foreground shadow-md" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {opt.label}
+                    <span
+                      className={`rounded-full px-1.5 py-0.5 text-xs ${
+                        active ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {opt.tag}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           <div>
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium text-foreground">解析范围</p>

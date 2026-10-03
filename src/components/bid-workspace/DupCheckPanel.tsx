@@ -1,4 +1,5 @@
 import { ArrowRightCircle, Copy, Loader2, ScanSearch } from "lucide-react"
+import { formatDateTimeDisplay } from "@/lib/dateDisplay"
 import { Button } from "@/components/ui/button"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import { DUP_VERDICT_LABEL, type DupPair, type IntraDupPair } from "@/pages/BidWorkspace/bidTypes"
@@ -172,7 +173,7 @@ export function DupCheckPanel({
             <span className={`rounded-full px-3 py-1 text-xs font-medium ${intraPairs.length ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}>
               章间重复 {intraPairs.length} 处
             </span>
-            <span className="ml-auto text-xs text-muted-foreground">检查时间：{new Date(report.checked_at).toLocaleString("zh-CN")}</span>
+            <span className="ml-auto text-xs text-muted-foreground">检查时间：{formatDateTimeDisplay(report.checked_at)}</span>
           </div>
 
           <div className="mt-6">

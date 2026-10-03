@@ -29,14 +29,6 @@ export interface LlmCallResult {
   needsLogin?: boolean
 }
 
-export interface LlmModelInfo {
-  model: string
-  rh_model_id: string
-  max_tokens: number
-  timeout_s: number
-  supports_temperature: boolean
-}
-
 const CHAT_ABORT_MS = 25000
 const POLL_INTERVAL_MS = 3000
 const POLL_ATTEMPTS = 200
@@ -182,13 +174,3 @@ export async function callLlmWithFallback(modelName: string, opts: LlmCallOption
   return { ok: false, status: "failed", text: "", error: "timeout" }
 }
 
-export async function listLlmModels(): Promise<LlmModelInfo[]> {
-  const res = await fetch(`${getPocketBaseUrl()}/api/llm/models`, {
-    method: "GET",
-    credentials: "include",
-    headers: buildHeaders(),
-  })
-  if (!res.ok) return []
-  const data = (await res.json().catch(() => ({}))) as { models?: LlmModelInfo[] }
-  return Array.isArray(data.models) ? data.models : []
-}

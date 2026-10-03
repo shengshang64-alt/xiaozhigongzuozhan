@@ -1,0 +1,334 @@
+// 资质证书台账页：三档预警条 + 台账列表 + 登记/编辑/删除
+// 设计依据 docs/06 §一.1 与 docs/未来功能规划路线图.md（证书过期直接废标 → 提前预警）
+import { useState } from "react"
+import { AlertTriangle, Download, Loader2, Pencil, Plus, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { ConfirmDialog } from "@/components/common/ConfirmDialog"
+import { Input } from "@/components/ui/input"
+import type { UseQualCerts } from "./useQualCerts"
+import { QUAL_CATEGORIES, qualDueLabel, type QualBucket, type QualCertRow } from "./qualsCore"
+import { exportToCsv } from "@/lib/exportCsv"
+
+const BUCKET_LABEL: Record<QualBucket, string> = {
+  expired: "已过期",
+  critical: "30 天内到期",
+  warning: "90 天内到期",
+  ok: "状态正常",
+  unknown: "未登记有效期",
+}
+const BUCKET_CLASS: Record<QualBucket, string> = {
+  expired: "badge-danger",
+  critical: "badge-warning",
+  warning: "badge-warning",
+  ok: "badge-success",
+  unknown: "badge-neutral",
+}
+// 三档之外的桶只用于计数展示
+const ALERT_ORDER: QualBucket[] = ["expired", "critical", "warning"]
+
+function handleExport(p: UseQualCerts) {
+  const headers = ["证照名称", "类别", "证书编号", "发证机关", "有效期开始", "有效期截止", "适用范围", "更新时间"]
+  const rows = p.rows.map((r) => [r.cert_name, r.category, r.cert_no, r.issuer, r.valid_from, r.valid_to, r.scope, r.updated])
+  exportToCsv(`资质台账_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows)
+}
+
+export function QualCertsPage({ p }: { p: UseQualCerts }) {
+  const { summary } = p
+  return (
+    <div className="mx-auto w-full max-w-6xl">
+      <header className="mb-5 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold text-foreground">资质证书台账</h1>
+          <p className="mt-1 text-xs text-muted-foreground">
+            证书过期直接废标——登记全部证照与有效期，按 90/30 天与已过期三档预警；投标前务必核对
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <button
+            type="button"
+            aria-pressed={p.hardBlock}
+            onClick={() => p.setHardBlock(!p.hardBlock)}
+            title={
+              p.hardBlock
+                ? "已开启：导出标书时若有过期/临期证书将直接阻断导出"
+                : "开启后：导出标书时若有过期/临期证书将直接阻断导出（严谨交付建议）"
+            }
+            className={`inline-flex h-9 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+              p.hardBlock
+                ? "border-destructive/50 bg-destructive/10 text-destructive"
+                : "border-border bg-card text-card-foreground hover:bg-secondary"
+            }`}
+          >
+            {p.hardBlock ? "导出硬拦截：开" : "导出硬拦截：关"}
+          </button>
+          <Button
+            variant="outline"
+            onClick={() => handleExport(p)}
+            disabled={p.rows.length === 0}
+            className="gap-1.5 shadow-sm"
+            title="导出当前台账为 CSV（供投标附件/行政复核）"
+          >
+            <Download className="h-4 w-4" />
+            导出
+          </Button>
+          <Button onClick={p.openCreate} className="gap-1.5 shadow-md">
+            <Plus className="h-4 w-4" />
+            登记资质
+          </Button>
+        </div>
+      </header>
+
+      {/* 三档预警条 */}
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {ALERT_ORDER.map((b) => (
+          <div
+            key={b}
+            className={`rounded-lg border p-3 shadow-sm ${
+              b === "expired"
+                ? "border-destructive/40 bg-destructive/5"
+                : b === "critical"
+                  ? "border-amber-400/50 bg-amber-500/5"
+                  : "border-border bg-card"
+            }`}
+          >
+            <p className="flex items-center gap-1 text-xs text-muted-foreground">
+              {b === "expired" ? <ShieldAlert className="h-3.5 w-3.5 text-destructive" /> : <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />}
+              {BUCKET_LABEL[b]}
+            </p>
+            <p className={`mt-1 text-2xl font-bold ${summary.buckets[b] > 0 ? "text-destructive" : "text-foreground"}`}>
+              {summary.buckets[b]}
+            </p>
+          </div>
+        ))}
+        <div className="rounded-lg border border-border bg-card p-3 shadow-sm">
+          <p className="flex items-center gap-1 text-xs text-muted-foreground">
+            <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+            台账总数
+          </p>
+          <p className="mt-1 text-2xl font-bold text-foreground">{summary.total}</p>
+        </div>
+      </div>
+
+      {/* 预警明细 */}
+      {summary.alerts.length > 0 ? (
+        <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+          <p className="flex items-center gap-1.5 text-sm font-semibold text-destructive">
+            <AlertTriangle className="h-4 w-4" />
+            到期预警（{summary.alerts.length} 项）——投标引用前必须核实
+          </p>
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {summary.alerts.map((a) => (
+              <li key={a.id} className="flex flex-wrap items-center gap-2 text-xs">
+                <span className={`shrink-0 ${BUCKET_CLASS[a.bucket]}`}>{BUCKET_LABEL[a.bucket]}</span>
+                <span className="font-medium text-foreground">{a.cert_name}</span>
+                {a.category ? <span className="text-muted-foreground">{a.category}</span> : null}
+                <span className="text-muted-foreground">{a.valid_to}</span>
+                <span className="text-muted-foreground">
+                  {a.days_left == null ? qualDueLabel(a.valid_to, new Date(new Date().toDateString()).getTime()) : `剩 ${a.days_left} 天`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {/* 台账列表 */}
+      {p.loading ? (
+        <div className="flex items-center justify-center gap-2 rounded-lg border border-border bg-card py-12 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          正在加载台账…
+        </div>
+      ) : p.rows.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-card py-14 text-center">
+          <ShieldCheck className="h-8 w-8 text-muted-foreground" />
+          <p className="text-sm font-medium text-foreground">台账还是空的</p>
+          <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
+            登记营业执照、CMMI、ISO、ITSS、软著、人员证书等的有效期，系统按 90/30 天与已过期三档提前预警
+          </p>
+          <Button onClick={p.openCreate} size="sm" className="gap-1.5">
+            <Plus className="h-3.5 w-3.5" />
+            登记第一批资质
+          </Button>
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-border bg-card shadow-md">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-border bg-muted/50 text-xs text-muted-foreground">
+                <th className="px-3 py-2 font-medium">证照名称</th>
+                <th className="hidden px-3 py-2 font-medium sm:table-cell">类别</th>
+                <th className="hidden px-3 py-2 font-medium md:table-cell">证书编号</th>
+                <th className="px-3 py-2 font-medium">有效期至</th>
+                <th className="hidden px-3 py-2 font-medium lg:table-cell">适用范围</th>
+                <th className="px-3 py-2 text-right font-medium">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {p.rows.map((row) => (
+                <QualRow key={row.id} row={row} p={p} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* 登记/编辑表单 */}
+      <Dialog open={p.formOpen} onOpenChange={(o) => (!o ? p.closeForm() : undefined)}>
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{p.editing ? "编辑资质" : "登记资质"}</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <label htmlFor="qc-name" className="mb-1 block text-xs font-medium text-muted-foreground">证照名称 *</label>
+              <Input
+                id="qc-name"
+                value={p.draft.cert_name}
+                onChange={(e) => p.setDraft({ ...p.draft, cert_name: e.target.value })}
+                placeholder="如：CMMI5 证书"
+              />
+            </div>
+            <div>
+              <label htmlFor="qc-cat" className="mb-1 block text-xs font-medium text-muted-foreground">类别</label>
+              <select
+                id="qc-cat"
+                value={p.draft.category}
+                onChange={(e) => p.setDraft({ ...p.draft, category: e.target.value })}
+                className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground"
+              >
+                {QUAL_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="qc-no" className="mb-1 block text-xs font-medium text-muted-foreground">证书编号</label>
+              <Input id="qc-no" value={p.draft.cert_no} onChange={(e) => p.setDraft({ ...p.draft, cert_no: e.target.value })} />
+            </div>
+            <div>
+              <label htmlFor="qc-from" className="mb-1 block text-xs font-medium text-muted-foreground">有效期起</label>
+              <Input
+                id="qc-from"
+                type="date"
+                value={p.draft.valid_from}
+                onChange={(e) => p.setDraft({ ...p.draft, valid_from: e.target.value })}
+              />
+            </div>
+            <div>
+              <label htmlFor="qc-to" className="mb-1 block text-xs font-medium text-muted-foreground">有效期至 *</label>
+              <Input
+                id="qc-to"
+                type="date"
+                value={p.draft.valid_to}
+                onChange={(e) => p.setDraft({ ...p.draft, valid_to: e.target.value })}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label htmlFor="qc-issuer" className="mb-1 block text-xs font-medium text-muted-foreground">发证机关</label>
+              <Input id="qc-issuer" value={p.draft.issuer} onChange={(e) => p.setDraft({ ...p.draft, issuer: e.target.value })} />
+            </div>
+            <div className="sm:col-span-2">
+              <label htmlFor="qc-scope" className="mb-1 block text-xs font-medium text-muted-foreground">适用项目类型（选填）</label>
+              <Input
+                id="qc-scope"
+                value={p.draft.scope}
+                onChange={(e) => p.setDraft({ ...p.draft, scope: e.target.value })}
+                placeholder="如：信息化建设、运维服务"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label htmlFor="qc-file" className="mb-1 block text-xs font-medium text-muted-foreground">扫描件位置（选填，知识库/本地路径描述）</label>
+              <Input id="qc-file" value={p.draft.file_ref} onChange={(e) => p.setDraft({ ...p.draft, file_ref: e.target.value })} />
+            </div>
+            <div className="flex items-center gap-2 sm:col-span-2">
+              <input
+                id="qc-ext"
+                type="checkbox"
+                checked={p.draft.external_ok}
+                onChange={(e) => p.setDraft({ ...p.draft, external_ok: e.target.checked })}
+                className="h-4 w-4 rounded border-border"
+              />
+              <label htmlFor="qc-ext" className="mb-1 block text-xs font-medium text-muted-foreground">可对外提供（投标可用）</label>
+            </div>
+            <div className="sm:col-span-2">
+              <label htmlFor="qc-notes" className="mb-1 block text-xs font-medium text-muted-foreground">备注</label>
+              <Input id="qc-notes" value={p.draft.notes} onChange={(e) => p.setDraft({ ...p.draft, notes: e.target.value })} />
+            </div>
+          </div>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="outline" onClick={p.closeForm}>
+              取消
+            </Button>
+            <Button onClick={() => void p.saveDraft()} disabled={p.busy} className="gap-1.5">
+              {p.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {p.editing ? "保存修改" : "登记"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+function QualRow({ row, p }: { row: QualCertRow; p: UseQualCerts }) {
+  const today = new Date(new Date().toDateString()).getTime()
+  const due = qualDueLabel(row.valid_to, today)
+  // 与 qualsCore 分档口径一致：已过期 danger、≤90 天 warning、正常 success、未登记 neutral
+  const isExpired = due.startsWith("已过期")
+  const daysMatch = /^剩 (\d+) 天$/.exec(due)
+  const isSoon = due === "今天到期" || (daysMatch != null && parseInt(daysMatch[1], 10) <= 90)
+  const cls = !row.valid_to ? "badge-neutral" : isExpired ? "badge-danger" : isSoon ? "badge-warning" : "badge-success"
+  const [pendingDelete, setPendingDelete] = useState(false)
+  return (
+    <tr className="border-b border-border/60 last:border-0">
+      <td className="px-3 py-2">
+        <span className="font-medium text-foreground">{row.cert_name}</span>
+        {row.notes ? <span className="ml-1 text-xs text-muted-foreground">{row.notes.slice(0, 20)}</span> : null}
+      </td>
+      <td className="hidden px-3 py-2 text-muted-foreground sm:table-cell">{row.category || "—"}</td>
+      <td className="hidden px-3 py-2 font-mono text-xs text-muted-foreground md:table-cell">{row.cert_no || "—"}</td>
+      <td className="px-3 py-2">
+        <span className={`inline-flex items-center gap-1 ${cls}`}>{row.valid_to || "未登记"}</span>
+        <span className="ml-1 text-xs text-muted-foreground">{row.valid_to ? due : ""}</span>
+      </td>
+      <td className="hidden px-3 py-2 text-xs text-muted-foreground lg:table-cell">{row.scope || "—"}</td>
+      <td className="px-3 py-2 text-right">
+        <div className="inline-flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => p.openEdit(row)}
+            aria-label={`编辑 ${row.cert_name}`}
+            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setPendingDelete(true)}
+            aria-label={`删除 ${row.cert_name}`}
+            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <ConfirmDialog
+          open={pendingDelete}
+          onOpenChange={(o) => {
+            if (!o) setPendingDelete(false)
+          }}
+          title="删除资质"
+          description={`确定删除「${row.cert_name}」吗？删除后不可恢复。`}
+          confirmText="删除"
+          tone="danger"
+          onConfirm={() => {
+            setPendingDelete(false)
+            void p.removeRow(row)
+          }}
+        />
+      </td>
+    </tr>
+  )
+}

@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react"
-import { Archive, Boxes, Copy, FilePlus2, Layers, Loader2, Search, Trash2 } from "lucide-react"
+import { Archive, Boxes, Copy, Download, FilePlus2, Layers, Loader2, Search, Trash2, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { CompanyTemplateHint } from "@/components/common/CompanyTemplateHint"
 import type { UseSolutionStudio } from "@/pages/SolutionStudio/useSolutionStudio"
+import { exportToCsv } from "@/lib/exportCsv"
+import { localDateStamp } from "@/lib/dateStamp"
 import {
   DOC_STATUS_LABEL,
   SOLUTION_TYPES,
@@ -143,6 +145,13 @@ export function SolutionListPanel(p: SolutionListPanelProps) {
     () => (activeType === "all" ? p.solutions : p.solutions.filter((s) => s.solution_type === activeType)),
     [p.solutions, activeType],
   )
+
+  const handleExportSolutions = () => {
+    const headers = ["方案名称", "类型", "医院", "状态", "创建时间", "更新时间"]
+    const rows = visible.map((s) => [s.solution_name, s.solution_type, s.hospital, s.doc_status, s.created, s.updated])
+    exportToCsv(`方案列表_${localDateStamp()}.csv`, headers, rows)
+  }
+
   const filtering = Boolean(p.searchKeyword.trim()) || activeType !== "all"
 
   return (
@@ -158,6 +167,11 @@ export function SolutionListPanel(p: SolutionListPanelProps) {
             <FilePlus2 className="mr-1.5 h-4 w-4" />
             新建方案
           </Button>
+          <Button variant="outline" onClick={handleExportSolutions} disabled={visible.length === 0} className="shadow-sm">
+            <Download className="mr-1.5 h-4 w-4" />
+            导出 CSV
+          </Button>
+
         </div>
         {/* R-203：本场景配套的公司标准模版（附件4 方案模板 + 封面示例 + 格式规范），点击即下载 */}
         <CompanyTemplateHint scenario="solution" extraScenario="spec" />
@@ -239,7 +253,19 @@ export function SolutionListPanel(p: SolutionListPanelProps) {
           <p className="text-xs text-muted-foreground">
             {filtering ? "换个关键词或类型试试" : "从选择方案类型开始，AI 生成大纲后逐章产出正文"}
           </p>
-          {!filtering && (
+          {filtering ? (
+            <Button
+              variant="outline"
+              onClick={() => {
+                p.setSearchKeyword("")
+                setActiveType("all")
+              }}
+              className="mt-3 gap-1.5 border-primary/40 text-primary shadow-sm hover:bg-primary/10 hover:text-primary"
+            >
+              <X className="h-3.5 w-3.5" />
+              清空搜索与筛选
+            </Button>
+          ) : (
             <Button variant="outline" onClick={p.openNewWizard} className="mt-3 border-primary/40 text-primary shadow-sm hover:bg-primary/10 hover:text-primary focus-visible:shadow-[var(--focus-ring)]">
               <FilePlus2 className="mr-1.5 h-4 w-4" />
               新建第一个方案

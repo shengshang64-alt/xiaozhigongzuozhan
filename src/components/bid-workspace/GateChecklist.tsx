@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
+import { formatDateTimeDisplay } from "@/lib/dateDisplay"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import {
   findGateRecord,
@@ -99,7 +100,7 @@ export function GateChecklist({ activeProject, confirmGate, resetGate, voidCriti
                   {record ? (
                     <>
                       <span className="text-xs text-muted-foreground">
-                        {record.confirmed_at ? new Date(record.confirmed_at).toLocaleString("zh-CN") : ""}
+                        {record.confirmed_at ? formatDateTimeDisplay(record.confirmed_at) : ""}
                       </span>
                       <Button
                         size="sm"

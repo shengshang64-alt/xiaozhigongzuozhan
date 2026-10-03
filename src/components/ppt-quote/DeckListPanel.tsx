@@ -1,6 +1,8 @@
-import { Clock, Loader2, Plus, Presentation, Search, Trash2, Users } from "lucide-react"
+import { Download, Clock, Loader2, Plus, Presentation, Search, Trash2, Users } from "lucide-react"
 import { CompanyTemplateHint } from "@/components/common/CompanyTemplateHint"
 import { DECK_STATUS_LABEL, deckTypeLabel, type DeckRecord } from "@/pages/PptQuote/pptQuoteTypes"
+import { exportToCsv } from "@/lib/exportCsv"
+import { localDateStamp } from "@/lib/dateStamp"
 
 type DeckListPanelProps = {
   decks: DeckRecord[]
@@ -28,6 +30,12 @@ export function DeckListPanel({
   onOpen,
   onDelete,
 }: DeckListPanelProps) {
+  const handleExportDecks = () => {
+    const headers = ["PPT名称", "类型", "受众", "时长(分)", "页数", "状态", "创建时间", "更新时间"]
+    const rows = decks.map((d) => [d.deck_name, d.deck_type, d.audience, d.duration_min, d.slides?.length ?? 0, d.doc_status, d.created, d.updated])
+    exportToCsv(`PPT列表_${localDateStamp()}.csv`, headers, rows)
+  }
+
   return (
     <section className="pb-16">
       <header className="rounded-2xl border border-border bg-gradient-to-br from-background via-secondary to-card px-6 py-8 shadow-md animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -41,6 +49,16 @@ export function DeckListPanel({
               选类型、填主题，AI 生成逐页大纲与讲稿备注；可引入方案或标书素材，逐页精修后导出可编辑的 .pptx 与 Word 讲稿。
             </p>
           </div>
+          <button
+            type="button"
+            onClick={handleExportDecks}
+            disabled={decks.length === 0}
+            title="导出 PPT 列表"
+            className="flex items-center gap-2 rounded-md border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <Download className="h-4 w-4" />
+            导出
+          </button>
           <button
             type="button"
             onClick={onNew}

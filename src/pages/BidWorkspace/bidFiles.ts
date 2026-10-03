@@ -18,7 +18,10 @@ import {
 } from "docx"
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url"
 import { buildFigureSvg, tokenPalette } from "@/components/bid-workspace/BidFigure"
+import { renderMermaidToSvg } from "./mermaidFigure"
 import type { Chapter, FigureSpec } from "@/pages/SolutionStudio/solutionTypes"
+import { triggerBlobDownload } from "@/lib/download"
+import { formatDateTimeDisplay } from "@/lib/dateDisplay"
 import {
   CLAUSE_GRANULARITY_LABEL,
   RESPONSE_LEVEL_LABEL,
@@ -43,14 +46,148 @@ import {
 // 本地文件解析（.docx / .pdf → 纯文本，全部在浏览器内完成，不上传原文件）
 // ---------------------------------------------------------------------------
 
-export async function extractDocxText(file: File): Promise<string> {
-  const mammoth = await import("mammoth")
-  const buf = await file.arrayBuffer()
-  const result = await mammoth.extractRawText({ arrayBuffer: buf })
-  return (result.value ?? "").trim()
+// Q28 切片A（天好 Skill 移植）：页码锚点——仅外部投标文件通道注入 〔P<页码>〕 前缀，
+// 招标解析等既有通道默认不带（行为零变化）。纯函数独立可测。
+export type PageTagOptions = { pageTag?: boolean }
+export const PAGE_TAG_RE = /^〔P(\d+|\?)〕\s?/
+
+/** 给一行加页码前缀；已带前缀的行原样返回（幂等） */
+export function tagPageLine(line: string, pageNo: number): string {
+  if (PAGE_TAG_RE.test(line)) return line
+  return "〔P" + pageNo + "〕 " + line
 }
 
-export async function extractPdfText(file: File): Promise<string> {
+/** 剥离行首页码前缀 */
+export function stripPageTag(line: string): string {
+  return line.replace(PAGE_TAG_RE, "")
+}
+
+/** 取行首页码；无页码（docx/文本通道）或非锚点行返回 null */
+export function pageOfLine(line: string): number | null {
+  const m = line.match(PAGE_TAG_RE)
+  if (!m || m[1] === "?") return null
+  return parseInt(m[1], 10)
+}
+
+/** 显示/导出渲染：〔P12〕 → 「第 12 页」；〔P?〕 → 「见章节」 */
+export function renderPageRefs(s: string): string {
+  return s
+    .replace(/〔P(\d+)〕/g, "第 $1 页")
+    .replace(/〔P\?〕/g, "见章节")
+}
+
+/** T-DOCX（2026-09-28 解析审计）：docx 文本提取升级——表格感知。
+ * extractRawText 会把表格拆成碎单元格流：竖排表头「投标价格分」逐字拆 5 行、
+ * 序号/分值/评分标准的对应关系断裂，AI 解析评分表时极易错位配对（实测东华656 安庆二院
+ * 招标文件评分表）。改用 convertToHtml 保留 <table> 结构后转「A | B | C」行文本：
+ *  - 表格行：单元格以「 | 」分隔（LLM 读表格的标准形态）
+ *  - 竖排单元格：单元格内按换行分隔的片段全部 ≤2 字时判定为竖排字，合并（「投 标 价 格 分」→「投标价格分」）
+ *  - 普通段落：textContent 独立成行
+ * 消费方：招标文件解析 / 范本资料导入 / 知识库 docx 上传，全部受益。 */
+export async function extractDocxText(file: File, opts?: PageTagOptions): Promise<string> {
+  const mammoth = await import("mammoth")
+  const buf = await file.arrayBuffer()
+  const result = await mammoth.convertToHtml({ arrayBuffer: buf })
+  const html = result.value ?? ""
+  const parsed = new DOMParser().parseFromString(html, "text/html")
+
+  const decode = (s: string) =>
+    s.replace(/&nbsp;/gi, " ").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&#39;/gi, "'")
+
+  /** 单元格文本：竖排字合并；普通文本空白折叠。td.textContent 保留换行信息供竖排判定 */
+  const cellText = (td: Element): string => {
+    const raw = decode(td.textContent ?? "")
+    const rows = raw
+      .split(/\n+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    if (rows.length > 1 && rows.every((r) => [...r].length <= 2)) return rows.join("") // 竖排：逐字换行
+    return raw.replace(/\s+/g, " ").trim()
+  }
+
+  const walk = (el: Element) => {
+    for (const node of Array.from(el.children)) {
+      const tag = node.tagName.toLowerCase()
+      if (tag === "table") {
+        for (const tr of Array.from(node.querySelectorAll("tr"))) {
+          const cells = Array.from(tr.children).map((td) => cellText(td)).filter(Boolean)
+          // 相邻重复空列去重（rowspan/colspan 空位）；整行全空跳过
+          const cleaned = cells.filter((c, i) => c !== "" || (cells[i - 1] ?? "") !== "")
+          if (cleaned.some((c) => c)) lines.push(cleaned.join(" | "))
+        }
+        lines.push("") // 表格后空行，保持分块边界
+      } else if (tag === "br") {
+        lines.push("")
+      } else if (node.children.length > 0 && node.querySelector("table, p")) {
+        walk(node) // 容器递归
+      } else {
+        const text = decode(node.textContent ?? "").replace(/[ \t]+/g, " ").trim()
+        if (text) lines.push(text)
+      }
+    }
+  }
+
+  const lines: string[] = []
+  walk(parsed.body)
+  const out = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim()
+  // docx 无物理页：锚点占位 〔P?〕，下游按章节定位（不硬造页码）
+  return opts?.pageTag && out ? "〔P?〕 " + out : out
+}
+
+/** T-PDF（2026-09-28 解析审计）：把 pdfjs 文本项按几何坐标重建行。
+ * 旧实现 join("") 把整页文本粘成一行（实测 466 页招标文件均值 895 字符/行，最长 1588），导致：
+ *  ① 页码粘进正文与章节名（「15第三章…」）② 表格行列关系全丢 ③ 评分办法定位器
+ * extractScoringSectionExcerpt 的「标题行≤60字/行首第X章」规则全部失效 → 评分章节定位
+ * 返回空 → 回退全文分段 → 评分表跨段断裂 → AI 误报「评分办法缺失」。
+ * 重建规则：同一 y（±2.5pt）的文本项按 x 排序拼一行；y 变化即换行；空串项丢弃。
+ * 表格行识别：同一行内相邻文本项列间距 > 15pt（不同表格列）时以「 | 」拼接——与 docx
+ * 表格感知提取（convertToHtml）的竖线行格式统一，使解析提示词的「竖线=表格行」规则两通道一致。 */
+export function rebuildPdfLines(items: Array<Record<string, unknown>>): string {
+  const frags: Array<{ y: number; x: number; w: number; str: string }> = []
+  for (const it of items) {
+    const str = it && typeof it === "object" && "str" in it ? String((it as { str?: unknown }).str ?? "") : ""
+    if (!str.trim()) continue
+    const tr = (it as { transform?: number[] }).transform
+    const x = Array.isArray(tr) ? Number(tr[4]) || 0 : 0
+    const yRaw = Array.isArray(tr) ? Number(tr[5]) || 0 : 0
+    const w = Number((it as { width?: number }).width ?? 0) || 0
+    frags.push({ y: Math.round(yRaw * 10) / 10, x, w, str })
+  }
+  if (!frags.length) return ""
+  const ys: number[] = []
+  for (const f of frags) if (!ys.includes(f.y)) ys.push(f.y)
+  ys.sort((a, b) => b - a) // PDF y 轴向上，从大到小 = 从上到下
+  const TOL = 2.5
+  const GAP = 15 // 列间距阈值：超过视为不同表格列，用竖线分隔
+  const lines: string[] = []
+  let lastY: number | null = null
+  for (const y of ys) {
+    if (lastY !== null && Math.abs(y - lastY) <= TOL) continue // 已被同容差行吸收
+    const rowFrags = frags
+      .filter((f) => Math.abs(f.y - y) <= TOL)
+      .sort((a, b) => a.x - b.x)
+    let row = ""
+    let prevEnd = -Infinity
+    let prevStr = ""
+    for (const f of rowFrags) {
+      // 重叠去重：部分 PDF 生成器对文字做描边+填充双层渲染，同位置同文本出现两次——跳过重复项
+      if (row !== "" && f.x < prevEnd - 1 && (f.str === prevStr || prevStr.includes(f.str) || f.str.includes(prevStr))) {
+        continue
+      }
+      const gap = f.x - prevEnd
+      const sep = row === "" ? "" : gap > GAP ? " | " : " "
+      row = row + sep + f.str
+      prevEnd = f.x + f.w
+      prevStr = f.str
+    }
+    row = row.replace(/\s+/g, " ").trim()
+    if (row) lines.push(row)
+    lastY = y
+  }
+  return lines.join("\n")
+}
+
+export async function extractPdfText(file: File, opts?: PageTagOptions): Promise<string> {
   const pdfjsLib = await import("pdfjs-dist")
   pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
   const buf = await file.arrayBuffer()
@@ -60,21 +197,30 @@ export async function extractPdfText(file: File): Promise<string> {
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i)
     const content = await page.getTextContent()
-    const pageText = content.items
-      .map((it) => ("str" in it ? it.str : ""))
-      .join("")
-    lines.push(pageText)
+    // T-PDF：几何重建行（保留段落/表格行/页码边界），不再整页粘成一坨
+    const pageText = rebuildPdfLines(content.items as unknown as Array<Record<string, unknown>>)
+    if (opts?.pageTag) {
+      // Q28 切片A：外部标书审查通道逐行加页码锚点，AI 可回写「〔P12〕」定位
+      lines.push(
+        pageText
+          .split("\n")
+          .map((l) => tagPageLine(l, i))
+          .join("\n"),
+      )
+    } else {
+      lines.push(pageText)
+    }
   }
   await loadingTask.destroy()
   return lines.join("\n").trim()
 }
 
 /** 按扩展名分发解析招标文件；失败抛中文错误并引导改用粘贴文本 */
-export async function extractTenderFileText(file: File): Promise<string> {
+export async function extractTenderFileText(file: File, opts?: PageTagOptions): Promise<string> {
   const lower = file.name.toLowerCase()
   try {
-    if (lower.endsWith(".docx")) return await extractDocxText(file)
-    if (lower.endsWith(".pdf")) return await extractPdfText(file)
+    if (lower.endsWith(".docx")) return await extractDocxText(file, opts)
+    if (lower.endsWith(".pdf")) return await extractPdfText(file, opts)
     if (lower.endsWith(".txt") || lower.endsWith(".md")) return (await file.text()).trim()
     throw new Error("暂不支持该格式")
   } catch (e) {
@@ -132,14 +278,7 @@ export async function downloadDocx(
     ],
   })
   const blob = await Packer.toBlob(doc)
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement("a")
-  a.href = url
-  a.download = fileName
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  triggerBlobDownload(blob, fileName)
 }
 
 function titlePara(text: string): Paragraph {
@@ -185,10 +324,57 @@ function body(text: string): Paragraph {
   })
 }
 
+/** AI 位图 URL → PNG（fetch + Blob 解码，供 docx ImageRun）；失败返回 null 走【图】标题文字降级 */
+export async function imageUrlToPng(url: string): Promise<{ data: Uint8Array; width: number; height: number } | null> {
+  try {
+    const res = await fetch(url, { credentials: "include" })
+    if (!res.ok) return null
+    const blob = await res.blob()
+    if (!blob.type.startsWith("image/")) return null
+    const bitmap = await createImageBitmap(blob)
+    const canvas = document.createElement("canvas")
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return null
+    ctx.drawImage(bitmap, 0, 0)
+    bitmap.close()
+    const pngBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"))
+    if (!pngBlob) return null
+    return { data: new Uint8Array(await pngBlob.arrayBuffer()), width: bitmap.width, height: bitmap.height }
+  } catch {
+    return null
+  }
+}
+
 /** 章节配图 SVG → PNG（浏览器内 canvas 转换）；任何一步失败返回 null，由调用方降级为文字段落（方案编制导出同样复用） */
 export async function figureToPng(spec: FigureSpec): Promise<{ data: Uint8Array; width: number; height: number } | null> {
   try {
-    const svg = buildFigureSvg(spec, tokenPalette())
+    // T17：image 型是现成位图，fetch→canvas→PNG（尺寸超宽时等比压到 960 防止 docx 版面溢出）
+    if (spec.type === "image") {
+      const png = await imageUrlToPng(spec.url)
+      if (!png) return null
+      const maxW = 960
+      if (png.width <= maxW) return png
+      const ratio = maxW / png.width
+      const canvas = document.createElement("canvas")
+      canvas.width = maxW
+      canvas.height = Math.max(1, Math.round(png.height * ratio))
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return null
+      const bitmap = await createImageBitmap(new Blob([png.data as BlobPart], { type: "image/png" }))
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+      bitmap.close()
+      const resized = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"))
+      if (!resized) return null
+      return { data: new Uint8Array(await resized.arrayBuffer()), width: canvas.width, height: canvas.height }
+    }
+    // T16：mermaid 型走异步渲染（mermaid.render → SVG）再进同一条 SVG→canvas 链路；渲染失败返回 null 走文字降级
+    const svg =
+      spec.type === "mermaid"
+        ? await renderMermaidToSvg(spec.code)
+        : buildFigureSvg(spec, tokenPalette())
+    if (!svg) return null
     const parsed = new DOMParser().parseFromString(svg, "image/svg+xml")
     const root = parsed.documentElement
     if (!root || root.nodeName === "parsererror") return null
@@ -695,6 +881,11 @@ export function pageOptsFromFormatSettings(
 }
 
 /** 导出解析报告 / 检查报告 / 评标报告 Word */
+/** Q28 切片A：页码锚点渲染开关——external（外部标书审查）模式下 〔P12〕 显示为「第 12 页」 */
+function shouldRenderPages(project: { bid_source_mode?: unknown }): boolean {
+  return String((project as { bid_source_mode?: string }).bid_source_mode ?? "") === "external"
+}
+
 export async function exportReportDocx(kind: ReportKind, project: BidProjectRecord): Promise<void> {
   const fmt = project.format_settings ?? null
   const pageOpts = pageOptsOf(project, !!fmt?.pageNumber)
@@ -746,7 +937,12 @@ export async function exportReportDocx(kind: ReportKind, project: BidProjectReco
         )
         if (item.source_location) children.push(body(`招标位置：${item.source_location}`))
         if (item.response) children.push(body(`投标文件响应：${item.response}`))
-        if (item.response_location) children.push(body(`响应位置：${item.response_location}`))
+        if (item.response_location)
+          children.push(
+            body(
+              `响应位置：${shouldRenderPages(project) ? renderPageRefs(item.response_location) : item.response_location}`,
+            ),
+          )
         if (item.evidence) children.push(body(`证据摘录：${item.evidence}`))
         if (item.suggestion) children.push(body(`整改建议：${item.suggestion}`))
         if (item.reason) children.push(body(`说明：${item.reason}`))
@@ -781,6 +977,42 @@ export async function exportReportDocx(kind: ReportKind, project: BidProjectReco
     })
   }
   await downloadDocx(`${project.project_name}-评标报告.docx`, children, pageOpts)
+}
+
+/** T18+：文本审计报告导出（错别字 + 逻辑谬误清单成档，交卷前留痕用） */
+export async function exportTextAuditDocx(project: BidProjectRecord): Promise<void> {
+  const fmt = project.format_settings ?? null
+  const pageOpts = pageOptsOf(project, !!fmt?.pageNumber)
+  const report = project.text_audit ?? null
+  const children: Paragraph[] = []
+  children.push(titlePara(`${project.project_name} 文本审计报告`))
+  if (!report || (!report.typos.length && !report.logic.length)) {
+    children.push(body("尚未执行文本审计，或本次审计未发现问题。"))
+  } else {
+    children.push(
+      body(
+        `检查对象：${report.source === "external" ? "外部投标文件全文" : "已成稿章节正文"}；检查时间：${report.checked_at ? formatDateTimeDisplay(report.checked_at) : "—"}；发现错别字 ${report.typos.length} 处、逻辑问题 ${report.logic.length} 处。错别字均经原文位置校验（逐字命中才收录）。`,
+      ),
+    )
+    children.push(h1("一、错别字清单"))
+    if (!report.typos.length) children.push(body("未发现高确信错别字。"))
+    else
+      report.typos.forEach((t, i) => {
+        children.push(h2(`${i + 1}. 「${t.wrongText}」→「${t.correctText}」（${t.docTitle} · 第 ${t.line} 行附近）`))
+        children.push(body(`原文摘录：…${t.excerpt}…`))
+        children.push(body(`判定理由：${t.reason}`))
+      })
+    children.push(h1("二、逻辑谬误 / 前后不一致清单"))
+    if (!report.logic.length) children.push(body("未发现逻辑谬误或前后不一致。"))
+    else
+      report.logic.forEach((l, i) => {
+        children.push(h2(`${i + 1}. ${l.title}（${l.docTitle} · ${l.locationHint}）`))
+        children.push(body(`原文摘录：${l.originalText}`))
+        children.push(body(`问题说明：${l.fallacyReason}`))
+        children.push(body(`修改建议：${l.suggestion}`))
+      })
+  }
+  await downloadDocx(`${project.project_name}-文本审计报告.docx`, children, pageOpts)
 }
 
 function deviationCell(text: string, opts?: { bold?: boolean; width?: number }): TableCell {

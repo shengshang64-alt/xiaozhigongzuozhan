@@ -60,6 +60,7 @@ export function TopBarShell({ onAccountChange, onToggleSidebar }: TopBarShellPro
         <button
           type="button"
           onClick={onToggleSidebar}
+          aria-label="折叠/展开导航"
           title="折叠/展开导航"
           className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[9px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >

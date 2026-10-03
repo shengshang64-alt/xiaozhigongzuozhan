@@ -182,6 +182,8 @@ export interface ChatViaGatewayOptions {
   max_tokens?: number
   temperature?: number
   page?: string
+  /** T13：推理型模型把 max_tokens 耗在思考上导致 content 为空——解析类调用置 true 关闭思考 */
+  disableThinking?: boolean
   /** p1-ux：外部可中断信号；用户点「取消」时置 aborted，前端区分于服务超时 */
   signal?: AbortSignal
   /**
@@ -206,6 +208,7 @@ function llmCacheIdentity(opts: ChatViaGatewayOptions): string {
     mt: opts.max_tokens ?? null,
     t: opts.temperature ?? null,
     p: opts.page ?? "",
+    dt: opts.disableThinking ?? false,
   })
 }
 
@@ -261,6 +264,7 @@ async function chatViaGatewayUncached(opts: ChatViaGatewayOptions): Promise<LlmC
         messages: opts.messages,
         max_tokens: opts.max_tokens,
         temperature: opts.temperature,
+        ...(opts.disableThinking ? { disable_thinking: true } : {}),
       }),
     })
   } finally {

@@ -2,12 +2,12 @@
 // R70 提示词搬迁第六批，自 bidTypes.ts 原样搬迁：只搬不改字（快照锁字见 promptsSnapshot.test.ts）
 // ---------------------------------------------------------------------------
 
-import { BID_STYLE_RULES, FULLTEXT_GUARD_RULES, ORCHESTRATION_FIGURE_TYPE_LABEL, PARAM_RESPONSE_BOUNDARY_RULES, PRE_OUTPUT_SELFCHECK_RULES, basisStyleRule, complianceModeRule, scoringDetailLines, sectionText, truthPreamble } from "../bidTypes"
+import { buildLotsScopeHint, BID_STYLE_RULES, FULLTEXT_GUARD_RULES, ORCHESTRATION_FIGURE_TYPE_LABEL, PARAM_RESPONSE_BOUNDARY_RULES, PRE_OUTPUT_SELFCHECK_RULES, basisStyleRule, complianceModeRule, scoringDetailLines, sectionText, truthPreamble } from "../bidTypes"
 import type { ParseReport, BidSectionPromptOpts } from "../bidTypes"
 import type { Chapter, OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
 import type { LlmMessage } from "@/lib/llm"
 
-export const PROMPT_VERSION = 1
+export const PROMPT_VERSION = 2
 
 export function buildBidSectionMessages(
   projectName: string,
@@ -23,7 +23,13 @@ export function buildBidSectionMessages(
   const chapterNo = chapterIndex + 1
   const scoringDetail = scoringDetailLines(opts.scoring ?? [])
   const techText = sectionText(report, "delivery_req")
+  const reqStructBlock = reqStructureContext(report)
   const lotsBlock = lotsContext(report)
+  // T20：项目背景画像（与章级同口径；同项目跨节 identical，放稳定块不破缓存）
+  const overviewBlock = [sectionText(report, "overview"), sectionText(report, "project_info")]
+    .filter((s) => s.trim())
+    .map((s) => s.trim())
+    .join("\n")
     .split(/\n+/)
     .slice(0, 20)
     .join("\n")
@@ -47,7 +53,7 @@ export function buildBidSectionMessages(
     "2. 内容必须真实可落地、可直接用于正式投标文件：使用行业规范术语（HIS、EMR、LIS、PACS、集成平台、电子病历分级评价、互联互通测评、等级保护 2.0、商用密码应用等），杜绝空话套话；",
     "3. 紧扣招标文件的评分办法与技术需求做实质性响应，涉及指标处给出量化承诺（并发用户数、响应时间、驻场人数、到场时限等），取值以招标原文与全局事实为准并遵守最小值响应：满足招标要求档位即可，禁止自行加码承诺；",
     scoringDetail
-      ? `4. 本章须逐条响应的评分细则（项名 + 分值 + 评审标准原文）如下，本小节写到对应内容时明确点出响应与承诺，并对齐评审标准中的给分档位：\n${scoringDetail}`
+      ? `4. 本章已映射到以下评分点（评标专家将逐条核对），本小节写到对应内容时必须给出明确的实质性响应（措施/承诺/证明材料并点明评分项名），禁止只罗列功能清单。评分细则（项名 + 分值 + 评审标准原文）如下，对齐评审标准中的给分档位：\n${scoringDetail}`
       : "4. 本章未分配到具体评分细则，请围绕招标技术需求写出实质性响应内容；",
     `5. 本小节字数预算约 ${opts.wordBudget} 字（整章预算按小节均分），在该篇幅内围绕招标参数与评分办法扩展；禁止自造招标未给的具体参数数字，拿不准的用「按招标文件要求响应」等规范表述；`,
   ]
@@ -97,6 +103,14 @@ export function buildBidSectionMessages(
   if (opts.tenderFragments) {
     rules.push(
       `${ruleNo}. 本小节内容必须优先依据下面【招标原文相关段落】展开：技术参数、指标、配置与服务要求以原文为准，与原文冲突的表述一律以原文为准，禁止脱离原文空写套话；`,
+      // T20：反罗列（与章级同口径）
+      `${ruleNo + 1}. 使用【招标原文相关段落】时禁止整段照抄或逐条罗列原文的功能清单、系统列表与参数表：此类内容必须归纳为分析性表述（按业务域归类、说明对本项目的作用与建设考虑），原文细节只在支撑论述时引用；本小节标题含「需求分析」「现状分析」「背景」时，必须体现分析与论证过程；`,
+    )
+    ruleNo += 2
+  } else if (techText) {
+    // 切片B：bigram 检索无命中时仍强制要求贴【技术需求与交货服务要求】展开，杜绝脱离招标空写
+    rules.push(
+      `${ruleNo}. 本小节内容必须紧扣上方【技术需求与交货服务要求】和【评分办法明细】展开实质性响应，禁止写与招标要求无关的通用内容；`,
     )
     ruleNo += 1
   }
@@ -111,6 +125,13 @@ export function buildBidSectionMessages(
   if (opts.kbMaterial) {
     rules.push(
       `${ruleNo}. 下面【知识库参考素材】是团队沉淀的方案素材（已注明来源文档），可作为本小节案例、数据与实施细节的支撑材料融入正文；与招标原文冲突的内容一律以招标原文为准，禁止整段照抄；`,
+    )
+    ruleNo += 1
+  }
+  // T16：编排期定向挑选的知识库素材（优先级高于检索式注入）
+  if (opts.directedKnowledge?.length) {
+    rules.push(
+      `${ruleNo}. 下面【定向参考素材】是编排阶段为本小节挑选的知识库素材（已注明来源文档），本小节写作应优先吸收其中相关的案例、数据与实施细节；与招标原文冲突的内容一律以招标原文为准，禁止整段照抄，禁止编造素材里没有的内容；`,
     )
     ruleNo += 1
   }
@@ -180,11 +201,15 @@ export function buildBidSectionMessages(
   }
   if (orchFigure) {
     const figCaption = (orchFigure.caption ?? "").trim()
+    // T16：编排选中 mermaid 关系图时，配图格式契约切换为 mermaid 源码图
+    const figureFormatRule = orchFigure.type === "mermaid"
+      ? `${ruleNo + 1}. 该图为 mermaid 源码图，输出格式 {"type":"mermaid","title":"图名","code":"flowchart TD\\n A[\\"节点\\"] --> B[\\"节点\\"]"}；code 只允许 flowchart/graph 声明开头、节点总数 ≤12、每个节点标签 ≤16 字、中文与含特殊字符的标签必须用双引号包裹；code 必须对应本小节正文描述的流程/关系，禁止编造正文没有的环节；`
+      : `${ruleNo + 1}. 配图元素格式：architecture（架构图）{"type":"architecture","title":"图名","layers":[{"name":"层名","modules":["模块名"]}]}；flow（流程图）{"type":"flow","title":"图名","steps":[{"name":"步骤","desc":"可选说明"}],"branches":["可选分支说明"]}；demo（系统界面示意）{"type":"demo","title":"图名","sidebar":["菜单项"],"main":[{"block":"区块名","desc":"可选说明"}]}；`
     rules.push(
       `${ruleNo}. 本小节已编排一张${ORCHESTRATION_FIGURE_TYPE_LABEL[orchFigure.type]}：《${orchFigure.title}》${
         figCaption ? `，图注「${figCaption}」` : ""
       }，figures 必须输出该图且内容全部取自本小节正文（模块/步骤/区块用词与正文一致，禁止泛化占位词${figCaption ? "，图元素必须能支撑图注所述内容" : ""}）；`,
-      `${ruleNo + 1}. 配图元素格式：architecture（架构图）{"type":"architecture","title":"图名","layers":[{"name":"层名","modules":["模块名"]}]}；flow（流程图）{"type":"flow","title":"图名","steps":[{"name":"步骤","desc":"可选说明"}],"branches":["可选分支说明"]}；demo（系统界面示意）{"type":"demo","title":"图名","sidebar":["菜单项"],"main":[{"block":"区块名","desc":"可选说明"}]}；`,
+      figureFormatRule,
       `${ruleNo + 2}. 输出严格 JSON，禁止解释文字、禁止代码围栏，格式：{"content":"本小节纯文本正文（第一行为「${opts.sectionNo} ${opts.sectionName}」标题行，禁止 markdown 符号）","figures":[该张配图]}`,
     )
   } else {
@@ -195,6 +220,8 @@ export function buildBidSectionMessages(
   const system = rules.join("\n")
   // 第十六轮 A：多消息缓存序——稳定大块前置（同项目跨小节 identical），小节差异置后
   const stableUser = [
+    // T20：项目背景画像放稳定块最前（同章级口径）
+    overviewBlock ? `【项目背景与概况（写作前先理解，正文须结合本项目实际情况组织内容）】\n${overviewBlock}` : "",
     `【技术需求与交货服务要求】\n${techText || "（未解析）"}`,
     opts.starBlock ?? "",
     // 循环 2 批 2-1：定向事实启用时全量全局事实不再进稳定块（定向块属小节差异内容，进 taskUser 保前缀缓存）
@@ -208,11 +235,17 @@ export function buildBidSectionMessages(
     .join("\n\n")
   const taskUser = [
 
-    lotsBlock,    factsBlock && directedOn ? factsBlock : "",
+    lotsBlock,
+    reqStructBlock,
+    factsBlock && directedOn ? factsBlock : "",
     opts.tenderFragments
       ? `【招标原文相关段落（本小节写作的首要依据，参数、指标、要求以原文为准）】\n${opts.tenderFragments}`
       : "",
     opts.kbMaterial ? `【知识库参考素材（团队沉淀，注明来源文档，可融入本小节支撑细节）】\n${opts.kbMaterial}` : "",
+    // T16：编排定向知识素材段（编排为本小节挑选，优先于检索式素材吸收）
+    opts.directedKnowledge?.length
+      ? `【定向参考素材（编排阶段为本小节挑选的知识库素材，优先吸收）】\n${opts.directedKnowledge.join("\n\n")}`
+      : "",
     // 第十七轮 17D：团队写作资料段（小节差异内容进 taskUser）
     opts.refMaterials
       ? `【团队写作资料（自有人员/案例/资质/制度，可引用其事实与口径，注明来自自有资料，禁止整段照抄）】\n${opts.refMaterials}`
@@ -251,9 +284,24 @@ export function buildBidSectionMessages(
 function lotsContext(report: Parameters<typeof sectionText>[0]): string {
   const lots = sectionText(report, "lots").trim()
   if (!lots) return ""
+  const scope = report?.lots_scope
+  const hint = buildLotsScopeHint(scope?.selected, scope?.all?.length ?? 0)
   return `
 
 【标包划分（多包件招标）】
-${lots.slice(0, 1200)}
+${lots.slice(0, 1200)}${hint ? "\n\n" + hint : ""}
 （本项目划分多个标包：正文必须只针对上述标包中招标文件指定/用户确认的包件范围撰写，禁止混入其他包件的货物、参数与报价。）`
+}
+
+/** Q26/切片B：采购需求结构上下文——解析报告含「采购需求结构」分区时注入子系统清单，约束正文只落在所投系统范围内 */
+function reqStructureContext(report: Parameters<typeof sectionText>[0]): string {
+  const sys = sectionText(report, "req_structure").trim()
+  if (!sys) return ""
+  const scope = report?.lots_scope
+  const hint = buildLotsScopeHint(scope?.selected, scope?.all?.length ?? 0)
+  return `
+
+【采购需求子系统清单（本项目所投系统范围${hint ? "，已按所投包件范围约束" : ""}）】
+${sys.slice(0, 1600)}${hint ? "\n\n" + hint : ""}
+（正文须覆盖并限定于上述子系统：逐系统对应展开、不遗漏，也不得混入清单之外的系统；与标包划分同时存在时以所投保包内系统为准。）`
 }

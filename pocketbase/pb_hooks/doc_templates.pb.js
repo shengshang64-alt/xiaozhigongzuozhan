@@ -124,7 +124,14 @@ routerAdd("GET", "/api/doc_templates", function (e) {
       : $app.findRecordsByFilter("doc_templates", "", sort, perPage, (page - 1) * perPage)
     var items = []
     for (var i = 0; i < records.length; i++) { items.push(records[i].publicExport()) }
-    return e.json(200, { items: items, page: page, perPage: perPage, totalItems: items.length })
+    var totalItems = items.length
+    try {
+      var countRecords = filter
+        ? $app.findRecordsByFilter("doc_templates", filter, sort, 100000, 0, params)
+        : $app.findRecordsByFilter("doc_templates", "", sort, 100000, 0)
+      totalItems = countRecords.length
+    } catch (err2) {}
+    return e.json(200, { items: items, page: page, perPage: perPage, totalItems: totalItems })
   } catch (err) {
     var msg = String(err && err.message || err)
     return e.json(500, { error: "list_failed", message: msg, fingerprint: msg.substring(0, 80) })

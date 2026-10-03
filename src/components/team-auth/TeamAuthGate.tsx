@@ -9,19 +9,12 @@ import {
   teamLogin,
   teamSetup,
   getTeamToken,
-  type TeamProfile,
 } from "@/lib/teamAuth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 type GateState = "checking" | "setup" | "login" | "granted"
-
-const ROLE_BADGE: Record<TeamProfile["role"], string> = {
-  admin: "管理员",
-  editor: "编辑",
-  viewer: "只读",
-}
 
 export function TeamAuthGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<GateState>(isLocalDeployHost() ? "checking" : "granted")
@@ -165,9 +158,3 @@ export function TeamAuthGate({ children }: { children: ReactNode }) {
   )
 }
 
-/** 当前角色中文名（门禁外组件按需引用；未登录返回空串）。 */
-export function teamRoleLabel(profile: TeamProfile | null): string {
-  return profile ? ROLE_BADGE[profile.role] : ""
-}
-
-export { ROLE_BADGE as TEAM_ROLE_BADGE }

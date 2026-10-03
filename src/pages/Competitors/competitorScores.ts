@@ -181,9 +181,3 @@ export function buildCompareTakeaways(entries: TakeawayEntry[]): CompareTakeaway
   }
   return out
 }
-
-export function buildCompareCsv(entries: { name: string; scores: number[] }[]): string {
-  const head = ["能力维度", ...entries.map((e) => e.name)].join(",")
-  const lines = CAPABILITY_DIMS.map((dim, r) => [dim, ...entries.map((e) => e.scores[r] ?? "")].join(","))
-  return `\uFEFF${[head, ...lines].join("\n")}`
-}

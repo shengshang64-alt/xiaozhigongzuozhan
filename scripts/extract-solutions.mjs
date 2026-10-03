@@ -231,6 +231,7 @@ for (const { file: f, proj } of picks) {
       summary: `标杆建设方案（${track}${year ? "·" + year + "年" : ""}·${proj}）：含项目背景、需求/现状分析、建设目标、总体架构、建设内容、实施方案等可复用章节，供同类方案编制参考（${content.length} 字）。`,
       keywords, source_file_name: key, uploader_name: "方案范本导入",
       doc_category: "技术方案", ai_context_mode: "original", retrieval_weight: 1.0, is_sensitive: false,
+      kb_track: track, kb_bucket: "方案素材", // R138：入库即带确定性标签，不再依赖 backfill 猜桶
     }),
   })
   ok++

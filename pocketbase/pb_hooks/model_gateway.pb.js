@@ -663,11 +663,19 @@ routerAdd("POST", "/api/model-gw/chat", (e) => {
       }
       return out
     }
-    var doChat = function (baseUrl, apiKey, model, messages, maxTokens, temperature, timeoutSec) {
+    // T13（2026-09-28）：推理型模型（deepseek-v4 等）会把 max_tokens 全部耗在思考上，content 返回空
+    // → 前端报「返回格式异常，回复内容为空」（解析批量失败实锤）。解析类调用带 disable_thinking=true，
+    //   出站补两家主流方言关闭思考参数；个别严格网关若 400 拒收未知参数，去掉重试一次。
+    var doChat = function (baseUrl, apiKey, model, messages, maxTokens, temperature, timeoutSec, disableThinking) {
       var b = String(baseUrl).replace(/\/+$/, "")
       var urls = [b + "/chat/completions", b + "/v1/chat/completions"]
       var payload = { model: model, messages: messages, stream: false, max_tokens: maxTokens }
       if (typeof temperature === "number" && !isNaN(temperature)) payload.temperature = temperature
+      if (disableThinking) {
+        payload.thinking = { type: "disabled" }
+        payload.reasoning_effort = "none"
+      }
+      var tryPayload = payload
       var started = new Date().getTime()
       var lastStatus = 0
       for (var i = 0; i < urls.length; i++) {
@@ -676,11 +684,19 @@ routerAdd("POST", "/api/model-gw/chat", (e) => {
             url: urls[i],
             method: "POST",
             headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
+            body: JSON.stringify(tryPayload),
             timeout: timeoutSec
           })
           lastStatus = res.statusCode
           if (res.statusCode === 404 && i === 0) continue
+          // 严格网关拒收关思考参数（400）→ 去参重试当前 URL 一次
+          if (disableThinking && res.statusCode === 400 && tryPayload === payload) {
+            var stripped = {}
+            for (var k in payload) if (k !== "thinking" && k !== "reasoning_effort") stripped[k] = payload[k]
+            tryPayload = stripped
+            i -= 1
+            continue
+          }
           var elapsed = new Date().getTime() - started
           if (res.statusCode === 401 || res.statusCode === 403) return { ok: false, message: "认证失败，请检查所配置模型的 API Key 是否有效" }
           if (res.statusCode === 429) return { ok: false, message: "所配置模型的接口限流或余额不足（HTTP 429），请稍后重试或切换模型" }
@@ -699,6 +715,8 @@ routerAdd("POST", "/api/model-gw/chat", (e) => {
         } catch (err) {
           var msg = String((err && err.message) || err || "")
           if (/timeout|deadline|Timeout/i.test(msg)) return { ok: false, message: "请求超时，对方接口未在限定时间内返回，可稍后重试或切换模型" }
+          // T13：EOF/断连按限流口径返回（前端 isRateLimitError 命中后退避+熔断，不再逐项硬撞）
+          if (/EOF|connection\s*reset|broken\s*pipe|ECONNRESET|socket/i.test(msg)) return { ok: false, message: "所配置模型的接口限流或连接被对方关闭（EOF），请稍后重试或切换模型" }
           if (i === urls.length - 1) return { ok: false, message: "接口地址无法连通，请检查模型配置" }
         }
       }
@@ -744,12 +762,18 @@ routerAdd("POST", "/api/model-gw/chat", (e) => {
     if (!enabledOk) return e.json(200, { ok: false, code: "model_disabled", message: "模型「" + useModel + "」已停用，请在模型配置页启用或改用其他模型" })
     var plainKey = rec.get("api_key") ? unxorHex(rec.get("api_key")) : ""
     if (!plainKey) return e.json(200, { ok: false, code: "fallback_to_platform", message: "该配置缺少 API Key，将回退平台内置模型" })
-    var r = doChat(String(rec.get("base_url") || ""), plainKey, useModel, messages, maxTokens, temperature, 120)
+    var r = doChat(String(rec.get("base_url") || ""), plainKey, useModel, messages, maxTokens, temperature, 120, body.disable_thinking === true)
     if (!r.ok) return e.json(200, { ok: false, code: "upstream_error", message: r.message })
     $app.logger().info("model-gw chat ok", "user", userId, "config", rec.id, "model", useModel, "elapsed_ms", r.elapsed_ms)
     return e.json(200, { ok: true, text: r.text, model: useModel, config_name: String(rec.get("config_name") || ""), elapsed_ms: r.elapsed_ms, usage: r.usage })
   } catch (ex) {
     $app.logger().error("model-gw chat failed", "err", String(ex))
+    // T13：上游断连（EOF/reset）实测在大批量解析时成串出现（触发对方限流/配额/服务波动）——
+    // 映射为含「限流」字样的可读文案，前端 isRateLimitError 命中后退避重试+熔断，不再逐项硬撞
+    var exMsg = String((ex && ex.message) || ex || "")
+    if (/EOF|connection\s*reset|broken\s*pipe|ECONNRESET|socket/i.test(exMsg)) {
+      return e.json(200, { ok: false, code: "upstream_error", message: "所配置模型的接口限流或连接被对方关闭（EOF），请稍后重试或切换模型" })
+    }
     return e.json(500, { error: "model_gateway_error", message: "模型网关处理失败，请稍后重试", fingerprint: "mgw-chat-" + new Date().getTime().toString(36) })
   }
 })

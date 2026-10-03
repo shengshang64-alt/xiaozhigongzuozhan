@@ -57,3 +57,12 @@ export function normalizeHospitalLevel(raw: string | null | undefined): string {
   const s = String(raw ?? "").trim()
   return LEVEL_ALIAS[s] ?? s
 }
+
+/**
+ * T7 演示模式清场（2026-09-27）：判断客户是否属于「测试数据」。
+ * 规则刻意简单透明：名称含「测试」即视为测试数据（真实医院名称不含此词）。
+ * 纯函数，供演示模式开关过滤列表；不给库加字段（schema 红线），关掉开关数据原样可见。
+ */
+export function isTestCustomer(hospitalName: string | null | undefined): boolean {
+  return String(hospitalName ?? "").includes("测试")
+}

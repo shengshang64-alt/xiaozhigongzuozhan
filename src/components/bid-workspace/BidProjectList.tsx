@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from "react"
-import { Archive, ArchiveRestore, CalendarClock, FileCheck2, Loader2, Plus, Search, Trash2, Undo2 } from "lucide-react"
+import { Archive, ArchiveRestore, CalendarClock, Download, FileCheck2, Loader2, Plus, Search, Trash2, Undo2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -7,6 +7,8 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { CompanyTemplateHint } from "@/components/common/CompanyTemplateHint"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import { daysUntil, displayStageLabel, effectiveHospital, type BidProjectRecord, type BidStage } from "@/pages/BidWorkspace/bidTypes"
+import { exportToCsv } from "@/lib/exportCsv"
+import { localDateStamp } from "@/lib/dateStamp"
 
 type ListView = "active" | "archived" | "trash"
 
@@ -234,6 +236,12 @@ export function BidProjectList(p: BidProjectListProps) {
     setProjNameErr("")
     void p.createProject()
   }
+  const handleExportBids = () => {
+    const headers = ["项目名称", "招标编号", "医院", "阶段", "开标日期"]
+    const rows = p.projects.map((proj) => [proj.project_name, proj.tender_no, proj.hospital, proj.stage, proj.bid_open_date])
+    exportToCsv(`投标项目_${localDateStamp()}.csv`, headers, rows)
+  }
+
   return (
     <main className="animate-in fade-in duration-500">
       <section className="mx-auto max-w-7xl px-4 pt-8">
@@ -249,6 +257,15 @@ export function BidProjectList(p: BidProjectListProps) {
                 每个项目按「导入招标文件 → AI 解析评分办法与废标条款 → 编制投标文件 → 查重 → 废标自查 → 模拟评标 → 归档导出」推进，各环节结果都保存在项目内，随时回来继续。
               </p>
             </div>
+            <Button
+              variant="outline"
+              onClick={handleExportBids}
+              disabled={p.projects.length === 0}
+              className="shadow-sm"
+            >
+              <Download className="mr-1.5 h-4 w-4" />
+              导出 CSV
+            </Button>
             <Button
               onClick={p.openNewDialog}
               className="bg-primary text-primary-foreground shadow-md hover:bg-primary/90 focus-visible:shadow-[var(--focus-ring)]"

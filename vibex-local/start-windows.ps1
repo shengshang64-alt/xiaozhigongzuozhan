@@ -117,7 +117,7 @@ try {
   $cmd = $vite[0]
   $args = @()
   if ($vite.Length -gt 1) { $args += $vite[1..($vite.Length - 1)] }
-  $args += @("--config", "vibex-local/vite.local.config.ts", "--host", "127.0.0.1", "--port", "8000")
+  $args += @("--config", "vibex-local/vite.local.config.ts", "--host", "0.0.0.0", "--port", "8000")
   & $cmd @args
 } finally {
   if ($pb -and !$pb.HasExited) { Stop-Process -Id $pb.Id -Force }

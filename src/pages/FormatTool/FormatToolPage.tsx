@@ -13,6 +13,7 @@ import {
   Wand2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { PageHeader } from "@/components/shell/PageHeader"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -30,7 +31,7 @@ import {
   type FormatFontSize,
 } from "@/pages/BidWorkspace/bidTypes"
 import { computeFormatDiff, SCOPE_OPTIONS, type FormatScope } from "./formatDiff"
-import type { UseFormatTool } from "./useFormatTool"
+import type { FormatTemplateRecord, UseFormatTool } from "./useFormatTool"
 import { stripInternalTemplateMarks } from "./useFormatTool"
 import type { FormatSpec } from "./formatSpec"
 
@@ -68,6 +69,8 @@ export function FormatToolPage(vm: UseFormatTool) {
   // fmt6 向导本地 UI 态：刷新范围勾选（参与第 3 步比对）+ 刚保存标记（第 4 步完成态）
   const [scopes, setScopes] = useState<FormatScope[]>(["font", "heading", "spacing", "page"])
   const [justSaved, setJustSaved] = useState(false)
+  // R95-A (P2)：删除模板二次确认，避免误点 Trash2 直接 DELETE
+  const [deleteTarget, setDeleteTarget] = useState<FormatTemplateRecord | null>(null)
 
   const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -174,7 +177,7 @@ export function FormatToolPage(vm: UseFormatTool) {
                         <Star className="mr-0.5 h-3 w-3" />默认
                       </Button>
                     )}
-                    <Button size="sm" variant="ghost" className="h-7 shrink-0 px-1.5 text-[11px] text-muted-foreground hover:text-destructive" title="删除模板" onClick={() => void vm.deleteTemplate(t.id)}>
+                    <Button size="sm" variant="ghost" className="h-7 shrink-0 px-1.5 text-[11px] text-muted-foreground hover:text-destructive" title="删除模板" onClick={() => setDeleteTarget(t)}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
@@ -432,6 +435,19 @@ export function FormatToolPage(vm: UseFormatTool) {
           </details>
         </section>
       </div>
+      {/* R95-A：删除模板二次确认（避免误点 Trash2 直接 DELETE） */}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+        title="删除这个模板？"
+        description={deleteTarget ? `「${deleteTarget.name}」将从模板库永久移除，已导出的 Word 文件不受影响。` : undefined}
+        confirmText="删除"
+        tone="danger"
+        onConfirm={() => {
+          if (deleteTarget) void vm.deleteTemplate(deleteTarget.id)
+          setDeleteTarget(null)
+        }}
+      />
     </div>
   )
 }

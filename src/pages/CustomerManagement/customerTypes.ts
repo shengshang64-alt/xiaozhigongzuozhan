@@ -1,4 +1,5 @@
 import type { LlmMessage } from "@/lib/llm"
+import { formatDateDisplay, formatDateTimeDisplay } from "@/lib/dateDisplay"
 
 // ---------------------------------------------------------------------------
 // 类型（字段名与 PocketBase collection 100% 一致，snake_case）
@@ -477,19 +478,11 @@ export function stripToJson(text: string, open: string, close: string): string |
 }
 
 export function fmtDateTime(iso: string): string {
-  if (!iso) return ""
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso.slice(0, 10)
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return formatDateTimeDisplay(iso)
 }
 
 export function fmtDate(iso: string): string {
-  if (!iso) return ""
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso.slice(0, 10)
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  return formatDateDisplay(iso)
 }
 
 export function fmtAmount(n: number): string {

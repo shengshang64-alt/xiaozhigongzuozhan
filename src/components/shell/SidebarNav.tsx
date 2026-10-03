@@ -10,10 +10,13 @@ import {
   Monitor,
   Search,
   Settings,
+  Flame,
   Type,
   UserCog,
   Users,
+  ShieldCheck,
 } from "lucide-react"
+import { preloadRoute } from "@/lib/routePreload"
 import { decodeRhToken, isLocalDeployHost, type RhAccountInfo } from "@/lib/rhLogin"
 import { getCachedTeamProfile } from "@/lib/teamAuth"
 
@@ -29,7 +32,10 @@ const NAV_SECTIONS: NavSection[] = [
   },
   {
     title: "发现",
-    items: [{ path: "/intel-center", label: "情报中心", icon: Search }],
+    items: [
+      { path: "/intel-center", label: "情报中心", icon: Search },
+      { path: "/ai-hot", label: "AI 动态", icon: Flame },
+    ],
   },
   {
     title: "研判",
@@ -53,6 +59,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: "沉淀",
     items: [
       { path: "/knowledge", label: "知识库", icon: BookOpen },
+      { path: "/qual-certs", label: "资质台账", icon: ShieldCheck },
       { path: "/competitors", label: "竞品分析", icon: Building2 },
     ],
   },
@@ -129,6 +136,7 @@ export function SidebarNav({ accountInfo, collapsed = false }: SidebarNavProps) 
                     type="button"
                     title={item.label}
                     onClick={() => navigate(item.path)}
+                    onMouseEnter={() => preloadRoute(item.path)}
                     className={
                       "group relative flex items-center gap-2.5 rounded-[9px] text-[13.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring " +
                       (collapsed ? "justify-center px-0 py-[11px]" : "px-2.5 py-[9px]") +

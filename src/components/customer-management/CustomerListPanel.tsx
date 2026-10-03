@@ -1,6 +1,9 @@
-import { Building2, Loader2, Search, Sparkles, MapPin, Target, Wand2 } from "lucide-react"
-import { normalizeHospitalLevel } from "@/pages/CustomerManagement/customerNormalize"
+import { Building2, Download, Eye, EyeOff, Loader2, Search, Sparkles, MapPin, Target, Wand2 } from "lucide-react"
+import { useMemo, useState } from "react"
+import { normalizeHospitalLevel, normalizeRegion, isTestCustomer } from "@/pages/CustomerManagement/customerNormalize"
 import { computeMissingFields, HOSPITAL_TYPES, type CustomerRow } from "@/pages/CustomerManagement/customerTypes"
+import { exportToCsv } from "@/lib/exportCsv"
+import { localDateStamp } from "@/lib/dateStamp"
 
 // 缺失字段 key → 中文名（供缺失徽标 title 展示；与 computeMissingFields 返回的 key 对齐）
 const MISSING_FIELD_LABEL: Record<string, string> = {
@@ -71,8 +74,38 @@ export function CustomerListPanel({
   onBatchEnrich,
   onCancelBatchEnrich,
 }: CustomerListPanelProps) {
+  // T7 演示模式（组件自持 state，不跨层传递）：给医院演示前一键隐藏名称含「测试」的客户；
+  // localStorage 持久化让开关状态跨会话记住。过滤规则走 isTestCustomer 纯函数（有单测）。
+  const DEMO_MODE_KEY = "crm_demo_mode"
+  const [demoMode, setDemoModeState] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem(DEMO_MODE_KEY) === "1"
+    } catch {
+      return false
+    }
+  })
+  const setDemoMode = (on: boolean) => {
+    setDemoModeState(on)
+    try {
+      window.localStorage.setItem(DEMO_MODE_KEY, on ? "1" : "0")
+    } catch {
+      /* localStorage 不可用时仅本次会话生效 */
+    }
+  }
+  const visibleCustomers = useMemo(
+    () => (demoMode ? customers.filter((c) => !isTestCustomer(c.hospital_name)) : customers),
+    [customers, demoMode],
+  )
+  const demoHiddenCount = customers.length - visibleCustomers.length
   const selectClass =
     "h-9 cursor-pointer rounded-md border border-border bg-card px-2 text-xs font-medium text-card-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+
+  const handleExport = () => {
+    const headers = ["名称", "类型", "地区", "等级", "最近跟进", "更新时间"]
+    const rows = visibleCustomers.map((c) => [c.hospital_name, c.hospital_type ?? "", c.region ?? "", c.level ?? "", c.last_follow_at ?? "", c.updated ?? ""])
+    exportToCsv(`客户列表_${localDateStamp()}.csv`, headers, rows)
+  }
+
 
   return (
     <section className="flex h-full flex-col rounded-lg border border-border bg-card p-4 shadow-md lg:p-5">
@@ -108,6 +141,16 @@ export function CustomerListPanel({
               批量补全
             </button>
           )}
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={visibleCustomers.length === 0}
+            title="导出当前列表为 CSV"
+            className="inline-flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <Download className="h-3.5 w-3.5" />
+            导出
+          </button>
           <button
             type="button"
             onClick={onNewCustomer}
@@ -164,8 +207,31 @@ export function CustomerListPanel({
             <option value="updated">最近更新</option>
             <option value="name">按名称</option>
           </select>
+          {/* T7 演示模式开关：给医院演示前一键隐藏测试数据；隐藏数量如实可见。
+              用 aria-pressed 的 toggle button（不用 role=switch）：IAB/自动化对 switch 控件的
+              鼠标派发不稳定（2026-09-27 实测所有点击通道失效），toggle button 语义同样准确 */}
+          <button
+            type="button"
+            aria-pressed={demoMode}
+            onClick={() => setDemoMode(!demoMode)}
+            title={demoMode ? "演示模式已开启：名称含「测试」的客户已隐藏" : "演示模式：隐藏名称含「测试」的客户（给医院演示前清场用）"}
+            className={`inline-flex h-9 items-center gap-1 rounded-md border px-2.5 text-xs font-medium shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+              demoMode
+                ? "border-primary/60 bg-primary/10 text-primary"
+                : "border-border bg-card text-card-foreground hover:bg-secondary"
+            }`}
+          >
+            {demoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            演示模式
+          </button>
         </div>
       </div>
+      {demoMode && demoHiddenCount > 0 ? (
+        <p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+          <EyeOff className="h-3 w-3" />
+          演示模式：已隐藏 {demoHiddenCount} 家名称含「测试」的客户
+        </p>
+      ) : null}
 
       <div className="mt-4 flex-1 overflow-y-auto">
         {dataLoading ? (
@@ -190,7 +256,7 @@ export function CustomerListPanel({
               清除筛选
             </button>
           </div>
-        ) : customers.length === 0 ? (
+        ) : visibleCustomers.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border px-5 py-16 text-center">
             <Sparkles className="mx-auto h-8 w-8 text-muted-foreground" />
             <p className="mt-3 text-sm font-medium text-foreground">
@@ -209,10 +275,11 @@ export function CustomerListPanel({
           </div>
         ) : (
           <ul className="flex flex-col gap-1.5">
-            {customers.map((customer) => {
+            {visibleCustomers.map((customer) => {
               const active = customer.id === selectedCustomerId
               const oppCount = oppCountByCustomer[customer.id] ?? 0
               const missing = computeMissingFields(customer)
+              const regionLabel = normalizeRegion(customer.region)
               return (
                 <li key={customer.id}>
                   <button
@@ -241,13 +308,15 @@ export function CustomerListPanel({
                     {/* 第二行：地区 · 类型（左） + 完整度徽标 + 在跟商机数（右，仅有时显示） */}
                     <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-muted-foreground">
                       <div className="flex min-w-0 items-center gap-x-1.5 overflow-hidden whitespace-nowrap">
-                        {customer.region && (
+                        {/* T1（2026-09-27）：展示走 normalizeRegion 归一（「安徽省合肥市」→「安徽」，
+                            「部门」等脏值归一失败不显示，宁缺毋错），库内原始值不动 */}
+                        {regionLabel && (
                           <span className="inline-flex min-w-0 items-center gap-0.5">
                             <MapPin className="h-3 w-3 shrink-0" />
-                            <span className="truncate">{customer.region}</span>
+                            <span className="truncate">{regionLabel}</span>
                           </span>
                         )}
-                        {customer.region && customer.hospital_type && <span className="shrink-0 opacity-40">·</span>}
+                        {regionLabel && customer.hospital_type && <span className="shrink-0 opacity-40">·</span>}
                         {customer.hospital_type && <span className="truncate">{customer.hospital_type}</span>}
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">
@@ -287,7 +356,7 @@ export function CustomerListPanel({
           <div className="mt-3 flex flex-col items-center gap-2">
             {!searchText.trim() && !typeFilter && !regionFilter && (
               <p className="text-xs text-muted-foreground">
-                已加载 {customers.length} 家{totalCount != null ? ` / 共 ${totalCount} 家` : ""}
+                已加载 {visibleCustomers.length} 家{totalCount != null ? ` / 共 ${totalCount} 家` : ""}
               </p>
             )}
             {hasMore && (

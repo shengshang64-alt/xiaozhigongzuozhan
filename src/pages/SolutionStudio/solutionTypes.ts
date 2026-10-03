@@ -22,6 +22,10 @@ export type FigureSpec =
   | { type: "architecture"; title: string; layers: { name: string; modules: string[] }[]; caption?: string }
   | { type: "flow"; title: string; steps: { name: string; desc?: string }[]; branches?: string[]; caption?: string }
   | { type: "demo"; title: string; sidebar?: string[]; main?: { block: string; desc?: string }[]; caption?: string }
+  /** T16：mermaid 源码图（流程/层级/职责类关系图；code 经 sanitizeMermaidCode 净化与渲染校验，修复失败弃图） */
+  | { type: "mermaid"; title: string; code: string; caption?: string }
+  /** T17：AI 位图（补图阶段经 RunningHub aigc 生成，url 已 persistMediaUrl 落 PocketBase；prompt 留存供重生成） */
+  | { type: "image"; title: string; url: string; prompt?: string; caption?: string }
 
 export type Chapter = {
   node_id: string

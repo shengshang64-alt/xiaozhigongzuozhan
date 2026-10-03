@@ -192,6 +192,7 @@ for (const { file: f, proj } of picks) {
       summary: `历史投标技术标范本（${track}${year ? "·" + year + "年" : ""}·${proj}）：含项目需求理解、实施/管理/培训/售后等通用章节，供同类标书技术部分参考复用（${content.length} 字）。`,
       keywords, source_file_name: key, uploader_name: "标书范本导入",
       doc_category: "技术方案", ai_context_mode: "original", retrieval_weight: 1.0, is_sensitive: false,
+      kb_track: track, kb_bucket: "标书弹药", // R138：入库即带确定性标签，不再依赖 backfill 猜桶
     }),
   })
   ok++

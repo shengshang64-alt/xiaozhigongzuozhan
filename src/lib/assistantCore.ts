@@ -5,6 +5,7 @@ import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/rhLogin"
 import { formatKbHitsForAssistant, listKbDocs, searchKbDocs, visibleKbDocs } from "@/lib/kbCore"
 import { KB_QA_DIRECT_PREFIX, listKbQaPairs, matchQaPair, visibleQaPairs } from "@/lib/kbQa"
+import { localizeLlmError } from "@/lib/llmError"
 
 // ---------------------------------------------------------------------------
 // 基础请求（走 __pb 代理自定义路由）
@@ -29,21 +30,18 @@ export async function assistantApiFetch<T>(path: string, init?: RequestInit): Pr
 
 export type AssistantListResponse<T> = { items: T[]; page: number; perPage: number; totalItems: number }
 
-const LLM_ERROR_ZH: Record<string, string> = {
+// 文案基表在 @/lib/llmError（全站唯一），此处只覆写小智专属措辞
+const ASSISTANT_ERROR_ZH: Record<string, string> = {
   timeout: "小智处理超时（可能服务器繁忙），请稍后重试",
   not_found: "请求未能到达小智，请检查网络后重试",
   rh_login_required: "请先登录 RunningHub 后再使用小智",
-  insufficient_balance: "RunningHub 账户余额不足，请充值后重试",
 }
 
 export function mapAssistantLlmError(error?: string): string {
-  if (!error) return "小智这轮回答失败了，请稍后重试"
-  const mapped = LLM_ERROR_ZH[error]
-  if (mapped) return mapped
-  // B2：已是可读中文的兜底串直接透传；未收录错误码 / 裸英文串（如 "failed"、"HTTP 500"）
-  // 替换为中文通用文案，避免把原始码透给用户
-  if (/[一-龥]/.test(error)) return error
-  return "小智这轮回答失败了，请稍后重试"
+  return localizeLlmError(error, {
+    generic: "小智这轮回答失败了，请稍后重试",
+    copy: ASSISTANT_ERROR_ZH,
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -161,6 +159,8 @@ interface DataSourceDef {
   /** B3：追加在 digest 末尾的单位口径说明行 */
   digestNote?: string
   extra?: (row: Record<string, unknown>) => Record<string, unknown>
+  /** T14：数据量大时按这些字段做全量分布聚合（统计类问题的权威数字来源） */
+  groupBy?: string[]
 }
 
 export const DATA_SOURCES: Record<string, DataSourceDef> = {
@@ -174,6 +174,8 @@ export const DATA_SOURCES: Record<string, DataSourceDef> = {
     label: "客户档案",
     badge: "正在查看你的客户数据…",
     fields: ["hospital_name", "hospital_type", "level", "region", "key_departments", "last_follow_at", "notes"],
+    // T14：数据量大时按这些字段本地聚合（全量准确），统计类问题以聚合为准
+    groupBy: ["level", "region", "hospital_type"],
   },
   opportunities: {
     label: "商机",
@@ -182,6 +184,7 @@ export const DATA_SOURCES: Record<string, DataSourceDef> = {
     // B3：expected_amount 单位是元，与投标域 bid_amount（万元）并存，必须显式注解防 LLM 错读量级
     fieldNotes: { expected_amount: "预计金额（元）" },
     digestNote: "单位说明：expected_amount 为预计金额，单位是「元」；如数据中出现 bid_amount，那是中标金额，单位是「万元」，两者量级不同请勿混用。",
+    groupBy: ["stage"],
   },
   follow_records: {
     label: "跟进记录",
@@ -230,9 +233,63 @@ export const DATA_SOURCES: Record<string, DataSourceDef> = {
     badge: "正在检索知识库文档…",
     fields: ["title", "folder_path", "visibility", "summary"],
   },
+  qual_certs: {
+    label: "资质证书台账",
+    badge: "正在查询资质证书台账…",
+    fields: ["cert_name", "category", "cert_no", "issuer", "valid_from", "valid_to", "scope", "external_ok", "notes"],
+    // T-资质（2026-09-28）：到期三档预警的台账，统计类问题（几张过期/临期）以聚合为准
+    groupBy: ["category"],
+  },
 }
 
 export const DATA_SOURCE_KEYS = Object.keys(DATA_SOURCES)
+
+// ---------------------------------------------------------------------------
+// T14（2026-09-27 S0 修复）：站内取数三重截断导致统计失真——实测问「共多少家客户」
+// 助手答 47 家（实际 161 家）。根因：perPage=100 → slice(0,60) → JSON 6000 字符硬截
+// （且 slice 会把最后一条记录劈成半条，LLM 读到残缺数据）。
+// 修复三原则：
+//   1) 翻页拉全量（上限 CAP 条，防失控）；
+//   2) 数据量大时本地先聚合（总数+按 groupBy 字段分布，全量准确），明细只给前几条；
+//   3) 明细截断必须按完整记录边界，绝不劈半条。
+// 统计数字永远来自全量聚合，明细仅供逐条问答——真实性优先于 token 成本。
+// ---------------------------------------------------------------------------
+const SITE_DATA_CAP = 500
+const SITE_DETAIL_ROWS = 40
+const SITE_JSON_BUDGET = 12000
+
+async function fetchAllRows(key: string, userId: string): Promise<Record<string, unknown>[]> {
+  const enc = encodeURIComponent(userId)
+  const all: Record<string, unknown>[] = []
+  for (let page = 1; page <= 10; page++) {
+    const path = `/api/${key}?rh_user_id=${enc}&page=${page}&perPage=100`
+    const data = await assistantApiFetch<AssistantListResponse<Record<string, unknown>>>(path)
+    const items = data.items ?? []
+    all.push(...items)
+    const total = typeof data.totalItems === "number" ? data.totalItems : all.length
+    if (all.length >= total || items.length === 0 || all.length >= SITE_DATA_CAP) break
+  }
+  return all
+}
+
+/** 按字段做全量分布统计（小写键=LLM 可读），只在 groupBy 声明的字段上聚合 */
+function aggregateBy(rows: Record<string, unknown>[], groupBy: string[] | undefined): string {
+  if (!groupBy?.length || rows.length === 0) return ""
+  const parts: string[] = [`总数=${rows.length}`]
+  for (const f of groupBy) {
+    const dist: Record<string, number> = {}
+    for (const r of rows) {
+      const v = String(r[f] ?? "").trim() || "（空）"
+      dist[v] = (dist[v] ?? 0) + 1
+    }
+    const top = Object.entries(dist)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, n]) => `${k}:${n}`)
+      .join("，")
+    parts.push(`按${f}分布 → ${top}`)
+  }
+  return parts.join("；")
+}
 
 /** 按取数指令实时拉取当前用户的站内数据并压缩成摘要文本（失败静默降级）。
  * question：用户本轮问题，kb_docs 源用它做本地检索打分。 */
@@ -268,11 +325,20 @@ export async function fetchSiteData(key: string, userId: string, question?: stri
     }
   }
   try {
-    const path = def.intel
-      ? `/api/intel/items?page=1&per_page=20`
-      : `/api/${key}?rh_user_id=${encodeURIComponent(userId)}&page=1&perPage=100`
-    const data = await assistantApiFetch<AssistantListResponse<Record<string, unknown>>>(path)
-    const rows = (data.items ?? []).slice(0, 60).map((r) => {
+    // T14：翻页拉全量（统计类问题必须全量准确），intel 特殊短窗除外
+    let all: Record<string, unknown>[]
+    if (def.intel) {
+      const data = await assistantApiFetch<AssistantListResponse<Record<string, unknown>>>(
+        `/api/intel/items?page=1&per_page=20`,
+      )
+      all = data.items ?? []
+    } else {
+      all = await fetchAllRows(key, userId)
+    }
+    if (all.length === 0) return `用户的「${def.label}」当前没有数据（空列表）。`
+
+    // 字段白名单裁剪 + 长文本截断（单字段值层面，安全）
+    const picked = all.map((r) => {
       const out: Record<string, unknown> = {}
       for (const f of def.fields) {
         const v = r[f]
@@ -284,10 +350,28 @@ export async function fetchSiteData(key: string, userId: string, question?: stri
       if (def.extra) Object.assign(out, def.extra(r))
       return out
     })
-    if (rows.length === 0) return `用户的「${def.label}」当前没有数据（空列表）。`
-    const json = JSON.stringify(rows)
+
+    // 全量聚合（统计数字的权威来源）：数据量大于明细窗口时必然给出，杜绝「数出来的统计」
+    const agg = aggregateBy(all, def.groupBy)
+
+    // 明细：只取前 SITE_DETAIL_ROWS 条；超预算时按「整条记录」边界回退，绝不劈半条
+    let detailRows = picked.slice(0, SITE_DETAIL_ROWS)
+    let json = JSON.stringify(detailRows)
+    if (json.length > SITE_JSON_BUDGET && detailRows.length > 1) {
+      while (detailRows.length > 1 && JSON.stringify(detailRows).length > SITE_JSON_BUDGET) {
+        detailRows = detailRows.slice(0, -1)
+      }
+      json = JSON.stringify(detailRows)
+    }
+
     const note = def.digestNote ? `\n${def.digestNote}` : ""
-    return json.length > 6000 ? `${json.slice(0, 6000)}…（数据过多已截断）${note}` : `${json}${note}`
+    const header =
+      agg && all.length > SITE_DETAIL_ROWS
+        ? `【全量统计（权威，共 ${all.length} 条）】${agg}\n【明细：仅前 ${detailRows.length} 条，供逐条问答；统计与排名请以上方全量统计为准】\n`
+        : agg
+          ? `【全量统计】${agg}\n`
+          : ""
+    return header + json + note
   } catch {
     return `「${def.label}」数据暂时读取失败，请基于已知信息回答，并告知用户该数据本轮无法获取。`
   }
@@ -380,6 +464,8 @@ ${sourceLines}
 [[FETCH:opportunities]]
 （把 opportunities 换成所需数据源标识；一次回复最多一条；系统会把数据回填给你，你再继续作答；用户一轮提问最多取数 2 次，之后必须基于已有数据回答。）
 其中 kb_docs（知识库）会按用户当前问题自动检索团队知识库与个人笔记，回填最相关文档的标题、摘要与命中片段；用户问「知识库里关于 X 有什么资料」这类问题时优先取这个源，回填为空就如实说没找到，不要编造。
+qual_certs（资质证书台账）：用户问「某某证书什么时候到期 / 哪些资质临期 / 我们有什么认证」时取这个源；回填含三档预警与按类别分布，回答资质时效问题时必须以台账数据为准。
+回填数据格式与统计纪律（T14 修复，2026-09-28）：回填的 JSON 数组可能以「【全量统计（权威，共 N 条）】」头部开头，含总数与按字段的分布聚合；该聚合是全量数据的准确统计，**凡涉及「多少个/共几条/占比/排名」的回答，必须直接引用聚合数字，严禁自行数 JSON 明细条数**（明细仅截取了前一部分，数出来的结果必然偏小）；逐条问答（如「某某医院是什么等级」）才使用明细行；数据被截断时若聚合仍不敷使用，如实告知用户未能在本轮完成全量统计。
 领域硬事实题强制接地（最高优先级 · P0：在本助手内优先于一般风格指令）：当用户问的是医疗信息化的「领域硬事实」——评审/测评标准与分值门槛（如电子病历分级评价各级要求、互联互通测评标准、等级保护 2.0 要求）、政策法规指标、建设规模/预算标准等——必须先输出 [[FETCH:kb_docs]] 取知识库接地后再作答；知识库无足够依据时，如实说明「团队知识库暂无此标准的确切资料，建议以国家卫健委/官方最新发布文件为准」，严禁凭模型记忆编造具体分值、等级门槛、指标数值或政策条款编号。
 不需要站内数据时正常回答，绝不要输出取数指令，也不要凭空编造用户的业务数据。
 

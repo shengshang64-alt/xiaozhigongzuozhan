@@ -72,3 +72,58 @@ describe("extractLotsFromText · 真实表格行形态（R78 池州校准）", (
     expect(lots[2]).not.toContain("标包一：")
   })
 })
+
+// Q26/切片C：多标包识别形态扩展 + 按包归属（【第N包】）
+describe("extractLotsFromText · 多标包识别形态扩展（Q26 切片C）", () => {
+  it("「包1/包2」裸形识别，且 ≥2 包统一前缀【第N包】", () => {
+    const text = [
+      "本项目采购内容如下：",
+      "包1 一体化核心业务系统",
+      "预算金额 1500 万元",
+      "包2 检验设备采购",
+      "最高限价 300 万元",
+    ].join("\n")
+    const lots = extractLotsFromText(text)
+    expect(lots).toHaveLength(2)
+    expect(lots[0]).toContain("【第1包】")
+    expect(lots[0]).toContain("一体化核心业务系统")
+    expect(lots[0]).toContain("预算/限价 1500万元")
+    expect(lots[1]).toContain("【第2包】")
+  })
+
+  it("「第1-3包」区间展开为 3 个包块", () => {
+    const text = ["第1-3包：信息化系统建设", "预算金额 900 万元"].join("\n")
+    const lots = extractLotsFromText(text)
+    expect(lots).toHaveLength(3)
+    expect(lots.map((l) => l.slice(0, 5))).toEqual(["【第1包】", "【第2包】", "【第3包】"])
+  })
+
+  it("仅计数声明「本项目划分为 N 个标包」时落一条计数提示", () => {
+    const text = ["第二章 投标人须知", "1.1.5 标包划分：本项目划分为 4 个标包", "采购需求见第三章。"].join("\n")
+    const lots = extractLotsFromText(text)
+    expect(lots).toHaveLength(1)
+    expect(lots[0]).toContain("4 个标包")
+  })
+
+  it("「☑不划分标包」语境零误报：返回空", () => {
+    const text = [
+      "1.1.5 | 标包划分 | ☑不划分标包",
+      "1.1.6 | 项目预算 | 82144000.00 元",
+      "5.2 | 评标委员会的组建 | 评标委员会构成：7 人或以上单数",
+    ].join("\n")
+    expect(extractLotsFromText(text)).toEqual([])
+  })
+
+  it("竖线标包表格表头「标包号|标包名称|预算」逐行成包", () => {
+    const text = [
+      "标包号 | 标包名称 | 预算",
+      "1 | HIS 系统升级 | 500 万元",
+      "2 | LIS 检验系统 | 300 万元",
+    ].join("\n")
+    const lots = extractLotsFromText(text)
+    expect(lots).toHaveLength(2)
+    expect(lots[0]).toContain("【第1包】")
+    expect(lots[0]).toContain("HIS 系统升级")
+    expect(lots[1]).toContain("【第2包】")
+  })
+})

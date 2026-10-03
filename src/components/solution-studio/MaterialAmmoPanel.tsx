@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { Archive, BookOpen, CornerDownLeft, Library, Loader2, MessageSquareQuote, PanelRightClose, PanelRightOpen, Search, Sparkles } from "lucide-react"
+import { Archive, BookOpen, CornerDownLeft, Library, Loader2, MessageSquareQuote, PanelRightClose, PanelRightOpen, Search, Sparkles, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { MaterialRecoItem, UseSolutionStudio } from "@/pages/SolutionStudio/useSolutionStudio"
@@ -247,7 +247,17 @@ export function MaterialAmmoPanel(p: MaterialAmmoPanelProps) {
               desc="按块命中知识库文档，脱敏与禁入策略自动生效"
             />
           ) : p.materialKbHits.length === 0 ? (
-            <EmptyHint icon={<BookOpen className="h-7 w-7" />} title="没有命中的知识块" desc="换个关键词，或到弹药库 / 历史方案找找" />
+            <EmptyHint
+              icon={<BookOpen className="h-7 w-7" />}
+              title="没有命中的知识块"
+              desc="换个关键词，或到弹药库 / 历史方案找找"
+              action={
+                <Button size="sm" variant="outline" onClick={() => p.setMaterialQueryInput("")} className="mt-1 gap-1.5 border-primary/40 text-primary hover:bg-primary/10 hover:text-primary">
+                  <X className="h-3.5 w-3.5" />
+                  清空搜索
+                </Button>
+              }
+            />
           ) : (
             p.materialKbHits.map((hit, i) => (
               <MaterialCard
@@ -266,6 +276,12 @@ export function MaterialAmmoPanel(p: MaterialAmmoPanelProps) {
               icon={<MessageSquareQuote className="h-7 w-7" />}
               title={p.materialQuery ? "没有匹配的标准问答" : "弹药库还是空的"}
               desc={p.materialQuery ? "换个关键词试试" : "到知识中心沉淀已审批的标准问答后，这里可直接引用"}
+              action={p.materialQuery ? (
+                <Button size="sm" variant="outline" onClick={() => p.setMaterialQueryInput("")} className="mt-1 gap-1.5 border-primary/40 text-primary hover:bg-primary/10 hover:text-primary">
+                  <X className="h-3.5 w-3.5" />
+                  清空搜索
+                </Button>
+              ) : undefined}
             />
           ) : (
             p.materialAmmoPairs.map((pair) => (
@@ -291,11 +307,16 @@ export function MaterialAmmoPanel(p: MaterialAmmoPanelProps) {
               icon={<Archive className="h-7 w-7" />}
               title={p.materialQuery ? "没有匹配的成稿章节" : "还没有可引用的成稿章节"}
               desc={p.materialQuery ? "换个关键词试试" : "章节生成正文后即可作为素材引用"}
-              action={
+              action={p.materialQuery ? (
+                <Button size="sm" variant="outline" onClick={() => p.setMaterialQueryInput("")} className="mt-1 gap-1.5 border-primary/40 text-primary hover:bg-primary/10 hover:text-primary">
+                  <X className="h-3.5 w-3.5" />
+                  清空搜索
+                </Button>
+              ) : (
                 <Button size="sm" variant="outline" onClick={p.onOpenKbWizard} className="mt-1 border-primary/40 text-primary hover:bg-primary/10 hover:text-primary">
                   把当前方案拆块入素材库
                 </Button>
-              }
+              )}
             />
           )
         ) : (

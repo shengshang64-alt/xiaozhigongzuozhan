@@ -1,6 +1,6 @@
-// 竞品分析页视图：图表总览 / 厂商列表 + 竞品档案详情 + 新增/编辑弹窗 + 软著基线导入。
+// 竞品分析页视图：市场总览 / 订单能力对标 / 厂商档案（数据集∪档案库按名合并）+ 新增/编辑弹窗 + 软著基线导入。
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Award, BarChart3, Boxes, Brain, CalendarRange, Check, ChevronDown, Copy, Crosshair, Download, ExternalLink, FileBadge, FileText, LayoutGrid, List, MessageCircle, Newspaper, Pencil, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Trash2, TrendingUp } from "lucide-react"
+import { Award, BarChart3, Boxes, Brain, CalendarRange, Check, ChevronDown, Copy, Crosshair, Download, ExternalLink, FileBadge, FileText, LayoutGrid, List, MessageCircle, Newspaper, Pencil, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Trash2, TrendingUp, X } from "lucide-react"
 import { PageHeader } from "@/components/shell/PageHeader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,10 +9,21 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
-import { toast } from "sonner"
+import { copyTextToClipboard } from "@/lib/clipboard"
+import { formatCount } from "@/lib/money"
 import { analysisReportToText } from "./analysisReport"
-import { CompetitorCharts } from "@/components/competitors/CompetitorCharts"
+import { CompetitorOverview } from "@/components/competitors/CompetitorOverview"
 import { CompetitorCompare } from "@/components/competitors/CompetitorCompare"
+import {
+  VENDOR_ORDERS,
+  VENDOR_PROFILES,
+  coreVendors,
+  extendedVendors,
+  fmtYi,
+  orderRankOf,
+  vendorByName,
+  type VendorOrder,
+} from "./marketIntel"
 import { CHART_COLORS } from "@/lib/echarts"
 import { enrichProgress } from "./competitorsCore"
 import {
@@ -193,7 +204,7 @@ function AIAnalysisSection({ row, modelRef }: { row: CompetitorRow; modelRef: Mo
       {/* 分析结果 Diff */}
       {analysis.result && (
         <div className="rounded-lg border border-primary/20 bg-primary/[0.03] p-3">
-          <button type="button" className="flex w-full items-center justify-between text-xs font-medium text-primary" onClick={() => setExpanded(!expanded)}>
+          <button type="button" aria-expanded={expanded} className="flex w-full items-center justify-between text-xs font-medium text-primary" onClick={() => setExpanded(!expanded)}>
             <span className="flex items-center gap-1"><Brain className="h-3.5 w-3.5" />分析建议：{analysis.result.updates.length} 项可更新 · 威胁变化：{analysis.result.threat_level_change === "up" ? "↑上升" : analysis.result.threat_level_change === "down" ? "↓下降" : "→持平"}</span>
             <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-180")} />
           </button>
@@ -283,10 +294,10 @@ function AIAnalysisSection({ row, modelRef }: { row: CompetitorRow; modelRef: Mo
                   variant="outline"
                   title="把威胁变化/更新建议/行动建议/材料清单拼成纯文本复制"
                   onClick={() => {
-                    void navigator.clipboard.writeText(analysisReportToText(row.name, analysis.result!)).then(
-                      () => toast.success("已复制分析报告"),
-                      () => toast.error("复制失败，请手动选择文本"),
-                    )
+                    void copyTextToClipboard(analysisReportToText(row.name, analysis.result!), {
+                      successMessage: "已复制分析报告",
+                      errorMessage: "复制失败，请手动选择文本",
+                    })
                   }}
                   className="shrink-0 gap-1"
                 >
@@ -323,7 +334,110 @@ function AIAnalysisSection({ row, modelRef }: { row: CompetitorRow; modelRef: Mo
   )
 }
 
-function DetailPanel({ row, rank, total, onEdit, onRemove, onViewCopyrights, modelRef }: { row: CompetitorRow; rank: number; total: number; onEdit: () => void; onRemove: () => void; onViewCopyrights: () => void; modelRef: ModelRef | null }) {
+/** 订单情报区块（marketIntel 策展数据集）：五年订单 hero + 关键评估指标 + 订单结构 + 资质标杆财报 */
+function IntelSection({ intel }: { intel: VendorOrder }) {
+  const profile = VENDOR_PROFILES[intel.name]
+  const rank = orderRankOf(intel.name)
+  const hero = [
+    { label: "五年中标", value: fmtYi(intel.bid5y) },
+    { label: "2025 中标", value: intel.bid25 != null ? fmtYi(intel.bid25) : "待补" },
+    { label: "五年项目数", value: intel.projects5y != null ? String(intel.projects5y) : "—" },
+    { label: "订单排名", value: rank ? `第 ${rank}` : "—" },
+  ]
+  const kf: [string, string][] = (profile
+    ? [
+        ["发展历程", profile.history],
+        ["公司定位", profile.positioning],
+        ["战略布局", profile.strategy],
+        ["核心区域", profile.regions],
+        ["客户覆盖", profile.coverage],
+        ["核心业务", profile.business],
+        ["核心产品", profile.products],
+        ["技术战略", profile.techStrategy],
+        ["优势赛道", profile.advantageTrack],
+        ["实力佐证", profile.proof],
+      ]
+    : []
+  ).filter(([, v]) => Boolean(v)) as [string, string][]
+  const struct: [string, string][] = []
+  if (intel.bigShare != null && intel.bigShare > 0) struct.push(["千万级金额占比", `${intel.bigShare}%${intel.big5y ? `（${fmtYi(intel.big5y)}）` : ""}`])
+  if (intel.midShare != null && intel.midShare > 0) struct.push(["500–1000 万金额占比", `${intel.midShare}%`])
+  if (intel.tertiaryShare != null) struct.push(["三甲医院金额占比", `${intel.tertiaryShare}%`])
+  if (intel.hospitalMix) struct.push(["医院 / 区域 / 医共体", `${intel.hospitalMix[0]}% / ${intel.hospitalMix[1]}% / ${intel.hospitalMix[2]}%`])
+  if (intel.specialtyShare != null) struct.push(["专科医院占比（五年）", `${intel.specialtyShare}%`])
+  return (
+    <div className="space-y-4 border-b border-border pb-4">
+      <div className="grid grid-cols-4 gap-2">
+        {hero.map((h) => (
+          <div key={h.label} className="rounded-xl bg-gradient-to-br from-primary/[0.10] to-primary/[0.02] p-2.5 text-center ring-1 ring-primary/10">
+            <p className="text-[10.5px] text-muted-foreground">{h.label}</p>
+            <p className={"mt-0.5 truncate text-[15px] font-bold tabular-nums " + (h.value === "待补" || h.value === "—" ? "text-muted-foreground" : "text-foreground")}>{h.value}</p>
+          </div>
+        ))}
+      </div>
+      {profile && (
+        <Group title={<><TrendingUp className="h-4 w-4" />关键评估指标（订单分析）</>}>
+          {kf.map(([l, v]) => <Field key={l} label={l} value={v} />)}
+        </Group>
+      )}
+      {struct.length > 0 && (
+        <Group title={<><BarChart3 className="h-4 w-4" />订单结构分析</>}>
+          {struct.map(([l, v]) => <Field key={l} label={l} value={v} />)}
+        </Group>
+      )}
+      {profile && (profile.certifications || profile.benchmarks || profile.finance) && (
+        <Group title={<><ShieldCheck className="h-4 w-4" />资质 · 标杆 · 财报</>}>
+          <Field label="资质认证" value={profile.certifications ?? ""} />
+          <Field label="标杆案例" value={profile.benchmarks ?? ""} />
+          <Field label="财务情况" value={profile.finance ?? ""} />
+        </Group>
+      )}
+      {profile && <p className="text-[11px] text-muted-foreground">定性内容据订单分析 PPT 整理，正式版需人工核验。</p>}
+    </div>
+  )
+}
+
+/** 仅数据集收录、档案库未建档的厂商：订单情报 + 软著参考 + 建档引导 */
+function VendorIntelPanel({ intel, onCreateFor }: { intel: VendorOrder; onCreateFor: (name: string) => void }) {
+  const isSelf = intel.name === SELF_NAME
+  return (
+    <Card className="sticky top-4">
+      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            className="flex size-11 shrink-0 items-center justify-center rounded-xl text-lg font-bold"
+            style={{ background: isSelf ? "#E8973C1F" : "#0E7C9914", color: isSelf ? CHART_COLORS.warn : CHART_COLORS.primaryDeep }}
+          >
+            {intel.name.slice(0, 1)}
+          </span>
+          <div className="min-w-0">
+            <CardTitle className="flex items-center gap-1.5 truncate text-lg">
+              {intel.name}
+              {isSelf && <Badge variant="warning" className="shrink-0">我方</Badge>}
+            </CardTitle>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">{intel.legalName || "（主体待核）"}</p>
+          </div>
+        </div>
+        <Button variant="outline" size="sm" className="shrink-0 gap-1" onClick={() => onCreateFor(intel.name)}>
+          <Plus className="h-3.5 w-3.5" />
+          建档补全
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-4 text-sm">
+        <IntelSection intel={intel} />
+        <Group title={<><FileBadge className="h-4 w-4" />参考信息（非对照主线）</>}>
+          <Field label="软件著作权" value={intel.copyrights ? `${intel.copyrights} 项（最早 ${intel.crEarliest ?? "—"}，最近 ${intel.crLatest ?? "—"}）` : "未在软著汇总表"} />
+        </Group>
+        <p className="border-t border-border pt-3 text-[11px] text-muted-foreground">
+          <FileText className="mr-1 inline h-3 w-3" />
+          数据来源：剑鱼标讯订单（2021–2025）、软著汇总（截至 2026-09）；定性研判需人工核验。建档后可使用 AI 深度分析与编辑。
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function DetailPanel({ row, rank, total, intel, onEdit, onRemove, onViewCopyrights, modelRef }: { row: CompetitorRow; rank: number; total: number; intel: VendorOrder | null; onEdit: () => void; onRemove: () => void; onViewCopyrights: () => void; modelRef: ModelRef | null }) {
   const prog = enrichProgress(row)
   const pct = Math.round(prog.ratio * 100)
   const isSelf = row.name === SELF_NAME
@@ -342,7 +456,7 @@ function DetailPanel({ row, rank, total, onEdit, onRemove, onViewCopyrights, mod
               {row.name}
               {isSelf && <Badge variant="warning" className="shrink-0">我方</Badge>}
             </CardTitle>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">{row.legal_name || "（未填企业主体）"}</p>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">{row.legal_name || intel?.legalName || "（未填企业主体）"}</p>
           </div>
         </div>
         <div className="flex shrink-0 gap-1.5">
@@ -356,6 +470,9 @@ function DetailPanel({ row, rank, total, onEdit, onRemove, onViewCopyrights, mod
         </div>
       </CardHeader>
       <CardContent className="space-y-4 text-sm">
+        {/* 订单情报（策展数据集）：有五年订单口径数据时前置展示 */}
+        {intel && <IntelSection intel={intel} />}
+
         {/* 软著英雄数据：数量与名次，点击进入明细查询（用户反馈轮 2026-09-21：要能直接看到并查询各家软著清单） */}
         <div className="flex items-stretch gap-3">
           <button type="button" onClick={onViewCopyrights} className="group/cr flex-1 cursor-pointer rounded-xl bg-gradient-to-br from-primary/[0.12] to-primary/[0.02] p-3 text-left ring-1 ring-primary/10 transition-shadow hover:shadow-sm hover:ring-primary/25">
@@ -366,7 +483,7 @@ function DetailPanel({ row, rank, total, onEdit, onRemove, onViewCopyrights, mod
               </span>
             </p>
             <p className="text-2xl font-bold leading-tight tabular-nums" style={{ color: isSelf ? CHART_COLORS.warn : CHART_COLORS.primaryDeep }}>
-              {row.software_copyrights.toLocaleString()}
+              {formatCount(row.software_copyrights)}
             </p>
             <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
               <RankBadge rank={rank} /> 软著第 {rank} 名 / 共 {total} 家
@@ -572,7 +689,7 @@ function EditDialog(p: UseCompetitors) {
 }
 
 export function CompetitorsPage(p: UseCompetitors) {
-  const [tab, setTab] = useState<string>(() => (p.deepLinked || p.selectedId ? "list" : "compare"))
+  const [tab, setTab] = useState<string>(() => (p.deepLinked || p.selectedId ? "archive" : "overview"))
   const [modelRef, setModelRef] = useState<ModelRef | null>(null)
   useEffect(() => {
     let cancelled = false
@@ -581,13 +698,62 @@ export function CompetitorsPage(p: UseCompetitors) {
     })
     return () => { cancelled = true }
   }, [])
-  const { rankById, maxCr } = useMemo(() => {
+  const { rankById } = useMemo(() => {
     const sorted = [...p.rows].sort((a, b) => b.software_copyrights - a.software_copyrights)
     const m = new Map<string, number>()
     sorted.forEach((r, i) => m.set(r.id, i + 1))
-    return { rankById: m, maxCr: Math.max(1, sorted[0]?.software_copyrights ?? 1) }
+    return { rankById: m }
   }, [p.rows])
-  const handleSelect = useCallback((id: string) => { p.setSelectedId(id); setTab("list") }, [p])
+  // 厂商档案选中：数据集厂商未必有档案行，以名称为主键
+  const [vendorName, setVendorName] = useState<string | null>(null)
+  const openVendor = useCallback((name: string) => {
+    setVendorName(name)
+    const row = p.rows.find((r) => r.name === name)
+    if (row) p.setSelectedId(row.id)
+    setTab("archive")
+  }, [p])
+  const activeName = vendorName ?? p.selected?.name ?? SELF_NAME
+  const activeRow = useMemo(() => p.rows.find((r) => r.name === activeName) ?? null, [p.rows, activeName])
+  const activeIntel = vendorByName(activeName) ?? null
+  // 数据集厂商一键建档：带入主体/软著基线，研判字段留空待补
+  const openCreateFor = useCallback((name: string) => {
+    const intel = vendorByName(name)
+    p.openCreate()
+    p.setForm({
+      name,
+      legal_name: intel?.legalName ?? "",
+      software_copyrights: intel?.copyrights ?? 0,
+      earliest_cr_date: intel?.crEarliest ?? "",
+      latest_cr_date: intel?.crLatest ?? "",
+      source: "订单分析数据集（建档带入）",
+      visibility: "team",
+    })
+  }, [p])
+  // 档案列表：核心 15 家（按订单名次）+ 扩展层（软著参考位）+ 档案库独有厂商；支持搜索/排序
+  const archiveItems = useMemo(() => {
+    const items = [...coreVendors(), ...extendedVendors()].map((v) => ({
+      name: v.name,
+      rk: orderRankOf(v.name),
+      core: v.bid5y != null,
+      intel: v as VendorOrder | null,
+      row: p.rows.find((r) => r.name === v.name) ?? null,
+    }))
+    const names = new Set(VENDOR_ORDERS.map((v) => v.name))
+    for (const r of p.rows) if (!names.has(r.name) && r.name) items.push({ name: r.name, rk: 0, core: false, intel: null, row: r })
+    const q = p.search.trim().toLowerCase()
+    const shown = q
+      ? items.filter(
+          (it) =>
+            it.name.toLowerCase().includes(q) ||
+            (VENDOR_PROFILES[it.name]?.positioning ?? "").toLowerCase().includes(q) ||
+            (it.row?.positioning ?? "").toLowerCase().includes(q) ||
+            (it.row?.products ?? "").toLowerCase().includes(q),
+        )
+      : items
+    if (p.sortKey === "name") shown.sort((a, b) => a.name.localeCompare(b.name, "zh-CN"))
+    else if (p.sortKey === "updated") shown.sort((a, b) => String(b.row?.updated ?? "").localeCompare(String(a.row?.updated ?? "")))
+    return shown
+  }, [p.rows, p.search, p.sortKey])
   // 软著明细查询：公司维度默认当前选中厂商，无选中时为全部
   const [crOpen, setCrOpen] = useState(false)
   const [crCompany, setCrCompany] = useState("all")
@@ -621,162 +787,158 @@ export function CompetitorsPage(p: UseCompetitors) {
         }
       />
 
-      {p.rows.length === 0 && !p.loading ? (
-        <Card>
-          <CardContent className="flex flex-col items-center gap-3 py-14 text-center">
-            <FileText className="h-9 w-9 text-muted-foreground" />
-            <p className="text-sm font-medium text-foreground">还没有竞品档案</p>
-            <p className="text-xs text-muted-foreground">
-              可一键导入 20 家核心厂商的软著基线，再逐个补全业绩与竞争研判。
-            </p>
-            <Button size="sm" onClick={() => void p.importSeed()} disabled={p.importing}>
-              <Download className="h-4 w-4" />
-              {p.importing ? "导入中…" : "导入软著基线"}
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <Tabs value={tab} onValueChange={setTab}>
+      <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="mb-4">
+            <TabsTrigger value="overview" className="gap-1.5">
+              <BarChart3 className="h-3.5 w-3.5" />
+              市场总览
+            </TabsTrigger>
             <TabsTrigger value="compare" className="gap-1.5">
               <Crosshair className="h-3.5 w-3.5" />
-              对比分析
+              能力对标
             </TabsTrigger>
-            <TabsTrigger value="charts" className="gap-1.5">
-              <BarChart3 className="h-3.5 w-3.5" />
-              图表总览
-            </TabsTrigger>
-            <TabsTrigger value="list" className="gap-1.5">
+            <TabsTrigger value="archive" className="gap-1.5">
               <List className="h-3.5 w-3.5" />
-              档案列表
+              厂商档案
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="overview" className="space-y-4">
+            <CompetitorOverview onOpenVendor={openVendor} />
+          </TabsContent>
 
           <TabsContent value="compare" className="space-y-4">
             <CompetitorCompare
               rows={p.rows}
               loading={p.loading}
               modelRef={modelRef}
-              onOpenArchive={handleSelect}
+              onOpenArchive={openVendor}
               onAdd={p.openCreate}
             />
           </TabsContent>
 
-          <TabsContent value="charts" className="space-y-4">
-            <div className="relative max-w-xs">
-              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input value={p.search} onChange={(e) => p.setSearch(e.target.value)} placeholder="搜索名称 / 定位 / 产品（同步筛选图表）" className="pl-8" />
-            </div>
-            <CompetitorCharts
-              rows={p.filtered}
-              loading={p.loading}
-              selectedId={p.selectedId}
-              onSelect={handleSelect}
-            />
-          </TabsContent>
-
-          <TabsContent value="list">
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,360px)_1fr]">
-          {/* 列表 */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={p.search}
-                  onChange={(e) => p.setSearch(e.target.value)}
-                  placeholder="搜索名称 / 定位 / 产品"
-                  className="pl-8"
-                />
-              </div>
-              <Select value={p.sortKey} onValueChange={(v) => p.setSortKey(v as never)}>
-                <SelectTrigger className="h-9 w-[104px] shrink-0">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="copyrights">按软著</SelectItem>
-                  <SelectItem value="updated">按更新</SelectItem>
-                  <SelectItem value="name">按名称</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <p className="px-1 text-xs text-muted-foreground">
-              共 {p.filtered.length} 家 · 软著合计 {p.totalCopyrights.toLocaleString()} 项
-            </p>
-            <div className="space-y-2">
-              {p.loading ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">加载中…</p>
-              ) : p.filtered.length === 0 ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">无匹配竞品</p>
-              ) : (
-                p.filtered.map((r) => {
-                  const active = p.selectedId === r.id
-                  const isSelf = r.name === SELF_NAME
-                  const rank = rankById.get(r.id) ?? 0
-                  const w = Math.round((r.software_copyrights / maxCr) * 100)
-                  const accent = isSelf ? CHART_COLORS.warn : CHART_COLORS.primary
-                  return (
-                    <button
-                      key={r.id}
-                      type="button"
-                      onClick={() => p.setSelectedId(r.id)}
-                      className={cn(
-                        "relative w-full overflow-hidden rounded-xl border py-3 pl-4 pr-3 text-left transition-all",
-                        active
-                          ? "border-primary/50 bg-primary/[0.05] shadow-sm ring-1 ring-primary/20"
-                          : "border-border bg-card hover:border-primary/40 hover:bg-muted/40 hover:shadow-sm",
-                      )}
-                    >
-                      {active && <span className="absolute inset-y-0 left-0 w-1" style={{ background: accent }} />}
-                      <div className="flex items-center gap-2.5">
-                        <span
-                          className="flex size-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold"
-                          style={{ background: isSelf ? "#E8973C1A" : "#0E7C9912", color: isSelf ? CHART_COLORS.warn : CHART_COLORS.primaryDeep }}
+          <TabsContent value="archive">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,360px)_1fr]">
+              {/* 厂商列表：订单数据集 ∪ 档案库，按名合并 */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={p.search}
+                      onChange={(e) => p.setSearch(e.target.value)}
+                      placeholder="搜索厂商 / 定位 / 产品"
+                      className="pl-8"
+                    />
+                  </div>
+                  <Select value={p.sortKey} onValueChange={(v) => p.setSortKey(v as never)}>
+                    <SelectTrigger className="h-9 w-[104px] shrink-0">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="copyrights">按订单</SelectItem>
+                      <SelectItem value="updated">按更新</SelectItem>
+                      <SelectItem value="name">按名称</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p className="px-1 text-xs text-muted-foreground">
+                  核心 {coreVendors().length} 家按五年中标排名 · 扩展层仅作参考位 · 共 {archiveItems.length} 家
+                </p>
+                <div className="space-y-2">
+                  {p.loading ? (
+                    <p className="py-8 text-center text-sm text-muted-foreground">加载中…</p>
+                  ) : archiveItems.length === 0 ? (
+                    <div className="py-8 text-center">
+                      <p className="text-sm text-muted-foreground">无匹配厂商</p>
+                      {p.search.trim() ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => p.setSearch("")}
+                          className="mt-1.5 gap-1.5 text-primary hover:bg-primary/10 hover:text-primary"
                         >
-                          {r.name.slice(0, 1)}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="flex min-w-0 items-center gap-1.5">
-                              <RankBadge rank={rank} />
-                              <span className="truncate text-sm font-medium text-foreground">{r.name}</span>
-                              {isSelf && <Badge variant="warning" className="shrink-0 px-1.5 py-0 text-[10px]">我方</Badge>}
+                          <X className="h-3.5 w-3.5" />
+                          清空搜索
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : (
+                    archiveItems.map((it) => {
+                      const active = it.name === activeName
+                      const isSelf = it.name === SELF_NAME
+                      const accent = isSelf ? CHART_COLORS.warn : CHART_COLORS.primary
+                      const sub =
+                        VENDOR_PROFILES[it.name]?.positioning ||
+                        it.row?.positioning ||
+                        (it.core ? "研判信息待补全" : it.row ? "未纳入订单口径，档案已建" : "订单未纳入核心口径")
+                      const crNum = it.row?.software_copyrights || it.intel?.copyrights || 0
+                      const right = it.intel?.bid5y != null ? fmtYi(it.intel.bid5y, 1) : crNum ? `${formatCount(crNum)} 软著` : "—"
+                      return (
+                        <button
+                          key={it.name}
+                          type="button"
+                          onClick={() => setVendorName(it.name)}
+                          className={cn(
+                            "relative w-full overflow-hidden rounded-xl border py-3 pl-4 pr-3 text-left transition-all",
+                            active
+                              ? "border-primary/50 bg-primary/[0.05] shadow-sm ring-1 ring-primary/20"
+                              : "border-border bg-card hover:border-primary/40 hover:bg-muted/40 hover:shadow-sm",
+                          )}
+                        >
+                          {active && <span className="absolute inset-y-0 left-0 w-1" style={{ background: accent }} />}
+                          <div className="flex items-center gap-2.5">
+                            <span
+                              className="flex size-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold"
+                              style={{ background: isSelf ? "#E8973C1A" : "#0E7C9912", color: isSelf ? CHART_COLORS.warn : CHART_COLORS.primaryDeep }}
+                            >
+                              {it.name.slice(0, 1)}
                             </span>
-                            <span className="shrink-0 leading-none">
-                              <span className="text-[15px] font-bold tabular-nums" style={{ color: isSelf ? CHART_COLORS.warn : CHART_COLORS.primaryDeep }}>{r.software_copyrights.toLocaleString()}</span>
-                              <span className="ml-0.5 text-[10px] text-muted-foreground">软著</span>
-                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="flex min-w-0 items-center gap-1.5">
+                                  {it.rk > 0 ? (
+                                    <RankBadge rank={it.rk} />
+                                  ) : (
+                                    <span className="inline-flex h-4 min-w-[16px] shrink-0 items-center justify-center rounded bg-muted px-1 text-[10px] font-bold text-muted-foreground" title={it.intel ? "扩展层：未纳入 15 家订单口径，仅作参考" : "档案库自建厂商"}>
+                                      {it.intel ? "扩" : "新"}
+                                    </span>
+                                  )}
+                                  <span className="truncate text-sm font-medium text-foreground">{it.name}</span>
+                                  {isSelf && <Badge variant="warning" className="shrink-0 px-1.5 py-0 text-[10px]">我方</Badge>}
+                                </span>
+                                <span className="shrink-0 leading-none">
+                                  <span className="text-[14px] font-bold tabular-nums" style={{ color: accent }}>{right}</span>
+                                </span>
+                              </div>
+                              <p className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">{sub}</p>
+                            </div>
                           </div>
-                          <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-secondary">
-                            <div className="h-full rounded-full transition-all" style={{ width: `${w}%`, background: accent }} />
-                          </div>
-                          {r.positioning && <p className="mt-1.5 line-clamp-1 text-xs text-muted-foreground">{r.positioning}</p>}
-                        </div>
-                      </div>
-                    </button>
-                  )
-                })
-              )}
-            </div>
-          </div>
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
 
-          {/* 详情 */}
-          <div>
-            {p.selected ? (
-              <DetailPanel row={p.selected} rank={rankById.get(p.selected.id) ?? 0} total={p.rows.length} onEdit={() => p.openEdit(p.selected as CompetitorRow)} onRemove={() => void p.remove(p.selected as CompetitorRow)} onViewCopyrights={() => openCopyrights(p.selected?.name ?? "all")} modelRef={modelRef} />
-            ) : (
-              <Card>
-                <CardContent className="flex h-full min-h-[240px] flex-col items-center justify-center gap-2 py-14 text-center text-muted-foreground">
-                  <FileText className="h-8 w-8" />
-                  <p className="text-sm">选择左侧厂商查看竞品档案</p>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </div>
+              {/* 详情：有档案行走完整面板（含 AI 分析/编辑），仅数据集收录者走情报面板 */}
+              <div>
+                {activeRow ? (
+                  <DetailPanel row={activeRow} rank={rankById.get(activeRow.id) ?? 0} total={p.rows.length} intel={activeIntel} onEdit={() => p.openEdit(activeRow)} onRemove={() => void p.remove(activeRow)} onViewCopyrights={() => openCopyrights(activeRow.name)} modelRef={modelRef} />
+                ) : activeIntel ? (
+                  <VendorIntelPanel intel={activeIntel} onCreateFor={openCreateFor} />
+                ) : (
+                  <Card>
+                    <CardContent className="flex h-full min-h-[240px] flex-col items-center justify-center gap-2 py-14 text-center text-muted-foreground">
+                      <FileText className="h-8 w-8" />
+                      <p className="text-sm">选择左侧厂商查看竞品档案</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            </div>
           </TabsContent>
-        </Tabs>
-      )}
+      </Tabs>
 
       <EditDialog {...p} />
       {/* key 重挂载：切换公司入口时复位筛选状态（与 AI 分析卡片同法） */}

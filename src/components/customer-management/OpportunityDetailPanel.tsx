@@ -2,6 +2,7 @@ import { useState } from "react"
 import { Link } from "react-router-dom"
 import { ArrowRight, CheckCircle2, ExternalLink, FileCheck2, Loader2, Pencil, Sparkles, Trash2, XCircle } from "lucide-react"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
+import { localDateStamp } from "@/lib/dateStamp"
 import {
   BID_STAGE_LABEL,
   bidResultBadgeClass,
@@ -72,11 +73,7 @@ export function OpportunityDetailPanel({
   const ended = isTerminalStage(opportunity.stage)
   // 循环8 C5：下次跟进逾期判定（按本地日期的 YYYY-MM-DD 字典序比较即可）
   const nextFollow = (opportunity.next_follow_date ?? "").slice(0, 10)
-  const todayStr = (() => {
-    const d = new Date()
-    const pad = (n: number) => String(n).padStart(2, "0")
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-  })()
+  const todayStr = localDateStamp()
   const nextFollowOverdue = Boolean(nextFollow) && nextFollow < todayStr && !ended
   const currentIdx = PIPELINE_STAGES.indexOf(opportunity.stage as OppStage)
   const refRoute = opportunity.ref_type === "solution" ? "/solution-studio" : "/bid-workspace"

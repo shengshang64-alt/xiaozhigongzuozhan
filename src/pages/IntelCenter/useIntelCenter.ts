@@ -5,7 +5,8 @@ import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, vibexAuthHeaders, type RhAccountInfo } from "@/lib/rhLogin"
 import { buildIntelToOppQuery } from "@/lib/intelToOpp"
 import { cleanIntelBody, cleanIntelLine, looksJunkIntel } from "./intelBodyClean"
-import { exportIntelItemsXlsx } from "@/lib/intelExports"
+import { formatDateTimeDisplay } from "@/lib/dateDisplay"
+import { localizeLlmError } from "@/lib/llmError"
 import type { LlmMessage } from "@/lib/llm"
 import {
   chatViaGateway,
@@ -164,11 +165,7 @@ type SourcesResponse = { ok: boolean; items: IntelSourceRow[] }
 type StarListResponse = { items: IntelStarRow[] }
 
 export function fmtIntelTime(iso: string): string {
-  if (!iso) return ""
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso.slice(0, 10)
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  return formatDateTimeDisplay(iso)
 }
 
 const PER_PAGE = 10
@@ -180,11 +177,9 @@ const PER_PAGE = 10
 /** 项目线索标记的 localStorage 持久化键（个人维度，不跨设备同步） */
 const INTEL_LEAD_KEY = "zx_intel_leads_v1"
 
-const LLM_ERROR_ZH: Record<string, string> = {
-  timeout: "AI 处理超时（可能服务器繁忙），请稍后重试",
-  not_found: "请求未能到达 AI，请检查网络后重试",
+// 文案基表在 @/lib/llmError（全站唯一），此处只覆写情报侧专属措辞
+const INTEL_ERROR_ZH: Record<string, string> = {
   rh_login_required: "AI 摘要服务暂不可用，请检查模型配置",
-  insufficient_balance: "RunningHub 账户余额不足，请充值后重试",
 }
 
 let activeModelRef: ModelRef | null = null
@@ -398,12 +393,14 @@ export function useIntelCenter() {
   const loadMore = useCallback(() => setPage((p) => p + 1), [])
 
   // 循环7 C3：导出当前已加载的情报清单为 xlsx（标题/来源/时间/标签/摘要/链接）
-  const exportItems = useCallback(() => {
+  const exportItems = useCallback(async () => {
     if (itemList.length === 0) {
       toast.info("当前没有已加载的情报可导出，请先调整筛选或加载更多")
       return
     }
     try {
+      // R124：xlsx 导出库改为点击导出时才按需加载，情报中心进页不再背 400+ kB
+      const { exportIntelItemsXlsx } = await import("@/lib/intelExports")
       const count = exportIntelItemsXlsx(itemList)
       toast.success(`已导出 ${count} 条情报清单（xlsx）`)
     } catch {
@@ -1305,12 +1302,11 @@ export function useIntelCenter() {
         })
         if (r.needsLogin) return { ok: false, reason: "login" }
         if (!r.ok || r.status !== "success" || !r.text) {
-          // 循环7 C1 附带：未收录错误码/裸英文码统一中文兜底，不再把原始码透给用户
-          const rawErr = r.error ?? ""
-          const zhErr =
-            LLM_ERROR_ZH[rawErr] ??
-            (/[一-龥]/.test(rawErr) ? rawErr : "AI 摘要失败，请稍后重试")
-          return { ok: false, reason: zhErr }
+          // 循环7 C1 附带：未收录错误码/裸英文码统一中文兜底（口径见 @/lib/llmError）
+          return {
+            ok: false,
+            reason: localizeLlmError(r.error, { generic: "AI 摘要失败，请稍后重试", copy: INTEL_ERROR_ZH }),
+          }
         }
         const parsed = parseAiTagResult(r.text)
         if (!parsed) return { ok: false, reason: "parse" }
@@ -1360,7 +1356,7 @@ export function useIntelCenter() {
         toast.success("AI 摘要与打标完成")
       } else if (res.reason === "login") {
         setNeedsRhLogin(true)
-        toast.error(LLM_ERROR_ZH.rh_login_required)
+        toast.error(INTEL_ERROR_ZH.rh_login_required)
       } else if (res.reason === "parse") {
         toast.error("AI 返回内容无法解析，请重试")
       } else if (res.reason === "save") {
@@ -1413,7 +1409,7 @@ export function useIntelCenter() {
     setBatchBusy(false)
     if (login) {
       setNeedsRhLogin(true)
-      toast.error(LLM_ERROR_ZH.rh_login_required)
+      toast.error(INTEL_ERROR_ZH.rh_login_required)
       return
     }
     toast[fail ? "error" : "success"](
@@ -1639,12 +1635,13 @@ export function useIntelCenter() {
       const r = await chatViaGateway({ modelRef: activeModelRef, messages, page: "intel-center", max_tokens: 2048 })
       if (r.needsLogin) {
         setNeedsRhLogin(true)
-        setReportText(LLM_ERROR_ZH.rh_login_required ?? "AI 服务需要登录，请登录后重试")
+        setReportText(INTEL_ERROR_ZH.rh_login_required)
         return
       }
       if (!r.ok || r.status !== "success" || !r.text) {
-        const rawErr = r.error ?? ""
-        setReportText(LLM_ERROR_ZH[rawErr] ?? (/[一-龥]/.test(rawErr) ? rawErr : "周报生成失败，请稍后重试"))
+        setReportText(
+          localizeLlmError(r.error, { generic: "周报生成失败，请稍后重试", copy: INTEL_ERROR_ZH }),
+        )
         return
       }
       setReportText(r.text)

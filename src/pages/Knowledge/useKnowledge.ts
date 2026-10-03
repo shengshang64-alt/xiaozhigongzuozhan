@@ -2,6 +2,7 @@
 // View（KnowledgePage 与 src/components/knowledge/*）只消费本 hook 返回的 props。
 
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
+import { useDebounce } from "@/lib/useDebounce"
 import { useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import { decodeRhToken, type RhAccountInfo } from "@/lib/rhLogin"
@@ -337,6 +338,7 @@ export function useKnowledge() {
   // ------------------------------ 视图状态 ------------------------------
   const [libTab, setLibTab] = useState<LibTab>("team")
   const [searchQuery, setSearchQuery] = useState("")
+  const debouncedQuery = useDebounce(searchQuery, 150)
   const [activeFolderPath, setActiveFolderPath] = useState<string | null>(null)
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null)
   const [sortKey, setSortKey] = useState<DocSortKey>("updated")
@@ -379,7 +381,7 @@ export function useKnowledge() {
 
   const libDocs = useMemo(() => {
     const base = libTab === "team" ? myVisibleDocs.filter((d) => d.visibility !== "personal") : myVisibleDocs.filter((d) => d.visibility === "personal")
-    const q = searchQuery.trim().toLowerCase()
+    const q = debouncedQuery.trim().toLowerCase()
     if (!q) return base
     // 性能第一批：列表快速筛选只扫元数据（title/summary/keywords/folder），
     // 不再对每篇 content 做全文 includes（1730 篇 × 每次按键 = 卡顿主因）；
@@ -391,7 +393,7 @@ export function useKnowledge() {
         (d.keywords ?? []).some((k) => String(k).toLowerCase().includes(q)) ||
         (d.folder_path ?? "").toLowerCase().includes(q),
     )
-  }, [libTab, myVisibleDocs, searchQuery])
+  }, [libTab, myVisibleDocs, debouncedQuery])
 
   const folderScopedDocs = useMemo(() => {
     if (!activeFolderPath) return libDocs

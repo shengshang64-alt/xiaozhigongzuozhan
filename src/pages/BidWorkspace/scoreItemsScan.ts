@@ -131,6 +131,8 @@ export type ScoreCrossCheck = {
   scanned: (ScannedScoreItem & { cat: ScanCategory })[]
   parsed: ParsedScoreItem[]
   missingInReport: (ScannedScoreItem & { cat: ScanCategory })[]
+  /** 反向核对：解析报告抽了、但本地原文扫描未匹配到的评分项（可能原文表格丢行，或抽取依据需复核） */
+  extraInReport: ParsedScoreItem[]
   scoreMismatch: { scanned: ScannedScoreItem; parsed: ParsedScoreItem }[]
   categorySums: Record<ScanCategory, number>
   total: ScannedTotal
@@ -145,6 +147,7 @@ export function crossCheckScores(
   const scan = scanScoreItems(tenderText ?? "")
   const parsed = parseScoreSectionLines(report)
   const missingInReport = scan.items.filter((s) => !parsed.some((p) => nameSimilar(s.name, p.name)))
+  const extraInReport = parsed.filter((p) => !scan.items.some((s) => nameSimilar(s.name, p.name)))
   const scoreMismatch: ScoreCrossCheck["scoreMismatch"] = []
   for (const p of parsed) {
     const hit = scan.items.find((s) => nameSimilar(s.name, p.name))
@@ -161,6 +164,7 @@ export function crossCheckScores(
     scanned: scan.items,
     parsed,
     missingInReport,
+    extraInReport,
     scoreMismatch,
     categorySums: scan.categorySums,
     total: scan.total,

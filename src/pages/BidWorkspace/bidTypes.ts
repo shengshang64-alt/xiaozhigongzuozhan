@@ -1,6 +1,10 @@
 import { parseJsonTolerant } from "@/lib/jsonTolerant"
 import type { Chapter, FigureSpec, OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
 import { makeUid } from "@/pages/SolutionStudio/solutionTypes"
+import { sanitizeMermaidCode } from "./mermaidFigure"
+import { sanitizeConsistencyIssues, type ConsistencyIssue } from "./prompts/consistencyGuard"
+// R144：★/▲ 重点条款噪声判定的单一真源（本地扫描 / AI 整文通道 / 合规矩阵共用口径）
+import { cleanStarClauseContent, isStarClauseNoiseLine } from "./starClauseNoise"
 // R69 搬迁：BidSectionPromptOpts 定义随 buildBidChapterMessages 移至 prompts/bidChapter，本地仍引用（type-only 不产生运行时环）
 
 // ---------------------------------------------------------------------------
@@ -103,7 +107,14 @@ export const STAR_CLAUSE_SECTION: ParseSectionDef = {
   guide: "招标文件中带 ★/▲ 标记的实质性响应条款原文",
 }
 
-export const PARSE_ALL_SECTIONS: ParseSectionDef[] = [...PARSE_KEY_SECTIONS, ...PARSE_EXTRA_SECTIONS, STAR_CLAUSE_SECTION]
+/** Q26/切片B：采购需求结构（子系统清单）——本地扫描产出、不走 LLM，不计入 requestedKeys（与 star_clauses 同属本地产出区） */
+export const REQ_STRUCTURE_SECTION: ParseSectionDef = {
+  key: "req_structure",
+  title: "采购需求结构",
+  guide: "第三章采购需求「定制软件开发清单」中划分的子系统（系统/平台/中心）结构清单，本地扫描产出",
+}
+
+export const PARSE_ALL_SECTIONS: ParseSectionDef[] = [...PARSE_KEY_SECTIONS, ...PARSE_EXTRA_SECTIONS, STAR_CLAUSE_SECTION, REQ_STRUCTURE_SECTION]
 
 export function parseSectionDef(key: string): ParseSectionDef | undefined {
   return PARSE_ALL_SECTIONS.find((d) => d.key === key)
@@ -143,12 +154,13 @@ export function parseSectionTitle(key: string): string {
   return parseSectionDef(key)?.title ?? LEGACY_SECTION_TITLES[key] ?? key
 }
 
-export type ParseSectionStatus = "ok" | "failed" | "pending"
+export type ParseSectionStatus = "ok" | "failed" | "pending" | "miss"
 
 export const PARSE_STATUS_LABEL: Record<ParseSectionStatus, string> = {
   ok: "成功",
   failed: "失败",
   pending: "未解析",
+  miss: "未提取到",
 }
 
 export type ParseSection = {
@@ -162,16 +174,44 @@ export type ParseSection = {
   snippet?: string
 }
 
+/** Q27/切片B：所投标包件选择（多包项目）；selected 为空/缺省 = 全部包件（零行为变化） */
+export type LotsScope = {
+  /** 所选包号（1 起）；空数组或缺省 = 全部 */
+  selected?: number[]
+  /** 选包时点从原文扫描到的包清单快照（号/标题/包标题行行号），供归属过滤与 chips 回显 */
+  all?: { no: number; title: string; lines: number }[]
+}
+
 export type ParseReport = {
   scope: ParseScope
   sections: ParseSection[]
   /** 循环 8 A5：分段解析失败段提示（≤20 条、每条 ≤100 字），随报告落库供刷新后恢复失败横幅；正常解析不写此键 */
   warnings?: string[]
+  /** Q27/切片B：所投标包件范围（PocketBase JSON 字段零 schema 迁移；不进 PARSE_* 分区枚举，不影响既有 parse 合并） */
+  lots_scope?: LotsScope
+  /** Q27/切片B：落库时招标文件签名（长度+首尾采样），重解析判定包结构是否可能已变 */
+  tender_text_sig?: string
 }
 
 export function sectionStatus(s: ParseSection): ParseSectionStatus {
+  const t = s.content.trim()
+  // T12b4：内容派生的 miss 必须优先于持久化 status——历史批次把「原文未提及」写成 status:"ok"，
+  // 绿色「成功」徽章会撒谎；降级检索原文同理
+  if ((t.length <= 30 && t.includes("未提及")) || t.startsWith("〔系统降级")) return "miss"
   if (s.status === "ok" || s.status === "failed" || s.status === "pending") return s.status
-  return s.content.trim() ? "ok" : "pending"
+  return t ? "ok" : "pending"
+}
+
+/**
+ * Q27/切片C：单项是否值得逐项 checkpoint。
+ * 真空（熔断置空 / 未产出）与「〔系统降级」前缀（AI 失败的降级交付，非模型正常结果）均不写，
+ * 交由尾部最终落库 / 空项重跑统一处理；「原文未提及」等伪空属正常成功结果，可 checkpoint（刷新后仍在库，重跑可覆盖）。
+ */
+export function sectionCheckpointable(content: string): boolean {
+  const t = (content ?? "").trim()
+  if (!t) return false
+  if (t.startsWith("〔系统降级")) return false
+  return true
 }
 
 /** 由内容生成一句摘要（取首个非空行，超长截断） */
@@ -212,12 +252,10 @@ export function clearParseWarnings(report: ParseReport): ParseReport {
  * 背景：旧横幅把多条「第 X 段解析失败」直接列在顶部，与侧栏「核心信息 7/7 项」同屏——
  * 段＝招标全文切分的文本块、项＝提取出的核心信息，两个口径不同，但用户读来像自相矛盾。改为汇总一条，口径说清。无 warnings 返回 null。 */
 export function summarizeParseWarnings(warnings: string[] | undefined): { failedChunks: number; headline: string } | null {
-  const n = warnings?.length ?? 0
-  if (n <= 0) return null
-  return {
-    failedChunks: n,
-    headline: `招标全文按段落切分解析，其中 ${n} 段本次未读取成功（多为超长/图表段），已自动跳过；下列核心信息仍从其余成功段落中提取。`,
-  }
+  const list = (warnings ?? []).filter((w) => w.trim().length > 0)
+  if (!list.length) return null
+  // T12b：warnings 已由解析链路生成逐项人话口径（降级/熔断说明），直显首条；不再编造「按段落切分」旧口径
+  return { failedChunks: list.length, headline: list[0].trim() }
 }
 
 /** 循环 8 A5：warnings 落库前容错（只留非空字符串、每条 ≤100 字、≤20 条；空清单返回 undefined 不写键） */
@@ -230,15 +268,25 @@ export function sanitizeParseWarnings(raw: unknown): string[] | undefined {
   return out.length ? out : undefined
 }
 
+/** T14：解析素材通道——whole 整文直读（默认，跨项共享前缀吃提示词缓存）；retrieval 按项关键词检索选块 */
+export type ParseChannel = "whole" | "retrieval"
+
 export type ParseConfig = {
   scope: ParseScope
   extra_keys: string[]
   /** 第十二轮改造 2：★/▲ 重点条款本地扫描开关；缺省视为 true（旧配置兼容） */
   star_clauses?: boolean
+  /** T14：解析素材通道；缺省视为 whole（旧配置兼容走新通道，出问题可切回 retrieval） */
+  channel?: ParseChannel
 }
 
 export function defaultParseConfig(): ParseConfig {
-  return { scope: "key", extra_keys: [], star_clauses: true }
+  return { scope: "key", extra_keys: [], star_clauses: true, channel: "whole" }
+}
+
+/** 解析通道取值：缺省/非法值一律归 whole（旧项目配置无 channel 字段时走新通道） */
+export function parseChannelOf(cfg: ParseConfig | null | undefined): ParseChannel {
+  return cfg?.channel === "retrieval" ? "retrieval" : "whole"
 }
 
 /** 重点条款扫描是否开启：未配置 / 旧配置（无 star_clauses 字段）一律视为开启 */
@@ -263,12 +311,25 @@ export function parseConfigCount(cfg: ParseConfig | null | undefined): number {
 
 // ------------------------------ R74/C-lot-splitting：标包划分本地扫描（零 AI 费用） ------------------------------
 
-/** 标包标题行（R78 真实文件池州校准）：①「第1包/第一包/标段一」行首式 ②表格行「1 标包一 名称 预算」
- * ③「标包一/标段2/分包3」独词式（需行首或空白前缀，防「各标包/件标包」误命中）④「标段号」表头 */
-const LOT_HEADER_RE = /(?:^|\s)(?:第\s*[0-9一二三四五六七八九十百]{1,4}\s*(?:包|标段|包件)|(?:标包|标段|分包|包件)\s*[0-9一二三四五六七八九十百]{1,4})(?!\s*[页内容]|划分)/
-const LOT_NO_RE = /((?:标包|标段|分包|包件)\s*([0-9一二三四五六七八九十百]{1,4}))|(第\s*([0-9一二三四五六七八九十百]{1,4})\s*(?:包|标段|包件))/
+/** 标包标题行（R78 池州校准 + Q26/切片C 扩展）：①「第1包/第一包/第1-3包」行首式（含区间）
+ * ②空格表格行「1 标包一 名称 预算」③「标包一/标段2/分包3」独词式 ④「包1/包2」裸形（前须行首或空白，防「包含/包装」误命中）
+ * 末尾负向前瞻排除「…划分/页/内/容」与「装/含/括/裹」，且数字不被截断 */
+const LOT_HEADER_RE =
+  /(?:^|\s)(?:第\s*[0-9一二三四五六七八九十百]{1,3}(?:\s*[-—~至]\s*[0-9一二三四五六七八九十百]{1,3})?\s*(?:包|标段|包件)|(?:标包|标段|分包|包件)\s*[0-9一二三四五六七八九十百]{1,3}|(?:^|\s)包\s*[0-9一二三四五六七八九十百]{1,3})(?![-0-9一二三四五六七八九十百])(?!\s*[页内容]|划分|装|含|括|裹)/
+/** 区间「第N-M包」→ 解析起止号（切片C） */
+const LOT_RANGE_RE = /第\s*([0-9一二三四五六七八九十百]{1,3})\s*[-—~至]\s*([0-9一二三四五六七八九十百]{1,3})\s*(?:包|标段|包件)/
+/** 单包编号：标包N / 第N包 / 裸形 包N（切片C 三种取号顺序尝试） */
+const LOT_ONE_RE = /(?:标包|标段|分包|包件)\s*([0-9一二三四五六七八九十百]{1,3})/
+const LOT_ONE_RE2 = /第\s*([0-9一二三四五六七八九十百]{1,3})\s*(?:包|标段|包件)/
+const LOT_ONE_RE3 = /(?:^|\s)包\s*([0-9一二三四五六七八九十百]{1,3})(?!装|含|括|裹)/
+/** 「本项目划分为 N 个标包」计数声明（切片C：无逐项行时的兜底依据） */
+const LOT_DECL_RE = /([0-9一二三四五六七八九十百]{1,3})\s*个\s*(?:标包|标段|包件)/
+/** 标包表格表头（切片C：「标包号|标包名称|预算」等，需含竖线才进表格模式，规避空格型池州表误判） */
+const LOT_TABLE_HEAD_RE = /(?:标包|包件|标段)(?:号|名称|内容|清单|预算)|包号|包序号|标包划分表/
 /** 预算/限价行：与当前包块关联 */
 const LOT_BUDGET_RE = /(预算金额|最高限价|预算|控制价|限价)[^0-9]{0,8}([0-9][0-9,，.]*)\s*(万元|元)/
+/** 「不/未/无 划分」否定语境（13131「☑不划分标包」等：整行跳过，零误报关键） */
+const LOT_NO_SPLIT_RE = /[不未无]\s*划分/
 
 const CN_NUM: Record<string, number> = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10, 百: 100 }
 
@@ -300,35 +361,74 @@ export function lotNumberCnToInt(raw: string): number {
   return total + cur
 }
 
+/** 标题行 → 本行涉及的包号数组（区间「第1-3包」展开为 1/2/3；单号一行一个；无解返回 []） */
+function lotNumbersFromLine(line: string): string[] {
+  const range = line.match(LOT_RANGE_RE)
+  if (range) {
+    const a = lotNumberCnToInt(range[1])
+    const b = lotNumberCnToInt(range[2])
+    if (a > 0 && b >= a && b - a <= 20) {
+      const seq: string[] = []
+      for (let n = a; n <= b; n++) seq.push(String(n))
+      return seq
+    }
+  }
+  const m = line.match(LOT_ONE_RE) || line.match(LOT_ONE_RE2) || line.match(LOT_ONE_RE3)
+  return m ? [m[1]] : []
+}
+
 /**
- * R74/C-lot-splitting：从招标原文本地扫描「标包/标段/包件」划分（纯函数，零 AI 费用）。
- * 逐行找标包标题行开新包，收集该包块内的名称/预算/内容摘录行（预算行就近归属），
- * 输出每包一条「第N包：名称；预算金额 X 万元；主要内容…」；无划分返回 []。
- * 局限（诚实声明）：PDF 表格转译可能把包信息拆行错位，漏识别的由 AI 解析兜底；复杂捆绑（包内分包）v1 不展开。
+ * R74/C-lot-splitting + Q26/切片C：从招标原文本地扫描「标包/标段/包件」划分（纯函数，零 AI 费用）。
+ * 逐行找标包标题行开新包，收集包块内名称/预算/内容摘录行（预算行就近归属）；识别形态覆盖：第N包/标包N/包N(裸形)/
+ * 第N-M包(区间)/空格或竖线表格行/「本项目划分为 N 个标包」计数声明兜底。≥2 包时每行前缀【第N包】，便于与采购清单交叉核对。
+ * 输出每包一条「第N包：名称；预算金额 X 万元；主要内容…」；无划分（含「不划分标包」）返回 []。
+ * 局限（诚实声明）：PDF 表格转译可能把包信息拆行错位，漏识别的由 AI 解析兜底；复杂捆绑（包内分包）不展开。
  */
 export function extractLotsFromText(text: string): string[] {
   type Lot = { key: string; head: string; lines: string[] }
   const lots: Lot[] = []
   const byKey = new Map<string, Lot>()
   let cur: Lot | null = null
+  let tableMode = false
   for (const rawLine of (text ?? "").split(/\n+/)) {
     const line = rawLine.replace(/\s+/g, " ").trim()
     if (!line || line.length > 200) continue
     // 保证金金额/形式引用行（含「标包一：人民币50000元」）：既不是包定义也不入包内容
     if (/保证金/.test(line)) continue
-    if (LOT_HEADER_RE.test(line)) {
-      const noM = line.match(LOT_NO_RE)
-      if (noM) {
-        const key = (noM[2] || noM[4] || noM[6] || noM[1]).replace(/\s/g, "")
-        const exist = byKey.get(key)
-        if (exist) {
-          // 同号再现（如保证金清单里的重复引用）：并入既有包，不新开
-          cur = exist
-          continue
+    // 「不划分标包」等否定语境整行跳过（13131 零误报关键）
+    if (LOT_NO_SPLIT_RE.test(line)) continue
+    // 切片C 标包表格模式：命中含竖线表头后，把「N | 名称 | 预算」行逐个识别为包
+    if (!tableMode && line.includes("|") && LOT_TABLE_HEAD_RE.test(line)) {
+      tableMode = true
+      continue
+    }
+    if (tableMode) {
+      const tm = line.match(/^(\d{1,3})\s*\|\s*(.+)$/)
+      if (tm) {
+        if (!byKey.has(tm[1])) {
+          cur = { key: tm[1], head: line.slice(0, 80), lines: [] }
+          lots.push(cur)
+          byKey.set(tm[1], cur)
         }
-        cur = { key, head: line.slice(0, 80), lines: [] }
-        lots.push(cur)
-        byKey.set(key, cur)
+        continue
+      }
+      tableMode = false
+    }
+    if (LOT_HEADER_RE.test(line)) {
+      const keys = lotNumbersFromLine(line)
+      if (keys.length) {
+        for (const k of keys) {
+          const key = k.replace(/\s/g, "")
+          const exist = byKey.get(key)
+          if (exist) {
+            // 同号再现（如保证金清单里的重复引用）：并入既有包，不新开
+            cur = exist
+            continue
+          }
+          cur = { key, head: line.slice(0, 80), lines: [] }
+          lots.push(cur)
+          byKey.set(key, cur)
+        }
         continue
       }
     }
@@ -345,7 +445,117 @@ export function extractLotsFromText(text: string): string[] {
       .slice(0, 160)
     out.push(`${lot.head}${budgetText}${content ? `；${content}` : ""}`)
   }
+  // 切片C：无逐项包但原文声明「划分为 N 个标包」→ 落一条计数提示（否定语境已在上方过滤，不会误报「不划分」）
+  if (!out.length) {
+    for (const rawLine of (text ?? "").split(/\n+/)) {
+      const line = rawLine.replace(/\s+/g, " ").trim()
+      if (!line || LOT_NO_SPLIT_RE.test(line)) continue
+      if (!/划分|分为|分成/.test(line)) continue
+      const dm = line.match(LOT_DECL_RE)
+      if (dm && lotNumberCnToInt(dm[1]) >= 2) {
+        out.push(`本项目划分为 ${lotNumberCnToInt(dm[1])} 个标包（原文以数量声明，逐项清单见采购需求，请按包拆分核对）`)
+        break
+      }
+    }
+  }
+  // 切片C 按包归属：≥2 包时统一前缀【第N包】，便于采购清单/预算与 lots 交叉核对
+  if (out.length >= 2) {
+    for (let i = 0; i < lots.length && i < out.length; i++) {
+      const n = lotNumberCnToInt(lots[i].key)
+      if (n > 0) out[i] = `【第${n}包】${out[i]}`
+    }
+  }
   return out.slice(0, 40)
+}
+
+// ------------------------------ Q27/切片B：包归属 + 所投包件范围约束（零 AI 费用） ------------------------------
+
+/** 包标题行信息：no=包号，title=标题行截断，budget=就近预算，lines=包标题所在原文行号（0 起） */
+export type LotInfo = { no: number; title: string; budget: string; lines: number }
+
+/**
+ * 从原文行数组解析包标题行清单（复用 LOT_HEADER_RE / lotNumbersFromLine 口径）：只取包号/标题行/行号，
+ * 供就近归属。纯函数，与 extractLotsFromText 并行存在（不改其返回签名，零回归）。
+ */
+export function parseLotsLineInfo(lines: string[]): LotInfo[] {
+  const out: LotInfo[] = []
+  const seen = new Set<number>()
+  let curBudget = ""
+  lines.forEach((raw, i) => {
+    const line = (raw ?? "").replace(/\s+/g, " ").trim()
+    if (!line || line.length > 200) return
+    if (/保证金/.test(line) || LOT_NO_SPLIT_RE.test(line)) return
+    const bm = line.match(LOT_BUDGET_RE)
+    if (bm && !seen.size) curBudget = `${bm[2]}${bm[3]}`
+    if (!LOT_HEADER_RE.test(line)) return
+    for (const k of lotNumbersFromLine(line)) {
+      const n = lotNumberCnToInt(k)
+      if (n > 0 && !seen.has(n)) {
+        seen.add(n)
+        out.push({ no: n, title: line.slice(0, 60), budget: "", lines: i })
+      }
+    }
+  })
+  void curBudget
+  return out.sort((a, b) => a.lines - b.lines)
+}
+
+/**
+ * Q27/切片B（思路移植易标 2.30.3 多标段范围约束口径，TS 语义重写）：单行就近归属。
+ * 行号位于包 K 标题行与下一包标题行之间 → 归包 K；位于所有包标题之前 → 公共区（0）；lots 为空 → 0。纯函数。
+ */
+export function assignLinesToLots(lots: LotInfo[], lineNo: number): number {
+  const sorted = [...lots].sort((a, b) => a.lines - b.lines)
+  if (!sorted.length) return 0
+  let owner = 0
+  for (const l of sorted) {
+    if (l.lines <= lineNo) owner = l.no
+    else break
+  }
+  return owner
+}
+
+/** 批量归属：返回与入参 lines 等长的包号数组（0=公共区） */
+export function assignLinesToLotsBulk(lots: LotInfo[], lines: number[]): number[] {
+  return lines.map((ln) => assignLinesToLots(lots, ln))
+}
+
+/**
+ * 范围约束注入文案：未选 / 全选 / total<=1 → 空串（零行为变化）；限定时给出包件边界口径。
+ */
+export function buildLotsScopeHint(selected: number[] | undefined, total: number): string {
+  const sel = [...new Set((selected ?? []).map((n) => Math.trunc(n)).filter((n) => n >= 1))].sort((a, b) => a - b)
+  if (!sel.length || (total > 0 && sel.length >= total)) return ""
+  const list = sel.join("、")
+  const head = total > 0 ? "本项目共划分 " + total + " 个包件，" : ""
+  return "【投标包件范围约束（用户已确认）】" + head + "本次仅投标第 " + list + " 包。只响应属于所选包件的建设内容、技术参数、预算与资质要求；未选包件的专属条款（预算/资质/参数）不适用于本次投标、不得响应；包间公共条款照常响应；如某要求无法判断归属包件，按整份文件口径响应并注明「包件归属未明」。"
+}
+
+/**
+ * 子系统/采购清单行按包归属本地过滤（零费用）。all=包清单快照（lines 为包标题行号）；
+ * entries 每项带 lineIdx（该行在原文中的行号）与 text。未选/全选/无行号索引 → 原样返回（零行为变化）。
+ * 保留：所属包在所选集合内，或归公共区（0）。
+ */
+export function filterEntriesByLotsScope<T extends { lineIdx?: number }>(
+  entries: T[],
+  scope: { selected?: number[]; all?: { no: number; title: string; lines: number }[] } | undefined,
+): T[] {
+  const sel = [...new Set((scope?.selected ?? []).map((n) => Math.trunc(n)).filter((n) => n >= 1))].sort((a, b) => a - b)
+  const all = scope?.all ?? []
+  if (!sel.length || all.length < 2 || sel.length >= all.length) return entries
+  if (!entries.every((e) => typeof e.lineIdx === "number")) return entries
+  const lots: LotInfo[] = all.map((a) => ({ no: a.no, title: a.title, budget: "", lines: a.lines }))
+  const set = new Set(sel)
+  return entries.filter((e) => {
+    const owner = assignLinesToLots(lots, e.lineIdx as number)
+    return owner === 0 || set.has(owner)
+  })
+}
+
+/** 新一轮解析落库时的 lots_scope 语义：文本签名未变（同文重解析）→ 保留选择；否则清空（包结构可能已变） */
+export function mergeLotsScopeOnReparse(prev: LotsScope | undefined, prevSig: string | undefined, sig: string): LotsScope | undefined {
+  if (!prev?.selected?.length) return undefined
+  return prevSig && prevSig === sig ? prev : undefined
 }
 
 /** 标包分区组装（镜像 starClauseSectionFrom；无标包返回 null 不落分区） */
@@ -357,6 +567,91 @@ export function lotsSectionFrom(lots: string[]): ParseSection | null {
     content: lots.join("\n"),
     status: "ok",
     snippet: `共 ${lots.length} 包`,
+  }
+}
+
+// ------------------------------ Q26/切片B：采购需求结构本地扫描（零 AI 费用） ------------------------------
+
+/** 「定制软件开发清单」表行首：序号 + 竖线（如「1 | 智慧互联 | 医院集成平台」）；小数行（2.1 硬件）不匹配 */
+const REQ_TABLE_ROW_RE = /^\d{1,3}\s*\|/
+/** 系统/平台/中心类名称后缀：末段命中才认作一条子系统，滤掉竖排大类碎片（「智慧医」「院」）与正文/硬件行 */
+const REQ_SYS_SUFFIX = /(系统|平台|中心|管理|模块|工作站|接口|引擎|改造|对接|OA|CA)$/
+/** 竖排「大类」列候选（仅组首行出现，用于继承归属） */
+const REQ_CATEGORIES = new Set(["智慧互联", "智慧医疗", "智慧管理", "智慧服务", "个性化需求", "三医协同", "三医综合", "智慧医院", "智慧急救", "医共体", "运营管理"])
+/** 详情区功能模块标题「（一）…」，用于统计每系统子模块数 */
+const REQ_MODULE_HEAD_RE = /^（[一二三四五六七八九十百]{1,3}）\S{1,20}/
+/** 纯符号/勾选标记段（√ ✓ ✗ × 〇 ○ 斜杠/括号 空白），拆分后剔除 */
+const REQ_MARK_RE = /^[√✓✖×〇○/()（）\s]*$/
+
+const REQ_STRUCT_LIMIT = 60
+
+/**
+ * Q26/切片B：从招标原文第三章采购需求本地扫描「子系统结构清单」（纯函数，零 AI 调用，与 lots/star 同路）。
+ * 依据「定制软件开发清单」表（行式「序号 | 大类 | 系统名」）逐行取末段为系统名，
+ * 竖排大类碎片因不匹配系统后缀被自然丢弃；同名跨院重复去重（保留首次出现顺序）。
+ * 再回扫详情区：系统名独立成行处统计其后「（一）…」功能模块标题数，产出「[大类 ·] 系统名 · N 项功能模块」。
+ * 局限（诚实声明）：无该表或表列错位的项目本区为空，交由 AI 解析项兜底；模块数仅供体量参考。
+ */
+export function extractRequirementStructureFromText(text: string): string[] {
+  const rawLines = (text ?? "").split(/\r?\n/)
+  type Sys = { category: string; name: string; key: string; modules: number }
+  const list: Sys[] = []
+  const byName = new Map<string, Sys>()
+  let category = ""
+  for (const raw of rawLines) {
+    const line = raw.replace(/\s+/g, " ").trim()
+    if (!REQ_TABLE_ROW_RE.test(line)) continue
+    const segs = line.split("|").map((s) => s.trim()).filter((s) => s && !REQ_MARK_RE.test(s))
+    if (segs.length < 2) continue
+    const name = segs[segs.length - 1]
+    if (name.length > 30 || !REQ_SYS_SUFFIX.test(name)) continue
+    for (const seg of segs.slice(1, -1)) if (REQ_CATEGORIES.has(seg)) category = seg
+    const key = name.replace(/\s+/g, "")
+    if (byName.has(key)) continue
+    const item: Sys = { category, name, key, modules: 0 }
+    list.push(item)
+    byName.set(key, item)
+  }
+  // 详情区：系统名独立成行=子系统正文起点，统计其后（一）功能模块标题数，至下一系统起点为止
+  if (list.length) {
+    const headerAt: Array<{ idx: number; sys: Sys }> = []
+    const seenHeader = new Set<string>()
+    for (let i = 0; i < rawLines.length; i++) {
+      const s = rawLines[i].replace(/\s+/g, "").trim()
+      if (!s || s.length > 24 || s.includes("|")) continue
+      const hit = byName.get(s)
+      if (hit && !seenHeader.has(hit.key)) {
+        seenHeader.add(hit.key)
+        headerAt.push({ idx: i, sys: hit })
+      }
+    }
+    for (let h = 0; h < headerAt.length; h++) {
+      const start = headerAt[h].idx
+      const end = h + 1 < headerAt.length ? headerAt[h + 1].idx : rawLines.length
+      let count = 0
+      for (let i = start + 1; i < end; i++) {
+        if (REQ_MODULE_HEAD_RE.test(rawLines[i].trim())) count += 1
+      }
+      headerAt[h].sys.modules = Math.max(headerAt[h].sys.modules, count)
+    }
+  }
+  const out: string[] = []
+  for (const sys of list.slice(0, REQ_STRUCT_LIMIT)) {
+    const head = sys.category ? `${sys.category} · ${sys.name}` : sys.name
+    out.push(sys.modules > 0 ? `${head} · ${sys.modules} 项功能模块` : head)
+  }
+  return out
+}
+
+/** 采购需求结构分区组装（镜像 lotsSectionFrom；无命中返回 null 不落分区） */
+export function reqStructureSectionFrom(lines: string[]): ParseSection | null {
+  if (!lines.length) return null
+  return {
+    key: REQ_STRUCTURE_SECTION.key,
+    title: REQ_STRUCTURE_SECTION.title,
+    content: lines.join("\n"),
+    status: "ok",
+    snippet: `共 ${lines.length} 个系统`,
   }
 }
 
@@ -372,6 +667,9 @@ const STAR_CLAUSE_MAX_CHARS = 600
 // 结构边界：章节标题/中文编号/附表附件表头 → 当前条款到此为止
 const STAR_BOUNDARY_RE = /^(第[一二三四五六七八九十百]+[章节部分篇]|[一二三四五六七八九十]+、|附[件表]|评标办法|评分标准|技术参数及要求|序号$)/
 
+// R144：★/▲ 目录行 / 标注含义句的噪声判定收敛到 ./starClauseNoise 单一真源，
+// 与 AI 整文通道、合规矩阵共用同一口径（详见该文件）。
+
 /**
  * 从招标文件原文本地扫描 ★/▲ 标记条款（纯函数，零 AI 调用）：
  * 标记行=条款起点；去重；上限 200 条，超出时末行追加「…另有 N 条未列出」。
@@ -379,6 +677,8 @@ const STAR_BOUNDARY_RE = /^(第[一二三四五六七八九十百]+[章节部分
  * PDF 转译后「★N」常单独占行、条款正文在其后行（中间隔空行），旧逻辑只保留含标记的行、
  * 其余一律 flush 丢弃 → 现在标记行后最多吸收 4 行非标记正文（单条 ≤600 字），
  * 遇章标题/前附表等结构边界即终止本条；连续标记行改为各自成条（每条=一个独立落点，对大纲映射更有利）。
+ * R143：起条前跳过目录行（编号前缀＋行尾页码＋短行）与标注含义解释句，二者均非需响应的实质条款；
+ * 一旦目录条目不再建条，其后的目录子行因无进行中条款也不会被吸收，伪条款随之消失。
  */
 export function extractStarClauses(text: string): string[] {
   const clauses: string[] = []
@@ -399,7 +699,11 @@ export function extractStarClauses(text: string): string[] {
   for (const rawLine of (text ?? "").split(/\r?\n/)) {
     const line = rawLine.trim()
     if (!line) continue // 空行只是分隔符，不结束条款（PDF 转译 marker 与正文间必有空行）
-    if (STAR_MARK_RE.test(line)) { flush(); buf = [line]; chars = line.length; continue }
+    if (STAR_MARK_RE.test(line)) {
+      // R143：目录行 / 标注含义解释句不是需逐条响应的实质条款，跳过建条并终止上一条
+      if (isStarClauseNoiseLine(line)) { flush(); continue }
+      flush(); buf = [line]; chars = line.length; continue
+    }
     if (!buf.length) continue // 无进行中的条款：普通正文跳过
     if (buf.length > STAR_CONT_CAP || chars >= STAR_CLAUSE_MAX_CHARS) continue // 超长截断：不再吸收，等下一个标记
     if (STAR_BOUNDARY_RE.test(line)) { flush(); continue } // 结构边界 = 本条结束
@@ -706,12 +1010,33 @@ function section(key: string, content: string): ParseSection | null {
 
 /** 脏值黑名单（字段值 trim + 小写后完全命中即整行丢弃） */
 const PARSE_DIRTY_VALUES = new Set(["投标文件", "招标文件", "响应文件", "无", "暂无", "n/a", "不详"])
-/** 未明确类说明行：值命中即从正文移除，字段名归并进末尾「原文未提及」汇总行 */
+/** 未明确类占位行判定词：值命中且为短占位行时才从正文移除、字段名归并进末尾「原文未提及」汇总行 */
 const PARSE_UNCLEAR_RE = /未明确|未提及|未写明|没有明确|未提供|不明确/
+/** T11（2026-09-28）：占位行长度上限——评分标准/条款长文里「4.未提供方案的，不得分。」是合法内容，
+ *  仅 ≤ 该长度的短值（如「未明确」「原文未提及」）才按缺失占位处理，超出整行保留，防子串误杀 */
+const PARSE_UNCLEAR_MAX_VALUE_LEN = 20
 /** 字段名含这些词且值为 ≤2 位纯数字时按脏值处理（分块解析丢失编号/名称/日期的残行） */
 const PARSE_NUMERIC_DIRTY_NAME_RE = /编号|名称|监理|时间|日期/
 /** 「原文未提及」汇总行字段名上限（超出截断加「等」） */
 const PARSE_UNCLEAR_MAX_FIELDS = 20
+
+/**
+ * T13（2026-09-28 用户反馈轮）：评分构成行本地硬校验。
+ * 提示词要求首行「评分构成：总分 N 分（技术 N 分、商务 N 分、价格 N 分）」只抄原文声明数字；
+ * 实测软约束被违反（安庆二院原文只声明满分 100，模型自行汇总出「技术 53、商务 47、价格 30」合计 130）——
+ * 带总分声明且分部之和不等于总分（±0.51 容差）的构成行整行删除（宁可缺失，不可虚构，对齐合规检查口径）。
+ * 无「总分/满分」声明、或只有总分无分部的行无法机械判定，保留。
+ */
+function scoringCompositionLineValid(value: string): boolean {
+  const totalM = value.match(/(?:总分|满分)\s*(\d+(?:\.\d+)?)\s*分/)
+  if (!totalM) return true
+  const total = Number(totalM[1])
+  const nums = [...value.matchAll(/(\d+(?:\.\d+)?)\s*分/g)].map((m) => Number(m[1])).filter((n) => !Number.isNaN(n))
+  const parts = nums.filter((n) => Math.abs(n - total) > 1e-9)
+  if (!parts.length) return true
+  const sum = parts.reduce((a, b) => a + b, 0)
+  return Math.abs(sum - total) <= 0.51
+}
 
 /**
  * 解析章节内容清洗（共享纯函数，mergeChunkReports / sanitizeParseSections / normalizeParseReport 读路径三处共用）：
@@ -719,7 +1044,8 @@ const PARSE_UNCLEAR_MAX_FIELDS = 20
  *    被丢弃、后现有效值自然顶上；无冒号的说明行不参与字段去重，仅丢弃空白归一后完全相同的重复行；
  * 2. 脏值黑名单：值为 投标文件/招标文件/响应文件/无/暂无/N\\/A/不详 的行整行丢弃；
  *    字段名含 编号/名称/监理/时间/日期 且值为 ≤2 位纯数字的行同样丢弃；
- * 3. 未明确行归并：值命中 未明确/未提及/未写明/没有明确/未提供/不明确 的行从正文移除，
+ * 3. 未明确行归并：值命中 未明确/未提及/未写明/没有明确/未提供/不明确 且值 ≤20 字（占位行特征，T11 防误杀长评分行）
+ *    的行从正文移除，
  *    字段名收集后在章节末尾追加一行「原文未提及：A、B、C」（≤20 个，超出截断加「等」；无此类行不追加；
  *    已有有效值的字段不进汇总）；
  * 4. 行序保持原序。
@@ -759,7 +1085,7 @@ export function cleanParseSectionContent(content: string): string {
     const value = line.slice(colon + 1).trim()
     const nameKey = name.replace(/\s+/g, "")
     if (!nameKey || !value) continue
-    if (PARSE_UNCLEAR_RE.test(value)) {
+    if (value.length <= PARSE_UNCLEAR_MAX_VALUE_LEN && PARSE_UNCLEAR_RE.test(value)) {
       if (!unclearFields.some((f) => f.replace(/\s+/g, "") === nameKey)) unclearFields.push(name)
       continue
     }
@@ -774,6 +1100,8 @@ export function cleanParseSectionContent(content: string): string {
     }
     if (PARSE_DIRTY_VALUES.has(value.toLowerCase())) continue
     if (PARSE_NUMERIC_DIRTY_NAME_RE.test(name) && /^\d{1,2}$/.test(value)) continue
+    // T13：评分构成行分部之和与总分对不上 → 整行删除（虚构防线，见 scoringCompositionLineValid 注释）
+    if (nameKey === "评分构成" && !scoringCompositionLineValid(value)) continue
     if (seenField.has(nameKey)) continue
     seenField.add(nameKey)
     validField.add(nameKey)
@@ -912,7 +1240,10 @@ export function normalizeParseReport(raw: unknown): ParseReport | null {
       if (!key) continue
       // 用户反馈轮项 1：读路径统一清洗（存量脏数据打开即清洗）；人工手改过的 section 跳过、尊重手改
       const humanEdited = r.human_edited === true
-      const content = humanEdited ? rawContent : clampParseSectionContent(key, cleanParseSectionContent(rawContent))
+      let content = humanEdited ? rawContent : clampParseSectionContent(key, cleanParseSectionContent(rawContent))
+      // R144：AI 整文通道可能把目录行/标注含义句当重点条款入库；读路径按同一口径清洗
+      // （本地扫描产出无噪声行，cleanStarClauseContent 幂等；人工手改段豁免）
+      if (!humanEdited && key === STAR_CLAUSE_SECTION.key) content = cleanStarClauseContent(content)
       const stRaw = asString(r.status).trim()
       const status: ParseSectionStatus =
         stRaw === "ok" || stRaw === "failed" || stRaw === "pending"
@@ -1026,6 +1357,20 @@ export function normalizeParseReport(raw: unknown): ParseReport | null {
   )
   if (!sections.length) return null
   return dedupeAcrossSections({ scope: "full", sections })
+}
+
+/**
+ * T12 易标解析思路复用：纯文本直出结果的落库规整（对应参考实现 normalizeBidAnalysisContent 的轻量口径）——
+ * 剥代码围栏 + trim 后走共享 clean/clamp 护栏；不再经 JSON 宽松解析与模型修复轮（有损层收敛为一层）。
+ */
+export function normalizeSectionRawText(key: string, raw: string): string {
+  const t = String(raw ?? "")
+    .trim()
+    .replace(/^```[a-zA-Z]*\n?/, "")
+    .replace(/\n?```\s*$/, "")
+    .trim()
+  if (!t) return ""
+  return clampParseSectionContent(key, cleanParseSectionContent(t))
 }
 
 /** 把 LLM 返回的解析 JSON 规整成 sections（只保留本次勾选且非空的项，按定义顺序） */
@@ -1805,16 +2150,27 @@ export type GenOptions = {
   include_biz?: boolean
   compliance_mode?: ComplianceMode
   section_words_touched?: boolean
+  /** T15：字数精调（局部操作式增删，生成链尾自动执行）；缺省视为 true（旧配置兼容） */
+  word_refine?: boolean
+  /** T15：生成后一致性自动核对+限次修补（易标 auditing 阶段移植）；缺省视为 true */
+  auto_consistency_audit?: boolean
 }
 
 /** 循环 7 A4：章间互查阈值缺省值（与 findIntraDupPairs 默认参数一致） */
 export const INTRA_DUP_THRESHOLD_DEFAULT = 0.35
 
 export function defaultGenOptions(): GenOptions {
-  return { clause_response: false, material_boost: false, include_biz: true, compliance_mode: COMPLIANCE_MODE_DEFAULT }
+  return {
+    clause_response: false,
+    material_boost: false,
+    include_biz: true,
+    compliance_mode: COMPLIANCE_MODE_DEFAULT,
+    word_refine: true,
+    auto_consistency_audit: true,
+  }
 }
 
-/** 容错解析 gen_options json（存量项目缺列 / 脏值 → 全 false；阈值越界 / 非数 → 缺省；include_biz 缺省/非法 → true） */
+/** 容错解析 gen_options json（存量项目缺列 / 脏值 → 全 false；阈值越界 / 非数 → 缺省；include_biz 缺省/非法 → true；T15 两开关缺省 → true） */
 export function normalizeGenOptions(raw: unknown): GenOptions {
   const base = defaultGenOptions()
   if (!raw || typeof raw !== "object") return base
@@ -1828,6 +2184,8 @@ export function normalizeGenOptions(raw: unknown): GenOptions {
     include_biz: rec.include_biz !== false,
     compliance_mode: isComplianceMode(rec.compliance_mode) ? rec.compliance_mode : COMPLIANCE_MODE_DEFAULT,
     section_words_touched: rec.section_words_touched === true,
+    word_refine: rec.word_refine !== false,
+    auto_consistency_audit: rec.auto_consistency_audit !== false,
   }
 }
 
@@ -3221,6 +3579,23 @@ export function autoRepairChapter(
   return { content: applied.length ? next : content, applied }
 }
 
+/** Q28 切片A（天好 Skill 移植）：投标文本来源——internal=本系统编制章节；external=上传/粘贴的外部成品标书（只审查不编制） */
+// Q28 切片C（天好 Skill 移植）：解析回补同义词组——
+// 当 tech_score / biz_score / void_items 分区首次重跑仍为空时，
+// 用以下扩展关键词重新检索原文分块后二次解析（配置化、不硬编码到逻辑）。
+export const SECTION_SYNONYM_FALLBACK: Record<string, string[]> = {
+  tech_score: ["技术标评审", "技术方案打分", "评审细则", "评审打分表", "技术评审要点", "打分办法"],
+  biz_score: ["资信评分", "资信标评审", "价格评审", "报价得分计算", "商务响应评审", "综合实力评分"],
+  void_items: ["否决投标", "无效标", "不通过", "废标条款", "实质性偏离", "不响应", "取消投标资格"],
+}
+
+export type BidSourceMode = "internal" | "external"
+
+/** 存量项目缺列容错 internal（行为与现状一致） */
+export function normalizeBidSourceMode(raw: unknown): BidSourceMode {
+  return String(raw ?? "") === "external" ? "external" : "internal"
+}
+
 export type BidProjectRecord = {
   id: string
   rh_user_id: string
@@ -3272,10 +3647,16 @@ export type BidProjectRecord = {
   ref_materials_text: string
   /** 循环 2 批 1-4：自家身份词（text 列，逗号分隔；空串=未设置；暗标脱敏与 identity_leak 检查共用；存量项目缺列容错为 ""） */
   identity_words: string
+  /** Q28 切片A：投标文本来源（text 列；存量项目缺列容错 internal，行为与现状一致） */
+  bid_source_mode: BidSourceMode
+  /** Q28 切片A：外部投标文件全文（text 列，PDF 通道带〔P页码〕锚点；空串=未上传） */
+  bid_external_text: string
   /** 第六轮改造：讲标与答辩（存量项目缺列时由 normalizeBidDefense 容错为空结构） */
   bid_defense: BidDefense
   /** 第七轮改造 5：交卷体检（实质响应覆盖审计）；存量项目缺列时容错为 null */
   submission_check: SubmissionCheck | null
+  /** T18：文本审计（错别字 + 逻辑谬误，AI 检查）；存量项目缺列时容错为 null */
+  text_audit?: TextAuditReport | null
   /** 第九轮改造 1：交卷闸门（确认留痕）；存量项目缺列时容错为 {gates:[]} */
   stage_gates: StageGates
   /** 第十一轮改造 1：归档分组与回收站软删（deleted_at 空串=未删）；存量项目缺列时容错 */
@@ -3499,6 +3880,43 @@ export function extractPageCap(constraints: string[]): number | null {
 }
 
 /** 有效目标页数：用户设置（缺省按招标文本估算）再受招标页数上限硬封顶 */
+// ---------------------------------------------------------------------------
+// 生成链路 D1：批量生成任务队列持久化（localStorage 按项目，零 collection）
+// 章级断点续跑依赖已落库的 gen_status / section_stats，队列仅存「待生成意图」供刷新恢复
+// ---------------------------------------------------------------------------
+
+const BULK_QUEUE_KEY_PREFIX = "bid_bulk_queue_"
+
+function bulkQueueKey(projectId: string): string {
+  return `${BULK_QUEUE_KEY_PREFIX}${projectId}`
+}
+
+export function bulkQueueSave(projectId: string, nodeIds: string[]): void {
+  try {
+    window.localStorage.setItem(bulkQueueKey(projectId), JSON.stringify(nodeIds))
+  } catch {
+    /* localStorage 不可用时静默降级为不可恢复，行为与现状一致 */
+  }
+}
+
+export function bulkQueueLoad(projectId: string): string[] {
+  try {
+    const raw = window.localStorage.getItem(bulkQueueKey(projectId))
+    const arr = raw ? (JSON.parse(raw) as unknown) : null
+    return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === "string") : []
+  } catch {
+    return []
+  }
+}
+
+export function bulkQueueClear(projectId: string): void {
+  try {
+    window.localStorage.removeItem(bulkQueueKey(projectId))
+  } catch {
+    /* 忽略 */
+  }
+}
+
 export function effectiveTargetPages(rec: Partial<BidProjectRecord> | null): number {
   if (!rec) return 0
   const base = rec.target_pages ?? estimatePagesFromText(rec.tender_text ?? "")
@@ -3956,6 +4374,10 @@ export function sanitizeFigures(raw: unknown): FigureSpec[] {
         .map((s) => asString(typeof s === "string" ? s : (s as Record<string, unknown>)?.name).trim())
         .filter((s) => s && !isGenericFigureName(s))
       if (main.length || sidebar.length) out.push({ type: "demo", title, sidebar, main })
+    } else if (type === "mermaid") {
+      // T16：mermaid 源码图——净化（剥围栏/白名单起点/长度上限）后收下；渲染校验与修复在生成链做
+      const code = sanitizeMermaidCode(r.code)
+      if (code) out.push({ type: "mermaid", title, code })
     }
   }
   return out
@@ -4298,15 +4720,81 @@ export function validateOutlineShape(nodes: OutlineNode[], level: 0 | 1 | 2 | 3,
   return issues
 }
 
+/** 每页折算系数默认值（A4 四号仿宋 1.5 倍行距约 500 字/页，与历史硬编码一致） */
+export const DEFAULT_CHARS_PER_PAGE = 500
+
+/** 中文字号 → 磅值（Pt），用于按正文动态折算每页字数 */
+const FORMAT_SIZE_PT: Record<FormatFontSize, number> = {
+  "初号": 42,
+  "小初": 36,
+  "一号": 26,
+  "小一": 24,
+  "二号": 22,
+  "小二": 18,
+  "三号": 16,
+  "小三": 15,
+  "四号": 14,
+  "小四": 12,
+  "五号": 10.5,
+  "小五": 9,
+}
+
+/** 行距档位 → 相对倍率（固定值 N 磅按 N / (单倍行高≈字号磅值×1.3) 折算） */
+function lineSpacingToMultiplier(lineSpacing: string, sizePt: number): number {
+  const s = (lineSpacing ?? "").trim()
+  if (s.indexOf("固定值") === 0) {
+    const m = s.match(/(\d+(?:\.\d+)?)/)
+    const pt = m ? parseFloat(m[1]) : sizePt * 1.5
+    return Math.max(0.5, pt / (sizePt * 1.3))
+  }
+  if (s.indexOf("单倍") >= 0) return 1
+  if (s.indexOf("2倍") >= 0) return 2
+  if (s.indexOf("1.5") >= 0) return 1.5
+  return 1.5
+}
+
+/** 纸张规格 → 页宽×页高（cm），用于按可用版面折算每页字数 */
+const PAPER_DIM_CM: Record<FormatPaper, [number, number]> = {
+  A4: [21, 29.7],
+  A3: [29.7, 42],
+  "16K": [18.5, 26],
+}
+
+/** 可用版面（(页宽-左右边距)×(页高-上下边距)，cm²）相对 A4 默认页边距的比值 */
+function usableAreaFactor(settings: FormatSettings | null | undefined): number {
+  const [w, h] = PAPER_DIM_CM[settings?.paper ?? "A4"] ?? PAPER_DIM_CM.A4
+  const m = settings?.margins ?? DEFAULT_FORMAT_SETTINGS.margins
+  const dm = DEFAULT_FORMAT_SETTINGS.margins
+  const usable = Math.max(1, w - m.left - m.right) * Math.max(1, h - m.top - m.bottom)
+  const base = (PAPER_DIM_CM.A4[0] - dm.left - dm.right) * (PAPER_DIM_CM.A4[1] - dm.top - dm.bottom)
+  return usable / base
+}
+
+/**
+ * 切片 E1/E3：按正文格式（字号 + 行距 + 纸张 + 页边距）折算「每页约多少字」。
+ * 以 A4 四号 / 1.5 倍行距 / 默认页边距 = 500 字/页为基准：字号按 (14/pt)^2、
+ * 行距按 1.5/倍率、可用版面按 (纸张 × 边距) 面积比缩放。
+ * 未配置格式（settings 为空或全部默认）时恒等于 DEFAULT_CHARS_PER_PAGE（500），存量项目零行为变化。
+ * 结果限制在 [150, 2600]，避免极端纸张/字号把预算拉飞。
+ */
+export function formatCharsPerPage(settings?: FormatSettings | null): number {
+  const body = settings?.body ?? DEFAULT_FORMAT_SETTINGS.body
+  const pt = FORMAT_SIZE_PT[body.size] ?? 14
+  const lsMult = lineSpacingToMultiplier(body.lineSpacing, pt)
+  const cpp =
+    DEFAULT_CHARS_PER_PAGE * usableAreaFactor(settings) * Math.pow(14 / pt, 2) * (1.5 / lsMult)
+  return Math.max(150, Math.min(2600, Math.round(cpp)))
+}
+
 /** 目标页数留空时：按招标文件文本体量估算（字数/500 向上取整，最少 10 页） */
-export function estimatePagesFromText(text: string): number {
+export function estimatePagesFromText(text: string, charsPerPage = DEFAULT_CHARS_PER_PAGE): number {
   const chars = (text ?? "").replace(/\s/g, "").length
-  return Math.max(10, Math.ceil(chars / 500))
+  return Math.max(10, Math.ceil(chars / charsPerPage))
 }
 
 /** 第十轮修复 3：字数 → 页数换算（约 500 字/页，至少 1 页），生成后治理与页面信息条共用 */
-export function estimatePagesFromChars(chars: number): number {
-  return Math.max(1, Math.ceil(Math.max(0, chars) / 500))
+export function estimatePagesFromChars(chars: number, charsPerPage = DEFAULT_CHARS_PER_PAGE): number {
+  return Math.max(1, Math.ceil(Math.max(0, chars) / charsPerPage))
 }
 
 /**
@@ -4367,9 +4855,9 @@ export function rebuildSectionContent(pieces: string[]): string {
  * 整份目标页数按章节权重（小节数 + 标题关键词）折算每章字数预算（约 500 字/页）；页数不设上限（1-9999 防呆）。
  * 第十三轮改造 4：商务骨架章不占预算不计字数（预算恒 0，权重不参与分配），预算全部分给技术章。
  */
-export function chapterWordBudgets(chapters: { title: string; sections?: string[]; part?: string }[], targetPages: number): number[] {
+export function chapterWordBudgets(chapters: { title: string; sections?: string[]; part?: string }[], targetPages: number, charsPerPage = DEFAULT_CHARS_PER_PAGE): number[] {
   const pages = Math.max(1, Math.min(9999, Math.round(targetPages) || 1))
-  const total = pages * 500
+  const total = pages * charsPerPage
   const weights = chapters.map((c) => {
     if (isBizPart(c)) return 0
     const leaves = (c.sections ?? []).length
@@ -4488,7 +4976,7 @@ export type TenderFragmentQuery = {
   clauses: string[]
 }
 
-const RETRIEVE_MIN_SCORE = 0.35
+const RETRIEVE_MIN_SCORE = 0.2
 
 /**
  * 改造 2：招标原文片段检索（纯本地零 AI）——把 tender_text 按段落切分，
@@ -4517,7 +5005,15 @@ export function retrieveTenderFragments(tenderText: string, query: TenderFragmen
     })
     .filter((x) => x.score >= RETRIEVE_MIN_SCORE)
     .sort((a, b) => b.score - a.score || a.i - b.i)
-  if (!scored.length) return ""
+  // 切片B：bigram 无命中时，按标题/小节名做直接子串包含兜底（确保至少有一些上下文）
+  if (!scored.length) {
+    const fallbackParas = paras.filter((p) => {
+      const pl = p.toLowerCase()
+      return keywords.some((k) => k.length >= 3 && pl.includes(k.toLowerCase().slice(0, Math.min(k.length, 8))))
+    }).slice(0, 6)
+    if (fallbackParas.length) return fallbackParas.join("\n\n")
+    return ""
+  }
   const picked: { i: number; p: string }[] = []
   let total = 0
   for (const x of scored) {
@@ -5004,6 +5500,130 @@ export type SubmissionCheck = {
   format_report?: FormatCheckReport | null
   /** 循环 8 A3：全局事实一致性核对结果；null=未跑/失败（无事实表或事实路 LLM 失败），[]=跑过且无矛盾 */
   fact_conflicts?: FactConflict[] | null
+  /** D3/R89：AI 内容护栏（规则②量化依据/③量级自洽/④政策时效）结果；null=未跑/失败/跳过，[]=跑过且无问题 */
+  consistency_issues?: ConsistencyIssue[] | null
+}
+
+/** T20：评分承接标注本地回填——把「章↔评分点」映射结果写回大纲叶子的 [响应:Rx] 标注，
+ *  消除「已映射但大纲无标注」的不一致（分步大纲不产标注的通病）。零 AI，确认大纲时执行。
+ *  映射复用 assignScoringToChapters 口径（标题相似度归章）；章内选标题与评分项字符重叠最多的叶子挂标注，
+ *  已有 [响应:..] 标注的合并编号去重。返回新大纲树（无变化时原样返回同一引用）。 */
+export function backfillResponseTags(
+  nodes: OutlineNode[],
+  chapters: { title: string; sections?: string[] }[],
+  numbered: NumberedScoringItem[],
+): OutlineNode[] {
+  if (!nodes.length || !numbered.length || !chapters.length) return nodes
+  const per = assignScoringToChapters(
+    numbered.map((n) => ({ item: n.item, score: n.score, criteria: n.criteria })),
+    chapters,
+  )
+  const clone = (list: OutlineNode[]): OutlineNode[] => list.map((n) => ({ ...n, children: clone(n.children ?? []) }))
+  const tree = clone(nodes)
+  let changed = false
+  per.forEach((items, chapterIdx) => {
+    if (!items.length || chapterIdx >= tree.length) return
+    const top = tree[chapterIdx]
+    if (isBizPart(top)) return
+    // 章内全部技术叶子（跨层收集）
+    const leaves: OutlineNode[] = []
+    const walk = (list: OutlineNode[]) => {
+      for (const n of list) {
+        if ((n.children ?? []).length) walk(n.children ?? [])
+        else leaves.push(n)
+      }
+    }
+    walk(top.children ?? [])
+    if (!leaves.length) return
+    for (const item of items) {
+      const num = numbered.find((n) => n.item === item.item)
+      if (!num) continue
+      // 已有任一叶子承接此编号 → 跳过（不重复挂）
+      if (leaves.some((l) => (l.description ?? "").includes(num.id))) continue
+      // 选标题与评分项字符重叠最多的叶子
+      const best = leaves
+        .map((l) => {
+          let s = 0
+          const title = l.title.replace(/\s+/g, "")
+          for (const ch of item.item.replace(/\s+/g, "")) if (title.includes(ch)) s += 1
+          return { l, s }
+        })
+        .sort((a, b) => b.s - a.s)[0]?.l
+      if (!best) continue
+      const existing = (best.description ?? "").trim()
+      const tagMatch = existing.match(/\[响应:([^\]]*)\]/)
+      if (tagMatch) {
+        const ids = tagMatch[1].split(/[,，]/).map((s) => s.trim()).filter(Boolean)
+        if (ids.includes(num.id)) continue
+        ids.push(num.id)
+        best.description = existing.replace(tagMatch[0], `[响应:${ids.join(",")}]`)
+      } else {
+        best.description = existing ? `${existing} ${`[响应:${num.id}]`}`.trim() : `[响应:${num.id}]`
+      }
+      changed = true
+    }
+  })
+  return changed ? tree : nodes
+}
+
+// ------------------------------ T18：文本审计（错别字 + 逻辑谬误，易标 rejection-check 两路移植） ------------------------------
+
+export type TextAuditReport = {
+  /** 错别字清单（位置回填校验后的可信条目） */
+  typos: { docId: string; docTitle: string; wrongText: string; correctText: string; excerpt: string; reason: string; line: number }[]
+  /** 逻辑谬误清单 */
+  logic: { docId: string; docTitle: string; title: string; originalText: string; locationHint: string; fallacyReason: string; suggestion: string }[]
+  checked_at: string
+  /** 检查对象：internal=本项目成稿章节；external=外部投标文件全文 */
+  source: "internal" | "external"
+  /** T19：核对失败的章（AI 调用失败/超时；易标"核对失败的小节归档"口径）——可重跑只扫这些章 */
+  failed?: { docId: string; docTitle: string; reason: string }[]
+}
+
+/** 存量记录容错读取（缺列/损坏 → null） */
+export function normalizeTextAudit(raw: unknown): TextAuditReport | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+  const rec = raw as Record<string, unknown>
+  const typos = (Array.isArray(rec.typos) ? rec.typos : []).map((it) => {
+    const r = (it ?? {}) as Record<string, unknown>
+    return {
+      docId: asString(r.docId).slice(0, 40),
+      docTitle: asString(r.docTitle).slice(0, 80),
+      wrongText: asString(r.wrongText).slice(0, 60),
+      correctText: asString(r.correctText).slice(0, 60),
+      excerpt: asString(r.excerpt).slice(0, 200),
+      reason: asString(r.reason).slice(0, 120),
+      line: Math.max(0, Math.round(asNumber(r.line))),
+    }
+  }).filter((t) => t.wrongText && t.correctText)
+  const logic = (Array.isArray(rec.logic) ? rec.logic : []).map((it) => {
+    const r = (it ?? {}) as Record<string, unknown>
+    return {
+      docId: asString(r.docId).slice(0, 40),
+      docTitle: asString(r.docTitle).slice(0, 80),
+      title: asString(r.title).slice(0, 80),
+      originalText: asString(r.originalText).slice(0, 400),
+      locationHint: asString(r.locationHint).slice(0, 120),
+      fallacyReason: asString(r.fallacyReason).slice(0, 300),
+      suggestion: asString(r.suggestion).slice(0, 200),
+    }
+  }).filter((l) => l.title && l.fallacyReason)
+  if (!typos.length && !logic.length) return null
+  return {
+    typos,
+    logic,
+    checked_at: asString(rec.checked_at),
+    source: rec.source === "external" ? "external" : "internal",
+    // T19：核对失败章清单（存量无此字段容错为空）
+    failed: (Array.isArray(rec.failed) ? rec.failed : []).map((it) => {
+      const r = (it ?? {}) as Record<string, unknown>
+      return {
+        docId: asString(r.docId).slice(0, 40),
+        docTitle: asString(r.docTitle).slice(0, 80),
+        reason: asString(r.reason).slice(0, 160),
+      }
+    }).filter((f) => f.docId),
+  }
 }
 
 /** 评分项严重度本地推导：分值≥5 critical，否则 major；废标条款一律 critical */
@@ -5060,8 +5680,10 @@ export function normalizeSubmissionCheck(raw: unknown, scoring?: ScoringItem[]):
   const formatReport = normalizeFormatCheckReport(rec.format_report)
   // 循环 8 A3：保留事实一致性核对结果（[]=跑过无矛盾要保留，null/损坏=未跑可随空 items 一并丢弃）
   const factConflicts = normalizeFactConflicts(rec.fact_conflicts)
+  // D3/R89：AI 内容护栏结果容错（复用 prompts/consistencyGuard 的清洗函数，语义同 fact_conflicts：null=未跑）
+  const consistencyIssues = Array.isArray(rec.consistency_issues) ? sanitizeConsistencyIssues(rec.consistency_issues) : null
   if (!items.length && !formatReport && !factConflicts) return null
-  return { items, checked_at: asString(rec.checked_at), format_report: formatReport, fact_conflicts: factConflicts }
+  return { items, checked_at: asString(rec.checked_at), format_report: formatReport, fact_conflicts: factConflicts, consistency_issues: consistencyIssues }
 }
 
 /** bigram 重合度：关键词救援定位用（关键词的 2-gram 在段落中出现的比例） */
@@ -5226,6 +5848,49 @@ export type FactPatchItem = {
   new_text: string
 }
 
+/**
+ * T15：补丁应用到章节集合的共享纯函数（快捷工具「一键修复」与生成链自动修补共用同一口径）——
+ * 章名解析（精确命中优先，回退双向包含）+ old_text 全章唯一命中校验；按章累积使同一章多条补丁
+ * 依次生效（后续补丁在前一条结果上定位）。返回每章新内容 Map（调用方负责落库）。
+ */
+export function applyFactPatchItems(
+  patches: FactPatchItem[],
+  chapters: Chapter[],
+): { fixed: number; skipped: number; byNode: Map<string, string> } {
+  const byNode = new Map<string, string>()
+  let fixed = 0
+  let skipped = 0
+  const resolveNode = (nameRaw: string): Chapter | null => {
+    const t = (nameRaw ?? "").trim()
+    if (!t) return null
+    const exact = chapters.find((c) => (c.title ?? "").trim() === t)
+    if (exact) return exact
+    return (
+      chapters.find((c) => {
+        const ct = (c.title ?? "").trim()
+        return Boolean(ct) && (ct.includes(t) || t.includes(ct))
+      }) ?? null
+    )
+  }
+  for (const pt of patches) {
+    const node = resolveNode(pt.chapter)
+    if (!node) {
+      skipped += 1
+      continue
+    }
+    const base = byNode.get(node.node_id) ?? node.content ?? ""
+    const at = base.indexOf(pt.old_text)
+    // 唯一性校验：未命中或多处命中都跳过，避免误改
+    if (at < 0 || base.lastIndexOf(pt.old_text) !== at) {
+      skipped += 1
+      continue
+    }
+    byNode.set(node.node_id, base.slice(0, at) + pt.new_text + base.slice(at + pt.old_text.length))
+    fixed += 1
+  }
+  return { fixed, skipped, byNode }
+}
+
 export { buildFactPatchMessages, PROMPT_VERSION as FACT_PATCH_PROMPT_VERSION } from "./prompts/factPatch"
 
 
@@ -5257,12 +5922,27 @@ export { buildSectionResizeMessages, PROMPT_VERSION as SECTION_RESIZE_PROMPT_VER
 // 第十六轮 B2 改造 2.1：预编排（表格/配图）——类型、本地工具与批量编排 prompt
 // ---------------------------------------------------------------------------
 
-export type OrchestrationFigureType = "architecture" | "flow" | "demo"
+export type OrchestrationFigureType = "architecture" | "flow" | "demo" | "mermaid" | "ai"
+
+/** T17：AI 位图两档风格（易标 AI_IMAGE_TYPES / normalizeImagePrompt 口径） */
+export type AiImageStyle = "engineering_diagram" | "realistic_photo"
 
 export const ORCHESTRATION_FIGURE_TYPE_LABEL: Record<OrchestrationFigureType, string> = {
   architecture: "架构图",
   flow: "流程图",
   demo: "界面示意",
+  mermaid: "关系图",
+  ai: "AI 配图",
+}
+
+export const AI_IMAGE_STYLE_LABEL: Record<AiImageStyle, string> = {
+  engineering_diagram: "工程图示",
+  realistic_photo: "实景照片",
+}
+
+/** AI 位图风格归一（非法值兜底工程图示——抽象方案内容居多，工程图示更稳） */
+export function normalizeAiImageStyle(v: unknown): AiImageStyle {
+  return v === "realistic_photo" ? "realistic_photo" : "engineering_diagram"
 }
 
 export type OrchestratedTable = { needed: boolean; purpose: string }
@@ -5276,6 +5956,10 @@ export type OrchestratedFigure = {
   reason: string
   /** 循环 2 批 2-1：图注——描述这张图呈现什么、与本节正文的关联（导出时随图插入图注行） */
   caption?: string
+  /** T17：type="ai" 时的两档风格（工程图示/实景照片，非法值归一 engineering_diagram） */
+  image_style?: AiImageStyle
+  /** T17：type="ai" 时的画面场景描述（生图 prompt 的画面素材来源，≤80 字，来自本节正文主题） */
+  scene?: string
   /** 程序全局择优结果：true=该叶获得全文配图名额（LLM 不输出，selectOrchestrationFigures 写入） */
   selected: boolean
 }
@@ -5287,6 +5971,8 @@ export type LeafOrchestration = {
   facts?: string[]
   /** 循环 2 批 2-1：一句话写作焦点 + 对应评分点（进章/节生成规则句） */
   writing_focus?: string
+  /** T16：编排期从知识库候选里定向挑选的素材段（≤3 条，含来源标注；非空时章/节 prompt 以定向素材替代检索式注入） */
+  knowledge?: string[]
 }
 
 /** 存进 bid_projects.orchestration（json 列）的编排结果 */
@@ -5349,7 +6035,11 @@ export function orchestrationProjectBrief(report: ParseReport | null): string {
 
 export { buildOrchestrationMessages, PROMPT_VERSION as ORCHESTRATION_PROMPT_VERSION } from "./prompts/orchestration"
 
-export function sanitizeOrchestrationBatch(rawText: string, validIds: Set<string>): Record<string, LeafOrchestration> {
+export function sanitizeOrchestrationBatch(
+  rawText: string,
+  validIds: Set<string>,
+  opts?: { knowledgeText?: Map<string, string> },
+): Record<string, LeafOrchestration> {
   const data = extractJsonLoose(rawText)
   const rec = (data ?? {}) as Record<string, unknown>
   const arr = asArray(Array.isArray(data) ? data : rec.items ?? rec.leaves)
@@ -5364,7 +6054,9 @@ export function sanitizeOrchestrationBatch(rawText: string, validIds: Set<string
     if (t.needed === true && tPurpose) entry.table = { needed: true, purpose: tPurpose }
     const f = (r.figure ?? {}) as Record<string, unknown>
     const fTypeRaw = asString(f.type).trim()
-    const fType: OrchestrationFigureType = fTypeRaw === "flow" || fTypeRaw === "demo" ? fTypeRaw : "architecture"
+    // T16/T17：type 白名单加 mermaid 与 ai（ai=AI 位图，补图阶段生成）
+    const fType: OrchestrationFigureType =
+      fTypeRaw === "flow" || fTypeRaw === "demo" || fTypeRaw === "mermaid" || fTypeRaw === "ai" ? fTypeRaw : "architecture"
     const fPriority = Math.min(5, Math.max(1, Math.round(asNumber(f.priority) || 3)))
     const fTitle = asString(f.title).trim().slice(0, 40)
     const fCaption = asString(f.caption).trim().slice(0, 60)
@@ -5376,6 +6068,13 @@ export function sanitizeOrchestrationBatch(rawText: string, validIds: Set<string
         priority: fPriority,
         reason: asString(f.reason).trim().slice(0, 60),
         ...(fCaption ? { caption: fCaption } : {}),
+        // T17：ai 型附风格与画面场景（生图 prompt 素材）
+        ...(fType === "ai"
+          ? {
+              image_style: normalizeAiImageStyle(f.image_style ?? f.style),
+              scene: asString(f.scene).trim().slice(0, 80),
+            }
+          : {}),
         selected: false,
       }
     }
@@ -5387,7 +6086,16 @@ export function sanitizeOrchestrationBatch(rawText: string, validIds: Set<string
     if (facts.length) entry.facts = facts
     const focus = asString(r.writing_focus ?? r.writingFocus).trim().slice(0, 100)
     if (focus) entry.writing_focus = focus
-    if (entry.table || entry.figure || entry.facts || entry.writing_focus) out[id] = entry
+    // T16：编排期知识库定向引用——模型回填候选 ref（K1/K2…），本地解析为带来源标注的素材段（≤3 条）
+    const knowledge: string[] = []
+    for (const ref of asArray(r.knowledge)) {
+      const refId = asString(ref).trim()
+      const text = refId ? opts?.knowledgeText?.get(refId) : undefined
+      if (text && !knowledge.includes(text)) knowledge.push(text)
+      if (knowledge.length >= 3) break
+    }
+    if (knowledge.length) entry.knowledge = knowledge
+    if (entry.table || entry.figure || entry.facts || entry.writing_focus || entry.knowledge) out[id] = entry
   }
   return out
 }
@@ -5477,13 +6185,22 @@ export function normalizeOrchestration(raw: unknown): BidOrchestration | null {
     if (f?.needed === true && fTitle) {
       const fTypeRaw = asString(f.type).trim()
       const fCaption = asString(f.caption).trim().slice(0, 60)
+      const fType: OrchestrationFigureType =
+        fTypeRaw === "flow" || fTypeRaw === "demo" || fTypeRaw === "mermaid" || fTypeRaw === "ai" ? fTypeRaw : "architecture"
       entry.figure = {
         needed: true,
-        type: fTypeRaw === "flow" || fTypeRaw === "demo" ? fTypeRaw : "architecture",
+        type: fType,
         title: fTitle,
         priority: Math.min(5, Math.max(3, Math.round(asNumber(f.priority) || 3))),
         reason: asString(f.reason).trim().slice(0, 60),
         ...(fCaption ? { caption: fCaption } : {}),
+        // T17：存量编排的 ai 型风格/场景容错
+        ...(fType === "ai"
+          ? {
+              image_style: normalizeAiImageStyle(f.image_style ?? f.style),
+              scene: asString(f.scene).trim().slice(0, 80),
+            }
+          : {}),
         selected: f.selected === true,
       }
     }
@@ -5494,7 +6211,12 @@ export function normalizeOrchestration(raw: unknown): BidOrchestration | null {
     if (facts.length) entry.facts = facts
     const focus = asString(e.writing_focus).trim().slice(0, 100)
     if (focus) entry.writing_focus = focus
-    if (entry.table || entry.figure || entry.facts || entry.writing_focus) leaves[id] = entry
+    // T16：存量编排的定向知识素材段（缺失/脏值容错，≤3 条 × 400 字）
+    const knowledge = Array.isArray(e.knowledge)
+      ? (e.knowledge as unknown[]).map((x) => asString(x).trim().slice(0, 400)).filter(Boolean).slice(0, 3)
+      : []
+    if (knowledge.length) entry.knowledge = knowledge
+    if (entry.table || entry.figure || entry.facts || entry.writing_focus || entry.knowledge) leaves[id] = entry
   }
   if (!Object.keys(leaves).length) return null
   return { leaves, generated_at: asString(rec.generated_at).trim() }
@@ -5526,6 +6248,8 @@ export type MergedOrchestration = {
   facts?: string[]
   /** 循环 2 批 2-1：合并范围内的写作焦点（取前 3 条用「；」连接；进章/节生成规则句） */
   writing_focus?: string
+  /** T16：合并范围内编排期定向挑选的知识库素材段（≤4 条；非空时替代检索式知识库注入） */
+  knowledge?: string[]
 }
 
 /**
@@ -5540,6 +6264,7 @@ export function mergeLeafOrchestrations(orch: BidOrchestration, leafIds: string[
   let best: OrchestratedFigure | null = null
   const facts: string[] = []
   const focuses: string[] = []
+  const knowledge: string[] = []
   for (const id of leafIds) {
     const e = orch.leaves[id]
     if (!e) continue
@@ -5551,10 +6276,16 @@ export function mergeLeafOrchestrations(orch: BidOrchestration, leafIds: string[
     }
     const wf = (e.writing_focus ?? "").trim()
     if (wf && !focuses.includes(wf) && focuses.length < 3) focuses.push(wf)
+    // T16：编排期定向挑选的知识库素材段（按文档序去重合并，≤4 条）
+    for (const k of e.knowledge ?? []) {
+      const t = k.trim()
+      if (t && !knowledge.includes(t) && knowledge.length < 4) knowledge.push(t)
+    }
   }
   if (best) merged.figure = { type: best.type, title: best.title, ...(best.caption ? { caption: best.caption } : {}) }
   if (facts.length) merged.facts = facts
   if (focuses.length) merged.writing_focus = focuses.join("；")
+  if (knowledge.length) merged.knowledge = knowledge
   return merged
 }
 
@@ -5636,12 +6367,13 @@ export type CoverageAuditLeafInput = {
   body_excerpt: string
 }
 
-export type CoverageLevel = "full" | "partial" | "missing"
+export type CoverageLevel = "full" | "partial" | "missing" | "over"
 
 export const COVERAGE_LEVEL_LABEL: Record<CoverageLevel, string> = {
   full: "全部落实",
   partial: "部分落实",
   missing: "未落实",
+  over: "过度承诺",
 }
 
 /** 审计结果条目（leaf_id 与输入一一对应；结果仅会话内有效，零 collection 变更） */
@@ -5653,7 +6385,17 @@ export type CoverageAuditEntry = {
   suggestion: string
 }
 
-export { buildCoverageAuditMessages, resolveLeafSection, sanitizeCoverageAudit, PROMPT_VERSION as COVERAGE_AUDIT_PROMPT_VERSION } from "./prompts/coverageAudit"
+export {
+  aggregateAuditByChapter,
+  buildCoverageAuditMessages,
+  buildReflowDirective,
+  collectReflowFixItems,
+  resolveLeafSection,
+  sanitizeCoverageAudit,
+  type ChapterAuditImprovement,
+  type ChapterAuditItem,
+  PROMPT_VERSION as COVERAGE_AUDIT_PROMPT_VERSION,
+} from "./prompts/coverageAudit"
 
 // 第十六轮 B2 改造 2.3：长标书分步大纲（leafGoal 超阈值时：顶层章一次 + 技术章逐章展开）
 // ---------------------------------------------------------------------------

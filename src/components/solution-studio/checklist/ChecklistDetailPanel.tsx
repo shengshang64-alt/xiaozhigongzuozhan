@@ -3,8 +3,8 @@ import { ArrowLeft, FileSpreadsheet, FileText, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { exportChecklistXlsx } from "@/pages/SolutionStudio/checklistExports"
 import { calcTotal, fmtMoney, targetLabel, type ChecklistLine } from "@/pages/SolutionStudio/checklistTypes"
+import { buildChecklistTotals, subtotalOfLines } from "@/pages/SolutionStudio/checklistSummary"
 import type { UseChecklist } from "@/pages/SolutionStudio/checklistLogic"
 import { RatingHitsBadges, SourceBadge } from "./ChecklistBadges"
 
@@ -32,6 +32,8 @@ export function ChecklistDetailPanel({
   }, [rec])
 
   if (!rec) return null
+
+  const totals = buildChecklistTotals(rec.items ?? [])
 
   return (
     <section className="rounded-2xl border border-border bg-card p-4 shadow-md">
@@ -71,7 +73,9 @@ export function ChecklistDetailPanel({
           ) : ck.checklistSaveState === "saving" ? (
             <span className="badge-neutral">保存中…</span>
           ) : null}
-          <Button variant="outline" onClick={() => exportChecklistXlsx(rec)} className="border-border text-muted-foreground hover:text-foreground">
+          <Button variant="outline" onClick={() => {
+              void import("@/pages/SolutionStudio/checklistExports").then(({ exportChecklistXlsx }) => exportChecklistXlsx(rec))
+            }} className="border-border text-muted-foreground hover:text-foreground">
             <FileSpreadsheet className="mr-1 h-4 w-4" />
             导出 Excel
           </Button>
@@ -119,6 +123,7 @@ export function ChecklistDetailPanel({
                     <td className="px-3 py-2">
                       <Input
                         type="number"
+                        min={0}
                         className="h-8 w-16"
                         value={l.qty}
                         onChange={(e) => ck.updateActiveLine(l.line_id, { qty: Number(e.target.value) || 0 })}
@@ -134,6 +139,7 @@ export function ChecklistDetailPanel({
                     <td className="px-3 py-2">
                       <Input
                         type="number"
+                        min={0}
                         className="h-8 w-24"
                         value={l.unit_price}
                         onChange={(e) => ck.updateActiveLine(l.line_id, { unit_price: Number(e.target.value) || 0 })}
@@ -158,6 +164,13 @@ export function ChecklistDetailPanel({
                     </td>
                   </tr>
                 ))}
+                <tr className="border-b border-border/60 bg-secondary/20 text-xs">
+                  <td colSpan={6} className="px-3 py-1.5 text-right font-medium text-muted-foreground">
+                    【{category}】小计（{lines.length} 项）
+                  </td>
+                  <td className="px-3 py-1.5 text-right font-semibold text-foreground">{fmtMoney(subtotalOfLines(lines))}</td>
+                  <td colSpan={3} className="px-3 py-1.5" />
+                </tr>
               </Fragment>
             ))}
           </tbody>
@@ -197,8 +210,14 @@ export function ChecklistDetailPanel({
             外购行
           </Button>
         </div>
-        <p className="text-sm font-semibold text-foreground">
-          合计：<span className="text-primary">{fmtMoney(calcTotal(rec.items ?? []))}</span>
+        <p className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-sm text-muted-foreground">
+          <span>
+            {totals.categoryCount} 个分类 · {totals.lineCount} 个条目
+            {totals.externalCount > 0 ? ` · 外购 ${totals.externalCount}` : ""}
+          </span>
+          <span className="font-semibold text-foreground">
+            合计：<span className="text-primary">{fmtMoney(calcTotal(rec.items ?? []))}</span>
+          </span>
         </p>
       </div>
     </section>

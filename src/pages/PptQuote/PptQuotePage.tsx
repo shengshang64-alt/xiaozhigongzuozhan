@@ -172,6 +172,7 @@ export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
             onAiDraft={p.openQuoteAi}
             historyQuotes={p.historyQuotes}
             onImportHistory={p.importQuoteHistory}
+            recommendation={p.quoteRecommendation}
             onExportXlsx={p.exportQuoteExcel}
             onExportWord={p.exportQuoteWord}
             syncOppAmount={p.syncOppAmountOnSave}

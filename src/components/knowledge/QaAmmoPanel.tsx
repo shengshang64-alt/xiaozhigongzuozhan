@@ -1,10 +1,12 @@
 // 弹药库页签（轮次 D-3）：approved QA 对列表 + 新增表单 + 行内编辑 + 删除确认。
 import { useState } from "react"
-import { Check, Copy, Loader2, Plus, ShieldCheck, Pencil, Trash2, X } from "lucide-react"
-import { toast } from "sonner"
+import { Check, Copy, Download, Loader2, Plus, ShieldCheck, Pencil, Trash2, X } from "lucide-react"
+import { copyTextToClipboard } from "@/lib/clipboard"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { KB_CATEGORIES } from "@/lib/kbPolicy"
+import { exportToCsv } from "@/lib/exportCsv"
+import { localDateStamp } from "@/lib/dateStamp"
 import type { KbQaPairRow } from "@/lib/kbQa"
 
 type QaAmmoPanelProps = {
@@ -74,6 +76,12 @@ export function QaAmmoPanel({ approvedPairs, loading, createQaPair, updateQaPair
     }
   }
 
+  const handleExport = () => {
+    const headers = ["问题", "答案", "分类", "可见性", "更新时间"]
+    const rows = approvedPairs.map((r) => [r.question, r.answer, r.category, r.visibility === "personal" ? "仅自己" : "团队可见", r.updated])
+    exportToCsv(`问答弹药库_${localDateStamp()}.csv`, headers, rows)
+  }
+
   const startEdit = (row: KbQaPairRow) => {
     setEditingId(row.id)
     setEditForm({
@@ -99,6 +107,18 @@ export function QaAmmoPanel({ approvedPairs, loading, createQaPair, updateQaPair
           <ShieldCheck className="h-3.5 w-3.5 text-primary" />
           已审批的标准问答（{approvedPairs.length} 条），高置信命中时直接出答案、不产生 AI 费用
         </p>
+        <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleExport}
+          disabled={approvedPairs.length === 0}
+          className="h-7 gap-1 text-xs"
+          title="导出当前已审批的问答为 CSV"
+        >
+          <Download className="h-3.5 w-3.5" />
+          导出
+        </Button>
         <Button
           size="sm"
           variant={showForm ? "outline" : "default"}
@@ -108,6 +128,7 @@ export function QaAmmoPanel({ approvedPairs, loading, createQaPair, updateQaPair
           {showForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
           {showForm ? "收起" : "新增问答"}
         </Button>
+        </div>
       </div>
 
       {showForm ? (
@@ -227,10 +248,10 @@ export function QaAmmoPanel({ approvedPairs, loading, createQaPair, updateQaPair
                       <button
                         type="button"
                         onClick={() => {
-                          void navigator.clipboard.writeText("问：" + row.question + "\n答：" + row.answer).then(
-                            () => toast.success("已复制问答，可直接发给客户"),
-                            () => toast.error("复制失败，请手动选择文本"),
-                          )
+                          void copyTextToClipboard("问：" + row.question + "\n答：" + row.answer, {
+                            successMessage: "已复制问答，可直接发给客户",
+                            errorMessage: "复制失败，请手动选择文本",
+                          })
                         }}
                         aria-label="复制这条问答"
                         title="复制问答"

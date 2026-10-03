@@ -1,5 +1,6 @@
 import { pb, getPocketBaseUrl, pbAuthHeader } from "./pb"
 import { getAuthHeaders } from "./auth"
+import { triggerBlobDownload } from "./download"
 
 export async function fileToDataUrl(f: File): Promise<string> {
   return await new Promise((resolve, reject) => {
@@ -1126,14 +1127,7 @@ export async function downloadAigcResult(url: string, filename?: string): Promis
       ? "png"
       : "jpg"
     const name = filename ?? `result-${Date.now()}.${ext}`
-    const blobUrl = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = blobUrl
-    a.download = name
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(blobUrl)
+    triggerBlobDownload(blob, name)
   } catch {
     window.open(url, "_blank") // 兜底: 至少能看到
   }

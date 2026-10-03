@@ -3,8 +3,7 @@ import { Check, ChevronDown, Loader2, ShieldCheck, SlidersHorizontal, Wand2 } fr
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { getPocketBaseUrl } from "@/lib/pb"
-import { vibexAuthHeaders } from "@/lib/rhLogin"
+import { pbJsonRequest } from "@/lib/pbJson"
 import {
   FORMAT_ALIGN_OPTIONS,
   FORMAT_CHECK_KEYS,
@@ -92,11 +91,8 @@ function ToggleRow({
 type FormatTemplateLite = { id: string; name: string; is_default?: boolean; format_settings?: FormatSettings }
 
 async function fetchFormatTemplates(): Promise<FormatTemplateLite[]> {
-  const res = await fetch(`${getPocketBaseUrl()}/api/format_templates`, {
-    headers: { "Content-Type": "application/json", ...vibexAuthHeaders() },
-  })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const data = (await res.json()) as { items?: FormatTemplateLite[] }
+  // R115: delegate the auth-header assembly + HTTP-status throw to the R109 single-source helper.
+  const data = await pbJsonRequest<{ items?: FormatTemplateLite[] }>("/api/format_templates")
   return data.items ?? []
 }
 

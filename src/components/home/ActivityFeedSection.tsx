@@ -112,6 +112,7 @@ export function ActivityFeedSection({ events, loading }: ActivityFeedSectionProp
           {deduped.length > COLLAPSED_LIMIT && (
             <button
               type="button"
+              aria-expanded={expanded}
               onClick={() => setExpanded((v) => !v)}
               className="mt-1 flex w-full items-center justify-center gap-1 rounded-lg py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-primary"
             >

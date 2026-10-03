@@ -1,6 +1,7 @@
 import { useRef, useState } from "react"
 import { Target, Plus, Loader2 } from "lucide-react"
 import { fmtAmount, type OppStage, type OpportunityRow } from "@/pages/CustomerManagement/customerTypes"
+import { localDateStamp } from "@/lib/dateStamp"
 
 const COLUMNS: { key: string; label: string }[] = [
   { key: "lead", label: "线索" },
@@ -36,11 +37,7 @@ export function KanbanBoard({
 }: KanbanBoardProps) {
   const total = Object.values(boardGroups).reduce((sum, list) => sum + list.length, 0)
   // 循环8 C5：本地今天 YYYY-MM-DD，用于卡片「下次跟进」徽章逾期判定
-  const todayStr = (() => {
-    const d = new Date()
-    const pad = (n: number) => String(n).padStart(2, "0")
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-  })()
+  const todayStr = localDateStamp()
   // A2-9 轻量 HTML5 拖拽换阶段：拖卡片到目标阶段列，乐观更新 + toast，失败回滚
   const dragOppRef = useRef<OpportunityRow | null>(null)
   const [dragOverCol, setDragOverCol] = useState<string | null>(null)

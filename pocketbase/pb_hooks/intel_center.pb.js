@@ -1,7 +1,8 @@
 // intel_center.pb.js — 情报中心：内置信息源种子/纠偏/去重 + 到期驱动抓取（tick）+ 手动抓取 + 信息源管理 + 情报流查询
 // 安全约定：
 //  - 身份只认 vibex 网关注入的 X-Rh-User-Id，需要登录的路由缺失一律 401
-//  - 所有 helper/常量 self-contained 在每个回调内部（Goja 并发安全）
+//  - 有状态 helper/常量仍 self-contained 在各回调内部（Goja 并发安全）；「无状态的纯函数」
+//    收敛到文件头共享纯函数区（__intel* 前缀，只读入参，2026-09-26 起取代四份漂移拷贝）
 //  - 只用 var / function；时间戳一律 new Date().toISOString()
 //  - 5xx 一律 { error, message, fingerprint } 三字段
 //  - 抓取环节不调用任何 LLM（零 AI 费用）；抓不到是常态，如实记录 last_status/last_error
@@ -28,6 +29,15 @@
 //  - tick 不再播种，保证种子的唯一写入方是 GET，从结构上消除多写入方竞态。
 // ---------------------------------------------------------------------------
 
+// ===========================================================================
+// 共享纯函数（2026-09-26 质量整改 Q1–Q4，见 docs/全局质量规范-测试与交付门槛.md）
+// 重要：PocketBase v0.40 会把 routerAdd 回调重定位到生成的 pb.js 中执行，本文件顶层作用域
+// 对回调不可见（zx_guard.pb.js 的顶层常量即因此从未生效）。所以共享函数必须以「镜像」形式
+// 存在于每个用到的回调内部（tick / fetch-now / items 迁移 / enrich 四处，由
+// scripts/intelShared.test.ts 用 ===INTEL-SHARED-BEGIN/END=== 标记强制逐字节一致，杜绝漂移）。
+// 修改算法时：只改一处 → 拷贝同步其余三处镜像 → 运行 pnpm test（镜像不一致会立刻红）。
+// ===========================================================================
+
 // ---------------------------------------------------------------------------
 // POST /api/intel/tick — 定时抓取轮（前端页面挂载时 / 驻留期间每 15 分钟触发）：
 // 到期判定按单源维度（enabled && (last_fetch_at 为空 || 距今 >= FETCH_INTERVAL_MIN)）；
@@ -37,6 +47,141 @@
 // ---------------------------------------------------------------------------
 routerAdd("POST", "/api/intel/tick", (e) => {
   try {
+    // ==== 共享纯函数镜像（唯一事实来源，scripts/intelShared.test.ts 强制 4 份逐字节一致） ====
+    // ===INTEL-SHARED-BEGIN===
+    // 共享纯函数区（2026-09-26 质量整改 Q1–Q4，见 docs/全局质量规范-测试与交付门槛.md）
+    // 此前 REGION_WORDS/extractRegion 等在 tick / fetch-now / items 迁移 / enrich 四处各持一份拷贝，
+    // 改一处漏三处是「多拷贝漂移」。现统一收敛到顶层一份：
+    //  - Goja 单 VM 启动时顺序加载全部 pb_hooks，顶层 var 全局可见（zx_guard.pb.js 顶层常量同款先例）；
+    //  - 以下函数全部只读入参、无可变共享态，请求间并发安全；
+    //  - 命名带 __intel 前缀，避免与其他 hook 文件的全局名冲突。
+    // ===========================================================================
+
+    // 省份区域词表（零 AI）：全称 + 多字简称（单字简称误报率高，刻意排除）
+    var __INTEL_REGION_WORDS = [
+      { w: "黑龙江", r: "黑龙江" }, { w: "内蒙古", r: "内蒙古" }, { w: "内蒙", r: "内蒙古" },
+      { w: "北京", r: "北京" }, { w: "天津", r: "天津" }, { w: "上海", r: "上海" }, { w: "重庆", r: "重庆" },
+      { w: "河北", r: "河北" }, { w: "山西", r: "山西" }, { w: "辽宁", r: "辽宁" }, { w: "吉林", r: "吉林" },
+      { w: "江苏", r: "江苏" }, { w: "浙江", r: "浙江" }, { w: "安徽", r: "安徽" }, { w: "福建", r: "福建" },
+      { w: "江西", r: "江西" }, { w: "山东", r: "山东" }, { w: "河南", r: "河南" }, { w: "湖北", r: "湖北" },
+      { w: "湖南", r: "湖南" }, { w: "广东", r: "广东" }, { w: "海南", r: "海南" }, { w: "四川", r: "四川" },
+      { w: "贵州", r: "贵州" }, { w: "云南", r: "云南" }, { w: "陕西", r: "陕西" }, { w: "甘肃", r: "甘肃" },
+      { w: "青海", r: "青海" }, { w: "台湾", r: "台湾" }, { w: "广西", r: "广西" }, { w: "西藏", r: "西藏" },
+      { w: "宁夏", r: "宁夏" }, { w: "新疆", r: "新疆" }, { w: "香港", r: "香港" }, { w: "澳门", r: "澳门" },
+      { w: "深圳", r: "深圳" }, { w: "大连", r: "大连" }, { w: "青岛", r: "青岛" }, { w: "宁波", r: "宁波" }, { w: "厦门", r: "厦门" }
+    ]
+    var __intelRegionByWord = function (s) {
+      var t = String(s || "")
+      for (var i = 0; i < __INTEL_REGION_WORDS.length; i++) {
+        if (t.indexOf(__INTEL_REGION_WORDS[i].w) >= 0) return __INTEL_REGION_WORDS[i].r
+      }
+      return ""
+    }
+
+    // 标题剥标签：内联高亮标签（政采网搜索结果会给关键词套 <font>）必须替换为空串。
+    // 旧实现替换为空格，导致「青浦区中心 医院」这类关键词两侧插空格的标题污染并入库。
+    var __intelTitleFromHtml = function (rawHtml) {
+      return unescInt(String(rawHtml || "").replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim()
+    }
+    // 实体解码（与各回调内 unesc 同口径；独立一份供顶层函数使用）
+    var unescInt = function (s) {
+      return String(s).replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&ldquo;|&rdquo;/g, "").replace(/\s+/g, " ").trim()
+    }
+
+    // 区域抽取 v2（分层证据优先级，取代旧「标题+邻接窗口里第一个省份词」）：
+    //  1) 采购人归属：条目块「采购人：××」值中的省份词（最强证据：采购人属地即项目属地）
+    //  2) 递交地：「在××省政府采购网 / 在××市政府采购网」中的省份词
+    //  3) 标题本体中的省份词（次强：标题主体是项目名；注意代理机构名也可能出现在标题里，
+    //     所以排序在 1)/2) 之后）
+    //  4) 条目自身块的面包屑「…公告 | 省份 | …」
+    //  5) 兜底：条目自身块内第一个省份词（调用方必须保证传入的是「条目自身块」而非 ±800 邻接窗口，
+    //     否则邻接条目的代理机构名会重演「青浦区→青海」错标）
+    var __intelRegion = function (title, ownBlock, strict) {
+      var t = String(title || "")
+      var b = String(ownBlock || "")
+      var mp = b.match(/采购人[：:]\s*([^，,。;；|\n]{2,30})/)
+      if (mp) { var r1 = __intelRegionByWord(mp[1]); if (r1) return r1 }
+      var mg = b.match(/在([^，,。;；|\n]{2,14}?(?:省|自治区)政府采购网)|在([^，,。;；|\n]{1,8}?市)政府采购网/)
+      if (mg) { var r2 = __intelRegionByWord(mg[1] || mg[2] || ""); if (r2) return r2 }
+      var r3 = __intelRegionByWord(t)
+      if (r3) return r3
+      // 4.5) 代理机构属地（条目自身块内为强证据）：块里可能有多个「代理机构：」（开头的是邻接噪声），
+      // ccgp 列表行元数据「时间戳 | 采购人 | 代理机构」总在末尾 → 从最后一个往前找省份词
+      var maAll = b.match(/代理机构[：:]\s*([^，,。;；|\n]{2,30})/g)
+      if (maAll) {
+        for (var ai = maAll.length - 1; ai >= 0; ai--) {
+          var r45 = __intelRegionByWord(maAll[ai].replace(/^代理机构[：:]\s*/, ""))
+          if (r45) return r45
+        }
+      }
+      var mb = b.match(/[|｜]\s*([^|｜，,。;；\s]{2,8})\s*[|｜]/)
+      if (mb) { var r4 = __intelRegionByWord(mb[1]); if (r4) return r4 }
+      // strict 模式（存量重算专用）：弱证据兜底不参与——宁可保留旧值，绝不因邻接噪声改错
+      if (strict) return ""
+      return __intelRegionByWord(b)
+    }
+
+    var __intelValidDate = function (y, mo, d) {
+      var yy = parseInt(y, 10), mm = parseInt(mo, 10), dd = parseInt(d, 10)
+      if (!(yy >= 2020 && yy <= 2100 && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31)) return ""
+      var mmS = mm < 10 ? "0" + mm : "" + mm
+      var ddS = dd < 10 ? "0" + dd : "" + dd
+      return yy + "-" + mmS + "-" + ddS
+    }
+
+    // 发布时间抽取 v2（发布时间 ≠ 正文第一个日期：政采网公告正文第一个日期是投标截止时间，
+    // 旧实现拿它当发布时间入库，导致列表按「发布时刻」排序实为按截止时间倒挂）。
+    // 优先级：URL 内嵌日期（ccgp t20260925_x.htm / /202609/ 目录）> 「发布时间：」标签
+    //   > 列表条目自带时间戳（2026.09.25 11:38:54）> 正文日期（排除递交/截止/开标上下文）> 空串由调用方兜底
+    var __intelPubAt = function (url, ownBlock, body) {
+      var u = String(url || "")
+      var mu = u.match(/t(20\d{2})(\d{2})(\d{2})_\w*\.htm/i) || u.match(/\/(20\d{2})(\d{2})(\d{2})\//)
+      if (mu) { var d0 = __intelValidDate(mu[1], mu[2], mu[3]); if (d0) return d0 }
+      var b = String(ownBlock || "")
+      var bd = String(body || "")
+      var text = bd ? bd + "\n" + b : b
+      var ml = text.match(/(?:发布时间|发布日期|公布时间|公告发布|发布日期日期)[：:]\s*(20\d{2})\s*[-\/年.]\s*(\d{1,2})\s*[-\/月.]\s*(\d{1,2})/)
+      if (ml) { var d1 = __intelValidDate(ml[1], ml[2], ml[3]); if (d1) return d1 }
+      var ms = b.match(/(20\d{2})\.(\d{1,2})\.(\d{1,2})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?/)
+      if (ms) { var d2 = __intelValidDate(ms[1], ms[2], ms[3]); if (d2) return d2 }
+      var re = /(20\d{2})\s*[-\/年.]\s*(\d{1,2})\s*[-\/月.]\s*(\d{1,2})/g
+      var m4
+      while ((m4 = re.exec(text)) !== null) {
+        var before = text.slice(Math.max(0, m4.index - 20), m4.index)
+        // after 只看同句（在句读处截断）：下一句的「递交/截止」不能株连本句的发布日期
+        var afterRaw = text.slice(m4.index, m4.index + 40)
+        var cutAt = afterRaw.search(/[。；！？，]/)
+        var after = cutAt >= 0 ? afterRaw.slice(0, cutAt) : afterRaw
+        if (/递交|截止|开标|投标|报名|响应文件|资格预审|澄清|答疑|询问|质疑/.test(before + after)) continue
+        var d3 = __intelValidDate(m4[1], m4[2], m4[3])
+        if (d3) return d3
+      }
+      return ""
+    }
+
+    // 标题历史污染清洗（存量数据）：抓取端旧实现把高亮标签剥成空格，标题里留下「医院」两侧空格。
+    // 中文排版中汉字之间的空格几乎不可能是刻意的，汉字/中文标点之间的空格安全折叠；
+    // 英文/数字之间的空格保留（"CT MRI"这类不吃掉）。
+    var __intelCleanTitleSpacing = function (t) {
+      return String(t || "").replace(/([\u4e00-\u9fa5）】」》、，。；：？！])\s+([\u4e00-\u9fa5（【「《])/g, "$1$2")
+    }
+
+    // 从一段正文文本里构造「去标题」片段（供摘要用）：允许标题在文本里被空白打断
+    // （旧实现 replace(title," ") 因高亮空格污染永远匹配不上，导致摘要里残留半截标题）。
+    var __intelTextWithoutTitle = function (text, title) {
+      var t = String(text || "")
+      var ttl = String(title || "")
+      if (!ttl) return t
+      var esc = ttl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      try {
+        var fuzzy = esc.split("").join("\\s*")
+        return t.replace(new RegExp(fuzzy), " ")
+      } catch (eReg) {
+        return t.split(ttl).join(" ")
+      }
+    }
+    // ===INTEL-SHARED-END===
+
     // 单源冷却期（分钟）：与 UI 文案「每 30 分钟自动抓取一轮到期的启用源」保持一致
     var FETCH_INTERVAL_MIN = 30
     // 单轮上限（个）：限制单次请求内抓取的源数量。批次 A 从 10→12，与内置源从 13→29 扩容匹配，
@@ -78,34 +223,7 @@ routerAdd("POST", "/api/intel/tick", (e) => {
       var actionHit = /项目|建设|招标|中标|采购|比选|遴选|公告|公示|上线|验收|升级|改造|集成|实施|部署|标准|规范|评审|立项|解决方案|方案|平台|系统|工作站|服务|产品|中心|机构|研究|应用|实践|探索|能力|生态|大会|论坛|培训|发布|签约|合作|实验室/i.test(t)
       return /医|院|卫|健康/i.test(t) && (topicHit || actionHit)
     }
-    // 省份区域词表本地抽取（零 AI）：全称 + 多字简称（单字简称误报率高，刻意排除）；
-    // 多命中取正文中位置最先者，同位置取更长词。
-    var REGION_WORDS = [
-      { w: "黑龙江", r: "黑龙江" }, { w: "内蒙古", r: "内蒙古" }, { w: "内蒙", r: "内蒙古" },
-      { w: "北京", r: "北京" }, { w: "天津", r: "天津" }, { w: "上海", r: "上海" }, { w: "重庆", r: "重庆" },
-      { w: "河北", r: "河北" }, { w: "山西", r: "山西" }, { w: "辽宁", r: "辽宁" }, { w: "吉林", r: "吉林" },
-      { w: "江苏", r: "江苏" }, { w: "浙江", r: "浙江" }, { w: "安徽", r: "安徽" }, { w: "福建", r: "福建" },
-      { w: "江西", r: "江西" }, { w: "山东", r: "山东" }, { w: "河南", r: "河南" }, { w: "湖北", r: "湖北" },
-      { w: "湖南", r: "湖南" }, { w: "广东", r: "广东" }, { w: "海南", r: "海南" }, { w: "四川", r: "四川" },
-      { w: "贵州", r: "贵州" }, { w: "云南", r: "云南" }, { w: "陕西", r: "陕西" }, { w: "甘肃", r: "甘肃" },
-      { w: "青海", r: "青海" }, { w: "台湾", r: "台湾" }, { w: "广西", r: "广西" }, { w: "西藏", r: "西藏" },
-      { w: "宁夏", r: "宁夏" }, { w: "新疆", r: "新疆" }, { w: "香港", r: "香港" }, { w: "澳门", r: "澳门" },
-      { w: "深圳", r: "深圳" }, { w: "大连", r: "大连" }, { w: "青岛", r: "青岛" }, { w: "宁波", r: "宁波" }, { w: "厦门", r: "厦门" }
-    ]
-    var extractRegion = function (title, snippet) {
-      var text = String(title || "") + " " + String(snippet || "")
-      var best = ""
-      var bestPos = -1
-      for (var ri = 0; ri < REGION_WORDS.length; ri++) {
-        var rpos = text.indexOf(REGION_WORDS[ri].w)
-        if (rpos < 0) continue
-        if (bestPos < 0 || rpos < bestPos || (rpos === bestPos && REGION_WORDS[ri].w.length > best.length)) {
-          bestPos = rpos
-          best = REGION_WORDS[ri].r
-        }
-      }
-      return best
-    }
+    // 区域抽取：统一走顶层 __intelRegion（分层证据优先级），见文件头共享纯函数区
     var badTitleRe = /^(首页|关于|联系|更多|下载|登录|注册|English|网站地图|版权所有|声明|导航|返回|上一页|下一页|查看更多|点击进入|附件|搜索|订阅|邮箱|微信|微博|APP)/i
     var dateOnlyRe = /^[\d\s\-\/年月日.:：()\[\]，,周星期]+$/
     // 批次 A（政府站正文代理）：进程内 URL 缓存，同一次 tick 内多次 crawlOne 复用，规避 r.jina.ai 免费档 20 RPM 限额
@@ -284,7 +402,7 @@ routerAdd("POST", "/api/intel/tick", (e) => {
       re.lastIndex = 0
       while ((m = re.exec(html)) !== null && added < 20) {
         var href = unesc(m[1])
-        var title = unesc(String(m[2]).replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim()
+        var title = __intelTitleFromHtml(m[2]) // 2026-09-26 Q3 整改：高亮标签剥成空串，不再给关键词两侧插空格
         if (!title || title.length < 8 || title.length > 200) continue
         if (badTitleRe.test(title)) continue
         if (dateOnlyRe.test(title)) continue
@@ -309,14 +427,10 @@ routerAdd("POST", "/api/intel/tick", (e) => {
         var hasBody = !!(body && body.length > 120)
         var finalSnippet = hasBody && body.length > snippet.length ? scrubIntel(body, 2400) : snippet
         var enrichText = (title + " " + (hasBody ? body : "")).slice(0, 3000)
-        var pubAt = ""
-        var dm = (body || snippet).match(/(20\d{2})\s*[-\/年.]\s*(\d{1,2})\s*[-\/月.]\s*(\d{1,2})/)
-        if (dm) {
-          var mm = String(dm[2]).length < 2 ? "0" + dm[2] : dm[2]
-          var dd = String(dm[3]).length < 2 ? "0" + dm[3] : dm[3]
-          pubAt = dm[1] + "-" + mm + "-" + dd
-        }
-        if (!pubAt) pubAt = new Date().toISOString().slice(0, 10)
+      // 发布时间 v2（2026-09-26 Q2 整改）：URL 内嵌日期 > 发布时间标签 > 条目时间戳 > 正文日期（排除截止上下文）。
+      // 旧实现取正文第一个日期，政采网公告第一个日期是投标截止时间 → 列表「按发布时刻」实为按截止时间倒挂。
+      var pubAt = __intelPubAt(full, block, hasBody ? body : "")
+      if (!pubAt) pubAt = new Date().toISOString().slice(0, 10)
         var item = new Record(itemColl)
         item.set("source_id", src.id)
         item.set("source_name", String(src.get("source_name") || ""))
@@ -326,7 +440,7 @@ routerAdd("POST", "/api/intel/tick", (e) => {
         item.set("item_type", String(src.get("source_type") || "policy"))
         item.set("summary", hasBody ? makeSummary(body, title) : "")
         item.set("tags", extractTags(enrichText))
-        item.set("region", extractRegion(title, snippet))
+        item.set("region", __intelRegion(title, snippet))
         item.set("item_status", "pending")
         item.set("added_by", "crawl")
         item.set("owner_id", isBuiltin ? "" : srcOwner)
@@ -696,6 +810,141 @@ routerAdd("DELETE", "/api/intel/sources/{id}", (e) => {
 // ---------------------------------------------------------------------------
 routerAdd("POST", "/api/intel/fetch-now", (e) => {
   try {
+    // ==== 共享纯函数镜像（唯一事实来源，scripts/intelShared.test.ts 强制 4 份逐字节一致） ====
+    // ===INTEL-SHARED-BEGIN===
+    // 共享纯函数区（2026-09-26 质量整改 Q1–Q4，见 docs/全局质量规范-测试与交付门槛.md）
+    // 此前 REGION_WORDS/extractRegion 等在 tick / fetch-now / items 迁移 / enrich 四处各持一份拷贝，
+    // 改一处漏三处是「多拷贝漂移」。现统一收敛到顶层一份：
+    //  - Goja 单 VM 启动时顺序加载全部 pb_hooks，顶层 var 全局可见（zx_guard.pb.js 顶层常量同款先例）；
+    //  - 以下函数全部只读入参、无可变共享态，请求间并发安全；
+    //  - 命名带 __intel 前缀，避免与其他 hook 文件的全局名冲突。
+    // ===========================================================================
+
+    // 省份区域词表（零 AI）：全称 + 多字简称（单字简称误报率高，刻意排除）
+    var __INTEL_REGION_WORDS = [
+      { w: "黑龙江", r: "黑龙江" }, { w: "内蒙古", r: "内蒙古" }, { w: "内蒙", r: "内蒙古" },
+      { w: "北京", r: "北京" }, { w: "天津", r: "天津" }, { w: "上海", r: "上海" }, { w: "重庆", r: "重庆" },
+      { w: "河北", r: "河北" }, { w: "山西", r: "山西" }, { w: "辽宁", r: "辽宁" }, { w: "吉林", r: "吉林" },
+      { w: "江苏", r: "江苏" }, { w: "浙江", r: "浙江" }, { w: "安徽", r: "安徽" }, { w: "福建", r: "福建" },
+      { w: "江西", r: "江西" }, { w: "山东", r: "山东" }, { w: "河南", r: "河南" }, { w: "湖北", r: "湖北" },
+      { w: "湖南", r: "湖南" }, { w: "广东", r: "广东" }, { w: "海南", r: "海南" }, { w: "四川", r: "四川" },
+      { w: "贵州", r: "贵州" }, { w: "云南", r: "云南" }, { w: "陕西", r: "陕西" }, { w: "甘肃", r: "甘肃" },
+      { w: "青海", r: "青海" }, { w: "台湾", r: "台湾" }, { w: "广西", r: "广西" }, { w: "西藏", r: "西藏" },
+      { w: "宁夏", r: "宁夏" }, { w: "新疆", r: "新疆" }, { w: "香港", r: "香港" }, { w: "澳门", r: "澳门" },
+      { w: "深圳", r: "深圳" }, { w: "大连", r: "大连" }, { w: "青岛", r: "青岛" }, { w: "宁波", r: "宁波" }, { w: "厦门", r: "厦门" }
+    ]
+    var __intelRegionByWord = function (s) {
+      var t = String(s || "")
+      for (var i = 0; i < __INTEL_REGION_WORDS.length; i++) {
+        if (t.indexOf(__INTEL_REGION_WORDS[i].w) >= 0) return __INTEL_REGION_WORDS[i].r
+      }
+      return ""
+    }
+
+    // 标题剥标签：内联高亮标签（政采网搜索结果会给关键词套 <font>）必须替换为空串。
+    // 旧实现替换为空格，导致「青浦区中心 医院」这类关键词两侧插空格的标题污染并入库。
+    var __intelTitleFromHtml = function (rawHtml) {
+      return unescInt(String(rawHtml || "").replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim()
+    }
+    // 实体解码（与各回调内 unesc 同口径；独立一份供顶层函数使用）
+    var unescInt = function (s) {
+      return String(s).replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&ldquo;|&rdquo;/g, "").replace(/\s+/g, " ").trim()
+    }
+
+    // 区域抽取 v2（分层证据优先级，取代旧「标题+邻接窗口里第一个省份词」）：
+    //  1) 采购人归属：条目块「采购人：××」值中的省份词（最强证据：采购人属地即项目属地）
+    //  2) 递交地：「在××省政府采购网 / 在××市政府采购网」中的省份词
+    //  3) 标题本体中的省份词（次强：标题主体是项目名；注意代理机构名也可能出现在标题里，
+    //     所以排序在 1)/2) 之后）
+    //  4) 条目自身块的面包屑「…公告 | 省份 | …」
+    //  5) 兜底：条目自身块内第一个省份词（调用方必须保证传入的是「条目自身块」而非 ±800 邻接窗口，
+    //     否则邻接条目的代理机构名会重演「青浦区→青海」错标）
+    var __intelRegion = function (title, ownBlock, strict) {
+      var t = String(title || "")
+      var b = String(ownBlock || "")
+      var mp = b.match(/采购人[：:]\s*([^，,。;；|\n]{2,30})/)
+      if (mp) { var r1 = __intelRegionByWord(mp[1]); if (r1) return r1 }
+      var mg = b.match(/在([^，,。;；|\n]{2,14}?(?:省|自治区)政府采购网)|在([^，,。;；|\n]{1,8}?市)政府采购网/)
+      if (mg) { var r2 = __intelRegionByWord(mg[1] || mg[2] || ""); if (r2) return r2 }
+      var r3 = __intelRegionByWord(t)
+      if (r3) return r3
+      // 4.5) 代理机构属地（条目自身块内为强证据）：块里可能有多个「代理机构：」（开头的是邻接噪声），
+      // ccgp 列表行元数据「时间戳 | 采购人 | 代理机构」总在末尾 → 从最后一个往前找省份词
+      var maAll = b.match(/代理机构[：:]\s*([^，,。;；|\n]{2,30})/g)
+      if (maAll) {
+        for (var ai = maAll.length - 1; ai >= 0; ai--) {
+          var r45 = __intelRegionByWord(maAll[ai].replace(/^代理机构[：:]\s*/, ""))
+          if (r45) return r45
+        }
+      }
+      var mb = b.match(/[|｜]\s*([^|｜，,。;；\s]{2,8})\s*[|｜]/)
+      if (mb) { var r4 = __intelRegionByWord(mb[1]); if (r4) return r4 }
+      // strict 模式（存量重算专用）：弱证据兜底不参与——宁可保留旧值，绝不因邻接噪声改错
+      if (strict) return ""
+      return __intelRegionByWord(b)
+    }
+
+    var __intelValidDate = function (y, mo, d) {
+      var yy = parseInt(y, 10), mm = parseInt(mo, 10), dd = parseInt(d, 10)
+      if (!(yy >= 2020 && yy <= 2100 && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31)) return ""
+      var mmS = mm < 10 ? "0" + mm : "" + mm
+      var ddS = dd < 10 ? "0" + dd : "" + dd
+      return yy + "-" + mmS + "-" + ddS
+    }
+
+    // 发布时间抽取 v2（发布时间 ≠ 正文第一个日期：政采网公告正文第一个日期是投标截止时间，
+    // 旧实现拿它当发布时间入库，导致列表按「发布时刻」排序实为按截止时间倒挂）。
+    // 优先级：URL 内嵌日期（ccgp t20260925_x.htm / /202609/ 目录）> 「发布时间：」标签
+    //   > 列表条目自带时间戳（2026.09.25 11:38:54）> 正文日期（排除递交/截止/开标上下文）> 空串由调用方兜底
+    var __intelPubAt = function (url, ownBlock, body) {
+      var u = String(url || "")
+      var mu = u.match(/t(20\d{2})(\d{2})(\d{2})_\w*\.htm/i) || u.match(/\/(20\d{2})(\d{2})(\d{2})\//)
+      if (mu) { var d0 = __intelValidDate(mu[1], mu[2], mu[3]); if (d0) return d0 }
+      var b = String(ownBlock || "")
+      var bd = String(body || "")
+      var text = bd ? bd + "\n" + b : b
+      var ml = text.match(/(?:发布时间|发布日期|公布时间|公告发布|发布日期日期)[：:]\s*(20\d{2})\s*[-\/年.]\s*(\d{1,2})\s*[-\/月.]\s*(\d{1,2})/)
+      if (ml) { var d1 = __intelValidDate(ml[1], ml[2], ml[3]); if (d1) return d1 }
+      var ms = b.match(/(20\d{2})\.(\d{1,2})\.(\d{1,2})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?/)
+      if (ms) { var d2 = __intelValidDate(ms[1], ms[2], ms[3]); if (d2) return d2 }
+      var re = /(20\d{2})\s*[-\/年.]\s*(\d{1,2})\s*[-\/月.]\s*(\d{1,2})/g
+      var m4
+      while ((m4 = re.exec(text)) !== null) {
+        var before = text.slice(Math.max(0, m4.index - 20), m4.index)
+        // after 只看同句（在句读处截断）：下一句的「递交/截止」不能株连本句的发布日期
+        var afterRaw = text.slice(m4.index, m4.index + 40)
+        var cutAt = afterRaw.search(/[。；！？，]/)
+        var after = cutAt >= 0 ? afterRaw.slice(0, cutAt) : afterRaw
+        if (/递交|截止|开标|投标|报名|响应文件|资格预审|澄清|答疑|询问|质疑/.test(before + after)) continue
+        var d3 = __intelValidDate(m4[1], m4[2], m4[3])
+        if (d3) return d3
+      }
+      return ""
+    }
+
+    // 标题历史污染清洗（存量数据）：抓取端旧实现把高亮标签剥成空格，标题里留下「医院」两侧空格。
+    // 中文排版中汉字之间的空格几乎不可能是刻意的，汉字/中文标点之间的空格安全折叠；
+    // 英文/数字之间的空格保留（"CT MRI"这类不吃掉）。
+    var __intelCleanTitleSpacing = function (t) {
+      return String(t || "").replace(/([\u4e00-\u9fa5）】」》、，。；：？！])\s+([\u4e00-\u9fa5（【「《])/g, "$1$2")
+    }
+
+    // 从一段正文文本里构造「去标题」片段（供摘要用）：允许标题在文本里被空白打断
+    // （旧实现 replace(title," ") 因高亮空格污染永远匹配不上，导致摘要里残留半截标题）。
+    var __intelTextWithoutTitle = function (text, title) {
+      var t = String(text || "")
+      var ttl = String(title || "")
+      if (!ttl) return t
+      var esc = ttl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      try {
+        var fuzzy = esc.split("").join("\\s*")
+        return t.replace(new RegExp(fuzzy), " ")
+      } catch (eReg) {
+        return t.split(ttl).join(" ")
+      }
+    }
+    // ===INTEL-SHARED-END===
+
     var norm = function (s) { return String(s == null ? "" : s).trim() }
     var h = (e.requestInfo() || {}).headers || {}
     var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
@@ -867,34 +1116,7 @@ routerAdd("POST", "/api/intel/fetch-now", (e) => {
       var actionHit = /项目|建设|招标|中标|采购|比选|遴选|公告|公示|上线|验收|升级|改造|集成|实施|部署|标准|规范|评审|立项|解决方案|方案|平台|系统|工作站|服务|产品|中心|机构|研究|应用|实践|探索|能力|生态|大会|论坛|培训|发布|签约|合作|实验室/i.test(t)
       return /医|院|卫|健康/i.test(t) && (topicHit || actionHit)
     }
-    // 省份区域词表本地抽取（零 AI）：全称 + 多字简称（单字简称误报率高，刻意排除）；
-    // 多命中取正文中位置最先者，同位置取更长词。
-    var REGION_WORDS = [
-      { w: "黑龙江", r: "黑龙江" }, { w: "内蒙古", r: "内蒙古" }, { w: "内蒙", r: "内蒙古" },
-      { w: "北京", r: "北京" }, { w: "天津", r: "天津" }, { w: "上海", r: "上海" }, { w: "重庆", r: "重庆" },
-      { w: "河北", r: "河北" }, { w: "山西", r: "山西" }, { w: "辽宁", r: "辽宁" }, { w: "吉林", r: "吉林" },
-      { w: "江苏", r: "江苏" }, { w: "浙江", r: "浙江" }, { w: "安徽", r: "安徽" }, { w: "福建", r: "福建" },
-      { w: "江西", r: "江西" }, { w: "山东", r: "山东" }, { w: "河南", r: "河南" }, { w: "湖北", r: "湖北" },
-      { w: "湖南", r: "湖南" }, { w: "广东", r: "广东" }, { w: "海南", r: "海南" }, { w: "四川", r: "四川" },
-      { w: "贵州", r: "贵州" }, { w: "云南", r: "云南" }, { w: "陕西", r: "陕西" }, { w: "甘肃", r: "甘肃" },
-      { w: "青海", r: "青海" }, { w: "台湾", r: "台湾" }, { w: "广西", r: "广西" }, { w: "西藏", r: "西藏" },
-      { w: "宁夏", r: "宁夏" }, { w: "新疆", r: "新疆" }, { w: "香港", r: "香港" }, { w: "澳门", r: "澳门" },
-      { w: "深圳", r: "深圳" }, { w: "大连", r: "大连" }, { w: "青岛", r: "青岛" }, { w: "宁波", r: "宁波" }, { w: "厦门", r: "厦门" }
-    ]
-    var extractRegion = function (title, snippet) {
-      var text = String(title || "") + " " + String(snippet || "")
-      var best = ""
-      var bestPos = -1
-      for (var ri = 0; ri < REGION_WORDS.length; ri++) {
-        var rpos = text.indexOf(REGION_WORDS[ri].w)
-        if (rpos < 0) continue
-        if (bestPos < 0 || rpos < bestPos || (rpos === bestPos && REGION_WORDS[ri].w.length > best.length)) {
-          bestPos = rpos
-          best = REGION_WORDS[ri].r
-        }
-      }
-      return best
-    }
+    // 区域抽取：统一走顶层 __intelRegion（分层证据优先级），见文件头共享纯函数区
     var badTitleRe = /^(首页|关于|联系|更多|下载|登录|注册|English|网站地图|版权所有|声明|导航|返回|上一页|下一页|查看更多|点击进入|附件|搜索|订阅|邮箱|微信|微博|APP)/i
     var dateOnlyRe = /^[\d\s\-\/年月日.:：()\[\]，,周星期]+$/
     var url = String(src.get("url") || "")
@@ -943,7 +1165,7 @@ routerAdd("POST", "/api/intel/fetch-now", (e) => {
     re.lastIndex = 0
     while ((m = re.exec(html)) !== null && added < 20) {
       var href = unesc(m[1])
-      var title = unesc(String(m[2]).replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim()
+      var title = __intelTitleFromHtml(m[2]) // 2026-09-26 Q3 整改：高亮标签剥成空串，不再给关键词两侧插空格
       if (!title || title.length < 8 || title.length > 200) continue
       if (badTitleRe.test(title)) continue
       if (dateOnlyRe.test(title)) continue
@@ -952,9 +1174,19 @@ routerAdd("POST", "/api/intel/fetch-now", (e) => {
       if (!/^https?:\/\//i.test(full)) continue
       if (seen[full] || existing[full]) continue
       seen[full] = true
-      var block = html.slice(Math.max(0, m.index - 800), m.index + 800)
-      var snippet = unesc(String(block).replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " "))
-      snippet = scrubIntel(snippet.replace(title, " "), 600)
+      // 条目自身块优先（2026-09-26 Q1/Q4 整改）：列表行里标题之后的内容属于本条；
+      // 只在自身内容太短时才回看前一屏兜底，避免邻接条目的代理机构/省份混入本条区域与摘要。
+      // 去标题用空白容忍匹配（旧 replace(title," ") 因高亮空格污染永远匹配不上，残留半截标题）。
+      var flattenBlock = function (raw) {
+        return unesc(String(raw).replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " "))
+      }
+      var block = html.slice(m.index, m.index + 900)
+      var snippet = scrubIntel(__intelTextWithoutTitle(flattenBlock(block), title), 600)
+      if (snippet.length < 60) {
+        var bwdTxt = scrubIntel(__intelTextWithoutTitle(flattenBlock(html.slice(Math.max(0, m.index - 800), m.index)), title), 300)
+        snippet = (snippet + " " + bwdTxt).trim().slice(0, 600)
+      }
+      snippet = snippet.replace(/^[|｜\s、，,。;；:：\-]+/, "")
       // 医疗信息化相关性过滤：不命中直接跳过不入库
       if (!medicalRelevant(title, snippet)) { skippedIrrelevant++; continue }
       var dup = null
@@ -967,13 +1199,8 @@ routerAdd("POST", "/api/intel/fetch-now", (e) => {
       var hasBody = !!(artBody && artBody.length > 120)
       var finalSnippet = hasBody && artBody.length > snippet.length ? scrubIntel(artBody, 2400) : snippet
       var enrichText = (title + " " + (hasBody ? artBody : "")).slice(0, 3000)
-      var pubAt = ""
-      var dm = (artBody || snippet).match(/(20\d{2})\s*[-\/年.]\s*(\d{1,2})\s*[-\/月.]\s*(\d{1,2})/)
-      if (dm) {
-        var mm = String(dm[2]).length < 2 ? "0" + dm[2] : dm[2]
-        var dd = String(dm[3]).length < 2 ? "0" + dm[3] : dm[3]
-        pubAt = dm[1] + "-" + mm + "-" + dd
-      }
+      // 发布时间 v2（2026-09-26 Q2 整改，与 tick 同口径；本回调正文变量为 artBody）
+      var pubAt = __intelPubAt(full, block, hasBody ? artBody : "")
       if (!pubAt) pubAt = new Date().toISOString().slice(0, 10)
       var item = new Record(itemColl)
       item.set("source_id", src.id)
@@ -984,7 +1211,7 @@ routerAdd("POST", "/api/intel/fetch-now", (e) => {
       item.set("item_type", String(src.get("source_type") || "policy"))
       item.set("summary", hasBody ? makeSummary(artBody, title) : "")
       item.set("tags", extractTags(enrichText))
-      item.set("region", extractRegion(title, snippet))
+      item.set("region", __intelRegion(title, snippet))
       item.set("item_status", "pending")
       item.set("added_by", "crawl")
       item.set("owner_id", isBuiltin ? "" : srcOwner)
@@ -1143,6 +1370,141 @@ routerAdd("POST", "/api/intel/items/{id}/view", (e) => {
 // ---------------------------------------------------------------------------
 routerAdd("GET", "/api/intel/items", (e) => {
   try {
+    // ==== 共享纯函数镜像（唯一事实来源，scripts/intelShared.test.ts 强制 4 份逐字节一致） ====
+    // ===INTEL-SHARED-BEGIN===
+    // 共享纯函数区（2026-09-26 质量整改 Q1–Q4，见 docs/全局质量规范-测试与交付门槛.md）
+    // 此前 REGION_WORDS/extractRegion 等在 tick / fetch-now / items 迁移 / enrich 四处各持一份拷贝，
+    // 改一处漏三处是「多拷贝漂移」。现统一收敛到顶层一份：
+    //  - Goja 单 VM 启动时顺序加载全部 pb_hooks，顶层 var 全局可见（zx_guard.pb.js 顶层常量同款先例）；
+    //  - 以下函数全部只读入参、无可变共享态，请求间并发安全；
+    //  - 命名带 __intel 前缀，避免与其他 hook 文件的全局名冲突。
+    // ===========================================================================
+
+    // 省份区域词表（零 AI）：全称 + 多字简称（单字简称误报率高，刻意排除）
+    var __INTEL_REGION_WORDS = [
+      { w: "黑龙江", r: "黑龙江" }, { w: "内蒙古", r: "内蒙古" }, { w: "内蒙", r: "内蒙古" },
+      { w: "北京", r: "北京" }, { w: "天津", r: "天津" }, { w: "上海", r: "上海" }, { w: "重庆", r: "重庆" },
+      { w: "河北", r: "河北" }, { w: "山西", r: "山西" }, { w: "辽宁", r: "辽宁" }, { w: "吉林", r: "吉林" },
+      { w: "江苏", r: "江苏" }, { w: "浙江", r: "浙江" }, { w: "安徽", r: "安徽" }, { w: "福建", r: "福建" },
+      { w: "江西", r: "江西" }, { w: "山东", r: "山东" }, { w: "河南", r: "河南" }, { w: "湖北", r: "湖北" },
+      { w: "湖南", r: "湖南" }, { w: "广东", r: "广东" }, { w: "海南", r: "海南" }, { w: "四川", r: "四川" },
+      { w: "贵州", r: "贵州" }, { w: "云南", r: "云南" }, { w: "陕西", r: "陕西" }, { w: "甘肃", r: "甘肃" },
+      { w: "青海", r: "青海" }, { w: "台湾", r: "台湾" }, { w: "广西", r: "广西" }, { w: "西藏", r: "西藏" },
+      { w: "宁夏", r: "宁夏" }, { w: "新疆", r: "新疆" }, { w: "香港", r: "香港" }, { w: "澳门", r: "澳门" },
+      { w: "深圳", r: "深圳" }, { w: "大连", r: "大连" }, { w: "青岛", r: "青岛" }, { w: "宁波", r: "宁波" }, { w: "厦门", r: "厦门" }
+    ]
+    var __intelRegionByWord = function (s) {
+      var t = String(s || "")
+      for (var i = 0; i < __INTEL_REGION_WORDS.length; i++) {
+        if (t.indexOf(__INTEL_REGION_WORDS[i].w) >= 0) return __INTEL_REGION_WORDS[i].r
+      }
+      return ""
+    }
+
+    // 标题剥标签：内联高亮标签（政采网搜索结果会给关键词套 <font>）必须替换为空串。
+    // 旧实现替换为空格，导致「青浦区中心 医院」这类关键词两侧插空格的标题污染并入库。
+    var __intelTitleFromHtml = function (rawHtml) {
+      return unescInt(String(rawHtml || "").replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim()
+    }
+    // 实体解码（与各回调内 unesc 同口径；独立一份供顶层函数使用）
+    var unescInt = function (s) {
+      return String(s).replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&ldquo;|&rdquo;/g, "").replace(/\s+/g, " ").trim()
+    }
+
+    // 区域抽取 v2（分层证据优先级，取代旧「标题+邻接窗口里第一个省份词」）：
+    //  1) 采购人归属：条目块「采购人：××」值中的省份词（最强证据：采购人属地即项目属地）
+    //  2) 递交地：「在××省政府采购网 / 在××市政府采购网」中的省份词
+    //  3) 标题本体中的省份词（次强：标题主体是项目名；注意代理机构名也可能出现在标题里，
+    //     所以排序在 1)/2) 之后）
+    //  4) 条目自身块的面包屑「…公告 | 省份 | …」
+    //  5) 兜底：条目自身块内第一个省份词（调用方必须保证传入的是「条目自身块」而非 ±800 邻接窗口，
+    //     否则邻接条目的代理机构名会重演「青浦区→青海」错标）
+    var __intelRegion = function (title, ownBlock, strict) {
+      var t = String(title || "")
+      var b = String(ownBlock || "")
+      var mp = b.match(/采购人[：:]\s*([^，,。;；|\n]{2,30})/)
+      if (mp) { var r1 = __intelRegionByWord(mp[1]); if (r1) return r1 }
+      var mg = b.match(/在([^，,。;；|\n]{2,14}?(?:省|自治区)政府采购网)|在([^，,。;；|\n]{1,8}?市)政府采购网/)
+      if (mg) { var r2 = __intelRegionByWord(mg[1] || mg[2] || ""); if (r2) return r2 }
+      var r3 = __intelRegionByWord(t)
+      if (r3) return r3
+      // 4.5) 代理机构属地（条目自身块内为强证据）：块里可能有多个「代理机构：」（开头的是邻接噪声），
+      // ccgp 列表行元数据「时间戳 | 采购人 | 代理机构」总在末尾 → 从最后一个往前找省份词
+      var maAll = b.match(/代理机构[：:]\s*([^，,。;；|\n]{2,30})/g)
+      if (maAll) {
+        for (var ai = maAll.length - 1; ai >= 0; ai--) {
+          var r45 = __intelRegionByWord(maAll[ai].replace(/^代理机构[：:]\s*/, ""))
+          if (r45) return r45
+        }
+      }
+      var mb = b.match(/[|｜]\s*([^|｜，,。;；\s]{2,8})\s*[|｜]/)
+      if (mb) { var r4 = __intelRegionByWord(mb[1]); if (r4) return r4 }
+      // strict 模式（存量重算专用）：弱证据兜底不参与——宁可保留旧值，绝不因邻接噪声改错
+      if (strict) return ""
+      return __intelRegionByWord(b)
+    }
+
+    var __intelValidDate = function (y, mo, d) {
+      var yy = parseInt(y, 10), mm = parseInt(mo, 10), dd = parseInt(d, 10)
+      if (!(yy >= 2020 && yy <= 2100 && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31)) return ""
+      var mmS = mm < 10 ? "0" + mm : "" + mm
+      var ddS = dd < 10 ? "0" + dd : "" + dd
+      return yy + "-" + mmS + "-" + ddS
+    }
+
+    // 发布时间抽取 v2（发布时间 ≠ 正文第一个日期：政采网公告正文第一个日期是投标截止时间，
+    // 旧实现拿它当发布时间入库，导致列表按「发布时刻」排序实为按截止时间倒挂）。
+    // 优先级：URL 内嵌日期（ccgp t20260925_x.htm / /202609/ 目录）> 「发布时间：」标签
+    //   > 列表条目自带时间戳（2026.09.25 11:38:54）> 正文日期（排除递交/截止/开标上下文）> 空串由调用方兜底
+    var __intelPubAt = function (url, ownBlock, body) {
+      var u = String(url || "")
+      var mu = u.match(/t(20\d{2})(\d{2})(\d{2})_\w*\.htm/i) || u.match(/\/(20\d{2})(\d{2})(\d{2})\//)
+      if (mu) { var d0 = __intelValidDate(mu[1], mu[2], mu[3]); if (d0) return d0 }
+      var b = String(ownBlock || "")
+      var bd = String(body || "")
+      var text = bd ? bd + "\n" + b : b
+      var ml = text.match(/(?:发布时间|发布日期|公布时间|公告发布|发布日期日期)[：:]\s*(20\d{2})\s*[-\/年.]\s*(\d{1,2})\s*[-\/月.]\s*(\d{1,2})/)
+      if (ml) { var d1 = __intelValidDate(ml[1], ml[2], ml[3]); if (d1) return d1 }
+      var ms = b.match(/(20\d{2})\.(\d{1,2})\.(\d{1,2})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?/)
+      if (ms) { var d2 = __intelValidDate(ms[1], ms[2], ms[3]); if (d2) return d2 }
+      var re = /(20\d{2})\s*[-\/年.]\s*(\d{1,2})\s*[-\/月.]\s*(\d{1,2})/g
+      var m4
+      while ((m4 = re.exec(text)) !== null) {
+        var before = text.slice(Math.max(0, m4.index - 20), m4.index)
+        // after 只看同句（在句读处截断）：下一句的「递交/截止」不能株连本句的发布日期
+        var afterRaw = text.slice(m4.index, m4.index + 40)
+        var cutAt = afterRaw.search(/[。；！？，]/)
+        var after = cutAt >= 0 ? afterRaw.slice(0, cutAt) : afterRaw
+        if (/递交|截止|开标|投标|报名|响应文件|资格预审|澄清|答疑|询问|质疑/.test(before + after)) continue
+        var d3 = __intelValidDate(m4[1], m4[2], m4[3])
+        if (d3) return d3
+      }
+      return ""
+    }
+
+    // 标题历史污染清洗（存量数据）：抓取端旧实现把高亮标签剥成空格，标题里留下「医院」两侧空格。
+    // 中文排版中汉字之间的空格几乎不可能是刻意的，汉字/中文标点之间的空格安全折叠；
+    // 英文/数字之间的空格保留（"CT MRI"这类不吃掉）。
+    var __intelCleanTitleSpacing = function (t) {
+      return String(t || "").replace(/([\u4e00-\u9fa5）】」》、，。；：？！])\s+([\u4e00-\u9fa5（【「《])/g, "$1$2")
+    }
+
+    // 从一段正文文本里构造「去标题」片段（供摘要用）：允许标题在文本里被空白打断
+    // （旧实现 replace(title," ") 因高亮空格污染永远匹配不上，导致摘要里残留半截标题）。
+    var __intelTextWithoutTitle = function (text, title) {
+      var t = String(text || "")
+      var ttl = String(title || "")
+      if (!ttl) return t
+      var esc = ttl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      try {
+        var fuzzy = esc.split("").join("\\s*")
+        return t.replace(new RegExp(fuzzy), " ")
+      } catch (eReg) {
+        return t.split(ttl).join(" ")
+      }
+    }
+    // ===INTEL-SHARED-END===
+
     var norm = function (s) { return String(s == null ? "" : s).trim() }
     var h = (e.requestInfo() || {}).headers || {}
     var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
@@ -1172,33 +1534,7 @@ routerAdd("GET", "/api/intel/items", (e) => {
       var actionHit = /项目|建设|招标|中标|采购|比选|遴选|公告|公示|上线|验收|升级|改造|集成|实施|部署|标准|规范|评审|立项|解决方案|方案|平台|系统|工作站|服务|产品|中心|机构|研究|应用|实践|探索|能力|生态|大会|论坛|培训|发布|签约|合作|实验室/i.test(t)
       return /医|院|卫|健康/i.test(t) && (topicHit || actionHit)
     }
-    // 省份区域词表本地抽取（零 AI）：与 tick / fetch-now 同口径，本回调自持一份用于存量回填
-    var REGION_WORDS = [
-      { w: "黑龙江", r: "黑龙江" }, { w: "内蒙古", r: "内蒙古" }, { w: "内蒙", r: "内蒙古" },
-      { w: "北京", r: "北京" }, { w: "天津", r: "天津" }, { w: "上海", r: "上海" }, { w: "重庆", r: "重庆" },
-      { w: "河北", r: "河北" }, { w: "山西", r: "山西" }, { w: "辽宁", r: "辽宁" }, { w: "吉林", r: "吉林" },
-      { w: "江苏", r: "江苏" }, { w: "浙江", r: "浙江" }, { w: "安徽", r: "安徽" }, { w: "福建", r: "福建" },
-      { w: "江西", r: "江西" }, { w: "山东", r: "山东" }, { w: "河南", r: "河南" }, { w: "湖北", r: "湖北" },
-      { w: "湖南", r: "湖南" }, { w: "广东", r: "广东" }, { w: "海南", r: "海南" }, { w: "四川", r: "四川" },
-      { w: "贵州", r: "贵州" }, { w: "云南", r: "云南" }, { w: "陕西", r: "陕西" }, { w: "甘肃", r: "甘肃" },
-      { w: "青海", r: "青海" }, { w: "台湾", r: "台湾" }, { w: "广西", r: "广西" }, { w: "西藏", r: "西藏" },
-      { w: "宁夏", r: "宁夏" }, { w: "新疆", r: "新疆" }, { w: "香港", r: "香港" }, { w: "澳门", r: "澳门" },
-      { w: "深圳", r: "深圳" }, { w: "大连", r: "大连" }, { w: "青岛", r: "青岛" }, { w: "宁波", r: "宁波" }, { w: "厦门", r: "厦门" }
-    ]
-    var extractRegion = function (title, snippet) {
-      var text = String(title || "") + " " + String(snippet || "")
-      var best = ""
-      var bestPos = -1
-      for (var ri = 0; ri < REGION_WORDS.length; ri++) {
-        var rpos = text.indexOf(REGION_WORDS[ri].w)
-        if (rpos < 0) continue
-        if (bestPos < 0 || rpos < bestPos || (rpos === bestPos && REGION_WORDS[ri].w.length > best.length)) {
-          bestPos = rpos
-          best = REGION_WORDS[ri].r
-        }
-      }
-      return best
-    }
+    // 区域抽取走顶层 __intelRegion（共享纯函数区）
     var scrubIntel = function (raw, max) {
       var s = String(raw == null ? "" : raw)
       s = s.replace(/<script[\s\S]*?<\/script>/gi, " ")
@@ -1275,7 +1611,7 @@ routerAdd("GET", "/api/intel/items", (e) => {
     try {
       var rRows = $app.findRecordsByFilter("intel_items", "region='' && added_by='crawl'", "created", 300, 0)
       for (var rgi = 0; rgi < rRows.length; rgi++) {
-        var rgVal = extractRegion(String(rRows[rgi].get("title") || ""), String(rRows[rgi].get("content_snippet") || ""))
+        var rgVal = __intelRegion(String(rRows[rgi].get("title") || ""), String(rRows[rgi].get("content_snippet") || ""))
         if (!rgVal) continue
         rRows[rgi].set("region", rgVal)
         $app.save(rRows[rgi])
@@ -1605,12 +1941,150 @@ routerAdd("POST", "/api/intel/prefs", (e) => {
 // ---------------------------------------------------------------------------
 routerAdd("POST", "/api/intel/enrich", (e) => {
   try {
+    // ==== 共享纯函数镜像（唯一事实来源，scripts/intelShared.test.ts 强制 4 份逐字节一致） ====
+    // ===INTEL-SHARED-BEGIN===
+    // 共享纯函数区（2026-09-26 质量整改 Q1–Q4，见 docs/全局质量规范-测试与交付门槛.md）
+    // 此前 REGION_WORDS/extractRegion 等在 tick / fetch-now / items 迁移 / enrich 四处各持一份拷贝，
+    // 改一处漏三处是「多拷贝漂移」。现统一收敛到顶层一份：
+    //  - Goja 单 VM 启动时顺序加载全部 pb_hooks，顶层 var 全局可见（zx_guard.pb.js 顶层常量同款先例）；
+    //  - 以下函数全部只读入参、无可变共享态，请求间并发安全；
+    //  - 命名带 __intel 前缀，避免与其他 hook 文件的全局名冲突。
+    // ===========================================================================
+
+    // 省份区域词表（零 AI）：全称 + 多字简称（单字简称误报率高，刻意排除）
+    var __INTEL_REGION_WORDS = [
+      { w: "黑龙江", r: "黑龙江" }, { w: "内蒙古", r: "内蒙古" }, { w: "内蒙", r: "内蒙古" },
+      { w: "北京", r: "北京" }, { w: "天津", r: "天津" }, { w: "上海", r: "上海" }, { w: "重庆", r: "重庆" },
+      { w: "河北", r: "河北" }, { w: "山西", r: "山西" }, { w: "辽宁", r: "辽宁" }, { w: "吉林", r: "吉林" },
+      { w: "江苏", r: "江苏" }, { w: "浙江", r: "浙江" }, { w: "安徽", r: "安徽" }, { w: "福建", r: "福建" },
+      { w: "江西", r: "江西" }, { w: "山东", r: "山东" }, { w: "河南", r: "河南" }, { w: "湖北", r: "湖北" },
+      { w: "湖南", r: "湖南" }, { w: "广东", r: "广东" }, { w: "海南", r: "海南" }, { w: "四川", r: "四川" },
+      { w: "贵州", r: "贵州" }, { w: "云南", r: "云南" }, { w: "陕西", r: "陕西" }, { w: "甘肃", r: "甘肃" },
+      { w: "青海", r: "青海" }, { w: "台湾", r: "台湾" }, { w: "广西", r: "广西" }, { w: "西藏", r: "西藏" },
+      { w: "宁夏", r: "宁夏" }, { w: "新疆", r: "新疆" }, { w: "香港", r: "香港" }, { w: "澳门", r: "澳门" },
+      { w: "深圳", r: "深圳" }, { w: "大连", r: "大连" }, { w: "青岛", r: "青岛" }, { w: "宁波", r: "宁波" }, { w: "厦门", r: "厦门" }
+    ]
+    var __intelRegionByWord = function (s) {
+      var t = String(s || "")
+      for (var i = 0; i < __INTEL_REGION_WORDS.length; i++) {
+        if (t.indexOf(__INTEL_REGION_WORDS[i].w) >= 0) return __INTEL_REGION_WORDS[i].r
+      }
+      return ""
+    }
+
+    // 标题剥标签：内联高亮标签（政采网搜索结果会给关键词套 <font>）必须替换为空串。
+    // 旧实现替换为空格，导致「青浦区中心 医院」这类关键词两侧插空格的标题污染并入库。
+    var __intelTitleFromHtml = function (rawHtml) {
+      return unescInt(String(rawHtml || "").replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim()
+    }
+    // 实体解码（与各回调内 unesc 同口径；独立一份供顶层函数使用）
+    var unescInt = function (s) {
+      return String(s).replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&ldquo;|&rdquo;/g, "").replace(/\s+/g, " ").trim()
+    }
+
+    // 区域抽取 v2（分层证据优先级，取代旧「标题+邻接窗口里第一个省份词」）：
+    //  1) 采购人归属：条目块「采购人：××」值中的省份词（最强证据：采购人属地即项目属地）
+    //  2) 递交地：「在××省政府采购网 / 在××市政府采购网」中的省份词
+    //  3) 标题本体中的省份词（次强：标题主体是项目名；注意代理机构名也可能出现在标题里，
+    //     所以排序在 1)/2) 之后）
+    //  4) 条目自身块的面包屑「…公告 | 省份 | …」
+    //  5) 兜底：条目自身块内第一个省份词（调用方必须保证传入的是「条目自身块」而非 ±800 邻接窗口，
+    //     否则邻接条目的代理机构名会重演「青浦区→青海」错标）
+    var __intelRegion = function (title, ownBlock, strict) {
+      var t = String(title || "")
+      var b = String(ownBlock || "")
+      var mp = b.match(/采购人[：:]\s*([^，,。;；|\n]{2,30})/)
+      if (mp) { var r1 = __intelRegionByWord(mp[1]); if (r1) return r1 }
+      var mg = b.match(/在([^，,。;；|\n]{2,14}?(?:省|自治区)政府采购网)|在([^，,。;；|\n]{1,8}?市)政府采购网/)
+      if (mg) { var r2 = __intelRegionByWord(mg[1] || mg[2] || ""); if (r2) return r2 }
+      var r3 = __intelRegionByWord(t)
+      if (r3) return r3
+      // 4.5) 代理机构属地（条目自身块内为强证据）：块里可能有多个「代理机构：」（开头的是邻接噪声），
+      // ccgp 列表行元数据「时间戳 | 采购人 | 代理机构」总在末尾 → 从最后一个往前找省份词
+      var maAll = b.match(/代理机构[：:]\s*([^，,。;；|\n]{2,30})/g)
+      if (maAll) {
+        for (var ai = maAll.length - 1; ai >= 0; ai--) {
+          var r45 = __intelRegionByWord(maAll[ai].replace(/^代理机构[：:]\s*/, ""))
+          if (r45) return r45
+        }
+      }
+      var mb = b.match(/[|｜]\s*([^|｜，,。;；\s]{2,8})\s*[|｜]/)
+      if (mb) { var r4 = __intelRegionByWord(mb[1]); if (r4) return r4 }
+      // strict 模式（存量重算专用）：弱证据兜底不参与——宁可保留旧值，绝不因邻接噪声改错
+      if (strict) return ""
+      return __intelRegionByWord(b)
+    }
+
+    var __intelValidDate = function (y, mo, d) {
+      var yy = parseInt(y, 10), mm = parseInt(mo, 10), dd = parseInt(d, 10)
+      if (!(yy >= 2020 && yy <= 2100 && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31)) return ""
+      var mmS = mm < 10 ? "0" + mm : "" + mm
+      var ddS = dd < 10 ? "0" + dd : "" + dd
+      return yy + "-" + mmS + "-" + ddS
+    }
+
+    // 发布时间抽取 v2（发布时间 ≠ 正文第一个日期：政采网公告正文第一个日期是投标截止时间，
+    // 旧实现拿它当发布时间入库，导致列表按「发布时刻」排序实为按截止时间倒挂）。
+    // 优先级：URL 内嵌日期（ccgp t20260925_x.htm / /202609/ 目录）> 「发布时间：」标签
+    //   > 列表条目自带时间戳（2026.09.25 11:38:54）> 正文日期（排除递交/截止/开标上下文）> 空串由调用方兜底
+    var __intelPubAt = function (url, ownBlock, body) {
+      var u = String(url || "")
+      var mu = u.match(/t(20\d{2})(\d{2})(\d{2})_\w*\.htm/i) || u.match(/\/(20\d{2})(\d{2})(\d{2})\//)
+      if (mu) { var d0 = __intelValidDate(mu[1], mu[2], mu[3]); if (d0) return d0 }
+      var b = String(ownBlock || "")
+      var bd = String(body || "")
+      var text = bd ? bd + "\n" + b : b
+      var ml = text.match(/(?:发布时间|发布日期|公布时间|公告发布|发布日期日期)[：:]\s*(20\d{2})\s*[-\/年.]\s*(\d{1,2})\s*[-\/月.]\s*(\d{1,2})/)
+      if (ml) { var d1 = __intelValidDate(ml[1], ml[2], ml[3]); if (d1) return d1 }
+      var ms = b.match(/(20\d{2})\.(\d{1,2})\.(\d{1,2})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?/)
+      if (ms) { var d2 = __intelValidDate(ms[1], ms[2], ms[3]); if (d2) return d2 }
+      var re = /(20\d{2})\s*[-\/年.]\s*(\d{1,2})\s*[-\/月.]\s*(\d{1,2})/g
+      var m4
+      while ((m4 = re.exec(text)) !== null) {
+        var before = text.slice(Math.max(0, m4.index - 20), m4.index)
+        // after 只看同句（在句读处截断）：下一句的「递交/截止」不能株连本句的发布日期
+        var afterRaw = text.slice(m4.index, m4.index + 40)
+        var cutAt = afterRaw.search(/[。；！？，]/)
+        var after = cutAt >= 0 ? afterRaw.slice(0, cutAt) : afterRaw
+        if (/递交|截止|开标|投标|报名|响应文件|资格预审|澄清|答疑|询问|质疑/.test(before + after)) continue
+        var d3 = __intelValidDate(m4[1], m4[2], m4[3])
+        if (d3) return d3
+      }
+      return ""
+    }
+
+    // 标题历史污染清洗（存量数据）：抓取端旧实现把高亮标签剥成空格，标题里留下「医院」两侧空格。
+    // 中文排版中汉字之间的空格几乎不可能是刻意的，汉字/中文标点之间的空格安全折叠；
+    // 英文/数字之间的空格保留（"CT MRI"这类不吃掉）。
+    var __intelCleanTitleSpacing = function (t) {
+      return String(t || "").replace(/([\u4e00-\u9fa5）】」》、，。；：？！])\s+([\u4e00-\u9fa5（【「《])/g, "$1$2")
+    }
+
+    // 从一段正文文本里构造「去标题」片段（供摘要用）：允许标题在文本里被空白打断
+    // （旧实现 replace(title," ") 因高亮空格污染永远匹配不上，导致摘要里残留半截标题）。
+    var __intelTextWithoutTitle = function (text, title) {
+      var t = String(text || "")
+      var ttl = String(title || "")
+      if (!ttl) return t
+      var esc = ttl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      try {
+        var fuzzy = esc.split("").join("\\s*")
+        return t.replace(new RegExp(fuzzy), " ")
+      } catch (eReg) {
+        return t.split(ttl).join(" ")
+      }
+    }
+    // ===INTEL-SHARED-END===
+
     var norm = function (s) { return String(s == null ? "" : s).trim() }
     var h = (e.requestInfo() || {}).headers || {}
     var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
     if (!userId) return e.json(401, { ok: false, code: "LOGIN_REQUIRED", message: "请先登录后再回填存量情报" })
     var body = e.requestInfo().body || {}
     var dryRun = body.dry_run === true
+    // region_mode：fill（默认，旧约定：region 只补空不覆盖）| recompute_crawl（2026-09-26 Q1/Q2 存量整改：
+    // 对 added_by='crawl' 的条目用共享区新算法重算区域与发布时间、修复标题高亮空格污染；manual 条目永不触碰）
+    var regionMode = body.region_mode === "recompute_crawl" ? "recompute_crawl" : "fill"
     var __jinaCache = {}
     var __UA = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36", "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "zh-CN,zh;q=0.9" }
     var decodeEnt = function (s) {
@@ -1692,32 +2166,6 @@ routerAdd("POST", "/api/intel/enrich", (e) => {
       }
       if (!buf) buf = t.slice(0, 140)
       return buf.slice(0, 300)
-    }
-    var REGION_WORDS = [
-      { w: "黑龙江", r: "黑龙江" }, { w: "内蒙古", r: "内蒙古" }, { w: "内蒙", r: "内蒙古" },
-      { w: "北京", r: "北京" }, { w: "天津", r: "天津" }, { w: "上海", r: "上海" }, { w: "重庆", r: "重庆" },
-      { w: "河北", r: "河北" }, { w: "山西", r: "山西" }, { w: "辽宁", r: "辽宁" }, { w: "吉林", r: "吉林" },
-      { w: "江苏", r: "江苏" }, { w: "浙江", r: "浙江" }, { w: "安徽", r: "安徽" }, { w: "福建", r: "福建" },
-      { w: "江西", r: "江西" }, { w: "山东", r: "山东" }, { w: "河南", r: "河南" }, { w: "湖北", r: "湖北" },
-      { w: "湖南", r: "湖南" }, { w: "广东", r: "广东" }, { w: "海南", r: "海南" }, { w: "四川", r: "四川" },
-      { w: "贵州", r: "贵州" }, { w: "云南", r: "云南" }, { w: "陕西", r: "陕西" }, { w: "甘肃", r: "甘肃" },
-      { w: "青海", r: "青海" }, { w: "台湾", r: "台湾" }, { w: "广西", r: "广西" }, { w: "西藏", r: "西藏" },
-      { w: "宁夏", r: "宁夏" }, { w: "新疆", r: "新疆" }, { w: "香港", r: "香港" }, { w: "澳门", r: "澳门" },
-      { w: "深圳", r: "深圳" }, { w: "大连", r: "大连" }, { w: "青岛", r: "青岛" }, { w: "宁波", r: "宁波" }, { w: "厦门", r: "厦门" }
-    ]
-    var extractRegion = function (title, snippet) {
-      var text = String(title || "") + " " + String(snippet || "")
-      var best = ""
-      var bestPos = -1
-      for (var ri = 0; ri < REGION_WORDS.length; ri++) {
-        var rpos = text.indexOf(REGION_WORDS[ri].w)
-        if (rpos < 0) continue
-        if (bestPos < 0 || rpos < bestPos || (rpos === bestPos && REGION_WORDS[ri].w.length > best.length)) {
-          bestPos = rpos
-          best = REGION_WORDS[ri].r
-        }
-      }
-      return best
     }
     // 纯文本 snippet 去噪：按行剔除导航/页脚/残留 HTML/裸链接行（存量老数据是整块 HTML 拍平的）
     var noiseLineRe = /版权所有|All Rights|ICP ?备|备案号|友情链接|隐私政策|使用条款|网站地图|查看更多|查看详情|点击更|解决方案\/"|首页\s|导航|扫码|二维码|关注|分享|打印|上一篇|下一篇|广告|免责声明|联系我们|登录|注册/i
@@ -1825,7 +2273,29 @@ routerAdd("POST", "/api/intel/enrich", (e) => {
       var tagsNew = tagsOld
       var tg = extractTags((title + " " + (hasBody ? artBody : snipNew)).slice(0, 3000))
       if (tg.length) tagsNew = tg
-      var regNew = regOld || extractRegion(title, hasBody ? artBody : snipNew)
+      // isCrawl / recompute 模式：存量错标整改只动机器写入（added_by='crawl'），manual 条目永不触碰
+      var isCrawl = String(rec.get("added_by") || "") === "crawl"
+      var doRecompute = regionMode === "recompute_crawl" && isCrawl
+      var titleCur = title
+      if (doRecompute) {
+        // 标题高亮空格污染修复（Q3）：汉字/中文标点间的空格安全折叠，英文/数字间空格保留
+        var titleFix = __intelCleanTitleSpacing(title)
+        if (titleFix && titleFix !== title) { rec.set("title", titleFix); ch.push("title"); titleCur = titleFix }
+      }
+      var regNew = regOld
+      if (doRecompute) {
+        // 区域重算（Q1）：分层证据优先级；新算法拿不出值时保留旧值，绝不倒退为空
+        var regCalc = __intelRegion(titleCur, snipNew, true) // strict：存量只认强证据，弱证据兜底不改旧值
+        if (regCalc) regNew = regCalc
+      } else if (!regNew) {
+        regNew = __intelRegion(title, hasBody ? artBody : snipNew)
+      }
+      // 发布时间重算（Q2）：URL 内嵌日期 > 发布时间标签 > 条目时间戳 > 正文日期（排除截止上下文）
+      var pubOld2 = String(rec.get("published_at") || "")
+      if (doRecompute) {
+        var pubCalc = __intelPubAt(url, snipNew, hasBody ? artBody : "")
+        if (pubCalc && pubCalc !== pubOld2) { rec.set("published_at", pubCalc); ch.push("published_at") }
+      }
       if (snipNew && snipNew !== snipOld) { rec.set("content_snippet", snipNew); ch.push("snippet") }
       if (sumNew !== sumOld) { rec.set("summary", sumNew); ch.push("summary") }
       if (tagsNew.join("|") !== tagsOld.join("|")) { rec.set("tags", tagsNew); ch.push("tags") }
@@ -1977,5 +2447,44 @@ routerAdd("POST", "/api/intel/extract-bid", (e) => {
   } catch (ex) {
     $app.logger().error("intel extract-bid failed", "err", String(ex))
     return e.json(500, { error: "intel_error", message: "结构化抽取失败，请稍后重试", fingerprint: "intel-extract-" + Math.floor(Math.random() * 1000000000).toString(36) })
+  }
+})
+
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// GET /api/intel/source-stats — 源贡献度统计（2026-09-28 数据质量增量）
+// 每启用源返回：近 7 天新增条数 / last_status / last_error 摘要，
+// 供源管理面板识别「贡献源 vs 僵尸源」（抓取成功但 7 天 0 新增 = 内容不匹配需调关键词）。
+routerAdd("GET", "/api/intel/source-stats", function (e) {
+  try {
+    var __h = (e.requestInfo() || {}).headers || {}
+    var uid = String(__h["x_rh_user_id"] || __h["X-Rh-User-Id"] || __h["x-rh-user-id"] || "").trim().slice(0, 64)
+    if (!uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
+    var sources = $app.findRecordsByFilter("intel_sources", "enabled=true", "source_name", 200, 0)
+    var weekAgo = new Date(Date.now() - 7 * 86400000).toISOString()
+    var stats = []
+    for (var i = 0; i < sources.length; i++) {
+      var src = sources[i]
+      var week = 0
+      try {
+        var rows = $app.findRecordsByFilter("intel_items", "source_id={:sid} && created >= {:since}", "-created", 500, 0, { sid: src.id, since: weekAgo })
+        week = rows.length
+      } catch (eCnt) { week = -1 }
+      stats.push({
+        source_id: src.id,
+        source_name: String(src.get("source_name") || ""),
+        last_status: String(src.get("last_status") || ""),
+        last_error: String(src.get("last_error") || "").slice(0, 80),
+        week_added: week,
+        total_fetched: Number(src.get("fetched_count") || 0),
+      })
+    }
+    var zombies = stats.filter(function (s2) { return s2.last_status === "ok" && s2.week_added === 0 })
+    return e.json(200, { ok: true, stats: stats, zombie_count: zombies.length, zombies: zombies.map(function (s3) { return s3.source_name }) })
+  } catch (err) {
+    var msg = String(err && err.message || err)
+    try { $app.logger().error("intel source-stats: " + msg) } catch (_) {}
+    return e.json(500, { error: "stats_failed", message: msg, fingerprint: msg.substring(0, 80) })
   }
 })

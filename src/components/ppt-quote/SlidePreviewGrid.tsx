@@ -81,7 +81,7 @@ export function SlidePreviewGrid({ slides, deckName, onEdit }: SlidePreviewGridP
             {slide.image ? (
               <span className="block px-4 pt-3">
                 <span className="relative flex h-20 items-center justify-center overflow-hidden rounded-md border border-border bg-muted">
-                  <img src={slide.image} alt={slide.imageAlt || "配图"} className="h-full w-full object-cover" />
+                  <img src={slide.image} alt={slide.imageAlt || "配图"} loading="lazy" className="h-full w-full object-cover" />
                   <ImageIcon className="absolute bottom-1 right-1 h-3 w-3 rounded bg-background/70 p-0.5 text-primary" />
                 </span>
               </span>

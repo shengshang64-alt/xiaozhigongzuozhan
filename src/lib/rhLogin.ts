@@ -108,17 +108,27 @@ export function isSandboxHost(): boolean {
 //   fetchRhAccountInfo() 非空 → 壳层进入已登录渲染分支, 登录横幅自动消失
 //   rh_user_id 有值           → 后端 required 校验通过, 83 处字段无需改动
 //
-// 作用域被严格限制在本地域, 线上 (vibex.cn / runninghub.cn) 行为完全不变。
+// 作用域: 本地域 (localhost / 127.0.0.1 / ::1) + 内网私有 IP (T13-LAN, 10/172.16-31/192.168)。
+// 线上 (vibex.cn / runninghub.cn) 行为完全不变。
 // ---------------------------------------------------------------------------
 const LOCAL_DEPLOY_HOSTS = ["localhost", "127.0.0.1", "::1"]
 const LOCAL_DEPLOY_USER_ID = "local-user"
 const LOCAL_DEPLOY_DISPLAY_NAME = "本地用户"
 
-/** 当前是否运行在本地自用域（localhost / 127.0.0.1 / ::1）。 */
+/** 当前是否运行在本地自用域（localhost / 127.0.0.1 / ::1，以及 T13-LAN 起的内网私有 IP）。 */
 export function isLocalDeployHost(): boolean {
   if (typeof window === "undefined") return false
   const host = window.location.hostname.toLowerCase().replace(/^\[|\]$/g, "")
-  return LOCAL_DEPLOY_HOSTS.includes(host)
+  if (LOCAL_DEPLOY_HOSTS.includes(host)) return true
+  // T13-LAN（2026-09-29 用户需求：内网其他电脑经本机 IP 访问）：私有段 IPv4 与 localhost
+  // 同享固定本地身份（decodeRhToken/fetchRhAccountInfo/vibexAuthHeaders 全部走本开关）——
+  // 否则别的电脑打开页面会永久停在"未登录"态、模型网关 401。公网 IP 不在私有段内，线上行为不变。
+  const parts = host.split(".").map(Number)
+  if (parts.length === 4 && parts.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) {
+    const [a, b] = parts
+    return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)
+  }
+  return false
 }
 
 /** 本地自用域上使用的固定账号信息。 */

@@ -39,7 +39,9 @@ function FolderRow({
   openRenameFolder: (path: string) => void
   askDelete: (path: string) => void
 }) {
-  const [expanded, setExpanded] = useState(true)
+  // T9 性能：默认仅顶层目录展开（depth===0），深层子目录懒展开——
+  // 数千篇笔记的旧笔记库全展开时整棵树会渲染上千节点，拖慢首屏与交互
+  const [expanded, setExpanded] = useState(depth === 0)
   const active = activeFolderPath === node.path
   const hasChildren = node.children.length > 0
   return (
@@ -68,7 +70,7 @@ function FolderRow({
           <ChevronRight className="h-3.5 w-3.5" />
         </button>
         {active ? <FolderOpen className="h-4 w-4 shrink-0 text-primary" /> : <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />}
-        <span className="min-w-0 flex-1 truncate">{node.label}</span>
+        <span className="min-w-0 flex-1 truncate" title={node.path || node.label}>{node.label}</span>
         <span className="shrink-0 rounded-full bg-muted px-1.5 text-xs text-muted-foreground group-hover:bg-background">{node.count}</span>
         <span className="flex shrink-0 items-center opacity-60 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
           <button type="button" aria-label="新建子文件夹" onClick={(e) => { e.stopPropagation(); openCreateFolder(node.path) }} className="rounded p-0.5 text-muted-foreground hover:text-primary">

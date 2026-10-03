@@ -1,5 +1,6 @@
-import { useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import type { FigureSpec } from "@/pages/SolutionStudio/solutionTypes"
+import { renderMermaidToSvg } from "@/pages/BidWorkspace/mermaidFigure"
 
 // ---------------------------------------------------------------------------
 // 章节配图：把 LLM 输出的结构化 figures 数据绘制为内联 SVG
@@ -145,8 +146,16 @@ function demoSvg(spec: Extract<FigureSpec, { type: "demo" }>, p: FigurePalette):
   return { body, height }
 }
 
-/** 生成配图 SVG 标记（内联渲染与导出 PNG 共用同一份绘制逻辑） */
+/** 生成配图 SVG 标记（内联渲染与导出 PNG 共用同一份绘制逻辑）；mermaid 型不走此处（异步渲染，见 MermaidFigureBody） */
 export function buildFigureSvg(spec: FigureSpec, p: FigurePalette): string {
+  if (spec.type === "mermaid") {
+    // 同步路径兜底：mermaid 型没有静态 SVG（导出走 figureToPng 的异步分支；内联渲染见 MermaidFigureBody）
+    return ""
+  }
+  if (spec.type === "image") {
+    // 同步路径兜底：image 型是位图非 SVG（内联见 ImageFigureBody，导出走 figureToPng 的 image 分支）
+    return ""
+  }
   const drawn =
     spec.type === "architecture" ? architectureSvg(spec, p) : spec.type === "flow" ? flowSvg(spec, p) : demoSvg(spec, p)
   const typeLabel = spec.type === "architecture" ? "架构图" : spec.type === "flow" ? "流程图" : "界面示意"
@@ -160,18 +169,78 @@ export function buildFigureSvg(spec: FigureSpec, p: FigurePalette): string {
   ].join("")
 }
 
-/** 章节内配图卡片：标题 + 内联 SVG */
+/** T17：AI 位图内联渲染体（<img> 加载，失败显示占位提示） */
+function ImageFigureBody({ url, title }: { url: string; title: string }) {
+  const [failed, setFailed] = useState(false)
+  if (failed) {
+    return (
+      <div className="flex h-32 items-center justify-center bg-background text-xs text-muted-foreground">
+        AI 配图加载失败（「{title}」），可在章节内重试生成
+      </div>
+    )
+  }
+  return (
+    <div className="bg-background p-2">
+      <img
+        src={url}
+        alt={title}
+        loading="lazy"
+        className="mx-auto max-w-full rounded-md"
+        onError={() => setFailed(true)}
+      />
+    </div>
+  )
+}
+
+/** T16：mermaid 型内联渲染体（异步 mermaid.render → SVG；渲染失败显示占位提示，不抛错） */
+function MermaidFigureBody({ code, title }: { code: string; title: string }) {
+  const [svg, setSvg] = useState("")
+  useEffect(() => {
+    let alive = true
+    setSvg("")
+    renderMermaidToSvg(code).then((markup) => {
+      if (alive) setSvg(markup)
+    })
+    return () => {
+      alive = false
+    }
+  }, [code])
+  if (!svg) {
+    return (
+      <div className="flex h-32 items-center justify-center bg-background text-xs text-muted-foreground">
+        关系图渲染中…（「{title}」）
+      </div>
+    )
+  }
+  return <div className="overflow-x-auto bg-background p-2" dangerouslySetInnerHTML={{ __html: svg }} />
+}
+
+/** 章节内配图卡片：标题 + 内联 SVG / mermaid / AI 位图 */
 export function BidFigure({ spec }: { spec: FigureSpec }) {
-  const markup = useMemo(() => buildFigureSvg(spec, tokenPalette()), [spec])
+  const markup = useMemo(() => (spec.type === "mermaid" || spec.type === "image" ? "" : buildFigureSvg(spec, tokenPalette())), [spec])
+  const typeLabel =
+    spec.type === "architecture"
+      ? "架构图"
+      : spec.type === "flow"
+        ? "流程图"
+        : spec.type === "mermaid"
+          ? "关系图"
+          : spec.type === "image"
+            ? "AI 配图"
+            : "界面示意"
   return (
     <figure className="overflow-hidden rounded-lg border border-border bg-card shadow-md">
       <figcaption className="flex min-h-10 items-center justify-between gap-2 border-b border-border px-3 py-2">
         <span className="truncate text-xs font-semibold text-foreground">{spec.title}</span>
-        <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-          {spec.type === "architecture" ? "架构图" : spec.type === "flow" ? "流程图" : "界面示意"}
-        </span>
+        <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{typeLabel}</span>
       </figcaption>
-      <div className="bg-background p-2" dangerouslySetInnerHTML={{ __html: markup }} />
+      {spec.type === "mermaid" ? (
+        <MermaidFigureBody code={spec.code} title={spec.title} />
+      ) : spec.type === "image" ? (
+        <ImageFigureBody url={spec.url} title={spec.title} />
+      ) : (
+        <div className="bg-background p-2" dangerouslySetInnerHTML={{ __html: markup }} />
+      )}
     </figure>
   )
 }

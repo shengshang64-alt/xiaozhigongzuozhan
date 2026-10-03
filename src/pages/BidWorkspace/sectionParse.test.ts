@@ -20,11 +20,12 @@ import type { OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
 describe("buildSectionParseMessages（逐项独立提示词）", () => {
   const text = "XX医院信息化建设项目招标文件全文……"
 
-  it("返回 system + user 消息，且 JSON 契约只含当前项 key", () => {
+  it("返回 system + user 消息，纯文本直出契约（T12 去 JSON）", () => {
     const msgs = buildSectionParseMessages("overview", text)
     expect(msgs[0].role).toBe("system")
     expect(msgs.some((m) => m.role === "user" && typeof m.content === "string" && m.content.includes(text))).toBe(true)
-    expect(msgs[0].content).toContain(`只含一个键 "overview"`)
+    expect(msgs[0].content).toContain("禁止包裹 JSON")
+    expect(msgs[0].content).not.toContain("输出严格 JSON")
   })
 
   it("overview：七维度 + 尽量用原文 + 不提取商务（参考口径）", () => {
@@ -220,10 +221,11 @@ describe("buildSectionParseMessages 追加口径（2026-09-23）", () => {
     expect(sys).toContain("忽略技术评分项")
   })
 
-  it("scoringExcerptMode：用户消息标明摘录来源并禁止摘录外补写", () => {
-    const msgs = buildSectionParseMessages("tech_score", text, { scoringExcerptMode: true })
-    expect(String(msgs[1].content)).toContain("评分办法相关章节摘录")
+  it("sourceMode=retrieval：用户消息标明检索选块来源并禁止素材外补写（T12）", () => {
+    const msgs = buildSectionParseMessages("tech_score", text, { sourceMode: "retrieval" })
+    expect(String(msgs[1].content)).toContain("检索选块")
     expect(String(msgs[2].content)).toContain("禁止凭常识或经验补写")
+    expect(String(msgs[0].content)).toContain("禁止包裹 JSON")
   })
 
   it("generic 项带职责互斥条款（修关键信息重复提取）", () => {
@@ -311,5 +313,32 @@ describe("extractStarClauses（★条款扫描：标记行 + 后续正文行）"
     expect(clauses[0]).toContain("实质性条款")
     expect(clauses[0]).not.toContain("评标细则")
     expect(clauses[0]).not.toContain("第四章")
+  })
+
+  // R143：真实三明招标复现——目录条目 + 标注含义句被当成重点条款（噪声占比≈60%）
+  it("目录行不建条：编号前缀＋行尾页码的 TOC 条目连同其目录子行一并排除", () => {
+    const tender = [
+      "目 录",
+      "1.▲门急诊挂号系统 123",
+      "（1）注册登记、叫号功能 123",
+      "2.▲住院医生工作站 125",
+      "附件三：带/▲条款汇总表 814",
+    ].join("\n")
+    const clauses = extractStarClauses(tender)
+    expect(clauses).toEqual([])
+  })
+
+  it("标注含义解释句不建条，但带编号前缀的真实参数条款仍须抽出（不误删）", () => {
+    const tender = [
+      "▲条款为实质性要求，任何一项负偏离其投标按无效投标处理。",
+      "★条款的含义：标注★的参数须逐条响应。",
+      "3.▲系统架构须采用微服务架构，支持水平扩展",
+      "▲门急诊挂号系统须支持日均门诊15000人次",
+    ].join("\n")
+    const clauses = extractStarClauses(tender)
+    expect(clauses.length).toBe(2)
+    expect(clauses[0]).toContain("微服务架构")
+    expect(clauses[1]).toContain("日均门诊15000")
+    expect(clauses.join("|")).not.toContain("按无效投标处理")
   })
 })

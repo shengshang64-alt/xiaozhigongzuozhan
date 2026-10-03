@@ -11,6 +11,7 @@ import {
 } from "@/pages/PptQuote/pptQuoteTypes"
 import { targetsLabel } from "@/pages/SolutionStudio/checklistTypes"
 import { fmtAmount } from "@/pages/CustomerManagement/customerTypes"
+import type { Recommendation } from "@/pages/PptQuote/quoteRecommend"
 import { ProductLibraryPanel } from "./ProductLibraryPanel"
 
 type QuoteEditorProps = {
@@ -57,6 +58,8 @@ type QuoteEditorProps = {
   // quote-history-01（最小切片）：同一客户（同商机）历史报价参考与一键导入明细
   historyQuotes?: QuoteRecord[]
   onImportHistory?: (source: QuoteRecord) => void
+  /** quote-history-01 二期：成交参考区间智能推荐 */
+  recommendation?: Recommendation | null
 }
 
 const cellInput =
@@ -164,6 +167,7 @@ export function QuoteEditor({
   addManualItem,
   historyQuotes,
   onImportHistory,
+  recommendation,
 }: QuoteEditorProps) {
   // 价格待录入：所有分组中 price<=0 的行数（用于"后录"提示）
   const pendingPriceCount = quote.groups.reduce(
@@ -174,6 +178,8 @@ export function QuoteEditor({
   // quote-history-01：历史报价参考面板默认展开（有历史记录才渲染）
   const [historyOpen, setHistoryOpen] = useState(true)
   const histQuotes = historyQuotes ?? []
+  // quote-history-01 二期：成交参考区间面板默认展开
+  const [recOpen, setRecOpen] = useState(true)
 
   return (
     <section className="py-6 pb-16">
@@ -280,6 +286,7 @@ export function QuoteEditor({
         <div className="mt-4 rounded-lg border border-border bg-muted/40 px-4 py-3">
           <button
             type="button"
+            aria-expanded={historyOpen}
             onClick={() => setHistoryOpen((v) => !v)}
             className="flex w-full items-center gap-2 text-sm font-medium text-foreground"
           >
@@ -314,6 +321,80 @@ export function QuoteEditor({
                 </li>
               ))}
             </ul>
+          ) : null}
+        </div>
+      ) : null}
+
+      {recommendation && recommendation.available ? (
+        <div className="mt-4 rounded-lg border border-border bg-muted/40 px-4 py-3">
+          <button
+            type="button"
+            onClick={() => setRecOpen((v) => !v)}
+            className="flex w-full items-center gap-2 text-sm font-medium text-foreground"
+          >
+            <Sparkles className="h-4 w-4 shrink-0 text-primary" />
+            成交参考区间
+            {recommendation.total_range ? (
+              <span className="min-w-0 truncate text-xs font-normal text-muted-foreground">
+                相似成交总价 ¥{formatMoney(recommendation.total_range.low)} ~ ¥{formatMoney(recommendation.total_range.high)}（中位 ¥{formatMoney(recommendation.total_range.median)}）
+              </span>
+            ) : null}
+            <span className="ml-auto shrink-0 rounded-full bg-card px-2 py-0.5 text-[10px] text-muted-foreground">
+              {recommendation.matches.length} 相似 / {recommendation.total_range?.count ?? 0} 样本
+            </span>
+            <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${recOpen ? "" : "-rotate-90"}`} />
+          </button>
+          {recOpen ? (
+            <div className="mt-2.5 space-y-2.5">
+              {recommendation.note ? <p className="text-xs leading-relaxed text-muted-foreground">{recommendation.note}</p> : null}
+              {recommendation.total_range ? (
+                (() => {
+                  const t = totals.total
+                  const { low, high } = recommendation.total_range!
+                  const pos = t <= 0 ? null : t < low ? "below" : t > high ? "above" : "within"
+                  return (
+                    <p className={`text-xs font-medium ${pos === "above" ? "text-warning" : pos === "below" ? "text-primary" : "text-foreground"}`}>
+                      当前合计 ¥{formatMoney(t)}
+                      {pos === "above"
+                        ? " 高于参考区间上限，注意超预算/价格竞争失分风险"
+                        : pos === "below"
+                          ? " 低于参考区间下限，可复核是否漏项或单价偏低"
+                          : pos === "within"
+                            ? " 落在历史成交参考区间内"
+                            : ""}
+                    </p>
+                  )
+                })()
+              ) : null}
+              {recommendation.matches.length ? (
+                <ul className="space-y-1.5">
+                  {recommendation.matches.map((m) => (
+                    <li key={m.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border bg-card px-3 py-1.5 text-xs">
+                      <span className="min-w-0 max-w-[40%] truncate font-medium text-foreground" title={m.name}>{m.name}</span>
+                      <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                        {m.level === "same" ? "同等级" : m.level === "near" ? "同级" : "跨级"}
+                      </span>
+                      {m.module_overlap > 0 ? <span className="shrink-0 text-[10px] text-muted-foreground">模块重合 {Math.round(m.module_overlap * 100)}%</span> : null}
+                      {m.beds_ratio > 0 ? <span className="shrink-0 text-[10px] text-muted-foreground">床位相近 {Math.round(m.beds_ratio * 100)}%</span> : null}
+                      <span className="ml-auto shrink-0 text-muted-foreground">成交 ¥{formatMoney(m.total)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {recommendation.module_ranges.length ? (
+                <div>
+                  <p className="mb-1 text-xs font-medium text-muted-foreground">逐模块单价参考（历史成交）</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {recommendation.module_ranges.map((r) => (
+                      <span key={r.name} className="rounded-md border border-border bg-card px-2 py-1 text-[10px] text-foreground">
+                        <span className="font-medium">{r.name}</span>
+                        <span className="ml-1 text-muted-foreground">¥{formatMoney(r.low)}~{formatMoney(r.high)} 中¥{formatMoney(r.median)}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
           ) : null}
         </div>
       ) : null}

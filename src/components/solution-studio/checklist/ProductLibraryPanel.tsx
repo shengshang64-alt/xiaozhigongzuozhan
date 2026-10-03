@@ -27,11 +27,6 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import {
-  downloadProductTemplate,
-  exportProducts,
-  parseProductFile,
-} from "@/pages/SolutionStudio/checklistExports"
-import {
   PRODUCT_STATUS_OPTIONS,
   RATING_GROUPS,
   type CheckProduct,
@@ -39,6 +34,7 @@ import {
   type RatingGroupKey,
 } from "@/pages/SolutionStudio/checklistTypes"
 import type { UseChecklist } from "@/pages/SolutionStudio/checklistLogic"
+import { formatMoney } from "@/lib/money"
 
 // ---------------------------------------------------------------------------
 // 产品库：我公司产品（可增删改 + Excel 导入导出 + 技术参数库）/ 行业标准系统库（只读 + 纳入）
@@ -133,7 +129,7 @@ function ProductTable({
                   {p.module_func ? ` · ${p.module_func}` : ""}
                 </td>
                 <td className="px-3 py-2 text-muted-foreground">{p.charge_mode || "—"}</td>
-                <td className="px-3 py-2 text-foreground">{Number(p.unit_price) ? Number(p.unit_price).toLocaleString("zh-CN") : "—"}</td>
+                <td className="px-3 py-2 text-foreground">{Number(p.unit_price) ? formatMoney(Number(p.unit_price)) : "—"}</td>
                 <td className="px-3 py-2">
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs ${
@@ -310,6 +306,7 @@ export function ProductLibraryPanel({ ck }: { ck: UseChecklist }) {
 
   const handleImportFile = async (file: File) => {
     try {
+      const { parseProductFile } = await import("@/pages/SolutionStudio/checklistExports")
       const rows = await parseProductFile(file)
       await ck.importProductRows(rows)
     } catch {
@@ -368,7 +365,9 @@ export function ProductLibraryPanel({ ck }: { ck: UseChecklist }) {
                   多选导出参数
                 </Button>
               )}
-              <Button size="sm" variant="outline" onClick={() => downloadProductTemplate()} className="border-border text-muted-foreground hover:text-foreground">
+              <Button size="sm" variant="outline" onClick={() => {
+              void import("@/pages/SolutionStudio/checklistExports").then((m) => m.downloadProductTemplate())
+            }} className="border-border text-muted-foreground hover:text-foreground">
                 <Download className="mr-1 h-3.5 w-3.5" />
                 下载模板
               </Button>
@@ -376,7 +375,9 @@ export function ProductLibraryPanel({ ck }: { ck: UseChecklist }) {
                 <FileUp className="mr-1 h-3.5 w-3.5" />
                 {ck.importBusy ? "导入中…" : "Excel 导入"}
               </Button>
-              <Button size="sm" variant="outline" onClick={() => exportProducts(ck.companyProducts)} className="border-border text-muted-foreground hover:text-foreground">
+              <Button size="sm" variant="outline" onClick={() => {
+              void import("@/pages/SolutionStudio/checklistExports").then(({ exportProducts }) => exportProducts(ck.companyProducts))
+            }} className="border-border text-muted-foreground hover:text-foreground">
                 <Download className="mr-1 h-3.5 w-3.5" />
                 导出
               </Button>
@@ -487,6 +488,7 @@ export function ProductLibraryPanel({ ck }: { ck: UseChecklist }) {
                 <label className="mb-1 block text-xs font-medium text-foreground">单价（元）</label>
                 <Input
                   type="number"
+                  min={0}
                   value={draft.unit_price}
                   onChange={(e) => ck.setProductDraft({ ...draft, unit_price: Number(e.target.value) || 0 })}
                 />

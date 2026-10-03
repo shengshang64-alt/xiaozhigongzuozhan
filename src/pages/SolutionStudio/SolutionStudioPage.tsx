@@ -78,6 +78,7 @@ export function SolutionStudioPage(p: ReturnType<typeof useSolutionStudio>) {
             selectChapter={p.selectChapter}
             editingContent={p.editingContent}
             setEditingContent={p.setEditingContent}
+            autoSaveState={p.autoSaveState}
             chapterBusy={p.chapterBusy}
             generateChapter={p.generateChapter}
             refineChapter={p.refineChapter}

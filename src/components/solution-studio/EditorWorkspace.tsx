@@ -18,6 +18,7 @@ type EditorWorkspaceProps = Pick<
   | "selectChapter"
   | "editingContent"
   | "setEditingContent"
+  | "autoSaveState"
   | "chapterBusy"
   | "generateChapter"
   | "refineChapter"
@@ -235,6 +236,7 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
           optimizeByIssues={p.optimizeByIssues}
           textareaRef={p.chapterTextareaRef}
           bulkGenerating={p.bulkGenerating}
+          autoSaveState={p.autoSaveState}
           chapterIndex={chapterIndex}
           figures={p.activeChapter?.figures}
           missingSections={p.missingChapterSections}

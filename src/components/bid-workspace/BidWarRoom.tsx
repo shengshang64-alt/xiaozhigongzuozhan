@@ -1,8 +1,9 @@
 // 投标项目作战室（warroom-01 / A1）：一屏聚合招标要点 + 我方章节进度 + 检查器红黄灯
 // + 该客群竞品 battlecard + 相关情报，替代横跨解析/编制/查重/废标/评标/竞品/情报多页人肉找信息。
 // 纯前端聚合、只读：标内三源直接取自当前项目已加载数据（零额外请求），竞品/情报按需懒加载，零后端红线。
-import { useMemo, useRef, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Link } from "react-router-dom"
+import { formatCount } from "@/lib/money"
 import {
   CheckCircle2,
   CircleAlert,
@@ -110,6 +111,21 @@ export function BidWarRoom({ activeProject, missCount = 0, riskCount = 0 }: { ac
   const [compState, setCompState] = useState<"idle" | "loading" | "done" | "error">("idle")
   const [intel, setIntel] = useState<IntelBrief[]>([])
   const [intelState, setIntelState] = useState<"idle" | "loading" | "done" | "error">("idle")
+  // Q20 配套（2026-09-28）：资质有效期核验——作战室打开时懒加载三档计数（过期/临期直接进红黄灯）
+  const [qual, setQual] = useState<{ total: number; expired: number; critical: number; warning: number } | null>(null)
+
+  useEffect(() => {
+    if (!open || qual) return
+    fetch(`${getPocketBaseUrl()}/api/qual_certs/summary`, {
+      headers: { "Content-Type": "application/json", ...vibexAuthHeaders() },
+    })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((data: { total?: number; buckets?: Record<string, number> }) => {
+        const b = data.buckets ?? {}
+        setQual({ total: Number(data.total ?? 0), expired: Number(b.expired ?? 0), critical: Number(b.critical ?? 0), warning: Number(b.warning ?? 0) })
+      })
+      .catch(() => setQual({ total: 0, expired: 0, critical: 0, warning: 0 }))
+  }, [open, qual])
 
   const proj = activeProject
   const report = proj.parse_report
@@ -137,7 +153,21 @@ export function BidWarRoom({ activeProject, missCount = 0, riskCount = 0 }: { ac
   const fmtWarn = fmt ? fmt.hits.filter((h) => h.level === "warn").length : 0
   const fmtInfo = fmt ? fmt.hits.filter((h) => h.level === "info").length : 0
 
-  const signals: { level: SignalLevel; label: string; value: string; icon: ReactNode }[] = [
+  const signals: { level: SignalLevel; label: string; value: string; icon: ReactNode; to?: string }[] = [
+    {
+      // Q20 配套：资质有效期核验置顶——过期证书写进标书即废标风险
+      level: !qual ? "info" : qual.expired > 0 ? "danger" : qual.critical > 0 ? "warning" : qual.total > 0 ? "ok" : "info",
+      label: "资质有效期核验",
+      to: "/qual-certs",
+      value: !qual
+        ? "核验中…"
+        : qual.expired > 0 || qual.critical > 0
+          ? `${qual.expired > 0 ? `${qual.expired} 过期` : ""}${qual.expired > 0 && qual.critical > 0 ? " · " : ""}${qual.critical > 0 ? `${qual.critical} 临期` : ""}`
+          : qual.total > 0
+            ? "全部有效"
+            : "台账未登记",
+      icon: <ShieldAlert className="h-4 w-4" />,
+    },
     {
       level: riskCount > 0 ? "danger" : proj.void_check ? "ok" : "info",
       label: "废标重大风险待核销",
@@ -255,13 +285,29 @@ export function BidWarRoom({ activeProject, missCount = 0, riskCount = 0 }: { ac
             {/* 检查器红黄灯 */}
             <SectionCard icon={<ShieldAlert className="h-4 w-4" />} title="风险信号灯" hint="各检查器最新状态，点击查看对应步骤详情">
               <ul className="space-y-1.5">
-                {signals.map((s) => (
-                  <li key={s.label} className="flex items-center gap-2 rounded-lg border border-border/70 bg-background px-2.5 py-1.5">
-                    {signalIcon(s.level)}
-                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{s.label}</span>
-                    <Badge variant={SIGNAL_BADGE[s.level]} className="shrink-0">{s.value}</Badge>
-                  </li>
-                ))}
+                {signals.map((s) => {
+                  const inner = (
+                    <>
+                      {signalIcon(s.level)}
+                      <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{s.label}</span>
+                      <Badge variant={SIGNAL_BADGE[s.level]} className="shrink-0">{s.value}</Badge>
+                    </>
+                  )
+                  return s.to ? (
+                    <li key={s.label}>
+                      <Link
+                        to={s.to}
+                        className="flex items-center gap-2 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 transition-colors hover:bg-secondary/60"
+                      >
+                        {inner}
+                      </Link>
+                    </li>
+                  ) : (
+                    <li key={s.label} className="flex items-center gap-2 rounded-lg border border-border/70 bg-background px-2.5 py-1.5">
+                      {inner}
+                    </li>
+                  )
+                })}
               </ul>
             </SectionCard>
 
@@ -272,7 +318,7 @@ export function BidWarRoom({ activeProject, missCount = 0, riskCount = 0 }: { ac
               count={<Badge variant={chapterStat.doneTotal > 0 && chapterStat.doneTotal >= chapterStat.planTotal ? "success" : "neutral"}>{chapterStat.doneTotal}/{chapterStat.planTotal} 章</Badge>}
             >
               <p className="text-xs leading-relaxed text-muted-foreground">
-                已生成正文合计约 <span className="font-semibold text-foreground">{chapterStat.words.toLocaleString()}</span> 字。
+                已生成正文合计约 <span className="font-semibold text-foreground">{formatCount(chapterStat.words)}</span> 字。
                 {chapterStat.planTotal === 0
                   ? "尚未生成大纲，先到「方案编制」确认大纲。"
                   : chapterStat.doneTotal < chapterStat.planTotal

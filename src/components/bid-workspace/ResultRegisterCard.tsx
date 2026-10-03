@@ -4,6 +4,7 @@ import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import { BID_RESULT_LABEL, type BidResult } from "@/pages/BidWorkspace/bidTypes"
 // R012（B-3 阶段二）：失单原因结构化——共享定义已上收到 @/lib/lostReason（Round 28 商机侧接入后单一真源）
 import { LOST_REASON_CODES, splitLostReason } from "@/lib/lostReason"
+import { formatDateTimeDisplay } from "@/lib/dateDisplay"
 
 export { LOST_REASON_CODES }
 
@@ -37,13 +38,6 @@ const RESULT_CHOICES: { value: Exclude<BidResult, "">; label: string; icon: type
   { value: "lost", label: "失单", icon: XCircle },
   { value: "pending", label: "待定", icon: CheckCircle2 },
 ]
-
-function fmtSyncedAt(iso: string): string {
-  if (!iso) return ""
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso.slice(0, 10)
-  return d.toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
-}
 
 /** ⑦ 归档环节内的投标结果登记卡：登记中标/失单/待定并自动回流关联商机（第四轮改造） */
 export function ResultRegisterCard({
@@ -206,7 +200,7 @@ export function ResultRegisterCard({
               </span>
             )}
             {proj.result_synced_at && (
-              <span className="text-xs text-muted-foreground">已同步到客户管理 · {fmtSyncedAt(proj.result_synced_at)}</span>
+              <span className="text-xs text-muted-foreground">已同步到客户管理 · {formatDateTimeDisplay(proj.result_synced_at)}</span>
             )}
           </div>
           {syncFailedStep ? (

@@ -8,7 +8,9 @@ import {
   COMPLIANCE_KIND_LABEL,
   COMPLIANCE_STATUS_LABEL,
   readComplianceProgress,
+  summarizeCompliance,
   writeComplianceProgress,
+  type ComplianceKind,
   type ComplianceProgress,
   type ComplianceProgressMap,
   type ComplianceRowStatus,
@@ -40,6 +42,37 @@ function tolerantJson(text: string): Record<string, unknown> | null {
   }
 }
 
+function FilterChip({
+  active,
+  onClick,
+  label,
+  alert = 0,
+}: {
+  active: boolean
+  onClick: () => void
+  label: string
+  alert?: number
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+        active
+          ? "border-primary/50 bg-primary/10 text-primary"
+          : "border-border bg-background text-muted-foreground hover:bg-secondary/60"
+      }`}
+    >
+      {label}
+      {alert > 0 && (
+        <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-warning/20 px-1 text-[10px] font-semibold text-warning">
+          {alert}
+        </span>
+      )}
+    </button>
+  )
+}
+
 export function ComplianceMatrixPanel({
   projectId,
   report,
@@ -59,6 +92,8 @@ export function ComplianceMatrixPanel({
   const [progress, setProgress] = useState<ComplianceProgressMap>({})
   const [scanning, setScanning] = useState(false)
   const [scanError, setScanError] = useState("")
+  const [kindFilter, setKindFilter] = useState<ComplianceKind | "all">("all")
+  const [onlyUncovered, setOnlyUncovered] = useState(false)
 
   useEffect(() => {
     setProgress(readComplianceProgress(projectId))
@@ -75,8 +110,15 @@ export function ComplianceMatrixPanel({
     [rows, progress],
   )
 
-  const uncovered = rowsWithStatus.filter((r) => r.status === "open")
-  const uncoveredCritical = uncovered.filter((r) => r.kind === "void" || r.mandatory)
+  const summary = useMemo(() => summarizeCompliance(rows, progress), [rows, progress])
+
+  const visibleRows = useMemo(
+    () =>
+      rowsWithStatus.filter(
+        (r) => (kindFilter === "all" || r.kind === kindFilter) && (!onlyUncovered || r.status === "open"),
+      ),
+    [rowsWithStatus, kindFilter, onlyUncovered],
+  )
 
   const patchRow = (id: string, patch: Partial<ComplianceProgress>) => {
     const prev: ComplianceProgress = progress[id] ?? { status: "open", ref: "", note: "" }
@@ -156,12 +198,12 @@ export function ComplianceMatrixPanel({
             <Badge variant="outline" className="rounded-full border-border text-muted-foreground">
               共 {rows.length} 条
             </Badge>
-            <Badge variant="outline" className={`rounded-full ${uncovered.length ? "border-warning/40 bg-warning/10 text-warning" : "border-border text-muted-foreground"}`}>
-              未覆盖 {uncovered.length}
+            <Badge variant="outline" className={`rounded-full ${summary.uncovered ? "border-warning/40 bg-warning/10 text-warning" : "border-border text-muted-foreground"}`}>
+              未覆盖 {summary.uncovered}
             </Badge>
-            {uncoveredCritical.length > 0 && (
+            {summary.uncoveredCritical > 0 && (
               <Badge variant="outline" className="rounded-full border-destructive/40 bg-destructive/10 text-destructive">
-                废标/★ 未覆盖 {uncoveredCritical.length}
+                废标/★ 未覆盖 {summary.uncoveredCritical}
               </Badge>
             )}
           </div>
@@ -178,6 +220,36 @@ export function ComplianceMatrixPanel({
           )}
         </div>
       </div>
+
+      {rows.length > 0 && (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <FilterChip
+            active={kindFilter === "all"}
+            onClick={() => setKindFilter("all")}
+            label={`全部 ${summary.total}`}
+          />
+          {(Object.keys(COMPLIANCE_KIND_LABEL) as ComplianceKind[]).map((k) => (
+            <FilterChip
+              key={k}
+              active={kindFilter === k}
+              onClick={() => setKindFilter(kindFilter === k ? "all" : k)}
+              label={`${COMPLIANCE_KIND_LABEL[k]} ${summary.kinds[k].total}`}
+              alert={summary.kinds[k].uncovered}
+            />
+          ))}
+          <button
+            type="button"
+            onClick={() => setOnlyUncovered((v) => !v)}
+            className={`ml-auto inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+              onlyUncovered
+                ? "border-warning/40 bg-warning/10 text-warning"
+                : "border-border text-muted-foreground hover:bg-secondary/60"
+            }`}
+          >
+            只看未覆盖{summary.uncovered ? ` (${summary.uncovered})` : ""}
+          </button>
+        </div>
+      )}
 
       {scanError && (
         <p className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{scanError}</p>
@@ -200,7 +272,14 @@ export function ComplianceMatrixPanel({
               </tr>
             </thead>
             <tbody>
-              {rowsWithStatus.map((r) => (
+              {visibleRows.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
+                    当前筛选下没有条款——试试「全部」，或关闭「只看未覆盖」（未覆盖项已全部清零）。
+                  </td>
+                </tr>
+              )}
+              {visibleRows.map((r) => (
                 <tr key={r.id} className="border-b border-border/60 align-top hover:bg-secondary/50">
                   <td className="py-2 pr-2">
                     <span className={`inline-block rounded-full px-2 py-0.5 ${r.kind === "void" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"}`}>

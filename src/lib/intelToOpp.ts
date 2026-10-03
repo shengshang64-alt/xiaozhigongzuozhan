@@ -51,11 +51,6 @@ function extractAmountDetail(...texts: (string | null | undefined)[]): AmountExt
   return null
 }
 
-/** 从摘要/标题抽「N 万元 / N 亿元」并换算成元（字符串）；抽不到返回空串 */
-export function extractAmountYuan(...texts: (string | null | undefined)[]): string {
-  return extractAmountDetail(...texts)?.yuan ?? ""
-}
-
 /** 从标题/摘要里抽医疗机构名短语；抽不到返回空串（调用方用标题前 20 字兜底） */
 export function extractHospitalName(...texts: (string | null | undefined)[]): string {
   for (const text of texts) {

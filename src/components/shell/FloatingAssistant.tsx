@@ -1,11 +1,16 @@
-import { useEffect, useRef, useState } from "react"
+import { Suspense, lazy, useEffect, useRef, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { Bot, GripHorizontal, Maximize2, X } from "lucide-react"
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
-import { ChatStream } from "@/components/assistant/ChatStream"
 import { ChatComposer } from "@/components/assistant/ChatComposer"
 import { LAST_BIZ_PATH_KEY } from "@/lib/assistantCore"
 import { useAssistant } from "@/pages/Assistant/useAssistant"
+
+// R124 性能：浮动助手挂载在全局 Shell（每页都在），ChatStream 静态依赖 docx（Word 导出，数百 kB）。
+// 上一版把 docx 运行时拖进入口 chunk，所有页面首访共同买单；改为首次展开对话窗时才按需加载该 chunk。
+const ChatStreamLazy = lazy(() =>
+  import("@/components/assistant/ChatStream").then((m) => ({ default: m.ChatStream })),
+)
 
 export function FloatingAssistant() {
   const navigate = useNavigate()
@@ -102,14 +107,22 @@ export function FloatingAssistant() {
             </button>
           </div>
 
-          <ChatStream
-            messages={vm.convMessages}
-            sendState={vm.sendState}
-            fetchBadge={vm.fetchBadge}
-            compact
-            onRetry={vm.retryLast}
-            onDismiss={vm.dismissFailedMsg}
-          />
+          <Suspense
+            fallback={
+              <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
+                对话窗加载中…
+              </div>
+            }
+          >
+            <ChatStreamLazy
+              messages={vm.convMessages}
+              sendState={vm.sendState}
+              fetchBadge={vm.fetchBadge}
+              compact
+              onRetry={vm.retryLast}
+              onDismiss={vm.dismissFailedMsg}
+            />
+          </Suspense>
 
           <ChatComposer
             draftInput={vm.draftInput}

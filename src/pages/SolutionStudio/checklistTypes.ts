@@ -1,3 +1,4 @@
+import { formatMoney } from "@/lib/money"
 import type { ChecklistSnapshot } from "./solutionTypes"
 
 // ---------------------------------------------------------------------------
@@ -205,10 +206,10 @@ export function calcTotal(lines: ChecklistLine[]): number {
     .reduce((sum, l) => sum + (Number(l.qty) || 0) * (Number(l.unit_price) || 0), 0)
 }
 
-export function fmtMoney(n: number): string {
-  const v = Number(n) || 0
-  return `¥ ${v.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}`
-}
+// Single money convention lives in @/lib/money (R113); the "¥ " prefix and
+// the old name stay here so call sites are untouched. Note the intentional
+// display shift: integers now render with .00 (previously dropped).
+export const fmtMoney = (n: number): string => `¥ ${formatMoney(Number(n) || 0)}`
 
 export function emptyProductDraft(): ProductDraft {
   return {

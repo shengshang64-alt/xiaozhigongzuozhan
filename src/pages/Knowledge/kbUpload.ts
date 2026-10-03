@@ -2,7 +2,6 @@
 // .zip 客户端解压（fflate）取其中 md/txt 批量入库并保留相对路径为目录。
 // 全部在浏览器内完成，不上传原文件。
 
-import { extractDocxText, extractPdfText } from "@/pages/BidWorkspace/bidFiles"
 
 export interface KbUploadItem {
   title: string
@@ -109,7 +108,7 @@ export async function parseUploadFile(file: File, baseFolder: string): Promise<K
   }
 
   if (lower.endsWith(".docx")) {
-    const content = await extractDocxText(file)
+    const content = await (await import("@/pages/BidWorkspace/bidFiles")).extractDocxText(file)
     if (!content) throw new Error("docx 中没有解析出文本")
     return [
       {
@@ -123,7 +122,7 @@ export async function parseUploadFile(file: File, baseFolder: string): Promise<K
   }
 
   if (lower.endsWith(".pdf")) {
-    const content = await extractPdfText(file)
+    const content = await (await import("@/pages/BidWorkspace/bidFiles")).extractPdfText(file)
     if (!content) throw new Error("pdf 中没有解析出文本（可能是扫描件）")
     return [
       {

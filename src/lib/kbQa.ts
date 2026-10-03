@@ -1,8 +1,7 @@
 // 标准问答弹药库（轮次 D-3）：kb_qa_pairs 的 CRUD 封装 + 重合率匹配（三色置信度）。
 // approved QA 对高置信直答零费用；低命中且检索为空时自动入待补答队列。
 
-import { getPocketBaseUrl } from "@/lib/pb"
-import { vibexAuthHeaders } from "@/lib/rhLogin"
+import { pbJsonRequest } from "@/lib/pbJson"
 import { tokenizeText } from "@/lib/kbCore"
 
 // ---------------------------------------------------------------------------
@@ -29,20 +28,9 @@ export interface KbQaPairRow {
 export const KB_QA_DIRECT_PREFIX = "[[KB_QA_DIRECT]]\n"
 
 async function qaFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${getPocketBaseUrl()}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...vibexAuthHeaders(),
-      ...(init?.headers ?? {}),
-    },
-  })
-  if (!res.ok) {
-    const err = new Error(`HTTP ${res.status}`) as Error & { httpStatus?: number }
-    err.httpStatus = res.status
-    throw err
-  }
-  return (await res.json()) as T
+  // R115: was a private clone of the R109 single-source helper; delegate to it
+  // (keep exposing the numeric status on the thrown error for callers).
+  return pbJsonRequest<T>(path, init, { exposeHttpStatus: true })
 }
 
 export async function listKbQaPairs(): Promise<KbQaPairRow[]> {

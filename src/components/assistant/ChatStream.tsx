@@ -3,11 +3,14 @@ import { useNavigate } from "react-router-dom"
 import Markdown from "react-markdown"
 import type { Components } from "react-markdown"
 import { toast } from "sonner"
+import { copyTextToClipboard } from "@/lib/clipboard"
 import { Bot, CalendarCheck2, Copy, ExternalLink, FileDown, Loader2, RotateCcw, Search, Sparkles, Users, X } from "lucide-react"
 import { Document, Packer, Paragraph, TextRun } from "docx"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/rhLogin"
 import type { ChatMsg } from "@/lib/assistantCore"
+import { triggerBlobDownload } from "@/lib/download"
+import { localDateStamp } from "@/lib/dateStamp"
 
 const MD_COMPONENTS: Components = {
   h1: ({ children }) => <h1 className="mb-2 mt-3 text-base font-bold text-foreground first:mt-0">{children}</h1>,
@@ -108,7 +111,7 @@ export function ChatStream({ messages, sendState, fetchBadge, compact, onQuickAs
           ) : null}
         </div>
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 lg:gap-4">
           {messages.map((m, idx) => {
             // R62/⑤：采用动作——回看上一条用户消息的技能戳（技能名仅会话内存）
             const prevUser = idx > 0 ? messages[idx - 1] : undefined
@@ -130,10 +133,10 @@ export function ChatStream({ messages, sendState, fetchBadge, compact, onQuickAs
                     <button
                       type="button"
                       onClick={() => {
-                        void navigator.clipboard.writeText(m.content).then(
-                          () => toast.success("已复制到剪贴板"),
-                          () => toast.error("复制失败，请手动选择文本复制"),
-                        )
+                        void copyTextToClipboard(m.content, {
+                          successMessage: "已复制到剪贴板",
+                          errorMessage: "复制失败，请手动选择文本复制",
+                        })
                       }}
                       aria-label="复制这条回复"
                       className="rounded p-0.5 text-muted-foreground opacity-60 transition-opacity hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
@@ -220,7 +223,7 @@ export function ChatStream({ messages, sendState, fetchBadge, compact, onQuickAs
 // R62/⑤：技能产出「采用」动作——按技能类型给落点（写回经既有接口，零 schema 变更）
 // ---------------------------------------------------------------------------
 
-const ADOPTABLE = new Set(["写客户跟进邮件", "生成周报总结", "竞品深度分析"])
+const ADOPTABLE = new Set(["写客户跟进邮件", "生成周报总结", "竞品深度分析", "招标文件要点梳理", "客户拜访准备清单", "方案大纲构思"])
 
 type CustomerOption = { id: string; hospital_name: string }
 
@@ -272,12 +275,7 @@ function SkillAdoptRow({ skillName, content }: { skillName: string; content: str
       .map((l) => new Paragraph({ children: [new TextRun(l)] }))
     const doc = new Document({ sections: [{ children: [new Paragraph({ children: [new TextRun({ text: "售前周报", bold: true, size: 32 })] }), ...paras] }] })
     void Packer.toBlob(doc).then((blob) => {
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `售前周报-${new Date().toISOString().slice(0, 10)}.docx`
-      a.click()
-      setTimeout(() => URL.revokeObjectURL(url), 4000)
+      triggerBlobDownload(blob, `售前周报-${localDateStamp()}.docx`)
       toast.success("周报 Word 已下载")
     })
   }
@@ -345,19 +343,31 @@ function SkillAdoptRow({ skillName, content }: { skillName: string; content: str
         </button>
       ) : null}
       {skillName === "竞品深度分析" ? (
+        <CompetitorAdopt content={content} />
+      ) : null}
+      {skillName === "招标文件要点梳理" ? (
+        <BidMaterialAdopt content={content} />
+      ) : null}
+      {skillName === "客户拜访准备清单" ? (
+        <VisitChecklistAdopt content={content} />
+      ) : null}
+      {skillName === "方案大纲构思" ? (
         <button
           type="button"
           onClick={() => {
-            void navigator.clipboard.writeText(content).then(() => toast.success("分析已复制，去档案粘贴即用"))
-            navigate("/competitors")
+            void copyTextToClipboard(content, {
+              successMessage: "大纲已复制，去方案编辑器粘贴即用",
+              errorMessage: "复制失败，请手动选择文本复制",
+            })
+            navigate("/solution-studio")
           }}
           className="inline-flex items-center gap-1 rounded-md border border-primary/40 px-2.5 py-1 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           <ExternalLink className="h-3 w-3" />
-          复制并去竞品档案
+          复制并去方案编辑
         </button>
       ) : null}
-      {skillName === "写客户跟进邮件" && !pickerOpen ? (
+      {(skillName === "写客户跟进邮件" || skillName === "客户拜访准备清单") && !pickerOpen ? (
         <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
           <CalendarCheck2 className="h-3 w-3" />
           存档后到客户管理时间线查看
@@ -366,3 +376,239 @@ function SkillAdoptRow({ skillName, content }: { skillName: string; content: str
     </div>
   )
 }
+
+// ---------------------------------------------------------------------------
+// D4：竞品深度分析——选竞品 → 追加写入 threat_notes
+// ---------------------------------------------------------------------------
+
+type CompOption = { id: string; competitor_name: string }
+
+function CompetitorAdopt({ content }: { content: string }) {
+  const [open, setOpen] = useState(false)
+  const [comps, setComps] = useState<CompOption[] | null>(null)
+  const [compId, setCompId] = useState("")
+  const [saving, setSaving] = useState(false)
+
+  const loadComps = () => {
+    if (comps) return
+    fetch(`${getPocketBaseUrl()}/api/competitors?perPage=200&page=1`, { headers: vibexAuthHeaders() })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d: { items?: CompOption[] }) => setComps(d.items ?? []))
+      .catch(() => { toast.error("竞品列表加载失败"); setComps([]) })
+  }
+
+  const doAdopt = () => {
+    if (!compId) { toast.error("请先选择竞品"); return }
+    setSaving(true)
+    // 先获取当前 threat_notes，再追加
+    fetch(`${getPocketBaseUrl()}/api/competitors/${encodeURIComponent(compId)}`, { headers: vibexAuthHeaders() })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((row: { threat_notes?: string }) => {
+        const prev = (row.threat_notes ?? "").trim()
+        const stamp = localDateStamp()
+        const next = prev ? `${prev}\n\n---\n【AI 深度分析 ${stamp}】\n${content}` : `【AI 深度分析 ${stamp}】\n${content}`
+        return fetch(`${getPocketBaseUrl()}/api/competitors/${encodeURIComponent(compId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", ...vibexAuthHeaders() },
+          body: JSON.stringify({ threat_notes: next }),
+        })
+      })
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status))
+        toast.success("分析已写入竞品档案")
+        setOpen(false)
+      })
+      .catch(() => toast.error("写入失败，请稍后重试"))
+      .finally(() => setSaving(false))
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => { setOpen((v) => !v); loadComps() }}
+        className="inline-flex items-center gap-1 rounded-md border border-primary/40 px-2.5 py-1 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        <Users className="h-3 w-3" />
+        写入竞品档案
+      </button>
+      {open ? (
+        <span className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 shadow-sm">
+          {comps === null ? (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />加载中…
+            </span>
+          ) : comps.length === 0 ? (
+            <span className="text-xs text-muted-foreground">暂无竞品，先到竞品管理新建</span>
+          ) : (
+            <>
+              <select value={compId} onChange={(e) => setCompId(e.target.value)}
+                className="max-w-[180px] rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                <option value="">选竞品…</option>
+                {comps.map((c) => <option key={c.id} value={c.id}>{c.competitor_name}</option>)}
+              </select>
+              <button type="button" onClick={doAdopt} disabled={saving || !compId}
+                className="rounded bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50">
+                {saving ? "写入中…" : "确认写入"}
+              </button>
+            </>
+          )}
+        </span>
+      ) : null}
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// D4：招标文件要点梳理——选标书项目 → 追加写入 ref_materials_text
+// ---------------------------------------------------------------------------
+
+type BidOption = { id: string; project_name: string }
+
+function BidMaterialAdopt({ content }: { content: string }) {
+  const [open, setOpen] = useState(false)
+  const [bids, setBids] = useState<BidOption[] | null>(null)
+  const [bidId, setBidId] = useState("")
+  const [saving, setSaving] = useState(false)
+
+  const loadBids = () => {
+    if (bids) return
+    fetch(`${getPocketBaseUrl()}/api/bid_projects?perPage=200&page=1`, { headers: vibexAuthHeaders() })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d: { items?: BidOption[] }) => setBids(d.items ?? []))
+      .catch(() => { toast.error("标书项目列表加载失败"); setBids([]) })
+  }
+
+  const doAdopt = () => {
+    if (!bidId) { toast.error("请先选择标书项目"); return }
+    setSaving(true)
+    fetch(`${getPocketBaseUrl()}/api/bid_projects/${encodeURIComponent(bidId)}`, { headers: vibexAuthHeaders() })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((row: { ref_materials_text?: string }) => {
+        const prev = (row.ref_materials_text ?? "").trim()
+        const stamp = localDateStamp()
+        const next = prev ? `${prev}\n\n---\n【招标要点梳理 ${stamp}】\n${content}` : `【招标要点梳理 ${stamp}】\n${content}`
+        return fetch(`${getPocketBaseUrl()}/api/bid_projects/${encodeURIComponent(bidId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", ...vibexAuthHeaders() },
+          body: JSON.stringify({ ref_materials_text: next }),
+        })
+      })
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status))
+        toast.success("要点已存入标书素材")
+        setOpen(false)
+      })
+      .catch(() => toast.error("写入失败，请稍后重试"))
+      .finally(() => setSaving(false))
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => { setOpen((v) => !v); loadBids() }}
+        className="inline-flex items-center gap-1 rounded-md border border-primary/40 px-2.5 py-1 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        <FileDown className="h-3 w-3" />
+        存入标书素材
+      </button>
+      {open ? (
+        <span className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 shadow-sm">
+          {bids === null ? (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />加载中…
+            </span>
+          ) : bids.length === 0 ? (
+            <span className="text-xs text-muted-foreground">暂无标书项目，先到工作台新建</span>
+          ) : (
+            <>
+              <select value={bidId} onChange={(e) => setBidId(e.target.value)}
+                className="max-w-[180px] rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                <option value="">选项目…</option>
+                {bids.map((b) => <option key={b.id} value={b.id}>{b.project_name}</option>)}
+              </select>
+              <button type="button" onClick={doAdopt} disabled={saving || !bidId}
+                className="rounded bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50">
+                {saving ? "写入中…" : "确认写入"}
+              </button>
+            </>
+          )}
+        </span>
+      ) : null}
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// D4：客户拜访准备清单——选客户 → 存为跟进记录
+// ---------------------------------------------------------------------------
+
+function VisitChecklistAdopt({ content }: { content: string }) {
+  const [open, setOpen] = useState(false)
+  const [customers, setCustomers] = useState<CustomerOption[] | null>(null)
+  const [customerId, setCustomerId] = useState("")
+  const [saving, setSaving] = useState(false)
+
+  const loadCustomers = () => {
+    if (customers) return
+    fetch(`${getPocketBaseUrl()}/api/customers?perPage=200&page=1`, { headers: vibexAuthHeaders() })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d: { items?: CustomerOption[] }) => setCustomers(d.items ?? []))
+      .catch(() => { toast.error("客户列表加载失败"); setCustomers([]) })
+  }
+
+  const doAdopt = () => {
+    if (!customerId) { toast.error("请先选择客户"); return }
+    setSaving(true)
+    fetch(`${getPocketBaseUrl()}/api/follow_records`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...vibexAuthHeaders() },
+      body: JSON.stringify({ customer_id: customerId, record_type: "拜访准备", content }),
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status))
+        toast.success("拜访清单已存入跟进记录")
+        setOpen(false)
+      })
+      .catch(() => toast.error("保存失败，请稍后重试"))
+      .finally(() => setSaving(false))
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => { setOpen((v) => !v); loadCustomers() }}
+        className="inline-flex items-center gap-1 rounded-md border border-primary/40 px-2.5 py-1 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        <Users className="h-3 w-3" />
+        存为客户跟进
+      </button>
+      {open ? (
+        <span className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 shadow-sm">
+          {customers === null ? (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />加载中…
+            </span>
+          ) : customers.length === 0 ? (
+            <span className="text-xs text-muted-foreground">还没有客户</span>
+          ) : (
+            <>
+              <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}
+                className="max-w-[180px] rounded border border-border bg-background px-1.5 py-0.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                <option value="">选客户…</option>
+                {customers.map((c) => <option key={c.id} value={c.id}>{c.hospital_name}</option>)}
+              </select>
+              <button type="button" onClick={doAdopt} disabled={saving || !customerId}
+                className="rounded bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50">
+                {saving ? "存档中…" : "存档"}
+              </button>
+            </>
+          )}
+        </span>
+      ) : null}
+    </>
+  )
+}
+

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { normalizeRegion, normalizeHospitalLevel } from "./customerNormalize"
+import { normalizeRegion, normalizeHospitalLevel, isTestCustomer } from "./customerNormalize"
 
 describe("normalizeRegion · 地区归一（R57/F13）", () => {
   it("库内真实垃圾值归一：市级组合剥到省、非地区值返回空", () => {
@@ -35,5 +35,21 @@ describe("normalizeHospitalLevel · 等级归一（R57/F14）", () => {
     expect(normalizeHospitalLevel("三级")).toBe("三级")
     expect(normalizeHospitalLevel("县区")).toBe("县区")
     expect(normalizeHospitalLevel("")).toBe("")
+  })
+})
+
+describe("isTestCustomer · 演示模式清场判定（T7，2026-09-27）", () => {
+  it("名称含「测试」判定为测试数据", () => {
+    expect(isTestCustomer("测试市人民医院")).toBe(true)
+    expect(isTestCustomer("ZZ临时验证客户0927（测试）")).toBe(true)
+  })
+  it("正常医院名不受影响（含「测」单字或「实验」不算）", () => {
+    expect(isTestCustomer("三明市第一医院")).toBe(false)
+    expect(isTestCustomer("福建医科大学附属第一医院滨海院区")).toBe(false)
+  })
+  it("空值安全", () => {
+    expect(isTestCustomer("")).toBe(false)
+    expect(isTestCustomer(null)).toBe(false)
+    expect(isTestCustomer(undefined)).toBe(false)
   })
 })

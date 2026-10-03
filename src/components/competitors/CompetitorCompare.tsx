@@ -1,8 +1,10 @@
-// 竞品对比分析工作区：顶部多选选择器 + KPI + 能力雷达/矩阵（左）+ AI 差异化话术可复制（右）。
-// 数据全部来自真实竞品档案；能力分为档案启发式估算（界面注明），话术由模型网关生成。
+// 订单能力对标视图：厂商勾选（数据集 23 家 + 档案库新增厂商）+ 对比重点 + 订单六维雷达
+// + 关键评估指标对照表 + CSV 导出（左）；AI 差异化话术（右，沿用档案库数据）。
+// 六维分数来自 marketIntel 真实订单归一化（非估算）；定性对照表为 PPT 整理，界面注明需人工核验。
 import { useCallback, useMemo, useState } from "react"
 import { BarChart3, Check, Copy, Crosshair, Download, MessageSquare, Plus, RefreshCw, Sparkles } from "lucide-react"
 import { toast } from "sonner"
+import { copyTextToClipboard } from "@/lib/clipboard"
 import type { EChartsOption } from "echarts"
 import { EChart } from "@/components/common/EChart"
 import { CHART_COLORS } from "@/lib/echarts"
@@ -10,23 +12,27 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
+import { triggerBlobDownload } from "@/lib/download"
+import { localDateStamp } from "@/lib/dateStamp"
 import type { ModelRef } from "@/lib/modelGateway"
 import type { CompetitorRow } from "@/pages/Competitors/competitorsCore"
-import {
-  CAPABILITY_DIMS,
-  buildCompareCsv,
-  compareColor,
-  finalScores,
-  buildCompareTakeaways,
-} from "@/pages/Competitors/competitorScores"
 import { useCompetitorTalks, type TalkKind } from "@/pages/Competitors/useCompetitorTalks"
+import {
+  ORDER_DIMS,
+  SELF_NAME,
+  VENDOR_ORDERS,
+  VENDOR_PROFILES,
+  buildOrderCompareCsv,
+  buildOrderTakeaways,
+  defaultBenchmarkPicks,
+  orderScores,
+  type VendorOrder,
+  type VendorProfile,
+} from "@/pages/Competitors/marketIntel"
 
-const SELF_NAME = "智业软件"
-
-/** 我方=橙色（与全页「橙色=我方」约定一致），竞品按色板轮询 */
-function entryColor(row: CompetitorRow, idx: number): string {
-  return row.name === SELF_NAME ? CHART_COLORS.warn : compareColor(idx)
-}
+/** 竞品色板（我方固定橙色，与全页「橙色=我方」约定一致） */
+const RC = ["#0E7C99", "#2E6FB0", "#3CAEC4", "#7B4FB0", "#1F9D63", "#5A6672", "#D9534F"]
+const MAX_PICKS = 8
 
 const TALK_TAG: Record<TalkKind, string> = {
   优势: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -34,12 +40,33 @@ const TALK_TAG: Record<TalkKind, string> = {
   化解: "bg-amber-50 text-amber-700 border-amber-200",
 }
 
+/** 对照表行定义（对齐重构稿：评估指标 × 厂商） */
+const PROFILE_ROWS: { label: string; key: keyof VendorProfile; dbFallback?: keyof CompetitorRow }[] = [
+  { label: "公司定位", key: "positioning", dbFallback: "positioning" },
+  { label: "核心区域", key: "regions", dbFallback: "regions" },
+  { label: "核心业务", key: "business" },
+  { label: "核心产品", key: "products", dbFallback: "products" },
+  { label: "技术战略", key: "techStrategy" },
+  { label: "优势赛道", key: "advantageTrack" },
+  { label: "实力佐证", key: "proof" },
+]
+
 async function copyText(text: string, msg: string) {
-  try {
-    await navigator.clipboard.writeText(text)
-    toast.success(msg)
-  } catch {
-    toast.error("复制失败，请检查浏览器剪贴板权限")
+  await copyTextToClipboard(text, {
+    successMessage: msg,
+    errorMessage: "复制失败，请检查浏览器剪贴板权限",
+  })
+}
+
+/** 档案库中未纳入订单数据集的厂商 → 补参考位 stub（仅软著，其余维度无口径数据） */
+function stubFromRow(row: CompetitorRow): VendorOrder {
+  return {
+    name: row.name,
+    legalName: row.legal_name || "",
+    bid5y: null, bid25: null, projects5y: null, big5y: null, bigShare: null, midShare: null,
+    bigCount25: null, bigAmount25: null, customerCoverage: null, tertiaryShare: null,
+    hospitalMix: null, specialtyShare: null,
+    copyrights: row.software_copyrights || null, crEarliest: null, crLatest: null,
   }
 }
 
@@ -53,88 +80,88 @@ export function CompetitorCompare({
   rows: CompetitorRow[]
   loading: boolean
   modelRef: ModelRef | null
-  onOpenArchive: (id: string) => void
+  onOpenArchive: (name: string) => void
   onAdd: () => void
 }) {
-  // 勾选集合：未手动改动前恒等于默认（我方 + 软著数最高的 3 家竞品），纯派生、无 effect
+  // 对标全集：订单数据集 23 家在前，档案库独有厂商以参考位追加
+  const universe = useMemo<VendorOrder[]>(() => {
+    const names = new Set(VENDOR_ORDERS.map((v) => v.name))
+    const extra = rows.filter((r) => !names.has(r.name) && r.name).map(stubFromRow)
+    return [...VENDOR_ORDERS, ...extra]
+  }, [rows])
+
+  const defaultPicks = useMemo(() => {
+    const names = new Set(universe.map((v) => v.name))
+    return defaultBenchmarkPicks().filter((n) => names.has(n))
+  }, [universe])
+
+  // 勾选集合（厂商名）：未手动改动前恒等于默认，纯派生、无 effect
   const [picked, setPicked] = useState<Set<string> | null>(null)
-
   const selected = useMemo(() => {
-    if (picked && [...picked].every((id) => rows.some((r) => r.id === id))) return picked
-    const self = rows.filter((r) => r.name === SELF_NAME)
-    const top = rows
-      .filter((r) => r.name !== SELF_NAME)
-      .sort((a, b) => b.software_copyrights - a.software_copyrights)
-      .slice(0, 3)
-    return new Set([...self, ...top].map((r) => r.id))
-  }, [picked, rows])
+    if (picked && [...picked].every((n) => universe.some((v) => v.name === n))) return picked
+    return new Set(defaultPicks)
+  }, [picked, universe, defaultPicks])
 
-  const toggle = (id: string) => {
+  const toggle = (name: string) => {
     const s = new Set(selected)
-    if (s.has(id)) s.delete(id)
-    else s.add(id)
+    if (s.has(name)) {
+      if (s.size <= 1) {
+        toast("至少保留一个对标对象")
+        return
+      }
+      s.delete(name)
+    } else {
+      if (s.size >= MAX_PICKS) {
+        toast(`最多对比 ${MAX_PICKS} 家`)
+        return
+      }
+      s.add(name)
+    }
     setPicked(s)
   }
 
   const entries = useMemo(() => {
-    const picked = rows.filter((r) => selected.has(r.id))
-    // 我方永远排首位（与雷达图例、矩阵列序一致）
-    picked.sort((a, b) => Number(b.name === SELF_NAME) - Number(a.name === SELF_NAME))
-    return picked.map((row, i) => ({
-      row,
-      color: entryColor(row, i),
-      scores: finalScores(row, rows),
+    const arr = universe.filter((v) => selected.has(v.name))
+    // 我方永远排首位（与雷达图例、对照表列序一致）
+    arr.sort((a, b) => Number(b.name === SELF_NAME) - Number(a.name === SELF_NAME))
+    return arr.map((v) => ({
+      v,
+      color: v.name === SELF_NAME ? CHART_COLORS.warn : RC[universe.indexOf(v) % RC.length],
+      scores: orderScores(v),
+      row: rows.find((r) => r.name === v.name) ?? null,
     }))
-  }, [rows, selected])
+  }, [universe, selected, rows])
 
-  const selfEntry = entries.find((e) => e.row.name === SELF_NAME) ?? null
-  const competitors = entries.filter((e) => e.row.name !== SELF_NAME)
+  const selfEntry = entries.find((e) => e.v.name === SELF_NAME) ?? null
+  const competitors = entries.filter((e) => e.v.name !== SELF_NAME)
 
-  // 我方排名（全库软著序）
-  const rank = useMemo(() => {
-    const sorted = [...rows].sort((a, b) => b.software_copyrights - a.software_copyrights)
-    return selfEntry ? sorted.findIndex((r) => r.id === selfEntry.row.id) + 1 : 0
-  }, [rows, selfEntry])
+  const takeaways = useMemo(() => buildOrderTakeaways(entries.map((e) => e.v)), [entries])
 
-  // 每维度领先者与「我方领先维度数」
-  const dimBest = useMemo(
-    () =>
-      CAPABILITY_DIMS.map((_, d) => {
-        const mx = Math.max(...entries.map((e) => e.scores[d] ?? 0))
-        const leaders = entries.filter((e) => (e.scores[d] ?? 0) === mx)
-        return { mx, leaders }
-      }),
-    [entries],
-  )
-  const selfLead = selfEntry ? dimBest.filter((b) => b.leaders.some((l) => l.row.id === selfEntry.row.id)).length : 0
+  // 对照表取值：策展档案优先，缺项回退档案库（用户已编辑字段），再缺显示「待补全」
+  const profileCell = (e: (typeof entries)[number], r: (typeof PROFILE_ROWS)[number]): string => {
+    const pr = VENDOR_PROFILES[e.v.name]
+    return (pr?.[r.key] || (r.dbFallback ? String(e.row?.[r.dbFallback] ?? "") : "")) || ""
+  }
 
-  // R71/F24：对比重点速览——把矩阵提炼成人话结论（领先/差距/头号威胁）
-  const takeaways = useMemo(
-    () =>
-      buildCompareTakeaways(
-        entries.map((e) => ({
-          name: e.row.name,
-          scores: e.scores,
-          copyrights: e.row.software_copyrights || 0,
-          positioning: e.row.positioning || "",
-        })),
-      ),
-    [entries],
-  )
-  const threatPending = competitors.filter((e) => !e.row.threat_notes?.trim()).length
-
-  // ------------------------------ 雷达图 ------------------------------
+  // ------------------------------ 订单能力雷达 ------------------------------
   const radarOption = useMemo<EChartsOption>(() => {
     if (entries.length === 0) return {}
     return {
       tooltip: { trigger: "item" },
-      legend: { data: entries.map((e) => e.row.name), bottom: 0, textStyle: { fontSize: 11, color: CHART_COLORS.ink3 } },
+      legend: {
+        data: entries.map((e) => e.v.name),
+        bottom: 0,
+        textStyle: { fontSize: 10.5, color: CHART_COLORS.ink3 },
+        itemWidth: 11,
+        itemHeight: 8,
+      },
       radar: {
-        indicator: CAPABILITY_DIMS.map((name) => ({ name, max: 5 })),
-        radius: "62%",
+        indicator: ORDER_DIMS.map((name) => ({ name, max: 5 })),
+        radius: "58%",
+        center: ["50%", "47%"],
         splitNumber: 5,
-        axisName: { color: CHART_COLORS.ink3, fontSize: 12 },
-        splitArea: { areaStyle: { color: ["#fff", "rgba(14,124,153,.03)"] } },
+        axisName: { color: CHART_COLORS.ink3, fontSize: 11 },
+        splitArea: { areaStyle: { color: ["#fff", "rgba(14,124,153,.04)"] } },
         axisLine: { lineStyle: { color: CHART_COLORS.track } },
         splitLine: { lineStyle: { color: CHART_COLORS.track } },
       },
@@ -144,9 +171,9 @@ export function CompetitorCompare({
           symbolSize: 4,
           data: entries.map((e) => ({
             value: e.scores,
-            name: e.row.name,
+            name: e.v.name,
             itemStyle: { color: e.color },
-            lineStyle: { width: e.row.name === SELF_NAME ? 2.5 : 1.5 },
+            lineStyle: { width: e.v.name === SELF_NAME ? 2.4 : 1.5 },
             areaStyle: { color: `${e.color}26` },
           })),
         },
@@ -159,34 +186,29 @@ export function CompetitorCompare({
 
   const handleExport = useCallback(() => {
     if (entries.length === 0) return
-    const csv = buildCompareCsv(entries.map((e) => ({ name: e.row.name, scores: e.scores })))
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }))
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `竞品能力对比_${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+    const csv = buildOrderCompareCsv(entries.map((e) => ({ name: e.v.name, scores: e.scores })))
+    triggerBlobDownload(new Blob([csv], { type: "text/csv;charset=utf-8" }), `竞品订单能力对比_${localDateStamp()}.csv`)
     toast.success("对比矩阵已导出")
   }, [entries])
 
   const allTalksText = talks.talks.map((t) => `【${t.kind}】${t.title}\n${t.content}`).join("\n\n")
 
   if (loading) return <p className="py-16 text-center text-sm text-muted-foreground">竞品数据加载中…</p>
-  if (rows.length === 0) return null
 
   return (
     <div className="space-y-4">
-      {/* 顶部：对比选择器 */}
+      {/* 顶部：对标对象勾选 */}
       <Card>
         <CardContent className="flex flex-wrap items-center gap-2 py-3">
           <span className="mr-1 text-sm font-semibold text-foreground">对标对象</span>
-          {rows.slice(0, 24).map((r, i) => {
-            const on = selected.has(r.id)
+          {universe.map((v, i) => {
+            const on = selected.has(v.name)
+            const color = v.name === SELF_NAME ? CHART_COLORS.warn : RC[i % RC.length]
             return (
               <button
-                key={r.id}
+                key={v.name}
                 type="button"
-                onClick={() => toggle(r.id)}
+                onClick={() => toggle(v.name)}
                 className={cn(
                   "flex items-center gap-2 rounded-full border-[1.5px] px-3 py-1.5 text-[13px] transition-colors",
                   on
@@ -194,8 +216,9 @@ export function CompetitorCompare({
                     : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground",
                 )}
               >
-                <span className="h-2.5 w-2.5 rounded-full" style={{ background: entryColor(r, i) }} />
-                {r.name}
+                <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
+                {v.name}
+                {v.bid5y == null && <span className="text-[10px] text-muted-foreground">参考</span>}
                 <span
                   className={cn(
                     "flex h-[15px] w-[15px] items-center justify-center rounded-full border",
@@ -220,25 +243,26 @@ export function CompetitorCompare({
         </CardContent>
       </Card>
 
-      {/* R71/F24：对比重点速览（自动提炼，零 AI） */}
+      {/* 对比重点（订单口径，自动提炼，零 AI） */}
       {takeaways.length > 0 ? (
         <Card className="border-primary/30 bg-primary/[0.04]">
           <CardContent className="p-4">
             <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-wide text-primary">
               <Crosshair className="h-3.5 w-3.5" />
-              对比重点
+              对比重点（订单口径 · 售前 2 分钟看清机会、差距、防谁）
             </p>
             <ul className="space-y-1.5 text-sm leading-relaxed text-foreground">
               {takeaways.map((t, i) => (
                 <li key={i} className="flex items-start gap-2">
                   <span
-                    className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
-                      t.kind === "lead" ? "bg-green-500" : t.kind === "gap" ? "bg-destructive" : "bg-amber-500"
-                    }`}
+                    className={cn(
+                      "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full",
+                      t.kind === "opportunity" ? "bg-green-500" : t.kind === "gap" ? "bg-destructive" : "bg-amber-500",
+                    )}
                   />
                   <span>
-                    {t.kind === "lead" ? (
-                      <strong className="font-semibold text-green-700">领先·</strong>
+                    {t.kind === "opportunity" ? (
+                      <strong className="font-semibold text-green-700">机会·</strong>
                     ) : t.kind === "gap" ? (
                       <strong className="font-semibold text-destructive">差距·</strong>
                     ) : (
@@ -251,94 +275,73 @@ export function CompetitorCompare({
             </ul>
           </CardContent>
         </Card>
-      ) : null}
-
-      {/* KPI 行 */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {[
-          { label: "当前对标", value: `${entries.length} 家`, hint: `含 ${competitors.length} 家竞品` },
-          { label: "我方软著排名", value: rank ? `第 ${rank}` : "—", hint: rank ? `/ 共 ${rows.length} 家` : "我方未入库" },
-          { label: "我方领先维度", value: `${selfLead} 项`, hint: `共 ${CAPABILITY_DIMS.length} 维`, accent: selfLead > 0 },
-          { label: "威胁研判待补", value: `${threatPending} 家`, hint: "勾选竞品缺「威胁与应对」", warn: threatPending > 0 },
-        ].map((k) => (
-          <Card key={k.label}>
-            <CardContent className="py-3.5">
-              <p className="text-[11px] text-muted-foreground">{k.label}</p>
-              <p
-                className={cn(
-                  "mt-1 text-2xl font-bold leading-none tabular-nums",
-                  k.warn && "text-amber-600",
-                )}
-                style={k.accent ? { color: CHART_COLORS.primaryDeep } : undefined}
-              >
-                {k.value}
-              </p>
-              <p className="mt-1.5 text-[11px] text-muted-foreground">{k.hint}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      ) : (
+        <Card className="border-dashed">
+          <CardContent className="py-3 text-[12.5px] text-muted-foreground">
+            在上方勾选我方（{SELF_NAME}）可自动提炼「机会 / 差距 / 防」对比重点。
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-        {/* 左：雷达 + 矩阵 */}
+        {/* 左：雷达 + 关键评估指标对照表 */}
         <div className="min-w-0 space-y-4">
           <Card>
             <CardHeader className="pb-1">
               <CardTitle className="flex items-center justify-between text-sm">
                 <span className="flex items-center gap-1.5">
                   <BarChart3 className="h-4 w-4 text-primary" />
-                  能力雷达对比
+                  订单能力雷达
                 </span>
-                <span className="text-[11px] font-normal text-muted-foreground">六维能力模型 · 5 分制（档案估算）</span>
+                <span className="text-[11px] font-normal text-muted-foreground">真实订单归一化 · 5 分制（最多 {MAX_PICKS} 家）</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
               {entries.length === 0 ? (
                 <p className="py-20 text-center text-sm text-muted-foreground">请在上方勾选至少一个对标对象</p>
               ) : (
-                <EChart option={radarOption} height={320} />
+                <EChart option={radarOption} height={340} />
               )}
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                无订单口径数据的厂商以软著规模做参考位（封顶 2 分），不代表真实订单能力。
+              </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">竞品能力矩阵</CardTitle>
+              <CardTitle className="text-sm">关键评估指标对照</CardTitle>
             </CardHeader>
             <CardContent className="overflow-x-auto">
               <table className="w-full border-collapse text-[13px]">
                 <thead>
                   <tr>
-                    <th className="border-b-2 border-border px-2 py-2 text-left text-xs font-semibold text-muted-foreground">能力维度</th>
+                    <th className="min-w-[80px] border-b-2 border-border px-2 py-2 text-left text-xs font-semibold text-muted-foreground">
+                      评估指标
+                    </th>
                     {entries.map((e) => (
-                      <th key={e.row.id} className="border-b-2 border-border px-2 py-2 text-center text-xs font-semibold" style={{ color: e.color }}>
-                        {e.row.name}
+                      <th
+                        key={e.v.name}
+                        className="min-w-[150px] border-b-2 border-border px-2 py-2 text-left text-xs font-semibold"
+                        style={{ color: e.color }}
+                      >
+                        {e.v.name}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {CAPABILITY_DIMS.map((dim, d) => (
-                    <tr key={dim}>
-                      <td
-                        className={cn(
-                          "border-b border-border/60 px-2 py-2 font-medium",
-                          selfEntry && dimBest[d].leaders.some((l) => l.row.id === selfEntry.row.id) && "text-primary",
-                        )}
-                      >
-                        {dim}
-                      </td>
+                  {PROFILE_ROWS.map((r) => (
+                    <tr key={r.label}>
+                      <td className="border-b border-border/60 px-2 py-2 font-medium text-foreground">{r.label}</td>
                       {entries.map((e) => {
-                        const v = e.scores[d] ?? 0
-                        const win = v === dimBest[d].mx && v >= 4
+                        const val = profileCell(e, r)
                         return (
                           <td
-                            key={e.row.id}
-                            className="border-b border-border/60 px-2 py-2 text-center tabular-nums"
-                            style={{ color: win ? e.color : CHART_COLORS.ink3, fontWeight: win ? 700 : 400 }}
+                            key={e.v.name}
+                            className="border-b border-border/60 px-2 py-2 align-top text-[11.5px] leading-relaxed text-muted-foreground"
                           >
-                            {"★".repeat(v)}
-                            <span className="text-border">{"★".repeat(Math.max(0, 5 - v))}</span>
+                            {val || <span className="text-muted-foreground/60">待补全</span>}
                           </td>
                         )
                       })}
@@ -347,13 +350,13 @@ export function CompetitorCompare({
                 </tbody>
               </table>
               <p className="mt-2 text-[11px] text-muted-foreground">
-                彩色加粗为该维度领先者（≥4 分）；评分由档案关键词与软著规模自动估算，供对标参考，请以实际研判为准。
+                定性内容据订单分析 PPT 关键评估指标整理，正式版需人工核验；空白处可在厂商档案中编辑补全。
               </p>
             </CardContent>
           </Card>
         </div>
 
-        {/* 右：AI 差异化话术 */}
+        {/* 右：AI 差异化话术（沿用档案库数据） */}
         <Card className="flex min-h-[420px] flex-col">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center justify-between gap-2 text-sm">
@@ -365,8 +368,13 @@ export function CompetitorCompare({
                 variant="outline"
                 size="sm"
                 className="h-7 gap-1 text-[11px]"
-                disabled={talks.loading || !modelRef || competitors.length === 0}
-                onClick={() => void talks.runTalks(selfEntry?.row ?? null, competitors.map((e) => e.row))}
+                disabled={talks.loading || !modelRef || !selfEntry?.row || competitors.every((e) => !e.row)}
+                onClick={() =>
+                  void talks.runTalks(
+                    selfEntry?.row ?? null,
+                    competitors.map((e) => e.row).filter((r): r is CompetitorRow => r !== null),
+                  )
+                }
               >
                 <RefreshCw className={cn("h-3 w-3", talks.loading && "animate-spin")} />
                 {talks.talks.length > 0 ? "重新生成" : "生成话术"}
@@ -387,10 +395,10 @@ export function CompetitorCompare({
               <div className="flex h-full flex-col items-center justify-center gap-2 py-10 text-center">
                 <MessageSquare className="h-8 w-8 text-muted-foreground/60" />
                 <p className="text-sm font-medium text-foreground">
-                  {competitors.length === 0 ? "请勾选至少一个竞品" : "生成对抗话术"}
+                  {competitors.every((e) => !e.row) ? "勾选的竞品尚无档案数据" : "生成对抗话术"}
                 </p>
                 <p className="max-w-[260px] text-xs leading-relaxed text-muted-foreground">
-                  基于勾选竞品档案与六维能力对比，AI 生成可直接粘贴至方案/标书的差异化话术。
+                  基于勾选竞品档案与订单能力对比，AI 生成可直接粘贴至方案/标书的差异化话术。
                 </p>
               </div>
             )}
@@ -410,7 +418,11 @@ export function CompetitorCompare({
                 </div>
                 <p className="rounded-md bg-muted/40 px-2.5 py-2 text-[12.5px] leading-relaxed text-muted-foreground">{t.content}</p>
                 {selfEntry && (
-                  <button type="button" className="mt-1.5 text-[11px] text-primary hover:underline" onClick={() => onOpenArchive(selfEntry.row.id)}>
+                  <button
+                    type="button"
+                    className="mt-1.5 text-[11px] text-primary hover:underline"
+                    onClick={() => onOpenArchive(SELF_NAME)}
+                  >
                     查看我方档案
                   </button>
                 )}
@@ -425,7 +437,7 @@ export function CompetitorCompare({
             {entries.length > 0 && (
               <div className="text-center text-[11px] text-muted-foreground">
                 当前对比 <Badge variant="secondary" className="mx-1 px-1.5 py-0 text-[10px]">{entries.length}</Badge> 家：
-                {entries.map((e) => e.row.name).join(" / ")}
+                {entries.map((e) => e.v.name).join(" / ")}
               </div>
             )}
           </CardContent>

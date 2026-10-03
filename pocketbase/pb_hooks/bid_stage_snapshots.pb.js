@@ -113,7 +113,14 @@ routerAdd("GET", "/api/bid_stage_snapshots", function (e) {
     for (var i = 0; i < records.length; i++) {
       items.push(records[i].publicExport())
     }
-    return e.json(200, { items: items, page: page, perPage: perPage, totalItems: items.length })
+    var totalItems = items.length
+    try {
+      var countRecords = filter
+        ? $app.findRecordsByFilter("bid_stage_snapshots", filter, sort, 100000, 0, params)
+        : $app.findRecordsByFilter("bid_stage_snapshots", "", sort, 100000, 0)
+      totalItems = countRecords.length
+    } catch (err2) {}
+    return e.json(200, { items: items, page: page, perPage: perPage, totalItems: totalItems })
   } catch (err) {
     var msg = String(err && err.message || err)
     try { $app.logger().error("bid_stage_snapshots list: " + msg) } catch (_) {}

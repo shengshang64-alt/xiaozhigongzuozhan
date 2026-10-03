@@ -14,6 +14,7 @@
 //   node scripts/backfill-kb-taxonomy.mjs            # 正式执行 A+B
 //   node scripts/backfill-kb-taxonomy.mjs --only-a   # 仅回填
 //   node scripts/backfill-kb-taxonomy.mjs --force     # A 覆盖已有标签
+//   node scripts/backfill-kb-taxonomy.mjs --fix-templates  # 仅范本桶定向纠偏（R138，见 fixTemplateBuckets）
 import fs from "node:fs"
 import path from "node:path"
 
@@ -23,6 +24,7 @@ const LOCAL_USER = "local-user"
 const DRY = process.argv.includes("--dry")
 const FORCE = process.argv.includes("--force")
 const ONLY_A = process.argv.includes("--only-a")
+const FIX_TEMPLATES = process.argv.includes("--fix-templates")
 const MAX_BYTES = 200 * 1024
 
 // --- 分类法（与 src/lib/kbTaxonomy.ts 同步；改词表两处一起改）---------------
@@ -69,6 +71,17 @@ function deriveBucket(pathName) {
   if (COMPETITOR_DIR_RE.test(hay)) return "竞品情报"
   for (const [bucket, re] of BUCKET_RULES) if (re.test(hay)) return bucket
   return "其他"
+}
+// 范本前缀硬规则（与 src/lib/kbTaxonomy.ts templateBucketOf 同步，R138）：
+// soltpl:=方案范本、bidtpl:=标书范本，幂等键前缀即桶的确定性证据，优先于关键词猜桶。
+const TEMPLATE_BUCKET_PREFIXES = [
+  ["soltpl:", "方案素材"],
+  ["bidtpl:", "标书弹药"],
+]
+function templateBucketOf(sourceFileName) {
+  const s = String(sourceFileName ?? "")
+  for (const [prefix, bucket] of TEMPLATE_BUCKET_PREFIXES) if (s.startsWith(prefix)) return bucket
+  return null
 }
 
 // --- 复用 import-obsidian-vault 的 .md 清洗（front-matter tags + wiki 链接）---
@@ -129,9 +142,30 @@ async function fetchAllKb() {
 const inc = (m, k) => m.set(k, (m.get(k) || 0) + 1)
 const topOf = (m, n = 30) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n)
 
+// --fix-templates：只纠范本语料桶（R138）。前缀是确定性证据，凡 kb_bucket 与
+// prefix 判定不符的 soltpl:/bidtpl: 文档一律 PATCH 覆盖（「已有值跳过」的定向例外）；
+// 不动 track 与其余字段，不触碰非范本文档，幂等可重跑。
+async function fixTemplateBuckets(docs) {
+  let checked = 0, kept = 0, fixed = 0, fail = 0
+  for (const d of docs) {
+    const forced = templateBucketOf(d.source_file_name)
+    if (!forced) continue
+    checked++
+    if (String(d.kb_bucket || "").trim() === forced) { kept++; continue }
+    if (DRY) { fixed++; console.log(`  [dry] ${String(d.source_file_name).slice(0, 56)} : ${d.kb_bucket || "(空)"} → ${forced}`); continue }
+    try {
+      await api(`/api/kb_docs/${encodeURIComponent(d.id)}`, { method: "PATCH", body: JSON.stringify({ kb_bucket: forced }) })
+      fixed++
+    } catch (e) { fail++; if (fail <= 5) console.log(`PATCHFAIL ${d.id} ${e.message}`) }
+  }
+  console.log(`范本桶纠偏 ${DRY ? "(dry) " : ""}：范本=${checked} 已正确=${kept} ${DRY ? "待纠" : "已纠"}=${fixed} 失败=${fail}`)
+}
+
 async function main() {
   const existing = await fetchAllKb()
   console.log(`现有 kb_docs: ${existing.length} 条`)
+
+  if (FIX_TEMPLATES) { await fixTemplateBuckets(existing); return }
 
   // ---- Phase A：回填 track/bucket ----
   const trackDist = new Map(), bucketDist = new Map()
@@ -144,7 +178,7 @@ async function main() {
     const hasTrack = String(d.kb_track || "").trim()
     const hasBucket = String(d.kb_bucket || "").trim()
     const track = hasTrack && !FORCE ? hasTrack : deriveTrack([d.title, (d.keywords || []).join(" "), String(d.content || "").slice(0, 4000)].join(" "))
-    const bucket = hasBucket && !FORCE ? hasBucket : deriveBucket([d.title, d.folder_path, sfn].join("/"))
+    const bucket = hasBucket && !FORCE ? hasBucket : (templateBucketOf(sfn) ?? deriveBucket([d.title, d.folder_path, sfn].join("/")))
     inc(trackDist, track); inc(bucketDist, bucket)
     if (!FORCE && hasTrack && hasBucket) { aSkipped++; continue }
     if (DRY) { aUpdated++; continue }

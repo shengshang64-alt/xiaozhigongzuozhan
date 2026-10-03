@@ -50,6 +50,11 @@ export function ScoreCrossCheckPanel({
             报告漏抽 {cc.missingInReport.length}
           </Badge>
         )}
+        {cc.extraInReport.length > 0 && (
+          <Badge variant="outline" className="rounded-full border-warning/40 bg-warning/10 text-warning">
+            待复核 {cc.extraInReport.length}
+          </Badge>
+        )}
         {cc.scoreMismatch.length > 0 && (
           <Badge variant="outline" className="rounded-full border-warning/40 bg-warning/10 text-warning">
             分值不符 {cc.scoreMismatch.length}
@@ -80,6 +85,21 @@ export function ScoreCrossCheckPanel({
                 </span>
                 <span className="text-foreground">{m.name}</span>
                 <span>{m.score} 分</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {cc.extraInReport.length > 0 && (
+        <div className="mt-4">
+          <h4 className="text-xs font-semibold text-foreground">解析报告抽到、但本地原文扫描未匹配的项（请对照原文复核）</h4>
+          <ul className="mt-2 space-y-1">
+            {cc.extraInReport.map((e) => (
+              <li key={`${e.section}:${e.name}:${e.score}`} className="flex items-baseline gap-2 text-xs text-muted-foreground">
+                <span className="rounded-full bg-warning/10 px-2 py-0.5 text-warning">{e.section === "biz_score" ? "商务" : "技术"}</span>
+                <span className="text-foreground">{e.name}</span>
+                <span>{e.score} 分</span>
               </li>
             ))}
           </ul>

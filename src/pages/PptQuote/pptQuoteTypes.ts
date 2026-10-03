@@ -188,10 +188,9 @@ export function suggestPageCount(durationMin: number): number {
   return Math.max(6, Math.min(20, Math.round(d / 1.5)))
 }
 
-export function formatMoney(n: number): string {
-  const v = Number.isFinite(n) ? n : 0
-  return v.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
+// Money display now has a single app-wide implementation in @/lib/money
+// (R113); this re-export keeps every existing import path working.
+export { formatMoney } from "@/lib/money"
 
 export function itemSubtotal(it: QuoteItem): number {
   const discount = it.discount == null || !Number.isFinite(it.discount) ? 100 : it.discount

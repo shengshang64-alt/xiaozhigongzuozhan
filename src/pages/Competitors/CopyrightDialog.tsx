@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { ChevronLeft, ChevronRight, Loader2, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { formatCount } from "@/lib/money"
 import { Input } from "@/components/ui/input"
 import {
   Dialog,
@@ -89,7 +90,7 @@ export function CopyrightDialog({ open, onOpenChange, initialCompany = "all" }: 
               <Select value={filters.company} onValueChange={(v) => patch("company", v)}>
                 <SelectTrigger className="h-8 w-[168px]"><SelectValue placeholder="全部公司" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">全部公司（{rows?.length.toLocaleString() ?? "—"}）</SelectItem>
+                  <SelectItem value="all">全部公司（{rows ? formatCount(rows.length) : "—"}）</SelectItem>
                   {companies.map((c) => (
                     <SelectItem key={c} value={c}>{c}（{countByCompany.get(c) ?? 0}）</SelectItem>
                   ))}
@@ -120,7 +121,7 @@ export function CopyrightDialog({ open, onOpenChange, initialCompany = "all" }: 
                 {rows === null ? (
                   <span className="flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" />加载明细…</span>
                 ) : (
-                  <>命中 <b className="tabular-nums text-foreground">{filtered.length.toLocaleString()}</b> 项{showCompanyCol && ` · ${hitCompanies} 家`}</>
+                  <>命中 <b className="tabular-nums text-foreground">{formatCount(filtered.length)}</b> 项{showCompanyCol && ` · ${hitCompanies} 家`}</>
                 )}
               </span>
             </div>

@@ -33,7 +33,7 @@ export function PipelineStepper({ activeStep, requestStep, activeProject, missCo
   // 重构轮：开标前倒计时徽标（≤7 天红，其余中性；无日期不显）
   const daysLeft = daysUntilOpen(activeProject?.bid_open_date)
   return (
-    <nav className="mx-auto max-w-7xl px-4 pt-5">
+    <nav aria-label="投标流程步骤" className="mx-auto max-w-7xl px-4 pt-5">
       <ol className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-border bg-card p-2 shadow-md">
         {PIPELINE_STEPS.map((s) => {
           const isActive = s.step === activeStep
@@ -51,6 +51,9 @@ export function PipelineStepper({ activeStep, requestStep, activeProject, missCo
             : missingPrev && !done
               ? `${s.short}：建议先完成「第${missingPrev.step}步 · ${missingPrev.label}」`
               : s.short
+          // T10 a11y：可访问名恒定带序号与完成态——完成步骤视觉上是勾号图标（svg 无文本），
+          // 此前屏幕阅读器只读到「招标文件」丢了「第1步/已完成」，与待办步骤「3 投标文件编制」不一致；闸门徽标同理并入可读名。
+          const stepAria = `第${s.step}步 ${s.label}${done ? "（已完成）" : isActive ? "（当前步骤）" : ""}${gateOk ? " · 交卷闸门已确认" : ""}`
           // 重构轮：第⑤步废标红 / 第③步缺失橙（与主色 done 态互斥优先级：风险 > 完成）
           const isRisk = s.step === 5 && riskCount > 0
           const isMiss = s.step === 3 && missCount > 0 && !isRisk
@@ -60,6 +63,8 @@ export function PipelineStepper({ activeStep, requestStep, activeProject, missCo
                 type="button"
                 onClick={() => requestStep(s.step)}
                 title={stepTitle}
+                aria-label={stepAria}
+                aria-current={isActive ? "step" : undefined}
                 className={`flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                   isActive
                     ? isRisk
@@ -69,6 +74,7 @@ export function PipelineStepper({ activeStep, requestStep, activeProject, missCo
                 }`}
               >
                 <span
+                  aria-hidden="true"
                   className={`relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
                     isRisk
                       ? "bg-destructive text-destructive-foreground"

@@ -6,6 +6,7 @@ import { Download, Paperclip } from "lucide-react"
 import { toast } from "sonner"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/rhLogin"
+import { triggerBlobDownload } from "@/lib/download"
 
 type TemplateRow = {
   id: string
@@ -66,14 +67,7 @@ export function CompanyTemplateHint({ scenario, extraScenario }: { scenario: str
         return
       }
       const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = r.file_name || r.name
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(url)
+      triggerBlobDownload(blob, r.file_name || r.name)
     } catch {
       toast.error("下载失败，请稍后重试")
     } finally {

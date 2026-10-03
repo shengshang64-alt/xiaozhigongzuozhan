@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   FolderOpen,
   ListTodo,
+  ShieldCheck,
   Target,
   TrendingUp,
   type LucideIcon,
@@ -18,6 +19,7 @@ import type { MustSeeCategory, MustSeeItem, MustSeeToday, ProjectItem } from "@/
 const MAX_ROWS = 3
 
 const CATEGORY_ICONS: Record<MustSeeCategory, LucideIcon> = {
+  qual: ShieldCheck,
   todo: ListTodo,
   opp: Target,
   project: FolderOpen,

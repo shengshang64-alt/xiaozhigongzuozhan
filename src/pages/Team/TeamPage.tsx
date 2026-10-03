@@ -150,8 +150,9 @@ export function TeamPage(p: UseTeam) {
               <Input value={p.form.email} onChange={(e) => p.setForm({ ...p.form, email: e.target.value })} placeholder="如：zhangsan@team.local" type="email" autoComplete="off" />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-foreground">初始密码（至少 8 位）*</label>
-              <Input value={p.form.password} onChange={(e) => p.setForm({ ...p.form, password: e.target.value })} placeholder="请设置一个初始密码" type="text" autoComplete="new-password" />
+              <label className="mb-1 block text-xs font-medium text-foreground" htmlFor="team-pw">初始密码（至少 8 位）*</label>
+              <Input value={p.form.password} onChange={(e) => p.setForm({ ...p.form, password: e.target.value })} placeholder="请设置一个初始密码" id="team-pw" type="password" autoComplete="new-password" aria-describedby="team-pw-hint" />
+              <p id="team-pw-hint" className="mt-1 text-[11px] text-muted-foreground">默认隐藏，可点击输入框右侧眼睛图标确认后再告知同事</p>
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-foreground">角色</label>

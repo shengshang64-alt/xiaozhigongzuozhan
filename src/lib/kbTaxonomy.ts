@@ -93,6 +93,23 @@ const BUCKET_RULES: [KbBucket, RegExp][] = [
 // 修正现状「友商公司产品」下 150 篇因文件名含「响应/应答」被误判为标书弹药的错桶。
 const COMPETITOR_DIR_RE = /友商公司产品|[\\/]竞品|竞对|攻防话术/
 
+// 范本语料硬规则：scripts/extract-solutions / extract-bid-templates 入库语料的幂等键前缀。
+// soltpl:=方案范本、bidtpl:=标书范本，前缀本身即桶的确定性证据（R138）；
+// 修正关键词猜桶在「方案标题含招标/可研」「技术标提及友商品牌名」时的系统性错桶。
+const TEMPLATE_BUCKET_PREFIXES: [string, KbBucket][] = [
+  ["soltpl:", "方案素材"],
+  ["bidtpl:", "标书弹药"],
+]
+
+/** 范本导入 source_file_name 前缀判桶；未命中任何前缀返回 null（交由其余规则） */
+export function templateBucketOf(sourceFileName: string): KbBucket | null {
+  const s = sourceFileName ?? ""
+  for (const [prefix, bucket] of TEMPLATE_BUCKET_PREFIXES) {
+    if (s.startsWith(prefix)) return bucket
+  }
+  return null
+}
+
 /** 从「路径 + 文件名」派生用途桶；竞品目录强制归「竞品情报」 */
 export function deriveBucket(pathName: string): KbBucket {
   const hay = pathName ?? ""
@@ -109,8 +126,11 @@ export function deriveTaxonomy(input: {
   trackText: string
   /** 参与桶判定的路径/文件名 */
   pathName: string
+  /** 入库幂等键；soltpl:/bidtpl: 前缀为桶的确定性证据，优先于路径猜测 */
+  sourceFileName?: string
 }): { track: KbTrack; bucket: KbBucket } {
-  return { track: deriveTrack(input.trackText), bucket: deriveBucket(input.pathName) }
+  const forced = templateBucketOf(input.sourceFileName ?? "")
+  return { track: deriveTrack(input.trackText), bucket: forced ?? deriveBucket(input.pathName) }
 }
 
 export const isKbTrack = (v: unknown): v is KbTrack =>

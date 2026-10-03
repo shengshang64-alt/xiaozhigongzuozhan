@@ -24,24 +24,30 @@ export default defineConfig({
       'react-router-dom',
       'pocketbase',
       'sonner',
+      // T16：mermaid 配图（~1MB 级 ESM，声明进 include 保证首趟预构建完成，浏览器请求不触发二次 re-optimize）
+      'mermaid',
     ],
   },
   server: {
-    host: '127.0.0.1',
+    // T13-LAN（2026-09-29）：绑定全部网卡，允许内网其他电脑经本机 IP 访问；
+    // 后端 PocketBase 仍只监听 127.0.0.1:7000（不对外），其流量一律走下方 /__pb 代理
+    host: "0.0.0.0",
     port: 8000,
     strictPort: true,
+    // 内网自用：放开 Host 头校验，机器名/自定域名访问不被 vite 拦截（IP 访问本就不受限）
+    allowedHosts: true,
     proxy: {
       // 线上由 VibeX 网关剥离 /__pb 前缀；本地必须自行 rewrite，
       // 否则 /__pb/api/x 原样转发给 PocketBase，PB 只认 /api/x -> 404。
-      '/__pb': {
-        target: 'http://127.0.0.1:7000',
+      "/__pb": {
+        target: "http://127.0.0.1:7000",
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/__pb/, ''),
+        rewrite: (path) => path.replace(/^\/__pb/, ""),
       },
     },
   },
   preview: {
-    host: '127.0.0.1',
+    host: "0.0.0.0",
     port: 8000,
     strictPort: true,
   },

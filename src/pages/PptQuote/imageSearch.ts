@@ -47,10 +47,6 @@ export function setImageSearchKey(provider: ImageSearchProvider, key: string): v
   }
 }
 
-export function hasImageSearchKey(provider: ImageSearchProvider): boolean {
-  return !!getImageSearchKey(provider)
-}
-
 // 中文关键词兜底:Pexels 支持中文查询但结果偏少;Unsplash 主要英文索引。
 // 医疗场景常见词做一份份小词表,其他词原样发给 API(搜不到由调用方提示换词)。
 const CN2EN: Record<string, string> = {

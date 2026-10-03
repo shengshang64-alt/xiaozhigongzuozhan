@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Loader2, Plus, RefreshCw, Inbox, Copy, ChevronDown, ChevronRight } from "lucide-react"
-import { toast } from "sonner"
+import { copyTextToClipboard } from "@/lib/clipboard"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
@@ -391,7 +391,10 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
               size="sm"
               disabled={!p.reportText || p.reportLoading}
               onClick={() => {
-                void navigator.clipboard.writeText(p.reportText).then(() => toast.success("周报已复制到剪贴板"))
+                void copyTextToClipboard(p.reportText, {
+                  successMessage: "周报已复制到剪贴板",
+                  errorMessage: "复制失败，请手动选择文本",
+                })
               }}
             >
               <Copy className="mr-1.5 h-3.5 w-3.5" />
@@ -449,6 +452,11 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
         onToggle={p.toggleSource}
         onDelete={p.deleteSource}
         onFetchNow={p.fetchSourceNow}
+        retryingFailed={p.retryingFailed}
+        onRetryFailed={p.retryFailedSources}
+        enriching={p.enriching}
+        enrichPhase={p.enrichPhase}
+        onRunEnrich={p.runIntelEnrich}
         onClose={p.closeSourcesPanel}
       />
 

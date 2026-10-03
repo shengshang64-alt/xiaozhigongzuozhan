@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
-import { Loader2, MessageCircle, Plus, RefreshCw, Trash2, X } from "lucide-react"
+import { Loader2, MessageCircle, Plus, RefreshCw, Trash2, Wrench, X } from "lucide-react"
+import { vibexAuthHeaders } from "@/lib/rhLogin"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import {
   fmtIntelTime,
@@ -24,22 +25,47 @@ type SourceManagerPanelProps = {
   onToggle: (source: IntelSourceRow) => void
   onDelete: (source: IntelSourceRow) => void
   onFetchNow: (source: IntelSourceRow) => void
+  /** T3 一键重试全部失败源：重试进行中（行级 spinner 复用 fetchingSourceId） */
+  retryingFailed: boolean
+  onRetryFailed: () => void
+  /** T8 存量数据修复（enrich 回填）：运行标志 + 阶段文案 */
+  enriching: boolean
+  enrichPhase: string
+  onRunEnrich: () => void
   onClose: () => void
 }
 
-function statusHint(source: IntelSourceRow): { text: string; className: string } {
+// T3：把 Go 底层网络错误翻成售前看得懂的结论；原始明细保留在 title 悬浮里便于排查
+function humanizeSourceError(raw: string): string {
+  const s = raw || ""
+  if (/dial tcp: lookup/i.test(s)) return "域名解析失败（站点可能已改名或停用）"
+  if (/connection refused/i.test(s)) return "对方拒绝连接（服务器在线但未开放访问）"
+  if (/dial tcp/i.test(s)) return "连不上对方服务器（可能宕机或本机网络限制）"
+  if (/HTTP (403|412)/.test(s)) return "对方拒绝机器抓取（反爬验证，人工浏览器访问正常）"
+  if (/HTTP 404/.test(s)) return "页面地址失效（对方网站可能已改版）"
+  if (/HTTP 5\d\d/.test(s)) return "对方服务器故障（通常是暂时的，可稍后重试）"
+  if (/tls|x509/i.test(s)) return "对方证书异常（加密连接失败）"
+  return s || "未知原因"
+}
+
+function statusHint(source: IntelSourceRow): { text: string; detail: string; className: string } {
   if (source.last_status === "ok") {
     return {
       text: source.fetched_count > 0
-        ? `上次抓取成功 · 累计 ${source.fetched_count} 条`
-        : "上次抓取成功 · 暂无新的相关条目",
+        ? `抓取成功 · 累计 ${source.fetched_count} 条`
+        : "抓取成功 · 暂无新的相关条目",
+      detail: "",
       className: "text-primary",
     }
   }
   if (source.last_status === "error") {
-    return { text: `抓取失败：${source.last_error || "未知原因"}`, className: "text-destructive" }
+    return {
+      text: `抓取失败：${humanizeSourceError(source.last_error)}`,
+      detail: source.last_error || "",
+      className: "text-destructive",
+    }
   }
-  return { text: "尚未抓取，等待下一轮自动抓取", className: "text-muted-foreground" }
+  return { text: "尚未抓取，等待下一轮自动抓取", detail: "", className: "text-muted-foreground" }
 }
 
 type SourceRowProps = {
@@ -50,7 +76,7 @@ type SourceRowProps = {
   onFetchNow: (source: IntelSourceRow) => void
 }
 
-function SourceRow({ source, fetchingSourceId, onToggle, onRequestDelete, onFetchNow }: SourceRowProps) {
+function SourceRow({ source, fetchingSourceId, onToggle, onRequestDelete, onFetchNow, weekAdded }: SourceRowProps & { weekAdded?: number }) {
   const hint = statusHint(source)
   return (
     <li className="rounded-lg border border-border bg-background p-3.5 shadow-sm transition-shadow hover:shadow-md">
@@ -106,10 +132,17 @@ function SourceRow({ source, fetchingSourceId, onToggle, onRequestDelete, onFetc
           {source.url}
         </a>
         {source.last_fetch_at && (
-          <span className="text-muted-foreground">上次抓取 {fmtIntelTime(source.last_fetch_at)}</span>
+          <span className="text-muted-foreground">
+            {source.last_status === "error" ? "最近尝试" : "上次成功"} {fmtIntelTime(source.last_fetch_at)}
+          </span>
         )}
       </div>
-      <p className={`mt-1 truncate text-xs ${hint.className}`}>{hint.text}</p>
+      <p className={`mt-1 truncate text-xs ${hint.className}`} title={hint.detail || undefined}>
+        {hint.text}
+        {typeof weekAdded === "number" && weekAdded >= 0 ? (
+          <span className="ml-1.5 font-normal text-muted-foreground">· 近 7 天新增 {weekAdded} 条</span>
+        ) : null}
+      </p>
     </li>
   )
 }
@@ -130,6 +163,11 @@ export function SourceManagerPanel({
   onToggle,
   onDelete,
   onFetchNow,
+  retryingFailed,
+  onRetryFailed,
+  enriching,
+  enrichPhase,
+  onRunEnrich,
   onClose,
 }: SourceManagerPanelProps) {
   // 删除信息源走模态确认；Escape 关闭面板（确认框打开时让位给确认框）
@@ -143,22 +181,69 @@ export function SourceManagerPanel({
     return () => document.removeEventListener("keydown", onKey)
   }, [open, pendingDelete, onClose])
   if (!open) return null
-  const builtinSources = sources.filter((s) => s.is_builtin)
-  const mySources = sources.filter((s) => !s.is_builtin)
+  // 源贡献度统计（2026-09-28）：近 7 天新增按源聚合，识别贡献源与僵尸源（抓成功但 0 新增）
+  const [weekStats, setWeekStats] = useState<Record<string, number> | null>(null)
+  useEffect(() => {
+    if (!open || weekStats) return
+    fetch("/api/intel/source-stats", { headers: { "Content-Type": "application/json", ...vibexAuthHeaders() } })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("HTTP " + res.status))))
+      .then((data: { stats?: Array<{ source_id: string; week_added: number }> }) => {
+        const map: Record<string, number> = {}
+        for (const st of data.stats ?? []) map[st.source_id] = st.week_added
+        setWeekStats(map)
+      })
+      .catch(() => setWeekStats({}))
+  }, [open, weekStats])
+  // T3 健康概览：失败源置顶展示，问题源不用在 40 行里逐条找
+  const failedOf = (list: IntelSourceRow[]) => list.filter((s) => s.enabled && s.last_status === "error")
+  const errorCount = failedOf(sources).length
+  const enabledTotal = sources.filter((s) => s.enabled).length
+  const healthFirst = (a: IntelSourceRow, b: IntelSourceRow) =>
+    Number(b.enabled && b.last_status === "error") - Number(a.enabled && a.last_status === "error")
+  const builtinSources = sources.filter((s) => s.is_builtin).sort(healthFirst)
+  const mySources = sources.filter((s) => !s.is_builtin).sort(healthFirst)
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
       <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-lg border border-border bg-card shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-300">
-        <header className="flex min-h-14 shrink-0 items-center gap-2 border-b border-border px-4 py-3">
+        <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-3">
           <h2 className="text-base font-semibold text-foreground">信息源管理</h2>
-          <p className="text-xs text-muted-foreground">每 30 分钟自动抓取一轮到期的启用源，也可手动立即抓取</p>
-          <button
-            type="button"
-            onClick={onClose}
-            className="ml-auto rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-secondary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            title="关闭"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <p className={`text-xs ${errorCount > 0 ? "text-destructive" : "text-muted-foreground"}`}>
+            {errorCount > 0
+              ? `启用源 ${enabledTotal} 个，其中 ${errorCount} 个抓取失败`
+              : "每 30 分钟自动抓取一轮到期的启用源，也可手动立即抓取"}
+          </p>
+          <div className="ml-auto flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={onRunEnrich}
+              disabled={enriching}
+              title="对缺描述/区域未知的条目重新抓取正文并生成摘要、标签、区域（零 AI 费用，最长约 1 分钟）"
+              className="flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-card-foreground transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              {enriching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wrench className="h-3.5 w-3.5" />}
+              {enriching ? enrichPhase || "修复中…" : "修复数据"}
+            </button>
+            {errorCount > 0 ? (
+              <button
+                type="button"
+                onClick={onRetryFailed}
+                disabled={retryingFailed}
+                title={`把 ${errorCount} 个失败源逐个重抓一遍（每个最多等待 15 秒）`}
+                className="flex items-center gap-1 rounded-md border border-primary/40 px-2.5 py-1.5 text-xs text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                {retryingFailed ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                {retryingFailed ? "重试中…" : `重试失败源（${errorCount}）`}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-secondary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              title="关闭"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto px-4 py-4">
@@ -191,6 +276,7 @@ export function SourceManagerPanel({
                         onToggle={onToggle}
                         onRequestDelete={setPendingDelete}
                         onFetchNow={onFetchNow}
+                      weekAdded={weekStats?.[source.id]}
                       />
                     ))}
                   </ul>
@@ -255,6 +341,7 @@ export function SourceManagerPanel({
                         onToggle={onToggle}
                         onRequestDelete={setPendingDelete}
                         onFetchNow={onFetchNow}
+                      weekAdded={weekStats?.[source.id]}
                       />
                     ))}
                   </ul>

@@ -2,7 +2,7 @@
 // pb_hooks/bid_projects.pb.js — 业务 collection + REST CRUD 路由 (self-contained)
 //
 // 由 mcp__rh-pb-hooks__install_business_collection 装. 不要直接 Read+Write 这个文件.
-// 业务字段: rh_user_id:text, project_name:text, tender_no:text, hospital:text, bid_open_date:date, stage:text, tender_text:text, parse_report:json, bid_outline:json, bid_chapters:json, response_map:json, dup_report:json, void_check:json, ai_review:json, manual_review:json, parse_config:json, opportunity_id:text, bid_result:text, bid_amount:number, lost_reason:text, result_synced_at:date, target_pages:number, outline_level:number, figures_enabled:bool, clause_granularity:text, section_words:number, bid_defense:json, submission_check:json, stage_gates:json, archived:bool, deleted_at:text, gen_options:json, global_facts:text, orchestration:json, max_figures:number, compilation_basis_extra:json, basis_style:text, format_settings:json, format_check_items:json, ref_template_text:text, ref_materials_text:text, identity_words:text
+// 业务字段: rh_user_id:text, project_name:text, tender_no:text, hospital:text, bid_open_date:date, stage:text, tender_text:text, parse_report:json, bid_outline:json, bid_chapters:json, response_map:json, dup_report:json, void_check:json, ai_review:json, manual_review:json, parse_config:json, opportunity_id:text, bid_result:text, bid_amount:number, lost_reason:text, result_synced_at:date, target_pages:number, outline_level:number, figures_enabled:bool, clause_granularity:text, section_words:number, bid_defense:json, submission_check:json, stage_gates:json, archived:bool, deleted_at:text, gen_options:json, global_facts:text, orchestration:json, max_figures:number, compilation_basis_extra:json, basis_style:text, format_settings:json, format_check_items:json, ref_template_text:text, ref_materials_text:text, identity_words:text, bid_source_mode:text, bid_external_text:text
 // 路由: list,get,create,update,delete
 // list filter 字段: rh_user_id,stage
 // list 默认排序: -updated
@@ -69,12 +69,14 @@ onBootstrap(function (e) {
       addField({ name: 'ref_template_text', type: 'text' })
       addField({ name: 'ref_materials_text', type: 'text' })
       addField({ name: 'identity_words', type: 'text' })
+      addField({ name: 'bid_source_mode', type: 'text', max: 16 })
+      addField({ name: 'bid_external_text', type: 'text' })
       addField({ name: "created", type: "autodate", onCreate: true })
       addField({ name: "updated", type: "autodate", onCreate: true, onUpdate: true })
       // 用户反馈轮（2026-09-18）：长文本字段存量限制拦截十万字级招标文件保存（500 update_failed）
       // 2026-09-21 修正：PB 0.23+ text 字段 max=0 并非不限，而是应用默认 5000 上限（官方 JSVM 文档），
       // 旧修复把 max 置 0 从未解除限制；改为显式放宽到 LONG_TEXT_MAX；只放宽不收紧，幂等
-      var LONG_TEXT_FIELDS = ["tender_text", "ref_template_text", "ref_materials_text", "global_facts", "identity_words"]
+      var LONG_TEXT_FIELDS = ["tender_text", "ref_template_text", "ref_materials_text", "global_facts", "identity_words", "bid_external_text"]
       var LONG_TEXT_MAX = 5000000
       for (var lti = 0; lti < LONG_TEXT_FIELDS.length; lti++) {
         try {
@@ -234,7 +236,14 @@ routerAdd("GET", "/api/bid_projects", function (e) {
     for (var i = 0; i < records.length; i++) {
       items.push(records[i].publicExport())
     }
-    return e.json(200, { items: items, page: page, perPage: perPage, totalItems: items.length })
+    var totalItems = items.length
+    try {
+      var countRecords = filter
+        ? $app.findRecordsByFilter("bid_projects", filter, sort, 100000, 0, params)
+        : $app.findRecordsByFilter("bid_projects", "", sort, 100000, 0)
+      totalItems = countRecords.length
+    } catch (err2) {}
+    return e.json(200, { items: items, page: page, perPage: perPage, totalItems: totalItems })
   } catch (err) {
     var msg = String(err && err.message || err)
     try { $app.logger().error("bid_projects list: " + msg) } catch (_) {}

@@ -5,6 +5,7 @@ import type { EChartsOption } from "echarts"
 import { Building2, FileBadge, Gauge, ListChecks, TrendingUp } from "lucide-react"
 import { EChart } from "@/components/common/EChart"
 import { CHART_COLORS } from "@/lib/echarts"
+import { formatCount } from "@/lib/money"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { enrichProgress, type CompetitorRow } from "@/pages/Competitors/competitorsCore"
 
@@ -68,7 +69,7 @@ export function CompetitorCharts({ rows, loading, selectedId, onSelect }: { rows
         formatter: (p) => {
           const name = String((p as { name?: unknown }).name ?? "")
           const val = Number((p as { value?: unknown }).value) || 0
-          return `${name}${name === SELF_NAME ? "（我方）" : ""}：${val.toLocaleString()} 项软著`
+          return `${name}${name === SELF_NAME ? "（我方）" : ""}：${formatCount(val)} 项软著`
         },
       },
       xAxis: { type: "value", show: false },
@@ -94,7 +95,7 @@ export function CompetitorCharts({ rows, loading, selectedId, onSelect }: { rows
           barWidth: 16,
           cursor: "pointer",
           data,
-          label: { show: true, position: "right", formatter: (p) => (Number(p.value) || 0).toLocaleString(), color: CHART_COLORS.ink, fontSize: 12, fontWeight: "bold" },
+          label: { show: true, position: "right", formatter: (p) => formatCount(Number(p.value) || 0), color: CHART_COLORS.ink, fontSize: 12, fontWeight: "bold" },
         },
       ],
     }
@@ -126,7 +127,7 @@ export function CompetitorCharts({ rows, loading, selectedId, onSelect }: { rows
         type: "text",
         left: "34%",
         top: "middle",
-        style: { text: `${stats.total.toLocaleString()}\n软著合计`, textAlign: "center", fill: CHART_COLORS.ink, fontSize: 13, fontWeight: "bold", lineHeight: 18 },
+        style: { text: `${formatCount(stats.total)}\n软著合计`, textAlign: "center", fill: CHART_COLORS.ink, fontSize: 13, fontWeight: "bold", lineHeight: 18 },
       },
     }
   }, [rows, stats.total])
@@ -145,8 +146,8 @@ export function CompetitorCharts({ rows, loading, selectedId, onSelect }: { rows
       {/* KPI 摘要 */}
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
         <KpiItem icon={<Building2 className="h-4 w-4" />} label="竞品厂商" value={`${stats.count}`} hint="家" />
-        <KpiItem icon={<FileBadge className="h-4 w-4" />} label="软著合计" value={stats.total.toLocaleString()} hint="项" accent />
-        <KpiItem icon={<Gauge className="h-4 w-4" />} label="平均软著" value={stats.avg.toLocaleString()} hint="项/家" />
+        <KpiItem icon={<FileBadge className="h-4 w-4" />} label="软著合计" value={formatCount(stats.total)} hint="项" accent />
+        <KpiItem icon={<Gauge className="h-4 w-4" />} label="平均软著" value={formatCount(stats.avg)} hint="项/家" />
         <KpiItem
           icon={<TrendingUp className="h-4 w-4" />}
           label={`我方排位（${SELF_NAME}）`}

@@ -1,5 +1,6 @@
-import { AlignmentType, HeadingLevel, PageBreak, Paragraph, TableOfContents, TextRun } from "docx"
+import type { Paragraph, TableOfContents } from "docx"
 import { typeLabel, type SolutionRecord } from "./solutionTypes.ts"
+import { localDateStamp } from "@/lib/dateStamp"
 
 // ---------------------------------------------------------------------------
 // R007（B-4 阶段一）：方案 Word 导出模板——封面 / 自动目录 / 页眉。
@@ -53,34 +54,39 @@ export function writeSolutionExportTemplate(id: string, tpl: SolutionExportTempl
   }
 }
 
-function centered(text: string, size: number, opts?: { bold?: boolean; before?: number }): Paragraph {
-  return new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { before: opts?.before ?? 0 },
-    children: [new TextRun({ text, size, bold: opts?.bold })],
-  })
-}
-
-/** 封面 + 目录（按模板开关）→ 前置 children；正文由调用方追加 */
-export function buildExportFrontMatter(sol: SolutionRecord, tpl: SolutionExportTemplate): (Paragraph | TableOfContents)[] {
+/** 封面 + 目录（按模板开关）→ 前置 children；正文由调用方追加。
+ *  R147（解除 r124-solutionstudio-docx-defer）：docx 在本函数内动态导入——
+ *  模块级只剩编译期类型引用，SolutionStudio 路由 chunk 不再静态打包 docx。 */
+export async function buildExportFrontMatter(
+  sol: SolutionRecord,
+  tpl: SolutionExportTemplate,
+): Promise<(Paragraph | TableOfContents)[]> {
+  const { AlignmentType, HeadingLevel, PageBreak, Paragraph: DocxParagraph, TableOfContents: DocxToc, TextRun } =
+    await import("docx")
+  const centered = (text: string, size: number, opts?: { bold?: boolean; before?: number }) =>
+    new DocxParagraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: opts?.before ?? 0 },
+      children: [new TextRun({ text, size, bold: opts?.bold })],
+    })
   const children: (Paragraph | TableOfContents)[] = []
   if (tpl.cover) {
     if (tpl.company) children.push(centered(tpl.company, 32, { bold: true, before: 2400 }))
     children.push(centered(sol.solution_name, 56, { bold: true, before: tpl.company ? 1200 : 3600 }))
     children.push(centered(`${sol.hospital || "未填客户医院"} · ${typeLabel(sol.solution_type)}`, 28, { before: 600 }))
-    children.push(centered(`编制日期：${new Date().toLocaleDateString("zh-CN")}`, 24, { before: 200 }))
-    children.push(new Paragraph({ children: [new PageBreak()] }))
+    children.push(centered(`编制日期：${localDateStamp()}`, 24, { before: 200 }))
+    children.push(new DocxParagraph({ children: [new PageBreak()] }))
   }
   if (tpl.toc) {
     children.push(
-      new Paragraph({
+      new DocxParagraph({
         heading: HeadingLevel.HEADING_1,
         alignment: AlignmentType.CENTER,
         children: [new TextRun({ text: "目  录", bold: true, size: 32 })],
       }),
     )
-    children.push(new TableOfContents("目录", { hyperlink: true, headingStyleRange: "1-2" }))
-    children.push(new Paragraph({ children: [new PageBreak()] }))
+    children.push(new DocxToc("目录", { hyperlink: true, headingStyleRange: "1-2" }))
+    children.push(new DocxParagraph({ children: [new PageBreak()] }))
   }
   return children
 }

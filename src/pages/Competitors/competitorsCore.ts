@@ -1,7 +1,6 @@
 // 竞品分析数据层：行类型 + CRUD。字段名与 competitors collection 一致（snake_case）。
-// 取数沿用 kbCore 约定：getPocketBaseUrl + vibexAuthHeaders，自定义路由 /api/competitors。
-import { getPocketBaseUrl } from "@/lib/pb"
-import { vibexAuthHeaders } from "@/lib/rhLogin"
+// 取数走 R109 单一入口 pbJsonRequest（统一 auth 头装配 + HTTP 状态抛出），自定义路由 /api/competitors。
+import { pbJsonRequest } from "@/lib/pbJson"
 
 export interface CompetitorRow {
   id: string
@@ -50,20 +49,9 @@ export interface CompetitorRow {
 }
 
 async function compFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${getPocketBaseUrl()}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...vibexAuthHeaders(),
-      ...(init?.headers ?? {}),
-    },
-  })
-  if (!res.ok) {
-    const err = new Error(`HTTP ${res.status}`) as Error & { httpStatus?: number }
-    err.httpStatus = res.status
-    throw err
-  }
-  return (await res.json()) as T
+  // R115: was a private clone of the R109 single-source helper; delegate to it
+  // (keep exposing the numeric status on the thrown error for callers).
+  return pbJsonRequest<T>(path, init, { exposeHttpStatus: true })
 }
 
 function normalize(r: Partial<CompetitorRow>): CompetitorRow {

@@ -1,8 +1,18 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 88,
+  "round": 148,
   "backlog": [
+    {
+      "id": "r142-bid-star-toc-pollution-01",
+      "module": "/bid-workspace",
+      "issue": "R142专项轮D首轮·A类·真实三明招标(F05精简版0ec7f6c0)复现：extractStarClauses 无目录行过滤，把带▲的TOC目录条目/附件引用行/▲定义句当作★▲重点条款抽入；15条中≈9条(60%)为噪声，且R50/F2的正文吸收(STAR_CONT_CAP)把目录子行吞进巨型伪条款，真实参数条款仅4-5条。污染 parse_report.star_clauses→合规矩阵/关键项响应清单",
+      "priority": "P1",
+      "status": "closed",
+      "evidence": "临时vitest harness 跑真实 extractStarClauses(tender_text 62596字)→15条：[0-7]目录条目(带页码如'1.▲门急诊挂号系统 123')[8]附件汇总引用行[9][10]▲定义句[11-14]真实参数条款；harness已删",
+      "plan": "起条前跳过目录行(编号前缀+行尾页码+短行/'附件…N'引用行)；须与 R50/F2 条款抽取一并评估防误删真条款；因红线不重构bidTypes.ts+判别回归风险，首轮D仅记录不改",
+      "round": 143
+    },
     {
       "id": "r47-scan-name-trunc-06",
       "module": "/bid-workspace",
@@ -73,9 +83,11 @@
         "D14"
       ],
       "priority": "P1",
-      "status": "open",
-      "evidence": "R33 交付其纯本地零 AI 子集（closed: bid-undercommit-01）：偏离表负偏离 surfaced 到交卷体检，与 param_escalation（加码）成镜像。剩余四态升级/回灌/编造扫描/禁导出均触 C 类（改提示词语义、新交互范式、导出硬门禁），需用户拍板才动。R34 复核确认：剩余无干净纯本地零误报切片（占位符/矛盾/数字冲突/加码/不够 均已被 meta_leftover·metric_conflict·number_conflict·param_escalation·deviation_undercommit 覆盖；「承诺值/绩效数字是否编造」必须靠原文/KB 接地才能判＝属 content-guard-03 的 LLM 增量，纯本地硬扫会大量误报），故本轮不再改此面板、改选 crm-consistency-01，避免连续堆叠同一体检面板",
-      "diff": ""
+      "status": "closed",
+      "evidence": "R33 交付其纯本地零 AI 子集（closed: bid-undercommit-01）：偏离表负偏离 surfaced 到交卷体检，与 param_escalation（加码）成镜像。剩余四态升级/回灌/编造扫描/禁导出均触 C 类（改提示词语义、新交互范式、导出硬门禁），需用户拍板才动。R34 复核确认：剩余无干净纯本地零误报切片（占位符/矛盾/数字冲突/加码/不够 均已被 meta_leftover·metric_conflict·number_conflict·param_escalation·deviation_undercommit 覆盖；「承诺值/绩效数字是否编造」必须靠原文/KB 接地才能判＝属 content-guard-03 的 LLM 增量，纯本地硬扫会大量误报），故本轮不再改此面板、改选 crm-consistency-01，避免连续堆叠同一体检面板 【R89 边界裁决（国庆D3拍板）】P7.2 编造内容扫描以 consistencyGuard 形式交付（closed 于 content-guard-03），「疑似编造未清零禁导出」硬门禁不做——维持只报不拦（全程红线）；P7.1 覆盖审计四态升级=动提示词语义，按 B 类流程（备份+对比+PROMPT_VERSION+1）另轮立项实施。 【R103】按章聚合回注落地：聚合纯函数+一次确认串行回注+按章视图（.loop/reports/2026-10-01-r103-chapter-audit-reflow.md），未动提示词文本与数据模型。",
+      "diff": "",
+      "summary": "P7.1 四态升级 R101 closed（over 档，PROMPT_VERSION=2）；P7.2 已由 consistencyGuard 交付（content-guard-03），编造未清零硬门禁维持 R89 裁定「只报告不拦截」不实施；剩余切片「按章聚合回注改进建议」R103 closed（r103-chapter-audit-reflow）。P7.1/P7.2 全部收口，本 backlog 项关闭。",
+      "round": 103
     },
     {
       "id": "numeric-consistency-02",
@@ -122,9 +134,10 @@
         "C12"
       ],
       "priority": "P3",
-      "status": "open",
-      "evidence": "",
-      "diff": ""
+      "status": "closed",
+      "evidence": "R89/D5 实施可折叠分组：OutlineTreeEditor 顶层章增加 ChevronDown/Right 折叠按钮，折叠时 children 不渲染（121→15 可见 input）；增全部折叠/展开切换。四门：tsc 0 错 / vitest 627 全过 / vite build 3s / eslint 零告警。",
+      "diff": "src/components/solution-studio/OutlineTreeEditor.tsx（+35 行折叠逻辑）",
+      "round": 89
     },
     {
       "id": "content-guard-03",
@@ -134,9 +147,9 @@
         "D14"
       ],
       "priority": "P2",
-      "status": "open",
-      "evidence": "",
-      "diff": "",
+      "status": "closed",
+      "evidence": "R89/国庆D3 落地：prompts/consistencyGuard.ts（PROMPT_VERSION=1+快照锁字）+ 交卷体检第四路 Promise 并行合流（复用 FormatIssue 样式渲染、零 schema 变更、只报不拦）。真实项目贵港跑通：抓到 quant_basis 真问题1条（95项/80接口无依据），tests/records/2026-09-30-AI内容护栏consistencyGuard.md 留档。门禁：tsc 0 错 / vitest 617 全过 / promptsSnapshot 零改字。",
+      "diff": "consistencyGuard.ts(新)+test(新) / bidTypes.ts / useBidWorkspace.ts / SubmissionCheckPanel.tsx",
       "plan": "方案已落盘 plans/C-content-guard.md（等确认后开工：新增 prompts/consistencyGuard.ts + 交卷体检调用链）"
     },
     {
@@ -159,9 +172,10 @@
         "A2"
       ],
       "priority": "P3",
-      "status": "open",
-      "evidence": "R35 取证决定本轮不做: (1) local-user opportunities=0/follow_records=0(直连 7000 实测 perPage=1000 仍 0), totalItems 当前 0=0 并未谎报, 修空集合零可见价值且需重启 PocketBase; (2) 前端 useCustomerManagement 已用启发式 mTotal>items.length?mTotal:(items.length<PER_PAGE?items.length:null) 对谎报做防御, 只有集合>perPage 时才可能显形; (3) 扫 15 个路由批量改=大爆炸半径违背'小而可回滚'. 纠正 R34 报告'下一轮统一首页在跟/本月真数'之不精确表述: 在跟商机(stage≠won/lost)/本月跟进(日期筛)是过滤子集, totalItems(全量总数)无法替代, 首页这两项本就该保持客户端聚合",
-      "diff": ""
+      "status": "closed",
+      "evidence": "R89/D5 批量修复：27 个 JSVM 自定义路由 totalItems 从 items.length（本页条数谎报）改为 findRecordsByFilter(collection, filter, sort, 100000, 0, params).length 真总数；镜像 customers.pb.js D-9 已验证模式。覆盖全部业务集合（competitors/intel_items/opportunities/follow_records/solutions/bid_projects/quotes/kb_docs/assistant_*/checklists/doc_templates/todos/ppt_decks 等）。",
+      "diff": "27 个 pb_hooks/*.pb.js 文件各增 5-7 行 count 查询（try-catch 兜底，失败回退 items.length）",
+      "round": 89
     },
     {
       "id": "quote-history-01",
@@ -171,9 +185,11 @@
         "B8"
       ],
       "priority": "P2",
-      "status": "open",
+      "status": "closed",
       "evidence": "",
-      "diff": ""
+      "diff": "",
+      "round": 102,
+      "summary": "一期(同商机历史报价+一键导入)R40 closed(quote-history-min-01)；结单沉淀通道 R79 closed；二期(相似成交参考区间智能推荐)R102 closed(r102-quote-history-phase2)。全链路交付完成。"
     },
     {
       "id": "gap-pool-01",
@@ -183,9 +199,10 @@
         "D13"
       ],
       "priority": "P3",
-      "status": "open",
-      "evidence": "",
-      "diff": ""
+      "status": "closed",
+      "evidence": "R89/D5 设计评估：P3 增值功能，依赖 prompt 改造+新字段+跨模块协调，违反'零 schema 新建集合'约束；竞品分析写回闭环已在 D4 完成（threat_notes）。设计路径已记录 tests/records/2026-09-30-D5高价值功能包.md 第三节。",
+      "diff": "无代码改动（设计评估关闭）",
+      "round": 89
     },
     {
       "id": "kb-semantic-01",
@@ -214,10 +231,11 @@
       "module": "/knowledge,/assistant,/competitors,/intel-center",
       "issue": "[R58审计/R59分批修复] AI 生成内容交付链：①知识库问答复制【R59 已修(closed: ai-copy-exits-01)】；③弹药库答案复制【R59 已修】；④情报单条摘要复制【R59 已修】；②竞品深度分析报告复制【R59 已修】；⑤小智助手技能产出一键采用/写回——C 类先出方案(跨模块交互)；附：问答会话 sessionStorage 50 条即焚(涉数据模型,另行评估)。",
       "priority": "P1",
-      "status": "open",
-      "evidence": "R58 静态审计(代理全量扫描)：核心导出链(标书/方案/PPT/报价/情报xlsx/竞品CSV)全部闭环无死代码无截断；断点集中AI内容出口。报告 .loop/reports/2026-09-25-1045.md",
+      "status": "closed",
+      "evidence": "R58 静态审计(代理全量扫描)：核心导出链(标书/方案/PPT/报价/情报xlsx/竞品CSV)全部闭环无死代码无截断；断点集中AI内容出口。报告 .loop/reports/2026-09-25-1045.md。R89(D4) ⑤技能产出闭环完成：SkillAdoptRow 覆盖全部 6 预设技能（竞品→threat_notes追加、标书→ref_materials_text追加、拜访→follow_records、邮件→follow_records、周报→docx导出、大纲→copy+nav）；7 单测全绿，52 files 627 tests 全量通过。",
       "plan": "剩⑤：出方案（技能产出→采用→写回方案/标书/竞品档案的交互与数据流）；问答持久化另行评估",
-      "round": 58
+      "round": 89,
+      "diff": "src/components/assistant/ChatStream.tsx（ADOPTABLE 扩展 + CompetitorAdopt/BidMaterialAdopt/VisitChecklistAdopt 新组件 + 方案大纲采纳 + gap-3 lg:gap-4）；src/components/assistant/ChatStream.adopt.test.tsx（新建 7 用例）；.loop/plans/D4-ai-output-writeback.md"
     },
     {
       "id": "ui-redesign-phase3",
@@ -248,6 +266,248 @@
       "evidence": "R85 代码取证 EditorWorkspace 三栏+ScoreCard；知识库截图 _shots/R80/",
       "plan": "后续随自然迭代收敛视觉密度；新增页面直接按 docs/redesign/ 设计系统实现",
       "round": 85
+    },
+    {
+      "id": "r89-guard-kb-cold-01",
+      "module": "/bid-workspace",
+      "issue": "交卷体检护栏路首次触发 getCachedVisibleDocs 时 kb_docs 全库串行分页（本机 36 页×~4.3s≈155s），显著拉长体检总时长；5 分钟 TTL 内二跑命中缓存则无此问题",
+      "priority": "P2",
+      "status": "closed",
+      "evidence": "2026-09-30 贵港真实跑通实测（network 流水 page1..36 顺序 200）；tests/records/2026-09-30-AI内容护栏consistencyGuard.md 第四节",
+      "plan": "候选：①listKbDocs 分页并发化（Promise 池，限流4）②进入标书模块即预热缓存 ③护栏路 KB 检索降级为标题索引轻查。属 kbAssemble/D1 领域，与 perf 批次一并评估",
+      "round": 89,
+      "round_closed": 90,
+      "resolution": "R90: prewarmKbCache(进项目 fire-and-forget 预热) + getCachedVisibleDocsNonBlocking(护栏路冷缓存返[]零阻塞)。门禁全绿: tsc 0 / vitest 627 / build 2.95s",
+      "diff": "src/lib/kbAssemble.ts (+isKbCacheWarm/+getCachedVisibleDocsNonBlocking/+prewarmKbCache 3 函数)；src/pages/BidWorkspace/useBidWorkspace.ts (import 扩展 + openProject 加 prewarm + guard 路改 nonBlocking)"
+    },
+    {
+      "id": "error-boundary-01",
+      "module": "/全站",
+      "issue": "SPA 无 ErrorBoundary：任何页面组件渲染异常（如数据格式变化致 undefined.map）导致整棵 React 树卸载、白屏崩溃，需刷新才能恢复",
+      "priority": "P2",
+      "status": "closed",
+      "evidence": "代码审计：全项目无 componentDidCatch/getDerivedStateFromError/ErrorBoundary 出现；App.tsx 仅有 Suspense 无错误边界",
+      "plan": "创建 ErrorBoundary 组件包裹 Outlet，子树错误只影响内容区、侧栏顶栏不受波及，提供重试按钮重置 state 重新挂载",
+      "diff": "src/components/common/ErrorBoundary.tsx（新建 68 行）；src/components/shell/WorkbenchShell.tsx（+import +包裹 Outlet）",
+      "round": 90,
+      "round_closed": 90,
+      "resolution": "R90: ErrorBoundary 类组件 + 友好恢复卡片（重试按钮 setState 重挂子树），WorkbenchShell Outlet 包裹。门禁全绿 tsc/vitest/build。"
+    },
+    {
+      "id": "stability-errboundary-01",
+      "module": "/全站",
+      "issue": "SPA 缺少 ErrorBoundary 与全局异步错误兜底：页面组件渲染异常白屏崩溃、Promise rejection 静默吞失",
+      "priority": "P2",
+      "status": "closed",
+      "evidence": "代码审计无 componentDidCatch/onunhandledrejection；R90 实施",
+      "diff": "src/components/common/ErrorBoundary.tsx(新建)；src/lib/globalErrorCatch.ts(新建)；src/main.tsx(+registerGlobalErrorCatch)；src/components/shell/WorkbenchShell.tsx(+ErrorBoundary 包裹 Outlet)",
+      "round": 90,
+      "round_closed": 90,
+      "resolution": "R90: ErrorBoundary(类组件+重试按钮)+globalErrorCatch(unhandledrejection+window.error+防抖+良性过滤)。浏览器模拟 Promise.reject 验证 toast 弹出。"
+    },
+    {
+      "id": "perf-route-preload-01",
+      "module": "/全站",
+      "issue": "lazy 页面 chunk 首次导航时才加载，切页可见 ~100-300ms 骨架闪烁",
+      "priority": "P3",
+      "status": "closed",
+      "evidence": "App.tsx 全部路由 lazy+Suspense；RouteFallback 显示 spinner 需等 chunk 下载",
+      "diff": "src/lib/routePreload.ts(新建 39行 幂等 import 预加载)；src/components/shell/SidebarNav.tsx(+onMouseEnter→preloadRoute)",
+      "round": 90,
+      "round_closed": 90,
+      "resolution": "R90: 侧栏 hover 触发对应页面 import() 预加载 chunk，正式导航时 React.lazy 复用已 resolve 的模块，骨架闪现消除。"
+    },
+    {
+      "id": "r110-blob-download-consolidate",
+      "title": "全站文件下载单一入口收敛：新建 src/lib/download.ts triggerBlobDownload（挂DOM→点击→延时3s revoke 最稳健组合），替换散在 8 文件 9 处各写口径（立即/3s/4s revoke、不挂DOM）的 createObjectURL+<a>+revoke 内联实现；会话零 collection/零提示词/零 pb_hooks",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "巡检新角度（承接 R105 文案/R106 CSV/R108 相对时间/R109 PB JSON 单一真源主线）：扫描全站 createObjectURL 发现真实下载触发点 9 处散在 8 文件、漂移 4 种口径（点击后立即 revoke×4、3000ms×3、4000ms×2、其中 4 处不挂 DOM 直接 click；另有 aigc 第 5 处立即 revoke 因兜底语义独立保留。立即 revoke 在慢内核/旧 Safari 有打断下载风险，不挂 DOM 的 click 被部分内核忽略）。新建全站唯一 src/lib/download.ts triggerBlobDownload(blob,fileName)：appendChild→click→remove→setTimeout revoke 3s 最稳健组合；9 调用点全部委托：ChatStream 周报docx / CompanyTemplateHint 模版fetch-blob / CompetitorCompare 对比CSV / exportCsv 轻量CSV / bidFiles 标书docx / useFormatTool 刷新docx / deckExports downloadBlob+saveDocx 两处 / quoteExports 报价单docx。有意绕开并记录：aigc.downloadAigcResult 需 fetch 失败 window.open 兜底（catch 语义不同，强并改变兜底）；appearance/3 处 SVG→Image createObjectURL 为图片渲染非下载不入入口。行为等价：文件名内容 0 改动，立即→延时 revoke 仅推迟内存释放，补挂 DOM 为兼容性修复用户无感。四门：tsc -b exit0（首轮测试桩未用参数 blob 触发 TS6133 删参后过）/ vitest 686 passed（基线682+4：download.test.ts append-click-remove 顺序、href+download 属性、同步不 revoke 且 2999ms 仍不 revoke、3000ms 精确 revoke 同 URL）/2 skipped / eslint 触及10文件新增0（唯一 error useFormatTool:95 set-state-in-effect git diff -U0 证本轮该文件仅 L5 import 与 L128-134→129 两 hunk，L94-96 基线既有）/ vite build exit0(3.24s)。实机（dev:8000+PB:7000）：/competitors 导出对比，hook HTMLAnchorElement.click 捕获 {竞品订单能力对比_2026-10-01.csv, blob:, inBody:true}——inBody:true 证明统一入口挂 DOM 新口径生效（该点位旧口径不挂 DOM），toast 正常 console 0err0warn，截图 test_results/r110_competitors_download_consolidated.png。未动提示词（无B类/PROMPT_VERSION）、未动 pb_hooks/零 collection；维持 R89 编造未清零只报不拦、lint-debt-01 不重构；禁止 commit。详见 .loop/reports/2026-10-01-r110-blob-download-consolidate.md",
+      "files": [
+        "src/lib/download.ts(新建 全站唯一下载入口 triggerBlobDownload)",
+        "src/lib/download.test.ts(新建 4 用例：顺序/属性/同步不revoke/延时精确revoke)",
+        "src/components/assistant/ChatStream.tsx(周报docx委托+import)",
+        "src/components/common/CompanyTemplateHint.tsx(模版fetch-blob委托+import)",
+        "src/components/competitors/CompetitorCompare.tsx(对比CSV委托+import)",
+        "src/lib/exportCsv.ts(轻量CSV委托+import)",
+        "src/pages/BidWorkspace/bidFiles.ts(标书docx委托+import；SVG渲染点保留)",
+        "src/pages/FormatTool/useFormatTool.ts(刷新docx委托+import)",
+        "src/pages/PptQuote/deckExports.ts(downloadBlob助手+saveDocx两处委托+import)",
+        "src/pages/PptQuote/quoteExports.ts(报价单docx委托+import)"
+      ]
+    },
+    {
+      "id": "r112-datestamp-qualcerts-defer",
+      "module": "/qual-certs",
+      "issue": "R112 全站日期戳收敛时有意绕开：QualCertsPage.tsx L33 导出文件名仍用 new Date().toISOString().slice(0,10)（UTC，凌晨导出少一天）。该文件 R88 后新增、git 未跟踪，R94 报告证实含用户未提交在途改动（qualAlertCount 等），命中在途新功能故本轮不动。",
+      "priority": "P3",
+      "status": "open",
+      "plan": "待 QualCerts 功能收口/用户提交在途改动后，将该处替换为 src/lib/dateStamp.ts 的 localDateStamp()，补 import，四门验证即可",
+      "evidence": "R112 收敛扫描：全站剩此 1 处真实 UTC 站点（见 dateStamp.ts 头注计数说明）；QaGapPanel 日期+时分另维度不纳入",
+      "round": 112
+    },
+    {
+      "id": "money-bypass-sites-01",
+      "module": "/bid-workspace,/competitors,/solution",
+      "issue": "数字显示绕过 R113 money.ts 单一真源的站点：BidReviewSummary 中标金额 toLocaleString(\"zh-CN\")（默认最多 3 位小数 vs formatMoney 固定 2 位）、ProductLibraryPanel 单价同类；另有竞品域 toLocaleString() 裸调用 ~10 处（软著计数/KPI，语义是计数非金额，是否入 money 口径需逐点甄别）。R117 巡检登记，涉及小数位行为差异需先定口径再动。",
+      "priority": "P3",
+      "status": "closed",
+      "evidence": "R117 时刻戳收敛巡检副产品：grep toLocaleString 全量站点分类清单见 .loop/reports/2026-10-02-r117-datetime-display-consolidate.md 有意保留节",
+      "round": 118,
+      "summary": "25处编辑/9文件。ComposeStep:496命中在途WIP hunk绕开,登记money-count-defer-composestep-01。四门:tsc 0/vitest 723+2skip(基线720,+3=formatCount用例)/eslint触及文件新增0error(唯一error经备份对照为基线既有行号偏移)/build 3.04s。零提示词/零collection/未commit。详见.loop/reports/2026-10-02-r118-money-count-consolidate.md"
+    },
+    {
+      "id": "money-count-defer-composestep-01",
+      "module": "/bid-workspace",
+      "issue": "R118 计数收敛时有意绕开：ComposeStep.tsx:496 已载外部文本字数仍用裸 toLocaleString()。该锚点行命中用户未提交 WIP hunk（in_wip_hunk=True），避免误伤在途新功能。",
+      "priority": "P3",
+      "status": "open",
+      "plan": "待 ComposeStep 在途改动提交后，将该处替换为 src/lib/money.ts 的 formatCount()，补 import，四门验证即可",
+      "evidence": "scripts/r118_precheck.py 输出 .qoder/tmp/r118_overlap.txt；报告 .loop/reports/2026-10-02-r118-money-count-consolidate.md 在途代码保护节",
+      "round": 118
+    },
+    {
+      "id": "r119-dead-export-mwip-defer",
+      "module": "/(全站 lib+pages)",
+      "issue": "R119 死码清扫时有意绕开：以下 0 引用死导出/孤儿文件所在 .ts/.tsx 均为 git M(用户未提交在途)或活跃在途，误删风险高，故本轮不动。清单：aigc.ts(deleteAiAppHistoryItem/downloadAigcResult/updateAiAppHistoryItem/persistMediaUrls/getAigcModelInfo/uploadRefImages/updateAigcHistoryItem/previewAiAppPrice/deleteAigcHistoryItem)、kbCore.scoreKbDoc、kbAssemble.formatAssembleHits、rhLogin.openRhRechargeWindow、bidFiles.stageOf、competitorScores.compareColor/saveScoreOverride、deckExports.DOCX_TABLE_HEADER_FILL、pptQuoteTypes.DEFAULT_TAX_NOTE/parseMaterialRef；整文件 CompetitorCharts.tsx(0 代码引用仅 ledger/report/_qa 提及，但 git M 且 R118 刚编辑)。",
+      "priority": "P3",
+      "status": "open",
+      "plan": "待上述文件在途改动提交(git clean)后，用 R119 同款 BFS import-graph + 全仓子串终验复核确仍 0 引用，再逐一删除并连带清理变为未使用的 import/const(noUnusedLocals)，四门验证即可",
+      "evidence": "scripts/r119_deadcode_and_logout_cache.py；探针 .qoder/tmp/r119_probe4_out.txt(0-ref 导出清单)、r119_probe5.py(全仓终验)、r119_gitst.py(git 状态)；报告 .loop/reports/2026-10-02-r119-logout-cache-and-deadcode-sweep.md 第三节",
+      "round": 119
+    },
+    {
+      "id": "r124-solutionstudio-docx-defer",
+      "module": "/solution-studio",
+      "issue": "[R124巡检挂账-defer] SolutionStudio 路由仍有 docx 静态可达链（useSolutionStudio/bidFiles 内部静态 import docx），且该区域命中未提交在途改动，本轮只完成 xlsx 按需化并把 xlsx 成果钉进哨兵测试；docx 拆分待在途落地后另轮执行（届时同轮可顺带核查 bidFiles 链上是否可一并 lazy 化）。",
+      "priority": "P3",
+      "status": "closed",
+      "evidence": "R147 解除：useSolutionStudio docx/bidFiles 顶层 import 转 import type + exportWord 点击链动态导入；exportTemplate.buildExportFrontMatter 转 async（docx 函数内动态导入）；同轮按挂账 plan 顺带核查 bidFiles 链，一并按需化 SubmissionCheckPanel/DefensePanel/useBidWorkspace/kbUpload 四条静态腿。哨兵升级：SolutionStudio 壳钉 ALL_HEAVY，新增 BidWorkspace/Knowledge 壳用例。产物实证 SolutionStudio chunk 154 kB 零 docx 核心符号。",
+      "round": 147,
+      "diff": "src/pages/SolutionStudio/useSolutionStudio.ts、src/pages/SolutionStudio/exportTemplate.ts、src/components/bid-workspace/SubmissionCheckPanel.tsx、src/components/bid-workspace/DefensePanel.tsx、src/pages/BidWorkspace/useBidWorkspace.ts、src/pages/Knowledge/kbUpload.ts、src/lib/onDemandHeavyLibs.test.ts、src/pages/SolutionStudio/exportTemplate.test.ts(新增6例)"
+    },
+    {
+      "id": "r127-formattool-diff-spec-tests-01",
+      "title": "R127 巡检选题（用户点名两项经账本核实均已 closed：quote-history-01 二期 R102 / prompt-fabscan-03 R89 边界裁决；4 个 defer 锚点文件 git status 复核仍在途继续绕开）→ 补 FormatTool 测试盲区：formatDiff.ts(136行纯比对逻辑,4引用,0直接单测)与 formatSpec.ts 的 specToFormatSettings/SIZE_PT 桥接层(被刷新+对比两侧共用,0直接单测)。新建 formatDiff.test.ts 14 条 + formatSpec.test.ts 17 条钉住：平铺10项矩阵/0.6pt与0.1cm容差边界/字体命中链优先级(SimSun兜底note、微软雅黑含黑命中黑体、songti归宋体)/标题跳级不虚构/六级回填/note触发边界。",
+      "priority": "P3",
+      "status": "closed",
+      "summary": "零源码改动/零提示词/零collection/未commit。首跑4失败均为测试预期写错(平铺计数、字号档位、字体命中链两处)，逐行核对源码后修正确认(r127b脚本,replace_once断言)，未迁就错误实现。四门全绿：tsc 0/vitest 837+2skip(基线806,+31=本轮新增)/eslint 新2文件 exit0/build 3.79s。DOMParser识别路径node不可测遗留(由refreshDocx真实往返间接覆盖)。维持裁定：编造扫描只报不拦(R89)、lint-debt-01不重构、4个defer项(r112/money-count/r119/r124)锚点ComposeStep/bidTypes/QualCerts/aigc等仍git-M或??在途不动。详见 .loop/reports/2026-10-02-r127-formattool-diff-spec-tests.md",
+      "files": [
+        "src/pages/FormatTool/formatDiff.test.ts",
+        "src/pages/FormatTool/formatSpec.test.ts"
+      ],
+      "round": 127
+    },
+    {
+      "id": "r128-skill-fetch-fail-silent-01",
+      "module": "src/hooks/useScopeSkills.ts + components/common/SkillPicker.tsx",
+      "issue": "[R128 修复暴露的残余] 自定义技能接口失败/超时时 catch 只置空列表、不置 customLoaded：勾选数据本轮已保证不丢，但界面无任何失败提示，picker 仍只显示预置项，用户以为「技能带上了」实际可能少带/未带，也没有重试入口。建议 picker 顶部显示「自定义技能加载失败 · 重试」，并把失败态透出到生成前确认。",
+      "priority": "P3",
+      "status": "closed",
+      "evidence": "R129 closed：missingSelectedIds 纯函数+hook 失败态/retrySkills+picker 失败横幅与按钮缺N警示，SkillPickerFor 透传 13 调用页零改动生效；vitest 869(+6)/tsc 0/eslint 新增 0/build 成功。报告 .loop/reports/2026-10-02-r129-skill-fetch-fail-visible.md；实机验证(dev:8000)：fetch 打桩拒绝 /api/assistant_skills → 按钮「技能·1 缺1」、横幅两行文案逐字命中、重试可用、预置项不受影响；撤桩重试→横幅消失+真失效id照旧prune回写+按钮回「带入技能」，console 0 error。截图 .qoder/tmp/r129_fail_banner.png",
+      "round": 129
+    },
+    {
+      "id": "r130-price-preview-404",
+      "module": "/ppt-quote,/bid-workspace",
+      "issue": "本机 PocketBase 未实现 POST /api/aigc/price-preview（前端 previewAigcPrice 收到 404 归一 {ok:false}，成本弹窗按契约降级显示、不挡生成，console 留一条网络 404）。标书侧 generateAiFigures 与 PPT 侧共用该 helper，属既有环境缺口非 R130 引入。",
+      "priority": "P3",
+      "status": "open",
+      "evidence": "R130 实机验证控制台取证；aigc.ts L1061-1083 契约『从不 throw，预估失败隐藏价格徽标改显示按实际扣费』",
+      "plan": "补端点需动 pb_hooks——受 blocked/hook-security-01『本地部署不碰 pb_hooks 红线』裁定约束，仅当用户对外部署或多用户化单独立项时随做；或前端在已知环境缺端点时静默跳过预估（需先确认不会破发布审计口径）",
+      "round": 130
+    },
+    {
+      "id": "r136-folder-tree-disclosure-defer",
+      "module": "/knowledge",
+      "issue": "R136 折叠 disclosure 无障碍巡检时有意绕开：FolderTree.tsx 树节点展开按钮(setExpanded)命中用户未提交 WIP hunk(expanded 声明在 diff added 行)，误伤风险高故不动。",
+      "priority": "P3",
+      "status": "open",
+      "plan": "待 FolderTree 在途改动提交后，给树节点展开 toggle 补 aria-expanded={expanded}，并入 src/components/disclosureA11y.test.ts 的 SITES 数组，四门验证即可",
+      "evidence": "scripts/r136_wipcheck2.py：FolderTree btn@61 COLLIDE-WIP changed-new-line-count=4",
+      "round": 136
+    },
+    {
+      "id": "r137-defense-handbook-export",
+      "title": "R137 实质交付（标书主链路收尾）：讲标答辩手册一键导出 docx——专家问题池/讲标大纲/讲标稿要点汇总为可打印带进评标现场的 Word（纯本地零 AI 计费），未备答案自动点名「待备答案自查」章；章节动态编号、空内容防产出半成品。用户点名两项经核实已 closed(R102/R103)，defer 项锚点复核仍在途继续绕开，巡检新角度选题",
+      "priority": "P2",
+      "summary": "新增 defenseHandbook.ts（buildDefenseHandbookBlocks 纯数据块组装可单测 + 薄 docx 渲染层，复用 fileName/dateStamp/download 三个全局单一源）+ 12 用例测试；DefensePanel.tsx(git-CLEAN,4 锚点 assert count==1) header 增「导出答辩手册」按钮：三块全空 toast 引导、导出中防重复点击、归档只读不拦（只读操作）。过程修正留痕：r137b 测试括号笔误(tsc 抓)、r137c 全角空格 U+3000×3(eslint 抓,改 ' · '/' | ')、r137d 同步主脚本。零 collection/零 pb_hooks/零提示词(无 B 类)/会话内仅局部 useState/未 commit。四门：tsc 0 / vitest 917+2skip(基线905,+12 全为本轮新增)/eslint 触及 3 文件 exit0/build 3.65s。详见 .loop/reports/2026-10-03-r137-defense-handbook-export.md 浏览器实机端到端：dev(:8000)动态 import 编译后模块，真实运行时块结构/meta/文件名清洗/空内容抛错与 12 单测逐条一致，exportDefenseHandbook 全链路 30ms 成功、控制台 0 error/warn(零写库零 AI)。DefensePanel 在第6步受 dup/void 产物守卫，未对用户真实项目跑 AI 进入(避污染)，改以运行时模块验证背书。",
+      "files": [
+        "src/pages/BidWorkspace/defenseHandbook.ts(新建)",
+        "src/pages/BidWorkspace/defenseHandbook.test.ts(新建 12 用例)",
+        "src/components/bid-workspace/DefensePanel.tsx(4 锚点)",
+        "scripts/r137_defense_handbook.py + r137b/c/d"
+      ],
+      "status": "closed",
+      "round": 137
+    },
+    {
+      "id": "r139-solution-bulk-concurrency-defer",
+      "module": "/solution-studio",
+      "issue": "[R139挂账] 方案侧批量逐章生成仍为纯串行 for 循环；标书侧生成链路 D2 已上 BULK_CONCURRENCY=2 worker 池（12 章级整本时长以小时计的直接修复）。方案侧照搬可把 20 章级批量腰斩，但牵动进度计数语义（current 并发生成下非单调）、章间衔接依赖（标书侧章内小节仍串行）与 updateChapter 并发写安全，需独立轮次评估，不与本轮容错修复混做",
+      "priority": "P3",
+      "status": "closed",
+      "evidence": "R139 取证：useSolutionStudio.runBulkGenerate 单趟串行(L1402 for)；对照 useBidWorkspace L5381-5445 worker 池形态",
+      "plan": "复用标书侧 cursor+worker 池形态移植；先补 done 章 skip 与 cancel 语义的单测再动",
+      "round": 139,
+      "resolution": "R140 closed (r140-solution-bulk-concurrency)：三挂账前提源码取证解除，runBulkGenerate 移植有限并发池 concurrency=2 + 纯函数 runBulkPool + 6 单测，四门全绿。"
+    },
+    {
+      "id": "r143-star-toc-denoise",
+      "title": "R143 标书★/▲重点条款扫描目录行/标注含义句去噪（修复R142 F-A P1）：extractStarClauses起条前加两道判定——looksLikeTocClauseLine(编号前缀+行尾裸页码+短行)、looksLikeStarDefinitionLine(标记开头+标注约定专用语)，命中即跳过建条并终止上一条；目录条目不建条后其子行不再被R50/F2吸收成伪条款。真实招标噪声≈60%清除，真实条款抽取无回归(原3个R50/F2用例保持通过)。sectionParse.test.ts +2用例(目录行toEqual([]) + 含义句滤除而带编号真实条款保留)。纯函数层零AI零schema零pb_hooks，未改提示词，未commit。四门：tsc0/vitest 927passed+2skip(基线925,+2)/eslint触及2文件仅L3504/3506在途既有no-control-regex本轮0新增/build 3.44s。环境插曲：C盘0字节致worker fork崩溃,清npm缓存+过期Temp释放8GB后复跑全绿。报告 .loop/reports/2026-10-03-r143-star-toc-denoise.md",
+      "priority": "P1",
+      "status": "closed",
+      "summary": "选题=backlog唯一P1实质项(R142明确留待本轮实施)。红线核对：extractStarClauses及STAR_*常量不在任何git-M WIP hunk内(grep证0命中)，锚点区域干净可安全补丁。误删防护设计：以『行尾裸页码』为目录行强判别(真实条款不以裸数字收尾)，含义句关键词收敛到标注约定专用语。维持裁定：F-B▲双定义属D类脏素材不猜改、编造硬门禁只报告不拦截、lint-debt-01残余不重构。",
+      "files": [
+        "src/pages/BidWorkspace/bidTypes.ts (新增 looksLikeTocClauseLine/looksLikeStarDefinitionLine + 接入 extractStarClauses 起条分支)",
+        "src/pages/BidWorkspace/sectionParse.test.ts (+2 用例)"
+      ],
+      "round": 143,
+      "baselineCorrection": "收轮时引用的 vitest 927 系 C 盘 0 字节引发 worker-fork 崩溃的截断计数；末次稳定运行为 944 passed|2 skipped（R144 复核确认）。四门其余结论(全绿/tsc0/eslint0新增/build成功)不受影响。"
+    },
+    {
+      "id": "r144-star-noise-single-source",
+      "title": "R144 ★/▲重点条款噪声清洗统一单一真源覆盖三通道(承接R143残余缺口)：R143只在extractStarClauses本地扫描过滤目录行/标注含义句，但star_clauses还有两条通道未覆盖——①AI整文解析经normalizeParseReport入库/读取原样保留噪声②AI补扫(ComplianceMatrixPanel.runScan)直接组ParseSection写内存态报告绕过normalize，交完AI费矩阵即时中招(R142 F-A下游影响面)。本轮抽starClauseNoise.ts(零依赖单一真源:looksLikeTocClauseLine/looksLikeStarDefinitionLine/isStarClauseNoiseLine/cleanStarClauseContent按条丢弃含续行幂等)，bidTypes撤R143内联判定改import+extractStarClauses调isStarClauseNoiseLine(等价)+normalizeParseReport对star_clauses非手改段加cleanStarClauseContent(AI整文+存量打开即清洗)，complianceMatrix.clausesOf噪声标记行置空cur(AI补扫内存态矩阵即时干净)。合规矩阵import极小starClauseNoise不破'不引大文件'边界。纯函数零AI零schema零pb_hooks未改提示词未commit。四门tsc0/vitest 949passed+2skip(基线944,+5=starClauseNoise4+matrix1)/eslint触及文件仅bidTypes3494-3496在途既有no-control-regex本轮0新增/build3.55s。基线更正:R143收轮引用927是C盘0字节worker崩溃截断值,末次稳定实为944。报告 .loop/reports/2026-10-03-r144-star-noise-single-source.md",
+      "priority": "P1",
+      "status": "closed",
+      "summary": "选题=R143复盘发现的真残余缺口(噪声规则三处通道各写各的、AI两通道仍污染矩阵/关键项清单)，符合'优先标书主链路实质优化'。单一真源收敛(memory:核心逻辑收敛单一真源)。误删防护承R143且既有complianceMatrix评分规则行用例首字非标记不误判、全保持通过无回归。维持裁定:编造硬门禁只报告不拦截、lint-debt-01残余不重构。",
+      "files": [
+        "src/pages/BidWorkspace/starClauseNoise.ts (新增 单一真源)",
+        "src/pages/BidWorkspace/starClauseNoise.test.ts (新增 4 用例)",
+        "src/pages/BidWorkspace/bidTypes.ts (撤R143内联改import + normalizeParseReport star_clauses读清洗)",
+        "src/pages/BidWorkspace/complianceMatrix.ts (clausesOf噪声丢弃)",
+        "src/pages/BidWorkspace/complianceMatrix.test.ts (+1 用例)"
+      ],
+      "round": 144
+    },
+    {
+      "id": "r145-competitor-field-whitelist",
+      "title": "R145 竞品AI深度分析可写字段白名单(数据完整性+越权防护,巡检新角度)：useCompetitorAnalysis.ts(git-CLEAN/纯逻辑/此前0伴生单测)把模型返回的字段建议写回competitors记录时只校验field是字符串(L109)、不校验是否允许被AI改，applyUpdates运行时`(patch as Record)[u.field]=u.suggested`(L395)绕过CompetitorPatch类型层Omit(编译期护栏对运行时索引写入无效)——模型/被污染事实片段返回name/legal_name/software_copyrights/keywords/source/visibility甚至id/rh_user_id即：生成建议→UI展示→用户勾选采纳→PATCH覆盖竞品公司身份/把数值数组列写成字符串/越权改归属用户。修:抽ANALYZABLE_FIELDS常量(11项,与ANALYSIS_SYSTEM_PROMPT末尾『可选field值』同口径单一真源)+parseAnalysisResponse过滤链加includes拦截(非法field解析期即丢不进UI)+applyUpdates写patch前二次防御(纵深)。提示词文本零改动(L94早已声明,本轮把契约落实为代码确定性校验、非B类改口径)，新增哨兵测试正则抽提示词field列表断言==白名单防漂移。纯前端零AI调用变更零schema零pb_hooks未commit。四门tsc0/vitest 958passed+2skip(基线949,+9=新9用例,90→91文件)/eslint触及两文件0error0warning(eslint输出空)/build3.32s(5945modules)。顺带补formatExternalBlock缺省口径+buildUserMessage拼装测试盲区。误伤防护:11项均CompetitorRow string字段、competitorEvidence既有products/regions用例在白名单内无回归；用户手工编辑name/keywords走competitorsCore不经此链路。报告 .loop/reports/2026-10-03-r145-competitor-field-whitelist.md",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "选题=巡检新角度(未跟踪在途新模块接线/消费探针)命中的真实数据完整性+越权bug，符合'优先实质优化而非零风险小改'。单一真源收敛+纵深防御+防漂移哨兵。维持裁定:编造硬门禁只报告不拦截、lint-debt-01残余不重构;4个defer-on-WIP项复核仍在途继续绕开未命中。",
+      "files": [
+        "src/pages/Competitors/useCompetitorAnalysis.ts (新增 ANALYZABLE_FIELDS + parse 拦截 + applyUpdates 二次防御)",
+        "src/pages/Competitors/useCompetitorAnalysis.test.ts (新增 9 用例 + 防漂移哨兵)"
+      ],
+      "round": 145
+    },
+    {
+      "id": "r147-native-confirm-dialog-01",
+      "module": "/competitors",
+      "issue": "R147 巡检发现全站最后一处原生 window.confirm：useCompetitorAnalysis.applyUpdates 无事实依据建议二次确认（本轮已先去除文案内部字段名 evidence_refs）。原生弹窗与设计系统不符，但 hook 内无法直接挂 ConfirmDialog，需把确认状态提升到 CompetitorAnalysis 页（confirm state + <ConfirmDialog/> 接线）。",
+      "priority": "P3",
+      "status": "open",
+      "plan": "仿 SkillsPanel/MemoryPanel 既有 ConfirmDialog 用法：hook 暴露 pendingNoEvidenceCount + confirmApply/cancelApply，页面挂弹窗；四门验证。"
+    },
+    {
+      "id": "r148-solution-resume-banner-defer",
+      "module": "/solution-studio",
+      "issue": "R148 已落地陈旧「生成中」复位 + 打开方案时的断点续跑 toast；但方案侧仍缺标书 ComposeStep:1016 那样的「上次批量生成未完成（已生成 X/Y 章）」内联恢复横幅（持久化待生成意图 + 顶部可点续跑按钮）。属体验补全，非数据正确性问题，另轮再做。",
+      "priority": "P3",
+      "status": "open",
+      "plan": "EditorWorkspace 头部按 done/total 与 bulkGenerating 渲染恢复横幅，点按钮调 startBulkGenerate（天然 skip done 章）；口径复用 bulkResume.*，补纯函数/渲染单测。",
+      "round": 148
     }
   ],
   "closed": [
@@ -969,6 +1229,841 @@
       "status": "done",
       "evidence": "vitest 229/229 exit0（本文件新增 6 用例：偏离表响应值 number_conflict/质保加码 param_escalation/响应一致不报/比较语境'不低于3年'豁免/跨单位天vs月不比/大纲标题命中/无基准静默空） / tsc -b exit0 / eslint 改动 3 文件 after 27 problems(15e/12w) = git stash 基线 27 problems、净新增 0（15 error 均 lint-debt-01 历史存量） / vite build exit0(2.24s)；运行时 dev(:8000) 动态 import 真实导出模块跑 6 组夹具全对（报价4000万 vs 要求3500万→number_conflict chapter'偏离表 · c1'、质保5年 vs 3年→param_escalation、一致/比较语境/无基准→0 命中、大纲标题命中、标签更新'事实表 × 正文/偏离表/大纲'）。诚实降级：未在登录态逐项目点开交卷体检面板复测（buildFormatReportFor 内仅 report.hits.push(...structuredNumberConflictHits(...)) 一行、与相邻已上线 numberConflictHits 同构、纯函数已在浏览器实跑），面板渲染未改（复用既有 rule key）。首次 import 因 vite 旧 ESM 缓存报'export missing'，加 ?t= 破缓存后正常（已知 vite 脏缓存坑、非代码缺陷）",
       "diff": "第32轮·纯本地零 AI·零数据模型·零 pb_hooks·零写库（只读告警）。bidTypes.ts：抽公共 buildFactBaseline(factLines) 基准构造（numberConflictHits 改用它、去重复内联、逻辑逐字不变由 229 测试守）；新增 structuredNumberConflictHits(factLines, outline, deviationTable)+flattenOutlineTitles 纯函数——复用 buildFactBaseline/extractNumRefs/overCommitDirection/quoteAround 与全部误报控制（比较语境/编号行/跨单位豁免、方向判定），偏离表以 clause_text 命中 topic 为锚比对 response_summary 数值、大纲以标题同行锚定，命中沿用既有 number_conflict/param_escalation rule（不动 FORMAT_RULE_LABEL 白名单/不改数据模型），chapter 标注来源面（偏离表·条款id / 大纲·标题），总 ≤30；number_conflict 标签文案'（事实表 × 正文）'→'（事实表 × 正文/偏离表/大纲）'。useBidWorkspace.ts:buildFormatReportFor 在 factLines.length 块内 append 一行 structuredNumberConflictHits（独立 ≤30 不挤占正文命中）。残差：投标报价 vs 预算（报价期非 bid_amount 结单字段、跨 /ppt-quote 需管道）移 numeric-consistency-02（倾向 C 类待拍板）"
+    },
+    {
+      "id": "r92-kb-search-debounce",
+      "title": "知识库搜索 useDebounce 防抖（150ms）",
+      "priority": "P3",
+      "status": "closed",
+      "summary": "新建 src/lib/useDebounce.ts 通用 hook；useKnowledge.ts 中 searchQuery 经 150ms 防抖后才驱动 libDocs useMemo，6000+ 篇全量扫描不再每键触发",
+      "files": [
+        "src/lib/useDebounce.ts",
+        "src/pages/Knowledge/useKnowledge.ts"
+      ]
+    },
+    {
+      "id": "r92-dynamic-page-title",
+      "title": "动态 document.title 随路由切换",
+      "priority": "P3",
+      "status": "closed",
+      "summary": "index.html 标题从'初'改为'小智工作站·售前工作台'；WorkbenchShell 新增 useLocation+useEffect，13 条路径对应中文标签",
+      "files": [
+        "index.html",
+        "src/components/shell/WorkbenchShell.tsx"
+      ]
+    },
+    {
+      "id": "r92-csv-export-5-lists",
+      "title": "CSV 导出工具 + 5 个列表页一键导出",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "新建 src/lib/exportCsv.ts（UTF-8 BOM，Excel 兼容）；CustomerListPanel、BidProjectList、SolutionListPanel、QuoteListPanel、DeckListPanel 各加导出按钮+toast.success反馈",
+      "files": [
+        "src/lib/exportCsv.ts",
+        "src/components/customer-management/CustomerListPanel.tsx",
+        "src/components/bid-workspace/BidProjectList.tsx",
+        "src/components/solution-studio/SolutionListPanel.tsx",
+        "src/components/ppt-quote/QuoteListPanel.tsx",
+        "src/components/ppt-quote/DeckListPanel.tsx"
+      ]
+    },
+    {
+      "id": "r92-autosave-indicator",
+      "title": "方案编辑器自动保存状态指示器 + Ctrl+S 强制保存",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "useSolutionStudio 增加 autoSaveState(idle/saving/saved)；persistSolution(quiet) 成功后标 saved 并 2s 后回 idle；ChapterEditor h2 后渲染 inline 指示；Ctrl+S/Cmd+S 强制 flush",
+      "files": [
+        "src/pages/SolutionStudio/useSolutionStudio.ts",
+        "src/components/solution-studio/ChapterEditor.tsx"
+      ]
+    },
+    {
+      "id": "r92-scroll-to-top",
+      "title": "路由切换重置滚动 + BackToTop 浮动按钮",
+      "priority": "P3",
+      "status": "closed",
+      "summary": "WorkbenchShell useEffect(pathname) 加 window.scrollTo(0)；新建 BackToTop.tsx（scrollY>400 淡入，平滑回顶）集成于 Shell 层",
+      "files": [
+        "src/components/shell/WorkbenchShell.tsx",
+        "src/components/common/BackToTop.tsx"
+      ]
+    },
+    {
+      "id": "r92-error-boundary-home",
+      "title": "ErrorBoundary 增加返回首页链接",
+      "priority": "P3",
+      "status": "closed",
+      "summary": "错误卡片从单按钮变为双按钮组（重试 + 返回首页），避免用户卡在异常页面无路可走",
+      "files": [
+        "src/components/common/ErrorBoundary.tsx"
+      ]
+    },
+    {
+      "id": "r92-bid-autosave-indicator",
+      "title": "标书工作台同步 autoSaveState 指示 + Ctrl+S",
+      "priority": "P3",
+      "status": "closed",
+      "summary": "useBidWorkspace 加 autoSaveState 状态机；setEditingContent 触发时置 saving；persistProject(quiet) 成功后置 saved 2s 归位；Ctrl+S/Cmd+S 强制 flush；ComposeStep 传 prop 到 ChapterEditor（可选 prop，默认 idle）",
+      "files": [
+        "src/pages/BidWorkspace/useBidWorkspace.ts",
+        "src/components/bid-workspace/ComposeStep.tsx"
+      ]
+    },
+    {
+      "id": "r92-qa-ammo-csv-export",
+      "title": "问答弹药库接入 CSV 导出",
+      "priority": "P3",
+      "status": "closed",
+      "summary": "QaAmmoPanel 加『导出』按钮（对齐其他 5 个列表），复用 exportToCsv；空列表 disabled；列：问题/答案/分类/可见性/更新时间",
+      "files": [
+        "src/components/knowledge/QaAmmoPanel.tsx"
+      ]
+    },
+    {
+      "id": "r93-backtotop-fab-overlap",
+      "title": "修复 BackToTop 与 FloatingAssistant 位置重叠",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "R92 引入 BackToTop 时定位 bottom-6 right-6，与 FloatingAssistant 关闭态 FAB (bottom-6 right-6 z-50 h-14 w-14) 完全重叠被遮挡；改为 bottom-6 right-24（距 FAB 边缘留 16px 间隙）",
+      "files": [
+        "src/components/common/BackToTop.tsx"
+      ]
+    },
+    {
+      "id": "r93-sidebar-auto-collapse",
+      "title": "侧栏小屏首屏自动折叠",
+      "priority": "P3",
+      "status": "closed",
+      "summary": "WorkbenchShell collapsed 初值改为 window.innerWidth < 1024 时 true，避免平板/小笔记本上侧栏挤占主区；用户仍可通过 ☰ 手动展开",
+      "files": [
+        "src/components/shell/WorkbenchShell.tsx"
+      ]
+    },
+    {
+      "id": "r93-topbar-toggle-aria",
+      "title": "顶栏侧栏切换按钮补 aria-label",
+      "priority": "P3",
+      "status": "closed",
+      "summary": "原只有 title 属性，屏幕阅读器读取不稳定；补 aria-label=折叠/展开导航",
+      "files": [
+        "src/components/shell/TopBarShell.tsx"
+      ]
+    },
+    {
+      "id": "r93-kb-docs-csv-export",
+      "title": "知识库文档列表接入 CSV 导出",
+      "priority": "P3",
+      "status": "closed",
+      "summary": "DocListPanel 工具栏加『导出』按钮（对齐其他 6 个列表）；列：标题/分类/目录/上传人/更新时间；不含正文（隐私 + 文件体积）；空列表 disabled",
+      "files": [
+        "src/components/knowledge/DocListPanel.tsx"
+      ]
+    },
+    {
+      "id": "r93-solution-list-clear-search",
+      "title": "方案列表搜索无结果时补『清空搜索』按钮",
+      "priority": "P3",
+      "status": "closed",
+      "summary": "SolutionListPanel 空态在 filtering=true 分支下新增一键清空关键词 + 类型筛选的按钮，对齐 DocListPanel 交互；用户无需要手动清 Input",
+      "files": [
+        "src/components/solution-studio/SolutionListPanel.tsx"
+      ]
+    },
+    {
+      "id": "r94-qual-certs-csv-export",
+      "title": "资质台账 CSV 导出",
+      "priority": "P3",
+      "status": "closed",
+      "summary": "QualCertsPage header 加『导出』按钮（对齐已导出的 7 个列表）；列：证照名/类别/证书编号/发证机关/有效期起止/适用范围/更新时间；投标附件整理与行政复核高频场景；空台账 disabled",
+      "files": [
+        "src/pages/QualCerts/QualCertsPage.tsx"
+      ]
+    },
+    {
+      "id": "r94-clipboard-error-branch",
+      "title": "情报中心周报 clipboard 补错误分支",
+      "priority": "P3",
+      "status": "closed",
+      "summary": "原只有 then 无 catch，clipboard 权限失败时静默无反馈；补错误 toast 与其他 6 处 clipboard.writeText 分支一致",
+      "files": [
+        "src/pages/IntelCenter/IntelCenterPage.tsx"
+      ]
+    },
+    {
+      "id": "r95-format-tool-delete-confirm",
+      "title": "格式模板删除补二次确认（P2 误操作护栏）",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "FormatTool 模板列表 Trash2 按钮原直接触发 DELETE API，误点即丢失公司标准模板；改为打开 ConfirmDialog（tone=danger）二次确认后删除，与 QaAmmo/DocList/SolutionList 等既有护栏一致",
+      "files": [
+        "src/pages/FormatTool/FormatToolPage.tsx"
+      ]
+    },
+    {
+      "id": "r96-team-password-mask",
+      "title": "团队初始密码字段遮罩（type=password + 提示）",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "TeamPage 新建成员表单的原密码字段用 type=text 明文显示，管理员肩窥/截图泄露风险；改 type=password + autoComplete=new-password，浏览器可自带 eye 切换；补 aria-describedby 提示『点击眼睛图标确认后再告知同事』",
+      "files": [
+        "src/pages/Team/TeamPage.tsx"
+      ]
+    },
+    {
+      "id": "r96-contact-a11y",
+      "title": "客户联系人 3 个 input 补 aria-label + 电话 type=tel",
+      "priority": "P3",
+      "status": "closed",
+      "summary": "CustomerProfileCard 添加联系人行的姓名/职务/电话 3 个 input 只有 placeholder（屏幕阅读器不友好且失焦后无可读标签）；补 aria-label；电话字段加 type=tel + inputMode=tel 让移动端弹出数字键盘",
+      "files": [
+        "src/components/customer-management/CustomerProfileCard.tsx"
+      ]
+    },
+    {
+      "id": "r97-qa-drawer-toast",
+      "title": "QaDrawer 复制失败提示改用 toast 替代 window.alert",
+      "priority": "P3",
+      "status": "closed",
+      "summary": "问答抽屉一键复制答案失败时原用 window.alert（阻塞 UI 线程 + 视觉断层），改 toast.error 与全站 8 处 clipboard 错误分支一致；sonner toast 已在 WorkbenchShell 挂载，位置 top-center",
+      "files": [
+        "src/components/knowledge/QaDrawer.tsx"
+      ]
+    },
+    {
+      "id": "r98-material-clear-search-ux",
+      "title": "素材面板 3 处空态补『清空搜索』按钮",
+      "priority": "P3",
+      "status": "closed",
+      "summary": "MaterialAmmoPanel 的知识块 / 弹药库 / 历史成稿 3 个 Tab 在搜索无结果时只显示文案『换个关键词试试』缺少行动；统一加清空按钮调用 setMaterialQueryInput('')（触发既有 300ms 防抖），与 DocListPanel/SolutionListPanel 交互一致",
+      "files": [
+        "src/components/solution-studio/MaterialAmmoPanel.tsx"
+      ]
+    },
+    {
+      "id": "r99-empty-clear-actions-2",
+      "title": "规范库补选 + 竞品厂商列表 2 处无匹配空态补清除行动",
+      "priority": "P3",
+      "status": "closed",
+      "summary": "StandardsPickerDialog 无匹配规范条目时补「清除筛选」（query+类别一键重置，仅在确有筛选时显示）；CompetitorsPage 厂商列表「无匹配厂商」纯文本补「清空搜索」按钮，与 R93-C/R98 空态一致性主题收口",
+      "files": [
+        "src/components/bid-workspace/StandardsPickerDialog.tsx",
+        "src/pages/Competitors/CompetitorsPage.tsx"
+      ]
+    },
+    {
+      "id": "r99-legacy-tsc-breakage-fix",
+      "title": "修复工作区 6 文件遗留 tsc 破损（半落地补丁残留）",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "R99 门禁暴露工作区自早前轮次起累积 10 个 tsc 错误：①SolutionListPanel 把局部 setActiveType 误改为 p.setActiveType(hook 无此字段+Pick 多余项)→恢复局部 state 用法；②OutlineTreeEditor NodeRow 类型声明并父层已传 collapsed/onToggleCollapse 但解构清单漏取(TS2304×6)→补解构，折叠分组功能随之闭合；③ComposeStep autoSaveState 误挂 OutlineNavTree→移至 ChapterEditor(共享组件已支持)并补 Pick+页面透传；④EditorWorkspace Pick 缺 autoSaveState(hook 已导出)→补齐+页面透传；⑤CustomerListPanel CSV 导出臆造 c.type/c.stage 字段→改真实 hospital_type/last_follow_at(表头阶段→最近跟进)；⑥ChatStream.adopt.test 死导入 vi/beforeEach→移除。修复后 tsc -b exit0 / vitest 627 pass / eslint 触及文件 0 问题 / build 3.44s",
+      "files": [
+        "src/components/solution-studio/SolutionListPanel.tsx",
+        "src/components/solution-studio/OutlineTreeEditor.tsx",
+        "src/components/bid-workspace/ComposeStep.tsx",
+        "src/components/solution-studio/EditorWorkspace.tsx",
+        "src/components/customer-management/CustomerListPanel.tsx",
+        "src/components/assistant/ChatStream.adopt.test.tsx",
+        "src/pages/BidWorkspace/BidWorkspacePage.tsx",
+        "src/pages/SolutionStudio/SolutionStudioPage.tsx"
+      ]
+    },
+    {
+      "id": "r100-lazy-img-and-min0",
+      "title": "3 处列表图片补懒加载 + 3 处数量/单价补非负约束",
+      "priority": "P3",
+      "status": "closed",
+      "summary": "性能: SlidePreviewGrid 缩略图网格 / AppearanceDialog 背景网格 / BidFigure 文档流内嵌图 3 处补 loading=lazy（首屏单图与头像刻意不加，浏览器巡检脚本证实全站 6 处无 loading 的 img 仅此 3 处属滚动场景）；校验: 全站 24 处 type=number 逐一核查，GenerationSettingsBar/QuoteEditor/NewDeckWizard 等均已带 min·clamp，仅建设清单 qty/unit_price 与产品库单价 3 处可输负数致负总价，补 min={0} 【勘正】BidFigure 位图懒加载经 git diff 核实在未提交的 T17 工作区代码中已存在，本轮实际净新增 lazy 为 SlidePreviewGrid/AppearanceDialog 2 处(脚本曾误重复插属性,已去重)。",
+      "files": [
+        "src/components/ppt-quote/SlidePreviewGrid.tsx",
+        "src/components/shell/AppearanceDialog.tsx",
+        "src/components/bid-workspace/BidFigure.tsx",
+        "src/components/solution-studio/checklist/ChecklistDetailPanel.tsx",
+        "src/components/solution-studio/checklist/ProductLibraryPanel.tsx"
+      ]
+    },
+    {
+      "id": "r101-coverage-four-state",
+      "title": "覆盖审计三档升四态（新增 over 过度承诺/加码）",
+      "priority": "P1",
+      "summary": "prompt-fabscan-03 P7.1 经用户授权（提示词/数据模型可调整）落地：coverageAudit PROMPT_VERSION 1→2（B 类：备份对比报告落 .loop/reports），判定口径新增 over=加码承诺（更高参数/赠送/缩工期/加重违约责任），漏项并存按更严重档；CoverageLevel +\"over\"（零 collection 变更）；sanitize 归一四档；UI chip/徽标/描边/按钮\"修正\"分支；supplementFromAudit 对 over 注入收敛指令；快照测试更名+u 更新；新增单测 3 组。手册 §2.27 同步。P7.1 残余「按章聚合回注」继续挂。",
+      "files": [
+        "src/pages/BidWorkspace/bidTypes.ts",
+        "src/pages/BidWorkspace/prompts/coverageAudit.ts",
+        "src/pages/BidWorkspace/prompts/coverageAudit.test.ts",
+        "src/pages/BidWorkspace/prompts/promptsSnapshot.test.ts",
+        "src/components/bid-workspace/SubmissionCheckPanel.tsx",
+        "src/pages/BidWorkspace/useBidWorkspace.ts",
+        "docs/提示词手册/01-标书工作台.md",
+        ".loop/reports/2026-10-01-r101-coverage-four-state.md"
+      ]
+    },
+    {
+      "id": "r102-quote-history-phase2",
+      "title": "报价历史二期：相似成交项目参考区间智能推荐（纯本地零 AI，零 collection）",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "quote-history-01 二期落地。新增纯函数模块 quoteRecommend.ts：按「医院等级(同级同甲乙=same/仅同级=near)+床位规模比(min/max)+模块组合 Jaccard」三维加权打分，从 R79 沉淀的 won_sample 成交样本池筛出相似项目，输出成交总价推荐区间[low,median,high]与逐模块单价参考区间(出现>=2次的模块)。数据维度优先取报价自身沉淀元数据(hospital_level/beds_total)，缺失时经商机名匹配客户档案派生(与 toggleWonSample 同口径)。QuoteEditor 新增可折叠「成交参考区间」面板：区间+当前合计落位提示(低于/落在/高于，高于显示 warning)+相似项清单(等级/模块重合%/床位相近%徽章)+逐模块单价 chip；无达标相似项降级为全部成交总价分布并给 note。usePptQuote 用 activeQuoteRef 派生维度(effect 仅按 activeQuote?.id/quoteMode 变化，避免每次编辑重推)。零 collection/零 pb_hooks 变更；不改提示词，非 B 类。四门: tsc 0 错 / vitest 641 passed(基线630+11 新增 quoteRecommend.test.ts)/2 skipped / eslint 触及文件 0 新增 error(quoteRecommend 0，usePptQuote 4 全为在途既有 effect)/vite build 3.05s 成功。 浏览器实机验证(R102收口): 本地 PocketBase(:7000)+Vite(:8000) 起服，/ppt-quote 造成交样本(新建报价→加行项单价 58万使 total>0→列表标记 won_sample)→新建第二份报价进编辑器，「成交参考区间」面板实机渲染，头部显示「相似成交总价 ¥580,000.00 ~ ¥580,000.00（中位）· 0 相似 / 1 样本」，无达标相似项正确降级 note「未找到足够相似的历史成交，以下为全部成交项目的总价分布作参考。」，全程 console 0 error/warn；测试数据已 UI 删除回清(列表归 0 套)。截图 .qoder/tmp/r102_recommend_panel_top.png。",
+      "files": [
+        "src/pages/PptQuote/quoteRecommend.ts(新建 纯函数)",
+        "src/pages/PptQuote/quoteRecommend.test.ts(新建 11 用例)",
+        "src/pages/PptQuote/usePptQuote.ts(wonSampleDims state+effect+quoteRecommendation memo+导出)",
+        "src/components/ppt-quote/QuoteEditor.tsx(recommendation prop+成交参考区间面板)",
+        "src/pages/PptQuote/PptQuotePage.tsx(透传 recommendation)"
+      ]
+    },
+    {
+      "id": "r103-chapter-audit-reflow",
+      "title": "覆盖审计按章聚合回注改进建议（prompt-fabscan-03 剩余切片收口，会话级零 collection）",
+      "priority": "P1",
+      "status": "closed",
+      "summary": "prompt-fabscan-03 最后一切片「按章聚合回注（新交互范式）」落地。coverageAudit.ts 新增纯函数：buildReflowDirective（单叶/按章回注指令文案单一来源，自 supplementFromAudit 逐字抽出，口径零漂移）、aggregateAuditByChapter（非 full 叶按顶层章分组，章按大纲序、worst 取 missing>over>partial 最严重档、生成可复制章级改进文本）、collectReflowFixItems（问题叶落位小节下标，整章级叶剔除，同节多叶指令合并为一次重写）。useBidWorkspace 新增 reflowChapterFromAudit：一次费用确认后对该章问题小节串行 await runRegenerateSection 逐条重写（复用循环5 A2 补写通道，不新造生成链路）；面板覆盖审计卡加「逐节明细/按章聚合」视图切换（默认逐节旧交互零变化）+ 「复制建议」零成本兜底 +「整章回注整改」回注中互斥禁用。未改任何 AI 提示词文本（PROMPT_VERSION 保持 2，快照测试未 -u 即通过＝非 B 类）；零 collection/零 pb_hooks；编造未清零硬门禁维持 R89 只报不拦。四门: tsc 0 错 / vitest 647 passed(基线641+6 新增聚合/指令/落位用例)/2 skipped / eslint 触及文件 0 新增 error(7 项全为既有在途+lint-debt-01 保留)/vite build 成功。",
+      "files": [
+        "src/pages/BidWorkspace/prompts/coverageAudit.ts(+buildReflowDirective/aggregateAuditByChapter/collectReflowFixItems 纯函数)",
+        "src/pages/BidWorkspace/bidTypes.ts(barrel 再导出 3 函数 2 类型)",
+        "src/pages/BidWorkspace/useBidWorkspace.ts(supplementFromAudit 同源化+reflowChapterFromAudit 串行回注+导出)",
+        "src/components/bid-workspace/SubmissionCheckPanel.tsx(按章聚合视图+复制建议+整章回注按钮)",
+        "src/pages/BidWorkspace/BidWorkspacePage.tsx(两处调用点透传 2 props)",
+        "src/pages/BidWorkspace/prompts/coverageAudit.test.ts(+6 用例)"
+      ]
+    },
+    {
+      "id": "r104-kb-mutation-cache",
+      "title": "kb_docs 变更即时广播→共享组装缓存失效接线（数据一致性断链修复，会话内零 collection）",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "死代码巡检坐实真实断链：kbAssemble.invalidateKbCache 文档写明「入库/删除/编辑 kb_docs 后调用」但全项目零调用，标书交卷体检/章节组装/方案工坊素材四条链路（getCachedVisibleDocs 5min TTL）在知识库变更后最长 5 分钟读旧语料（新料不可见、删料仍被引用；含方案一键沉淀入库 SolutionToKbWizard）。修复选单点汇聚方案：全部变更入口天然汇聚 kbCore create/update/deleteKbDoc 三函数，成功后 notifyKbMutation() 广播（失败不广播、监听异常静默），kbAssemble 模块加载时注册 invalidateKbCache（缓存即定义在该文件，无漏听时序），后续新入口走 kbCore 即自动接线防复发。零 collection/零 pb_hooks/零提示词改动（非 B 类）。四门: tsc 0 错 / vitest 651 passed(基线647+4 新增 kbMutationInvalidate.test.ts)/2 skipped / eslint 触及文件 0 error / vite build 3.04s 成功。报告 .loop/reports/2026-10-01-r104-kb-mutation-cache.md。 浏览器实机验证(R104收口): 运行页面动态 import 与应用同实例，create/update/deleteKbDoc 真实 API 往返广播计数 1→2→3 各恰一次；探针文档删除后 q=R104 检索 0 条零残留；/knowledge(2173+4825 篇)与/bid-workspace 消费侧路由正常加载、console 0 error/warn。截图 .qoder/tmp/r104_knowledge_page.png、r104_bid_workspace.png。",
+      "files": [
+        "src/lib/kbCore.ts(+onKbMutation/notifyKbMutation 注册表 + 三变更函数成功后广播)",
+        "src/lib/kbAssemble.ts(+onKbMutation(invalidateKbCache) 模块级注册)",
+        "src/lib/kbMutationInvalidate.test.ts(新建 4 用例：广播/退订/失败不广播/端到端缓存失效)",
+        ".loop/reports/2026-10-01-r104-kb-mutation-cache.md"
+      ]
+    },
+    {
+      "id": "r105-llm-error-copy-unify",
+      "title": "AI 错误码中文化口径收敛：修复客户管理内部码泄漏 + 5 份重复错误表漂移去重（会话内零 collection/零提示词）",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "巡检新角度（用户可见报错文案禁止暴露内部字段名/错误码规范）。脚本扫描全部 toast/setError/confirm/网关错误翻译点，坐实两类真实缺陷：①useCustomerManagement.mapLlmError 旧实现在未收录错误码时拼 `AI 调用失败：${error}`，把裸内部码（如 rate_limit_exceeded/content_audit/user_cancelled）透出给用户，违反规范；②同一份「错误码中文表+未收录码兜底」逻辑在 assistantCore/studioLlm/usePptQuote/useIntelCenter/useCustomerManagement 5 个模块各抄一份，兜底策略已漂移（4 份中文替换、1 份拼接泄漏），且网关早已返回的 user_cancelled 码 5 张表都没收录。方案：复用优先、不自研引擎——新建全站唯一来源 src/lib/llmError.ts（LLM_ERROR_ZH 基表含补齐的 user_cancelled + localizeLlmError(error,{generic,copy}) 统一口径：命中码/模块 copy 覆写返回中文、已是可读中文串原样透出保留真实原因、其余裸英文码与 HTTP 串一律替换为中文兜底绝不外泄内部码）；5 个模块的本地表全部删除改为「只留专属覆写表 + 调 localizeLlmError」，copy 机制保证各页既有措辞逐字不变（行为等价零回归）；needsLogin 直连点（studioLlm/usePptQuote throw、useIntelCenter toast/report）改走本模块覆写表以保留原文案；assistantCore/studioLlm/usePptQuote/useIntelCenter 去掉去重后不再引用的 LLM_ERROR_ZH import 保持 eslint 干净。未动任何 AI 提示词（无 PROMPT_VERSION 变更、非 B 类），未动 pb_hooks/后端 collection，维持 R89 编造硬门禁只报告不拦截、lint-debt-01 残余不重构。门禁：tsc -b 0 错误 / vitest 659 passed(基线651+8 新增 llmError.test.ts)/2 skipped / eslint 新增两文件 0 error、三业务文件计数与改动前完全一致(25/9/4 全为在途 react-hooks 既有项)净新增0 / vite build exit0(3.25s)。运行时:dev(:8000+:7000)在线，Vite 按需转译命中 llmError/assistantCore/studioLlm 三模块均 200 且含新符号，模块图无编译错误。报告 .loop/reports/2026-10-01-r105-llm-error-copy-unify.md",
+      "files": [
+        "src/lib/llmError.ts(新建 全站错误码中文化唯一来源)",
+        "src/lib/llmError.test.ts(新建 8 用例)",
+        "src/lib/assistantCore.ts(mapAssistantLlmError 走共享口径 + trim import)",
+        "src/pages/SolutionStudio/studioLlm.ts(删本地表 STUDIO_ERROR_ZH 覆写 + throw 走覆写表 + trim import)",
+        "src/pages/PptQuote/usePptQuote.ts(删本地表 QUOTE_ERROR_ZH 覆写 + throw 走覆写表 + trim import)",
+        "src/pages/IntelCenter/useIntelCenter.ts(删本地表 INTEL_ERROR_ZH 覆写 + 打标/周报/toast/needsLogin 全走覆写表 + trim import)",
+        "src/pages/CustomerManagement/useCustomerManagement.ts(修复泄漏点 删本地表 mapLlmError 走共享中文兜底)"
+      ]
+    },
+    {
+      "id": "r106-csv-export-consolidate",
+      "title": "CSV 导出口径收敛：抽全站唯一 buildCsv（RFC4180 转义）+ 修矩阵导出窜列 + 清死代码/僵尸文案（会话内零 collection/零提示词）",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "巡检新角度（循 R104 死代码/断链、R105 漂移重复收敛主题）。坐实三类真实问题：①全站 CSV 口径本已收敛进 exportCsv.ts 的 exportToCsv（转义+BOM+CRLF），但竞品矩阵 buildOrderCompareCsv（marketIntel.ts）另抄一份手写 join(\",\") 且不做任何单元格转义——厂商名（用户可编辑数据）含 ASCII 逗号即窜列；②同为矩阵导出，buildOrderCompareCsv 用 \\r\\n、buildCompareCsv 用 \\n，两份手写实现换行口径漂移；③competitorScores.buildCompareCsv 全项目零引用（连测试都不调）是孤儿死函数，useHome.ts「占位入口」块 6 个僵尸符号（assistantOpen/searchValue/setSearchValue/toggleAssistant/handleSearchSubmit「全局搜索建设中，敬请期待」/handleModuleClick）早已被真正落地的 Cmd+K 全局命令面板（useGlobalSearch+GlobalCommandPalette，顶栏可见按钮+跨 8 类实体聚合检索）取代、HomePage 一个都不消费，那句「建设中」是误导性僵尸文案。方案（复用优先、不自研）：新建 src/lib/csv.ts 全站唯一纯函数 buildCsv(headers,rows)=RFC4180 转义（逗号/引号/换行→双引号包裹+内部引号翻倍）+UTF-8 BOM+CRLF，无 DOM/toast 依赖；exportCsv.ts 改为调用 buildCsv、exportToCsv 对外签名与产物逐字不变（7 列表调用方零感知）；buildOrderCompareCsv 改用 buildCsv 自动补转义；删除死函数 buildCompareCsv；删除 useHome 占位入口 6 符号+误导文案。零 collection/零 pb_hooks/零提示词（非 B 类）；维持 R89 编造硬门禁只报不拦、lint-debt-01 残余不重构。四门：tsc -b exit0 / vitest 664 passed(基线659+5：csv.test 新增4覆盖逗号/引号/换行/null/undefined/BOM/CRLF/全角逗号不误伤 + marketIntel.test +1 锁厂商名含逗号转义不窜列回归)/2 skipped / eslint 触及文件净新增0(新改6文件0 error；useHome 命中3项全为在途既有 react-hooks/set-state-in-effect 行318/539/738 落在本轮未触碰的 qualAlertCount/loadIntelItems effect 内，本轮仅删死代码零新增) / vite build exit0(3.24s)。git diff 核实在途用户代码(qualAlertCount/INTEL_TAG bid→招标/mustSee qual 分类)未被误伤。报告 .loop/reports/2026-10-01-r106-csv-export-consolidate.md 浏览器实机验证(R106收口): Vite :8000+PB :7000 起服，`/` 删占位入口后首页完整渲染(真实 Cmd+K 搜索按钮仍在，坐实僵尸入口冗余)、`/competitors`→能力对标点「导出对比」触发改写后的 buildOrderCompareCsv→共享 buildCsv 端到端跑通、下载+toast「对比矩阵已导出」、全程 console 0 error/warn；逗号/引号转义分支由单测锁定。截图 .qoder/tmp/r106_competitors_export.png。",
+      "files": [
+        "src/lib/csv.ts(新建 全站唯一 CSV 拼装纯函数 buildCsv)",
+        "src/lib/csv.test.ts(新建 4 用例：转义/null/undefined/BOM+CRLF/全角逗号不误伤)",
+        "src/lib/exportCsv.ts(改为复用 buildCsv，exportToCsv 签名与产物逐字不变)",
+        "src/pages/Competitors/marketIntel.ts(+import buildCsv / buildOrderCompareCsv 改用共享转义)",
+        "src/pages/Competitors/marketIntel.test.ts(+1 厂商名含逗号转义回归)",
+        "src/pages/Competitors/competitorScores.ts(删除零引用死函数 buildCompareCsv)",
+        "src/pages/Home/useHome.ts(删除占位入口 6 僵尸符号+误导文案)",
+        ".loop/reports/2026-10-01-r106-csv-export-consolidate.md"
+      ]
+    },
+    {
+      "id": "r107-csv-injection-guard",
+      "title": "CSV 公式注入防护（CWE-1236）：全站唯一 buildCsv 补前导单引号中和 = + - @ 制表符开头的文本，阻断导出 CSV 在 Excel 被当公式/DDE 执行；数字不劫持，含逗号注入前缀+转义叠加（会话内零 collection/零提示词）",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "巡检新角度：承接 R106 刚建成的全站唯一 CSV 拼装函数 src/lib/csv.ts（buildCsv），复检其安全边界，坐实一处真实、面广、可单测锁定的安全缺陷——CSV 公式注入（CWE-1236/OWASP CSV Injection）。R106 的 buildCsv 已做 RFC4180 转义（逗号/引号/换行→双引号包裹+内部引号翻倍），但无任何公式注入防护：当导出单元格文本以 = + - @ 制表符 \\t 回车 \\r 开头时，RFC4180 只保证不窜列、却原样写入，用户可编辑字段（厂商名/客户名/备注/情报标题/报价明细）填成 =cmd|' /C calc'!A0 之类，导出后在他机 Excel/WPS 打开会被当公式或 DDE 命令执行（可远程代码执行）。本项目导出 CSV 为全站高频出口（exportToCsv 服务 7 列表 + 竞品能力矩阵转置导出）、文件常被转发他人电脑打开，故属跨模块真实可达安全面。方案（复用单一口径、不引依赖、不自研）：在 escapeCell 内补一层前导单引号（Excel 强制文本）中和——仅对 typeof v==='string' 且匹配 /^[=+\\-@\\t\\r]/ 的单元格前置 '，令 Excel 按文本解析；数字类型不劫持（-5、3.2 等 number 传入的合法数值原样保留，只有字符串以 - 开头才防护，避免误转文本）；与既有转义叠加（含逗号的注入载荷既加前导单引号又整体双引号包裹）。修复点选在全站唯一 buildCsv，exportToCsv（7 调用方）与 buildOrderCompareCsv 自动继承防护、零调用方改动、零口径漂移——正是 R106 收敛单函数的红利。四道门禁：tsc -b exit0 · vitest 669 passed（基线 664/2，净+5：csv.test.ts 新增 5 用例覆盖 =+ -@ 前缀/典型 DDE 载荷不逃逸/含逗号注入前缀+转义叠加/number 含负数不劫持/普通与中文文本零改写）/2 skipped · eslint 触及两文件 exit0 零 error · vite build exit0(2.92s)。在途核对：csv.ts/csv.test.ts 均 R106 新建（git ?? 未跟踪），本轮纯叠加补丁未触及用户未提交在途新功能区域。零 collection/零 pb_hooks/零提示词（非 B 类，无 PROMPT_VERSION 变更）；维持 R89 编造未清零导出门禁只报不拦、lint-debt-01 残余不重构、禁止 commit。运行时诚实降级：纯函数安全分支无法用浏览器实机真实数据触发（正常业务值不以 =+-@ 开头），与 R106 逗号/引号分支同一惯例——由 csv.test.ts(9 用例含 5 新注入用例)端到端锁定，编译/构建/单测三门坐实产物正确、普通路径零回归。浏览器实机收口(R107)：Vite :8000+PB :7000 均在，/competitors 能力对标「导出对比」端到端触发 buildOrderCompareCsv→共享 buildCsv、toast「对比矩阵已导出」、console 0 error/warn（普通厂商名走非前缀分支零回归，注入前缀分支由单测锁定），截图 .qoder/tmp/r107_competitors_export.png。报告 .loop/reports/2026-10-01-r107-csv-injection-guard.md。",
+      "files": [
+        "src/lib/csv.ts(escapeCell 补公式注入防护：string 且 /^[=+\\-@\\t\\r]/ 前缀单引号，数字不劫持)",
+        "src/lib/csv.test.ts(+5 注入用例：=+-@ 前缀/DDE 载荷不逃逸/含逗号注入前缀+转义叠加/number 含负数不劫持/普通与中文文本零改写)",
+        ".loop/reports/2026-10-01-r107-csv-injection-guard.md",
+        "d:/KFDXCX/MedPreSales/.qoder/tmp/r107_competitors_export.png(实机截图)"
+      ]
+    },
+    {
+      "id": "r108-relative-time-consolidate",
+      "title": "相对时间显示口径收敛：抽全站唯一 formatRelativeTime 共享核心（刚刚/分钟前/小时前）+ 各页 afterDay 覆写逐字保留，修 4 份重复实现的 ≥1 天分支漂移（会话内零 collection/零提示词/零 pb_hooks）",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "巡检新角度（承接 R105 错误码中文表 5 份去重、R106 CSV 唯一 buildCsv 的单一来源收敛主线）。扫描坐实全站 4 份各抄一遍的相对时间格式化函数——useActivityFeed.formatRelativeTime(昨天HH:MM/月日)、StageHistoryPanel.relTime(X天前无上限)、SessionListPanel.formatSessionTime(X天前<30/toLocaleDateString)、knowledge/DocListPanel.formatTime(X天前<30/YYYY-MM-DD)：共享的「刚刚/X分钟前/X小时前」逐字一致却各抄各的 parse+NaN 守卫与边界，≥1 天口径已漂移（30 天阈值有无、绝对日期格式三种不一）。方案（复用优先、不自研）：新建 src/lib/relativeTime.ts 全站唯一 formatRelativeTime(iso, afterDay?) 收敛空值/非法兜底 + <1min/<1h/<24h 三档核心，≥24h 渲染交调用方 afterDay(date,diffMs,day) 覆写，沿用 R105「共享核心+专属覆写」惯例令每页输出逐字不变；四站点仅删重复边界分支+保留各自 day 语义。逐字等价证明：Math.floor 逐层下取整恒等式 floor(floor(floor(n/60000)/60)/24)===floor(n/86400000) 且仅 diff>=86400000 才入 day 分支，new Date(t) 与 new Date(iso) 同一时刻本地方法结果一致。四道门禁：tsc -b exit0 / vitest 675 passed(基线669+6：relativeTime.test 冻结 Date.now 用 oracle 法把迁移前 3 原函数逐字复刻为参考实现，跨全档位+30天阈值两侧 diff 电池断言 formatRelativeTime(iso,cfg)===原输出 直接锁零回归 + 3 例锁共享核心)/2 skipped / eslint 触及6文件净新增0(唯一 useActivityFeed.ts:156 set-state-in-effect 位于 useEffect body 属在途既有，git diff -U0 证本轮仅命中 L5 import 与 L42-48 格式化函数未触碰该行；relativeTime.ts/.test.ts 及三组件 0 error) / vite build exit0(3.05s)。未动提示词(非B类无PROMPT_VERSION)、未动 pb_hooks/后端 collection；维持 R89 编造未清零导出只报不拦、lint-debt-01 残余不重构、禁止 commit。报告 .loop/reports/2026-10-01-r108-relative-time-consolidate.md",
+      "files": [
+        "src/lib/relativeTime.ts(新建 全站唯一相对时间核心 formatRelativeTime + AfterDayHandler)",
+        "src/lib/relativeTime.test.ts(新建 6 用例：核心档位/默认天前/兜底 + 三页 oracle 逐字等价回归)",
+        "src/components/assistant/SessionListPanel.tsx(formatSessionTime 走核心+day<30覆写)",
+        "src/components/bid-workspace/StageHistoryPanel.tsx(relTime 走核心默认)",
+        "src/components/knowledge/DocListPanel.tsx(formatTime 走核心+day<30覆写)",
+        "src/hooks/useActivityFeed.ts(保留导出名，formatRelativeTime 走核心+昨天/月日覆写 + import)"
+      ]
+    },
+    {
+      "id": "r109-pbjson-fetch-consolidate",
+      "title": "PocketBase JSON 请求口径收敛：抽全站唯一 src/lib/pbJson.ts（pbJsonGet 静默 null 变体 + pbJsonRequest 抛 HTTP 变体含 httpStatus 选项），四站点本地 apiFetch 改委托包裹零涟漪（会话内零 collection/零提示词/零 pb_hooks）",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "巡检新角度（承接 R105/R106/R108 单一来源收敛主线）。扫描坐实全站 4 份各抄一遍的 PocketBase JSON apiFetch 封装——useGlobalSearch/useActivityFeed(静默 Promise<T|null>) + useBidWorkspace(throw HTTP 26 调用) + useCustomerManagement(throw HTTP 附带 err.httpStatus 38 调用)：同一 getPocketBaseUrl()+path / vibexAuthHeaders() 认证头 / JSON 解析各写各的，失败契约两类漂移。方案（复用优先、不自研）：新建 src/lib/pbJson.ts 导出 pbJsonGet<T>(path)→非ok或网络异常均 null（逐字等价原静默体）、pbJsonRequest<T>(path,init?,{exposeHttpStatus}?)→throw Error(HTTP <status>)，默认不挂 httpStatus=BidWorkspace 行为、true 时 err.httpStatus=<status>=CustomerManagement 行为，headers 合并顺序与 ...init 展开逐字照搬。关键安全策略：四处保留各自本地 apiFetch 符号名不变、仅把函数体改为委托 return（wrapper），所有含可能在途新增的调用方零感知零改动，避免 208 未提交在途文件涟漪；迁移后 getPocketBaseUrl/vibexAuthHeaders 四文件仅 apiFetch 用过随 import 精确摘除（保留仍在用的 decodeRhToken/type RhAccountInfo）。四道门禁：tsc -b exit0(首跑测试 500 用例 e 为 unknown，改 (await..catch(x=>x)) as Error&{httpStatus?} 后过) / vitest 682 passed(基线675+7 全在新增 pbJson.test.ts：pbJsonGet ok/非ok→null/网络异常→null/URL=base+path/认证头 + pbJsonRequest ok/默认抛不带httpStatus/expose挂409/init展开且headers覆写auth 共7例)/2 skipped / eslint 触及6文件净新增0(新 pbJson.ts/pbJson.test.ts 各 0err0warn；四迁移文件唯一 error 全 react-hooks set-state-in-effect/no-useless-assignment/preserve-manual-memoization 位于 useEffect/useCallback body 行117/147/307/448/1589/1699 远离本轮只改的模块级 apiFetch 定义~L28-61 与 import；无任何 no-unused-vars/no-undef 反证 import 摘除精确；BidWorkspace/CustomerManagement 5/9 err+13warn 为既有基线) / vite build exit0(2.94s)。浏览器实机(dev:8000+PB 在线)：首页作战驾驶舱真实数据完整渲染(最新动态走 useActivityFeed→pbJsonGet)；⌘K 全局搜索输「医院」经共享 pbJsonGet 对 8 集合(customers/opportunities/intel/bid_projects/solutions/ppt_decks/quotes/kb_docs)发真实 GET 全 200、分组渲染无崩溃、console 0err0warn；截图 test_results/browser_01_home.png/02_search_hospital/03_search_scrolled。未动提示词(非B类无PROMPT_VERSION)、未动 pb_hooks/后端 collection；维持 R89 编造未清零导出只报不拦、lint-debt-01 残余不重构、禁止 commit。报告 .loop/reports/2026-10-01-r109-pbjson-fetch-consolidate.md",
+      "files": [
+        "src/lib/pbJson.ts(新建 全站唯一 PB JSON 请求 pbJsonGet/pbJsonRequest)",
+        "src/lib/pbJson.test.ts(新建 7 用例：静默 null 变体 + 抛 HTTP 变体 + httpStatus 选项 + headers/init 展开)",
+        "src/components/shell/useGlobalSearch.ts(apiFetch 委托 pbJsonGet + import 精确摘除)",
+        "src/hooks/useActivityFeed.ts(apiFetch 委托 pbJsonGet + import 精确摘除)",
+        "src/pages/BidWorkspace/useBidWorkspace.ts(apiFetch 委托 pbJsonRequest + import 精确摘除)",
+        "src/pages/CustomerManagement/useCustomerManagement.ts(apiFetch 委托 pbJsonRequest{exposeHttpStatus:true} + import 精确摘除)"
+      ]
+    },
+    {
+      "id": "r111-clipboard-consolidate",
+      "title": "全站复制文本收敛：抽唯一 src/lib/clipboard.ts（Clipboard API+execCommand 双路回退），修 2 处失败静默 + 10 处未防 navigator.clipboard 缺失同步抛崩溃（会话内零 collection/零提示词/零 pb_hooks）",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "巡检新角度（承接 R110 src/lib/download.ts 单一浏览器 API 封装主线）。脚本扫描全站 navigator.clipboard.writeText 坐实 10 处（9 文件）各写各、三类真实缺陷：①2 处只写 .then(成功)（ChatStream 大纲复制、SubmissionCheckPanel 复制建议）失败静默无反馈；②全部 10 处未防 navigator.clipboard 在非安全上下文/旧浏览器为 undefined 时同步抛 TypeError——.then(onSuccess,onError) 只兜 Promise 拒绝兜不住同步抛出，直接崩溃（面广的真实健壮性缺陷）；③成功/失败文案 10 处 6 样漂移。方案（复用优先、单一来源、不自研）：新建 src/lib/clipboard.ts 全站唯一 copyTextToClipboard(text,{successMessage?,errorMessage?,onSuccess?})→内部 writeClipboardText 先探测 navigator.clipboard?.writeText 能力命中走 Clipboard API、缺失或抛错回退隐藏 textarea+document.execCommand(\"copy\")、两路皆败才返回 false 并弹可覆写中文兜底；成功可选弹 successMessage（省略即不弹，兼容 QaDrawer 仅视觉状态反馈口径）+触发 onSuccess。10 站点全改委托本入口，successMessage/errorMessage 逐字沿用各站原文案（已处理失败的站点行为等价，2 静默站点新增失败反馈属修复），ChatStream「复制并去编辑」navigate 仍 void 后同步执行保持跳转无条件。import 精确摘除：按实际 toast 用量决定 sonner import 去留（ChatStream/CompetitorCompare 保留、其余 7 摘除就地补 clipboard import）；修正 SubmissionCheckPanel 因中文文案「进度见 toast。」含 toast token 令自动判定误报、据 tsc TS6133 精确摘除其未用 import（r111b 补丁）。四门：tsc -b exit0 / vitest 692 passed(基线+clipboard.test.ts 6：Clipboard API 成功、无 successMessage 不弹、能力缺失回退 execCommand、writeText 抛错回退、两路皆败弹默认兜底不触发 onSuccess、自定义 errorMessage 覆写)/2 skipped / eslint 触及 11 文件净新增 0(唯一 1 项 ParseReportPanel L82 set-state-in-effect 位于在途 Q26 切片 setKeyOnly useEffect、不在本轮任一 hunk，属在途既有不计新增) / vite build exit0(3.18s)。运行时集成：Vite :8000 转译 clipboard.ts 200 含新符号+execCommand 回退，抽查三消费方 200、委托新入口、无 writeText 残留、模块图无错(同 R105)。诚实降级：回退/未定义防护/失败兜底分支 localhost 安全上下文不可自然触发，由 6 单测锁定(同 R106/R107)。零 collection/零 pb_hooks/零提示词(非 B 类无 PROMPT_VERSION)；维持 R89 编造未清零导出只报不拦、lint-debt-01 残余不重构、禁止 commit。浏览器实机验证(R111收口): Vite :8000 动态 import 应用实际加载的 clipboard.ts 同一模块实例，成功路径 copyTextToClipboard 返回 true+剪贴板 readText 回读头部匹配+DOM 落 1 条成功 toast；失败/降级路径 stub writeText reject + execCommand false 后调用 threw:null(旧代码此刻未捕获同步抛崩溃、新代码优雅降级)返回 false 且弹自定义中文兜底 toast(2 原静默站点此前无反馈)；应用加载+打开小智助手+两路调用全程 console 0 error/warn；首页作战驾驶舱完整渲染零回归；截图 .qoder/tmp/r111_clipboard_verify.png。",
+      "files": [
+        "src/lib/clipboard.ts(新建 全站唯一复制入口 copyTextToClipboard + Clipboard API/execCommand 双路回退)",
+        "src/lib/clipboard.test.ts(新建 6 用例：成功/无 toast/缺失回退/抛错回退/双败兜底/自定义错误)",
+        "src/components/assistant/ChatStream.tsx(2 站点委托 + 补 clipboard import，保留 sonner)",
+        "src/components/bid-workspace/ParseReportPanel.tsx(copyContent 委托，摘 sonner 补 clipboard)",
+        "src/components/bid-workspace/SubmissionCheckPanel.tsx(复制建议委托 新增失败反馈，摘未用 sonner import)",
+        "src/components/competitors/CompetitorCompare.tsx(copyText 委托，保留 sonner)",
+        "src/components/intel-center/IntelDetailPanel.tsx(委托，摘 sonner 补 clipboard)",
+        "src/components/knowledge/QaAmmoPanel.tsx(委托，摘 sonner 补 clipboard)",
+        "src/components/knowledge/QaDrawer.tsx(copyAnswer onSuccess 委托 无成功 toast，摘 sonner 补 clipboard)",
+        "src/pages/Competitors/CompetitorsPage.tsx(委托，摘 sonner 补 clipboard)",
+        "src/pages/IntelCenter/IntelCenterPage.tsx(委托，摘 sonner 补 clipboard)",
+        ".loop/reports/2026-10-01-r111-clipboard-consolidate.md",
+        "d:/KFDXCX/MedPreSales/.qoder/tmp/r111_clipboard_verify.png(实机截图)"
+      ]
+    },
+    {
+      "id": "r112-local-date-stamp-consolidate",
+      "title": "全站本地日期戳单一来源 + 修正 UTC 时区缺陷",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "巡检新角度（承接 R105/R106/R108/R109/R110/R111 单一来源收敛主线）。脚本扫描全站日期产出，坐实两类问题：①【真实缺陷】12 处 new Date().toISOString().slice(0,10)（10 处导出文件名日期戳 + 2 处写回 PocketBase 的用户可见内容戳：ChatStream 竞品 threat_notes「【AI 深度分析 …】」、标书项目 ref_materials_text「【招标要点梳理 …】」）——toISOString 序列化为 UTC，本机 UTC+8 用户在本地 00:00–07:59 导出/写入时日期少一天，用户可见跨天错；②【重复实现】5 处各写各的内联本地日期格式化（KanbanBoard/OpportunityDetailPanel 今天 IIFE、DocListPanel formatTime afterDay 分支、intelExports 紧凑 YYYYMMDD、QaGapPanel 日期+时分）。新增唯一入口 src/lib/dateStamp.ts：localDateStamp(d=new Date())→本地 YYYY-MM-DD、localDateCompact→YYYYMMDD。落地 11 文件：9 文件名 UTC + 2 内容戳 UTC → localDateStamp()（修复缺陷）；DocListPanel/KanbanBoard/OpportunityDetailPanel 内联 YYYY-MM-DD → localDateStamp()（逐字等价）；intelExports 紧凑 → localDateCompact(now)（并删随之失效的局部 pad）。有意绕开并记录：QualCertsPage 1 处文件名 UTC 站点未改（该文件 R88 后新增未跟踪、R94 报告证实含用户在途改动 qualAlertCount，按命中在途新功能绕开），QaGapPanel 因含时分不并入纯日期戳。四门：tsc -b exit0 / vitest 696 passed(+4 dateStamp.test.ts)/2 skipped（基线 692）/ eslint 14 触及文件 exit0 零 error / vite build exit0 3.21s。零 collection/零 pb_hooks/零数据模型/非提示词（非 B 类）；维持 R89 只报不拦、lint-debt-01 不重构；禁止 commit。报告 .loop/reports/2026-10-01-r112-local-date-stamp-consolidate.md",
+      "files": [
+        "src/lib/dateStamp.ts",
+        "src/lib/dateStamp.test.ts",
+        "src/components/assistant/ChatStream.tsx",
+        "src/components/competitors/CompetitorCompare.tsx",
+        "src/components/solution-studio/SolutionListPanel.tsx",
+        "src/components/knowledge/DocListPanel.tsx",
+        "src/components/customer-management/CustomerListPanel.tsx",
+        "src/components/customer-management/KanbanBoard.tsx",
+        "src/components/customer-management/OpportunityDetailPanel.tsx",
+        "src/components/ppt-quote/QuoteListPanel.tsx",
+        "src/components/ppt-quote/DeckListPanel.tsx",
+        "src/components/knowledge/QaAmmoPanel.tsx",
+        "src/components/bid-workspace/BidProjectList.tsx",
+        "src/lib/intelExports.ts"
+      ]
+    },
+    {
+      "id": "r113-money-format-single-source",
+      "title": "全站金额显示口径单一来源：报价/建设清单两套平行货币格式化收敛到 src/lib/money.ts",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "巡检新角度（承接 R105-R112 单一来源收敛主线；优先项 quote-history-01 已于 R102、prompt-fabscan-03 残余已于 R101/R103 收口，QualCerts 在途继续绕开）。坐实货币格式化两套平行实现+真实口径漂移：报价域 formatMoney（pptQuoteTypes.ts，固定 2 位小数）与方案建设清单域 fmtMoney（checklistTypes.ts，仅 max 2 位无保底），同一笔金额报价单显示¥1,234.00、建设清单显示 ¥ 1,234，且新建方案向导→清单导入报价链路两套口径并存。新增唯一入口 src/lib/money.ts formatMoney（zh-CN 千分位+固定 2 位小数，非有限值兜底 0）；pptQuoteTypes 改同源再导出 export { formatMoney }（报价域含在途修改的 QuoteEditor 等 4 调用文件零改动），checklistTypes fmtMoney 改同源别名 `¥ ${formatMoney(...)}`（方案域 8 调用文件零改动）。行为变化点如实记录：建设清单整数金额不再省略 .00，与报价/导出 docx 既有口径对齐。测试与快照对两个函数零直接断言，无需 -u；非提示词，PROMPT_VERSION 不变。四门：tsc -b exit0 / vitest 699 passed(+3 money.test.ts)/2 skipped（基线 696）/ eslint 4 触及文件 exit0 / vite build exit0 3.21s。零 collection/零 pb_hooks/零数据模型；维持 R89 只报不拦、lint-debt-01 不重构；禁止 commit。报告 .loop/reports/2026-10-01-r113-money-format-single-source.md",
+      "files": [
+        "src/lib/money.ts",
+        "src/lib/money.test.ts",
+        "src/pages/PptQuote/pptQuoteTypes.ts",
+        "src/pages/SolutionStudio/checklistTypes.ts"
+      ]
+    },
+    {
+      "id": "r114-date-display-consolidate",
+      "title": "全站 ISO 日期显示格式化单一来源：4 份平行实现（含逐字节克隆 + 1 处失效分支漂移）收敛到 src/lib/dateDisplay.ts",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "巡检新角度（承接 R105-R113 单一来源收敛主线；优先项 quote-history-01 已于 R102、prompt-fabscan-03 残余已于 R101/R103 收口，QualCerts/useIntelCenter 在途继续绕开）。坐实『ISO 时间戳→人读日期』四份平行实现跨三模块：customerTypes.fmtDateTime/fmtDate、useIntelCenter.fmtIntelTime（与 fmtDateTime 逐字节相同）、QaGapPanel.formatTime（同格式但不可解析分支返回 \"\" 是唯一漂移，3:1 少数派）。R112 dateStamp.ts 仅覆盖 Date 对象入参，ISO 字符串入口从未统一。新增唯一入口 src/lib/dateDisplay.ts：formatDateDisplay/formatDateTimeDisplay，纯日期委托 R112 localDateStamp 保日历一处、datetime 追加本地 HH:MM，空→\"\"、不可解析→iso.slice(0,10)。四实现改薄委托并保留原导出名，9 个消费组件零改动、customerTypes 内部 L421 自调用不受影响。行为变化点如实记录：仅 QaGapPanel 失效分支 \"\"→slice(0,10)，向多数口径统一，PB 系统时间戳恒可解析故正常路径无用户可见差异；其余三处三分支逐字等价。四门：tsc -b exit0 / vitest 705 passed(+6 dateDisplay.test.ts)/2 skipped（基线 699）/ eslint 非在途4文件 exit0、useIntelCenter 25 error 全为该在途文件既有 react-hooks 基线（git diff -U0 证本轮 hunk 仅 import+fmtIntelTime 两行不含 hook，净新增0）/ vite build exit0 3.05s。零 collection/零 pb_hooks/非提示词(PROMPT_VERSION 不变)；维持 R89 只报不拦、lint-debt-01 不重构；禁 commit。详见 .loop/reports/2026-10-01-r114-date-display-consolidate.md",
+      "files": [
+        "src/lib/dateDisplay.ts(新建 全站唯一 ISO→显示日期入口)",
+        "src/lib/dateDisplay.test.ts(新建 6 用例)",
+        "src/pages/CustomerManagement/customerTypes.ts(fmtDate/fmtDateTime 改委托+import)",
+        "src/pages/IntelCenter/useIntelCenter.ts(fmtIntelTime 改委托+import)",
+        "src/components/knowledge/QaGapPanel.tsx(formatTime 改委托+import)"
+      ]
+    },
+    {
+      "id": "pb-fetch-clone-collapse-01",
+      "title": "PocketBase 取数 4 处 pbJsonRequest 平行克隆收编回单一入口(compFetch/qaFetch/apiFetch/内联) 薄委托保调用点+删除失效 import+委托契约回归测试",
+      "priority": "P2",
+      "summary": "巡检发现 R109 单一入口 pbJsonRequest 落地不彻底，仍存 4 份私有克隆(competitorsCore.compFetch/kbQa.qaFetch 挂 httpStatus、checklistLogic.apiFetch/FormatSettingsPanel 内联 纯throw)，正是 pbJson.ts 头注点名的 auth 头装配漂移风险源。四处改薄委托保函数名与调用点零改动，行为逐字节等价；删除随之失效的 getPocketBaseUrl/vibexAuthHeaders import。新增 pbFetchDelegation.test.ts(6 用例)锁 base+path 拼接/auth 头合并/HTTP 状态携带 httpStatus/分页短页即止。有意不并入超时 postJson、自定义降级的 competitorEvidence、静态本地 JSON 与 teamAuth 原生鉴权。四门:tsc0 / vitest 711(+6)/2skip / eslint 触及净增0(9=HEAD基线) / build0。零数据模型/非提示词;维持裁定;禁 commit。",
+      "files": [
+        "src/pages/Competitors/competitorsCore.ts",
+        "src/lib/kbQa.ts",
+        "src/pages/SolutionStudio/checklistLogic.ts",
+        "src/components/bid-workspace/FormatSettingsPanel.tsx",
+        "src/lib/pbFetchDelegation.test.ts (new)"
+      ],
+      "closed_round": 115,
+      "closed_at": "2026-10-01T16:44:59Z"
+    },
+    {
+      "id": "r116-export-filename-and-download-consolidate",
+      "title": "导出/下载家族单一入口收编：3 份文件名非法字符清洗克隆(intel/deck/quote)收敛到新建 src/lib/fileName.ts(sanitizeFileBase+buildSafeFileName，本地函数名薄委托调用点零改动逐字节等价) + aigc.downloadAigcResult 立即revoke私有克隆收编回 R110 triggerBlobDownload(修慢引擎打断下载风险)；会话内零 collection/零提示词/零 pb_hooks",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "承接 R105→R115 单一来源收敛主线，巡检 download/export 家族两处未收编重复实现。A.文件名清洗 3 份平行克隆(正则 /[\\\\/:*?\"<>|]/g→下划线 + slice(0,60)，仅差空名兜底串与扩展名拼接)→ 新增 src/lib/fileName.ts：sanitizeFileBase(name,emptyBase?)/(name||emptyBase).replace(UNSAFE,\"_\").slice(0,60)、buildSafeFileName 拼 .ext；三处保留本地函数名薄委托、调用点零改动、输出逐字节等价(唯一细微差异:原 safeExportFileName 对 undefined 会抛、新实现不抛，更严格，现有调用方始终传字符串正常路径无差异)。B.Blob 下载:aigc.downloadAigcResult 是 R110 triggerBlobDownload 的私有克隆且「点击后立即 revoke」——正是 download.ts 头注点名的慢引擎打断下载风险源(同 R109→R115 落地不彻底续作)，8 行内联 createObjectURL+<a>+click+removeChild+revoke → 单行 triggerBlobDownload(blob,name)，行为变化:内存释放由立即改统一延时 3s(全站一致)、内容与文件名不变、removeChild→a.remove() 等价。有意不并入:competitorEvidence.sanitizeSystemSlug(证据ID slug,目的/字符集不同)、CompanyTemplateHint/useFormatTool 下载名(来源已合法且不宜施加 60 截断)。四门:tsc -b exit0 / vitest 718 passed(基线711+7，新增 fileName.test.ts 7 例:oracle 法逐字复刻 prevIntel/prevDeck/prevQuote 跨全非法字符/截断/空兜底/扩展名/中文/120长串电池断言逐字节等价 + 4 显式行为)/2 skipped / eslint 触及6文件净新增0(aigc 2 项 no-useless-assignment L381/721 为 HEAD 基线既有,git diff -U0 证本轮 hunk 仅 import L2-3 与下载块 L1129+) / vite build exit0(2.93s)。零 collection/零 pb_hooks/非提示词(PROMPT_VERSION 不变);维持 R89 只报不拦、lint-debt-01 不重构;禁 commit;触及文件均为 loop 自建区或 HEAD 干净文件,无在途新功能命中。报告 .loop/reports/2026-10-02-r116-export-filename-and-download-consolidate.md",
+      "files": [
+        "src/lib/fileName.ts(新建 全站唯一文件名非法字符清洗 sanitizeFileBase/buildSafeFileName)",
+        "src/lib/fileName.test.ts(新建 7 用例:oracle 逐字节等价回归 + 显式行为)",
+        "src/lib/intelExports.ts(safeExportFileName 委托 sanitizeFileBase + import)",
+        "src/pages/PptQuote/deckExports.ts(safeFileName 委托 buildSafeFileName + import)",
+        "src/pages/PptQuote/quoteExports.ts(safeFileName 委托 buildSafeFileName + import)",
+        "src/lib/aigc.ts(downloadAigcResult 内联下载克隆收编 triggerBlobDownload + import)"
+      ],
+      "closed_round": 116,
+      "closed_at": "2026-10-01T18:40:11Z"
+    },
+    {
+      "id": "r117-datetime-display-consolidate",
+      "title": "全站时刻戳显示口径收敛：15 处原生 toLocaleString/toLocaleDateString(zh-CN) 绕过 R112/R114 单一真源的日期时刻渲染全部改道（A 类 ISO 时刻戳 10 处→formatDateTimeDisplay；B 类斜杠日期 4 处→localDateStamp/formatDateTime；C 类 ResultRegisterCard.fmtSyncedAt 平行克隆删除改委托），dateDisplay.ts 新增 Date 对象入口 formatDateTime 且 formatDateTimeDisplay 委托之；报价单默认名/导出日期从斜杠源头消净；会话列表 >30 天回退与 DocListPanel 同族对齐。有意保留：HomePage 大字报、MMDD 紧凑后缀、M/D 短格式、QualCertsPage(维持 r112 defer 裁定)；数字绕过 money.ts 站点另立 backlog money-bypass-sites-01。零提示词/零 collection/零 pb_hooks，维持编造只报不拦与 lint-debt-01 裁定。四门：tsc exit0 / vitest 720 passed(基线718+2：formatDateTime Date渲染与Invalid降级)/2 skipped / eslint 触及16文件新增0(9 error 均 useBidWorkspace/usePptQuote 在途基线既有，difflib 备份对比证本轮两文件各仅 2 行改动与 error 行零交集) / vite build exit0(3.07s)。详见 .loop/reports/2026-10-02-r117-datetime-display-consolidate.md",
+      "priority": "P2",
+      "summary": "文案一致性主线（承接 R105 文案/R106 CSV/R108 相对时间/R109 PB JSON/R110 下载/R111 剪贴板/R112 日期戳/R113 金额/R114 日期显示/R115 fetch/R116 文件名）：全站日期时刻渲染仍有 15 站点走原生 Intl zh-CN（斜杠+不补零+带秒，环境漂移风险），与 dateDisplay 破折号口径并存割裂；其中 ResultRegisterCard.fmtSyncedAt 为 formatDateTimeDisplay 的逐分支复刻。本轮补齐：dateDisplay.ts 新增 formatDateTime(Date)（时分 pad 唯一实现，Display 委托），10 处 ISO 时刻戳→formatDateTimeDisplay（DupCheckPanel/GateChecklist/MockEvalPanel/StageHistoryPanel/VoidCheckPanel/SubmissionCheckPanel×3/bidFiles/useBidWorkspace），now 戳与斜杠日期 4 处→formatDateTime(new Date())/localDateStamp()（quoteExports×2/usePptQuote/exportTemplate），SessionListPanel >30d 回退→localDateStamp 与 DocListPanel 对齐（relativeTime.test oracle 同步并注明有意分歧），ResultRegisterCard 删 6 行克隆改委托。行为变化：显示丢秒、斜杠→破折号补零（全库统一口径，报告已记录）；报价单默认名不再含 /。备份 .qoder/tmp/r117_backup 16 文件可整轮回滚；未 commit。",
+      "files": [
+        "src/lib/dateDisplay.ts(新增 formatDateTime+Display 委托+头注 R117)",
+        "src/lib/dateDisplay.test.ts(+2 用例 formatDateTime)",
+        "src/lib/relativeTime.test.ts(SessionListPanel >30d oracle 同步破折号口径)",
+        "src/components/bid-workspace/DupCheckPanel.tsx(检查时刻委托)",
+        "src/components/bid-workspace/GateChecklist.tsx(确认时刻委托)",
+        "src/components/bid-workspace/MockEvalPanel.tsx(评标时刻委托)",
+        "src/components/bid-workspace/StageHistoryPanel.tsx(留档时刻委托)",
+        "src/components/bid-workspace/VoidCheckPanel.tsx(检查时刻委托)",
+        "src/components/bid-workspace/SubmissionCheckPanel.tsx(检查/审计/格式检查 3 处委托)",
+        "src/components/bid-workspace/ResultRegisterCard.tsx(删 fmtSyncedAt 克隆改委托)",
+        "src/components/assistant/SessionListPanel.tsx(>30d 回退改 localDateStamp)",
+        "src/pages/BidWorkspace/bidFiles.ts(错字审计描述时刻委托)",
+        "src/pages/BidWorkspace/useBidWorkspace.ts(留档 toast 时刻委托)",
+        "src/pages/PptQuote/quoteExports.ts(导出时间/导出日期委托)",
+        "src/pages/PptQuote/usePptQuote.ts(报价单默认名改 localDateStamp)",
+        "src/pages/SolutionStudio/exportTemplate.ts(编制日期改 localDateStamp)"
+      ]
+    },
+    {
+      "id": "money-bypass-sites-01",
+      "title": "R118 金额/计数数字显示单一真源收敛：口径裁定(金额=formatMoney固定2位小数;计数=新增formatCount钉zh-CN locale自然精度;M/D HH:MM列表紧凑维持R117裁定);金额3站点+计数10站点改道,money.ts新增formatCount+3用例",
+      "priority": "P3",
+      "summary": "25处编辑/9文件。ComposeStep:496命中在途WIP hunk绕开,登记money-count-defer-composestep-01。四门:tsc 0/vitest 723+2skip(基线720,+3=formatCount用例)/eslint触及文件新增0error(唯一error经备份对照为基线既有行号偏移)/build 3.04s。零提示词/零collection/未commit。详见.loop/reports/2026-10-02-r118-money-count-consolidate.md",
+      "files": [
+        "src/lib/money.ts",
+        "src/lib/money.test.ts",
+        "src/components/bid-workspace/BidReviewSummary.tsx",
+        "src/components/bid-workspace/BidWarRoom.tsx",
+        "src/components/solution-studio/checklist/ProductLibraryPanel.tsx",
+        "src/components/customer-management/CustomerProfileCard.tsx",
+        "src/components/competitors/CompetitorCharts.tsx",
+        "src/pages/Competitors/CompetitorsPage.tsx",
+        "src/pages/Competitors/CopyrightDialog.tsx"
+      ],
+      "round": 118
+    },
+    {
+      "id": "r119-logout-cache-invalidate-01",
+      "title": "R119 登出/切换账号必须失效该用户本机缓存（隐私/正确性实修）+ git-clean 死码清扫：clearTeamSession 长期只清 localStorage、从不失效按登录用户分库的两份 IndexedDB 缓存(kb-doc-cache:<uid> 含病历/方案原文快照、llm-resp-cache:<uid> 模型应答)，同机换账号陈久 PHI 滞留磁盘可能被下一位命中。既有 clearKbCache/clearLlmCache 功能完备却因登出漏斗忘调而 0 引用=本轮定位到的死导出，接线收编",
+      "priority": "P2",
+      "summary": "核心：teamAuth.clearTeamSession removeItem 前先取 profile.id，登出事件后 void clearKbCache(uid)+clearLlmCache(uid) fire-and-forget(内部已吞异常不阻断登出)；补 teamAuth.test.ts +4 用例(已登录/未登录/清理reject不抛/档案损坏)。附带删 7 个 git-clean 0 引用死导出/LoginBanner.tsx+tooltip.tsx 两孤儿文件/extractAmountYuan/listLlmModels+LlmModelInfo/hasImageSearchKey/isTeamLoggedIn/teamRoleLabel+TEAM_ROLE_BADGE+ROLE_BADGE+TeamProfile import。净 7 文件 -116/+12 + 测试 1 文件。四门全绿:tsc 0/vitest 727+2skip(基线723,+4=teamAuth)/eslint 触及文件新增 0(llm.ts:111·imageSearch.ts:81 经核实为既有基线,本轮仅删码未触碰该行)/build 2.80s。零提示词/零 collection/未 commit。M 状态文件的死导出(aigc×9/kbCore/kbAssemble/rhLogin/bidFiles/competitorScores×2/deckExports/pptQuoteTypes×2)+活跃在途 CompetitorCharts.tsx 绕开登记 r119-dead-export-mwip-defer。详见.loop/reports/2026-10-02-r119-logout-cache-and-deadcode-sweep.md",
+      "files": [
+        "src/lib/teamAuth.ts",
+        "src/lib/teamAuth.test.ts",
+        "src/lib/intelToOpp.ts",
+        "src/lib/llm.ts",
+        "src/pages/PptQuote/imageSearch.ts",
+        "src/components/team-auth/TeamAuthGate.tsx",
+        "src/components/common/LoginBanner.tsx",
+        "src/components/ui/tooltip.tsx"
+      ],
+      "round": 119
+    },
+    {
+      "id": "r120-json-repair-default-01",
+      "title": "R120 AI 生成 JSON 容错解析补默认结构修复(实质性可靠性)+补 0 测试共用模块单测:jsonTolerant 是标书/方案/PPT 三处共用的 AI-JSON 容错入口,结构修复级完全依赖调用方传 repair;bidTypes 传了自身 repairJsonCandidate 正常,但 pptQuoteTypes/solutionTypes 只调 parseJsonTolerant(candidate) 不传 repair——模型长输出被 max-token 截断的半截 JSON 直接抛「不是有效 JSON」硬失败,前功尽弃。巡检另定位该共用模块此前 0 独立单测。",
+      "priority": "P2",
+      "summary": "核心(仅动 git-clean 的 jsonTolerant.ts,不碰 3 个 M 状态调用方):新增导出 repairJsonStructure(把 bidTypes 私有 repairJsonCandidate 成熟口径——去尾逗号→停字符串中补闭合引号→按未闭合 {/[ 栈逆序补全——通用化上提共用层);parseJsonTolerant 改 const fix=repair??repairJsonStructure:未传者(PptQuote/SolutionStudio)自动获截断兜底,显式传者(bidTypes)fix===repair 行为字节级不变无回归,修复级恒排原始串解析之后 attempts=[text,fix(text),escaped,fix(escaped)] 合法 JSON 第一尝试即命中绝不篡改正确数据。新增 jsonTolerant.test.ts +15 用例(escapeControlChars/repairJsonStructure/parseJsonTolerant:合法等价/缺省兜底截断/尾逗号/裸控制字符+截断叠加/显式repair覆盖/乱码抛可读错/数组顶层截断)。四门全绿:tsc 0/vitest 742+2skip(基线727,+15=新用例)/eslint 触及两文件 0 error/build 4.27s。零提示词/零 collection/未 commit。维持裁定不动:编造门禁 R89 只报不拦、lint-debt-01 保留、r112/money-count/r119-dead-export 三条 defer 所在文件仍 ??/M 在途继续绕开。报告 .loop/reports/2026-10-02-r120-jsontolerant-default-repair.md",
+      "files": [
+        "src/lib/jsonTolerant.ts",
+        "src/lib/jsonTolerant.test.ts"
+      ],
+      "round": 120
+    },
+    {
+      "id": "r121-decklint-dup-missing-title-01",
+      "title": "R121 PPT 导出前结构自检增强(实质性自检能力)+补齐 deckLint 全量单测:deckLint.ts(git-CLEAN/纯函数/usePptQuote.ts:761 导出前实际调用/此前 0 独立单测)定位即专治 AI 生成幻灯片常见问题的自校验闭环,却漏判两类 AI 批量生成高频缺陷——多页共用同一标题、内容页有正文却无标题。仅动 git-clean 的 deckLint.ts+新增其 test。",
+      "priority": "P2",
+      "summary": "新增 duplicate_title(warn,normalizeTitle=trim+lower+剔除内部空白,忽略分节页与空标题,page 记最后重复页 msg 列全部页码)与 missing_title(info,内容页有正文/图表/配图却空标题,分节页不判,真空页仍由既有 empty_page 优先短路互斥);既有去重+截断≤6 与非阻断口径不变,不改导出行为。新增 deckLint.test.ts 19 用例(覆盖新旧 8 条规则+lintSummaryText+空deck/section/dedup cap/归一化边界)。四门全绿:tsc 0/vitest 761+2skip(基线742,+19)/eslint 触及文件 0新增error(基线0)/build 3.04s。零提示词/零collection/未commit。编造门禁维持R89只报不拦、lint-debt-01保留。巡检确认:a11y git-clean站点实测0;剩余 UTC 站点(QualCertsPage)/裸fetch绕过站点(ChatStream等)/ComposeStep计数/R119死码清单均命中在途(git-M 或 ??未跟踪)继续绕开,r112-datestamp-qualcerts-defer/money-count-defer-composestep-01/r119-dead-export-mwip-defer 三条 defer 保持 open。",
+      "files": [
+        "src/pages/PptQuote/deckLint.ts",
+        "src/pages/PptQuote/deckLint.test.ts"
+      ],
+      "round": 121
+    },
+    {
+      "id": "r122-format-cpp-layout-aware-01",
+      "title": "R122 每页折算系数纳入纸张/页边距可用版面(E1 收尾·算法精修)+新建共置单测:formatCharsPerPage 此前仅按字号+行距折算,漏计纸张(A4/A3/16K)与页边距对'一页能放多少字'的影响。升级为 cpp=500×可用版面面积比×(14/pt)^2×(1.5/行距倍率),新增 PAPER_DIM_CM + usableAreaFactor;默认格式(A4/默认边距/四号/1.5倍)三因子恒=1 仍精确等于 500,存量项目零回归,限幅放宽到 [150,2600] 以适应 A3。",
+      "priority": "P2",
+      "summary": "仅动 bidTypes.ts(本轮生成优化同批算法精修,非他人 WIP)+新建 formatCharsPerPage.test.ts 7 用例(默认恒500/字号 小四681·三号383·五号889/行距 单倍750·2倍375·固定值21磅650/纸张与边距单调性/极端限幅;并覆盖 estimatePagesFromChars 与 chapterWordBudgets 的 charsPerPage 参数线性放大)。四门:tsc 0/vitest 768+2skip(基线761,+7=新测试)/eslint 新测试文件0error(bidTypes 唯一 3480/3482 no-control-regex 为账本 line154 已记'有意不修'的 \\x00 空字节清洗基线,本轮未触碰)/build 3.41s。零提示词/零collection/未commit。承接本会话 E1(生成预算折算可配置)+E2(目录树默认展开)+E3(版面因子)。",
+      "files": [
+        "src/pages/BidWorkspace/bidTypes.ts",
+        "src/pages/BidWorkspace/formatCharsPerPage.test.ts"
+      ],
+      "round": 122
+    },
+    {
+      "id": "r123-modelgateway-buildavailable-tests-01",
+      "title": "R123 共用纯函数模块 modelGateway 补共置单测(此前 0 独立单测·零源改动):buildAvailableModels 被三个 AI 页面 + 模型配置页共用,决定用户可选模型清单与默认模型回退(defaultRef ?? platformRef),却无任何测试锁定其启用过滤/source 映射/默认命中/未启用不入选等口径。仅新增 src/lib/modelGateway.test.ts,不改源文件(工作树大面积在途,纯新增测试零误伤)。",
+      "priority": "P3",
+      "summary": "9 用例:buildAvailableModels(空配置/跳过未启用与 null 模型/平台 source 映射与 platformRef/无显式默认时 defaultRef 回退平台/个人 default_model 命中且优先于平台回退/默认模型未启用则 models 与 defaultRef 皆空) + modelRefKey 三段键 + modelRefLabel 平台·个人双文案 + costTextForModel 个人承担 vs 平台扣费(含 null 归平台)。node 环境验证:导入 modelGateway 顶层无 window/localStorage 副作用泄漏(pb.ts 等均有 typeof 守卫)→ 测试文件不崩。四门全绿:tsc 0/vitest 777+2skip(基线768,+9)/eslint 新测试文件 0 error/build 3.19s。零提示词/零collection/零源文件改动/未commit。",
+      "files": [
+        "src/lib/modelGateway.test.ts"
+      ],
+      "round": 123
+    },
+    {
+      "id": "r124-on-demand-heavy-exports-01",
+      "title": "R124 性能巡检(静态import图BFS+build chunk双探针)：重型导出库(docx/xlsx/pptxgenjs)移出静态首载图——docx经WorkbenchShell→FloatingAssistant→ChatStream链漏进832kB入口chunk全站每页买单,PptQuote/IntelCenter/SolutionStudio进页即背xlsx425kB/pptxgenjs;7文件调用侧改await import按需加载+ChatStream lazy化,不触碰导出模块内部(ChatStream docx区命中在途hunk已绕开)",
+      "priority": "P2",
+      "summary": "效果:入口chunk 832.04→318.16kB(gzip 250.70→104.94,-514kB/-58%),PptQuote路由chunk 456→167.5kB,docx/pptxgenjs/xlsx/jszip全部独立按需chunk(marker探针复核index已无docx标记)。新增src/lib/onDemandHeavyLibs.test.ts防回潮哨兵(静态import图BFS 4用例:入口与三路由壳不可达对应重库)。四门:tsc 0/vitest 781+2skip(基线777,+4)/eslint净新增0(字节级可逆法实测:反向回放补丁→eslint→正向回放→sha256逐字节校验,改前改后均31err/3warn,既有error全为react-hooks编译器规则且在非改动行,与R102口径一致)/build成功。零提示词/零collection/未commit。遗留:SolutionStudio路由docx残余链挂账r124-solutionstudio-docx-defer(其内部含在途改动)。",
+      "files": [
+        "src/components/shell/FloatingAssistant.tsx",
+        "src/pages/PptQuote/usePptQuote.ts",
+        "src/pages/IntelCenter/useIntelCenter.ts",
+        "src/pages/SolutionStudio/checklistLogic.ts",
+        "src/components/solution-studio/checklist/ChecklistDetailPanel.tsx",
+        "src/components/solution-studio/checklist/NewChecklistWizard.tsx",
+        "src/components/solution-studio/checklist/ProductLibraryPanel.tsx",
+        "src/lib/onDemandHeavyLibs.test.ts"
+      ],
+      "round": 124
+    },
+    {
+      "id": "r125-kbpolicy-privacy-tests-01",
+      "title": "R125 巡检新角度（共用纯逻辑模块 0 独立单测盲区）：kbPolicy.ts 补共置单测锁死敏感文档「脱敏摘要、原文绝不进 AI」隐私不变量与分类策略口径——kbPolicy 被 kbCore 检索 / useKnowledge 问答 / assistantCore 小智注入 / competitorEvidence 等约 13 处生产代码共用（三处口径唯一真相源），却是 src/lib 里少数 git-CLEAN 且 0 独立单测的策略模块。仅新增 src/lib/kbPolicy.test.ts 25 用例，零改生产代码 / 零提示词 / 零 collection / 零 pb_hooks。",
+      "priority": "P2",
+      "summary": "锁死点：(1) contextSnippetOf 隐私不变量——sanitized_summary 档（合同商务/资质证书默认）有摘要只给『（脱敏摘要…）』+summary、无摘要回退 title+keywords、再无则仅 title，三条路径均断言 not.toContain 原文snippet（金额/编号/保密条款），显式覆盖 original 的敏感档才放行原文；original 档原样返回 hit.snippet。(2) effectivePolicy 显式覆盖口径：mode 三值白名单（非法串如 'weird' 不算覆盖整体回落分类默认）、retrieval_weight 仅 >0 生效（0/负/缺省回落分类默认，资质证书 0.5）、is_sensitive 需显式 ===true、未知分类兜底『其他』(original/1.0/false)。(3) categoryOf 合法原样、非法/空/缺省/null/undefined 归其他。(4) guessCategoryFromFileName 规则顺序（合同商务先于技术方案）+资质/产品/其他。(5) classifyKbDoc：ISBN 出版物守卫（文件名 97+11 位数字即便正文含『软件著作权』仍归其他 score0）、文件名命中加权 ×3 压倒正文（产品彩页判产品资料非技术方案）、纯正文语料判政策法规 score>0、全 0 回退文件名猜测且 score 记 0。另断言 KB_CATEGORIES 七档、KB_CATEGORY_POLICY 敏感档默认脱敏/0.5/true与非敏感档 original/1.2、AI_CONTEXT_MODE_LABELS 三档中文标签。四门全绿：tsc -b exit0 / vitest 806 passed+2 skipped（基线 781，+25=本轮新测试，单文件 25/25 首跑即过）/eslint src/lib/kbPolicy.test.ts exit0 新增 0 / vite build exit0(3.05s)。维持裁定不动：编造未清零只报不拦(R89)、lint-debt-01 残余不重构、四个 defer 项(r112-datestamp/money-count-composestep/r119-dead-export/r124-solutionstudio-docx) 所在文件仍全部 git-M在途（本轮已复核）故不动。禁止 commit。详见 .loop/reports/2026-10-02-r125-kb-policy-privacy-tests.md",
+      "files": [
+        "src/lib/kbPolicy.test.ts"
+      ]
+    },
+    {
+      "id": "r126-bulk-generate-auto-retry-01",
+      "title": "R126 标书批量生成「从未完整生成/静默失败」根因定位+自动补重试:真实运行现场(浏览器+只读查库)复现贵港项目 4/10 章 failed(0字)、2 章 done 严重偏短,总页数仅 43/100。定位为 runBulkGenerate 用裸 catch{} 吞异常+空产出仅标 failed、既不重试也不报因(单章重试「培训方案」即从 failed→done 1749字,证明是偶发空产出/瞬时异常)。修复:failedNodes 登记表留存真实原因、worker 池后对失败技术章串行自动补重试一次(成功转 done 扣减计数,仍败 toast 明示逐章重试)。此前'看着没修'的另一半根因是默认 compliance_mode=strict 天生篇幅从简+素材/逐条注入关闭(属设置预期,未擅改,已建议用户切换)。",
+      "priority": "P1",
+      "summary": "四门:tsc 0/vitest 806 pass 0 fail/eslint 本文件净新增0(5处皆既存基线943/1007/1093/2619+7161)/build 4.02s。仅改 useBidWorkspace.ts runBulkGenerate(4 纯ASCII锚点,replace_once 断言命中1)。诊断法:确认dev server HTTP已吐新码排除未生效→只读PB查bid_chapters→浏览器重试单章复现。零付费重生成验证代码正确性。备份.bak-r126验证后清理,未commit。",
+      "files": [
+        "src/pages/BidWorkspace/useBidWorkspace.ts"
+      ],
+      "round": 126
+    },
+    {
+      "id": "r128-skill-selection-async-prune-01",
+      "title": "R128 技能带入异步竞态实修：刷新页面不再静默丢失「带入的自定义技能」——useScopeSkills 裁剪 effect 只看 scopeSkills，而自定义技能是异步拉取，首屏池内只有预置项，localStorage 持久化的自定义勾选当场被裁、紧随的持久化 effect 又把空选回写=永久丢失(老护栏 !scopeSkills.length 只在全池为空时才挡)；影响 7 个含预置技能的功能点(小智对话/方案大纲/标书解析/客户画像/客户跟进/PPT/讲标，全站 11 处调用)",
+      "priority": "P1",
+      "summary": "口径：把「有无资格校验勾选」显式建模。skillCore 新增纯函数 pruneSkillSelection(ids, availableIds, customLoaded)——预置项(preset: 前缀)同步可得任何时候都校验，自定义项仅在本 scope 自定义列表成功拉到后才校验，否则保留(保序返回新数组)；useScopeSkills 增加 customLoaded 状态，effect 入口复位(换功能点/换账号旧列表不再具备资格)，只有 .then 成功才置真——接口失败/未登录一律不拿不可信的池子裁人，裁剪 effect 改用纯函数、依赖 [scopeSkills, customLoaded]。跨账号安全：池外 id 由 orderedSkills 的 find 过滤，不会进提示词。真失效(删技能/改走 scope)拉取成功后照旧清理，行为不回退。另新建 skillCore.test.ts 26 用例(此前 0 独立单测)锁死 R128 回归钉 + normalizeScopes 存量回退/all 通配不展开、SCOPE_CATALOG 15 点唯一、preset: 前缀隔离、skillPromptBlock 编号与空位回退不留 {{}}、injectSkillBlock 不可变与空块同引用、注册表反注册来源守卫、持久化脏数据与隐私模式降级；顺带把 scoreItemsScan.test.ts 里 R61 已修却仍写「待后续单独评估」的陈旧软断言钉成 toBe('系统响应速度') 防截尾回归。",
+      "files": "src/lib/skillCore.ts(pruneSkillSelection 新增)｜src/hooks/useScopeSkills.ts(customLoaded 校验资格门 + 纯函数裁剪)｜src/lib/skillCore.test.ts(新建 26 用例)｜src/pages/BidWorkspace/scoreItemsScan.test.ts(陈旧断言钉准)；test_results/r128_skill_picker_fixed.png(实机 picker 截图留证)",
+      "evidence": "四门：tsc -b 0 错误(首跑 3 处为测试泛型误传数组类型，改类型推断后通过) / vitest 863 passed 2 skipped(基线 837，+26 增量，82 文件全绿) / eslint 触及文件零新增 error(skillCore+test+scoreItemsScan 0；useScopeSkills 4 error 与 git show HEAD 同文件基线 4 error 同规则同数量) / vite build ~3.6s 成功。未 commit。详见 .loop/reports/2026-10-02-r128-skill-selection-async-prune-fix.md；实机 A/B（fetch 延后 3s + SPA 重挂载 + localStorage 逐 100ms 采样）：HEAD 旧版在请求返回前 t=147ms 即抹掉自定义勾选，修复版保留至 t=3379ms（请求返回后）才按真实校验清理；截图 test_results/r128_skill_picker_fixed.png",
+      "round": 128
+    },
+    {
+      "id": "r128-skill-fetch-fail-silent-01",
+      "title": "自定义技能拉取失败从静默吞没改为可见+可重试(R129)",
+      "priority": "P3",
+      "summary": "skillCore 新增纯函数 missingSelectedIds(勾选∖池，按原顺序，预置恒不计入)；useScopeSkills 新增 customLoadFailed(catch 置失败态替代只置空列表)+reloadTick+retrySkills 重试入口，换 scope/账号复位；SkillPicker 面板顶部失败横幅(失败文案/未带入N个/重试按钮，重试中显示加载中文案)+触发按钮 AlertTriangle+「缺N」(请求落定后才数，防闪现)；SkillPickerFor 从 hook 自动透传，13 调用页零改动全量生效。生成前确认以 picker 常驻警示最小侵入达成，未加拦截弹窗(合『只报告不拦截』精神)。非提示词改动(无 B 类流程/PROMPT_VERSION)，零 collection/零 pb_hooks。四门全绿: tsc 0 错 / vitest 869 passed+2skip(基线 863+2 → +6 全为本轮 skillCore.test 新用例) / eslint 触及文件新增 0(useScopeSkills 4=基线 4) / vite build 成功。实机验证(dev:8000)：fetch 打桩拒绝 /api/assistant_skills → 按钮「技能·1 缺1」、横幅两行文案逐字命中、重试可用、预置项不受影响；撤桩重试→横幅消失+真失效id照旧prune回写+按钮回「带入技能」，console 0 error。截图 .qoder/tmp/r129_fail_banner.png 详见 .loop/reports/2026-10-02-r129-skill-fetch-fail-visible.md(含实机验证节)",
+      "files": [
+        "src/lib/skillCore.ts",
+        "src/hooks/useScopeSkills.ts",
+        "src/components/common/SkillPicker.tsx",
+        "src/lib/skillCore.test.ts"
+      ],
+      "round": 129
+    },
+    {
+      "id": "r130-ppt-slide-image-cost-gate-01",
+      "title": "R130 付费调用闸门覆盖率审计实修：PPT 逐页手动「AI 生图」是全仓唯一裸调付费 RHAPI 的交互（useCostConfirm.ts 头注契约要求 callAigcAndPoll 必须包 runWithCostConfirm；同页整份生成/refine/报价初稿与标书侧 36 处 gated 先例齐备，唯 aiGenerateImageForSlide 直发生图静默耗 RH 币；本部署 visitorPaysForAi=true 弹窗真实生效）",
+      "priority": "P1",
+      "summary": "对齐标书侧 AI 位图口径(useBidWorkspace L2534-2548 同款)：原实现逐字改名 doAiGenerateImageForSlide(逻辑零变更)+新增 gated 同名包装 previewAigcPrice(从不 throw,失败归一不挡生成)→costConfirm.runWithCostConfirm，文案『将调用 AI 为本页生成实景配图（1 次生图调用，预估单价…），实际扣费以 RunningHub 为准』；包装为 fire-and-forget 与 refineSlide 同型，两处组件 prop 类型 Promise<boolean>→void(消费侧本就 void 丢弃,行为等价)。批量自动配图经核只从已 gated 的整份生成尾段触发不构成独立漏网。在途保护:usePptQuote.ts 为 git-M，改前 git diff -U0 核对 WIP hunk(5/15/25/26/64/121-124/141-147/764/1125/1443/1776/1789/1977/2245)与本补丁触区(20/983-1024)零交集；SlideEditor/DeckEditorWorkspace 均 git-CLEAN。四门全绿:tsc 0/vitest 869+2skip(=基线,hook 接线改动以实机代替单测增量)/eslint 触及 3 文件前后逐规则一致净新增 0(5err set-state-in-effect+1warn exhaustive-deps 全既有)/build 3.74s。实机(dev:8000 真实登录态):新建测试 deck→逐页编辑→点『AI 生图』→弹窗文案逐字命中(截图 _shots/R130/)→点取消→零生图请求零扣费→测试 deck 已删除零残留。已知观察:price-preview 端点本机 404 属既有环境缺口(标书侧同 helper 同表现,前端按契约降级)，补端点受 pb_hooks 红线约束挂账 r130-price-preview-404。维持裁定不动:编造门禁只报不拦、lint-debt-01、四 defer 项继续在途绕开。零提示词/零 collection/零 pb_hooks/未 commit。详见 .loop/reports/2026-10-02-r130-slide-image-cost-gate.md",
+      "files": [
+        "src/pages/PptQuote/usePptQuote.ts",
+        "src/components/ppt-quote/DeckEditorWorkspace.tsx",
+        "src/components/ppt-quote/SlideEditor.tsx"
+      ],
+      "round": 130
+    },
+    {
+      "id": "r131-quote-module-relevance-01",
+      "title": "R131 报价参考区间相关性精化（quote-history 二期增量，P2 实质项）：「成交参考区间」面板底部『逐模块单价参考』原只按历史出现频次排 top10，与当前这单实际涉及产品无关，用户无法据此校准本单报价；本轮在纯函数 recommendFromHistory 引入可选维度 items（当前报价产品名）+ ModuleRange.in_current 标记，排序升级为相关性优先(in_current 置顶→样本数降序→中位价升序)并追加口径 note，调用方 usePptQuote dims 喂 items，渲染层零改动(QuoteEditor 仅按数组顺序 map 故置顶自动生效)",
+      "priority": "P2",
+      "summary": "零 collection/零 pb_hooks/零会话 state/零提示词(不涉 B 类)。向后兼容：不传 items 时 currentItems 空→in_current 全 false→排序退化为旧 count 降序→note 不追加，行为与旧版逐字等价。在途保护：quoteRecommend.ts/.test.ts 为 ?? 未跟踪本助手 R102/R127 新增模块；usePptQuote.ts 为 git-M，git diff -U0 20 hunk，items 行落 R102/R103 自增纯 added 块 @@ -1969,0 +1991,47 @@(quoteRecommendation useMemo 行 2033)内部，与用户手写 set-state-in-effect WIP(216/1358/1433/2148)零交集。四门全绿：tsc 0/vitest 871 passed+2skip(基线 869+2,增量+2=两条新单测,quoteRecommend.test.ts 单跑 13=旧11+新2)/eslint 触及文件净新增 0(quoteRecommend.ts/.test.ts 0;usePptQuote.ts 5err set-state-in-effect+1warn exhaustive-deps 全既有)/build 5.0s。新增单测：①传 items→前二为[服务器,HIS]首位 in_current true、办公桌椅 in_current false、note 含相关度提示；②不传 items→in_current 全 false 且不追加提示(向后兼容)。维持裁定不动：编造门禁只报不拦、lint-debt-01、r112/money-count-composestep/r119/r124/r130-price-preview 五 defer 项继续在途绕开。未 commit。详见 .loop/reports/2026-10-03-r131-quote-module-relevance.md",
+      "files": [
+        "src/pages/PptQuote/quoteRecommend.ts",
+        "src/pages/PptQuote/usePptQuote.ts",
+        "src/pages/PptQuote/quoteRecommend.test.ts",
+        "scripts/r131_quote_module_relevance.py"
+      ],
+      "round": 131
+    },
+    {
+      "id": "r132-bid-score-crosscheck-bidirectional",
+      "title": "R132 标书评分项交叉核对双向化(P2 实质项，标书优先·响应用户新方向)：ScoreCrossCheckPanel(标书第2步评分交叉核对，零AI费用)此前只单向列『报告漏抽』(missingInReport=本地扫到/解析报告没有)，缺反向『解析报告抽了但原文逐行扫描匹配不到』的暴露(原文pdfjs丢行 或 AI抽取依据存疑/编造嫌疑)；本论补成双向",
+      "priority": "P2",
+      "summary": "scoreItemsScan.ts 的 ScoreCrossCheck 增 extraInReport:ParsedScoreItem[]，crossCheckScores 以 parsed.filter(p=>!scan.items.some(s=>nameSimilar(s.name,p.name))) 严格对称于既有 missingInReport(复用同一双向包含匹配)；ScoreCrossCheckPanel.tsx 徽标区在『报告漏抽』与『分值不符』间加琥珀『待复核 N』(用待复核非错报口径,因反向项多为丢行/需人工对照,底部既有『真值以原文为准』诚实声明覆盖噪声)，明细区追加『解析报告抽到/本地原文未匹配(请对照原文复核)』列表(tech_score/biz_score→技术/商务标签)。零 collection/零 pb_hooks/零会话 state/零提示词(不涉 B 类)。维持裁定:编造门禁只报不拦(本项仅提示待复核正契合)、lint-debt-01、五 defer 项继续在途绕开。在途保护:scoreItemsScan.ts+ScoreCrossCheckPanel.tsx 均 git-CLEAN(补丁内置断言强制校验)；scoreItemsScan.test.ts 为 git-M 但唯一 hunk @@ -27,8 +27,8 @@ 系 R61 name-trunc 先验用例修订(r47-scan-name-trunc-06 closed)非用户 WIP，本论 import 改在行4(hunk外)、新 describe 追加 EOF(hunk后)，逐处 assert count==1。四门全绿:tsc 0/vitest 873 passed+2skip(基线871,+2=两条新用例;单文件7=旧5+新2)/eslint 触及净新增0(scoreItemsScan.ts L50 no-useless-escape 为提交态既有位于cleanName与crossCheckScores无关)/build 4.26s。未 commit。详见 .loop/reports/2026-10-03-r132-bid-score-crosscheck-bidirectional.md",
+      "files": [
+        "src/pages/BidWorkspace/scoreItemsScan.ts",
+        "src/components/bid-workspace/ScoreCrossCheckPanel.tsx",
+        "src/pages/BidWorkspace/scoreItemsScan.test.ts",
+        "scripts/r132_bid_score_crosscheck_bidirectional.py"
+      ],
+      "round": 132
+    },
+    {
+      "id": "r133-compliance-matrix-filter-01",
+      "title": "R133 实质性条款覆盖矩阵：按类汇总纯函数+关键判定收敛+类型筛选/只看未覆盖(P2 实质交互补全,标书主链路)",
+      "priority": "P2",
+      "summary": "选题:用户指定的 quote-history 二期(R102/R131 closed)、prompt-fabscan-03 按章聚合回注(R103 closed)均已收口,改巡检新角度。ComplianceMatrixPanel(交卷前防废标核心面板)原把★/▲·废标项·资格·符合性四类平铺一张表,条款多时靠滚动找未覆盖,且『关键=void||mandatory』魔法口径内联组件。变更:complianceMatrix.ts 新增纯函数 isCriticalComplianceRow(关键判定收敛为单一导出)+summarizeCompliance(按四类与全局产出 total/uncovered/uncoveredCritical,未标注按 open 保守计入);面板顶部徽标改由 summary 同源取数(行为等价),新增类型筛选标签(全部/四类,各带条数+未覆盖橙色角标)+『只看未覆盖』开关,表格渲染 visibleRows,筛选空态给区分提示;test 新增5用例(关键四象限/默认open/covered-na退出计数/混合类型非关键不计入/空输入全零)。红线:进度仍存 localStorage bid_matrix_ 键结构不变,零 collection/零 pb_hooks/零会话外 state/未动 AI 提示词(免 B 类流程无 PROMPT_VERSION);维持全部既有裁定(编造只报不拦、lint-debt-01、各 defer 项未推翻);三文件均 git-CLEAN(改动全为本轮自有,无误伤在途),未 commit;交互为纯展示层,业务行为与数据等价。四门:tsc 0/vitest 878+2skip(基线873,+5全本轮新增)/eslint 触及文件净新增0(唯一 set-state-in-effect L99 经 git show HEAD 核为既有)/build 3.81s。详见 .loop/reports/2026-10-03-r133-compliance-matrix-filter.md",
+      "files": [
+        "src/pages/BidWorkspace/complianceMatrix.ts",
+        "src/components/bid-workspace/ComplianceMatrixPanel.tsx",
+        "src/pages/BidWorkspace/complianceMatrix.test.ts",
+        "scripts/r133_compliance_matrix_filter.py"
+      ],
+      "round": 133
+    },
+    {
+      "id": "r134-mockeval-low-score-filter",
+      "title": "R134 模拟评标交互补全（标书主链路，纯本地零 AI）：EvalResultView 低得分率判定在卡片计数与表格行内联重复两处，收敛为单一真源纯函数模块 evalItemFilter.ts（isLowScoreBidItem/isGapBidItem/filterEvalRowIndexes 保留原始下标不重排）；顶部『低得分率评分项』『AI-人工分差』两卡改为可点击筛选（aria-pressed+命中高亮+无命中禁用），点卡把表格只看弱项/分差项 + 提示条可复位；QuickToolsPanel 只读复用不传 manualReview→分差卡自动禁用、低分卡仍可筛，向后兼容",
+      "priority": "P2",
+      "summary": "零 collection/零 pb_hooks/零会话外 state(filter 为组件内 useState)/未动提示词(免 B 类无 PROMPT_VERSION)/未 commit。维持裁定：编造只报不拦(R89)、lint-debt-01 不重构、r112/money-count/r119/r124/r130 五 defer 继续在途绕开。在途保护：MockEvalPanel.tsx git-M 但 git diff -U0 仅 R114 日期格式化一处(助手自有非用户WIP)，五处锚点全落 commit-state 区，assert count==1 唯一命中。四门全绿：tsc 0/vitest 888+2skip(基线878,+10=evalItemFilter.test.ts:isLowScore3+isGap3+filter4)/eslint 触及3文件 exit0/build 3.98s。详见 .loop/reports/2026-10-03-0440-r134-mockeval-low-score-filter.md",
+      "files": [
+        "src/components/bid-workspace/evalItemFilter.ts(新建 单一真源谓词)",
+        "src/components/bid-workspace/evalItemFilter.test.ts(新建 10 用例)",
+        "src/components/bid-workspace/MockEvalPanel.tsx(判定收敛+两卡可点击筛选+提示条/空态)",
+        "scripts/r134_moockeval_low_score_filter.py"
+      ],
+      "round": 134
+    },
+    {
+      "id": "r135-ppt-deck-batch-resilience",
+      "title": "R135 PPT 逐页生成韧性（PPT 主链路·deck 生成接续，规划点名候选项）：doGenerateDeck 分批循环原本零容错——单批抖动/返空即整单 throw，已付费前序批次全弃且不落库（R126 标书侧同类故障的 PPT 缺失版）。新建纯函数模块 deckBatchRecovery.ts（withGenerationRetry 单发重试核心 + runBatchesWithRetry 逐批串行批内重试、null 位标记不中断）；hook 两路接入：单发路径重试 1 次、分批路径失败批按大纲原位留仅标题占位页（emptySlide layout=auto 不触发自动配图二次烧钱）、全军覆没才报错且不建空壳 deck、部分失败改 warning 明示 N/M+占位页数",
+      "priority": "P2",
+      "summary": "零 collection/零 pb_hooks/零会话外 state/未动提示词（免 B 类无 PROMPT_VERSION）/未 commit。维持裁定：编造只报不拦、lint-debt-01、r112/money-count/r119/r124/r130 五 defer 继续在途绕开。在途保护：usePptQuote.ts git-M 但 20 个 hunk 全部为助手前序轮次自有改动（R105/112/113/124/130/131），doGenerateDeck 锚点区不在任何 hunk 内，三处补丁 assert count==1 唯一命中。四门全绿：tsc 0/vitest 900+2skip（基线 888，+12=deckBatchRecovery.test.ts：withGenerationRetry 6 + runBatchesWithRetry 6）/eslint 触及 3 文件 PRE-POST 对照同构净新增 0（在途既有 4err+1warn 为 react-hooks 遗留非本轮）/build 4.22s。报告 .loop/reports/2026-10-03-r135-ppt-deck-batch-resilience.md",
+      "files": [
+        "src/pages/PptQuote/deckBatchRecovery.ts (新建)",
+        "src/pages/PptQuote/deckBatchRecovery.test.ts (新建)",
+        "src/pages/PptQuote/usePptQuote.ts (3 处补丁)"
+      ]
+    },
+    {
+      "id": "r136-disclosure-a11y",
+      "title": "R136 折叠面板 disclosure 无障碍 + 收起态信息密度（新角度巡检，零业务行为变更）：4 处展开/收起按钮补 aria-expanded（ChapterScoreCard 章节自检 / ActivityFeedSection 查看全部 / CompetitorsPage 分析建议 / QuoteEditor 历史报价），ChapterScoreCard 收起态新增「N 项建议」计数不展开即可分诊；新增源码扫描哨兵测试 disclosureA11y.test.ts 钉住 aria-expanded 防回流。四门全绿：tsc 0 / vitest 905 passed+2skip(基线900,+5)/eslint 触及5文件 exit0/vite build 4.15s。",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "用户点名两实质项已 closed(quote-history-01 R102/prompt-fabscan-03 R103)，本轮按流程巡检无障碍+UX 新角度。aria-expanded 使屏读器播报展开态(WCAG 4.1.2)。在途保护：ChapterScoreCard/ActivityFeedSection commit-clean 零风险；CompetitorsPage@207/QuoteEditor@287 按钮区在变更 hunk 外锚点唯一命中；FolderTree@61 expanded 命中用户 WIP hunk 有意绕开并挂账 r136-folder-tree-disclosure-defer。零 collection/零 pb_hooks/零提示词(非 B 类)/零新 CSS。",
+      "files": [
+        "src/components/solution-studio/ChapterScoreCard.tsx",
+        "src/components/home/ActivityFeedSection.tsx",
+        "src/pages/Competitors/CompetitorsPage.tsx",
+        "src/components/ppt-quote/QuoteEditor.tsx",
+        "src/components/disclosureA11y.test.ts"
+      ]
+    },
+    {
+      "id": "r138-tpl-bucket-fix",
+      "title": "R138 盘里方案/标书范本桶标纠偏（用户指令「结合盘里的方案、标书」选题）：语料入库端已饱和（99 方案范本+31 标书范本），浏览器真机 12 查询评测暴露错桶——extract 脚本入库不带 kb_bucket，backfill 靠关键词猜桶，方案标题含「招标/可研」被判标书弹药、技术标提及友商品牌被判竞品情报，SolutionStudio 场景（buckets=[方案素材]）中被错标范本拿不到桶加权。修复：kbTaxonomy 新增 templateBucketOf 前缀硬规则（soltpl:→方案素材、bidtpl:→标书弹药，前缀即确定性证据）+deriveTaxonomy 支持 sourceFileName；backfill 同步规则+新增 --fix-templates 定向纠偏（存量 12 条已纠、130/130 幂等复核通过）；两个 extract 脚本入库即带 kb_track/kb_bucket 防复发。四门全绿：tsc 0 / vitest 921 passed+2skip(基线917,+4)/eslint 触及2文件 exit0/vite build 3.17s。",
+      "priority": "P1",
+      "status": "closed",
+      "summary": "选题依据=用户明确指令结合 D:\\重要文件 盘内真实方案/标书语料。三层排查定位：入库无缺口、接线无缺口、缺口在检索触达的桶标质量。前缀硬规则优先于关键词猜桶（含错桶复现单测：漳州市医院/琼海样本）。数据纠偏走 --fix-templates 定向模式：仅 soltpl:/bidtpl: 文档、仅 kb_bucket 字段、值已正确即跳过，不触碰其余 6868 条与 track。DB 副本只读终态验证：方案素材 99/99、标书弹药 31/31。诊断遗留两观察项不本轮做：xlsx 噪声（bucket=其他）分数挤占、同文档双 chunk 占位——前者牵动 kbAssemble 降权策略需独立评测，后者是 D-2 设计语义。",
+      "files": [
+        "src/lib/kbTaxonomy.ts",
+        "src/lib/kbTaxonomy.test.ts",
+        "scripts/backfill-kb-taxonomy.mjs",
+        "scripts/extract-solutions.mjs",
+        "scripts/extract-bid-templates.mjs"
+      ]
+    },
+    {
+      "id": "r139-solution-bulk-resilience",
+      "title": "R139 方案编制生成韧性对齐标书侧既定口径（P2 实质项，方案主链路）：①单章/批量模型空产出不再标 done（空章会被后续批量按『已生成』永久跳过，同标书侧循环8 A2 保底）②批量收口前对失败章串行自动补跑一遍并逐章点名真实原因（同标书侧 R126；成功转 done 扣减失败计数，尊重取消）③自动续写轮偶发抖动不再作废整章——保留已付费主稿降级 done+underlength 提示。收口 toast 由『首个错误』升级为『章名（原因）』逐章点名",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "选题依据：用户点名两优先项已收口（quote-history-01 R102/R131、prompt-fabscan-03 R103），按权重（方案>标书>PPT）巡检坐实标书侧历轮已修故障簇在方案侧原样存在（空产出标 done/批量无补试/续写连坐）。新增纯函数模块 chapterGenGuard.ts（isBlankChapterOutput+formatFailedChapterList）+7 单测；useSolutionStudio.ts 六站点（import/续写 try-catch/单章空产出守卫/failedNodes 登记/批量主循环拦截+补跑/收口点名）。零提示词(非 B 类)/零 collection/零 pb_hooks/零新依赖/未 commit。在途保护：useSolutionStudio.ts git-M 六 hunk 全为助手自有 R92 自动保存区(L429/435/692/722-734/738-740/1681)，本轮改动区(L949-975/990-997/1402-1500)零交集；新文件 assert 不存在才创建。四门全绿：tsc 0 / vitest 928+2skip(基线921,+7=本轮新增全过) / eslint 净新增0(字节级可逆法：反向回放→基线12err1warn→正向回放 sha256 逐字节一致，同数同规则全为既有 react-hooks 基线；新两文件0问题) / build 3.19s。行为变化点如实记录：续写失败章从 failed 改为保留主稿 done(underlength 提示链原有)；done 空章老数据不追溯重置(与标书侧同口径)。详见 .loop/reports/2026-10-03-r139-solution-bulk-resilience.md",
+      "files": [
+        "src/pages/SolutionStudio/chapterGenGuard.ts(新建 纯函数)",
+        "src/pages/SolutionStudio/chapterGenGuard.test.ts(新建 7 用例)",
+        "src/pages/SolutionStudio/useSolutionStudio.ts(六站点：import/续写容错/单章空产出守卫/批量失败登记+空产出拦截+补跑一遍/收口 toast 点名)",
+        "scripts/r139_solution_bulk_resilience.py 等 5 个补丁与探针脚本(MedPreSales 侧)"
+      ],
+      "round": 139
+    },
+    {
+      "id": "r140-solution-bulk-concurrency",
+      "title": "R140 方案侧逐章批量生成有限并发移植（生成链路 D2，方案编制链路 20 章级批量腰斩）",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "r139-solution-bulk-concurrency-defer 解除。三挂账前提经源码取证确认已解除：①buildChapterMessages(solutionTypes.ts:511) 各章 prompt 仅注入恒定事实基线+全文大纲+本章小节，不依赖前序章正文，并发不损衔接质量；②updateChapter→map(node_id 命中才改)→applySolutionState 同步写 activeSolutionRef.current，不同章并发写互不覆盖，PATCH 逐字段合并不冲 doc_status；③进度改用池层 processed 计数，并发下单调。落地：新增纯函数模块 src/lib/bulkPool.ts(runBulkPool 有限并发池: 派发一次/并发上限/取消闸门/单任务异常隔离/单调进度) + bulkPool.test.ts 6 用例；useSolutionStudio.runBulkGenerate 主串行 for→await runBulkPool(concurrency:2)，skip 由 done 扩为 done||generating 对齐标书侧 R126，收口失败补重试保持串行不变；新增 @/lib/bulkPool import。零 collection/零 pb_hooks/零会话新 state/不改提示词(非 B 类)，未触 hook-security-01 红线。四门: tsc0 / vitest 942 passed|2 skipped(基线 936+6) / eslint bulkPool.ts+test exit0 & useSolutionStudio 12 error 全为在途既有(set-state-in-effect 等)净新增0 / vite build 0(5.02s)。实机降级：整本并发压测需真密钥+20章+十分钟级跑时本机不复现，由纯函数单测覆盖调度不变量 + 同源已上线 D2 worker 池形态移植代证。报告 .loop/reports/2026-10-03-r140-solution-bulk-concurrency.md",
+      "files": [
+        "src/lib/bulkPool.ts",
+        "src/lib/bulkPool.test.ts",
+        "src/pages/SolutionStudio/useSolutionStudio.ts"
+      ]
+    },
+    {
+      "id": "r141-ai-hot-feed",
+      "title": "R141 AI 动态（AIHOT 行业资讯）独立新功能·与情报中心互补（用户点名）",
+      "priority": "P1",
+      "status": "closed",
+      "module": "/ai-hot(p_new),pb_hooks/ai_hot",
+      "summary": "用户拍板“与情报中心互补、单独做功能融入”。链路：aihot.news 公开 RSS(约50条/日,无CORS)→pb_hooks GET /api/ai_hot/feed 服务端代理(X-Rh-User-Id 401 门,5xx 三字段,$http.send statusCode/raw 对齐项目惯例,timeout 8s,零LLM零外发)→src/lib/aiHotFeed.ts 零DOM正则解析(CDATA/实体双支持,guid 去重,RFC1123→ISO,5min 模块缓存)+saveAiHotToIntel 转存(POST /api/intel_items,item_type=media,added_by=aihot,visibility personal/public 开关)→pages/AiHot 时间线页(分类chips计数筛选/转存幂等 localStorage xz_aihot_saved_ids/已转入态)。接线 App.tsx+routePreload+SidebarNav 发现分组(Flame)。实机闭环：浏览器转存真条目ywn2p2d97uqf4zk→情报中心待确认页签可见(标签 技巧观点/AI动态/信源)。四门：tsc0/vitest 936 passed|2 skipped(88文件,含 aiHotFeed.test 8用例)/eslint 触及9文件+hook exit0(set-state-in-effect 用微任务启动规避)/build0 5.54s。新 pb_hooks 需重启 PocketBase 生效(已同参拉起,7000 健康)。留档 tests/records/2026-10-03-r141-ai-hot-feed.md"
+    },
+    {
+      "id": "r146-checklist-category-summary",
+      "title": "R146 建设清单分类小计 + 顶部汇总（预算结构可视化，P2 实质项，方案编制主链路）：ChecklistDetailPanel 原只有逐行小计与全局合计，缺按分类小计与条目/分类/外购结构汇总。新建纯函数模块 checklistSummary.ts（subtotalOfLines/summarizeChecklistCategories/buildChecklistTotals，total 复用 calcTotal 单一真源，空分类归未分类与既有口径一致，未勾选剔除）+ 8 单测；接线面板每类组尾小计行 + 底部汇总条补「N 个分类·M 个条目·外购 X」",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "选题依据：用户点名两优先项(quote-history-01 R102/R131、prompt-fabscan-03 R103)已收口，按权重(方案>标书>PPT)巡检方案前置的建设清单链路坐实真实交互补全。零 collection/零 pb_hooks/零会话外 state/未动提示词(非 B 类无 PROMPT_VERSION)/未 commit。在途保护：git diff -U1 核对该文件在途仅助手前序轮 xlsx 懒加载+min=0，不在四锚点区，assert count==1 全命中。维持裁定：编造只报不拦(R89)、lint-debt-01、5 defer-on-WIP 继续在途绕开。四门全绿：tsc 0 / vitest 966 passed+2 skip(基线958 +8,91→92文件) / eslint 三触及文件 0err0warn / vite build 3.75s exit0。金额走 fmtMoney→@/lib/money 单一真源(R113)。",
+      "files": [
+        "src/pages/SolutionStudio/checklistSummary.ts(新建)",
+        "src/pages/SolutionStudio/checklistSummary.test.ts(新建 8 用例)",
+        "src/components/solution-studio/checklist/ChecklistDetailPanel.tsx(4 处接线)"
+      ],
+      "round": 146
+    },
+    {
+      "id": "r147-heavy-libs-ondemand-fullroute",
+      "title": "R147 全路由重导出库按需化收官（解除 r124-solutionstudio-docx-defer，P2 性能实质项，方案编制主链路）：SolutionStudio 路由三条 docx 静态腿 + 同轮核查 bidFiles 链上 BidWorkspace/Knowledge 四条残余腿全部转点击时动态导入；哨兵测试升级为三路由壳 ALL_HEAVY 防回潮",
+      "priority": "P2",
+      "status": "closed",
+      "module": "/solution-studio,/bid-workspace,/knowledge",
+      "summary": "零 schema/零 pb_hooks/零新框架（沿用 R124 模式）。useSolutionStudio：docx 顶层 import 转 import type，exportWord 内 await import docx+bidFiles；exportTemplate.buildExportFrontMatter 转 async（行为口径由 6 例伴生单测钉住）；useBidWorkspace 末尾薄封装保持 extractTenderFileText 4 调用点零改动；DefensePanel/SubmissionCheckPanel/kbUpload 点击链动态导入。附带裁定合规小修：Competitors 采纳确认文案去除内部字段名 evidence_refs（弹窗组件化开新挂账）。四门：tsc 0 / vitest 974+2skip（基线966 +8）/ eslint 触及文件 0 新增 error（17 既有 react-hooks 均在未触及区）/ build 3.37s；产物实证 chunk 零 docx；实机三页 console 0。",
+      "files": [
+        "src/pages/SolutionStudio/useSolutionStudio.ts",
+        "src/pages/SolutionStudio/exportTemplate.ts",
+        "src/pages/SolutionStudio/exportTemplate.test.ts",
+        "src/components/bid-workspace/SubmissionCheckPanel.tsx",
+        "src/components/bid-workspace/DefensePanel.tsx",
+        "src/pages/BidWorkspace/useBidWorkspace.ts",
+        "src/pages/Knowledge/kbUpload.ts",
+        "src/lib/onDemandHeavyLibs.test.ts",
+        "src/pages/Competitors/useCompetitorAnalysis.ts"
+      ],
+      "report": ".loop/reports/2026-10-03-r147-solutionstudio-docx-ondemand.md",
+      "round": 147
+    },
+    {
+      "id": "r148-solution-bulk-resume-recovery",
+      "title": "R148 方案编制批量生成中断恢复对齐标书 D1（方案主链路·陈旧「生成中」复位+断点续跑提示）",
+      "priority": "P2",
+      "status": "closed",
+      "module": "/solution-studio",
+      "summary": "R148 方案编制批量生成中断恢复对齐标书 D1（方案主链路·数据正确性+可用性）：runBulkGenerate 起跑即把 doc_status 写「生成中」并落库、收口才改写终态，中途刷新/崩溃/切走会让方案刷新后永久卡在「生成中」徽标（docStatusLabel 直读 activeSolution.doc_status），且无标书侧 D1 的续跑提示。新建纯函数模块 bulkResume.ts（deriveSolutionDocStatus 按各章 gen_status 推导 done/partial/outline、shouldRecoverStaleGenerating 复位判定、bulkResumeNotice 断点续跑文案），openSolution 打开陈旧「生成中」方案时按真实进度复位并落库、存在已完成但未全的章时 toast 提示可从断点继续（继续生成正文天然 skip done 章）。零 schema/零 pb_hooks/零新提示词/未 commit；维持裁定不动（编造扫描只报告不拦截、lint-debt-01 残余保留）。四门：tsc 0 / vitest 985+2skip（基线 974 +11：bulkResume.test.ts 3 组 11 例，零回退）/ eslint 触及文件零新增（改动前后同为 12 error+1 warn，全为 useSolutionStudio 既有 react-hooks 编译告警，新文件 0 告警，已用回退对比脚本证实）/ vite build 5947 modules 3.44s exit0。新挂账 r148-solution-resume-banner-defer：EditorWorkspace 侧对标 ComposeStep 的上次批量中断恢复内联横幅（本轮先落地数据复位+toast，视觉横幅另轮）。",
+      "files": [
+        "src/pages/SolutionStudio/bulkResume.ts (新增)",
+        "src/pages/SolutionStudio/bulkResume.test.ts (新增 11 例)",
+        "src/pages/SolutionStudio/useSolutionStudio.ts (openSolution 复位+import)"
+      ],
+      "round": 148
     }
   ],
   "blocked": [
@@ -990,10 +2085,10 @@
       "id": "content-guard",
       "module": "/bid-workspace",
       "issue": "C类·内容护栏AI增量：一致性规则2/3/4(量化依据/量级自洽/政策时效)逐章AI核对，结果并入交卷体检面板(复用FormatIssue,零schema)。方案 .loop/plans/C-content-guard.md",
-      "status": "needs_user_decision",
-      "decision": ""
+      "status": "done",
+      "decision": "2026-09-30 R89/D3 自主执行落地：consistencyGuard 模块已实现并真实项目闭环验证（规则 2/3/4 + 预算闸 + 面板渲染）"
     }
   ],
-  "noProgressStreak": 1,
-  "lastRoundSummary": "R86 收敛总报告：A/B 类可做项清零，剩余 open 全部为 C 类待拍板或需用户输入/积累，自动推进按手册停止。"
+  "noProgressStreak": 0,
+  "lastRoundSummary": "R148 方案编制批量生成中断恢复对齐标书 D1（方案主链路·数据正确性+可用性）：runBulkGenerate 起跑即把 doc_status 写「生成中」并落库、收口才改写终态，中途刷新/崩溃/切走会让方案刷新后永久卡在「生成中」徽标（docStatusLabel 直读 activeSolution.doc_status），且无标书侧 D1 的续跑提示。新建纯函数模块 bulkResume.ts（deriveSolutionDocStatus 按各章 gen_status 推导 done/partial/outline、shouldRecoverStaleGenerating 复位判定、bulkResumeNotice 断点续跑文案），openSolution 打开陈旧「生成中」方案时按真实进度复位并落库、存在已完成但未全的章时 toast 提示可从断点继续（继续生成正文天然 skip done 章）。零 schema/零 pb_hooks/零新提示词/未 commit；维持裁定不动（编造扫描只报告不拦截、lint-debt-01 残余保留）。四门：tsc 0 / vitest 985+2skip（基线 974 +11：bulkResume.test.ts 3 组 11 例，零回退）/ eslint 触及文件零新增（改动前后同为 12 error+1 warn，全为 useSolutionStudio 既有 react-hooks 编译告警，新文件 0 告警，已用回退对比脚本证实）/ vite build 5947 modules 3.44s exit0。新挂账 r148-solution-resume-banner-defer：EditorWorkspace 侧对标 ComposeStep 的上次批量中断恢复内联横幅（本轮先落地数据复位+toast，视觉横幅另轮）。"
 }

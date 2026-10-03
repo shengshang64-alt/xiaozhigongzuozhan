@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { KB_CATEGORIES } from "@/lib/kbPolicy"
 import type { KbQaPairRow } from "@/lib/kbQa"
+import { formatDateTimeDisplay } from "@/lib/dateDisplay"
 
 type QaGapPanelProps = {
   pendingPairs: KbQaPairRow[]
@@ -14,12 +15,7 @@ type QaGapPanelProps = {
 }
 
 function formatTime(iso: string): string {
-  if (!iso) return ""
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ""
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(
-    d.getHours(),
-  ).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+  return formatDateTimeDisplay(iso)
 }
 
 export function QaGapPanel({ pendingPairs, loading, approveQaPending, deleteQaPair }: QaGapPanelProps) {

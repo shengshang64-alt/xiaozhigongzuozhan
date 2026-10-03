@@ -1,5 +1,5 @@
 import { BriefcaseBusiness, Check, Copy, ExternalLink, FileStack, Flag, Sparkles, Star, X } from "lucide-react"
-import { toast } from "sonner"
+import { copyTextToClipboard } from "@/lib/clipboard"
 import {
   fmtIntelTime,
   ITEM_STATUS_LABEL,
@@ -145,10 +145,10 @@ export function IntelDetailPanel({
                 type="button"
                 onClick={() => {
                   const text = (item.title ? item.title + "\n" : "") + (item.summary ?? "")
-                  void navigator.clipboard.writeText(text).then(
-                    () => toast.success("已复制标题与摘要"),
-                    () => toast.error("复制失败，请手动选择文本"),
-                  )
+                  void copyTextToClipboard(text, {
+                    successMessage: "已复制标题与摘要",
+                    errorMessage: "复制失败，请手动选择文本",
+                  })
                 }}
                 className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-normal text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >

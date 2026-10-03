@@ -98,6 +98,28 @@ export const ANALYSIS_SYSTEM_PROMPT = `你是一位资深医疗信息化行业�
 // 解析 AI 返回 JSON
 // ---------------------------------------------------------------------------
 
+/**
+ * R145：可被 AI 建议更新并落库的档案字段白名单——与下方 ANALYSIS_SYSTEM_PROMPT 末尾
+ * 「可选 field 值：…」同口径（提示词早已声明，本轮把该契约在代码侧落实为确定性校验）。
+ * 解析与写回双重拦截：模型（或被污染的事实片段）若返回 name / legal_name / website /
+ * software_copyrights / keywords / source / visibility / rh_user_id / id 等非分析目标字段，
+ * 会绕过 CompetitorPatch 的 Omit 类型护栏（运行时 `patch[field]=suggested` 不受编译期检查约束），
+ * 造成竞品身份覆盖、归属越权、数值/数组列被字符串污染。故这些 field 一律丢弃、不生成建议、不写回。
+ */
+export const ANALYZABLE_FIELDS: readonly string[] = [
+  "positioning",
+  "products",
+  "regions",
+  "customer_profile",
+  "certifications",
+  "ai_evolution",
+  "xinchuang",
+  "strengths",
+  "weaknesses",
+  "threat_notes",
+  "summary",
+]
+
 export function parseAnalysisResponse(text: string): AnalysisResult | null {
   let jsonStr = text.trim()
   const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/)
@@ -106,7 +128,15 @@ export function parseAnalysisResponse(text: string): AnalysisResult | null {
     const parsed = JSON.parse(jsonStr)
     if (!Array.isArray(parsed.updates)) return null
     const updates: FieldSuggestion[] = (parsed.updates as Array<Partial<FieldSuggestion>>)
-      .filter((u) => u && typeof u.field === "string" && typeof u.suggested === "string" && typeof u.reason === "string")
+      .filter(
+        (u) =>
+          u &&
+          typeof u.field === "string" &&
+          // R145：仅提示词声明的 11 个分析目标字段可落库；身份/归属/数值/数组/未知字段一律丢弃
+          ANALYZABLE_FIELDS.includes(u.field) &&
+          typeof u.suggested === "string" &&
+          typeof u.reason === "string",
+      )
       .map((u) => {
         const rawRefs = Array.isArray(u.evidence_refs) ? u.evidence_refs.filter((x) => typeof x === "string" && x.length > 0) : []
         let conf: "high" | "medium" | "low" = u.confidence === "high" || u.confidence === "medium" || u.confidence === "low" ? u.confidence : "low"
@@ -387,12 +417,16 @@ export function useCompetitorAnalysis(opts: UseCompetitorAnalysisOptions) {
       // 二次确认：无事实依据 & 非 low 的建议（防降级未生效），提示"该条无事实依据，确认采纳？"
       const noEvidence = accepted.filter((u) => (u.evidence_refs?.length ?? 0) === 0 && u.confidence !== "low")
       if (noEvidence.length > 0) {
-        const ok = window.confirm(`有 ${noEvidence.length} 条建议未附事实依据（evidence_refs 为空），确认采纳？`)
+        const ok = window.confirm(`有 ${noEvidence.length} 条建议未附事实依据，确认采纳？`)
         if (!ok) return
       }
       const patch: CompetitorPatch = {}
       for (const u of accepted) {
-        (patch as Record<string, unknown>)[u.field] = u.suggested
+        // R145：写回侧纵深防御——即使 accepted 从别处流入，也只允许白名单字段落库；
+        // 运行时索引写入绕过 CompetitorPatch 类型层 Omit，须在此再兜一道（与解析侧同一白名单）。
+        if (ANALYZABLE_FIELDS.includes(String(u.field))) {
+          (patch as Record<string, unknown>)[u.field] = u.suggested
+        }
       }
       try {
         await updateCompetitor(rowId, patch)

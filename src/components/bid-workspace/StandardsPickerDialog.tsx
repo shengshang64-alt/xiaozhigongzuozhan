@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { Check, Library, Search, Trash2 } from "lucide-react"
+import { Check, Library, Search, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -127,7 +127,23 @@ export function StandardsPickerDialog(p: StandardsPickerDialogProps) {
 
           <ul className="max-h-96 min-h-40 overflow-y-auto rounded-lg border border-border bg-background p-2">
             {filtered.length === 0 && (
-              <li className="py-10 text-center text-sm text-muted-foreground">没有匹配的规范条目，换个关键词或类别试试</li>
+              <li className="flex flex-col items-center gap-1 py-10 text-center text-sm text-muted-foreground">
+                <span>没有匹配的规范条目，换个关键词或类别试试</span>
+                {(query.trim() || catFilter !== "all") && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setQuery("")
+                      setCatFilter("all")
+                    }}
+                    className="mt-1 gap-1.5 border-primary/40 text-primary hover:bg-primary/10 hover:text-primary"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    清除筛选
+                  </Button>
+                )}
+              </li>
             )}
             {filtered.map((it) => {
               const key = basisItemKey(it)

@@ -11,6 +11,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
+import { formatRelativeTime } from "@/lib/relativeTime"
+import { formatDateTimeDisplay } from "@/lib/dateDisplay"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import {
   SNAPSHOT_STAGE_BADGE,
@@ -25,13 +27,7 @@ type StageHistoryPanelProps = Pick<
 >
 
 function relTime(iso: string): string {
-  const t = Date.parse(iso)
-  if (Number.isNaN(t)) return ""
-  const diff = Date.now() - t
-  if (diff < 60_000) return "刚刚"
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`
-  return `${Math.floor(diff / 86_400_000)} 天前`
+  return formatRelativeTime(iso)
 }
 
 /** 按 stage 生成 payload 摘要（本地计算，不展示原文全文） */
@@ -168,7 +164,7 @@ export function StageHistoryPanel(p: StageHistoryPanelProps) {
             {preview ? payloadSummary(preview.stage as SnapshotStage, preview.payload ?? null) : ""}
           </div>
           <p className="text-xs text-muted-foreground">
-            {preview ? `留档于 ${preview.created ? new Date(preview.created).toLocaleString("zh-CN") : "—"}` : ""}
+            {preview ? `留档于 ${preview.created ? formatDateTimeDisplay(preview.created) : "—"}` : ""}
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPreview(null)} className="border-border text-muted-foreground hover:text-foreground">

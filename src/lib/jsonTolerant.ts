@@ -58,19 +58,55 @@ export function escapeControlCharsInStrings(s: string): string {
 }
 
 /**
+ * 默认结构修复器：补齐模型被截断（max token 切断）的 JSON 骨架。
+ * - 去掉 `}`/`]` 前的尾逗号；
+ * - 若停在字符串中，补一个闭合双引号；
+ * - 按未闭合的 `{`/`[` 栈逆序补全对应 `}`/`]`。
+ * 仅在原始串直接解析失败后作为「放宽级」尝试，绝不改变合法 JSON 的结果。
+ */
+export function repairJsonStructure(s: string): string {
+  let out = s.replace(/,(\s*[}\]])/g, "$1")
+  const stack: string[] = []
+  let inStr = false
+  let esc = false
+  for (const ch of out) {
+    if (inStr) {
+      if (esc) esc = false
+      else if (ch === "\\") esc = true
+      else if (ch === '"') inStr = false
+      continue
+    }
+    if (ch === '"') {
+      inStr = true
+      continue
+    }
+    if (ch === "{" || ch === "[") stack.push(ch)
+    else if (ch === "}" || ch === "]") stack.pop()
+  }
+  if (inStr) out += '"'
+  out = out.replace(/,(\s*[}\]])/g, "$1").replace(/,\s*$/, "")
+  while (stack.length) {
+    const open = stack.pop()
+    out += open === "{" ? "}" : "]"
+  }
+  return out
+}
+
+/**
  * 宽松解析一段（已截好界的）JSON 候选串。
  * @param text   候选串
- * @param repair 可选结构修复器（补全未闭合括号 / 去尾逗号等），在原始串与转义串上各再试一次
+ * @param repair 可选结构修复器（补全未闭合括号 / 去尾逗号等），在原始串与转义串上各再试一次；缺省时自动用内置 repairJsonStructure 兜底截断
  * @returns 解析后的值；成功路径与直接 JSON.parse 完全等价（第一次尝试即命中）
  * @throws Error 全部尝试失败时抛「AI 返回内容不是有效 JSON，请重试」（不裸抛 SyntaxError 给用户）
  */
 export function parseJsonTolerant(text: string, repair?: (s: string) => string): unknown {
-  const attempts: string[] = [text]
-  if (repair) attempts.push(repair(text))
+  // 未显式传入结构修复器时，默认用 repairJsonStructure 兜底截断（PPT 报价 / 方案编制共用路径）；
+  // 显式传入者（如标书 bidTypes）行为完全不变。始终作为原始串解析失败后的追加尝试级。
+  const fix = repair ?? repairJsonStructure
+  const attempts: string[] = [text, fix(text)]
   const escaped = escapeControlCharsInStrings(text)
   if (escaped !== text) {
-    attempts.push(escaped)
-    if (repair) attempts.push(repair(escaped))
+    attempts.push(escaped, fix(escaped))
   }
   for (const t of attempts) {
     try {

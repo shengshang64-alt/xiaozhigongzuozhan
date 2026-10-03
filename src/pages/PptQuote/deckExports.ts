@@ -11,6 +11,8 @@ import {
 import { renderDeckChartPng } from "./deckChart"
 import type { FigureSpec } from "@/pages/SolutionStudio/solutionTypes"
 import { buildFigureSvg, tokenPalette } from "@/components/bid-workspace/BidFigure"
+import { triggerBlobDownload } from "@/lib/download"
+import { buildSafeFileName } from "@/lib/fileName"
 
 // ---------------------------------------------------------------------------
 // PPT 导出（.pptx 商务版式：图文/图表/KPI/章节页 + 讲稿 Word + 页面切换动画）。
@@ -40,8 +42,7 @@ function todayText(): string {
 }
 
 function safeFileName(name: string, ext: string): string {
-  const base = (name || "汇报PPT").replace(/[\\/:*?"<>|]/g, "_").slice(0, 60)
-  return `${base}.${ext}`
+  return buildSafeFileName(name, ext, "汇报PPT")
 }
 
 function bulletFontSize(slides: Slide[]): number {
@@ -434,14 +435,7 @@ function downloadBlob(bytes: Uint8Array, fileName: string) {
   const blob = new Blob([bytes.slice()], {
     type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement("a")
-  a.href = url
-  a.download = fileName
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 3000)
+  triggerBlobDownload(blob, fileName)
 }
 
 // ---------------------------------------------------------------------------
@@ -451,14 +445,7 @@ function downloadBlob(bytes: Uint8Array, fileName: string) {
 export async function saveDocx(fileName: string, children: Paragraph[]): Promise<void> {
   const doc = new Document({ sections: [{ children }] })
   const blob = await Packer.toBlob(doc)
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement("a")
-  a.href = url
-  a.download = fileName
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 3000)
+  triggerBlobDownload(blob, fileName)
 }
 
 export async function exportSpeechDocx(deck: DeckRecord): Promise<void> {

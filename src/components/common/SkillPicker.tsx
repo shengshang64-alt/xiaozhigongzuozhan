@@ -5,9 +5,9 @@
 // ---------------------------------------------------------------------------
 import { useEffect, useRef, useState } from "react"
 import { Link } from "react-router-dom"
-import { ChevronDown, Wand2 } from "lucide-react"
+import { AlertTriangle, ChevronDown, RefreshCw, Wand2 } from "lucide-react"
 import type { SkillRow } from "@/lib/assistantCore"
-import { parseSkillPlaceholders, scopeLabel, type SkillScope } from "@/lib/skillCore"
+import { missingSelectedIds, parseSkillPlaceholders, scopeLabel, type SkillScope } from "@/lib/skillCore"
 import type { UseScopeSkills } from "@/hooks/useScopeSkills"
 
 export interface SkillPickerProps {
@@ -17,6 +17,12 @@ export interface SkillPickerProps {
   filledVars: Record<string, Record<string, string>>
   onToggle: (id: string) => void
   onSetVar: (id: string, slot: string, value: string) => void
+  /** R129：自定义技能拉取进行中标记（用于「重试中」文案与缺口延时统计） */
+  loading?: boolean
+  /** R129：自定义技能拉取失败态（来自 useScopeSkills.skillsLoadFailed） */
+  loadFailed?: boolean
+  /** R129：失败态下的重试入口 */
+  onRetry?: () => void
   /** 下拉面板对齐方向，默认 left */
   align?: "left" | "right"
 }
@@ -39,6 +45,9 @@ export function SkillPickerFor({
       filledVars={source.filledVars}
       onToggle={source.toggleSkill}
       onSetVar={source.setSkillVar}
+      loading={source.skillsLoading}
+      loadFailed={source.skillsLoadFailed}
+      onRetry={source.retrySkills}
       align={align}
     />
   )
@@ -58,6 +67,12 @@ export function SkillPicker(p: SkillPickerProps) {
   }, [open])
 
   const count = p.selectedIds.length
+  const loading = p.loading ?? false
+  // R129：拉取失败时「已勾选但当前不在池里」的自定义技能——按原顺序捞出，供按钮与横幅共用
+  // 缺口要等本次请求落定再数：重试进行中池中可能已有结果，避免「缺N」闪现误导
+  const missingIds = p.loadFailed && !loading
+    ? missingSelectedIds(p.selectedIds, p.skills.map((s) => s.id))
+    : []
   return (
     <div ref={rootRef} className="relative">
       <button
@@ -69,8 +84,14 @@ export function SkillPicker(p: SkillPickerProps) {
             : "border-border bg-background text-muted-foreground hover:text-foreground"
         }`}
       >
+        {missingIds.length > 0 && (
+          <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+        )}
         <Wand2 className="h-3.5 w-3.5" />
         {count > 0 ? `技能·${count}` : "带入技能"}
+        {missingIds.length > 0 && (
+          <span className="font-medium text-amber-600">缺{missingIds.length}</span>
+        )}
         <ChevronDown className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
@@ -86,6 +107,29 @@ export function SkillPicker(p: SkillPickerProps) {
           <p className="mt-0.5 text-xs text-muted-foreground">
             勾选的技能将按顺序附加到本次 AI 生成
           </p>
+
+          {p.loadFailed && (
+            <div className="mt-2 rounded-lg border border-amber-300/70 bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
+              <p className="font-medium">
+                {loading ? "正在重试加载自定义技能…" : "自定义技能加载失败，预置技能不受影响"}
+              </p>
+              {missingIds.length > 0 && (
+                <p className="mt-0.5">
+                  已勾选的 {missingIds.length} 个自定义技能本次未带入
+                </p>
+              )}
+              {p.onRetry && (
+                <button
+                  type="button"
+                  onClick={p.onRetry}
+                  className="mt-1.5 inline-flex items-center gap-1 font-medium hover:underline"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  重试
+                </button>
+              )}
+            </div>
+          )}
 
           {p.skills.length === 0 ? (
             <div className="mt-3 rounded-lg border border-dashed border-border px-3 py-4 text-center">

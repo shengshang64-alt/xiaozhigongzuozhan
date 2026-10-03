@@ -112,7 +112,14 @@ routerAdd("GET", "/api/product_library", function (e) {
     for (var i = 0; i < records.length; i++) {
       items.push(records[i].publicExport())
     }
-    return e.json(200, { items: items, page: page, perPage: perPage, totalItems: items.length })
+    var totalItems = items.length
+    try {
+      var countRecords = filter
+        ? $app.findRecordsByFilter("product_library", filter, sort, 100000, 0, params)
+        : $app.findRecordsByFilter("product_library", "", sort, 100000, 0)
+      totalItems = countRecords.length
+    } catch (err2) {}
+    return e.json(200, { items: items, page: page, perPage: perPage, totalItems: totalItems })
   } catch (err) {
     var msg = String(err && err.message || err)
     try { $app.logger().error("product_library list: " + msg) } catch (_) {}

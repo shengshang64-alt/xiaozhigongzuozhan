@@ -26,6 +26,8 @@ type GenerationSettingsBarProps = Pick<
   | "genOptions"
   | "setClauseResponse"
   | "setMaterialBoost"
+  | "setWordRefine"
+  | "setAutoConsistencyAudit"
   | "setComplianceMode"
   | "estimatedPages"
   | "settingsSaved"
@@ -94,12 +96,12 @@ export function GenerationSettingsBar(p: GenerationSettingsBarProps) {
     const raw = wordsDraft.trim()
     const n = Number(raw)
     if (raw === "" || !Number.isFinite(n)) {
-      setWordsHint("请输入 400–2000 的数字，已恢复原值")
+      setWordsHint("请输入 400–5000 的数字，已恢复原值")
       setWordsDraft(String(p.sectionWords))
       return
     }
-    const clamped = Math.max(400, Math.min(2000, Math.round(n)))
-    setWordsHint(clamped !== n ? `每小节字数应在 400–2000 之间，已自动调整为 ${clamped}` : "")
+    const clamped = Math.max(400, Math.min(5000, Math.round(n)))
+    setWordsHint(clamped !== n ? `每小节字数应在 400–5000 之间，已自动调整为 ${clamped}` : "")
     setWordsDraft(String(clamped))
     p.setSectionWords(String(clamped))
   }
@@ -197,11 +199,11 @@ export function GenerationSettingsBar(p: GenerationSettingsBarProps) {
           </label>
 
           <label className="grid gap-1.5 text-xs">
-            <span className="font-medium text-muted-foreground">每小节字数（400-2000）</span>
+            <span className="font-medium text-muted-foreground">每小节字数（400-5000）</span>
             <Input
               type="number"
               min={400}
-              max={2000}
+              max={5000}
               step={100}
               placeholder="800"
               value={wordsDraft}
@@ -328,6 +330,30 @@ export function GenerationSettingsBar(p: GenerationSettingsBarProps) {
               <span className="text-xs leading-snug">
                 <span className="font-medium text-foreground">素材优先注入</span>
                 <span className="block text-muted-foreground">开启后生成时加大招标原文检索量，并检索知识库素材注入（注明来源，检索为空时静默跳过）；关闭则仅用招标原文与自有资料，不检索知识库</span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2">
+              <input
+                type="checkbox"
+                checked={p.genOptions.word_refine !== false}
+                onChange={(e) => p.setWordRefine(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+              />
+              <span className="text-xs leading-snug">
+                <span className="font-medium text-foreground">自动字数精调</span>
+                <span className="block text-muted-foreground">成稿治理后仍在预算带外的小节，自动做局部扩写/缩写（锚点唯一定位、事实口径不改，易标方式）；关闭则只做续写补足与段落裁剪</span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2">
+              <input
+                type="checkbox"
+                checked={p.genOptions.auto_consistency_audit !== false}
+                onChange={(e) => p.setAutoConsistencyAudit(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+              />
+              <span className="text-xs leading-snug">
+                <span className="font-medium text-foreground">生成后一致性核对</span>
+                <span className="block text-muted-foreground">每章成稿后自动核对全局事实口径，发现矛盾自动修复一次（未唯一定位的留待人工）；关闭则仅在「事实一致性核对」手动执行</span>
               </span>
             </label>
           </div>

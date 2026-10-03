@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
-import { toast } from "sonner"
+import { copyTextToClipboard } from "@/lib/clipboard"
 import { BookOpenCheck, ClipboardList, Copy, Lock, PencilLine, RefreshCw, ScanSearch, ShieldAlert, Star } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -14,6 +14,8 @@ import {
   sectionSnippet,
   sectionStatus,
   summarizeParseWarnings,
+  parseLotsLineInfo,
+  type LotsScope,
   type ParseReport,
   type ParseSection,
   type ParseSectionStatus,
@@ -44,6 +46,7 @@ const STATUS_BADGE: Record<ParseSectionStatus, string> = {
   ok: "bg-primary/10 text-primary",
   failed: "bg-destructive/10 text-destructive",
   pending: "bg-muted text-muted-foreground",
+  miss: "bg-amber-500/10 text-amber-600",
 }
 
 /** 第十二轮改造 2：重点条款只读渲染时行首 ★/▲ 标记高亮（允许编号前缀） */
@@ -73,6 +76,8 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
   const [editing, setEditing] = useState(false)
   // 用户反馈轮：完整解析报告默认只看关键项（关键项 + 重点条款），可一键展开全部项
   const [keyOnly, setKeyOnly] = useState(false)
+  // Q26 切片A：降级分区原文默认折叠（节选前若干行），按项 key 记忆展开态，防 2 万字碎片铺满列表
+  const [expandedDegraded, setExpandedDegraded] = useState<Set<string>>(new Set())
   useEffect(() => {
     setKeyOnly(report?.scope === "full")
   }, [report?.scope])
@@ -82,12 +87,33 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
   // 第八轮改造 1 / R46-F3：分段解析失败提示横幅。旧版逐条列「第 X 段解析失败」（红色），与侧栏「N/N 项」同屏读来自相矛盾；
   // 改为聚合一条琥珀色提示，说清“段（文本块）≠ 项（提取结果）”两个口径（仅展示层，不改数据/不碰提示词）
   const warningSummary = summarizeParseWarnings(warnings)
+  // Q27 切片B：多包项目所投包件选择——lots 分区存在且原文扫出 ≥2 包时，报告顶部给「本次投标包件」chips
+  // （本地扫描零费用；选择落 parse_report.lots_scope，经既有 onChange(patch) 通道 updateParseReport 落库）
+  const lotsChips = useMemo(() => {
+    const lotsSec = report?.sections.find((s) => s.key === "lots" && s.content.trim())
+    if (!lotsSec || !tenderText?.trim()) return null
+    const infos = parseLotsLineInfo(tenderText.split(/\r?\n/))
+    const nos = [...new Set(infos.map((l) => l.no))].sort((a, b) => a - b)
+    if (nos.length < 2) return null
+    const all = nos.map((n) => {
+      const info = infos.find((l) => l.no === n)
+      return { no: n, title: info?.title ?? "第" + n + "包", lines: info?.lines ?? -1 }
+    })
+    return { nos, all }
+  }, [report, tenderText])
+  const lotsSelected = report?.lots_scope?.selected ?? []
+  const lotsLimited = lotsChips != null && lotsSelected.length > 0 && lotsSelected.length < lotsChips.nos.length
+  const setLotsSelection = (sel: number[]) => {
+    if (!lotsChips) return
+    const next: LotsScope = { selected: sel, all: lotsChips.all }
+    onChange({ lots_scope: next })
+  }
   const warningBanner =
     warningSummary ? (
       <div className="mb-3 rounded-md border border-amber-300/60 bg-amber-50 px-4 py-3 shadow-sm text-amber-800">
         <p className="text-xs font-semibold leading-relaxed">{warningSummary.headline}</p>
         <p className="mt-1 text-xs leading-relaxed text-amber-700">
-          （说明：“{warningSummary.failedChunks} 段”指招标全文切分后的文本块数，与下方“核心信息项数”不同口径；若某项内容明显缺失，可在该项处“重新解析”补齐。）
+          （若某项内容明显缺失，可在该项处「重新解析此项」补齐；降级项的检索原文见对应分区。）
         </p>
       </div>
     ) : null
@@ -115,19 +141,23 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
   const okCount = shown.filter((s) => sectionStatus(s) === "ok").length
   const pct = shown.length ? Math.round((okCount / shown.length) * 100) : 0
   const busyHere = reparseBusyKey === selected.key
+  // Q26 切片A：详情区降级原文折叠计算（〔系统降级 开头且超阈值时默认节选，可一键展开）
+  const DEGRADED_FOLD_LIMIT = 15
+  const detailLines = selected.content.split(/\n+/).filter((l) => l.trim())
+  const isDegradedDetail = selected.content.startsWith("〔系统降级")
+  const degradedCollapsed = isDegradedDetail && !expandedDegraded.has(selected.key) && detailLines.length > DEGRADED_FOLD_LIMIT
+  const shownDetailLines = degradedCollapsed ? detailLines.slice(0, DEGRADED_FOLD_LIMIT) : detailLines
 
   const patchSection = (key: string, content: string) => {
     const next = sections.map((s) => (s.key === key ? { ...s, content, human_edited: true } : s))
     onChange({ sections: next })
   }
 
-  const copyContent = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      toast.success("解析内容已复制到剪贴板")
-    } catch {
-      toast.error("复制失败，请手动选中内容复制")
-    }
+  const copyContent = (text: string) => {
+    void copyTextToClipboard(text, {
+      successMessage: "解析内容已复制到剪贴板",
+      errorMessage: "复制失败，请手动选中内容复制",
+    })
   }
 
   const selectSection = (key: string) => {
@@ -138,6 +168,38 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
   return (
     <>
     {warningBanner}
+    {lotsChips && (
+      <div className="mb-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-foreground">本次投标包件</span>
+          <button
+            type="button"
+            onClick={() => setLotsSelection([])}
+            className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors ${!lotsLimited ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:bg-secondary"}`}
+          >
+            全部（{lotsChips.nos.length} 包）
+          </button>
+          {lotsChips.nos.map((n) => {
+            const on = lotsSelected.includes(n)
+            return (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setLotsSelection(on ? lotsSelected.filter((x) => x !== n) : [...lotsSelected, n].sort((a, b) => a - b))}
+                className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors ${on ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:bg-secondary"}`}
+              >
+                第{n}包
+              </button>
+            )
+          })}
+        </div>
+        <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+          {lotsLimited
+            ? "已限定第 " + lotsSelected.join("、") + " 包：后续大纲/正文只响应所选包件内容，其他包件专属条款不响应（公共条款照常）。"
+            : "未限定包件：按整份文件口径响应。选定具体包件后，大纲与正文生成将注入包件范围约束（本地注入，零费用）。"}
+        </p>
+      </div>
+    )}
     <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[300px_1fr]">
       <aside className="flex max-h-[calc(100vh-320px)] min-h-[560px] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-md">
         <header className="flex min-h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3">
@@ -309,15 +371,28 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
           ) : selected.content.trim() ? (
             <div>
               <ul className="flex flex-col gap-1.5">
-                {selected.content
-                  .split(/\n+/)
-                  .filter((l) => l.trim())
-                  .map((line, i) => (
-                    <li key={i} className="rounded-md border border-border/60 bg-background px-3 py-2 text-sm leading-relaxed text-foreground">
-                      {selected.key === "star_clauses" ? renderStarLine(line) : line}
-                    </li>
-                  ))}
+                {shownDetailLines.map((line, i) => (
+                  <li key={i} className="rounded-md border border-border/60 bg-background px-3 py-2 text-sm leading-relaxed text-foreground">
+                    {selected.key === "star_clauses" ? renderStarLine(line) : line}
+                  </li>
+                ))}
               </ul>
+              {isDegradedDetail && detailLines.length > DEGRADED_FOLD_LIMIT && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpandedDegraded((prev) => {
+                      const next = new Set(prev)
+                      if (next.has(selected.key)) next.delete(selected.key)
+                      else next.add(selected.key)
+                      return next
+                    })
+                  }
+                  className="mt-2 rounded-md border border-amber-300/60 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100"
+                >
+                  {degradedCollapsed ? `展开全部 ${detailLines.length} 行降级原文（当前节选 ${DEGRADED_FOLD_LIMIT} 行）` : "收起降级原文"}
+                </button>
+              )}
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                 <p className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Lock className="h-3 w-3" />

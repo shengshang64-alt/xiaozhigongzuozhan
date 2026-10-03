@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/rhLogin"
+import { triggerBlobDownload } from "@/lib/download"
 import {
   DEFAULT_FORMAT_SETTINGS,
   type FormatAlign,
@@ -125,12 +126,7 @@ export function useFormatTool() {
     try {
       const { blob, notes } = await refreshDocxFile(sourceFile, settings, scopes)
       const downloadName = sourceFile.name.replace(/\.docx$/i, "") + "-格式刷新.docx"
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = downloadName
-      a.click()
-      setTimeout(() => URL.revokeObjectURL(url), 4000)
+      triggerBlobDownload(blob, downloadName)
       toast.success(`已导出「${downloadName}」，正文文字 0 改动`)
       if (notes.length) toast.info(notes[0], { description: notes.length > 1 ? `另有 ${notes.length - 1} 条提示` : undefined })
     } catch (err) {

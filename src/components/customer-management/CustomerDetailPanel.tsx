@@ -30,6 +30,9 @@ type CustomerDetailPanelProps = {
   onSelectOpportunity: (oppId: string) => void
   onNewOpportunity: (customerId: string) => void
   onEditCustomer: () => void
+  /** T7：删除当前客户（详情面板内 ConfirmDialog 确认后调用，成功后由 Logic 关闭面板） */
+  onDeleteCustomer: (customerId: string) => void
+  deletingCustomerId: string | null
   /** 单家定向智能补全（透传给 CustomerProfileCard） */
   onEnrichOne: (customerId: string) => void
   enrichingOneId: string | null
@@ -68,6 +71,8 @@ export function CustomerDetailPanel({
   onSelectOpportunity,
   onNewOpportunity,
   onEditCustomer,
+  onDeleteCustomer,
+  deletingCustomerId,
   onEnrichOne,
   enrichingOneId,
   chainAssets,
@@ -103,6 +108,9 @@ export function CustomerDetailPanel({
       <CustomerProfileCard
         customer={customer}
         onEdit={onEditCustomer}
+        onDelete={onDeleteCustomer}
+        deleting={deletingCustomerId === customer.id}
+        opportunityCount={opportunities.length}
         onEnrichOne={onEnrichOne}
         enrichingOneId={enrichingOneId}
         contactName={contactName}

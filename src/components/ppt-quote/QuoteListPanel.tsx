@@ -1,6 +1,8 @@
-import { BadgeCheck, Copy, Loader2, Plus, ReceiptText, Search, Trash2 } from "lucide-react"
+import { BadgeCheck, Copy, Download, Loader2, Plus, ReceiptText, Search, Trash2 } from "lucide-react"
 import { CompanyTemplateHint } from "@/components/common/CompanyTemplateHint"
 import { formatMoney, quoteTotal, type QuoteRecord } from "@/pages/PptQuote/pptQuoteTypes"
+import { exportToCsv } from "@/lib/exportCsv"
+import { localDateStamp } from "@/lib/dateStamp"
 
 type QuoteListPanelProps = {
   quotes: QuoteRecord[]
@@ -33,6 +35,12 @@ export function QuoteListPanel({
   onDelete,
   onToggleWonSample,
 }: QuoteListPanelProps) {
+  const handleExportQuotes = () => {
+    const headers = ["报价名称", "关联项目", "医院等级", "版本", "创建时间", "更新时间"]
+    const rows = quotes.map((q) => [q.quote_name, q.ref_name || q.opportunity_name, q.hospital_level ?? "", q.version, q.created, q.updated])
+    exportToCsv(`报价列表_${localDateStamp()}.csv`, headers, rows)
+  }
+
   return (
     <section className="pb-16">
       <header className="rounded-2xl border border-border bg-gradient-to-br from-background via-secondary to-card px-6 py-8 shadow-md animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -46,6 +54,15 @@ export function QuoteListPanel({
               行项报价自动算小计，按产品库分类或自定义分组汇总；可关联方案或标书项目让 AI 推荐行项初稿，支持多版本谈判与 Excel / Word 导出。
             </p>
           </div>
+          <button
+            type="button"
+            onClick={handleExportQuotes}
+            disabled={quotes.length === 0}
+            className="flex items-center gap-2 rounded-md border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <Download className="h-4 w-4" />
+            导出
+          </button>
           <button
             type="button"
             onClick={onNew}

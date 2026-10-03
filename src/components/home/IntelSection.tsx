@@ -8,9 +8,9 @@ type IntelSectionProps = {
 }
 
 function tagClass(tag: string): string {
-  // 徽标语义四档（全站设计规范 v1）：政策=主色档，中标=关注档，其余=中性档
+  // 徽标语义四档（全站设计规范 v1）：政策=主色档，招标=关注档，其余=中性档
   if (tag === "政策") return "badge-success"
-  if (tag === "中标") return "badge-warning"
+  if (tag === "招标" || tag === "中标") return "badge-warning"
   return "badge-neutral"
 }
 

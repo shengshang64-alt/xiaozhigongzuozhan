@@ -56,6 +56,7 @@ export function IntelItemCard({
 }: IntelItemCardProps) {
   return (
     <article
+      data-intel-card
       className={`group flex flex-col rounded-lg border bg-card p-4 shadow-md transition-all hover:-translate-y-0.5 hover:shadow-lg ${
         batchMode && selected ? "border-primary/60 ring-1 ring-primary/40" : "border-border"
       }`}
@@ -178,8 +179,15 @@ export function IntelItemCard({
         {item.my_status !== "confirmed" && (
           <button
             type="button"
-            onClick={() => onConfirm(item)}
-            title="只更新你自己的确认状态"
+            data-confirm-btn
+            onClick={(e) => {
+              onConfirm(item)
+              // 单键流（UX 走查 2026-09-28）：确认后焦点自动落到下一张卡片的确认按钮，键盘 Enter 可连续处理
+              const card = e.currentTarget.closest("[data-intel-card]")
+              const next = card?.nextElementSibling?.querySelector("[data-confirm-btn]")
+              if (next) window.setTimeout(() => (next as HTMLElement).focus(), 80)
+            }}
+            title="只更新你自己的确认状态（确认后自动聚焦下一条）"
             className="flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-card-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <Check className="h-3.5 w-3.5 text-primary" />
@@ -189,7 +197,14 @@ export function IntelItemCard({
         {item.my_status !== "ignored" && (
           <button
             type="button"
-            onClick={() => onIgnore(item)}
+            data-confirm-btn
+            onClick={(e) => {
+              onIgnore(item)
+              // 与确认键对称：忽略后焦点也自动落到下一张卡片的确认按钮
+              const card = e.currentTarget.closest("[data-intel-card]")
+              const next = card?.nextElementSibling?.querySelector("[data-confirm-btn]")
+              if (next) window.setTimeout(() => (next as HTMLElement).focus(), 80)
+            }}
             className="flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-secondary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <X className="h-3.5 w-3.5" />

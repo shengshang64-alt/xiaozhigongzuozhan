@@ -25,6 +25,11 @@ export interface DeckLintIssue {
 /** 名词标签式标题的常见结尾词（这类标题往往不带结论，建议改写成陈述句） */
 const NOUN_TITLE_SUFFIXES = ["背景", "概述", "简介", "介绍", "方案", "架构", "总结", "目录", "附录", "说明", "现状", "需求", "意义", "目标"]
 
+/** 标题归一化：去首尾空白、统一大小写、剔除内部所有空白，用于跨页重复标题判定 */
+function normalizeTitle(t: string): string {
+  return t.trim().toLowerCase().replace(/\s+/g, "")
+}
+
 function isImageBearing(s: Slide): boolean {
   return Boolean(s.image || (s.imageHint ?? "").trim() || s.figures?.length)
 }
@@ -79,6 +84,10 @@ export function lintDeck(slides: Slide[]): DeckLintIssue[] {
 
     // 5) 名词标签式标题：建议改成一句结论（Action Title）
     const title = (s.title ?? "").trim()
+    // 5a) 内容页缺标题：有正文/图表/配图却没有标题，导出后是「无头」页
+    if (title.length === 0 && (s.layout ?? "auto") !== "section" && (bullets.length > 0 || hasVisual || hasImage)) {
+      issues.push({ level: "info", page, code: "missing_title", msg: `第 ${page} 页有正文内容却缺少标题，建议补一句结论式标题` })
+    }
     if (
       title.length > 0 &&
       title.length <= 8 &&
@@ -88,6 +97,28 @@ export function lintDeck(slides: Slide[]): DeckLintIssue[] {
       issues.push({ level: "info", page, code: "noun_title", msg: `第 ${page} 页标题「${title}」偏名词标签，改成一句结论更有说服力` })
     }
   })
+
+  // 5b) 跨页重复标题：AI 批量生成常见缺陷——多页共用同一标题（忽略分节页与空标题）
+  const titlePages = new Map<string, number[]>()
+  slides.forEach((s2, i) => {
+    if ((s2.layout ?? "auto") === "section") return
+    const nt = normalizeTitle(s2.title ?? "")
+    if (!nt) return
+    const arr = titlePages.get(nt)
+    if (arr) arr.push(i + 1)
+    else titlePages.set(nt, [i + 1])
+  })
+  for (const pages of titlePages.values()) {
+    if (pages.length >= 2) {
+      const dispTitle = (slides[pages[0] - 1]?.title ?? "").trim()
+      issues.push({
+        level: "warn",
+        page: pages[pages.length - 1],
+        code: "duplicate_title",
+        msg: `标题「${dispTitle}」在第 ${pages.join("、")} 页重复，建议各页给出不同结论`,
+      })
+    }
+  }
 
   // 6) 整份层面：图文并茂占比不足（呼应 Anthropic「别让 PPT 只有一堆文字框」）
   if (slides.length >= 4 && visualPages === 0) {

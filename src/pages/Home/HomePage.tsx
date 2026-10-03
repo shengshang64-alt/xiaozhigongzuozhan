@@ -5,6 +5,7 @@ import { OppsCard } from "@/components/home/CustomerOverviewSection"
 import { FollowUpReminderCard } from "@/components/home/FollowUpReminderCard"
 import { FunnelCard } from "@/components/home/FunnelCard"
 import { IntelSection } from "@/components/home/IntelSection"
+import { BidNodesCard } from "@/components/home/BidNodesCard"
 import { MustSeeTodayBar } from "@/components/home/MustSeeTodayBar"
 import { ProjectsSection } from "@/components/home/ProjectsSection"
 import { StatsRow } from "@/components/home/StatsRow"
@@ -32,6 +33,7 @@ export function HomePage(p: ReturnType<typeof useHome>) {
           p.activeProjectCount > 0 ? `有 ${p.activeProjectCount} 个项目进行中` : "",
           p.overdueTodoCount > 0 ? `${p.overdueTodoCount} 条待办已逾期` : "",
           p.intelPendingCount > 0 ? `${p.intelPendingCount} 条情报待确认` : "",
+          p.qualAlertCount > 0 ? `${p.qualAlertCount} 项资质已过期或临期（投标核验）` : "",
         ].filter(Boolean)}
       />
 
@@ -40,6 +42,8 @@ export function HomePage(p: ReturnType<typeof useHome>) {
         loading={p.todosLoading || p.crmLoading || p.projectsLoading}
         onOpenProject={p.openProjectDetail}
       />
+
+      <BidNodesCard />
 
       <StatsRow
         activeProjectCount={p.activeProjectCount}

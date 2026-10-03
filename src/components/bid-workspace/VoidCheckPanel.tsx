@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
+import { formatDateTimeDisplay } from "@/lib/dateDisplay"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import {
   REVIEW_STATUS_LABEL,
@@ -30,6 +31,10 @@ type VoidCheckPanelProps = Pick<
   | "voidMissingTitles"
   | "goParseStep"
   | "isArchivedLocked"
+  | "bidSourceMode"
+  | "sealBusy"
+  | "sealResult"
+  | "startSealCheck"
 >
 
 /** 第九轮改造 2：合规状态 / 严重度 → 语义四档 badge variant */
@@ -252,6 +257,10 @@ export function VoidCheckPanel({
   voidMissingTitles,
   goParseStep,
   isArchivedLocked,
+  bidSourceMode,
+  sealBusy,
+  sealResult,
+  startSealCheck,
 }: VoidCheckPanelProps) {
   // 第九轮改造 2：核销矩阵筛选器 + 跳过原因弹窗（纯 UI 状态）
   const [reviewFilter, setReviewFilter] = useState<"all" | ReviewStatus>("all")
@@ -262,7 +271,10 @@ export function VoidCheckPanel({
   const clauseCount = sectionText(activeProject?.parse_report ?? null, "void_items")
     .split(/\n+/)
     .filter((l) => l.trim()).length
-  const chaptersReady = (activeProject?.bid_chapters ?? []).some((c) => (c.content ?? "").trim())
+  const chaptersReady =
+    bidSourceMode === "external"
+      ? !!(activeProject?.bid_external_text ?? "").trim()
+      : (activeProject?.bid_chapters ?? []).some((c) => (c.content ?? "").trim())
   const compliantCount = check ? check.items.filter((it) => effectiveVoidStatus(it) === "compliant").length : 0
   const partialCount = check ? check.items.filter((it) => effectiveVoidStatus(it) === "partial").length : 0
   const nonCompliantCount = check ? check.items.filter((it) => effectiveVoidStatus(it) === "non_compliant").length : 0
@@ -281,7 +293,10 @@ export function VoidCheckPanel({
       <header className="rounded-2xl border border-border bg-gradient-to-br from-background via-secondary to-card px-6 py-6 shadow-md animate-in fade-in slide-in-from-bottom-4 duration-500">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="text-3xl font-bold text-foreground">废标项检查</h1>
+            <h1 className="flex items-center gap-2 text-3xl font-bold text-foreground">
+              废标项检查
+              {bidSourceMode === "external" && <Badge variant="neutral">外部标书审查</Badge>}
+            </h1>
             <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
               对照解析出的 {clauseCount || "—"} 条废标条款，AI 逐条输出合规核销矩阵：合规状态 + 严重度 + 招标/投标双向定位 + 证据摘录 + 整改建议。跳章整改后回来「标记已处理」，确实不适用的可「跳过」并填原因留痕。
             </p>
@@ -389,7 +404,7 @@ export function VoidCheckPanel({
               ))}
             </span>
             <span className="ml-auto text-xs text-muted-foreground">
-              {filteredItems.length}/{check.items.length} 条 · 检查时间 {new Date(check.checked_at).toLocaleString("zh-CN")}
+              {filteredItems.length}/{check.items.length} 条 · 检查时间 {formatDateTimeDisplay(check.checked_at)}
             </span>
           </div>
 
@@ -452,6 +467,59 @@ export function VoidCheckPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Q28 切片B：电子签章体检——仅 external + PDF 可用 */}
+      {bidSourceMode === "external" && (
+        <div className="mt-5 rounded-lg border border-border bg-card px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-foreground">电子签章体检</h2>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={sealBusy}
+              onClick={() => void startSealCheck()}
+              className="border-primary/40 text-primary hover:bg-primary/10"
+            >
+              {sealBusy ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <ShieldAlert className="mr-1.5 h-3.5 w-3.5" />}
+              {sealBusy ? "逐页扫描中…" : "运行签章体检"}
+            </Button>
+          </div>
+          {!sealResult && !sealBusy && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              基于 PDF 页面操作流统计贴图 / 矢量曲线 / 彩色填充三判据，判定各页是否存在签章特征（仅 PDF 投标文件支持）。
+            </p>
+          )}
+          {sealResult && (
+            <div className="mt-3 space-y-2">
+              <p className="text-xs text-muted-foreground">
+                扫描 {sealResult.scannedPages}/{sealResult.totalPages} 页，
+                疑似无签章 {sealResult.results.filter((r) => r.sealAbsent).length} 页
+                （可疑率 {Math.round(sealResult.absentRatio * 100)}%）。
+              </p>
+              {sealResult.results.some((r) => r.sealAbsent) && (
+                <ul className="space-y-1.5">
+                  {sealResult.results
+                    .filter((r) => r.sealAbsent)
+                    .map((r) => (
+                      <li key={r.pageNo} className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2 text-xs">
+                        <span className="mt-0.5 shrink-0 font-medium text-destructive">【机器检测】</span>
+                        <span className="text-foreground">
+                          第 {r.pageNo} 页未检测到签章特征（无贴图、无矢量曲线、无彩色填充文本），
+                          请先核对平台上传原件，排除上传/导出环节剥离签章的技术性丢失。
+                        </span>
+                      </li>
+                    ))}
+                </ul>
+              )}
+              {sealResult.imagePageRatio > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  含图像页占比 {Math.round(sealResult.imagePageRatio * 100)}%——若文件为扫描件，建议人工核对签章页。
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </section>
   )
 }

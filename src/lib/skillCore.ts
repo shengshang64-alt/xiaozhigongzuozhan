@@ -138,6 +138,40 @@ export function parseSkillPlaceholders(template: string): string[] {
   return extractTemplateSlots(template)
 }
 
+/**
+ * R128：裁剪已失效的技能勾选（技能被删除 / 适用功能点被改走）。
+ *
+ * 预置技能（id 带 `preset:` 前缀）是同步常量，任何时候都能校验；自定义技能行要等接口返回，
+ * 所以 customLoaded===false 时必须保留非预置 id——否则首屏可选池只有预置项，会把
+ * localStorage 里持久化的自定义勾选当场裁掉，紧接着的持久化 effect 再把空选回写，
+ * 用户「刷新一次页面，之前带过的技能就没了」，且 AI 生成实际少带技能却无任何提示。
+ * 返回按原顺序过滤后的新数组；未发生变化时长度与入参一致，调用方据此决定要不要换 state 引用。
+ */
+export function pruneSkillSelection(
+  ids: readonly string[],
+  availableIds: readonly string[],
+  customLoaded: boolean,
+): string[] {
+  const avail = new Set(availableIds)
+  return ids.filter((id) => avail.has(id) || (!customLoaded && !id.startsWith("preset:")))
+}
+
+/**
+ * R129：统计「已勾选但当前不在可选池里」的技能 id（按原顺序返回）。
+ *
+ * 自定义技能拉取失败（或未到达）时，勾选仍保存在 localStorage，但生成链路只注入池内命中的技能，
+ * 缺的那几个会被静默丢弃——用户以为「技能带上了」实际少带。picker 用同一口径把缺口显式化，
+ * 并配合「重试」入口恢复。预置项任何时候都在池里，不会被误计。
+ */
+export function missingSelectedIds(
+  ids: readonly string[],
+  availableIds: readonly string[],
+): string[] {
+  const avail = new Set(availableIds)
+  return ids.filter((id) => !avail.has(id))
+}
+
+
 // ---------------------------------------------------------------------------
 // system prompt 注入
 // ---------------------------------------------------------------------------

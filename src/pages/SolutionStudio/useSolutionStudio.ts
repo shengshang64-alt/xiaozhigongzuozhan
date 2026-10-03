@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
-import { AlignmentType, HeadingLevel, ImageRun, Paragraph, Table, TableOfContents } from "docx"
+// R147（解除 r124-solutionstudio-docx-defer）：docx 运行时符号改由 exportWord 点击链动态导入，
+// 此处仅保留编译期擦除的类型引用，SolutionStudio 路由 chunk 不再静态打包 docx。
+import type { Paragraph, Table, TableOfContents } from "docx"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, vibexAuthHeaders, type RhAccountInfo } from "@/lib/rhLogin"
 import { modelRefKey, resolveAvailableModels, type ModelRef } from "@/lib/modelGateway"
@@ -19,12 +21,6 @@ import { contextSnippetOf } from "@/lib/kbPolicy"
 import { listKbQaPairs, matchQaPair, visibleQaPairs, type KbQaPairRow } from "@/lib/kbQa"
 import { useCostConfirm } from "@/hooks/useCostConfirm"
 import {
-  createFormatDocxKit,
-  downloadDocx,
-  figureToPng,
-  pageOptsFromFormatSettings,
-} from "@/pages/BidWorkspace/bidFiles"
-import {
   DEFAULT_FORMAT_SETTINGS,
   chapterWordBudgets,
   normalizeFormatSettings,
@@ -37,9 +33,12 @@ import {
 import { useScopeSkills } from "@/hooks/useScopeSkills"
 import { skillCostSuffix } from "@/lib/skillCore"
 import { currentStudioCostText, llmGenerate, setStudioModelRef } from "./studioLlm"
+import { formatFailedChapterList, isBlankChapterOutput } from "./chapterGenGuard"
+import { runBulkPool } from "@/lib/bulkPool"
 import { DEFAULT_EXPORT_TEMPLATE, buildExportFrontMatter, readSolutionExportTemplate, writeSolutionExportTemplate, type SolutionExportTemplate } from "./exportTemplate"
 import { useChecklist } from "./checklistLogic"
 import { snapshotFromChecklist, type ChecklistRecord } from "./checklistTypes"
+import { bulkResumeNotice, deriveSolutionDocStatus, shouldRecoverStaleGenerating } from "./bulkResume"
 import {
   addChildToTree,
   buildChapterMessages,
@@ -426,7 +425,13 @@ export function useSolutionStudio() {
     async (rec: SolutionRecord, patch: Partial<SolutionRecord>, quiet = false) => {
       try {
         await apiFetch(`/api/solutions/${rec.id}`, { method: "PATCH", body: JSON.stringify(patch) })
+        if (quiet) {
+          setAutoSaveState("saved")
+          if (autoSaveResetRef.current) window.clearTimeout(autoSaveResetRef.current)
+          autoSaveResetRef.current = window.setTimeout(() => setAutoSaveState("idle"), 2000)
+        }
       } catch {
+        if (quiet) setAutoSaveState("idle")
         if (!quiet) toast.error("保存失败，请检查网络后重试")
       }
     },
@@ -683,6 +688,8 @@ export function useSolutionStudio() {
   const [activeChapterId, setActiveChapterId] = useState<string | null>(null)
   const [editingContent, setEditingContentState] = useState("")
   const editingContentRef = useRef("")
+  const [autoSaveState, setAutoSaveState] = useState<"idle" | "saving" | "saved">("idle")
+  const autoSaveResetRef = useRef<number | null>(null)
   const saveTimerRef = useRef<number | null>(null)
   // 最近一次「本地→远端」持久化的 Promise（persistSolution 内部自捕获，永不 reject）。
   // 写 doc_status 前先 await 它：后端 PATCH 是「读整行→改→存整行」，两笔并发会互相覆盖丢字段（R001 竞态根因）。
@@ -711,10 +718,24 @@ export function useSolutionStudio() {
     }
   }, [activeChapterId, updateChapter])
 
+  // Ctrl+S / Cmd+S → 强制刷保存（阻止浏览器默认另存为，立即 flush 编辑内容）
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault()
+        flushEditingContent()
+      }
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [flushEditingContent])
+
   const setEditingContent = useCallback(
     (value: string) => {
       setEditingContentState(value)
       editingContentRef.current = value
+      setAutoSaveState("saving")
+      if (autoSaveResetRef.current) { window.clearTimeout(autoSaveResetRef.current); autoSaveResetRef.current = null }
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
       saveTimerRef.current = window.setTimeout(() => {
         saveTimerRef.current = null
@@ -752,6 +773,19 @@ export function useSolutionStudio() {
           })),
         }
         void persistSolution(target, { chapters: target.chapters }, true)
+      }
+      // R148：对齐标书 D1 中断恢复——打开方案时若持久化状态仍为「生成中」，但当前并无进行中的
+      // 批量（刷新 / 崩溃 / 中途切走遗留的陈旧态），按各章 gen_status 推导真实阶段并复位，避免永久
+      // 显示「生成中」徽标；存在已完成但未全的章时提示可从断点继续（继续生成正文会天然跳过已完成章）。
+      if (shouldRecoverStaleGenerating(target.doc_status, false)) {
+        const recovered = deriveSolutionDocStatus(target.chapters)
+        if (recovered !== target.doc_status) {
+          target = { ...target, doc_status: recovered }
+          void persistSolution(target, { doc_status: recovered }, true)
+        }
+        const doneCh = target.chapters.filter((c) => c.gen_status === "done").length
+        const notice = bulkResumeNotice(doneCh, target.chapters.length)
+        if (notice) toast.info(notice)
       }
       applySolutionState(target)
       setActiveChapterId(target.chapters[0]?.node_id ?? null)
@@ -925,23 +959,29 @@ export function useSolutionStudio() {
       const parsed = parseChapterOutput(text, figuresEnabled)
       let content = parsed.content
       for (let round = 0; wordBudget > 0 && round < CHAPTER_MAX_CONT_ROUNDS && content.length < wordBudget * CHAPTER_MIN_RATIO; round++) {
-        const cont = await llmGenerate(
-          buildSolContinueMessages(
-            {
-              solution_name: cur.solution_name,
-              solution_type: cur.solution_type,
-              hospital: cur.hospital,
-              hospital_info: cur.hospital_info,
-            },
-            ch.title,
-            content,
-            wordBudget - content.length,
-            solComplianceModeRef.current,
-          ),
-          MAX_TOKENS_CONTINUE,
-          "solution-chapter",
-        )
-        const extra = stripOverlap(content, cont.trim())
+        let extra: string
+        try {
+          const cont = await llmGenerate(
+            buildSolContinueMessages(
+              {
+                solution_name: cur.solution_name,
+                solution_type: cur.solution_type,
+                hospital: cur.hospital,
+                hospital_info: cur.hospital_info,
+              },
+              ch.title,
+              content,
+              wordBudget - content.length,
+              solComplianceModeRef.current,
+            ),
+            MAX_TOKENS_CONTINUE,
+            "solution-chapter",
+          )
+          extra = stripOverlap(content, cont.trim())
+        } catch {
+          // R139：自动续写的偶发抖动不该作废已生成的正文（主调用已成功付费）——降级保留当前稿，整章不置 failed
+          break
+        }
         if (!extra) break
         content = `${content}\n\n${extra}`
       }
@@ -966,6 +1006,12 @@ export function useSolutionStudio() {
       try {
         const chNow = cur.chapters[idx]
         const { content, figures, underlength } = await generateChapterContent(cur, idx)
+        // R139：模型空产出不得标 done（否则空章被批量按「已生成」永久跳过），与标书侧循环 8 A2 保底同口径
+        if (isBlankChapterOutput(content)) {
+          updateChapter(nodeId, { gen_status: "failed" })
+          toast.error("模型返回空正文，本章未标记完成，可重新生成")
+          return
+        }
         updateChapter(nodeId, { content, figures, underlength, gen_status: "done" })
         if (activeChapterId === nodeId) {
           editingContentRef.current = content
@@ -1377,29 +1423,79 @@ export function useSolutionStudio() {
     let okCount = 0
     let failedCount = 0
     let firstError = ""
-    for (let i = 0; i < total; i++) {
-      if (cancelBulkRef.current) break
-      const cur = activeSolutionRef.current
-      if (!cur) break
-      const ch = cur.chapters[i]
-      if (!ch || ch.gen_status === "done") {
-        setGenProgress({ current: i + 1, total })
-        continue
-      }
-      setGenProgress({ current: i + 1, total })
-      updateChapter(ch.node_id, { gen_status: "generating" }, { persist: false })
-      try {
-        const { content, figures, underlength } = await generateChapterContent(cur, i)
-        updateChapter(ch.node_id, { content, figures, underlength, gen_status: "done" })
-        okCount += 1
-        if (activeChapterId === ch.node_id) {
-          editingContentRef.current = content
-          setEditingContentState(content)
+    // R139：登记失败/空产出章节（node_id/索引/标题/真实原因），供收口前自动补重试与逐章点名（标书侧 R126 同口径）
+    const failedNodes: { nodeId: string; idx: number; title: string; reason: string }[] = []
+    // 生成链路 D2 移植（标书侧 R126 同口径）：章间有限并发（2）的 worker 池。
+    // 方案侧各章 prompt 相互独立——buildChapterMessages 仅注入恒定的大纲/事实基线与本章小节，
+    // 不依赖前序章正文，故并发不损章间衔接质量；updateChapter 同步读 ref 最新快照、按 node_id
+    // patch，不同章并发写互不覆盖；skip 扩为 done || generating 杜绝与手动单章同章双写；
+    // 进度改用已派发计数（processed）保证并发下单调，收口后的失败补重试仍串行、语义不变。
+    await runBulkPool({
+      total,
+      concurrency: 2,
+      isCancelled: () => cancelBulkRef.current,
+      onTaskStart: (_i, processed) => setGenProgress({ current: processed, total }),
+      runTask: async (i) => {
+        const cur = activeSolutionRef.current
+        if (!cur) return
+        const ch = cur.chapters[i]
+        if (!ch || ch.gen_status === "done" || ch.gen_status === "generating") return
+        updateChapter(ch.node_id, { gen_status: "generating" }, { persist: false })
+        try {
+          const { content, figures, underlength } = await generateChapterContent(cur, i)
+          // R139：空产出一律不标 done（空章会被后续批量/补齐按「已生成」永久跳过）
+          if (isBlankChapterOutput(content)) {
+            failedCount += 1
+            updateChapter(ch.node_id, { gen_status: "failed" })
+            failedNodes.push({ nodeId: ch.node_id, idx: i, title: ch.title, reason: "模型空产出" })
+            return
+          }
+          updateChapter(ch.node_id, { content, figures, underlength, gen_status: "done" })
+          okCount += 1
+          if (activeChapterId === ch.node_id) {
+            editingContentRef.current = content
+            setEditingContentState(content)
+          }
+        } catch (e) {
+          failedCount += 1
+          const msg = (e instanceof Error ? e.message : String(e)).slice(0, 60)
+          if (!firstError) firstError = msg
+          updateChapter(ch.node_id, { gen_status: "failed" })
+          failedNodes.push({ nodeId: ch.node_id, idx: i, title: ch.title, reason: msg || "生成异常" })
         }
-      } catch (e) {
-        failedCount += 1
-        if (!firstError) firstError = e instanceof Error ? e.message : String(e)
-        updateChapter(ch.node_id, { gen_status: "failed" })
+      },
+    })
+    // R139（标书侧 R126 同口径）：偶发空返回/瞬时异常多数重试一次即可修复，收口前对失败章串行补跑一遍——
+    // 成功即转 done 并扣减失败计数；仍失败落回 failed 并保留真实原因
+    if (!cancelBulkRef.current && failedNodes.length) {
+      const retryTargets = failedNodes.splice(0, failedNodes.length)
+      for (const rt of retryTargets) {
+        if (cancelBulkRef.current) break
+        const ridx = startRec.chapters.findIndex((c) => c.node_id === rt.nodeId)
+        if (ridx < 0) continue
+        updateChapter(rt.nodeId, { gen_status: "generating" }, { persist: false })
+        try {
+          const rout = await generateChapterContent(startRec, ridx)
+          if (!isBlankChapterOutput(rout.content)) {
+            updateChapter(rt.nodeId, {
+              content: rout.content,
+              figures: rout.figures,
+              underlength: rout.underlength,
+              gen_status: "done",
+            })
+            okCount += 1
+            failedCount = Math.max(0, failedCount - 1)
+            if (activeChapterId === rt.nodeId) {
+              editingContentRef.current = rout.content
+              setEditingContentState(rout.content)
+            }
+            continue
+          }
+          failedNodes.push({ ...rt, reason: "重试后仍空产出" })
+        } catch (e) {
+          failedNodes.push({ ...rt, reason: (e instanceof Error ? e.message : String(e)).slice(0, 60) || "重试异常" })
+        }
+        updateChapter(rt.nodeId, { gen_status: "failed" })
       }
     }
     const doneTotal = initialDone + okCount
@@ -1423,7 +1519,7 @@ export function useSolutionStudio() {
     if (cancelBulkRef.current) toast.info("已暂停，可继续生成剩余章节")
     else if (failedCount)
       toast.error(
-        `生成结束，${failedCount} 个章节失败：${firstError.slice(0, 80) || "原因未知"}；可稍后单独重试失败章节`,
+        `生成结束，${failedCount} 个章节仍失败：${failedNodes.length ? formatFailedChapterList(failedNodes) : firstError.slice(0, 80) || "原因未知"}；可到章节列表对失败章节单独重试`,
       )
     else toast.success("全部章节正文生成完毕")
   }, [activeChapterId, flushEditingContent, updateChapter, updateSolution, generateChapterContent])
@@ -1465,10 +1561,15 @@ export function useSolutionStudio() {
     if (exportingWord) return
     setExportingWord(true)
     try {
+      // R147：导出工具链按需加载——docx 与 bidFiles（连带 pdf worker/mermaid 重依赖）在点击时才动态导入
+      const { AlignmentType, HeadingLevel, ImageRun, Paragraph } = await import("docx")
+      const { createFormatDocxKit, downloadDocx, figureToPng, pageOptsFromFormatSettings } = await import(
+        "@/pages/BidWorkspace/bidFiles"
+      )
       // 问题 3：导出全格式驱动（字体/字号/首行缩进/行距/标题/表格/配图），与投标文件导出共用 createFormatDocxKit 同一套映射
       const { fontRun, headingAt, headingPara, bodyPara, splitTableRow, buildFmtTable } = createFormatDocxKit(ssFmt)
       // R007（B-4 阶段一）：前置封面 + 目录（按模板开关），正文追加其后
-      const children: (Paragraph | Table | TableOfContents)[] = [...buildExportFrontMatter(sol, expTpl)]
+      const children: (Paragraph | Table | TableOfContents)[] = [...(await buildExportFrontMatter(sol, expTpl))]
       const h0 = headingAt(0)
       children.push(
         new Paragraph({
@@ -1656,6 +1757,7 @@ export function useSolutionStudio() {
     selectChapter,
     editingContent,
     setEditingContent,
+    autoSaveState,
     chapterBusy,
     generateChapter,
     refineChapter,

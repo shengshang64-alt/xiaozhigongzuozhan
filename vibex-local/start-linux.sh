@@ -146,4 +146,4 @@ ensure_node_pm
 (sleep 3; open_local_app) &
 echo "VibeX local app: http://127.0.0.1:8000"
 echo "PocketBase:      http://127.0.0.1:7000"
-exec "${VITE_CMD[@]}" --config vibex-local/vite.local.config.ts --host 127.0.0.1 --port 8000
+exec "${VITE_CMD[@]}" --config vibex-local/vite.local.config.ts --host 0.0.0.0 --port 8000

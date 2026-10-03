@@ -12,7 +12,6 @@ import {
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { parseCustomerLinesFile } from "@/pages/SolutionStudio/checklistExports"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { SkillPickerFor } from "@/components/common/SkillPicker"
 import { RATING_GROUPS, calcTotal, fmtMoney } from "@/pages/SolutionStudio/checklistTypes"
@@ -129,6 +128,7 @@ export function NewChecklistWizard({ ck }: { ck: UseChecklist }) {
 
   const handleUpload = async (file: File) => {
     try {
+      const { parseCustomerLinesFile } = await import("@/pages/SolutionStudio/checklistExports")
       const lines = await parseCustomerLinesFile(file)
       if (!lines.length) {
         toast.error("未从文件中解析到清单条目")

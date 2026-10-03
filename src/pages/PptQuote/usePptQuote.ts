@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import { getPocketBaseUrl } from "@/lib/pb"
+import { localDateStamp } from "@/lib/dateStamp"
 import { decodeRhToken, vibexAuthHeaders, type RhAccountInfo } from "@/lib/rhLogin"
 import type { LlmMessage } from "@/lib/llm"
 import {
@@ -11,19 +12,18 @@ import {
   resolveAvailableModels,
   type ModelRef,
 } from "@/lib/modelGateway"
+import { localizeLlmError } from "@/lib/llmError"
 import { useCostConfirm } from "@/hooks/useCostConfirm"
 import { useScopeSkills } from "@/hooks/useScopeSkills"
 import { injectSkillBlock, skillBlockFor, skillCostSuffix, type SkillScope } from "@/lib/skillCore"
 import { makeUid, type Chapter, type OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
-import { callAigcAndPoll, formatAigcFailureMessage, type AigcFailure } from "@/lib/aigc"
+import { callAigcAndPoll, formatAigcFailureMessage, previewAigcPrice, type AigcFailure } from "@/lib/aigc"
 import {
   buildSearchQuery,
   searchImages,
   type ImageSearchProvider,
 } from "./imageSearch"
-import { exportDeckPptx, exportSpeechDocx } from "./deckExports"
 import { lintDeck, lintSummaryText } from "./deckLint"
-import { exportQuoteDocx as writeQuoteDocx, exportQuoteXlsx as writeQuoteXlsx } from "./quoteExports"
 import {
   buildDeckBatchMessages,
   buildDeckOutlineMessages,
@@ -61,6 +61,8 @@ import {
   type Slide,
   type SlidePlan,
 } from "./pptQuoteTypes"
+import { recommendFromHistory, type QuoteDimensions } from "./quoteRecommend"
+import { runBatchesWithRetry, withGenerationRetry } from "./deckBatchRecovery"
 import type { CheckProduct, ChecklistRecord } from "@/pages/SolutionStudio/checklistTypes"
 
 // ---------------------------------------------------------------------------
@@ -117,11 +119,10 @@ type MaterialDetail = {
 // callLlmWithFallback 内部处理；错误码翻译成中文）
 // ---------------------------------------------------------------------------
 
-const LLM_ERROR_ZH: Record<string, string> = {
+// 文案基表在 @/lib/llmError（全站唯一），此处只覆写报价侧专属措辞
+const QUOTE_ERROR_ZH: Record<string, string> = {
   timeout: "AI 生成超时（可能服务器繁忙），请稍后重试",
-  not_found: "请求未能到达 AI，请检查网络后重试",
   rh_login_required: "AI 生成服务暂不可用，请检查模型配置",
-  insufficient_balance: "RunningHub 账户余额不足，请充值后重试",
 }
 
 // 循环 9 A2：模型引用改实例级（原模块级 let 在账号切换重挂载/第二实例时会串模型）；
@@ -138,11 +139,13 @@ async function llmGenerate(
     page: "ppt-quote",
     max_tokens: maxTokens,
   })
-  if (r.needsLogin) throw new Error(LLM_ERROR_ZH.rh_login_required)
+  if (r.needsLogin) throw new Error(QUOTE_ERROR_ZH.rh_login_required)
   if (!r.ok || r.status !== "success" || !r.text) {
-    // B3：未收录错误码 / 裸英文串替换为中文通用文案，可读中文串透传（与小智侧同口径）
-    const raw = r.error ?? ""
-    throw new Error(LLM_ERROR_ZH[raw] ?? (/[一-龥]/.test(raw) ? raw : "生成失败，请稍后重试"))
+    // B3 口径已收敛到 @/lib/llmError：未收录错误码 / 裸英文串一律中文兜底，
+    // 可读中文串透传（与小智侧同源，不再各抄一份）
+    throw new Error(
+      localizeLlmError(r.error, { generic: "生成失败，请稍后重试", copy: QUOTE_ERROR_ZH }),
+    )
   }
   return r.text
 }
@@ -550,27 +553,54 @@ export function usePptQuote() {
         }
       }
       let slides: Slide[]
+      // R135：逐页生成韧性——单发/单批的瞬时失败或返空不再整单陪葬：
+      // 每批自动重试 1 次，仍失败按大纲原位留「仅标题占位页」（emptySlide 无正文
+      // 且 layout=auto，不会被自动配图选中二次烧钱），保住骨架供编辑器逐页补全；
+      // 全军覆没才报错且不建空壳 deck。口径对齐标书批量编排「单批失败重试 1 次后跳过」。
+      let placeholderCount = 0
       if (pageCount <= SINGLE_CALL_MAX_PAGES) {
-        setDeckProgress(`正在生成 ${pageCount} 页内容…`)
-        const text = await llmGenerate(buildDeckSingleMessages(ctx, pageCount), MAX_TOKENS_LONGFORM, "ppt-deck", activeModelRef.current)
-        slides = normalizeSlides(parseJsonLoose(text), null)
+        slides = await withGenerationRetry(
+          async (attempt) => {
+            setDeckProgress(attempt === 0 ? `正在生成 ${pageCount} 页内容…` : "生成未完成，正在自动重试…")
+            const text = await llmGenerate(buildDeckSingleMessages(ctx, pageCount), MAX_TOKENS_LONGFORM, "ppt-deck", activeModelRef.current)
+            return normalizeSlides(parseJsonLoose(text), null)
+          },
+          { isEmptyResult: (got) => got.length === 0, emptyMessage: "AI 未返回可用的页面内容，请重试" },
+        )
       } else {
         setDeckProgress("正在生成整体大纲…")
         const outlineText = await llmGenerate(buildDeckOutlineMessages(ctx, pageCount), MAX_TOKENS_OUTLINE, "ppt-deck", activeModelRef.current)
         const plan: SlidePlan[] = normalizeSlidePlan(parseJsonLoose(outlineText), pageCount)
         const allTitles = plan.map((p) => p.title)
         const batches = chunk(plan, BATCH_SIZE)
+        const batchResults = await runBatchesWithRetry<SlidePlan, Slide>({
+          batches,
+          generate: async (batch) => {
+            const batchText = await llmGenerate(
+              buildDeckBatchMessages(ctx, batch, allTitles),
+              MAX_TOKENS_LONGFORM,
+              "ppt-deck",
+              activeModelRef.current,
+            )
+            return normalizeSlides(parseJsonLoose(batchText), batch)
+          },
+          onBatchStart: (i, total, attempt) =>
+            setDeckProgress(
+              attempt === 0
+                ? `正在生成逐页内容（第 ${i + 1}/${total} 批，共 ${plan.length} 页）…`
+                : `第 ${i + 1}/${total} 批生成失败，正在自动重试…`,
+            ),
+        })
         slides = []
-        for (let i = 0; i < batches.length; i += 1) {
-          setDeckProgress(`正在生成逐页内容（第 ${i + 1}/${batches.length} 批，共 ${plan.length} 页）…`)
-          const batchText = await llmGenerate(
-            buildDeckBatchMessages(ctx, batches[i], allTitles),
-            MAX_TOKENS_LONGFORM,
-            "ppt-deck",
-            activeModelRef.current,
-          )
-          slides.push(...normalizeSlides(parseJsonLoose(batchText), batches[i]))
-        }
+        batchResults.forEach((got, i) => {
+          if (got) {
+            slides.push(...got)
+          } else {
+            for (const p of batches[i]) slides.push(emptySlide(p.title))
+            placeholderCount += batches[i].length
+          }
+        })
+        if (!slides.length || placeholderCount === slides.length) throw new Error("PPT 逐页生成均未成功，请稍后重试")
       }
       const created = await apiFetch<DeckRecord>("/api/ppt_decks", {
         method: "POST",
@@ -591,7 +621,11 @@ export function usePptQuote() {
       setCurrentSlideIndex(0)
       setEditorTab("edit")
       setDeckMode("editor")
-      toast.success(`已生成 ${rec.slides.length} 页，可逐页精修后导出`)
+      if (placeholderCount > 0) {
+        toast.warning(`${rec.slides.length - placeholderCount}/${rec.slides.length} 页已生成，${placeholderCount} 页未成功已留标题占位，可在编辑器逐页补全后导出`)
+      } else {
+        toast.success(`已生成 ${rec.slides.length} 页，可逐页精修后导出`)
+      }
       // 自动配图（开关开启时）：失败不阻断主流程，内部已 catch
       if (autoFigureMode !== "off") {
         // 释放当前 deckGenerating 锁后，自动配图会重新上锁
@@ -759,6 +793,8 @@ export function usePptQuote() {
       toast.warning(`导出前自检：${lintSummaryText(lintIssues)}；${lintIssues[0].msg}${lintIssues.length > 1 ? ` 等 ${lintIssues.length} 项` : ""}`)
     }
     try {
+      // R124：pptxgenjs/docx 导出库改为点击导出时才按需加载，PPT 页进页不再背这几百 kB
+      const { exportDeckPptx } = await import("./deckExports")
       await exportDeckPptx(deck, { transition: deckTransition })
       toast.success(
         deckTransition === "none"
@@ -977,7 +1013,7 @@ export function usePptQuote() {
   )
 
   /** 单页 AI 生图（nano-banana-pro）：本地无 RH Key 会 401/412，不阻断主流程 */
-  const aiGenerateImageForSlide = useCallback(
+  const doAiGenerateImageForSlide = useCallback(
     async (index: number, promptOverride?: string) => {
       const deck = activeDeckRef.current
       const sl = deck?.slides?.[index]
@@ -1017,6 +1053,20 @@ export function usePptQuote() {
       }
     },
     [setSlideImage, urlToDataUrl],
+  )
+
+  // 计费契约（useCostConfirm.ts 头注）：付费生图必须包 runWithCostConfirm。对齐标书侧
+  // AI 位图口径：先价格预估（previewAigcPrice 从不 throw），确认后再执行逐页生图。
+  const aiGenerateImageForSlide = useCallback(
+    (index: number, promptOverride?: string) => {
+      void previewAigcPrice("nano-banana-pro", { prompt: "预算预估", aspectRatio: "16:9", page: "ppt-deck" }).then((price) => {
+        const priceText = price.ok && price.message ? `，预估单价 ${price.message}` : ""
+        costConfirm.runWithCostConfirm(() => {
+          void doAiGenerateImageForSlide(index, promptOverride)
+        }, `将调用 AI 为本页生成实景配图（1 次生图调用${priceText}），实际扣费以 RunningHub 为准`)
+      })
+    },
+    [costConfirm, doAiGenerateImageForSlide],
   )
 
   /**
@@ -1118,6 +1168,7 @@ export function usePptQuote() {
       return
     }
     try {
+      const { exportSpeechDocx } = await import("./deckExports")
       await exportSpeechDocx(deck)
       toast.success("讲稿 Word 已导出")
     } catch {
@@ -1435,7 +1486,7 @@ export function usePptQuote() {
 
   const createQuote = useCallback(async () => {
     if (quoteCreating) return
-    const quoteName = nqName.trim() || `报价单 ${new Date().toLocaleDateString("zh-CN")}`
+    const quoteName = nqName.trim() || `报价单 ${localDateStamp()}`
     const groups: QuoteGroup[] = makeDefaultGroups()
     const nqOpp = quoteOppOptions.find((o) => o.id === nqOpportunityId)
     setQuoteCreating(true)
@@ -1768,7 +1819,8 @@ export function usePptQuote() {
     const quote = activeQuoteRef.current
     if (!quote) return
     try {
-      await writeQuoteXlsx(quote)
+      const { exportQuoteXlsx } = await import("./quoteExports")
+      await exportQuoteXlsx(quote)
       toast.success("Excel 报价表已导出（含分组小计与总计公式）")
     } catch {
       toast.error("导出失败，请重试")
@@ -1780,7 +1832,8 @@ export function usePptQuote() {
     const quote = activeQuoteRef.current
     if (!quote) return
     try {
-      await writeQuoteDocx(quote)
+      const { exportQuoteDocx } = await import("./quoteExports")
+      await exportQuoteDocx(quote)
       toast.success("Word 报价单已导出")
     } catch {
       toast.error("导出失败，请重试")
@@ -1966,6 +2019,56 @@ export function usePptQuote() {
     },
     [mutateQuote],
   )
+
+  // quote-history-01 二期：成交参考区间智能推荐（won_sample 样本池 + 客户档案派生维度，纯本地零 AI）
+  const [wonSampleDims, setWonSampleDims] = useState<{ hospital_level: string; beds_total: number } | null>(null)
+  useEffect(() => {
+    const q = activeQuoteRef.current
+    if (!q || quoteMode !== "editor") {
+      setWonSampleDims(null)
+      return
+    }
+    const savedLevel = String(q.hospital_level ?? "").trim()
+    const savedBeds = Number(q.beds_total ?? 0)
+    if (savedLevel || savedBeds > 0) {
+      setWonSampleDims({ hospital_level: savedLevel, beds_total: savedBeds })
+      return
+    }
+    // 报价本身无沉淀元数据 → 经商机名匹配客户档案派生等级/床位（与 toggleWonSample 同口径）
+    const keyword = (q.opportunity_name || q.quote_name || "").slice(0, 12)
+    if (!keyword) {
+      setWonSampleDims({ hospital_level: "", beds_total: 0 })
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await apiFetch<{ items: { level?: string; beds_total?: number }[] }>(
+          `/api/customers?q=${encodeURIComponent(keyword)}&perPage=5`,
+        )
+        const cust = (res.items ?? [])[0]
+        if (!cancelled) setWonSampleDims({ hospital_level: cust ? String(cust.level ?? "") : "", beds_total: cust ? Number(cust.beds_total ?? 0) : 0 })
+      } catch {
+        if (!cancelled) setWonSampleDims({ hospital_level: "", beds_total: 0 })
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [activeQuote?.id, quoteMode])
+
+  const quoteRecommendation = useMemo(() => {
+    if (!activeQuote) return null
+    const dims: QuoteDimensions = {
+      hospital_level: wonSampleDims?.hospital_level || String(activeQuote.hospital_level ?? ""),
+      beds_total: wonSampleDims?.beds_total || Number(activeQuote.beds_total ?? 0),
+      modules: (activeQuote.groups ?? []).map((g) => g.name).filter(Boolean),
+      items: (activeQuote.groups ?? [])
+        .flatMap((g) => (g.items ?? []).map((it) => String(it.product_name ?? it.item_name ?? "").trim()))
+        .filter(Boolean),
+    }
+    return recommendFromHistory(dims, quoteList, activeQuote.id)
+  }, [activeQuote, wonSampleDims, quoteList])
 
   const loadProducts = useCallback(async (uid: string) => {
     setProductLoading(true)
@@ -2188,6 +2291,7 @@ export function usePptQuote() {
     historyQuotes,
     importQuoteHistory,
     toggleWonSample,
+    quoteRecommendation,
     newQuoteOpen,
     setNewQuoteOpen,
     nqName,

@@ -53,6 +53,7 @@ export function ChapterScoreCard({ selfCheck, busy, onOptimize, onRecheck }: Cha
     <div className="shrink-0 rounded-lg border border-border bg-secondary/40 shadow-sm">
       <button
         type="button"
+        aria-expanded={expanded}
         onClick={() => setExpanded((prev) => !prev)}
         className="flex w-full items-center gap-2 px-3 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-lg"
       >
@@ -62,6 +63,11 @@ export function ChapterScoreCard({ selfCheck, busy, onOptimize, onRecheck }: Cha
           <span className="text-xs font-normal text-muted-foreground"> / 100</span>
         </span>
         <span className={VERDICT_BADGE[selfCheck.verdict]}>{VERDICT_LABEL[selfCheck.verdict]}</span>
+        {selfCheck.issues.length > 0 && (
+          <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">
+            {selfCheck.issues.length} 项建议
+          </span>
+        )}
         {checkedLabel && <span className="ml-auto text-xs text-muted-foreground">{checkedLabel}</span>}
         {expanded ? (
           <ChevronUp className={`h-4 w-4 text-muted-foreground ${checkedLabel ? "" : "ml-auto"}`} />

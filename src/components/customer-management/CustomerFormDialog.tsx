@@ -39,10 +39,11 @@ type CustomerFormDialogProps = {
 const inputClass =
   "h-9 w-full rounded-md border border-border bg-background px-2.5 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
 
-function FieldLabel({ label, marked }: { label: string; marked: boolean }) {
+function FieldLabel({ label, marked, required }: { label: string; marked: boolean; required?: boolean }) {
   return (
     <span className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
       {label}
+      {required && <span className="text-destructive">*</span>}
       {marked && <AiBadge />}
     </span>
   )
@@ -104,6 +105,20 @@ export function CustomerFormDialog({
   profileSkills,
 }: CustomerFormDialogProps) {
   const busy = aiMatching || extracting || fetchingSite
+  // T6 内联必填校验：点保存/Enter 时空值当场标红提示，不再只靠父层 toast
+  const [submitTried, setSubmitTried] = useState(false)
+  // 重开对话框时复位提示（React 官方推荐的「渲染期调整状态」，非 effect 内 setState）
+  const [prevOpen, setPrevOpen] = useState(open)
+  if (prevOpen !== open) {
+    setPrevOpen(open)
+    if (open) setSubmitTried(false)
+  }
+  const nameError = submitTried && !draft.hospital_name.trim()
+  const trySave = () => {
+    setSubmitTried(true)
+    if (!draft.hospital_name.trim()) return
+    onSave()
+  }
   // 领导团队成员增删改（复用 setDraftField，会同步清掉 leadership 的 AI 待核标记）
   const updateLeader = (idx: number, member: LeadershipMember) =>
     setDraftField("leadership", draft.leadership.map((m, i) => (i === idx ? member : m)))
@@ -127,7 +142,7 @@ export function CustomerFormDialog({
           )
             return
           e.preventDefault()
-          if (!saving && !busy) onSave()
+          if (!saving && !busy) trySave()
         }}
       >
         <DialogHeader>
@@ -139,13 +154,14 @@ export function CustomerFormDialog({
 
         <div className="mt-2 grid gap-3">
           <div>
-            <FieldLabel label="医院名称" marked={false} />
+            <FieldLabel label="医院名称" marked={false} required />
             <div className="flex gap-2">
               <input
                 value={draft.hospital_name}
                 onChange={(e) => setDraftField("hospital_name", e.target.value)}
                 placeholder="如：苏州大学附属第一医院"
-                className={inputClass}
+                aria-invalid={nameError}
+                className={`${inputClass} ${nameError ? "border-destructive focus-visible:ring-destructive" : ""}`}
               />
               <button
                 type="button"
@@ -158,6 +174,7 @@ export function CustomerFormDialog({
                 {aiMatching ? "匹配中…" : "AI 自动匹配档案"}
               </button>
             </div>
+            {nameError ? <p role="alert" className="mt-1 text-xs text-destructive">请填写医院名称</p> : null}
           </div>
 
           <div className="rounded-md border border-dashed border-border bg-secondary/30 p-3">
@@ -413,7 +430,7 @@ export function CustomerFormDialog({
           </button>
           <button
             type="button"
-            onClick={onSave}
+            onClick={trySave}
             disabled={saving || busy}
             className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-transform hover:scale-105 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >

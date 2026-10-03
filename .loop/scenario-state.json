@@ -1,0 +1,27 @@
+{
+  "schema_version": 2,
+  "current_scenario": "R01",
+  "current_stage": "bid",
+  "stages": ["solution", "bid", "ppt"],
+  "progress": {
+    "R01": { "solution": "pending", "bid": "in_progress", "ppt": "pending", "last_round": 142 }
+  },
+  "defects_by_scenario": {
+    "R01": ["r142-bid-star-toc-pollution-01"]
+  },
+  "linkage_checked": { "R01": false },
+  "fixtures_used": {
+    "R142": {
+      "pack": "_eval/fixture-pack.json",
+      "list": "_eval/素材清单-20261003-1448.md",
+      "seed": 3,
+      "grep": "三明",
+      "fingerprints": ["047c55d2", "939be5d4", "18c09560", "e1ea77ae", "0ec7f6c0", "3f1d6dd7", "98b1ef50", "ec6043a3"],
+      "retrievable": "5/8",
+      "used_fixture": "0ec7f6c0",
+      "noise_notes": "F05 精简版(0ec7f6c0)素材侧含2处脏：▲双定义自相矛盾(扣分 vs 无效投标)、预算=人民币XXXX万元占位未填；本轮招标即用它，team可见非敏感"
+    }
+  },
+  "counters": { "scenarios_done": 0, "stages_done": 0, "no_finding_streak": 0 },
+  "resume_hint": "R142 为专项轮D首轮，建立游标：R01 bid 阶段单阶段走查完成并复现 F-A(A类,记backlog未修)。下轮续 R01 其余阶段或按轮转推进；R01 需做一次 §2.4 三模块一致性检查后方可标 done。F-A 建议下一批连同 R50/F2 条款抽取一并处理(见 ledger backlog r142-bid-star-toc-pollution-01)。"
+}

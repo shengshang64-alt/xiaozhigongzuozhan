@@ -1,4 +1,5 @@
 import type { ParseReport } from "./bidTypes"
+import { isStarClauseNoiseLine } from "./starClauseNoise"
 
 // ---------------------------------------------------------------------------
 // R005（B-1 阶段一）：实质性条款覆盖矩阵——从解析报告本地推导，零 AI 费用。
@@ -70,6 +71,8 @@ const STAR_MARK_RE = /[★☆▲△]/
  * 矩阵必须按「条」归行：标记行起一条，后续非标记行并入；否则逐行拆分会把 11 条撑成
  * 28 行（光杆 ★N 行+正文行+吸收碎片行各占一行），「未覆盖」计数虚高。
  * 旧数据（单行"★N"）每行都含标记 → 每行各自成条，行为与旧版一致。
+ * R144：噪声标记行（目录行/标注含义句）连同其续行不建条——覆盖「AI 补扫」直接写入、
+ * 尚未过 normalizeParseReport 的内存态报告，矩阵与关键项清单即时干净（与本地扫描同一真源口径）。
  */
 function clausesOf(report: ParseReport | null | undefined, key: string): string[] {
   const clauses: string[] = []
@@ -77,7 +80,7 @@ function clausesOf(report: ParseReport | null | undefined, key: string): string[
   for (const line of linesOf(report, key)) {
     if (STAR_MARK_RE.test(line)) {
       if (cur.length) clauses.push(cur.join(" "))
-      cur = [line]
+      cur = isStarClauseNoiseLine(line) ? [] : [line]
     } else if (cur.length) {
       cur.push(line)
     }
@@ -139,4 +142,57 @@ export function writeComplianceProgress(projectId: string, map: ComplianceProgre
   } catch {
     /* 隐私模式 / 配额超：静默降级为仅本次会话生效 */
   }
+}
+
+// ------------------------------ 关键项判定与按类汇总（R133，纯函数） ------------------------------
+
+/** 废标级关键条款：废标项或强制条款（★条款恒为强制）。交卷前须优先清零。 */
+export function isCriticalComplianceRow(row: Pick<ComplianceRow, "kind" | "mandatory">): boolean {
+  return row.kind === "void" || row.mandatory
+}
+
+export type ComplianceKindSummary = {
+  total: number
+  uncovered: number
+  uncoveredCritical: number
+}
+
+export type ComplianceSummary = {
+  kinds: Record<ComplianceKind, ComplianceKindSummary>
+  total: number
+  uncovered: number
+  uncoveredCritical: number
+}
+
+/**
+ * 按类型汇总矩阵覆盖情况：给定行与进度标注，产出每类与全局的总数/未覆盖/关键未覆盖。
+ * 面板顶部徽标与类型筛选标签同源取数，「关键」判定统一走 isCriticalComplianceRow，避免口径分叉。
+ */
+export function summarizeCompliance(
+  rows: ComplianceRow[],
+  progress: ComplianceProgressMap,
+): ComplianceSummary {
+  const kinds = {
+    star: { total: 0, uncovered: 0, uncoveredCritical: 0 },
+    void: { total: 0, uncovered: 0, uncoveredCritical: 0 },
+    qual: { total: 0, uncovered: 0, uncoveredCritical: 0 },
+    comp: { total: 0, uncovered: 0, uncoveredCritical: 0 },
+  } as Record<ComplianceKind, ComplianceKindSummary>
+  const summary: ComplianceSummary = { kinds, total: 0, uncovered: 0, uncoveredCritical: 0 }
+  for (const r of rows) {
+    const status = progress[r.id]?.status ?? "open"
+    const critical = isCriticalComplianceRow(r)
+    const k = kinds[r.kind]
+    k.total++
+    summary.total++
+    if (status === "open") {
+      k.uncovered++
+      summary.uncovered++
+      if (critical) {
+        k.uncoveredCritical++
+        summary.uncoveredCritical++
+      }
+    }
+  }
+  return summary
 }

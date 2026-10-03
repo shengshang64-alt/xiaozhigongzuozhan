@@ -1,5 +1,7 @@
-import { useState } from "react"
-import { AlertTriangle, ArrowRightCircle, CheckCircle2, ClipboardCheck, FileSearch, Loader2, Scale, ShieldAlert, TriangleAlert, Wand2 } from "lucide-react"
+import { useMemo, useState } from "react"
+import { AlertTriangle, ArrowRightCircle, CheckCircle2, ClipboardCheck, Download, FileSearch, Loader2, Scale, ShieldAlert, SpellCheck, TriangleAlert, Wand2 } from "lucide-react"
+import { copyTextToClipboard } from "@/lib/clipboard"
+import { formatDateTimeDisplay } from "@/lib/dateDisplay"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -7,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { SubmissionChecklistPanel } from "@/components/bid-workspace/SubmissionChecklistPanel"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import {
+  aggregateAuditByChapter,
   COVERAGE_LEVEL_LABEL,
   FORMAT_RULE_LABEL,
   REVIEW_STATUS_LABEL,
@@ -14,11 +17,16 @@ import {
   SUBMISSION_KIND_LABEL,
   type CoverageAuditEntry,
   type CoverageLevel,
+  type ChapterAuditImprovement,
   type FactConflict,
   type ReviewStatus,
   type SeverityLevel,
   type SubmissionCheckItem,
+  type TextAuditReport,
 } from "@/pages/BidWorkspace/bidTypes"
+
+// D3/R89：AI 内容护栏标签映射（consistencyGuard 模块自源，不经 bidTypes 中转）
+import { CONSISTENCY_RULE_LABEL, CONSISTENCY_SEVERITY_LABEL } from "@/pages/BidWorkspace/prompts/consistencyGuard"
 
 type SubmissionCheckPanelProps = Pick<
   UseBidWorkspace,
@@ -32,9 +40,16 @@ type SubmissionCheckPanelProps = Pick<
   | "coverageAuditBusy"
   | "startCoverageAudit"
   | "supplementFromAudit"
+  | "chapterReflowBusy"
+  | "reflowChapterFromAudit"
   | "isArchivedLocked"
   | "startFactPatch"
   | "factPatchBusy"
+  | "textAuditBusy"
+  | "startTextAudit"
+  | "fixTyposBusy"
+  | "startFixTypos"
+  | "jumpToAuditChapter"
 >
 
 const SEVERITY_VARIANT: Record<SeverityLevel, "danger" | "warning" | "neutral"> = {
@@ -150,6 +165,100 @@ const COVERAGE_BADGE_CLASS: Record<CoverageLevel, string> = {
   full: "bg-primary/10 text-primary",
   partial: "bg-warning/10 text-warning",
   missing: "bg-destructive/10 text-destructive",
+  over: "border border-destructive/40 bg-destructive/10 text-destructive",
+}
+
+/** R103：按章聚合改进建议列表——聚合章内问题小节的漏点/收敛要求与建议，支持复制回注文本与整章串行回注 */
+function ChapterImprovementList({
+  improvements,
+  locked,
+  busy,
+  reflowBusy,
+  onReflow,
+}: {
+  improvements: ChapterAuditImprovement[]
+  locked: boolean
+  busy: boolean
+  reflowBusy: string | null
+  onReflow: (chapterId: string) => void
+}) {
+  if (!improvements.length) {
+    return (
+      <p className="mt-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-4 text-center text-xs font-medium text-primary">
+        全部技术节均已按写作方案落实，无按章回注的改进建议
+      </p>
+    )
+  }
+  return (
+    <ul className="mt-3 flex flex-col gap-2">
+      {improvements.map((group) => (
+        <li
+          key={group.chapterId}
+          className={`rounded-md border px-3 py-2.5 ${
+            group.worst === "missing" || group.worst === "over"
+              ? "border-destructive/30 bg-destructive/5"
+              : "border-warning/30 bg-warning/5"
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${COVERAGE_BADGE_CLASS[group.worst]}`}>
+                {COVERAGE_LEVEL_LABEL[group.worst]}
+              </span>
+              <span className="text-xs font-medium text-card-foreground">{group.chapterTitle}</span>
+              <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">问题 {group.problemCount} 节</span>
+            </span>
+            <span className="flex shrink-0 items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  void copyTextToClipboard(group.directive, {
+                    successMessage: `已复制「${group.chapterTitle}」改进建议，可粘贴给人工修改参考`,
+                    errorMessage: "复制失败，请手动选择文本复制",
+                  })
+                }}
+                className="shrink-0 border-border text-muted-foreground hover:bg-secondary"
+              >
+                复制建议
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={locked || busy || !!reflowBusy}
+                onClick={() => onReflow(group.chapterId)}
+                title="把本章各问题小节的漏点/收敛要求注入对应小节重写，逐条串行执行（一次费用确认，其余小节不动）"
+                className="shrink-0 border-primary/40 text-primary hover:bg-primary/10"
+              >
+                {reflowBusy === group.chapterId ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Wand2 className="mr-1.5 h-3.5 w-3.5" />}
+                {reflowBusy === group.chapterId ? "回注中…" : "整章回注整改"}
+              </Button>
+            </span>
+          </div>
+          <ul className="mt-1.5 flex flex-col gap-1">
+            {group.items.map((item) => (
+              <li key={item.leaf_id} className="rounded-md border border-border/60 bg-background px-2.5 py-1.5">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${COVERAGE_BADGE_CLASS[item.covered]}`}>
+                    {COVERAGE_LEVEL_LABEL[item.covered]}
+                  </span>
+                  <span className="min-w-0 flex-1 text-xs font-medium text-card-foreground">{item.title}</span>
+                </div>
+                {!!item.missing_points.length && (
+                  <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs leading-relaxed text-muted-foreground">
+                    {item.missing_points.map((point, i) => (
+                      <li key={`${item.leaf_id}-p${i}`}>{point}</li>
+                    ))}
+                  </ul>
+                )}
+                {item.suggestion && <p className="mt-1 text-xs leading-relaxed text-muted-foreground">建议：{item.suggestion}</p>}
+              </li>
+            ))}
+          </ul>
+        </li>
+      ))}
+    </ul>
+  )
 }
 
 function CoverageAuditCard({
@@ -159,6 +268,9 @@ function CoverageAuditCard({
   chaptersReady,
   onRun,
   onSupplement,
+  improvements,
+  reflowBusy,
+  onReflow,
 }: {
   entries: CoverageAuditEntry[] | null
   busy: boolean
@@ -166,10 +278,16 @@ function CoverageAuditCard({
   chaptersReady: boolean
   onRun: () => void
   onSupplement: (leafId: string) => void
+  improvements: ChapterAuditImprovement[]
+  reflowBusy: string | null
+  onReflow: (chapterId: string) => void
 }) {
+  // R103：视图切换——逐节明细（默认，行为与旧版一致）/ 按章聚合（章级改进建议与整章回注）
+  const [view, setView] = useState<"leaf" | "chapter">("leaf")
   const fullCount = entries?.filter((e) => e.covered === "full").length ?? 0
   const partialCount = entries?.filter((e) => e.covered === "partial").length ?? 0
   const missingCount = entries?.filter((e) => e.covered === "missing").length ?? 0
+  const overCount = entries?.filter((e) => e.covered === "over").length ?? 0
   return (
     <div className="mt-4 rounded-lg border border-border bg-card p-4 shadow-md">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -184,9 +302,30 @@ function CoverageAuditCard({
             )}
           </h2>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            逐节核对写作方案（写作焦点、必守事实、表格计划）是否在正文中落实，输出覆盖档位与漏点清单；部分落实 / 未落实的节可一键补写（漏点作为附加要求注入该节重写，走一次生成费用确认）
+            逐节核对写作方案（写作焦点、必守事实、表格计划）是否在正文中落实，输出覆盖档位、漏点与过度承诺（加码）清单；部分落实 / 未落实的节可一键补写，过度承诺的节可一键修正（作为附加要求注入该节重写，走一次生成费用确认）；切「按章聚合」可按章查看全部改进建议并一键回注整改
           </p>
         </div>
+        {entries && (
+          <span className="flex shrink-0 items-center gap-1.5">
+            {([
+              { key: "leaf", label: "逐节明细" },
+              { key: "chapter", label: "按章聚合" },
+            ] as const).map((v) => (
+              <button
+                key={v.key}
+                type="button"
+                onClick={() => setView(v.key)}
+                className={`rounded-full px-2.5 py-0.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                  view === v.key
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:text-card-foreground"
+                }`}
+              >
+                {v.label}
+              </button>
+            ))}
+          </span>
+        )}
         <Button
           variant="outline"
           size="sm"
@@ -216,7 +355,9 @@ function CoverageAuditCard({
             <span className="rounded-full bg-primary/10 px-3 py-1 font-medium text-primary">全部落实 {fullCount}</span>
             <span className="rounded-full bg-warning/10 px-3 py-1 font-medium text-warning">部分落实 {partialCount}</span>
             <span className="rounded-full bg-destructive/10 px-3 py-1 font-medium text-destructive">未落实 {missingCount}</span>
+            <span className="rounded-full bg-destructive/10 px-3 py-1 font-medium text-destructive">过度承诺 {overCount}</span>
           </div>
+          {view === "leaf" && (
           <ul className="mt-3 flex flex-col gap-2">
             {entries.map((entry) => (
               <li
@@ -224,9 +365,11 @@ function CoverageAuditCard({
                 className={`rounded-md border px-3 py-2.5 ${
                   entry.covered === "missing"
                     ? "border-destructive/30 bg-destructive/5"
-                    : entry.covered === "partial"
-                      ? "border-warning/30 bg-warning/5"
-                      : "border-border bg-muted/30"
+                    : entry.covered === "over"
+                      ? "border-destructive/30 bg-card"
+                      : entry.covered === "partial"
+                        ? "border-warning/30 bg-warning/5"
+                        : "border-border bg-muted/30"
                 }`}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -242,10 +385,10 @@ function CoverageAuditCard({
                       variant="outline"
                       disabled={locked || busy || !chaptersReady}
                       onClick={() => onSupplement(entry.leaf_id)}
-                      title={locked ? "已归档项目为只读，解除归档后可编辑" : "把漏点作为附加要求注入该节重写（走一次生成费用确认）"}
+                      title={locked ? "已归档项目为只读，解除归档后可编辑" : entry.covered === "over" ? "把过度承诺点作为收敛要求注入该节重写（走一次生成费用确认）" : "把漏点作为附加要求注入该节重写（走一次生成费用确认）"}
                       className="shrink-0 border-primary/40 text-primary hover:bg-primary/10"
                     >
-                      补写
+                      {entry.covered === "over" ? "修正" : "补写"}
                     </Button>
                   )}
                 </div>
@@ -262,12 +405,209 @@ function CoverageAuditCard({
               </li>
             ))}
           </ul>
+          )}
+          {view === "chapter" && (
+            <ChapterImprovementList
+              improvements={improvements}
+              locked={locked}
+              busy={busy || !chaptersReady}
+              reflowBusy={reflowBusy}
+              onReflow={onReflow}
+            />
+          )}
         </>
       )}
       {!entries && !busy && chaptersReady && (
         <p className="mt-3 rounded-md border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">
           尚未运行覆盖审计；审计结果仅本次会话内有效，不落库
         </p>
+      )}
+    </div>
+  )
+}
+
+/** T18：文本审计卡（错别字 + 逻辑谬误，易标 rejection-check 两路移植）——独立于交卷体检的常驻卡 */
+function TextAuditCard({
+  report,
+  busy,
+  fixBusy,
+  locked,
+  hasExternal,
+  onRun,
+  onFixTypos,
+  onJumpChapter,
+  onExport,
+}: {
+  report: TextAuditReport | null
+  busy: "" | "typo" | "logic" | "both"
+  fixBusy: boolean
+  locked: boolean
+  hasExternal: boolean
+  onRun: (scope: "typo" | "logic" | "both") => void
+  onFixTypos: () => void
+  onJumpChapter: (docId: string) => void
+  onExport: () => void
+}) {
+  const typoCount = report?.typos.length ?? 0
+  const logicCount = report?.logic.length ?? 0
+  const busyLabel = busy === "typo" ? "错别字检查中…" : busy === "logic" ? "逻辑检查中…" : busy === "both" ? "文本审计中…" : ""
+  return (
+    <div className="rounded-lg border border-border bg-card p-4 shadow-md">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="flex flex-wrap items-center gap-2 text-sm font-semibold text-card-foreground">
+            <FileSearch className="h-4 w-4 text-primary" />
+            文本审计（错别字 · 逻辑谬误）
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                typoCount + logicCount ? "bg-warning/10 text-warning" : report ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {report ? (typoCount + logicCount ? `错别字 ${typoCount} · 逻辑 ${logicCount}` : "未发现问题") : "未检查"}
+            </span>
+            {report && (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                {report.source === "external" ? "对象：外部投标文件" : "对象：成稿章节"} · {formatDateTimeDisplay(report.checked_at)}
+              </span>
+            )}
+          </h2>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            AI 检查高确信错别字（逐条经原文位置校验，幻觉条目自动丢弃）与逻辑谬误/前后不一致（人员、设备、工期、金额、参数等口径）。
+            {hasExternal ? "当前检查对象为外部投标文件全文。" : "当前检查对象为已成稿章节正文。"}
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!!busy || locked}
+            onClick={() => onRun("typo")}
+            className="h-7 border-primary/40 text-primary hover:bg-primary/10"
+          >
+            {busy === "typo" ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <SpellCheck className="mr-1 h-3 w-3" />}
+            错别字检查
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!!busy || locked}
+            onClick={() => onRun("logic")}
+            className="h-7 border-primary/40 text-primary hover:bg-primary/10"
+          >
+            {busy === "logic" ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Scale className="mr-1 h-3 w-3" />}
+            逻辑检查
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!!busy || locked}
+            onClick={() => onRun("both")}
+            className="h-7 border-primary/40 text-primary hover:bg-primary/10"
+          >
+            {busy === "both" ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Wand2 className="mr-1 h-3 w-3" />}
+            一键审计
+          </Button>
+          {report && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!!busy}
+              onClick={onExport}
+              className="h-7 border-border text-muted-foreground hover:text-foreground"
+            >
+              <Download className="mr-1 h-3 w-3" />
+              导出报告
+            </Button>
+          )}
+        </div>
+      </div>
+      {busy && <p className="mt-2 flex items-center gap-1.5 text-xs text-primary"><Loader2 className="h-3.5 w-3.5 animate-spin" />{busyLabel}超长正文自动分段检查，进度见 toast。</p>}
+      {report && (
+        <div className="mt-3 flex flex-col gap-3">
+          {!!report.failed?.length && (
+            <div className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs leading-relaxed">
+              <p className="font-medium text-warning">核对失败的章（{report.failed.length}）——重跑「一键审计」只补这些章</p>
+              <ul className="mt-1 flex flex-col gap-0.5 text-muted-foreground">
+                {report.failed.map((f, i) => (
+                  <li key={`f-${i}`}>
+                    {f.docTitle}：{f.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {typoCount > 0 && (
+            <details open>
+              <summary className="flex cursor-pointer flex-wrap items-center gap-2 text-xs font-semibold text-card-foreground">
+                错别字（{typoCount} 处，按行号定位）
+                {!hasExternal && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={fixBusy || locked}
+                    onClick={onFixTypos}
+                    className="h-6 border-primary/40 px-2 text-xs text-primary hover:bg-primary/10"
+                  >
+                    {fixBusy ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <CheckCircle2 className="mr-1 h-3 w-3" />}
+                    一键修正
+                  </Button>
+                )}
+              </summary>
+              <ul className="mt-2 flex flex-col gap-1.5">
+                {report.typos.map((t, i) => (
+                  <li key={`t-${i}`} className="rounded-md border border-border/60 bg-background px-3 py-2 text-xs leading-relaxed">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="warning">错别字</Badge>
+                      <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+                        {t.docTitle} · 第 {t.line} 行附近
+                      </span>
+                      <span className="font-medium text-destructive">{t.wrongText}</span>
+                      <ArrowRightCircle className="h-3 w-3 text-primary" />
+                      <span className="font-medium text-primary">{t.correctText}</span>
+                    </div>
+                    <p className="mt-1 truncate text-muted-foreground">…{t.excerpt}…</p>
+                    <p className="mt-0.5 text-muted-foreground">{t.reason}</p>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+          {logicCount > 0 && (
+            <details>
+              <summary className="cursor-pointer text-xs font-semibold text-card-foreground">逻辑谬误 / 前后不一致（{logicCount} 处）</summary>
+              <ul className="mt-2 flex flex-col gap-1.5">
+                {report.logic.map((l, i) => (
+                  <li key={`l-${i}`} className="rounded-md border border-border/60 bg-background px-3 py-2 text-xs leading-relaxed">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="warning">逻辑</Badge>
+                      <span className="font-medium text-card-foreground">{l.title}</span>
+                      <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+                        {l.docTitle} · {l.locationHint}
+                      </span>
+                      {!hasExternal && l.docId !== "external" && (
+                        <button
+                          type="button"
+                          onClick={() => onJumpChapter(l.docId)}
+                          className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary hover:bg-primary/20"
+                        >
+                          跳转修改
+                        </button>
+                      )}
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-muted-foreground">原文：{l.originalText}</p>
+                    <p className="mt-0.5 text-muted-foreground">{l.fallacyReason}</p>
+                    <p className="mt-0.5 text-primary">建议：{l.suggestion}</p>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+          {!typoCount && !logicCount && (
+            <p className="rounded-md border border-primary/30 bg-primary/5 px-3 py-4 text-center text-xs font-medium text-primary">
+              本次审计未发现高确信的错别字或逻辑问题（不代表零风险，重要标书建议人工再通读一遍）
+            </p>
+          )}
+        </div>
       )}
     </div>
   )
@@ -359,9 +699,16 @@ export function SubmissionCheckPanel({
   coverageAuditBusy,
   startCoverageAudit,
   supplementFromAudit,
+  chapterReflowBusy,
+  reflowChapterFromAudit,
   isArchivedLocked,
   startFactPatch,
   factPatchBusy,
+  textAuditBusy,
+  startTextAudit,
+  fixTyposBusy,
+  startFixTypos,
+  jumpToAuditChapter,
 }: SubmissionCheckPanelProps) {
   // 第九轮改造 2：核销筛选 + 跳过原因弹窗（纯 UI 状态）
   const [reviewFilter, setReviewFilter] = useState<"all" | ReviewStatus>("all")
@@ -369,6 +716,11 @@ export function SubmissionCheckPanel({
   const [skipReason, setSkipReason] = useState("")
   const check = activeProject?.submission_check ?? null
   const chaptersReady = (activeProject?.bid_chapters ?? []).some((c) => (c.content ?? "").trim())
+  // R103：按章聚合改进建议（纯本地聚合零 AI；供覆盖审计卡「按章聚合」视图与整章回注消费）
+  const coverageImprovements = useMemo(
+    () => (coverageAudit && activeProject ? aggregateAuditByChapter(coverageAudit, activeProject.bid_outline ?? []) : []),
+    [coverageAudit, activeProject],
+  )
   const covered = check ? check.items.filter((i) => i.covered).length : 0
   const total = check?.items.length ?? 0
   const gaps = check ? check.items.filter((i) => !i.covered) : []
@@ -380,6 +732,8 @@ export function SubmissionCheckPanel({
   const formatHits = formatReport?.hits ?? []
   // 循环 8 A3：事实一致性核对结果（null=未跑/失败或老数据，[]=跑过且无矛盾，不渲染区卡）
   const factConflicts = check?.fact_conflicts ?? null
+  // D3/R89：AI 内容护栏结果（null=未跑/失败，[]=跑过无问题；只报不拦，绿态也渲染区卡收口）
+  const consistencyIssues = check?.consistency_issues ?? null
   return (
     <section className="mx-auto max-w-7xl px-4 pb-14">
       <header className="rounded-2xl border border-border bg-gradient-to-br from-background via-secondary to-card px-6 py-6 shadow-md animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -472,6 +826,16 @@ export function SubmissionCheckPanel({
                   {factConflicts.length ? `事实矛盾 ${factConflicts.length} 处` : "事实口径一致"}
                 </span>
               )}
+              {consistencyIssues && (
+                <span
+                  className={`flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
+                    consistencyIssues.length ? "bg-warning/10 text-warning" : "bg-primary/10 text-primary"
+                  }`}
+                >
+                  <FileSearch className="h-3.5 w-3.5" />
+                  {consistencyIssues.length ? `内容护栏 ${consistencyIssues.length} 处提示` : "内容护栏通过"}
+                </span>
+              )}
               {gaps.length > 0 && (
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-medium ${
@@ -482,7 +846,7 @@ export function SubmissionCheckPanel({
                 </span>
               )}
               <span className="ml-auto text-xs text-muted-foreground">
-                审计时间：{new Date(check.checked_at).toLocaleString("zh-CN")}
+                审计时间：{formatDateTimeDisplay(check.checked_at)}
               </span>
             </div>
             {submissionFailed && (
@@ -602,7 +966,7 @@ export function SubmissionCheckPanel({
                     </h2>
                     <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                       按编制环节「格式与暗标设置」中勾选的检查项对各章正文本地扫描（零费用）：超链接 / 加粗下划线标记 / 水印词 / 彩色标记 / 空白页 / 连续空行 / 半角标点密度 / 暗标页数交叉核对 / 数字口径一致性（有全局事实表时自动加测）
-                      {formatReport.checked_at ? ` · 检查时间 ${new Date(formatReport.checked_at).toLocaleString("zh-CN")}` : ""}
+                      {formatReport.checked_at ? ` · 检查时间 ${formatDateTimeDisplay(formatReport.checked_at)}` : ""}
                     </p>
                   </div>
                 </div>
@@ -647,6 +1011,69 @@ export function SubmissionCheckPanel({
                 onPatch={() => startFactPatch(factConflicts)}
               />
             )}
+            {/* D3/R89：第四区卡——AI 内容护栏（只报不拦；null=未跑/失败不渲染；处置由用户判断） */}
+            {consistencyIssues && (
+              <div className="rounded-lg border border-border bg-card p-4 shadow-md">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h2 className="flex flex-wrap items-center gap-2 text-sm font-semibold text-card-foreground">
+                      <FileSearch className="h-4 w-4 text-primary" />
+                      AI 内容护栏（量化依据 / 量级自洽 / 政策时效）
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                          consistencyIssues.length ? "bg-warning/10 text-warning" : "bg-primary/10 text-primary"
+                        }`}
+                      >
+                        {consistencyIssues.length ? `提示 ${consistencyIssues.length} 处` : "未发现问题"}
+                      </span>
+                    </h2>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                      逐章将正文与全局事实表、招标原文、知识库参考做语义核对（与本地数字对账互补不替代）；
+                      只报不拦——不自动改写任何正文，是否修改由你判断。受每日预算闸限制，超预算章节可能未检查。
+                    </p>
+                  </div>
+                </div>
+                {consistencyIssues.length === 0 ? (
+                  <p className="mt-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-4 text-center text-xs font-medium text-primary">
+                    各章未发现量化依据、量级自洽或政策时效问题
+                  </p>
+                ) : (
+                  <ul className="mt-3 flex flex-col gap-1.5">
+                    {consistencyIssues.map((it, i) => (
+                      <li
+                        key={`${it.rule}-${i}`}
+                        className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-background px-3 py-2 text-xs"
+                      >
+                        <span
+                          className={`shrink-0 rounded-full px-2 py-0.5 font-medium ${
+                            it.severity === "critical"
+                              ? "bg-destructive/10 text-destructive"
+                              : it.severity === "major"
+                                ? "bg-warning/10 text-warning"
+                                : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {CONSISTENCY_SEVERITY_LABEL[it.severity]}
+                        </span>
+                        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 font-medium text-muted-foreground">
+                          {CONSISTENCY_RULE_LABEL[it.rule]}
+                        </span>
+                        {it.location && <span className="shrink-0 font-medium text-card-foreground">{it.location}</span>}
+                        <span className="min-w-0 flex-1 leading-relaxed text-card-foreground">{it.issue}</span>
+                        {it.evidence && (
+                          <span className="w-full min-w-0 truncate leading-relaxed text-muted-foreground">
+                            原文：{it.evidence}
+                          </span>
+                        )}
+                        {it.suggestion && (
+                          <span className="w-full min-w-0 leading-relaxed text-primary/90">建议：{it.suggestion}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div className="rounded-2xl border border-dashed border-border bg-card py-16 text-center shadow-md">
@@ -655,6 +1082,20 @@ export function SubmissionCheckPanel({
             <p className="mt-1 text-xs text-muted-foreground">模拟评标看分数，交卷体检看响应——两项都过了再出手</p>
           </div>
         )}
+        {/* T18：文本审计卡（错别字 + 逻辑谬误）——独立于交卷体检的常驻卡，自成入口自成存档 */}
+        <TextAuditCard
+          report={activeProject?.text_audit ?? null}
+          busy={textAuditBusy}
+          fixBusy={fixTyposBusy}
+          locked={isArchivedLocked}
+          hasExternal={activeProject?.bid_source_mode === "external" && !!(activeProject?.bid_external_text ?? "").trim()}
+          onRun={startTextAudit}
+          onFixTypos={startFixTypos}
+          onJumpChapter={jumpToAuditChapter}
+          onExport={() => {
+            if (activeProject) void import("@/pages/BidWorkspace/bidFiles").then((m) => m.exportTextAuditDocx(activeProject))
+          }}
+        />
         {/* 循环 5 A2：覆盖审计卡——与交卷体检互补（体检查响应覆盖，审计查写作方案落实），始终可见 */}
         <CoverageAuditCard
           entries={coverageAudit}
@@ -663,6 +1104,9 @@ export function SubmissionCheckPanel({
           chaptersReady={chaptersReady}
           onRun={startCoverageAudit}
           onSupplement={supplementFromAudit}
+          improvements={coverageImprovements}
+          reflowBusy={chapterReflowBusy}
+          onReflow={reflowChapterFromAudit}
         />
         {/* R25（A3 / bid-checklist-01）：交卷前合规清单——形式要件与资质文件逐项确认，与排版/内容检查互补；key 按项目重挂载以本机初始化进度 */}
         <SubmissionChecklistPanel

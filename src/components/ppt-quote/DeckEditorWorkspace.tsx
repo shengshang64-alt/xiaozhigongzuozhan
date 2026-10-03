@@ -45,7 +45,7 @@ type DeckEditorWorkspaceProps = {
   applyPoolImagesToHinted: () => void
   /** 逐页联网搜图 / AI 生图 */
   searchAndAttachImage: (index: number, query?: string, providerOverride?: ImageSearchProvider) => Promise<boolean>
-  aiGenerateImageForSlide: (index: number, promptOverride?: string) => Promise<boolean>
+  aiGenerateImageForSlide: (index: number, promptOverride?: string) => void
   autoFigureProvider: ImageSearchProvider
   setAutoFigureProvider: (v: ImageSearchProvider) => void
   slideFigureBusy: { index: number; kind: "search" | "ai" | "" }
