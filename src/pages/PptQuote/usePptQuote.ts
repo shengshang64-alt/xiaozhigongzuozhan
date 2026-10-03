@@ -112,6 +112,7 @@ type MaterialDetail = {
   bid_outline?: OutlineNode[]
   chapters?: Chapter[]
   bid_chapters?: Chapter[]
+  tender_text?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -283,7 +284,8 @@ export function usePptQuote() {
     const rec = await apiFetch<MaterialDetail>(path)
     const outline = (ref.type === "solution" ? rec.outline : rec.bid_outline) ?? []
     const chapters = (ref.type === "solution" ? rec.chapters : rec.bid_chapters) ?? []
-    return buildMaterialText(ref.name, outline, chapters)
+    // R149：标书项目带上招标原文节选，否则仅有大纲/章节时素材实质为空，生成会凭空编造事实
+    return buildMaterialText(ref.name, outline, chapters, 4200, ref.type === "bid" ? rec.tender_text ?? "" : "")
   }, [])
 
   // ------------------------------ PPT 列表 ------------------------------

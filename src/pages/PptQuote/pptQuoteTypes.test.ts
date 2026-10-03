@@ -342,3 +342,72 @@ describe("historyQuotesFor（同商机历史报价）", () => {
     expect(historyQuotesFor(cur, all, 2).map((q) => q.id)).toEqual(["new", "mid"])
   })
 })
+
+// ---------------------------------------------------------------------------
+// R149：标书项目素材注入招标原文节选（防 PPT 凭空编造事实）
+// ---------------------------------------------------------------------------
+
+import { buildMaterialText, tenderFactExcerpt } from "./pptQuoteTypes"
+
+const R149_TENDER = [
+  "项目名称：三明市中西医结合医院信息化整体提升项目",
+  "采购人：三明市中西医结合医院",
+  "编制时间：2026年7月",
+  "目 录",
+  "第一章 投标邀请 3",
+  "1.1 项目概况 3",
+  "第二章 采购需求（项目背景、目标、范围与前置条件） 6",
+  "2.2 项目目标 6",
+  "第二章 采购需求（项目背景、目标、范围与前置条件）",
+  "2.1 项目背景",
+  "医院决定实施为期三年（2026—2028年）的信息化整体提升项目。",
+  "2.2 项目目标",
+  "总体目标：围绕电子病历系统应用水平分级评价五级、医院信息互联互通标准化成熟度测评五级乙等、医院智慧服务分级评估三级。",
+  "2.3 建设范围",
+  "本项目建设范围共九大类，合计约206个系统/子系统模块。",
+].join("\n")
+
+describe("tenderFactExcerpt（R149 素材链路修复）", () => {
+  it("保留头部项目事实与第二章正文窗口，剔除目录页码行", () => {
+    const got = tenderFactExcerpt(R149_TENDER)
+    expect(got).toContain("项目名称：三明市中西医结合医院信息化整体提升项目")
+    expect(got).toContain("2026—2028年")
+    expect(got).toContain("互联互通标准化成熟度测评五级乙等")
+    expect(got).toContain("206个系统/子系统模块")
+    // 目录行（带页码）不得混入
+    expect(got).not.toContain("第一章 投标邀请 3")
+    expect(got).not.toContain("2.2 项目目标 6")
+  })
+
+  it("尊重 maxChars 上限；空文本返回空串", () => {
+    expect(tenderFactExcerpt(R149_TENDER, 120).length).toBeLessThanOrEqual(120)
+    expect(tenderFactExcerpt("", 3600)).toBe("")
+    expect(tenderFactExcerpt("   \n  ", 3600)).toBe("")
+  })
+
+  it("无目录的短招标文本也能取到事实（降级为头部窗口）", () => {
+    const short = "项目名称：某县医院HIS采购项目\n预算金额：人民币800万元\n建设内容：HIS 系统升级"
+    const got = tenderFactExcerpt(short)
+    expect(got).toContain("某县医院HIS采购项目")
+  })
+})
+
+describe("buildMaterialText 注入招标节选（R149）", () => {
+  it("带 tenderText 时含【招标文件节选】块且置于大纲/摘要之前", () => {
+    const got = buildMaterialText("【演练】R01", [], [], 4200, R149_TENDER)
+    expect(got).toContain("【招标文件节选")
+    expect(got).toContain("五级乙等")
+    const tenderIdx = got.indexOf("【招标文件节选")
+    const srcIdx = got.indexOf("【素材来源】")
+    expect(tenderIdx).toBeGreaterThan(srcIdx)
+  })
+
+  it("不带 tenderText 时保持原行为（无招标块，大纲/摘要照旧）", () => {
+    const got = buildMaterialText("某方案", [{ id: "1", title: "总体设计", children: [] }], [
+      { id: "c1", title: "总体设计", content: "全文交换平台，数据同源共享。" },
+    ] as never[])
+    expect(got).not.toContain("【招标文件节选")
+    expect(got).toContain("【大纲】")
+    expect(got).toContain("总体设计：全文交换平台")
+  })
+})

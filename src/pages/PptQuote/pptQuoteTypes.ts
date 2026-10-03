@@ -709,8 +709,46 @@ export function normalizeDraftItemsFromCatalog(
 // 素材引入（方案 / 标书项目 → 生成材料文本）
 // ---------------------------------------------------------------------------
 
-export function buildMaterialText(name: string, outline: OutlineNode[], chapters: Chapter[], maxChars = 4200): string {
+/** 目录行判定：短行且以孤立页码收尾（与标书侧 R143 同一判别信号，此处只用于节选时剔除噪声） */
+function isTocLikeLine(line: string): boolean {
+  const t = line.trim()
+  return t.length > 0 && t.length <= 60 && /\s\d{1,4}$/.test(t)
+}
+
+/**
+ * R149：从招标原文抽取「事实节选」，供 PPT 以标书项目为素材时引用。
+ * 招标文本头部（目录之前）是项目名称/采购人/编制时间等事实；
+ * 关键的建设目标在第二章正文里——直接按头部切片会被目录页码行挤占预算，
+ * 故取「头部事实 + 第二章正文窗口（跳过目录里的同名页码行）」，总长受 maxChars 约束。
+ */
+export function tenderFactExcerpt(tenderText: string, maxChars = 3600): string {
+  const text = (tenderText ?? "").replace(/\r/g, "").trim()
+  if (!text) return ""
+  const lines = text.split("\n")
+  const firstToc = lines.findIndex(isTocLikeLine)
+  const headLines = (firstToc > 0 ? lines.slice(0, firstToc) : lines.slice(0, 6)).filter((l) => l.trim())
+  let winStart = -1
+  for (let i = 0; i < lines.length; i++) {
+    if (/^第二章/.test(lines[i].trim()) && !isTocLikeLine(lines[i])) {
+      winStart = i
+      break
+    }
+  }
+  const head = headLines.join("\n")
+  const window = winStart >= 0 ? lines.slice(winStart).join("\n") : ""
+  return `${head}\n${window}`.replace(/\n{3,}/g, "\n\n").trim().slice(0, maxChars)
+}
+
+export function buildMaterialText(
+  name: string,
+  outline: OutlineNode[],
+  chapters: Chapter[],
+  maxChars = 4200,
+  tenderText = "",
+): string {
   const parts: string[] = [`【素材来源】${name}`]
+  const tender = tenderFactExcerpt(tenderText)
+  if (tender) parts.push(`【招标文件节选（项目事实、评级目标与建设范围以此为准）】\n${tender}`)
   const outlineText = outlineToText(outline ?? [])
   if (outlineText) parts.push(`【大纲】\n${outlineText}`)
   const chapterLines: string[] = []

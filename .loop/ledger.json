@@ -1,8 +1,28 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 148,
+  "round": 149,
   "backlog": [
+    {
+      "id": "r149-bid-star-defline-residual",
+      "module": "/bid-workspace",
+      "issue": "R149专项轮D实数据复验R143修复时发现残留（A类·P2）：extractStarClauses 的目录行过滤已生效（真实三明招标 15条→6条，8条目录噪声清零，4条真参数条款完整保留），但▲定义说明句仍以「行内式标记行」起条进入重点条款清单——它们不以▲开头（如'2.本文件中标注\"▲\"的条款为重要技术指标/服务指标，负偏离将按第六章评分标准扣分'、'标注\"▲\"的条款为实质性要求…按无效投标处理'），R143 的 looksLikeStarDefinitionLine 只匹配 ▲开头行。真实6条中残留2条定义句（噪声33%，修复前60%）。即素材F-B的▲双定义矛盾句。",
+      "priority": "P2",
+      "status": "open",
+      "evidence": "临时vitest harness 跑真实 extractStarClauses(62596字)：6条中[0][1]为定义说明句（含被吞并的'3.本文件所称日天…''4.本文件第七章…'常规条款行），[2-5]为真参数条款(系统架构/性能/可靠性/易用性带▲)。harness已删。复现：tender_text 喂 extractStarClauses 即得。",
+      "plan": "最小改法：起条判定增加'定义句模式'分支——行内含'标注\"▲\"的条款为/条款为实质性要求/按无效投标处理/负偏离将按…扣分'且非表格行(无|分隔)则不建条且不吸收后续行；须防误伤真实参数条款（回归 R143 全部用例+真实三明6条预期）",
+      "round": 149
+    },
+    {
+      "id": "r149-deck-pagecount-unenforced",
+      "module": "/ppt-quote",
+      "issue": "R149专项轮D发现（B类·P2）：整份生成路径 normalizeSlides(parseJsonLoose(text), null) 不按目标页数裁剪——目标3页时模型返回6页照单全收（v1实测）。且 buildDeckSingleMessages 自带图文配额（全篇至少2页chart/kpi+至少2页imageHint+1-2页figures）与小于4页的目标结构冲突，模型倾向自行加页。v2（素材修复后）同参数下模型返回3页，说明素材充实时服从度提高，但链路仍不设防。",
+      "priority": "P2",
+      "status": "open",
+      "evidence": "v1 deck 6页（目标3，向导明示'生成约3页'，进度提示'正在生成3页内容…'）；v2 deck 3页。L2判据'页数=目标页数'在v1不成立。",
+      "plan": "最小改法：单发路径超页时按 target 截断（保留大纲次序）；或当 target < 配额最小结构(开场+1内容+致谢+2图表页≈5页)时向导侧提示最低建议页数并按建议生成。与 r149-ppt-material-empty 的 v2 结果一并回归。",
+      "round": 149
+    },
     {
       "id": "r142-bid-star-toc-pollution-01",
       "module": "/bid-workspace",
@@ -511,6 +531,14 @@
     }
   ],
   "closed": [
+    {
+      "id": "r149-ppt-material-empty",
+      "module": "/ppt-quote",
+      "issue": "R149专项轮D（R01三明·PPT阶段）A类·逐字比对坐实：PPT以标书项目为素材时 fetchMaterialText 只取 bid_outline/bid_chapters、从不读 tender_text——仅导入招标未生成章节的项目素材实质为空（只剩一行来源名），模型对招标事实一无所知凭空编造：评级目标写成'电子病历4级/互联互通4级'（原文=五级/五级乙等，改写级错误）、分期年份2024-2026（原文=2026—2028年）、投资1200/900/600万+运维占比45%（原文预算=XXXX占位，全编造）、编制8人。",
+      "evidence": "v1 deck 实测6页/目标3页；逐字比对探针：1200/900/45%/2024/2025/4级/8人 共9处编造；原件=20260727三明…招标文件（精简版）.docx（0ec7f6c0,team非敏感）；deck v1存档 _eval/r149-deck-v1-修复前.json；修复后v2重生成（T3第2次）：页数3=目标3、9个编造探针全部0处、评级目标逐字一致、deckLint=0问题；deck v2存档 _eval/r149-deck-v2-修复后.json",
+      "diff": "src/pages/PptQuote/pptQuoteTypes.ts（新增 tenderFactExcerpt：头部项目事实+第二章正文窗口、剔除页码目录行，maxChars=3600；buildMaterialText 增加 tenderText 参数并注入【招标文件节选】块置于最前）；src/pages/PptQuote/usePptQuote.ts（MaterialDetail 补 tender_text 字段；fetchMaterialText 标书项目传入 tender_text）；src/pages/PptQuote/pptQuoteTypes.test.ts（+5用例：节选器事实保留/目录剔除/上限/空文本/无目录降级 + buildMaterialText 注入与原行为回归）",
+      "round": 149
+    },
     {
       "id": "intel-f22-entry",
       "module": "/intel-center",
@@ -2090,5 +2118,5 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "R148 方案编制批量生成中断恢复对齐标书 D1（方案主链路·数据正确性+可用性）：runBulkGenerate 起跑即把 doc_status 写「生成中」并落库、收口才改写终态，中途刷新/崩溃/切走会让方案刷新后永久卡在「生成中」徽标（docStatusLabel 直读 activeSolution.doc_status），且无标书侧 D1 的续跑提示。新建纯函数模块 bulkResume.ts（deriveSolutionDocStatus 按各章 gen_status 推导 done/partial/outline、shouldRecoverStaleGenerating 复位判定、bulkResumeNotice 断点续跑文案），openSolution 打开陈旧「生成中」方案时按真实进度复位并落库、存在已完成但未全的章时 toast 提示可从断点继续（继续生成正文天然 skip done 章）。零 schema/零 pb_hooks/零新提示词/未 commit；维持裁定不动（编造扫描只报告不拦截、lint-debt-01 残余保留）。四门：tsc 0 / vitest 985+2skip（基线 974 +11：bulkResume.test.ts 3 组 11 例，零回退）/ eslint 触及文件零新增（改动前后同为 12 error+1 warn，全为 useSolutionStudio 既有 react-hooks 编译告警，新文件 0 告警，已用回退对比脚本证实）/ vite build 5947 modules 3.44s exit0。新挂账 r148-solution-resume-banner-defer：EditorWorkspace 侧对标 ComposeStep 的上次批量中断恢复内联横幅（本轮先落地数据复位+toast，视觉横幅另轮）。"
+  "lastRoundSummary": "R149 专项轮D（场景R01三明·PPT阶段·149mod3=2主攻PPT）：L2逐字比对坐实A类素材链路断链——PPT以标书项目为素材时只取大纲/章节、从不读招标原文，仅导入招标未生成章节的项目素材实质为空，模型凭空编造评级目标（4级/4级，原文=五级/五乙）、年份（2024起，原文=2026—2028）、金额（1200/900/600万+45%运维占比，原文预算占位）。修复：pptQuoteTypes 新增 tenderFactExcerpt（头部事实+第二章正文窗口、剔除页码目录行，3600字）注入【招标文件节选】；usePptQuote fetchMaterialText 传 tender_text。修复后v2重生成（T3第2次）：3页=目标、9个编造探针全部归零、评级目标逐字一致、deckLint 0问题。附：R143 ★▲目录过滤实数据复验通过（15→6条，目录噪声清零），残留2条▲定义句经行内式起条（记backlog P2）；页数不强制记backlog P2。四门：tsc 0错/vitest 990(+5恰为新增)/build 4.70s/lint触及文件与HEAD对照零新增。费用：T3真实生成2次（v1坐实+v2复验），配图off，零RH扣费。演练数据已清理（deck×2+标书项目3yo66qqpko9dv8a），证据存 _eval/r149-deck-v*.json + _shots/R149/。"
 }
