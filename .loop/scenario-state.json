@@ -4,10 +4,17 @@
   "current_stage": "solution",
   "stages": ["solution", "bid", "ppt"],
   "progress": {
-    "R01": { "solution": "pending", "bid": "in_progress", "ppt": "done", "last_round": 149 }
+    "R01": { "solution": "in_progress", "bid": "in_progress", "ppt": "done", "last_round": 150 }
   },
   "defects_by_scenario": {
-    "R01": ["r142-bid-star-toc-pollution-01(closed@R143)", "r149-bid-star-defline-residual", "r149-deck-pagecount-unenforced", "r149-ppt-material-empty(closed@R149)"]
+    "R01": [
+      "r142-bid-star-toc-pollution-01(closed@R143)",
+      "r149-bid-star-defline-residual",
+      "r149-deck-pagecount-unenforced",
+      "r149-ppt-material-empty(closed@R149)",
+      "r150-solution-checklist-scope(closed@R150)",
+      "r150-outline-consulting-gap"
+    ]
   },
   "linkage_checked": { "R01": false },
   "fixtures_used": {
@@ -19,7 +26,7 @@
       "fingerprints": ["047c55d2", "939be5d4", "18c09560", "e1ea77ae", "0ec7f6c0", "3f1d6dd7", "98b1ef50", "ec6043a3"],
       "retrievable": "5/8",
       "used_fixture": "0ec7f6c0",
-      "noise_notes": "F05 精简版(0ec7f6c0)素材侧含2处脏：▲双定义自相矛盾(扣分 vs 无效投标)、预算=人民币XXXX万元占位未填；本轮招标即用它，team可见非敏感"
+      "noise_notes": "F05 精简版(0ec7f6c0)素材侧含2处脏：▲双定义自相矛盾(扣分 vs 无效投标)、预算=人民币XXXX万元占位未填；team可见非敏感"
     },
     "R149": {
       "pack": "_eval/fixture-pack.json",
@@ -29,9 +36,26 @@
       "fingerprints": ["047c55d2", "939be5d4", "18c09560", "e1ea77ae", "0ec7f6c0", "3f1d6dd7", "98b1ef50", "ec6043a3"],
       "retrievable": "5/8",
       "used_fixture": "0ec7f6c0",
-      "noise_notes": "同批第2次使用(达上限，下轮须换seed或grep)；底噪体检：8条无桶归类噪声，F02为三明市区域平台方案(关键词混入,非本项目素材,未使用)，F06/F07/F08不可回取仅L1；F05同一素材脏数据(▲双定义/预算占位)沿用R142记录"
+      "noise_notes": "同批第2次使用(达上限)；F02为三明市区域平台方案(关键词混入,未使用)；F06/F07/F08不可回取仅L1"
+    },
+    "R150": {
+      "pack": "_eval/fixture-pack.json",
+      "list": "_eval/素材清单-20261004-0633.md",
+      "seed": 20261004,
+      "grep": "三明",
+      "fingerprints": ["f34437ff", "12c59b25", "b345c6b9", "a4b0e58d", "ec6043a3", "0ec7f6c0", "fe4597db", "98b1ef50"],
+      "retrievable": "4/8",
+      "used_fixture": "0ec7f6c0（招标2.3建设范围作为清单基准件,逐字摘录66条建演练清单e7qjtugzr40arey）",
+      "noise_notes": "换seed新批次：F01'建设清单1.0不可回取；同一清单家族1.0/1.3赛道标签不一致(集成平台vs信创改造)属素材侧噪声；F02'/F03'/F04'为早期方案版本(personal,只用于判定未外流)"
     }
   },
   "counters": { "scenarios_done": 0, "stages_done": 1, "no_finding_streak": 0 },
-  "resume_hint": "R149 完成 R01·ppt 阶段（L1过/L2修复后过/L3过）并修复A类素材链路断链 r149-ppt-material-empty。下轮 R150：150mod3=0 → 主攻方案编制，正好补 R01.solution（建议素材：F03 建设清单1.3(18c09560,personal只用于判定)+F01方案V1.3(047c55d2)做范本参照）；素材连用上限已到，R150 必须换 seed 或换 grep。R01 的 bid 阶段仍 in_progress（B2 AI解析、B3编制、B4-B7未走，涉费用走T3门禁）；linkage_checked=false：R149 已做 标书↔PPT 两模块一致性（医院名/预算/清单/时间全一致），等 solution 阶段完成后补完整三模块检查方可标 R01 done。演练数据已清理，复验可按报告「你怎么自己验证」重建。"
+  "drill_artifacts": {
+    "R01": {
+      "checklist_id": "e7qjtugzr40arey",
+      "solution_id": "g267q0imbmt27q5",
+      "note": "R150 保留待续用（solution 阶段 A7-A9 未完）；R01 全部收口后统一清理"
+    }
+  },
+  "resume_hint": "R150 完成 R01·solution 阶段 A1-A6（A7正文/A8五维自检/A9导出与方案转PPT 因 T3 触顶顺延）。下轮 R151：151mod3=1 → 主攻标书工作台（R01.bid 续：B2 AI解析/B3 编制，按 T3 门禁）；R152 mod3=2 主攻PPT（可续串联链①：以 g267q0imbmt27q5 方案为素材）；R153 mod3=0 回方案编制收尾 A7-A9（续用演练方案 g267q0imbmt27q5 与清单 e7qjtugzr40arey）。素材：R150 已换 seed=20261004；下轮如仍用三明可继续此 seed 或换 grep。linkage_checked=false：已做 方案↔招标（清单覆盖+评级目标一致,R150）与 标书↔PPT（R149），差 方案↔PPT 直连，待 R152 PPT 轮补齐后方可标 R01 done。"
 }

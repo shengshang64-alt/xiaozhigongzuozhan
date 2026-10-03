@@ -248,7 +248,8 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
                   {new Set(
                     (linkedChecklist.items ?? [])
                       .filter((l) => l.checked !== false)
-                      .map((l) => l.product_name),
+                      .map((l) => String(l.product_name ?? "").trim())
+                      .filter(Boolean),
                   ).size}{" "}
                   个系统，下方标签已自动勾选（可手动补充）。方案将按清单覆盖分系统章节。
                 </p>

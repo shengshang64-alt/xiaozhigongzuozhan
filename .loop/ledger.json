@@ -1,8 +1,18 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 149,
+  "round": 150,
   "backlog": [
+    {
+      "id": "r150-outline-consulting-gap",
+      "module": "/solution-studio",
+      "issue": "R150专项轮D发现（B类·P2）：方案大纲对「评级咨询服务」类服务条目无显式承载——三明招标建设范围含3条服务类条目（智慧医疗五级/智慧服务三级/互联互通五乙评级咨询服务），大纲把评级当'目标/预测'章处理，未回应'采购的服务内容'本身。且 prompt 章数量8-12约束下，66个系统组名逐字上章天花板~35%（集群语义覆盖≈94%）。",
+      "priority": "P2",
+      "status": "open",
+      "evidence": "大纲175节点vs66条清单逐条比对：逐字23/66=34.8%，集群≈42/66≈94%，缺口=评级咨询服务3条（r150-coverage66.json）",
+      "plan": "通道已打通（customer_requirements 进快照与prompt）：建议分系统集群章节正文生成时强制引用 snapshot.customer_requirements 对应条目（正文级逐条覆盖），或向导加'服务类条目单独成节'开关；改动属提示词/交互，按B类流程备份+before/after对比",
+      "round": 150
+    },
     {
       "id": "r149-bid-star-defline-residual",
       "module": "/bid-workspace",
@@ -531,6 +541,14 @@
     }
   ],
   "closed": [
+    {
+      "id": "r150-solution-checklist-scope",
+      "module": "/solution-studio",
+      "issue": "R150专项轮D（R01三明·方案阶段）三缺陷修复：F-S1(A) ref_checklist_snapshot 仅在 confirmOutline(A6)落库时写入，A5生成大纲的 buildOutlineMessages(formInfo) 读向导态恒为 undefined——大纲生成从来见不到关联清单，'按清单条目覆盖分系统章节'承诺在源头不成立；F-S2(B) snapshotFromChecklist 只收 source=company/external 且按 product_name 去重，真实招标来源清单（无产品字典）company/external双空，scope block 变'承建系统：无'；F-S3(B) 向导'带入N个系统'计数 Set{undefined}.size=1 假报，且 undefined 混进 systems。",
+      "evidence": "实机复现：关联66条逐字清单(摘自招标2.3,原件0ec7f6c0)→A5生成→修复前scope必空(代码直读坐实)；修复后落库方案 g267q0imbmt27q5 的 snapshot.customer_requirements=66条完整需求、rating_targets=emr:5/hpc:5B/ss:3；大纲评级目标与招标逐字一致(五级/五乙/三级)；实机计数诚实显示'带入0个系统'",
+      "diff": "solutionTypes.ts(ChecklistSnapshot+customer_requirements 可选字段;checklistScopeBlock 渲染编号需求条目)；checklistTypes.ts(snapshotFromChecklist 收集未匹配条目)；useSolutionStudio.ts(applyChecklistPrefill 选清单即写快照+过滤空product_name)；NewSolutionWizard.tsx(计数过滤)；systemsFromChecklist.test.ts(+5用例)",
+      "round": 150
+    },
     {
       "id": "r149-ppt-material-empty",
       "module": "/ppt-quote",
@@ -2118,5 +2136,5 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "R149 专项轮D（场景R01三明·PPT阶段·149mod3=2主攻PPT）：L2逐字比对坐实A类素材链路断链——PPT以标书项目为素材时只取大纲/章节、从不读招标原文，仅导入招标未生成章节的项目素材实质为空，模型凭空编造评级目标（4级/4级，原文=五级/五乙）、年份（2024起，原文=2026—2028）、金额（1200/900/600万+45%运维占比，原文预算占位）。修复：pptQuoteTypes 新增 tenderFactExcerpt（头部事实+第二章正文窗口、剔除页码目录行，3600字）注入【招标文件节选】；usePptQuote fetchMaterialText 传 tender_text。修复后v2重生成（T3第2次）：3页=目标、9个编造探针全部归零、评级目标逐字一致、deckLint 0问题。附：R143 ★▲目录过滤实数据复验通过（15→6条，目录噪声清零），残留2条▲定义句经行内式起条（记backlog P2）；页数不强制记backlog P2。四门：tsc 0错/vitest 990(+5恰为新增)/build 4.70s/lint触及文件与HEAD对照零新增。费用：T3真实生成2次（v1坐实+v2复验），配图off，零RH扣费。演练数据已清理（deck×2+标书项目3yo66qqpko9dv8a），证据存 _eval/r149-deck-v*.json + _shots/R149/。"
+  "lastRoundSummary": "R150 专项轮D（场景R01三明·方案阶段·150mod3=0主攻方案编制）：用招标2.3建设范围逐字摘录66条建演练清单，实机走完向导A1-A6，坐实并修复三缺陷——F-S1(A)清单快照仅在确认时落库、A5大纲prompt恒拿不到清单；F-S2(B)未匹配产品的真实清单在快照链整段丢失；F-S3(B)'带入1个系统'是Set{undefined}假计数。修复后：选清单即写快照、66条需求进prompt并落库（实测customer_requirements=66）、计数诚实。大纲（T3成功1次）评级目标与招标逐字一致（五级/五乙/三级差距+预测三节）、九大类集群落章≈94%，缺口=评级咨询服务3条未成节（记backlog P2）。诚实更正：innerText误诊'页面重载状态丢失'（实为取证手段错），曾误取消第一次已成功大纲。T3保守计3次触顶，A7-A9与方案转PPT顺延。四门：tsc0/vitest995(+5)/build3.49s/lint HEAD对照14=14零新增。演练数据保留（清单e7qjtugzr40arey+方案g267q0imbmt27q5，下轮续用）。"
 }

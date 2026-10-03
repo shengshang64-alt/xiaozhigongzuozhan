@@ -251,12 +251,23 @@ export function snapshotFromChecklist(rec: ChecklistRecord): ChecklistSnapshot {
   const kept = (rec.items ?? []).filter((l) => l.checked !== false)
   const companySystems = Array.from(new Set(kept.filter((l) => l.source === "company").map((l) => l.product_name)))
   const externalSystems = Array.from(new Set(kept.filter((l) => l.source === "external").map((l) => l.product_name)))
+  // R150：未经产品匹配的条目（无 product_name）按客户需求原文进快照，否则真实招标来源的清单在方案链路里整段丢失
+  const customerRequirements = kept
+    .filter((l) => !String(l.product_name ?? "").trim())
+    .map((l) => {
+      const name = String(l.module_name ?? "").trim()
+      const func = String(l.module_func ?? "").trim()
+      if (name && func && func !== name) return `${name}（${func}）`
+      return name || func
+    })
+    .filter(Boolean)
   return {
     checklist_id: rec.id,
     checklist_name: rec.checklist_name,
     rating_targets: rec.rating_targets ?? [],
     company_systems: companySystems,
     external_systems: externalSystems,
+    customer_requirements: customerRequirements,
   }
 }
 

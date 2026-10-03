@@ -157,6 +157,8 @@ export type ChecklistSnapshot = {
   rating_targets: string[]
   company_systems: string[]
   external_systems: string[]
+  /** R150：未经产品匹配的客户需求条目（module_name+module_func），保证未匹配清单的建设范围也能进大纲/正文 prompt */
+  customer_requirements?: string[]
 }
 
 const RATING_SHORT: Record<string, string> = {
@@ -182,12 +184,17 @@ export function checklistScopeBlock(snap: ChecklistSnapshot | undefined): string
   const externalNote = snap.external_systems.length
     ? `外购系统（公司暂无、按评级要求补齐）：${snap.external_systems.join("、")}，方案中须说明外购系统的选型、集成接口与实施边界；`
     : "本清单无外购系统；"
+  const requirementLines = snap.customer_requirements ?? []
+  const requirementNote = requirementLines.length
+    ? `客户建设需求条目（共 ${requirementLines.length} 条，逐条覆盖、不得遗漏、不得合并）：\n${requirementLines.map((r, i) => `${i + 1}) ${r}`).join("\n")}`
+    : "本清单无未匹配需求条目；"
   return [
     `【建设范围清单（含评级目标与外购说明）】清单名称：${snap.checklist_name}；`,
     `评级目标：${formatTargetCodes(snap.rating_targets) || "未指定"}；`,
     `我公司承建系统：${snap.company_systems.join("、") || "无"}；`,
     externalNote,
-    "硬性要求：分系统设计章节必须逐一覆盖上述清单中的全部系统，不得遗漏；",
+    requirementNote,
+    "硬性要求：分系统设计章节必须逐一覆盖上述清单中的全部系统与客户建设需求条目，不得遗漏；",
   ].join("\n")
 }
 

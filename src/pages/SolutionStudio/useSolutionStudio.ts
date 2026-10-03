@@ -526,10 +526,23 @@ export function useSolutionStudio() {
 
   /** 关联建设清单：预填建设内容与医院 */
   const applyChecklistPrefill = useCallback((rec: ChecklistRecord) => {
+    // R150：只取有名字的 product_name，避免 undefined 混进 systems（空清单时原实现会把 undefined 当一个系统带入）
     const systems = Array.from(
-      new Set((rec.items ?? []).filter((l) => l.checked !== false).map((l) => l.product_name)),
+      new Set(
+        (rec.items ?? [])
+          .filter((l) => l.checked !== false)
+          .map((l) => String(l.product_name ?? "").trim())
+          .filter(Boolean),
+      ),
     )
-    setFormInfo((prev) => ({ ...prev, systems: Array.from(new Set([...prev.systems, ...systems])) }))
+    setFormInfo((prev) => ({
+      ...prev,
+      systems: Array.from(new Set([...prev.systems, ...systems])),
+      // R150：选清单即写快照——A5 生成大纲的 prompt（checklistScopeBlock 读 formInfo）才能拿到建设范围；
+      // 原实现只在 confirmOutline 落库时写快照，大纲生成永远看不到清单
+      ref_checklist_id: rec.id,
+      ref_checklist_snapshot: snapshotFromChecklist(rec),
+    }))
     setFormHospital((prev) => (prev.trim() ? prev : rec.hospital ?? ""))
   }, [])
 
