@@ -12,7 +12,7 @@
       "solution": "in_progress",
       "bid": "in_progress",
       "ppt": "done",
-      "last_round": 151
+      "last_round": 152
     }
   },
   "defects_by_scenario": {
@@ -23,7 +23,8 @@
       "r149-ppt-material-empty(closed@R149)",
       "r150-solution-checklist-scope(closed@R150)",
       "r150-outline-consulting-gap",
-      "r151-bid-parse-budget(blocked待拍板)"
+      "r151-bid-parse-budget(blocked待拍板)",
+      "r152-star-symbol-loss(P3)"
     ]
   },
   "linkage_checked": {
@@ -105,11 +106,30 @@
       "retrievable": "4/8",
       "used_fixture": "0ec7f6c0（第三次导入,62596字逐字节一致）",
       "noise_notes": "20261004批次第2次使用(达上限)；下轮若仍三明需换seed/grep或直接复用已落库项目(解析报告授权后落库,免重传)"
+    },
+    "R152": {
+      "pack": "_eval/fixture-pack.json",
+      "list": "_eval/素材清单-20261004-0633.md",
+      "seed": 20261004,
+      "grep": "三明",
+      "fingerprints": [
+        "f34437ff",
+        "12c59b25",
+        "b345c6b9",
+        "a4b0e58d",
+        "ec6043a3",
+        "0ec7f6c0",
+        "fe4597db",
+        "98b1ef50"
+      ],
+      "retrievable": "4/8",
+      "used_fixture": "0ec7f6c0（解析输入=项目库内tender_text,62596字）",
+      "noise_notes": "解析报告10分区存档Temp/r151-parse-report.json；评分细则正文缺失=素材侧(精简版)"
     }
   },
   "counters": {
     "scenarios_done": 0,
-    "stages_done": 1,
+    "stages_done": 2,
     "no_finding_streak": 0
   },
   "drill_artifacts": {
@@ -120,5 +140,5 @@
       "note": "R151保留：bid项目待授权解析轮续用（parse_report已有star分区6条）；R01全部收口后统一清理"
     }
   },
-  "resume_hint": "R151 未推进生成（标书AI链被最低启动8调锁死,blocked=r151-bid-parse-budget 待拍板）。下轮 R152 二选一：①若你授权解析轮→做B2全量key解析(8-12调)+解析报告逐字比对出证；②未授权→152mod3=2主攻PPT,以方案g267q0imbmt27q5为素材生成小样本(1-2调),补 方案↔PPT 直连后 R01 linkage 可标 true（方案↔招标与标书↔PPT已分别在R150/R149出证）。素材：三明20261004批次已用满2轮,新取需换seed/grep；PPT轮可直接用已落库方案免重取。"
+  "resume_hint": "R152 完成 R01·bid 的 B2 全量解析（检索通道8调用，用户授权；10分区落库，L2全0：编造/改写/漏答）。解析报告就绪 → B3大纲已解锁。轮转：R153（153mod3=0）方案编制收尾A7-A9（续用方案g267q0imbmt27q5+清单e7qjtugzr40arey，T3 1-2调）；R154（mod3=1）标书B3大纲+1章正文+参数忠实度逐字比对（★/▲重点条款已入库,可实测逐条应答强化,T3 2-3调）。新blocked：评分办法级演练需完整版招标原件。三明20261004素材批次已用满2轮。"
 }
