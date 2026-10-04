@@ -1,10 +1,19 @@
 {
   "schema_version": 2,
   "current_scenario": "R01",
-  "current_stage": "solution",
-  "stages": ["solution", "bid", "ppt"],
+  "current_stage": "bid",
+  "stages": [
+    "solution",
+    "bid",
+    "ppt"
+  ],
   "progress": {
-    "R01": { "solution": "in_progress", "bid": "in_progress", "ppt": "done", "last_round": 150 }
+    "R01": {
+      "solution": "in_progress",
+      "bid": "in_progress",
+      "ppt": "done",
+      "last_round": 151
+    }
   },
   "defects_by_scenario": {
     "R01": [
@@ -13,17 +22,29 @@
       "r149-deck-pagecount-unenforced",
       "r149-ppt-material-empty(closed@R149)",
       "r150-solution-checklist-scope(closed@R150)",
-      "r150-outline-consulting-gap"
+      "r150-outline-consulting-gap",
+      "r151-bid-parse-budget(blocked待拍板)"
     ]
   },
-  "linkage_checked": { "R01": false },
+  "linkage_checked": {
+    "R01": false
+  },
   "fixtures_used": {
     "R142": {
       "pack": "_eval/fixture-pack.json",
       "list": "_eval/素材清单-20261003-1448.md",
       "seed": 3,
       "grep": "三明",
-      "fingerprints": ["047c55d2", "939be5d4", "18c09560", "e1ea77ae", "0ec7f6c0", "3f1d6dd7", "98b1ef50", "ec6043a3"],
+      "fingerprints": [
+        "047c55d2",
+        "939be5d4",
+        "18c09560",
+        "e1ea77ae",
+        "0ec7f6c0",
+        "3f1d6dd7",
+        "98b1ef50",
+        "ec6043a3"
+      ],
       "retrievable": "5/8",
       "used_fixture": "0ec7f6c0",
       "noise_notes": "F05 精简版(0ec7f6c0)素材侧含2处脏：▲双定义自相矛盾(扣分 vs 无效投标)、预算=人民币XXXX万元占位未填；team可见非敏感"
@@ -33,7 +54,16 @@
       "list": "_eval/素材清单-20261003-2358.md",
       "seed": 3,
       "grep": "三明",
-      "fingerprints": ["047c55d2", "939be5d4", "18c09560", "e1ea77ae", "0ec7f6c0", "3f1d6dd7", "98b1ef50", "ec6043a3"],
+      "fingerprints": [
+        "047c55d2",
+        "939be5d4",
+        "18c09560",
+        "e1ea77ae",
+        "0ec7f6c0",
+        "3f1d6dd7",
+        "98b1ef50",
+        "ec6043a3"
+      ],
       "retrievable": "5/8",
       "used_fixture": "0ec7f6c0",
       "noise_notes": "同批第2次使用(达上限)；F02为三明市区域平台方案(关键词混入,未使用)；F06/F07/F08不可回取仅L1"
@@ -43,19 +73,52 @@
       "list": "_eval/素材清单-20261004-0633.md",
       "seed": 20261004,
       "grep": "三明",
-      "fingerprints": ["f34437ff", "12c59b25", "b345c6b9", "a4b0e58d", "ec6043a3", "0ec7f6c0", "fe4597db", "98b1ef50"],
+      "fingerprints": [
+        "f34437ff",
+        "12c59b25",
+        "b345c6b9",
+        "a4b0e58d",
+        "ec6043a3",
+        "0ec7f6c0",
+        "fe4597db",
+        "98b1ef50"
+      ],
       "retrievable": "4/8",
       "used_fixture": "0ec7f6c0（招标2.3建设范围作为清单基准件,逐字摘录66条建演练清单e7qjtugzr40arey）",
       "noise_notes": "换seed新批次：F01'建设清单1.0不可回取；同一清单家族1.0/1.3赛道标签不一致(集成平台vs信创改造)属素材侧噪声；F02'/F03'/F04'为早期方案版本(personal,只用于判定未外流)"
+    },
+    "R151": {
+      "pack": "_eval/fixture-pack.json",
+      "list": "_eval/素材清单-20261004-0633.md",
+      "seed": 20261004,
+      "grep": "三明",
+      "fingerprints": [
+        "f34437ff",
+        "12c59b25",
+        "b345c6b9",
+        "a4b0e58d",
+        "ec6043a3",
+        "0ec7f6c0",
+        "fe4597db",
+        "98b1ef50"
+      ],
+      "retrievable": "4/8",
+      "used_fixture": "0ec7f6c0（第三次导入,62596字逐字节一致）",
+      "noise_notes": "20261004批次第2次使用(达上限)；下轮若仍三明需换seed/grep或直接复用已落库项目(解析报告授权后落库,免重传)"
     }
   },
-  "counters": { "scenarios_done": 0, "stages_done": 1, "no_finding_streak": 0 },
+  "counters": {
+    "scenarios_done": 0,
+    "stages_done": 1,
+    "no_finding_streak": 0
+  },
   "drill_artifacts": {
     "R01": {
       "checklist_id": "e7qjtugzr40arey",
       "solution_id": "g267q0imbmt27q5",
-      "note": "R150 保留待续用（solution 阶段 A7-A9 未完）；R01 全部收口后统一清理"
+      "bid_project_id": "7vco3jzj6abz8p0",
+      "note": "R151保留：bid项目待授权解析轮续用（parse_report已有star分区6条）；R01全部收口后统一清理"
     }
   },
-  "resume_hint": "R150 完成 R01·solution 阶段 A1-A6（A7正文/A8五维自检/A9导出与方案转PPT 因 T3 触顶顺延）。下轮 R151：151mod3=1 → 主攻标书工作台（R01.bid 续：B2 AI解析/B3 编制，按 T3 门禁）；R152 mod3=2 主攻PPT（可续串联链①：以 g267q0imbmt27q5 方案为素材）；R153 mod3=0 回方案编制收尾 A7-A9（续用演练方案 g267q0imbmt27q5 与清单 e7qjtugzr40arey）。素材：R150 已换 seed=20261004；下轮如仍用三明可继续此 seed 或换 grep。linkage_checked=false：已做 方案↔招标（清单覆盖+评级目标一致,R150）与 标书↔PPT（R149），差 方案↔PPT 直连，待 R152 PPT 轮补齐后方可标 R01 done。"
+  "resume_hint": "R151 未推进生成（标书AI链被最低启动8调锁死,blocked=r151-bid-parse-budget 待拍板）。下轮 R152 二选一：①若你授权解析轮→做B2全量key解析(8-12调)+解析报告逐字比对出证；②未授权→152mod3=2主攻PPT,以方案g267q0imbmt27q5为素材生成小样本(1-2调),补 方案↔PPT 直连后 R01 linkage 可标 true（方案↔招标与标书↔PPT已分别在R150/R149出证）。素材：三明20261004批次已用满2轮,新取需换seed/grep；PPT轮可直接用已落库方案免重取。"
 }
