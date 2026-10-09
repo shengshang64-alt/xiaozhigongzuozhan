@@ -1,0 +1,312 @@
+import { strFromU8, strToU8, unzipSync, zipSync } from "fflate"
+
+// ---------------------------------------------------------------------------
+// R182（r169 三切片计划·切片一）：公司模板母版/版式级保真引擎。
+// 蓝本＝R181 评估 PoC-2（.loop/reports/2026-10-06-r181-ppt-template-fidelity-eval.md）：
+// 克隆模板『版式样张页』→ 改写占位文本 → 重打包，母版/版式/主题/媒体原样携带
+// （byte-identical），使导出 PPT 真正复用模板的 slideMaster/slideLayout/占位位置。
+// 纯函数零 UI 依赖，只用项目既有 fflate，node 下单测；不新增任何第三方引擎。
+// v1 边界（诚实降级，返回 { ok:false } 由调用方回退 pptxgenjs 现通道）：
+//  - 样张页含 notes/图表/嵌入 OLE 等跨页共享部件关系时跳过该样张；
+//  - 正文行需要 body 占位（type=body|subTitle|obj）或第二个文字形状承载；
+//  - 原模板样张页不进产物（产物只含生成页），notesSlides 对旧页的引用被清理。
+// ---------------------------------------------------------------------------
+
+export type FidelitySlideSpec = {
+  /** 标题文本（必填） */
+  title: string
+  /** 正文行；为空/省略时该页使用标题样张页 */
+  lines?: string[]
+}
+
+export type FidelityTemplateSlide = {
+  /** slide 部件序号（slideN.xml 的 N） */
+  idx: number
+  titlePh: boolean
+  bodyPh: boolean
+  /** 可承载正文的文字形状数（排除页脚/页码/日期占位与非文本形状） */
+  textShapes: number
+  /** 关系引用了不可复制的部件（notes/charts/embeddings 等）时不可用 */
+  usable: boolean
+  reject?: string
+}
+
+export type FidelityOutcome =
+  | { ok: true; bytes: Uint8Array; titleSample: number; bodySample: number; slideCount: number }
+  | { ok: false; reason: string }
+
+const SLIDE_CT = "application/vnd.openxmlformats-officedocument.presentationml.slide+xml"
+const REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+const SLIDE_RE = /^ppt\/slides\/slide(\d+)\.xml$/
+// 样张页关系黑名单：这些部件与某一页一一绑定或存在级联关系，克隆共享会坏
+const FORBID_REL_RE = /Target="[^"]*(notesSlides|charts|diagrams|embeddings|oleObject)[^"]*"/
+
+function xmlEscape(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+}
+
+function slideIdx(name: string): number {
+  return Number(SLIDE_RE.exec(name)?.[1] ?? NaN)
+}
+
+function spBlocks(xml: string): string[] {
+  return xml.match(/<p:sp>[\s\S]*?<\/p:p>/g) || xml.match(/<p:sp>[\s\S]*?<\/p:sp>/g) || []
+}
+
+const TITLE_PH_RE = /<p:ph\b[^>]*type="(ctrTitle|title)"/
+const BODY_PH_RE = /<p:ph\b[^>]*type="(body|subTitle|obj)"/
+const SKIP_PH_RE = /<p:ph\b[^>]*type="(sldNum|ftr|dt)"/
+
+function classifySlide(name: string, xml: string, rels: string | null): FidelityTemplateSlide {
+  const blocks = spBlocks(xml)
+  const textish = blocks.filter((b) => /<p:txBody>/.test(b) && !SKIP_PH_RE.test(b))
+  let reject: string | undefined
+  if (!rels) reject = "missing rels"
+  else if (!/slideLayouts\/slideLayout\d+\.xml/.test(rels)) reject = "no layout relation"
+  else if (FORBID_REL_RE.test(rels)) reject = "forbidden relation part"
+  return {
+    idx: slideIdx(name),
+    titlePh: TITLE_PH_RE.test(xml),
+    bodyPh: BODY_PH_RE.test(xml),
+    textShapes: textish.length,
+    usable: reject === undefined,
+    reject,
+  }
+}
+
+type Ctx = {
+  entries: Record<string, Uint8Array>
+  slides: FidelityTemplateSlide[]
+  /** idx -> slide xml 文本 */
+  xmls: Map<number, string>
+  /** idx -> slide rels 文本（缺省空串） */
+  relss: Map<number, string>
+  pres: string
+  presRels: string
+  ct: string
+}
+
+function readCtx(entries: Record<string, Uint8Array>): { ctx?: Ctx; reason?: string } {
+  const presU = entries["ppt/presentation.xml"]
+  const presRelU = entries["ppt/_rels/presentation.xml.rels"]
+  const ctU = entries["[Content_Types].xml"]
+  if (!presU || !presRelU || !ctU) return { reason: "template is not a valid pptx package" }
+  const names = Object.keys(entries).filter((n) => SLIDE_RE.test(n)).sort((a, b) => slideIdx(a) - slideIdx(b))
+  const slides: FidelityTemplateSlide[] = []
+  const xmls = new Map<number, string>()
+  const relss = new Map<number, string>()
+  for (const n of names) {
+    const xml = strFromU8(entries[n])
+    const relName = `ppt/slides/_rels/slide${slideIdx(n)}.xml.rels`
+    const rels = entries[relName] ? strFromU8(entries[relName]) : null
+    const info = classifySlide(n, xml, rels)
+    slides.push(info)
+    xmls.set(info.idx, xml)
+    if (rels !== null) relss.set(info.idx, rels)
+  }
+  if (!slides.length) return { reason: "no slides in template" }
+  return {
+    ctx: { entries, slides, xmls, relss, pres: strFromU8(presU), presRels: strFromU8(presRelU), ct: strFromU8(ctU) },
+  }
+}
+
+function pickSample(ctx: Ctx, role: "title" | "body"): FidelityTemplateSlide | null {
+  const usable = ctx.slides.filter((s) => s.usable)
+  if (role === "title") {
+    return usable.find((s) => s.titlePh) ?? usable.find((s) => s.textShapes >= 1) ?? null
+  }
+  return usable.find((s) => s.bodyPh) ?? usable.find((s) => s.textShapes >= 2) ?? null
+}
+
+// ---------------------------- 文本注入 -------------------------------------
+
+function firstMatch(re: RegExp, s: string): string {
+  return re.exec(s)?.[0] ?? ""
+}
+
+/** 用给定文本行重建一个形状块的 txBody，保留 bodyPr/lstStyle 与首段 pPr/首 run rPr 样式模板 */
+function rewriteShapeTxBody(block: string, texts: string[]): string | null {
+  const tx = /<p:txBody>[\s\S]*?<\/p:txBody>/.exec(block)
+  if (!tx) return null
+  const inner = tx[0].slice("<p:txBody>".length, -"</p:txBody>".length)
+  const bodyPr = firstMatch(/<a:bodyPr\b[\s\S]*?(?:\/>|<\/a:bodyPr>)/, inner) || '<a:bodyPr/>'
+  const lstStyle = firstMatch(/<a:lstStyle\b[\s\S]*?(?:\/>|<\/a:lstStyle>)/, inner)
+  const firstPara = /<a:p>[\s\S]*?<\/a:p>/.exec(inner)
+  const pPr = firstPara ? firstMatch(/<a:pPr\b[\s\S]*?(?:\/>|<\/a:pPr>)/, firstPara[0]) : ""
+  const firstRun = firstPara ? /<a:r>[\s\S]*?<\/a:r>/.exec(firstPara[0]) : null
+  const rPr = firstRun ? firstMatch(/<a:rPr\b[\s\S]*?(?:\/>|<\/a:rPr>)/, firstRun[0]) : ""
+  let paras = ""
+  for (const t of texts) {
+    paras += `<a:p>${pPr}<a:r>${rPr}<a:t>${xmlEscape(t)}</a:t></a:r></a:p>`
+  }
+  const newTx = `<p:txBody>${bodyPr}${lstStyle}${paras}</p:txBody>`
+  return block.slice(0, tx.index) + newTx + block.slice(tx.index + tx[0].length)
+}
+
+/** 在整页 XML 上按形状顺序做标题/正文注入；返回 null 表示该样张无法承载指定文本 */
+function injectSlideText(xml: string, title: string, lines: string[]): string | null {
+  const re = /<p:sp>[\s\S]*?<\/p:sp>/g
+  const blocks: { start: number; end: number; text: string }[] = []
+  let m: RegExpExecArray | null
+  while ((m = re.exec(xml)) !== null) {
+    blocks.push({ start: m.index, end: m.index + m[0].length, text: m[0] })
+  }
+  if (!blocks.length) return null
+  const hasText = (b: string) => /<p:txBody>/.test(b) && !SKIP_PH_RE.test(b)
+  let tIdx = blocks.findIndex((b) => TITLE_PH_RE.test(b.text))
+  if (tIdx < 0) tIdx = blocks.findIndex((b) => hasText(b.text))
+  let bIdx = -1
+  if (lines.length) {
+    bIdx = blocks.findIndex((b, i) => i !== tIdx && BODY_PH_RE.test(b.text))
+    if (bIdx < 0) bIdx = blocks.findIndex((b, i) => i !== tIdx && hasText(b.text))
+    if (bIdx < 0) return null
+  }
+  if (tIdx < 0) return null
+  const tRewrite = rewriteShapeTxBody(blocks[tIdx].text, [title])
+  if (tRewrite === null) return null
+  let bRewrite = ""
+  if (bIdx >= 0) {
+    const r = rewriteShapeTxBody(blocks[bIdx].text, lines)
+    if (r === null) return null
+    bRewrite = r
+  }
+  let out = ""
+  let last = 0
+  for (let i = 0; i < blocks.length; i++) {
+    out += xml.slice(last, blocks[i].start)
+    out += i === tIdx ? tRewrite : i === bIdx ? bRewrite : blocks[i].text
+    last = blocks[i].end
+  }
+  out += xml.slice(last)
+  return out
+}
+
+// ---------------------------- 重打包 ---------------------------------------
+
+function repackage(
+  ctx: Ctx,
+  generated: { xml: string; rels: string }[],
+  titleSample: number,
+  bodySample: number,
+): FidelityOutcome {
+  const k = generated.length
+  // 1) presentation rels：摘除旧 slide 关系，新增 K 条（rId 从现有最大值续排）；保留 <Relationships> 包裹标签
+  const relTags = ctx.presRels.match(/<Relationship\b[^>]*\/>/g) || []
+  let maxRid = 0
+  for (const tag of relTags) {
+    const idm = /\bId="rId(\d+)"/.exec(tag)
+    if (idm) maxRid = Math.max(maxRid, Number(idm[1]))
+  }
+  const rids: number[] = []
+  for (let i = 0; i < k; i++) rids.push(maxRid + 1 + i)
+  let addRels = ""
+  for (let i = 0; i < k; i++) {
+    addRels += `<Relationship Id="rId${rids[i]}" Type="${REL_NS}/slide" Target="slides/slide${i + 1}.xml"/>`
+  }
+  // 只摘 slide 类型关系（/slide" 精确匹配，不误删 slideMaster/slideLayout），保留包裹标签
+  let presRels = ctx.presRels.replace(/<Relationship\b[^>]*Type="[^"]*\/slide"[^>]*\/>/g, "")
+  if (!presRels.includes("</Relationships>")) {
+    return { ok: false, reason: "template presentation rels malformed" }
+  }
+  presRels = presRels.replace("</Relationships>", addRels + "</Relationships>")
+
+  // 2) presentation.xml：整体重建 sldIdLst（兼容自闭空标签）
+  const idList = rids.map((r, i) => `<p:sldId id="${256 + i}" r:id="rId${r}"/>`).join("")
+  let pres = ctx.pres
+  if (/<p:sldIdLst>[\s\S]*?<\/p:sldIdLst>/.test(pres)) {
+    pres = pres.replace(/<p:sldIdLst>[\s\S]*?<\/p:sldIdLst>/, `<p:sldIdLst>${idList}</p:sldIdLst>`)
+  } else if (pres.includes("<p:sldIdLst/>")) {
+    pres = pres.replace("<p:sldIdLst/>", `<p:sldIdLst>${idList}</p:sldIdLst>`)
+  } else {
+    return { ok: false, reason: "template presentation.xml missing sldIdLst" }
+  }
+
+  // 3) [Content_Types].xml：摘除旧 slide Override，加入 K 条
+  let ct = ctx.ct.replace(/<Override PartName="\/ppt\/slides\/slide\d+\.xml"[^>]*\/>/g, "")
+  let addCt = ""
+  for (let i = 0; i < k; i++) {
+    addCt += `<Override PartName="/ppt/slides/slide${i + 1}.xml" ContentType="${SLIDE_CT}"/>`
+  }
+  if (!ct.includes("</Types>")) return { ok: false, reason: "template [Content_Types].xml malformed" }
+  ct = ct.replace("</Types>", addCt + "</Types>")
+
+  // 4) 复制其余部件；清理 notesSlides rels 中指向已删除旧页的关系
+  const out: Record<string, Uint8Array> = {}
+  out["[Content_Types].xml"] = strToU8(ct)
+  for (const name of Object.keys(ctx.entries)) {
+    if (name === "[Content_Types].xml" || name === "ppt/presentation.xml" || name === "ppt/_rels/presentation.xml.rels") continue
+    if (SLIDE_RE.test(name) || name.startsWith("ppt/slides/_rels/")) continue
+    if (name.startsWith("ppt/notesSlides/_rels/")) {
+      const cleaned = strFromU8(ctx.entries[name]).replace(
+        /<Relationship\b[^>]*Target="[^"]*slides\/slide\d+\.xml"[^>]*\/>/g,
+        "",
+      )
+      out[name] = strToU8(cleaned)
+      continue
+    }
+    out[name] = ctx.entries[name]
+  }
+  out["ppt/presentation.xml"] = strToU8(pres)
+  out["ppt/_rels/presentation.xml.rels"] = strToU8(presRels)
+  for (let i = 0; i < k; i++) {
+    out[`ppt/slides/slide${i + 1}.xml`] = strToU8(generated[i].xml)
+    out[`ppt/slides/_rels/slide${i + 1}.xml.rels`] = strToU8(generated[i].rels)
+  }
+
+  try {
+    return { ok: true, bytes: zipSync(out, { level: 6 }), titleSample, bodySample, slideCount: k }
+  } catch (e) {
+    return { ok: false, reason: `zip pack failed: ${e instanceof Error ? e.message : String(e)}` }
+  }
+}
+
+// ---------------------------- 对外 API -------------------------------------
+
+/** 模板体检：逐样张页可保真性目录（供切片三样张选择交互与失败归因展示） */
+export function inspectFidelityTemplate(template: Uint8Array): { slides: FidelityTemplateSlide[] } | null {
+  try {
+    const { ctx } = readCtx(unzipSync(template))
+    return ctx ? { slides: ctx.slides } : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 以公司模板为底，按 specs 生成保真 .pptx 字节。
+ * 母版/版式/主题/媒体原样保留；产物只含生成页（原样张页不进产物）。
+ * 任何不满足前提的情形返回 { ok:false, reason }，调用方按契约回退现通道。
+ */
+export function buildFidelityDeck(template: Uint8Array, specs: FidelitySlideSpec[]): FidelityOutcome {
+  if (!specs.length) return { ok: false, reason: "no slides to generate" }
+  let entries: Record<string, Uint8Array>
+  try {
+    entries = unzipSync(template)
+  } catch {
+    return { ok: false, reason: "template is not a valid zip package" }
+  }
+  const r = readCtx(entries)
+  if (!r.ctx) return { ok: false, reason: r.reason ?? "template unreadable" }
+  const ctx = r.ctx
+  const titleSample = pickSample(ctx, "title")
+  if (!titleSample) return { ok: false, reason: "no usable title sample slide in template" }
+  const anyLines = specs.some((s) => (s.lines ?? []).some((t) => t.trim() !== ""))
+  const bodySampleOpt = anyLines ? pickSample(ctx, "body") : null
+  if (anyLines && !bodySampleOpt) return { ok: false, reason: "no usable body sample slide in template" }
+  const bodySample = bodySampleOpt ?? titleSample
+
+  const generated: { xml: string; rels: string }[] = []
+  for (const spec of specs) {
+    const lines = (spec.lines ?? []).filter((t) => t.trim() !== "")
+    const sample = lines.length ? bodySample : titleSample
+    const src = ctx.xmls.get(sample.idx) ?? ""
+    const inj = injectSlideText(src, spec.title, lines)
+    if (inj === null) return { ok: false, reason: `sample slide ${sample.idx} cannot host title/body text` }
+    generated.push({ xml: inj, rels: ctx.relss.get(sample.idx) ?? "" })
+  }
+  return repackage(ctx, generated, titleSample.idx, bodySample.idx)
+}
