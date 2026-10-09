@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import { ArrowRight, ChevronDown, FileCheck2, FileText, Loader2, Plus, Receipt, Target } from "lucide-react"
+import { ArrowRight, ChevronDown, ExternalLink, FileCheck2, FileText, Loader2, Plus, Receipt, Rss, Target } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { CustomerProfileCard } from "@/components/customer-management/CustomerProfileCard"
 import { FollowTimeline } from "@/components/customer-management/FollowTimeline"
 import {
@@ -11,6 +12,7 @@ import {
   STAGE_LABEL,
   type ChainAssetItem,
   type ChainAssetKind,
+  type CustomerLead,
   type CustomerRow,
   type FollowRecordRow,
   type OppStage,
@@ -62,6 +64,11 @@ type CustomerDetailPanelProps = {
   onAddContact: () => void
   onRemoveContact: (index: number) => void
   savingContact: boolean
+  /** 2026-10-07 用户需求：官网/政府网站同步的信息化商机线索（不传或空数组则整区隐藏） */
+  siteLeads?: CustomerLead[]
+  /** 线索转商机进行中（按 线索url 记键） */
+  leadSavingUrl?: string
+  onLeadToOpportunity: (lead: CustomerLead) => void
 }
 
 export function CustomerDetailPanel({
@@ -100,6 +107,9 @@ export function CustomerDetailPanel({
   onAddContact,
   onRemoveContact,
   savingContact,
+  siteLeads,
+  leadSavingUrl,
+  onLeadToOpportunity,
 }: CustomerDetailPanelProps) {
   // 「全链路资产」折叠区开合（本地 UI 状态；A2-9 空时显示引导性空态，不再整区隐藏）
   const [chainOpen, setChainOpen] = useState(true)
@@ -123,6 +133,53 @@ export function CustomerDetailPanel({
         onRemoveContact={onRemoveContact}
         savingContact={savingContact}
       />
+
+      {!!siteLeads?.length && (
+        <div className="rounded-lg border border-border bg-card p-4 shadow-md lg:p-5">
+          <header className="flex min-h-14 items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Rss className="h-4 w-4 text-primary" />
+              <h3 className="text-base font-semibold text-foreground">商机线索（官网 / 政府网站同步）</h3>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{siteLeads.length} 条</span>
+            </div>
+          </header>
+          <p className="mt-1 text-xs text-muted-foreground">
+            来自医院官网公告栏与卫健委/政府网站的「医疗软件信息化」相关公告，一键建为线索商机（stage=线索），跟进前请先核实真伪。
+          </p>
+          <ul className="mt-3 flex flex-col gap-2">
+            {siteLeads.map((lead) => (
+              <li
+                key={lead.url}
+                className="flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-2"
+              >
+                <div className="min-w-0 flex-1">
+                  <a
+                    href={lead.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="line-clamp-2 text-xs font-medium text-foreground hover:text-primary hover:underline"
+                    title={lead.title}
+                  >
+                    {lead.title}
+                  </a>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">来源：{lead.src}</p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={leadSavingUrl === lead.url}
+                  onClick={() => onLeadToOpportunity(lead)}
+                  title="建为线索商机（可在商机列表跟进）"
+                >
+                  {leadSavingUrl === lead.url ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />}
+                  转商机
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="rounded-lg border border-border bg-card p-4 shadow-md lg:p-5">
         <header className="flex min-h-14 items-center justify-between">

@@ -26,6 +26,8 @@ export type SimilarMatch = {
   level: LevelMatch
   beds_ratio: number
   module_overlap: number
+  /** 该成交样本的床位数（>0 才参与每床单价归一化；缺则 0） */
+  beds: number
 }
 
 /** 一组数值的区间统计 */
@@ -54,6 +56,12 @@ export type Recommendation = {
   matches: SimilarMatch[]
   /** 总价推荐区间（基于匹配样本；匹配为空时基于全部成交样本） */
   total_range: RangeStat | null
+  /** 每床单价区间（对床位规模不敏感，跨尺度可比；样本无床位数则为 null） */
+  per_bed_range: RangeStat | null
+  /** 按当前项目床位数折算的推荐总价区间（床位归一化投影；缺当前床位或每床区间则为 null） */
+  projected_total: RangeStat | null
+  /** 当前报价的床位数（投影口径展示用；<=0 表示无床位维度） */
+  current_beds: number
   /** 逐模块单价参考区间（基于全部成交样本） */
   module_ranges: ModuleRange[]
   /** 口径说明（无匹配/样本偏少等降级提示） */
@@ -169,6 +177,7 @@ export function recommendFromHistory(
       }
     }
 
+    const beds = Number(s.beds_total) || 0
     const level = levelSimilarity(current.hospital_level, s.hospital_level)
     const beds_ratio = bedsRatio(current.beds_total, Number(s.beds_total) || 0)
     const module_overlap = jaccard(new Set(current.modules.filter(Boolean)), modulesOf(s))
@@ -186,6 +195,7 @@ export function recommendFromHistory(
       level,
       beds_ratio: round2(beds_ratio),
       module_overlap: round2(module_overlap),
+      beds,
     })
   }
 
@@ -202,7 +212,7 @@ export function recommendFromHistory(
     .slice(0, 10)
 
   if (!scored.length) {
-    return { available: false, matches: [], total_range: null, module_ranges, note: "暂无可用的成交样本，先在报价列表把典型项目标记为成交参考样本。" }
+    return { available: false, matches: [], total_range: null, per_bed_range: null, projected_total: null, current_beds: Number(current.beds_total) || 0, module_ranges, note: "暂无可用的成交样本，先在报价列表把典型项目标记为成交参考样本。" }
   }
 
   const allTotals = scored.map((m) => m.total)
@@ -221,10 +231,35 @@ export function recommendFromHistory(
     note = note ? `${note}${hint}` : hint
   }
 
+  // R176：床位归一化投影——历史相似成交的「每床单价」区间，按当前床位数折算推荐总价区间。
+  // 让「按床位数智能推荐」名副其实：原始 total_range 直接取相似成交总价，当当前项目床位规模与
+  // 样本差异大时（给 300 床医院报价、参考样本却是 1000 床成交）会系统性偏高/偏低。每床单价对规模
+  // 不敏感、可跨床位尺度比较，折算后给出与本项目体量匹配的可比区间。无床位数据的样本自动跳过（不污染）。
+  const rangeSet = matches.length ? matches : scored
+  const perBedVals = rangeSet.filter((m) => m.beds > 0).map((m) => m.total / m.beds)
+  const per_bed_range = buildRange(perBedVals)
+  const currentBeds = Number(current.beds_total) || 0
+  const projected_total =
+    per_bed_range && currentBeds > 0
+      ? {
+          count: per_bed_range.count,
+          low: round2(per_bed_range.low * currentBeds),
+          median: round2(per_bed_range.median * currentBeds),
+          high: round2(per_bed_range.high * currentBeds),
+        }
+      : null
+  if (projected_total) {
+    const pHint = `已按当前 ${currentBeds} 床、历史每床中位 ¥${Math.round(per_bed_range!.median)} 折算。`
+    note = note ? `${note}${pHint}` : pHint
+  }
+
   return {
     available: true,
     matches,
     total_range: buildRange(range_nums),
+    per_bed_range,
+    projected_total,
+    current_beds: currentBeds,
     module_ranges,
     note,
   }

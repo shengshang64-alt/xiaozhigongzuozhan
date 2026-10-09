@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button"
 import { ChapterEditor } from "@/components/solution-studio/ChapterEditor"
 import { ChapterNavTree } from "@/components/solution-studio/ChapterNavTree"
 import { MaterialAmmoPanel } from "@/components/solution-studio/MaterialAmmoPanel"
+import { RequirementCoverageCard } from "@/components/solution-studio/RequirementCoverageCard"
 import { SkillPickerFor } from "@/components/common/SkillPicker"
 import type { UseSolutionStudio } from "@/pages/SolutionStudio/useSolutionStudio"
 import { typeLabel, SOL_COMPLIANCE_MODES, SOL_COMPLIANCE_MODE_LABEL, SOL_COMPLIANCE_MODE_HINT } from "@/pages/SolutionStudio/solutionTypes"
+import { bulkResumeNotice, resumeBannerVisible } from "@/pages/SolutionStudio/bulkResume"
 
 type EditorWorkspaceProps = Pick<
   UseSolutionStudio,
@@ -162,7 +164,7 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
           </div>
           <label
             className="flex items-center gap-1.5 text-xs text-muted-foreground"
-            title="按每页约 500 字折算逐章字数预算：生成不足 60% 自动续写（最多 2 轮），超写按 1.3× 预算裁剪；留空或 0 = 不限页数（维持每章 1200-2000 字）"
+            title="按每页折算字数（默认版式经 2026-10 实测校准约 950 字/页，随格式设置缩放）折算逐章字数预算：生成不足 60% 自动续写（最多 2 轮），超写按 1.3× 预算裁剪；留空或 0 = 不限页数（维持每章 1200-2000 字）"
           >
             <span className="font-medium text-foreground">目标页数</span>
             <input
@@ -207,6 +209,31 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
           </div>
         )}
       </header>
+
+      {/* 生成链路 D1 对齐（r148 挂账解除）：上次批量中断内联恢复横幅——非批量中且有已完成章未全，点按钮从断点续跑（done 章天然 skip） */}
+      {resumeBannerVisible(p.doneChapterCount, total, p.bulkGenerating) && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/40 bg-warning/10 px-4 py-2.5 text-sm text-card-foreground animate-in fade-in duration-300">
+          <span className="min-w-0 flex-1 text-xs">
+            {bulkResumeNotice(p.doneChapterCount, total)}（已生成 {p.doneChapterCount}/{total} 章）
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={p.startBulkGenerate}
+            className="shrink-0 border-warning/50 text-foreground hover:bg-warning/20"
+          >
+            <Play className="mr-1.5 h-3.5 w-3.5" />
+            继续生成正文
+          </Button>
+        </div>
+      )}
+
+      {/* R162 需求条目落位核验：关联清单条目与大纲/正文两级逐字命中（零 AI 零费用），补写后随自动保存实时复核 */}
+      <RequirementCoverageCard
+        snapshot={sol.hospital_info?.ref_checklist_snapshot}
+        chapters={sol.chapters}
+        onSelectChapter={p.selectChapter}
+      />
 
       {/* 窄屏：素材栏改为成稿区上方抽屉式弹层（按钮唤出，默认隐藏） */}
       {mobileMaterialOpen && <div className="mt-4 lg:hidden">{materialPanel}</div>}

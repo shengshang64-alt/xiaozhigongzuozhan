@@ -108,6 +108,8 @@ export interface AssembleOptions {
   track?: string
   /** 场景用途桶：命中任一桶的文档软加权 */
   buckets?: string[]
+  /** 章节用途（2026-10-07 用户口径）：命中当前章节用途的文档软加权（设计方案/实施方案/售后方案等） */
+  sections?: string[]
   /** 返回篇数（同 searchKbDocs topN，内部仍限 3–8） */
   topN?: number
   /** 缺料判定阈值（该赛道候选 < 该值 → thin；=0 → empty），默认 3 */
@@ -132,7 +134,7 @@ function countTrackCandidates(docs: KbDocRow[], track: string): number {
 }
 
 /** 单条命中相对场景 profile 的加权因子 */
-function boostFactor(doc: KbDocRow, track?: string, buckets?: string[]): number {
+function boostFactor(doc: KbDocRow, track?: string, buckets?: string[], sections?: string[]): number {
   let f = 1
   if (track) {
     const dt = doc.kb_track ?? ""
@@ -143,6 +145,11 @@ function boostFactor(doc: KbDocRow, track?: string, buckets?: string[]): number 
   if (buckets && buckets.length) {
     const db = doc.kb_bucket ?? ""
     if (db && buckets.includes(db)) f *= W_BUCKET_MATCH
+  }
+  // 章节用途软加权（2026-10-07 用户口径）：同用途语料排前，未标注的中性
+  if (sections && sections.length) {
+    const ds = doc.kb_section ?? ""
+    if (ds && sections.includes(ds)) f *= W_BUCKET_MATCH
   }
   return f
 }
@@ -159,7 +166,7 @@ export function assembleKbContext(docs: KbDocRow[], opts: AssembleOptions): Asse
   let out = hits
   if (hasProfile && hits.length) {
     out = hits
-      .map((h) => ({ ...h, score: h.score * boostFactor(h.doc, opts.track, opts.buckets) }))
+      .map((h) => ({ ...h, score: h.score * boostFactor(h.doc, opts.track, opts.buckets, opts.sections) }))
       .sort((a, b) => b.score - a.score)
   }
 
@@ -176,13 +183,3 @@ export function assembleKbContext(docs: KbDocRow[], opts: AssembleOptions): Asse
   return { hits: out, trackStatus }
 }
 
-/** 便捷格式化：把组装结果拼成正文生成用的素材块（与既有消费方口径一致） */
-export function formatAssembleHits(
-  hits: KbSearchHit[],
-  snippetOf: (h: KbSearchHit) => string,
-): string {
-  if (!hits.length) return ""
-  return hits
-    .map((h) => `（来源文档：《${h.doc.title}》${h.headingPath ? ` · ${h.headingPath}` : ""}）\n${snippetOf(h)}`)
-    .join("\n\n")
-}

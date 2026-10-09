@@ -3,6 +3,7 @@ import { CompanyTemplateHint } from "@/components/common/CompanyTemplateHint"
 import { DECK_STATUS_LABEL, deckTypeLabel, type DeckRecord } from "@/pages/PptQuote/pptQuoteTypes"
 import { exportToCsv } from "@/lib/exportCsv"
 import { localDateStamp } from "@/lib/dateStamp"
+import { formatShortDateTime } from "@/lib/dateDisplay"
 
 type DeckListPanelProps = {
   decks: DeckRecord[]
@@ -12,13 +13,6 @@ type DeckListPanelProps = {
   onNew: () => void
   onOpen: (deck: DeckRecord) => void
   onDelete: (deck: DeckRecord) => void
-}
-
-function updatedText(iso: string): string {
-  if (!iso) return ""
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ""
-  return d.toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
 }
 
 export function DeckListPanel({
@@ -146,7 +140,7 @@ export function DeckListPanel({
               </div>
               <div className="mt-auto flex items-center justify-between gap-2 pt-4">
                 <span className="text-xs text-muted-foreground">
-                  {DECK_STATUS_LABEL[deck.doc_status] ?? ""} · {updatedText(deck.updated)}
+                  {DECK_STATUS_LABEL[deck.doc_status] ?? ""} · {formatShortDateTime(deck.updated)}
                 </span>
                 <span className="flex items-center gap-1">
                   <button

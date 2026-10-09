@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { escapeControlCharsInStrings, parseJsonTolerant, repairJsonStructure } from "./jsonTolerant"
+import { escapeControlCharsInStrings, extractJsonCandidate, parseJsonTolerant, repairJsonStructure } from "./jsonTolerant"
 
 // R120：AI 生成 JSON 的跨模块容错解析（标书 / 方案 / PPT 共用）此前无独立单测。
 // 锁死点：合法 JSON 结果与直接 JSON.parse 完全等价（第一尝试命中，修复级绝不篡改正确数据）；
@@ -91,5 +91,37 @@ describe("parseJsonTolerant", () => {
 
   it("数组顶层候选被截断：补闭合括号后解析", () => {
     expect(parseJsonTolerant('[{"a":1},{"b":2},')).toEqual([{ a: 1 }, { b: 2 }])
+  })
+})
+
+describe("extractJsonCandidate", () => {
+  it("裸对象：截到末个 }", () => {
+    expect(extractJsonCandidate('{"a":1}')).toBe('{"a":1}')
+  })
+
+  it("剥 ```json 代码围栏", () => {
+    expect(extractJsonCandidate('```json\n{"a":1}\n```')).toBe('{"a":1}')
+  })
+
+  it("前后夹带散文", () => {
+    expect(extractJsonCandidate('结果如下：{"a":1} 供参考')).toBe('{"a":1}')
+  })
+
+  it("数组顶层优先于对象", () => {
+    expect(extractJsonCandidate('[{"a":1}]')).toBe('[{"a":1}]')
+  })
+
+  it("无 JSON 起点返回空串", () => {
+    expect(extractJsonCandidate("完全没有大括号")).toBe("")
+  })
+
+  it("截断：默认返回空，truncateFromOpen 才取到结尾", () => {
+    expect(extractJsonCandidate('{"a":1,"b":2')).toBe("")
+    expect(extractJsonCandidate('{"a":1,"b":2', { truncateFromOpen: true })).toBe('{"a":1,"b":2')
+  })
+
+  it("null/undefined 回落空串", () => {
+    expect(extractJsonCandidate(null as unknown as string)).toBe("")
+    expect(extractJsonCandidate(undefined as unknown as string)).toBe("")
   })
 })

@@ -1571,7 +1571,8 @@ export function useIntelCenter() {
   const createBidTask = useCallback(
     (item: IntelItemRow) => {
       if (!requireLogin()) return
-      const st = item.structured || {}
+      const st = (item.structured || {}) as Record<string, string>
+      const hasStructured = Boolean(st.code || st.buyer || st.budget || st.deadline)
       const dm = /(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})/.exec(st.deadline || "")
       const payload: Record<string, unknown> = {
         rh_user_id: userId ?? "",
@@ -1588,7 +1589,10 @@ export function useIntelCenter() {
             toast.error("标书任务创建失败：未返回项目 id")
             return
           }
-          toast.success("标书任务已创建（招标要素已带入），正在跳转标书工作区")
+          // R217：手动录入的情报没有 structured 要素，如实提示避免「已带入」误导
+          toast.success(hasStructured
+            ? "标书任务已创建（招标要素已带入），正在跳转标书工作区"
+            : "标书任务已创建（该情报无结构化要素，请到第 1 步粘贴招标原文），正在跳转")
           setDetailItem(null)
           navigate(`/bid-workspace?project=${encodeURIComponent(r.id)}`)
         })

@@ -5,6 +5,7 @@
 import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/rhLogin"
 import { categoryOf, contextSnippetOf, effectivePolicy } from "@/lib/kbPolicy"
+import { redactPii } from "@/lib/piiRedact"
 
 // ---------------------------------------------------------------------------
 // 行类型（字段名与 kb_docs collection 100% 一致，snake_case）
@@ -34,6 +35,7 @@ export interface KbDocRow {
   is_sensitive?: boolean
   /** 组装层第一期：赛道标签（kbTaxonomy.KB_TRACKS，空=未分类），供调用时按场景软加权 */
   kb_track?: string
+  kb_section?: string
   /** 组装层第一期：用途桶标签（kbTaxonomy.KB_BUCKETS，空=未分类） */
   kb_bucket?: string
 }
@@ -135,6 +137,7 @@ export async function listKbDocs(opts?: ListKbDocsOptions): Promise<KbDocRow[]> 
       is_sensitive: typeof r.is_sensitive === "boolean" ? r.is_sensitive : undefined,
       kb_track: typeof r.kb_track === "string" ? r.kb_track : "",
       kb_bucket: typeof r.kb_bucket === "string" ? r.kb_bucket : "",
+      kb_section: typeof r.kb_section === "string" ? r.kb_section : "",
     }))
     // 响应回显钳制后的实际 perPage；返回条数不足一页即最后一页
     const effectivePerPage =
@@ -221,6 +224,10 @@ export async function createKbDoc(body: {
   ai_context_mode?: string
   retrieval_weight?: number
   is_sensitive?: boolean
+  /** 章节用途/赛道/用途桶（2026-10-07 知识库整合：方案入库时自动打标，生成检索按用途软加权） */
+  kb_section?: string
+  kb_track?: string
+  kb_bucket?: string
 }): Promise<KbDocRow> {
   const row = await kbFetch<KbDocRow>(`/api/kb_docs`, { method: "POST", body: JSON.stringify(body) })
   notifyKbMutation()
@@ -523,20 +530,6 @@ export function makeSnippet(content: string, tokens: string[], maxLen = 500): st
   return `${prefix}${stripMarkdown(raw)}${suffix}`
 }
 
-export function scoreKbDoc(doc: KbDocRow, tokens: string[]): number {
-  if (tokens.length === 0) return 0
-  const title = (doc.title ?? "").toLowerCase()
-  const keywords = (doc.keywords ?? []).map((k) => String(k).toLowerCase())
-  const body = (doc.content ?? "").toLowerCase()
-  let score = 0
-  for (const tok of tokens) {
-    if (title.includes(tok)) score += 3
-    if (keywords.some((k) => k.includes(tok) || tok.includes(k))) score += 2
-    score += Math.min(countOccurrences(body, tok), 20)
-  }
-  return score
-}
-
 // ---------------------------------------------------------------------------
 // 检索打分（块级 v2，p1-kb）：IDF + BM25 tf-saturation + 短语邻接 +
 // 标题整串强匹配 + 分类多样化 + 疑问词停用；每 doc 最多贡献 2 块（第 2 块分数
@@ -786,7 +779,7 @@ export function formatKbHitsForAssistant(
     目录: h.doc.folder_path || "（根目录）",
     库: h.doc.visibility === "personal" ? "个人笔记" : "团队知识库",
     ...(h.headingPath ? { 章节: h.headingPath } : {}),
-    摘要: (h.doc.summary || "").slice(0, 120),
+    摘要: redactPii((h.doc.summary || "").slice(0, 120)),
     // D-1 执行点③：脱敏摘要文档只回填 summary，绝不出现原文
     命中片段: contextSnippetOf(h.doc, h).slice(0, 400),
   }))

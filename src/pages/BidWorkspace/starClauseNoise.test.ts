@@ -21,6 +21,34 @@ describe("starClauseNoise · 标注含义解释句判定", () => {
   })
 })
 
+describe("starClauseNoise · 行内式标注约定句判定（R153）", () => {
+  it("编号起头、不以标记开头但为「标注X的条款」约定句判为噪声", () => {
+    expect(
+      looksLikeStarDefinitionLine(
+        '2.本文件中标注"▲"的条款为重要技术指标/服务指标，负偏离将按第六章评分标准扣分',
+      ),
+    ).toBe(true)
+    expect(
+      looksLikeStarDefinitionLine('本文件标注"★"的条款为实质性要求，任一条负偏离按无效投标处理'),
+    ).toBe(true)
+    // 「」引号变体同样命中（引号类可扩展）
+    expect(looksLikeStarDefinitionLine("带▲的：标注「▲」的条款须逐条响应，否则扣分")).toBe(true)
+  })
+
+  it("真实参数条款/纯约定词但非「标注…的条款」结构不误判", () => {
+    // 参数条款虽含「标注」但非「标注X的条款」约定语结构
+    expect(looksLikeStarDefinitionLine("▲须在投标文件中逐条标注响应情况并加盖公章")).toBe(false)
+    expect(looksLikeStarDefinitionLine("▲门急诊挂号系统须支持日均门诊15000人次")).toBe(false)
+    expect(looksLikeStarDefinitionLine("1.系统应满足等保三级要求")).toBe(false)
+  })
+
+  it("含 | 的表格行即便命中约定语也按结构内容保留（不判噪声）", () => {
+    expect(
+      looksLikeStarDefinitionLine('| 备注 | 本文件中标注"▲"的条款为实质性要求 | 是 |'),
+    ).toBe(false)
+  })
+})
+
 describe("starClauseNoise · cleanStarClauseContent 按条丢弃（含续行）", () => {
   it("噪声标记行及其续行剔除，干净条款与正文保留", () => {
     const content = [

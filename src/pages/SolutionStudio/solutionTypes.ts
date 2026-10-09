@@ -1,5 +1,5 @@
 import type { LlmMessage } from "@/lib/llm"
-import { parseJsonTolerant } from "@/lib/jsonTolerant"
+import { extractJsonCandidate, parseJsonTolerant } from "@/lib/jsonTolerant"
 
 // ---------------------------------------------------------------------------
 // 方案编制页：领域类型、常量与 LLM prompt 构造（Logic 层专用，无 JSX）
@@ -179,6 +179,68 @@ export function formatTargetCodes(codes: string[]): string {
     .join("、")
 }
 
+// ---------------------------------------------------------------------------
+// R155（闭环 r150-outline-consulting-gap 残余）：客户建设需求条目的章级路由。
+// 大纲 8-12 章约束下几十条系统清单逐字进标题存在天花板（R150 实测约 35%），
+// 正文级改为按章/节标题与条目名的双向包含匹配，把条目分派到对应章的 prompt。
+// ---------------------------------------------------------------------------
+
+/** 匹配用泛词表：章/节标题去泛词后只留具辨识度的名称段；刻意不含服务/咨询/培训/测评——服务类条目路由依赖这些字样 */
+const REQ_MATCH_GENERIC_WORDS = [
+  "分系统",
+  "子系统",
+  "总体",
+  "设计",
+  "建设",
+  "方案",
+  "规划",
+  "概述",
+  "介绍",
+  "系统",
+  "平台",
+  "中心",
+]
+
+/** 章/节标题 → 名称段：按非文字数字字符切分、连词（与/及）再拆，逐词去除泛词，保留长度≥2 的段 */
+export function requirementTitleSegments(title: string): string[] {
+  const segs = new Set<string>()
+  for (const token of (title ?? "").split(/[^0-9A-Za-z\u4e00-\u9fff]+/)) {
+    for (const part of token.split(/[与及]/)) {
+      const stripped = REQ_MATCH_GENERIC_WORDS.reduce((s, w) => s.split(w).join(""), part)
+      if (stripped.length >= 2) segs.add(stripped)
+    }
+  }
+  return Array.from(segs)
+}
+
+/** 条目命中判定：双向包含；纯字母数字段按词边界匹配，避免短缩写误中更长单词的内部子串 */
+function requirementSegHit(reqLine: string, seg: string): boolean {
+  if (/^[0-9A-Za-z]+$/.test(seg)) {
+    return new RegExp(`(^|[^0-9A-Za-z])${seg}([^0-9A-Za-z]|$)`, "i").test(reqLine)
+  }
+  return reqLine.includes(seg) || seg.includes(reqLine)
+}
+
+/**
+ * R155：判定某章应逐条回应的客户建设需求条目（章标题与各节名共同参与匹配）。
+ * 命中≥4 条且占比≥80% 视为章名无区分度（泛词误伤），此时不注入，由清单块整体覆盖要求兜底。
+ */
+export function chapterRequirementLines(
+  chapterTitle: string,
+  sections: string[] | undefined,
+  reqLines: string[] | undefined,
+): string[] {
+  if (!reqLines?.length) return []
+  const segs = [
+    ...requirementTitleSegments(chapterTitle),
+    ...(sections ?? []).flatMap((s) => requirementTitleSegments(s)),
+  ]
+  if (!segs.length) return []
+  const matched = reqLines.filter((r) => segs.some((seg) => requirementSegHit(r, seg)))
+  if (matched.length >= 4 && matched.length >= reqLines.length * 0.8) return []
+  return matched
+}
+
 export function checklistScopeBlock(snap: ChecklistSnapshot | undefined): string {
   if (!snap) return ""
   const externalNote = snap.external_systems.length
@@ -195,6 +257,7 @@ export function checklistScopeBlock(snap: ChecklistSnapshot | undefined): string
     externalNote,
     requirementNote,
     "硬性要求：分系统设计章节必须逐一覆盖上述清单中的全部系统与客户建设需求条目，不得遗漏；",
+    "服务类条目（条目名含咨询、服务、培训、测评陪跑等字样）属于采购的服务内容本身，须有专门章节或小节承载其服务内容、实施方法与交付物，不得只作为评级目标或预期成效表述；",
   ].join("\n")
 }
 
@@ -324,18 +387,9 @@ export function normalizeOutline(raw: unknown, depth = 1): OutlineNode[] {
 
 /** 从 LLM 文本中容错解析大纲 JSON：剥代码围栏、截取首个 { 或 [ 到末个 } 或 ] */
 export function parseOutlineJson(text: string): unknown {
-  let t = text.trim()
-  t = t.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim()
-  const objStart = t.indexOf("{")
-  const arrStart = t.indexOf("[")
-  let candidate = ""
-  if (arrStart >= 0 && (objStart < 0 || arrStart < objStart)) {
-    candidate = t.slice(arrStart, t.lastIndexOf("]") + 1)
-  } else if (objStart >= 0) {
-    candidate = t.slice(objStart, t.lastIndexOf("}") + 1)
-  }
+  // ai-stability-01：截候选走 extractJsonCandidate 单一真源，失败抛可读错误而非裸 SyntaxError（此函数 bid/solution 共用）
+  const candidate = extractJsonCandidate(text)
   if (!candidate) throw new Error("大纲格式解析失败")
-  // ai-stability-01：宽松解析（含裸控制字符转义），失败抛可读错误而非裸 SyntaxError（此函数 bid/solution 共用）
   const parsed = parseJsonTolerant(candidate) as Record<string, unknown> | unknown[]
   if (Array.isArray(parsed)) return parsed
   const rec = parsed as Record<string, unknown>
@@ -412,6 +466,9 @@ export function moveNodeInTree(nodes: OutlineNode[], id: string, dir: -1 | 1): O
 // Prompt 构造
 // ---------------------------------------------------------------------------
 
+/** 方案侧 prompt 版本指纹（B类流程）：R155 之前的口径记 sol-v1，改动 prompt 文本须 +1 并同步快照测试 */
+export const SOL_PROMPT_VERSION = "sol-v2/R155-2026-10-05"
+
 function infoBlock(hospital: string, info: HospitalInfo): string {
   return [
     `客户医院：${hospital}`,
@@ -437,7 +494,7 @@ export function buildOutlineMessages(
     `当前任务：为一份「${typeLabel(typeKey)}」（方案名：${solutionName}）生成多级目录大纲（章—节—小节，最多三级）。`,
     `该类型方案的章节要求：${typeGuidance(typeKey)}`,
     "硬性要求：",
-    "1. 章节骨架必须符合医疗信息化行业惯例与评审口径，结合医院等级、规模、需求科室与建设系统清单定制，勾选的每个系统都要落到具体的分系统章节；",
+    "1. 章节骨架必须符合医疗信息化行业惯例与评审口径，结合医院等级、规模、需求科室与建设系统清单定制，勾选的每个系统都要落到具体的分系统章节；条目多时可按业务集群合并章节承载，但每个系统与需求条目的名称至少逐字出现在一个节或小节标题中；",
     "2. 章数量 8-12 个，每章下设 2-6 节，节下可设 0-5 个小节（第三章级可留空）；",
     "3. 标题只写名称、不带任何编号（编号由系统自动生成），不带标点符号结尾；",
     "4. 输出严格 JSON，禁止任何解释文字、禁止 markdown 代码围栏，格式：",
@@ -542,7 +599,7 @@ export function buildChapterMessages(
     "3. 正文涉及医院名称、等级、床位、门诊量、预算、建设系统清单等事实信息时，必须与【医院项目事实基线】完全一致，基线没有的具体值写【待填写】，禁止编造不同数值；",
     "4. 禁止 markdown 符号（#、*、-、反引号）、禁止输出本章以外的内容、禁止开场白与总结语；",
     wordBudget && wordBudget > 0
-      ? `5. 本章字数预算约 ${wordBudget} 字（整份目标页数按章节权重折算，约 500 字/页），写足写具体：每个小节给出建设内容、功能清单、配置建议、实施步骤等可落地细节，禁止为凑篇幅重复套话；`
+      ? `5. 本章字数预算约 ${wordBudget} 字（整份目标页数按章节权重折算），写足写具体：每个小节给出建设内容、功能清单、配置建议、实施步骤等可落地细节，禁止为凑篇幅重复套话；`
       : "5. 本章篇幅 1200-2000 字，与全文大纲保持一致，不复述其它章节内容。",
   ]
   let ruleNo = 6
@@ -583,11 +640,22 @@ export function buildChapterMessages(
     .join("\n\n")
 
   // —— taskUser：仅本章差异内容，置后，不影响前缀缓存命中 ——
+  // R155（r150 残余）：正文级逐条覆盖——按章/节标题把客户建设需求条目路由到本章 prompt
+  const chapterReqs = chapterRequirementLines(
+    ch.title,
+    ch.sections,
+    sol.hospital_info?.ref_checklist_snapshot?.customer_requirements,
+  )
   const taskUser = [
     `【当前要编写的章节】第${chapterNo}章 ${ch.title}`,
     sectionLines
       ? `本章小节（每个小节标题单独一行，格式「${chapterNo}.1 小节名」，小节下写 2-5 段、每段 3-6 句）：\n${sectionLines}`
       : `本章无预设小节，请按内容逻辑自行组织 2-4 个小节，小节标题行格式「${chapterNo}.1 名称」，小节下写 2-5 段、每段 3-6 句。`,
+    chapterReqs.length
+      ? `【本章须逐条回应的客户建设需求条目（共 ${chapterReqs.length} 条）】\n${chapterReqs
+          .map((r, i) => `${i + 1}) ${r}`)
+          .join("\n")}\n以上每条必须落在本章独立小节或独立段落，写明针对该条的建设内容与功能范围；其中服务类条目（条目名含咨询、服务、培训、测评陪跑字样）要写清服务内容、实施方法与交付物；确属本章无法承载的条目，在章末用一行注明归入哪一章，不得默默丢弃。`
+      : "",
     kbMaterial ? `【知识库参考素材（团队沉淀，注明来源文档，须贴合本院实际）】\n${kbMaterial}` : "",
     "请编写本章完整正文。",
   ]

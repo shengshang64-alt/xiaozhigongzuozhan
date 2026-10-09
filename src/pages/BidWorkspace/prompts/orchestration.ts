@@ -25,6 +25,7 @@ export function buildOrchestrationMessages(
     knowledgeCandidates?: { ref: string; text: string }[]
     mermaidEnabled?: boolean
     aiImageEnabled?: boolean
+    figureCap?: number
   },
 ): LlmMessage[] {
   const factsLines = (opts?.factsLines ?? []).map((l) => l.trim()).filter(Boolean).slice(0, 40)
@@ -46,21 +47,35 @@ export function buildOrchestrationMessages(
     '{"items":[{"node_id":"叶子ID","facts":["事实行1"],"writing_focus":"写作焦点（对应评分点）","table":{"needed":false,"purpose":""},"figure":{"needed":true,"type":"architecture","title":"图名","caption":"图注","priority":4,"reason":"理由"}}]}',
   ].join("\n")
   // T16 条件块：mermaid 图型与知识库定向引用（不传 opts 时以上文本与快照锁字逐字节一致）
+  // 2026-10 易标对齐轮：条件块序号改动态编号（原硬编码 10/11/11 在组合开启时会重号）
   const extraRules: string[] = []
+  const extraRuleNo = () => 10 + extraRules.length
   if (opts?.mermaidEnabled) {
     extraRules.push(
-      "10. figure.type 增加可选值 \"mermaid\"（关系图）：内容是流程、层级、职责/接口等简单关系、且能用不超过 12 个节点的 mermaid 流程图表达时优先选 mermaid；复杂架构/界面示意仍用 architecture/demo；",
+      `${extraRuleNo()}. figure.type 增加可选值 "mermaid"（关系图）：内容是流程、层级、职责/接口等简单关系、且能用不超过 12 个节点的 mermaid 流程图表达时优先选 mermaid；复杂架构/界面示意仍用 architecture/demo；`,
+      // 2026-10 配图需求轮：项目实施计划类内容自动编排甘特图
+      `${extraRuleNo()}. figure.type 增加可选值 "gantt"（甘特图）：该节是项目实施计划、阶段划分、进度安排或里程碑类内容（标题含「实施计划/进度/里程碑/阶段安排」等字样是强信号）时选 gantt，一张甘特图比分段文字更利于评标专家核对工期；抽象论述或非进度类内容禁止选 gantt；`,
     )
   }
   // T17 条件块：AI 位图（具象场景照片/工程示意图，补图阶段异步生成）
   if (opts?.aiImageEnabled) {
     extraRules.push(
-      "11. figure.type 增加可选值 \"ai\"（AI 配图）：该节描写具象的机房建设、数据中心、网络部署、现场实施、运维服务等场景，且一张示意图/实景风格配图能提升评审观感时选 ai；ai 型必须同时输出 image_style（\"engineering_diagram\"=工程图示 或 \"realistic_photo\"=实景照片，场景落地类选实景、方案概念类选工程图示）和 scene（≤80 字的画面场景描述，只取本节标题与项目概述能支撑的具象内容，禁止编造设备型号与人数）。",
+      `${extraRuleNo()}. figure.type 增加可选值 "ai"（AI 配图）：该节描写具象的机房建设、数据中心、网络部署、现场实施、运维服务等场景，且一张示意图/实景风格配图能提升评审观感时选 ai；ai 型必须同时输出 image_style（"engineering_diagram"=工程图示 或 "realistic_photo"=实景照片，场景落地类选实景、方案概念类选工程图示）和 scene（≤80 字的画面场景描述，只取本节标题与项目概述能支撑的具象内容，禁止编造设备型号与人数）。`,
+      // 2026-10 易标 v2.18 画面差异化口径：同批 AI 配图在主体与景别上分散，防全篇同一构图
+      `${extraRuleNo()}. 多个 ai 型候选的画面必须彼此差异化：相邻两个 ai 候选的场景主体不得相同（如机房全景、设备实物特写、终端/仪表细节、完成状态效果交替），scene 描述的视角景别（全景/中景/特写）尽量错开，禁止连续小节出现同一构图只换文字的情况。`,
     )
   }
   if (knowledgeCandidates.length) {
     extraRules.push(
-      "11. knowledge：从下面【知识库候选素材】里挑选本节写作最应参考的素材 ref 编号（≤3 个，按相关度排序；候选与本节无关就输出空数组），程序会把对应素材段定向注入本节写作；禁止编造候选清单里没有的 ref。",
+      `${extraRuleNo()}. knowledge：从下面【知识库候选素材】里挑选本节写作最应参考的素材 ref 编号（≤3 个，按相关度排序；候选与本节无关就输出空数组），程序会把对应素材段定向注入本节写作；禁止编造候选清单里没有的 ref。`,
+    )
+  }
+  // 2026-10-07 高配图需求模式：使用者把全文配图上限设到 20 张以上时，判定反转为「默认配图」（宁多勿漏），
+  // 程序侧仍按 priority/上限/邻接类型去重全局择优——上限是供给侧约束，不该让提示词先把候选砍到 1/3。
+  if ((opts?.figureCap ?? 0) >= 20) {
+    extraRules.push(
+      `${extraRuleNo()}. 本次全文配图上限为 ${opts?.figureCap} 张，使用者明确需要多配图，判断口径反转为「默认配图」：清单中每个叶子默认 figure.needed=true 并给出具体图名/图注，仅当该节是纯条款罗列、承诺函、资质说明等加图会显得生硬的纯文字内容时才 needed=false；宁多勿漏——程序会按优先级、上限与相邻类型查重全局择优，标记数超过上限的部分不会被采用。`,
+      `${extraRuleNo()}. 本模式下 figure.priority 允许取 2-5 的整数（5=最该配图，2=可配可不配），按真实价值评级即可，禁止全部抬到 5。`,
     )
   }
   const system = extraRules.length ? `${baseSystem}\n${extraRules.join("\n")}` : baseSystem

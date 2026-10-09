@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { CheckSquare, CircleSlash, ClipboardCheck, ShieldAlert, Square } from "lucide-react"
+import { ArrowRight, CheckSquare, CircleSlash, ClipboardCheck, ShieldAlert, Square } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import {
   buildChecklistRows,
@@ -12,6 +12,7 @@ import {
   type ChecklistState,
 } from "@/pages/BidWorkspace/submissionChecklist"
 import type { ParseReport } from "@/pages/BidWorkspace/bidTypes"
+import { PARSE_STEP, checklistParseHint, stepGoLabel } from "@/components/bid-workspace/pipelineStep"
 
 // R25（A3 / bid-checklist-01）：交卷前逐项目合规清单面板（挂交卷体检步，始终可见）。
 // 从解析报告「响应文件要求」+「资格性审查」本地推导，逐项人工确认是否备齐；进度存本机 localStorage。
@@ -29,10 +30,12 @@ export function SubmissionChecklistPanel({
   projectId,
   report,
   locked = false,
+  onGoParse,
 }: {
   projectId: string
   report: ParseReport | null
   locked?: boolean
+  onGoParse?: () => void
 }) {
   const rows = useMemo(() => buildChecklistRows(report), [report])
   const [progress, setProgress] = useState<ChecklistProgressMap>(() => readChecklistProgress(projectId))
@@ -87,9 +90,19 @@ export function SubmissionChecklistPanel({
       </div>
 
       {rows.length === 0 ? (
-        <p className="mt-4 rounded-lg border border-dashed border-border bg-background px-4 py-6 text-center text-sm text-muted-foreground">
-          解析报告里还没有「响应文件要求」或「资格性审查」分区——请先在解析环节勾选并解析这两项（或在解析报告中手动补充），清单会自动生成。
-        </p>
+        <div className="mt-4 rounded-lg border border-dashed border-border bg-background px-4 py-6 text-center">
+          <p className="text-sm text-muted-foreground">{checklistParseHint()}</p>
+          {onGoParse && (
+            <button
+              type="button"
+              onClick={onGoParse}
+              className="mt-2 inline-flex items-center gap-1 rounded text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <ArrowRight className="h-3 w-3" />
+              前往第 {PARSE_STEP} 步 · {stepGoLabel(PARSE_STEP)}
+            </button>
+          )}
+        </div>
       ) : (
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           {GROUPS.map((kind) => {

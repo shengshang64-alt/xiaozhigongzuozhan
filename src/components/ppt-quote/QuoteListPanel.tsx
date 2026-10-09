@@ -3,6 +3,7 @@ import { CompanyTemplateHint } from "@/components/common/CompanyTemplateHint"
 import { formatMoney, quoteTotal, type QuoteRecord } from "@/pages/PptQuote/pptQuoteTypes"
 import { exportToCsv } from "@/lib/exportCsv"
 import { localDateStamp } from "@/lib/dateStamp"
+import { formatShortDateTime } from "@/lib/dateDisplay"
 
 type QuoteListPanelProps = {
   quotes: QuoteRecord[]
@@ -15,13 +16,6 @@ type QuoteListPanelProps = {
   onDelete: (quote: QuoteRecord) => void
   /** R79 quote-history-2 第一步：标记/取消「成交参考样本」（PATCH 沉淀字段，由调用方落库） */
   onToggleWonSample: (quote: QuoteRecord) => void
-}
-
-function updatedText(iso: string): string {
-  if (!iso) return ""
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ""
-  return d.toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
 }
 
 export function QuoteListPanel({
@@ -147,7 +141,7 @@ export function QuoteListPanel({
                   {quote.ref_name && <span className="truncate">关联：{quote.ref_name}</span>}
                 </div>
                 <div className="mt-auto flex items-center justify-between gap-2 pt-4">
-                  <span className="text-xs text-muted-foreground">更新于 {updatedText(quote.updated)}</span>
+                  <span className="text-xs text-muted-foreground">更新于 {formatShortDateTime(quote.updated)}</span>
                   <span className="flex items-center gap-1">
                     <button
                       type="button"

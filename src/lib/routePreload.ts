@@ -17,6 +17,8 @@ const LOADERS: Record<string, () => Promise<unknown>> = {
   "/team": () => import("@/pages/Team/index.tsx"),
   "/qual-certs": () => import("@/pages/QualCerts/index.tsx"),
   "/ai-hot": () => import("@/pages/AiHot/index.tsx"),
+  "/product-mapping": () => import("@/pages/ProductMapping/index.tsx"),
+  "/materials": () => import("@/pages/MaterialLibrary/index.tsx"),
 }
 
 /** 已在飞行中/已完成的 path 集合（防重复触发） */

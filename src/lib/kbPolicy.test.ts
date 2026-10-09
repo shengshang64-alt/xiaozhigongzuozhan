@@ -181,3 +181,44 @@ describe("classifyKbDoc 内容感知分类", () => {
     expect(r.score).toBe(0)
   })
 })
+
+describe("contextSnippetOf 敏感档 PII 逐字段脱敏（R186）", () => {
+  it("摘要内手机号进 AI 前被掩码，原文绝不出现", () => {
+    const doc = mkDoc({ doc_category: "合同商务", summary: "联系人 13812345678，账期 90 天" })
+    const out = contextSnippetOf(doc, { snippet: "原文含身份证110101199003071234" })
+    expect(out).toContain("脱敏摘要，原文不进 AI 上下文")
+    expect(out).not.toContain("13812345678")
+    expect(out).toContain("138****5678")
+    expect(out).not.toContain("110101199003071234")
+  })
+  it("兜底标题 / 关键词内 PII 同样掩码", () => {
+    const doc = mkDoc({
+      doc_category: "资质证书",
+      title: "法人110101199003071234",
+      keywords: ["联系人13800138000"],
+      summary: "",
+    })
+    const out = contextSnippetOf(doc, { snippet: "x" })
+    expect(out).not.toContain("110101199003071234")
+    expect(out).not.toContain("13800138000")
+  })
+  it("非敏感 original 档不做逐字段脱敏（行为逐字等价）", () => {
+    const doc = mkDoc({ doc_category: "产品资料" })
+    expect(contextSnippetOf(doc, { snippet: "热线400-1234567" })).toBe("热线400-1234567")
+  })
+})
+
+describe("contextSnippetOf original 敏感档二次掩码（R188）", () => {
+  it("original + is_sensitive=true：命中片段 PII 被掩码，不进 AI", () => {
+    const doc = mkDoc({ doc_category: "合同商务", ai_context_mode: "original", is_sensitive: true })
+    const out = contextSnippetOf(doc, { snippet: "联系人 李四 手机 13800138000，邮箱 lisi@hospital.cn" })
+    expect(out).not.toContain("13800138000")
+    expect(out).toContain("138")
+    expect(out).toContain("****")
+    expect(out).not.toContain("lisi@hospital.cn")
+  })
+  it("original 非敏感档：命中片段逐字原样返回（零行为变更回归锁）", () => {
+    const doc = mkDoc({ doc_category: "技术方案" })
+    expect(contextSnippetOf(doc, { snippet: "支持 13800138000 台终端" })).toBe("支持 13800138000 台终端")
+  })
+})

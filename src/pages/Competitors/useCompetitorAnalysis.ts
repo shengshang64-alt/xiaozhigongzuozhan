@@ -301,6 +301,15 @@ export function formatExternalBlock(ext: ExternalEvidenceResult): string {
   return parts.join("\n\n")
 }
 
+/**
+ * R158：采纳时需要二次确认的建议 = 无事实依据且非 low 置信度（防降级未生效）。
+ * 抽成纯函数：hook 的挂起判定与页面的 pendingNoEvidenceCount 都走这一处，
+ * 替代此前 applyUpdates 里的原生 window.confirm（全站最后一处，收敛到统一 ConfirmDialog）。
+ */
+export function suggestionsNeedingConfirm(accepted: FieldSuggestion[]): FieldSuggestion[] {
+  return accepted.filter((u) => (u.evidence_refs?.length ?? 0) === 0 && u.confidence !== "low")
+}
+
 // ---------------------------------------------------------------------------
 // 主 Hook
 // ---------------------------------------------------------------------------
@@ -320,6 +329,8 @@ export function useCompetitorAnalysis(opts: UseCompetitorAnalysisOptions) {
   const [intelLoading, setIntelLoading] = useState(false)
   const [applied, setApplied] = useState(false)
   const [evidenceBundle, setEvidenceBundle] = useState<EvidenceBundle | null>(null)
+  // R158：待二次确认的采纳批次（无事实依据建议）——确认状态外显给页面挂 ConfirmDialog
+  const [pendingApply, setPendingApply] = useState<{ rowId: string; accepted: FieldSuggestion[] } | null>(null)
 
   // 关联情报独立加载（供 UI 面板在分析前后展示，与 runAnalysis 分离）
   const loadRelatedIntel = useCallback(async (row: CompetitorRow) => {
@@ -411,15 +422,8 @@ export function useCompetitorAnalysis(opts: UseCompetitorAnalysisOptions) {
     [opts.modelRef, opts.enableExternal],
   )
 
-  const applyUpdates = useCallback(
+  const commitApply = useCallback(
     async (rowId: string, accepted: FieldSuggestion[]) => {
-      if (accepted.length === 0) return
-      // 二次确认：无事实依据 & 非 low 的建议（防降级未生效），提示"该条无事实依据，确认采纳？"
-      const noEvidence = accepted.filter((u) => (u.evidence_refs?.length ?? 0) === 0 && u.confidence !== "low")
-      if (noEvidence.length > 0) {
-        const ok = window.confirm(`有 ${noEvidence.length} 条建议未附事实依据，确认采纳？`)
-        if (!ok) return
-      }
       const patch: CompetitorPatch = {}
       for (const u of accepted) {
         // R145：写回侧纵深防御——即使 accepted 从别处流入，也只允许白名单字段落库；
@@ -440,11 +444,36 @@ export function useCompetitorAnalysis(opts: UseCompetitorAnalysisOptions) {
     [opts],
   )
 
+  const applyUpdates = useCallback(
+    (rowId: string, accepted: FieldSuggestion[]) => {
+      if (accepted.length === 0) return
+      // R158：无事实依据建议的二次确认由原生 window.confirm 改为挂起批次 +
+      // 暴露确认状态给页面接全站统一 ConfirmDialog（hook 内不再弹任何原生对话框）
+      const noEvidence = suggestionsNeedingConfirm(accepted)
+      if (noEvidence.length > 0) {
+        setPendingApply({ rowId, accepted })
+        return
+      }
+      void commitApply(rowId, accepted)
+    },
+    [commitApply],
+  )
+
+  const confirmApply = useCallback(() => {
+    if (!pendingApply) return
+    const { rowId, accepted } = pendingApply
+    setPendingApply(null)
+    void commitApply(rowId, accepted)
+  }, [pendingApply, commitApply])
+
+  const cancelApply = useCallback(() => setPendingApply(null), [])
+
   const reset = useCallback(() => {
     setResult(null)
     setError("")
     setApplied(false)
     setEvidenceBundle(null)
+    setPendingApply(null)
   }, [])
 
   return {
@@ -458,6 +487,9 @@ export function useCompetitorAnalysis(opts: UseCompetitorAnalysisOptions) {
     runAnalysis,
     loadRelatedIntel,
     applyUpdates,
+    pendingNoEvidenceCount: pendingApply ? suggestionsNeedingConfirm(pendingApply.accepted).length : 0,
+    confirmApply,
+    cancelApply,
     reset,
     costHint: opts.modelRef ? costTextForModel(opts.modelRef) : "",
   }

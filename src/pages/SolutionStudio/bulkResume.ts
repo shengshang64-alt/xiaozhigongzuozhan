@@ -35,3 +35,8 @@ export function bulkResumeNotice(done: number, total: number): string | null {
   }
   return null
 }
+
+/** EditorWorkspace 内联恢复横幅是否可见：非批量进行中且有已完成章但未全（与 bulkResumeNotice 同口径，有文案即有横幅）。 */
+export function resumeBannerVisible(done: number, total: number, bulkGenerating: boolean): boolean {
+  return !bulkGenerating && bulkResumeNotice(done, total) !== null
+}

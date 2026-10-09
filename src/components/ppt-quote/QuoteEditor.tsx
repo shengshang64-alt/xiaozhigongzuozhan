@@ -366,6 +366,17 @@ export function QuoteEditor({
                   )
                 })()
               ) : null}
+              {recommendation.projected_total ? (
+                <p className="text-xs leading-relaxed text-foreground">
+                  <span className="font-medium text-primary">按当前 {recommendation.current_beds} 床折算：</span>
+                  建议总价 ¥{formatMoney(recommendation.projected_total.low)} ~ ¥{formatMoney(recommendation.projected_total.high)}（中位 ¥{formatMoney(recommendation.projected_total.median)}）
+                  {recommendation.per_bed_range ? (
+                    <span className="ml-1 text-[10px] text-muted-foreground">
+                      · 历史每床 ¥{formatMoney(recommendation.per_bed_range.low)}~{formatMoney(recommendation.per_bed_range.high)}（{recommendation.per_bed_range.count} 样本）
+                    </span>
+                  ) : null}
+                </p>
+              ) : null}
               {recommendation.matches.length ? (
                 <ul className="space-y-1.5">
                   {recommendation.matches.map((m) => (

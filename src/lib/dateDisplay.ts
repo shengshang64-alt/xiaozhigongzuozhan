@@ -40,3 +40,19 @@ export function formatDateTimeDisplay(iso: string): string {
   if (Number.isNaN(d.getTime())) return iso.slice(0, 10)
   return formatDateTime(d)
 }
+
+/**
+ * Compact list-row stamp `M/D HH:MM` (no year, no seconds, 24h local).
+ * R164: the list panels (Deck/Quote/SolutionListPanel/ChapterScoreCard) each
+ * re-implemented `toLocaleString("zh-CN", { month/day: "numeric", hour/minute:
+ * "2-digit" })`; two of them skipped the NaN guard and leaked "Invalid Date".
+ * Byte-identical to the legacy output for valid input (month/day unpadded,
+ * hour 24h two-digit), "" for empty/unparsable. Single source now.
+ */
+export function formatShortDateTime(iso: string): string {
+  if (!iso) return ""
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ""
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}

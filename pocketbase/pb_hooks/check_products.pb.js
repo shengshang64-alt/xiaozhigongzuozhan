@@ -2,7 +2,7 @@
 // pb_hooks/check_products.pb.js — 业务 collection + REST CRUD 路由 (self-contained)
 //
 // 由 mcp__rh-pb-hooks__install_business_collection 装. 不要直接 Read+Write 这个文件.
-// 业务字段: is_builtin:bool, in_company:bool, category:text, product_line:text, product_name:text, module_name:text, module_func:text, description:text, charge_mode:text, unit_price:number, status:text, rating_tags:json, tech_params:json
+// 业务字段: is_builtin:bool, in_company:bool, category:text, product_line:text, product_name:text, module_name:text, module_func:text, description:text, charge_mode:text, unit_price:number, status:text, rating_tags:json, tech_params:json, product_belong:text, module_category:text, standard_name:text, module_attr:text, coefficient:text, recommendation:text, price_tier:json
 // 路由: list,get,create,update,delete
 // list filter 字段: (none)
 // list 默认排序: -created
@@ -40,6 +40,13 @@ onBootstrap(function (e) {
       addField({ name: 'status', type: 'text' })
       addField({ name: 'rating_tags', type: 'json' })
       addField({ name: 'tech_params', type: 'json' })
+      addField({ name: 'product_belong', type: 'text' })
+      addField({ name: 'module_category', type: 'text' })
+      addField({ name: 'standard_name', type: 'text' })
+      addField({ name: 'module_attr', type: 'text' })
+      addField({ name: 'coefficient', type: 'text' })
+      addField({ name: 'recommendation', type: 'text' })
+      addField({ name: 'price_tier', type: 'json' })
       addField({ name: "created", type: "autodate", onCreate: true })
       addField({ name: "updated", type: "autodate", onCreate: true, onUpdate: true })
       if (changed) {
@@ -65,6 +72,13 @@ onBootstrap(function (e) {
           { name: 'status', type: 'text' },
           { name: 'rating_tags', type: 'json' },
           { name: 'tech_params', type: 'json' },
+          { name: 'product_belong', type: 'text' },
+          { name: 'module_category', type: 'text' },
+          { name: 'standard_name', type: 'text' },
+          { name: 'module_attr', type: 'text' },
+          { name: 'coefficient', type: 'text' },
+          { name: 'recommendation', type: 'text' },
+          { name: 'price_tier', type: 'json' },
           { name: "created", type: "autodate", onCreate: true },
           { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
         ],
@@ -99,6 +113,13 @@ routerAdd("GET", "/api/check_products", function (e) {
           { name: 'status', type: 'text' },
           { name: 'rating_tags', type: 'json' },
           { name: 'tech_params', type: 'json' },
+          { name: 'product_belong', type: 'text' },
+          { name: 'module_category', type: 'text' },
+          { name: 'standard_name', type: 'text' },
+          { name: 'module_attr', type: 'text' },
+          { name: 'coefficient', type: 'text' },
+          { name: 'recommendation', type: 'text' },
+          { name: 'price_tier', type: 'json' },
         { name: "created", type: "autodate", onCreate: true },
         { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
       ],
@@ -119,7 +140,25 @@ routerAdd("GET", "/api/check_products", function (e) {
     var sort = String(query.sort || "-created")
     var filterParts = []
     var params = {}
-    // no list_filter_fields configured
+    // R-006 公司库视图：q/产品线/分类/公司库口径筛选（JSVM handler 内联，勿上提）
+    if (query.in_company !== undefined && String(query.in_company) !== "") {
+      filterParts.push("in_company = " + (String(query.in_company) === "true" || String(query.in_company) === "1" ? "true" : "false"))
+    }
+    if (query.is_builtin !== undefined && String(query.is_builtin) !== "") {
+      filterParts.push("is_builtin = " + (String(query.is_builtin) === "true" || String(query.is_builtin) === "1" ? "true" : "false"))
+    }
+    if (query.product_line !== undefined && String(query.product_line) !== "") {
+      filterParts.push("product_line = {:pline}")
+      params.pline = String(query.product_line)
+    }
+    if (query.category !== undefined && String(query.category) !== "") {
+      filterParts.push("category = {:cat}")
+      params.cat = String(query.category)
+    }
+    if (query.q !== undefined && String(query.q) !== "") {
+      filterParts.push("(product_line ~ {:q} || product_name ~ {:q} || module_name ~ {:q} || description ~ {:q} || standard_name ~ {:q})")
+      params.q = "%" + String(query.q) + "%"
+    }
     var filter = filterParts.length > 0 ? filterParts.join(" && ") : ""
     var records = filter
       ? $app.findRecordsByFilter("check_products", filter, sort, perPage, (page - 1) * perPage, params)
@@ -159,7 +198,7 @@ routerAdd("GET", "/api/check_products/{id}", function (e) {
     return e.json(500, { error: "get_failed", message: msg, fingerprint: msg.substring(0, 80) })
   }
 })
-// POST /api/check_products  body 字段: is_builtin, in_company, category, product_line, product_name, module_name, module_func, description, charge_mode, unit_price, status, rating_tags, tech_params
+// POST /api/check_products  body 字段: is_builtin, in_company, category, product_line, product_name, module_name, module_func, description, charge_mode, unit_price, status, rating_tags, tech_params, product_belong, module_category, standard_name, module_attr, coefficient, recommendation, price_tier
 routerAdd("POST", "/api/check_products", function (e) {
   function ensureCollLocal() {
     try { return $app.findCollectionByNameOrId("check_products") } catch (_) {}
@@ -181,6 +220,13 @@ routerAdd("POST", "/api/check_products", function (e) {
           { name: 'status', type: 'text' },
           { name: 'rating_tags', type: 'json' },
           { name: 'tech_params', type: 'json' },
+          { name: 'product_belong', type: 'text' },
+          { name: 'module_category', type: 'text' },
+          { name: 'standard_name', type: 'text' },
+          { name: 'module_attr', type: 'text' },
+          { name: 'coefficient', type: 'text' },
+          { name: 'recommendation', type: 'text' },
+          { name: 'price_tier', type: 'json' },
         { name: "created", type: "autodate", onCreate: true },
         { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
       ],
@@ -208,6 +254,13 @@ routerAdd("POST", "/api/check_products", function (e) {
     rec.set("status", body.status === undefined || body.status === null ? "" : String(body.status))
     rec.set("rating_tags", body.rating_tags)
     rec.set("tech_params", body.tech_params)
+    rec.set("product_belong", body.product_belong === undefined || body.product_belong === null ? "" : String(body.product_belong))
+    rec.set("module_category", body.module_category === undefined || body.module_category === null ? "" : String(body.module_category))
+    rec.set("standard_name", body.standard_name === undefined || body.standard_name === null ? "" : String(body.standard_name))
+    rec.set("module_attr", body.module_attr === undefined || body.module_attr === null ? "" : String(body.module_attr))
+    rec.set("coefficient", body.coefficient === undefined || body.coefficient === null ? "" : String(body.coefficient))
+    rec.set("recommendation", body.recommendation === undefined || body.recommendation === null ? "" : String(body.recommendation))
+    rec.set("price_tier", body.price_tier)
     $app.save(rec)
     return e.json(200, rec.publicExport())
   } catch (err) {
@@ -241,6 +294,13 @@ routerAdd("PATCH", "/api/check_products/{id}", function (e) {
     if ("status" in body) rec.set("status", body.status === undefined || body.status === null ? "" : String(body.status))
     if ("rating_tags" in body) rec.set("rating_tags", body.rating_tags)
     if ("tech_params" in body) rec.set("tech_params", body.tech_params)
+    if ("product_belong" in body) rec.set("product_belong", body.product_belong === undefined || body.product_belong === null ? "" : String(body.product_belong))
+    if ("module_category" in body) rec.set("module_category", body.module_category === undefined || body.module_category === null ? "" : String(body.module_category))
+    if ("standard_name" in body) rec.set("standard_name", body.standard_name === undefined || body.standard_name === null ? "" : String(body.standard_name))
+    if ("module_attr" in body) rec.set("module_attr", body.module_attr === undefined || body.module_attr === null ? "" : String(body.module_attr))
+    if ("coefficient" in body) rec.set("coefficient", body.coefficient === undefined || body.coefficient === null ? "" : String(body.coefficient))
+    if ("recommendation" in body) rec.set("recommendation", body.recommendation === undefined || body.recommendation === null ? "" : String(body.recommendation))
+    if ("price_tier" in body) rec.set("price_tier", body.price_tier)
     $app.save(rec)
     return e.json(200, rec.publicExport())
   } catch (err) {

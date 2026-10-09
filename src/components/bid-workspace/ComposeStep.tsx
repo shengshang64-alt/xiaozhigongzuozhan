@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { Link } from "react-router-dom"
-import { ChevronDown, ChevronRight, ClipboardPaste, Download, Eye, FileUp, FolderInput, LayoutGrid, Loader2, PenLine, Play, RefreshCw, Sparkles, Square, Wand2 } from "lucide-react"
+import { ChevronDown, ChevronLeft, ChevronRight, ClipboardPaste, Download, Eye, FileUp, FolderInput, LayoutGrid, Loader2, PenLine, Play, RefreshCw, Sparkles, Square, Table2, Wand2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -9,18 +9,25 @@ import { ChapterEditor } from "@/components/solution-studio/ChapterEditor"
 import { OutlineTreeEditor } from "@/components/solution-studio/OutlineTreeEditor"
 import { ChapterBudgetBar } from "@/components/bid-workspace/ChapterBudgetBar"
 import { DeviationPanel } from "@/components/bid-workspace/DeviationPanel"
+import { FigureInsertTools } from "@/components/bid-workspace/FigureInsertTools"
 import { ScoreMappingPanel } from "@/components/bid-workspace/ScoreMappingPanel"
+import { BidMaterialAmmoPanel } from "@/components/bid-workspace/BidMaterialAmmoPanel"
 import { FormatSettingsPanel } from "@/components/bid-workspace/FormatSettingsPanel"
 import { GenerationSettingsBar } from "@/components/bid-workspace/GenerationSettingsBar"
 import { GlobalFactsPanel } from "@/components/bid-workspace/GlobalFactsPanel"
+import { MaterialLibraryPanel } from "@/components/bid-workspace/MaterialLibraryPanel"
 import { OutlineCoverage } from "@/components/bid-workspace/OutlineCoverage"
 import { SkillPickerFor } from "@/components/common/SkillPicker"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { PrintChapterFlow, PrintExportButton } from "@/components/common/PrintExport"
+import { BidWordPreview } from "./BidWordPreview"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
-import { BID_OUTLINE_REQ_KEY, bulkQueueClear, bulkQueueLoad, sectionText } from "@/pages/BidWorkspace/bidTypes"
+import { BID_OUTLINE_REQ_KEY, bulkQueueClear, bulkQueueLoad, FIGURES_UNLIMITED, sectionText } from "@/pages/BidWorkspace/bidTypes"
+import { isIncompleteSectionChapter } from "@/pages/BidWorkspace/chapterCompletion"
 import type { Chapter, OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
 import { typeLabel } from "@/pages/SolutionStudio/solutionTypes"
+import { formatCount } from "@/lib/money"
+import { toast } from "sonner"
 
 type ComposeStepProps = Pick<
   UseBidWorkspace,
@@ -38,6 +45,12 @@ type ComposeStepProps = Pick<
   | "maxFigures"
   | "setMaxFigures"
   | "orchestrationSummary"
+  // 2026-10 配图需求轮：上传截图 / 图模板库
+  | "figureTemplates"
+  | "figureUploadBusy"
+  | "uploadChapterFigure"
+  | "insertFigureTemplate"
+  | "removeFigureTemplateById"
   | "orchestrationBusy"
   | "orchestrationProgress"
   | "startOrchestration"
@@ -48,6 +61,8 @@ type ComposeStepProps = Pick<
   | "setMaterialBoost"
   | "setComplianceMode"
   | "setIncludeBiz"
+  | "scope"
+  | "setScope"
   | "bizRemoveCount"
   | "confirmRemoveBizChapters"
   | "cancelRemoveBizChapters"
@@ -93,6 +108,13 @@ type ComposeStepProps = Pick<
   | "editingContent"
   | "setEditingContent"
   | "chapterBusy"
+  // R167：公司优质素材库（五类标准件）面板所需
+  | "refMaterialsDraft"
+  | "refFileBusy"
+  | "saveMaterialLibrary"
+  | "applyLibraryDefaults"
+  | "importLibraryFile"
+  | "classifyLibraryDraft"
   | "generateChapter"
   | "regenerateChapter"
   | "regenerateSection"
@@ -121,6 +143,10 @@ type ComposeStepProps = Pick<
   | "startAiFigures"
   | "aiFigureBusy"
   | "aiFigureProgress"
+  | "figureBackfillBusy"
+  | "figureBackfillProgress"
+  | "figureBackfillPending"
+  | "startFigureBackfill"
   | "contentFocus"
   | "focusSectionInChapter"
   | "outlineClauseTotal"
@@ -312,6 +338,8 @@ function OutlineNavTree({
   onFocusSection,
   onRegenerateSection,
   onResizeSection,
+  doneChapterCount,
+  techChapterTotal,
 }: {
   outline: OutlineNode[]
   chapters: Chapter[]
@@ -330,6 +358,10 @@ function OutlineNavTree({
   onRegenerateSection: (nodeId: string, sectionIdx: number) => void
   /** 循环 5 A1：小节级局部扩写 / 缩写 */
   onResizeSection: (nodeId: string, sectionIdx: number, mode: "expand" | "shrink") => void
+  /** R205 切片 0.5：已完成技术章数（进度条分子） */
+  doneChapterCount: number
+  /** R205 切片 0.5：技术章总数（进度条分母） */
+  techChapterTotal: number
 }) {
   // 大纲缺失时按章节清单兜底成两级树，导航不留白（第十三轮：兜底节点保留 part 归属）
   const tree: OutlineNode[] = outline.length
@@ -341,6 +373,16 @@ function OutlineNavTree({
         ...(c.part ? { part: c.part } : {}),
       }))
   const indentClass = ["pl-2", "pl-6", "pl-10", "pl-14"]
+  // R205 切片 0.5：技术章「第N章」序号映射（与方案编制 ChapterNavTree 视觉对齐；商务章不参与编号）
+  const techIndexById = new Map<string, number>()
+  {
+    let n = 0
+    for (const c of chapters) {
+      if (c.part === "biz") continue
+      n += 1
+      techIndexById.set(c.node_id, n)
+    }
+  }
   // 切片A1/E2：章级折叠/展开（组件内部管理）；折叠键为一级章 id
   // E2：默认收起全部、仅展开当前选中章（大文档导航不再一屏铺满）；未选中任何章时保持全展开
   const branchIds = tree.filter((n) => (n.children?.length ?? 0) > 0).map((n) => n.id)
@@ -425,7 +467,9 @@ function OutlineNavTree({
             }`}
           >
             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isBiz ? "bg-muted-foreground/40" : ch?.gen_status === "failed" ? "bg-destructive" : ready ? "bg-primary" : "bg-border"}`} />
-            <span className="min-w-0 flex-1 truncate">{node.title}</span>
+            <span className="min-w-0 flex-1 truncate">
+              {isChapter && !isBiz ? `第${techIndexById.get(chapterId) ?? 1}章 ${node.title}` : node.title}
+            </span>
             {isChapter && (
               <span
                 className={`shrink-0 rounded-full px-1.5 py-0.5 text-xs ${
@@ -514,10 +558,23 @@ function OutlineNavTree({
   }
 
   return (
-    <nav className="rounded-lg border border-border bg-card p-3 shadow-md">
+    <nav className="flex h-full flex-col rounded-lg border border-border bg-card p-3 shadow-md">
       <div className="flex items-center justify-between px-2 pb-2">
-        <p className="text-xs font-semibold text-foreground">投标文件目录</p>
-        {branchIds.length > 1 && (
+        <p className="text-sm font-semibold text-foreground">大纲目录</p>
+        <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+          {doneChapterCount}/{techChapterTotal} 章
+        </span>
+      </div>
+      <div className="px-2 pb-2">
+        <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-primary transition-all duration-500"
+            style={{ width: `${techChapterTotal > 0 ? Math.round((doneChapterCount / techChapterTotal) * 100) : 0}%` }}
+          />
+        </div>
+      </div>
+      {branchIds.length > 1 && (
+        <div className="flex justify-end px-2 pb-1">
           <button
             type="button"
             onClick={toggleAll}
@@ -525,8 +582,8 @@ function OutlineNavTree({
           >
             {allCollapsed ? "全部展开" : "全部收起"}
           </button>
-        )}
-      </div>
+        </div>
+      )}
       <ul className="space-y-0.5">{tree.map((n) => renderNode(n, 0, n.id))}</ul>
       <p className="mt-2 px-2 text-xs leading-relaxed text-muted-foreground">
         绿点表示已生成；点章切换编辑器，点节 / 条在正文中定位对应行；小节行显示「实际/目标字」，点重写图标可仅重写该小节；「商务·线下填写」章不生成正文
@@ -541,6 +598,8 @@ export function ComposeStep(p: ComposeStepProps) {
   const locked = p.isArchivedLocked
   // 大纲「重新生成」覆盖前的二次确认（本地 UI 状态）
   const [regenConfirmOpen, setRegenConfirmOpen] = useState(false)
+  // @r211 R-004 标书 Word 式分页预览开关
+  const [wordPreviewOpen, setWordPreviewOpen] = useState(false)
   // 第十一轮改造 6：编辑器定位——contentFocus 变化时找到标题行并选中滚动
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const bidFileInputRef = useRef<HTMLInputElement | null>(null)
@@ -580,10 +639,46 @@ export function ComposeStep(p: ComposeStepProps) {
   const [overviewOpen, setOverviewOpen] = useState(false)
   // 切片A3：正文视图模式——有内容时默认预览（折叠卡片），无内容或手动编辑时切 textarea
   const [viewMode, setViewMode] = useState<"preview" | "edit">("preview")
+  // R204 切片 0：右栏（评分点映射）折叠态——用户反馈正文被挤到 60% 宽，可折叠扩宽；localStorage 持久化
+  const [asideCollapsed, setAsideCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false
+    try { return window.localStorage.getItem("bidkit.compose.asideCollapsed") === "1" } catch { return false }
+  })
+  const toggleAside = () => {
+    setAsideCollapsed((prev) => {
+      const next = !prev
+      try { window.localStorage.setItem("bidkit.compose.asideCollapsed", next ? "1" : "0") } catch { /* ignore */ }
+      return next
+    })
+  }
+  // R212 切片0.5B：右栏双 Tab（评分映射 / 素材弹药）；素材弹药「插入正文」写向当前章 textarea 光标处
+  const [asideTab, setAsideTab] = useState<"score" | "material">("score")
+  const insertMaterial = (text: string, label: string) => {
+    if (!p.activeChapterId) {
+      toast.error("先在左侧选中章节")
+      return
+    }
+    const cur = p.editingContent ?? ""
+    const payload = `> 素材来源：${label}\n${text.trim()}`
+    const ta = textareaRef.current
+    let next: string
+    if (ta && document.activeElement === ta && typeof ta.selectionStart === "number") {
+      const startPos = ta.selectionStart
+      const endPos = ta.selectionEnd ?? startPos
+      next = cur.slice(0, startPos) + payload + cur.slice(endPos)
+    } else {
+      next = cur.trim() ? `${cur.replace(/\s+$/, "")}\n\n${payload}` : payload
+    }
+    p.setEditingContent(next)
+    setViewMode("edit")
+    toast.success("已插入，记得改写融合")
+  }
   if (!proj) return null
   const hasChapters = proj.bid_chapters.length > 0
   // 切片A4：failedCount（hooks 在上方已声明）
   const failedCount = proj.bid_chapters.filter((c) => !c.part?.startsWith("biz") && c.gen_status === "failed").length
+  // R175：done 但小节未补齐的残缺章数（总览单列「待补小节」，与「完成」口径互斥）
+  const pendingSectionCount = proj.bid_chapters.filter((c) => !c.part?.startsWith("biz") && isIncompleteSectionChapter(c)).length
   const bulkPct = p.genProgress.total ? Math.round((p.genProgress.current / p.genProgress.total) * 100) : 0
   const hasParse = !!proj.parse_report
   // 第十七轮 17A：招标文件规定了投标文件目录且已解析到 → 大纲遵循生效
@@ -592,7 +687,7 @@ export function ComposeStep(p: ComposeStepProps) {
   const activeChapterIdx = proj.bid_chapters.findIndex((c) => c.node_id === p.activeChapterId)
   const activeBudget = activeChapterIdx >= 0 ? p.chapterBudgets[activeChapterIdx] ?? 0 : 0
   const activeCharCount = p.activeChapter ? p.editingContent.length : 0
-  // 第十一轮改造 2：页数硬约束信息条——治理区间 [0.9,1.1]×有效目标页数×500 字
+  // 第十一轮改造 2：页数硬约束信息条——治理区间 [0.9,1.1]×有效目标页数×每页字数（DEFAULT_CHARS_PER_PAGE 校准值）
   const info = p.pageInfo
   const pageCapExceeded = p.pageCap !== null && p.targetPages !== null && p.targetPages > p.pageCap
 
@@ -604,7 +699,7 @@ export function ComposeStep(p: ComposeStepProps) {
             <h1 className="truncate text-xl font-semibold tracking-tight text-foreground lg:text-2xl">投标文件编制</h1>
             <p className="mt-1.5 text-sm text-muted-foreground">
               {hasParse
-                ? "按解析出的评分办法与响应要求组织技术标，可从方案编制引入底稿"
+                ? "未上传底稿时，按招标文件解析出的响应文件组成与评分要求自动编排全部内容；可从方案编制引入底稿"
                 : "尚未完成招标文件解析，建议先回到「AI 解析报告」环节，大纲才能对准评分办法"}
             </p>
           </div>
@@ -622,6 +717,15 @@ export function ComposeStep(p: ComposeStepProps) {
                 </Button>
               )}
               {/* 循环 11 块 B：打印 / 存 PDF 回退（浏览器打印对话框另存为 PDF） */}
+              <Button
+                variant="outline"
+                onClick={() => setWordPreviewOpen(true)}
+                title="按当前纸张与排版设置以仿 Word 版式预览整本标书"
+                className="border-border bg-card text-card-foreground shadow-sm hover:border-primary hover:text-primary"
+              >
+                <Eye className="mr-1.5 h-4 w-4" />
+                Word 预览
+              </Button>
               <PrintExportButton title="把当前标书正文按只读版式调起打印，可在打印对话框选择「另存为 PDF」" />
             </div>
           )}
@@ -675,7 +779,7 @@ export function ComposeStep(p: ComposeStepProps) {
                 {p.bidExternalText && (
                   <span className="text-xs tabular-nums text-muted-foreground">
                     <ClipboardPaste className="mr-1 inline h-3 w-3" />
-                    已载 {p.bidExternalText.length.toLocaleString()} 字
+                    已载 {formatCount(p.bidExternalText.length)} 字
                   </span>
                 )}
               </div>
@@ -768,6 +872,33 @@ export function ComposeStep(p: ComposeStepProps) {
                   : "AI 配图生成"}
               </Button>
             )}
+            {/* Q28 切片G：编排配图补齐——正文链路只在小节首块按 JSON 契约顺带出图，纯文本回复/mermaid 弃图/续跑跳过都会静默丢图，
+                而「AI 配图生成」只管编排里的位图，结构化图此前没有任何补口（项目13 实测编排 35 张、落库 14 张） */}
+            {p.doneChapterCount > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={p.figureBackfillBusy || locked || p.bulkGenerating || p.figureBackfillPending === 0}
+                title={
+                  locked
+                    ? "已归档项目为只读"
+                    : p.figureBackfillProgress
+                      ? `正在补齐第 ${p.figureBackfillProgress.current}/${p.figureBackfillProgress.total} 张：${p.figureBackfillProgress.title}`
+                      : p.figureBackfillPending === 0
+                        ? "编排选中的配图已全部落库"
+                        : `按编排计划补齐缺失的 ${p.figureBackfillPending} 张架构/流程/界面示意/mermaid 配图，并把每张图插到它所属小节的末尾`
+                }
+                onClick={p.startFigureBackfill}
+                className="h-7 border-primary/40 text-primary hover:bg-primary/10"
+              >
+                {p.figureBackfillBusy ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Wand2 className="mr-1.5 h-3.5 w-3.5" />}
+                {p.figureBackfillBusy
+                  ? p.figureBackfillProgress
+                    ? `补齐配图 ${p.figureBackfillProgress.current}/${p.figureBackfillProgress.total}…`
+                    : "补齐配图中…"
+                  : `补齐配图${p.figureBackfillPending ? `（${p.figureBackfillPending}）` : ""}`}
+              </Button>
+            )}
           </div>
         )}
         {p.bulkGenerating && (
@@ -801,6 +932,9 @@ export function ComposeStep(p: ComposeStepProps) {
         <FormatSettingsPanel {...p} />
 
         <GlobalFactsPanel {...p} />
+
+        {/* R167：公司优质素材库（五类标准件）——逐章/逐节按类别取基线，按招标要求定向调整 */}
+        <MaterialLibraryPanel {...p} />
       </div>
 
       {p.outlineMissingTitles.length > 0 && (
@@ -902,19 +1036,7 @@ export function ComposeStep(p: ComposeStepProps) {
                 </div>
                 <p className="mt-1.5 text-xs text-muted-foreground">{LEVEL_HINT[p.outlineLevel]}</p>
               </div>
-              {/* 用户反馈轮项 3：商务标章节开关（搭 gen_options.include_biz，applySetting 防抖落库，与 material_boost 同机制） */}
-              <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-md border border-border bg-background px-3 py-2">
-                <input
-                  type="checkbox"
-                  checked={p.genOptions.include_biz !== false}
-                  onChange={(e) => p.setIncludeBiz(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
-                />
-                <span className="text-xs leading-snug">
-                  <span className="font-medium text-foreground">包含商务标章节</span>
-                  <span className="block text-muted-foreground">投标函、资质证照、商务偏离表等骨架章（线下填写，不生成正文）；关闭后大纲仅含技术标章节</span>
-                </span>
-              </label>
+              {/* R206 切片 1（R-002）：内容范围三模式已上移至常驻「生成设置」条（GenerationSettingsBar），此处不再重复 */}
               <div className="mt-3 flex items-center gap-2">
                 <SkillPickerFor scope="bid-outline" source={p.bidOutlineSkills} />
                 <Button
@@ -981,8 +1103,10 @@ export function ComposeStep(p: ComposeStepProps) {
               </h2>
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                 {p.orchestrationSummary
-                  ? `已编排 ${p.orchestrationSummary.leafCount} 个叶子：${p.orchestrationSummary.tableCount} 节建议表格、选定 ${p.orchestrationSummary.figureCount} 张配图（全文上限 ${p.maxFigures} 张，均匀分布全文），之后生成的正文自动执行编排`
-                  : "动笔前为每节预先编排版面：哪节宜用表格、哪节配一张图（架构 / 流程 / 界面示意）；配图在全文上限内择优、均匀散布各章，避免前密后疏"}
+                  ? `已编排 ${p.orchestrationSummary.leafCount} 个叶子：${p.orchestrationSummary.tableCount} 节建议表格、选定 ${p.orchestrationSummary.figureCount} 张配图（${
+                      p.maxFigures >= FIGURES_UNLIMITED ? "上限=不限，宜图即配" : `全文上限 ${p.maxFigures} 张`
+                    }，均匀分布全文），之后生成的正文自动执行编排`
+                  : "动笔前为每节预先编排版面：哪节宜用表格、哪节配一张图（架构 / 流程 / 界面示意 / 甘特图）；配图在全文上限内择优、均匀散布各章，避免前密后疏"}
               </p>
               {!p.figuresEnabled && (
                 <p className="mt-1 text-xs text-muted-foreground">章节配图开关已关闭，请先在「生成设置」中开启后再编排</p>
@@ -1044,7 +1168,7 @@ export function ComposeStep(p: ComposeStepProps) {
             </div>
           ) : null}
           {/* 切片A4：生成总览面板——一览各章完成/失败/偏短状态与字数进度 */}
-          {hasChapters && p.doneChapterCount > 0 && (
+          {hasChapters && (p.doneChapterCount > 0 || failedCount > 0 || pendingSectionCount > 0) && (
             <div className="mt-4 rounded-lg border border-border bg-card shadow-md">
               <button
                 type="button"
@@ -1060,6 +1184,9 @@ export function ComposeStep(p: ComposeStepProps) {
                     {proj.bid_chapters.filter((c) => !c.part?.startsWith("biz") && c.underlength).length > 0 && (
                       <span className="text-warning">，偏短 {proj.bid_chapters.filter((c) => !c.part?.startsWith("biz") && c.underlength).length}</span>
                     )}
+                    {pendingSectionCount > 0 && (
+                      <span className="text-primary">，待补小节 {pendingSectionCount}</span>
+                    )}
                     ）
                   </span>
                 </span>
@@ -1073,12 +1200,15 @@ export function ComposeStep(p: ComposeStepProps) {
                     .map(({ ch, idx }) => {
                       const chars = (ch.content ?? "").length
                       const budget = p.chapterBudgets[idx] ?? 0
-                      const statusLabel = ch.gen_status === "done" ? "完成" : ch.gen_status === "failed" ? "失败" : ch.gen_status === "generating" ? "进行中" : "未开始"
+                      const pendingSec = isIncompleteSectionChapter(ch)
+                      const statusLabel = ch.gen_status === "done" ? (pendingSec ? "待补" : "完成") : ch.gen_status === "failed" ? "失败" : ch.gen_status === "generating" ? "进行中" : "未开始"
                       const statusColor =
                         ch.gen_status === "done"
-                          ? ch.underlength
-                            ? "text-warning"
-                            : "text-emerald-600"
+                          ? pendingSec
+                            ? "text-primary"
+                            : ch.underlength
+                              ? "text-warning"
+                              : "text-emerald-600"
                           : ch.gen_status === "failed"
                             ? "text-destructive"
                             : ch.gen_status === "generating"
@@ -1120,7 +1250,34 @@ export function ComposeStep(p: ComposeStepProps) {
               )}
             </div>
           )}
-          <div className="mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-[2fr_3fr] xl:grid-cols-[200px_minmax(0,1fr)_300px]">
+          {/* R204 切片 0：右栏折叠开关条——xl 断点可见，展开态显示"收起"、折叠态显示"展开评分点面板" */}
+          <div className="mt-3 hidden justify-end xl:flex">
+            <button
+              type="button"
+              onClick={toggleAside}
+              aria-expanded={!asideCollapsed}
+              aria-controls="score-mapping-aside"
+              title={asideCollapsed ? "展开右侧评分点面板" : "折叠右侧评分点面板，扩宽正文"}
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground shadow-sm transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              {asideCollapsed ? (
+                <>
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                  <span>展开评分点面板</span>
+                </>
+              ) : (
+                <>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                  <span>收起评分点面板</span>
+                </>
+              )}
+            </button>
+          </div>
+          <div
+            className={`mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-[2fr_3fr] ${
+              asideCollapsed ? "xl:grid-cols-[200px_minmax(0,1fr)]" : "xl:grid-cols-[200px_minmax(0,1fr)_300px]"
+            }`}
+          >
             <div className="lg:sticky lg:top-20">
               <OutlineNavTree
                 outline={proj.bid_outline}
@@ -1136,6 +1293,8 @@ export function ComposeStep(p: ComposeStepProps) {
                 onFocusSection={p.focusSectionInChapter}
                 onRegenerateSection={p.regenerateSection}
                 onResizeSection={p.resizeSection}
+                doneChapterCount={p.doneChapterCount}
+                techChapterTotal={p.techChapterTotal}
               />
             </div>
             <div>
@@ -1210,28 +1369,74 @@ export function ComposeStep(p: ComposeStepProps) {
                   figures={p.activeChapter?.figures ?? []}
                   textareaRef={textareaRef}
                   readOnly={locked}
+                  figureToolbar={
+                    <FigureInsertTools
+                      disabled={locked}
+                      busy={p.figureUploadBusy}
+                      templates={p.figureTemplates}
+                      onUpload={(f) => void p.uploadChapterFigure(f)}
+                      onInsert={(t) => void p.insertFigureTemplate(t)}
+                      onRemove={p.removeFigureTemplateById}
+                    />
+                  }
                   genPickerSlot={<SkillPickerFor scope="bid-chapter" source={p.bidChapterSkills} align="right" />}
                 />
               </div>
               )}
             </div>
-            {/* 重构轮：右栏评分点双向映射（缺失橙/废标红，本地推导零 AI） */}
-            <div className="hidden xl:sticky xl:top-20 xl:block">
-              <ScoreMappingPanel
-                report={proj.parse_report ?? null}
-                chapters={proj.bid_chapters}
-                outline={proj.bid_outline ?? []}
-                activeChapterId={p.activeChapterId}
-                outlineClauseTotal={p.outlineClauseTotal}
-                coveredClauseCount={p.coveredClauseCount}
-                uncoveredClauses={p.uncoveredClauses}
-                voidItems={proj.void_check?.items ?? []}
-                onJumpResponse={p.jumpToResponseNode}
-                onSelectChapter={p.selectChapter}
-                onAddClause={p.addClauseToOutline}
-                onGoVoidCheck={() => p.requestStep(5)}
-              />
+            {/* R204 切片 0 可折叠 · R212 切片0.5B 右栏双 Tab：评分映射 / 素材弹药（引用即复制，零 AI 零新 collection） */}
+            {!asideCollapsed && (
+            <div id="score-mapping-aside" className="hidden xl:sticky xl:top-20 xl:block">
+              <div className="mb-2 flex items-center gap-1 rounded-lg border border-border bg-card p-1 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setAsideTab("score")}
+                  aria-pressed={asideTab === "score"}
+                  className={`flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                    asideTab === "score" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  评分映射
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAsideTab("material")}
+                  aria-pressed={asideTab === "material"}
+                  className={`flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                    asideTab === "material" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  素材弹药
+                </button>
+              </div>
+              {asideTab === "material" ? (
+                <BidMaterialAmmoPanel
+                  siblings={proj.bid_chapters
+                    .filter((c) => c.part !== "biz" && (c.content ?? "").trim().length > 0 && c.node_id !== p.activeChapterId)
+                    .map((c) => ({ id: c.node_id, title: c.title, content: c.content }))}
+                  chapterQuery={[p.activeChapter?.title, ...(p.activeChapter?.sections ?? [])].filter(Boolean).join(" ")}
+                  activeChapterId={p.activeChapterId}
+                  canInsert={!!p.activeChapterId && !locked && p.activeChapter?.part !== "biz"}
+                  onInsert={insertMaterial}
+                />
+              ) : (
+                <ScoreMappingPanel
+                  report={proj.parse_report ?? null}
+                  chapters={proj.bid_chapters}
+                  outline={proj.bid_outline ?? []}
+                  activeChapterId={p.activeChapterId}
+                  outlineClauseTotal={p.outlineClauseTotal}
+                  coveredClauseCount={p.coveredClauseCount}
+                  uncoveredClauses={p.uncoveredClauses}
+                  voidItems={proj.void_check?.items ?? []}
+                  onJumpResponse={p.jumpToResponseNode}
+                  onSelectChapter={p.selectChapter}
+                  onAddClause={p.addClauseToOutline}
+                  onGoVoidCheck={() => p.requestStep(5)}
+                />
+              )}
             </div>
+            )}
           </div>
 
           {/* 窄于 xl 时评分点面板降级到编辑器下方（保持功能可见） */}
@@ -1252,6 +1457,17 @@ export function ComposeStep(p: ComposeStepProps) {
             />
           </div>
 
+          {/* R204 切片 0：技术偏离表发现性——用户反馈"没看到技术偏离表"，实际是它被塞在正文下方且无锚点。加提示 + id 供后续锚点跳转 */}
+          <div
+            id="deviation-panel"
+            className="mt-6 scroll-mt-24 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5"
+          >
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              <Table2 className="mr-1 inline h-3.5 w-3.5 align-text-bottom text-primary" />
+              <span className="font-medium text-foreground">技术偏离表就在下方</span>
+              ——章节正文成稿后选好拆分维度，点面板右上角「生成偏离表」；AI 逐条判定响应程度并定位到具体章节，与「技术偏离表」标签在归档页一致
+            </p>
+          </div>
           <DeviationPanel
             clauseGranularity={p.clauseGranularity}
             setClauseGranularity={p.setClauseGranularity}
@@ -1341,6 +1557,28 @@ export function ComposeStep(p: ComposeStepProps) {
             >
               确认覆盖
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {/* @r211 R-004 标书 Word 式分页预览弹窗（on-screen，打印仍走上方 PrintExportButton） */}
+      <Dialog open={wordPreviewOpen} onOpenChange={setWordPreviewOpen}>
+        <DialogContent className="flex h-[92vh] w-[94vw] max-w-none flex-col gap-0 overflow-hidden rounded-2xl border-border bg-background p-0 sm:max-w-none">
+          <DialogHeader className="shrink-0 border-b border-border px-5 py-4">
+            <DialogTitle className="text-foreground">标书 Word 预览</DialogTitle>
+            <DialogDescription>
+              按当前纸张与排版设置仿 Word 版式连续预览（A4 版心 / 页边距 / 页眉页脚 / 页码 / 首行缩进 / 图表题注）。如需成稿，请用「打印 / 存 PDF」按钮。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 flex-1">
+            <BidWordPreview
+              docTitle={p.activeProject?.project_name || "投标文件"}
+              format={p.effectiveFormatSettings}
+              chapters={(p.activeProject?.bid_chapters ?? []).map((c) => ({
+                title: c.title ?? "",
+                content: c.content ?? "",
+                sections: c.sections,
+              }))}
+            />
           </div>
         </DialogContent>
       </Dialog>

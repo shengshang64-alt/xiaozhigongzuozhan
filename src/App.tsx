@@ -21,6 +21,8 @@ const AssistantRoute = lazy(() => import("./pages/Assistant/index.tsx"))
 const TeamRoute = lazy(() => import("./pages/Team/index.tsx"))
 const QualCertsRoute = lazy(() => import("./pages/QualCerts/index.tsx"))
 const AiHotRoute = lazy(() => import("./pages/AiHot/index.tsx"))
+const ProductMappingRoute = lazy(() => import("./pages/ProductMapping/index.tsx"))
+const MaterialLibraryRoute = lazy(() => import("./pages/MaterialLibrary/index.tsx"))
 
 // Suspense fallback 骨架：只在页面 chunk 首次加载的一瞬展示，通常 <50ms；
 // 保持与 WorkbenchShell 内容区一致的 padding，视觉上无跳跃感。
@@ -68,6 +70,14 @@ function App() {
           element={
             <Suspense fallback={<RouteFallback />}>
               <PptQuoteRoute />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/materials"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <MaterialLibraryRoute />
             </Suspense>
           }
         />
@@ -148,6 +158,14 @@ function App() {
           element={
             <Suspense fallback={<RouteFallback />}>
               <AiHotRoute />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/product-mapping"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <ProductMappingRoute />
             </Suspense>
           }
         />

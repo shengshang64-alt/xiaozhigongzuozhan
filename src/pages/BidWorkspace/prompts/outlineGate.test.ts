@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 import { buildOutlineGateReviewMessages, sanitizeOutlineGateReview } from "./outlineGate"
 import { buildOutlineFixMessages } from "./outlineFix"
+import { buildBidOutlineMessages } from "./bidOutline"
+import { hasBidComposition, type ParseReport } from "../bidTypes"
+import type { LlmMessage } from "@/lib/llm"
 import type { OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
 
 // T15 大纲门禁评审测试：评审输出净化 + 提示词契约 + 锁定顶层约束（快照锁字不受影响的回归验证）
@@ -62,5 +65,28 @@ describe("buildOutlineFixMessages 锁定顶层（T15 回归）", () => {
     const locked = buildOutlineFixMessages(nodes, 2, 20, 800, ["测试问题"], { lockTopLevel: true })
     expect(String(locked[0].content)).toContain("顶层章身份锁定")
     expect(String(locked[0].content)).toContain("禁止新增/删除/合并/改名任何顶层章")
+  })
+})
+
+// R207 切片 2（R-003）：无底稿兜底——响应文件组成硬约束注入 + 缺失判据（走运行时告警、不注入）
+const NL = String.fromCharCode(10)
+const joinAll = (m: LlmMessage[]) => m.map((x) => x.content ?? "").join(NL)
+const repWith = { scope: "key", sections: [{ key: "response_req", title: "响应文件要求", content: "响应文件组成：报价文件、商务文件、技术文件" }] } as unknown as ParseReport
+const repWithout = { scope: "key", sections: [{ key: "tech_score", title: "技术评分要求", content: "系统技术方案（20 分）：方案完整" }] } as unknown as ParseReport
+
+describe("R-003 无底稿兜底：响应文件组成", () => {
+  it("hasBidComposition 判据：response_req 非空为真、缺失/null 为假", () => {
+    expect(hasBidComposition(repWith)).toBe(true)
+    expect(hasBidComposition(repWithout)).toBe(false)
+    expect(hasBidComposition(null)).toBe(false)
+  })
+  it("有组成时 bidOutline prompt 注入硬约束句（逐项映射、不允许合并或改名）", () => {
+    const text = joinAll(buildBidOutlineMessages("P", "H", repWith, false, 0))
+    expect(text).toContain("响应文件组成硬约束")
+    expect(text).toContain("不允许合并或改名")
+  })
+  it("缺组成时不注入硬约束句（走兜底告警路径，不误导模型对齐不存在的组成）", () => {
+    const text = joinAll(buildBidOutlineMessages("P", "H", repWithout, false, 0))
+    expect(text).not.toContain("响应文件组成硬约束")
   })
 })

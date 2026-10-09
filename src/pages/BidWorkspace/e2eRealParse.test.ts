@@ -132,6 +132,7 @@ e2e(
 // PROMPT_VERSION 指纹（防止静默改字后验收基线漂移）
 describe("e2eRealParse 契约", () => {
   it("sectionParse PROMPT_VERSION", () => {
-    expect(PROMPT_VERSION).toBe(4)
+    // v5（2026-10 易标对齐）：tech_score/biz_score 注入「评分项 vs 评分要求」语义区分
+    expect(PROMPT_VERSION).toBe(5)
   })
 })

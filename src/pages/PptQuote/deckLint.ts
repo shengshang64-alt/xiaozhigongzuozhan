@@ -125,7 +125,7 @@ export function lintDeck(slides: Slide[]): DeckLintIssue[] {
     issues.push({ level: "warn", page: 0, code: "no_visual", msg: "整份没有图表/KPI 页，纯文字观感偏弱，可让 AI 补数据可视化页" })
   }
   if (slides.length >= 6 && imagePages === 0) {
-    issues.push({ level: "info", page: 0, code: "no_image", msg: "整份没有配图页，可用「一键配图」补 1-2 张真实场景图" })
+    issues.push({ level: "info", page: 0, code: "no_image", msg: "整份没有配图页，可从素材库选图（优先）或用「一键配图」补 1-2 张真实场景图" })
   }
 
   // 去重同类整份问题 + 截断，避免提示刷屏
@@ -149,4 +149,18 @@ export function lintSummaryText(issues: DeckLintIssue[]): string {
   if (warn) bits.push(`${warn} 处需注意`)
   if (info) bits.push(`${info} 处可优化`)
   return bits.join("，") || "未发现结构问题"
+}
+// ---------------------------------------------------------------------------
+// R166：编辑期常驻自检的页级聚合（页面列表圆点与自检面板共用，避免两处各算各的）。
+// 仍是对 lintDeck 产物的纯整理，非阻断契约不变；同页 warn 优先于 info。
+// ---------------------------------------------------------------------------
+
+/** 把自检清单按页聚合：page(0=整份级) -> 该页最高级别。 */
+export function groupIssuesByPage(issues: DeckLintIssue[]): Map<number, DeckLintLevel> {
+  const byPage = new Map<number, DeckLintLevel>()
+  for (const it of issues) {
+    const prev = byPage.get(it.page)
+    if (!prev || (prev === "info" && it.level === "warn")) byPage.set(it.page, it.level)
+  }
+  return byPage
 }

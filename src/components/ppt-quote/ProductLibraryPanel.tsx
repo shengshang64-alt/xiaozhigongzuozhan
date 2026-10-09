@@ -1,4 +1,5 @@
 import { Archive, Library, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react"
+import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { formatMoney, type ProductItem, type QuoteGroup } from "@/pages/PptQuote/pptQuoteTypes"
 
@@ -83,7 +84,9 @@ export function ProductLibraryPanel({ items, loading, groups, onRefresh, onAddPr
                   onClick={(e) => {
                     const select = e.currentTarget.previousElementSibling as HTMLSelectElement | null
                     const gid = select?.value ?? groups[0]?.id ?? ""
-                    if (gid) onAddProduct(product.id, gid)
+                    // 新建报价默认无分组：静默失败会让用户以为按钮坏了，给出明确引导
+                    if (!gid) { toast.warning("请先点上方「新增分组」建一个分组，再加入产品"); return }
+                    onAddProduct(product.id, gid)
                   }}
                   className="flex shrink-0 items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 >

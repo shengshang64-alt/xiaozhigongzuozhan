@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import type { UseQualCerts } from "./useQualCerts"
 import { QUAL_CATEGORIES, qualDueLabel, type QualBucket, type QualCertRow } from "./qualsCore"
 import { exportToCsv } from "@/lib/exportCsv"
+import { localDateStamp } from "@/lib/dateStamp"
 
 const BUCKET_LABEL: Record<QualBucket, string> = {
   expired: "已过期",
@@ -30,7 +31,7 @@ const ALERT_ORDER: QualBucket[] = ["expired", "critical", "warning"]
 function handleExport(p: UseQualCerts) {
   const headers = ["证照名称", "类别", "证书编号", "发证机关", "有效期开始", "有效期截止", "适用范围", "更新时间"]
   const rows = p.rows.map((r) => [r.cert_name, r.category, r.cert_no, r.issuer, r.valid_from, r.valid_to, r.scope, r.updated])
-  exportToCsv(`资质台账_${new Date().toISOString().slice(0, 10)}.csv`, headers, rows)
+  exportToCsv(`资质台账_${localDateStamp()}.csv`, headers, rows)
 }
 
 export function QualCertsPage({ p }: { p: UseQualCerts }) {
@@ -285,8 +286,9 @@ function QualRow({ row, p }: { row: QualCertRow; p: UseQualCerts }) {
   return (
     <tr className="border-b border-border/60 last:border-0">
       <td className="px-3 py-2">
+        {/* 2026-10-08 全站审查：备注换行弱化展示，不再拼在证照名称后一行（曾误读为名称一部分） */}
         <span className="font-medium text-foreground">{row.cert_name}</span>
-        {row.notes ? <span className="ml-1 text-xs text-muted-foreground">{row.notes.slice(0, 20)}</span> : null}
+        {row.notes ? <span className="block text-xs text-muted-foreground/80">{row.notes.slice(0, 26)}</span> : null}
       </td>
       <td className="hidden px-3 py-2 text-muted-foreground sm:table-cell">{row.category || "—"}</td>
       <td className="hidden px-3 py-2 font-mono text-xs text-muted-foreground md:table-cell">{row.cert_no || "—"}</td>

@@ -3,6 +3,7 @@
 // kbCore 检索、useKnowledge 问答、assistantCore 小智注入三处共用，避免口径漂移。
 
 import type { KbDocRow } from "@/lib/kbCore"
+import { redactPii } from "@/lib/piiRedact"
 
 // ---------------------------------------------------------------------------
 // 分类七档与默认策略表
@@ -75,11 +76,12 @@ export function contextSnippetOf(doc: KbDocRow, hit: { snippet: string }): strin
   const policy = effectivePolicy(doc)
   if (policy.ai_context_mode === "sanitized_summary") {
     const summary = (doc.summary ?? "").trim()
-    if (summary) return `（脱敏摘要，原文不进 AI 上下文）${summary}`
+    if (summary) return `（脱敏摘要，原文不进 AI 上下文）${redactPii(summary)}`
     const keywords = (doc.keywords ?? []).map((k) => String(k)).join("、")
-    return `（脱敏摘要，原文不进 AI 上下文）${doc.title}${keywords ? `；关键词：${keywords}` : ""}`
+    return `（脱敏摘要，原文不进 AI 上下文）${redactPii(doc.title)}${keywords ? `；关键词：${redactPii(keywords)}` : ""}`
   }
-  return hit.snippet
+  // original 档但被显式标记敏感（is_sensitive）：原文仍进 AI，但先二次掩码 PII（AGENTS.md #7）
+  return policy.is_sensitive ? redactPii(hit.snippet) : hit.snippet
 }
 
 // ---------------------------------------------------------------------------

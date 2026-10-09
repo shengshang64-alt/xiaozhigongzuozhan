@@ -79,9 +79,11 @@ describe("normalizeScopes · 适用功能点归一", () => {
 })
 
 describe("SCOPE_CATALOG / scopeLabel · 功能点目录", () => {
-  it("15 个功能点、scope 唯一、都有中文标签", () => {
-    expect(SCOPE_CATALOG).toHaveLength(15)
-    expect(new Set(SCOPE_CATALOG.map((s) => s.scope)).size).toBe(15)
+  // R195：功能点目录含「产品映射对照 product-map」共 16 项；计数写死是刻意的漂移报警——
+  // 增删功能点时必须同步这里，逼一次人工确认（口径、预置技能归属、页面入口是否齐）。
+  it("16 个功能点、scope 唯一、都有中文标签", () => {
+    expect(SCOPE_CATALOG).toHaveLength(16)
+    expect(new Set(SCOPE_CATALOG.map((s) => s.scope)).size).toBe(16)
     for (const def of SCOPE_CATALOG) {
       expect(def.label.length).toBeGreaterThan(1)
       expect(scopeLabel(def.scope)).toBe(def.label)

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ArrowLeft, ArrowRight, Loader2, Sparkles } from "lucide-react"
+import { ArrowLeft, ArrowRight, Layers, Loader2, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -46,6 +46,7 @@ type NewSolutionWizardProps = Pick<
   | "outlineLoading"
   | "confirming"
   | "submitWizardInfo"
+  | "assembleOutlineFromChecklist"
   | "confirmOutline"
   | "outlineRename"
   | "outlineRemove"
@@ -261,7 +262,7 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
                 </p>
               </div>
             )}
-            <div className="sm:col-span-2">
+              <div className="sm:col-span-2">
               <FieldLabel text="方案名称" />
               <Input
                 value={p.formSolutionName}
@@ -443,6 +444,16 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
           {p.wizardStep === 2 && (
             <div className="flex items-center gap-2">
               <SkillPickerFor scope="solution-outline" source={p.outlineSkills} align="right" />
+              <Button
+                variant="outline"
+                onClick={p.assembleOutlineFromChecklist}
+                disabled={p.outlineLoading}
+                title="不走大模型、零费用：按清单命中的系统直接铺出标准方案章节骨架，可再编辑"
+                className="border-primary/40 text-primary hover:bg-primary/10"
+              >
+                <Layers className="mr-1.5 h-4 w-4" />
+                按清单组装骨架
+              </Button>
               <Button
                 onClick={trySubmitInfo}
                 disabled={p.outlineLoading}

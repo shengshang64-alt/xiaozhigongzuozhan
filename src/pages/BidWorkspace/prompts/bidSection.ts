@@ -6,8 +6,12 @@ import { buildLotsScopeHint, BID_STYLE_RULES, FULLTEXT_GUARD_RULES, ORCHESTRATIO
 import type { ParseReport, BidSectionPromptOpts } from "../bidTypes"
 import type { Chapter, OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
 import type { LlmMessage } from "@/lib/llm"
+// R167：素材库注入段的基线/检索拆分（单一真源在 materialLibrary，标记头由生成侧写入）
+import { baselineLabelFromText, extractBaselineSegment, extractFragmentSegment } from "../materialLibrary"
 
-export const PROMPT_VERSION = 2
+// R167 v3：小节级同步新增「公司优质素材库标准件基线」独立注入槽（无标记时与 v2 逐字一致）
+// R167 v4：2026-10 易标对齐轮——素材融入不提及来源（与 bidChapter 同口径同步），PROMPT_VERSION 3→4
+export const PROMPT_VERSION = 4
 
 export function buildBidSectionMessages(
   projectName: string,
@@ -42,6 +46,10 @@ export function buildBidSectionMessages(
   const directedOn = Boolean((opts.directedFacts ?? "").trim())
   const factsBlock = directedOn ? (opts.directedFacts ?? "").trim() : (opts.globalFacts ?? "")
   const factsLabel = directedOn ? "本章必守事实" : "全局事实"
+  // R167：公司素材库标准件基线（节级同口径：生成侧带标记头注入，这里拆成独立提示词槽）
+  const libraryBaseline = extractBaselineSegment(opts.refMaterials ?? "")
+  const libraryKindLabel = baselineLabelFromText(opts.refMaterials ?? "")
+  const freeMaterialsText = libraryBaseline ? extractFragmentSegment(opts.refMaterials ?? "") : (opts.refMaterials ?? "")
   const sectionList = (ch.sections ?? [])
     .map((s, j) => `${chapterNo}.${j + 1} ${s}${j === opts.sectionIndex ? "（当前要写的小节）" : ""}`)
     .join("\n")
@@ -122,23 +130,34 @@ export function buildBidSectionMessages(
     ruleNo += 1
   }
   // 第十三轮改造 3：素材优先注入（知识库块级检索命中才注入，注明来源文档）
+  // 2026-10 易标对齐轮：融入口径升级——素材整理为本项目表述，正文不出现来源字样
   if (opts.kbMaterial) {
     rules.push(
-      `${ruleNo}. 下面【知识库参考素材】是团队沉淀的方案素材（已注明来源文档），可作为本小节案例、数据与实施细节的支撑材料融入正文；与招标原文冲突的内容一律以招标原文为准，禁止整段照抄；`,
+      `${ruleNo}. 下面【知识库参考素材】是团队沉淀的方案素材（已注明来源文档），可作为本小节案例、数据与实施细节的支撑材料融入正文：融入时把素材内容整理为本项目的方案表述，不在正文中出现「知识库」「素材」「来源文档」等来源字样；与招标原文冲突的内容一律以招标原文为准，禁止整段照抄；`,
     )
     ruleNo += 1
   }
   // T16：编排期定向挑选的知识库素材（优先级高于检索式注入）
   if (opts.directedKnowledge?.length) {
     rules.push(
-      `${ruleNo}. 下面【定向参考素材】是编排阶段为本小节挑选的知识库素材（已注明来源文档），本小节写作应优先吸收其中相关的案例、数据与实施细节；与招标原文冲突的内容一律以招标原文为准，禁止整段照抄，禁止编造素材里没有的内容；`,
+      `${ruleNo}. 下面【定向参考素材】是编排阶段为本小节挑选的知识库素材（已注明来源文档），本小节写作应优先吸收其中相关的案例、数据与实施细节，整理为本项目的方案表述，不在正文中提及素材与来源名称；与招标原文冲突的内容一律以招标原文为准，禁止整段照抄，禁止编造素材里没有的内容；`,
     )
     ruleNo += 1
   }
-  // 第十七轮 17D：团队写作资料注入（检索命中才注入；可引用事实与口径，须注明来源，禁止整段照抄）
+  // 第十七轮 17D：团队写作资料注入（检索命中才注入；可引用事实与口径，禁止整段照抄）
+  // 2026-10 易标对齐轮：「引用处注明来自自有资料」升级为「整理为本项目表述、不出现来源字样」
   if (opts.refMaterials) {
     rules.push(
-      `${ruleNo}. 下面【团队写作资料】是自有的人员、案例、资质与制度材料：本小节写到团队配置、同类业绩、资质能力、管理制度等内容时优先引用其中的事实与口径，引用处注明「来自自有资料」；禁止整段照抄，禁止编造资料里没有的人员与业绩；`,
+      `${ruleNo}. 下面【团队写作资料】是自有的人员、案例、资质与制度材料：本小节写到团队配置、同类业绩、资质能力、管理制度等内容时优先引用其中的事实与口径，融入时整理为本项目的方案表述，不在正文中出现「自有资料」「内部资料」等来源字样；禁止整段照抄，禁止编造资料里没有的人员与业绩；`,
+    )
+    ruleNo += 1
+  }
+  // R167：公司素材库标准件基线注入（小节级同口径：先结构基线，再按招标要求与全局事实定向调整）
+  if (libraryBaseline) {
+    rules.push(
+      libraryKindLabel
+        ? `${ruleNo}. 下面【公司优质素材库·${libraryKindLabel}标准件】是公司较优标书中该主题的写法范式，不是本项目事实：本小节以它的结构与写法要求为基线，再按招标文件的条款、评分办法与【${factsLabel}】逐项定向调整（篇幅服从本小节预算）；禁止整段照抄，禁止沿用其中与招标不符、或仍留着〔按本项目填写〕占位的人名、业绩与承诺；`
+        : `${ruleNo}. 下面【公司优质素材库标准件】是公司较优标书的写法范式，不是本项目事实：本小节以它的结构与写法要求为基线，再按招标文件与【${factsLabel}】逐项定向调整；禁止整段照抄，禁止沿用其中与招标不符、或仍留着〔按本项目填写〕占位的人名、业绩与承诺；`,
     )
     ruleNo += 1
   }
@@ -201,10 +220,13 @@ export function buildBidSectionMessages(
   }
   if (orchFigure) {
     const figCaption = (orchFigure.caption ?? "").trim()
-    // T16：编排选中 mermaid 关系图时，配图格式契约切换为 mermaid 源码图
-    const figureFormatRule = orchFigure.type === "mermaid"
-      ? `${ruleNo + 1}. 该图为 mermaid 源码图，输出格式 {"type":"mermaid","title":"图名","code":"flowchart TD\\n A[\\"节点\\"] --> B[\\"节点\\"]"}；code 只允许 flowchart/graph 声明开头、节点总数 ≤12、每个节点标签 ≤16 字、中文与含特殊字符的标签必须用双引号包裹；code 必须对应本小节正文描述的流程/关系，禁止编造正文没有的环节；`
-      : `${ruleNo + 1}. 配图元素格式：architecture（架构图）{"type":"architecture","title":"图名","layers":[{"name":"层名","modules":["模块名"]}]}；flow（流程图）{"type":"flow","title":"图名","steps":[{"name":"步骤","desc":"可选说明"}],"branches":["可选分支说明"]}；demo（系统界面示意）{"type":"demo","title":"图名","sidebar":["菜单项"],"main":[{"block":"区块名","desc":"可选说明"}]}；`
+    // T16：编排选中 mermaid 关系图时，配图格式契约切换为 mermaid 源码图；2026-10 加 gantt（甘特图，同走 mermaid 渲染链）
+    const figureFormatRule =
+      orchFigure.type === "mermaid"
+        ? `${ruleNo + 1}. 该图为 mermaid 源码图，输出格式 {"type":"mermaid","title":"图名","code":"flowchart TD\\n A[\\"节点\\"] --> B[\\"节点\\"]"}；code 只允许 flowchart/graph 声明开头、节点总数 ≤12、每个节点标签 ≤16 字、中文与含特殊字符的标签必须用双引号包裹；code 必须对应本小节正文描述的流程/关系，禁止编造正文没有的环节；`
+        : orchFigure.type === "gantt"
+          ? `${ruleNo + 1}. 该图为项目实施甘特图，figures 输出 {"type":"mermaid","title":"图名","code":"<gantt 源码>"}；code 首行必须是 gantt、第二行 dateFormat YYYY-MM-DD，用 section 把实施阶段分为 2-5 期，每期 1-5 条任务、任务名 ≤16 字、格式「任务名 :a1, 起始, 工期d」并用 after 承接上一任务；总工期必须与【全局事实】中的工期/实施周期一致——有日期依据时用真实日期，没有时以 2026-01-01 为示意起点并在图注末尾加「（进度为示意编排）」；禁止编造与事实冲突的日期与阶段；`
+          : `${ruleNo + 1}. 配图元素格式：architecture（架构图）{"type":"architecture","title":"图名","layers":[{"name":"层名","modules":["模块名"]}]}；flow（流程图）{"type":"flow","title":"图名","steps":[{"name":"步骤","desc":"可选说明"}],"branches":["可选分支说明"]}；demo（系统界面示意）{"type":"demo","title":"图名","sidebar":["菜单项"],"main":[{"block":"区块名","desc":"可选说明"}]}；`
     rules.push(
       `${ruleNo}. 本小节已编排一张${ORCHESTRATION_FIGURE_TYPE_LABEL[orchFigure.type]}：《${orchFigure.title}》${
         figCaption ? `，图注「${figCaption}」` : ""
@@ -241,14 +263,18 @@ export function buildBidSectionMessages(
     opts.tenderFragments
       ? `【招标原文相关段落（本小节写作的首要依据，参数、指标、要求以原文为准）】\n${opts.tenderFragments}`
       : "",
-    opts.kbMaterial ? `【知识库参考素材（团队沉淀，注明来源文档，可融入本小节支撑细节）】\n${opts.kbMaterial}` : "",
+    opts.kbMaterial ? `【知识库参考素材（团队沉淀，融入时整理为本项目表述、不提及来源名称，可融入本小节支撑细节）】\n${opts.kbMaterial}` : "",
     // T16：编排定向知识素材段（编排为本小节挑选，优先于检索式素材吸收）
     opts.directedKnowledge?.length
       ? `【定向参考素材（编排阶段为本小节挑选的知识库素材，优先吸收）】\n${opts.directedKnowledge.join("\n\n")}`
       : "",
     // 第十七轮 17D：团队写作资料段（小节差异内容进 taskUser）
-    opts.refMaterials
-      ? `【团队写作资料（自有人员/案例/资质/制度，可引用其事实与口径，注明来自自有资料，禁止整段照抄）】\n${opts.refMaterials}`
+    freeMaterialsText
+      ? `【团队写作资料（自有人员/案例/资质/制度，融入时整理为本项目表述、不出现来源字样，禁止整段照抄）】\n${freeMaterialsText}`
+      : "",
+    // R167：公司优质素材库标准件基线段（节级继承章的类别判定）
+    libraryBaseline
+      ? `【公司优质素材库·${libraryKindLabel || "通用"}标准件（公司较优标书该主题的结构与写法基线，须按招标要求与全局事实改写，禁止照抄、禁止沿用占位）】\n${libraryBaseline}`
       : "",
     // 第十七轮 17B：清单文本仅目标章的小节注入（节级继承章判断）
     opts.compilationBasis?.listText

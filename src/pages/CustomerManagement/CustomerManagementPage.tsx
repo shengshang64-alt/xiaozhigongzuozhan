@@ -1,4 +1,6 @@
+import { useState } from "react"
 import { Building2, LayoutGrid, Users } from "lucide-react"
+import { CustomerDataCheckupDialog } from "@/components/customer-management/CustomerDataCheckupDialog"
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
 import { PageHeader } from "@/components/shell/PageHeader"
 import { CrmToolbar } from "@/components/customer-management/CrmToolbar"
@@ -14,6 +16,8 @@ import { WinLossReviewPanel } from "@/components/customer-management/WinLossRevi
 import type { useCustomerManagement } from "./useCustomerManagement"
 
 export function CustomerManagementPage(p: ReturnType<typeof useCustomerManagement>) {
+  // R216 数据体检面板
+  const [checkupOpen, setCheckupOpen] = useState(false)
 
   return (
     <div className="animate-in fade-in duration-500 text-foreground">
@@ -89,6 +93,7 @@ export function CustomerManagementPage(p: ReturnType<typeof useCustomerManagemen
               setSortBy={p.setSortBy}
               selectedCustomerId={p.selectedCustomer?.id ?? null}
               onSelectCustomer={p.selectCustomer}
+              onOpenCheckup={() => setCheckupOpen(true)}
               oppCountByCustomer={p.oppCountByCustomer}
               onNewCustomer={p.openNewCustomer}
               batchEnriching={p.batchEnriching}
@@ -123,6 +128,9 @@ export function CustomerManagementPage(p: ReturnType<typeof useCustomerManagemen
                 <CustomerDetailPanel
                   customer={p.selectedCustomer}
                   opportunities={p.customerOpps}
+                  siteLeads={p.siteLeads?.customerId === p.selectedCustomer.id ? p.siteLeads.leads : []}
+                  leadSavingUrl={p.leadSavingKey}
+                  onLeadToOpportunity={(lead) => void p.convertLeadToOpportunity(p.selectedCustomer!, lead)}
                   selectedOpportunityId={null}
                   onSelectOpportunity={p.selectOpportunity}
                   onNewOpportunity={p.openNewOpportunity}
@@ -245,6 +253,15 @@ export function CustomerManagementPage(p: ReturnType<typeof useCustomerManagemen
       />
 
       <CostConfirmDialog {...p.costConfirm} />
+      <CustomerDataCheckupDialog
+        open={checkupOpen}
+        onOpenChange={setCheckupOpen}
+        customers={p.customers}
+        onLocateCustomer={(customerId) => {
+          setCheckupOpen(false)
+          p.selectCustomer(customerId)
+        }}
+      />
     </div>
   )
 }

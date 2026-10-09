@@ -7,9 +7,11 @@ import {
   makeDefaultGroups,
   mergeItemsIntoGroups,
   normalizeDraftItemsFromCatalog,
+  normalizeSlides,
   quoteItemFromChecklistLine,
   quoteItemFromProduct,
   sanitizeQuote,
+  trimSlidesToTarget,
   DEFAULT_GROUP_NAMES,
   type QuoteItem,
   type QuoteRecord,
@@ -409,5 +411,59 @@ describe("buildMaterialText 注入招标节选（R149）", () => {
     expect(got).not.toContain("【招标文件节选")
     expect(got).toContain("【大纲】")
     expect(got).toContain("总体设计：全文交换平台")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// R157 单发 PPT 生成页数收敛：trimSlidesToTarget + normalizeSlides(maxPages)
+// 闭环 r149-deck-pagecount-unenforced：单发路径此前不限页数（目标 3 页返回 6 页照单全收）
+// ---------------------------------------------------------------------------
+
+function slideFixture(titles: string[]) {
+  return { slides: titles.map((title) => ({ title, bullets: ["x"], notes: "" })) }
+}
+
+describe("trimSlidesToTarget（单发超页按目标收敛，保留开场/致谢）", () => {
+  it("不超目标 → 原样返回（同一引用）", () => {
+    const s = [{ title: "开场" }, { title: "正文" }, { title: "致谢" }]
+    expect(trimSlidesToTarget(s, 3)).toBe(s)
+    expect(trimSlidesToTarget(s, 5)).toBe(s)
+  })
+  it("超目标 → 裁到 target，保留首页与末页、只删中间正文", () => {
+    const s = [
+      { title: "开场" },
+      { title: "C1" },
+      { title: "C2" },
+      { title: "C3" },
+      { title: "C4" },
+      { title: "致谢" },
+    ]
+    const r = trimSlidesToTarget(s, 3)
+    expect(r.map((x) => x.title)).toEqual(["开场", "C1", "致谢"])
+  })
+  it("target=1 → 只留首页", () => {
+    const r = trimSlidesToTarget([{ title: "开场" }, { title: "致谢" }], 1)
+    expect(r.map((x) => x.title)).toEqual(["开场"])
+  })
+  it("target 非正数 / 非法 → 原样返回（不裁剪）", () => {
+    const s = [{ title: "A" }, { title: "B" }]
+    expect(trimSlidesToTarget(s, 0)).toBe(s)
+    expect(trimSlidesToTarget(s, -1)).toBe(s)
+    expect(trimSlidesToTarget(s, NaN)).toBe(s)
+  })
+})
+
+describe("normalizeSlides maxPages 上限", () => {
+  it("传 maxPages 且模型超页 → 收敛到上限", () => {
+    const raw = slideFixture(["开场", "C1", "C2", "C3", "C4", "致谢"])
+    const out = normalizeSlides(raw, null, 3)
+    expect(out.map((x) => x.title)).toEqual(["开场", "C1", "致谢"])
+  })
+  it("不传 maxPages → 不限页数（批量/精修路径向后兼容）", () => {
+    const raw = slideFixture(["开场", "C1", "C2", "C3", "C4", "致谢"])
+    expect(normalizeSlides(raw, null)).toHaveLength(6)
+  })
+  it("空返回仍抛错", () => {
+    expect(() => normalizeSlides({ slides: [] }, null, 3)).toThrow()
   })
 })

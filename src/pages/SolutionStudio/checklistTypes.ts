@@ -54,6 +54,18 @@ export type TechParam = {
   competitor_note?: string
 }
 
+/** ONE-LINK 计费档位：一个档位一条（A-E 类 + 门诊量/床位口径 + 该档价格，未落价为 0） */
+export type OneLinkPriceTier = {
+  /** 档位名，如 A类 */
+  tier: string
+  /** 表头口径，如 门诊量≥13000 */
+  outpatient?: string
+  /** 表头口径，如 床位≥2000 */
+  bed?: string
+  /** 该档价格（元） */
+  price?: number
+}
+
 export type CheckProduct = {
   id: string
   is_builtin: boolean
@@ -70,6 +82,14 @@ export type CheckProduct = {
   rating_tags: RatingTags
   /** 轮次 E-3：技术参数库，存量记录为 null/缺失，读取一律容错为 [] */
   tech_params?: TechParam[] | null
+  /** 产品映射：ONE-LINK《按公司规范》标准列，存量记录为 null/缺失，读取一律容错为 "" / [] */
+  product_belong?: string | null
+  module_category?: string | null
+  standard_name?: string | null
+  module_attr?: string | null
+  coefficient?: string | null
+  recommendation?: string | null
+  price_tier?: OneLinkPriceTier[] | null
   created?: string
   updated?: string
 }

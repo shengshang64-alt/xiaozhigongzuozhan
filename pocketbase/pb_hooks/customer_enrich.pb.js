@@ -44,19 +44,52 @@ routerAdd("POST", "/api/customers/fetch-site", (e) => {
     t = t.replace(/\u3000/g, " ").replace(/[\t\r]+/g, " ").replace(/ {2,}/g, " ").replace(/\n{2,}/g, "\n").trim()
     return t.slice(0, cap || 6000)
   }
-  var fetchHtml = function (url) {
+  // jina 代理兜底（r.jina.ai）：2026-10-09 R215 实测本地网络不可达(000 超时)——
+  // 退化为「末次直抓一次」：新拨连接再试原 URL，仍失败返回 null（绝不向上抛，
+  // 修复此前 tryJina 未定义导致 fetchHtml/fetchPageObj 兜底分支直接 ReferenceError 崩溃）。
+  var tryJina = function (url) {
     try {
       var res = $http.send({
-        url: url, method: "GET", timeout: 15,
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "Accept-Language": "zh-CN,zh;q=0.9"
-        }
+        url: url, method: "GET", timeout: 20,
+                  headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+            "Referer": String(url).replace(/^(https?:\/\/[^/]+).*/i, "$1/")
+          }
       })
-      if (res.statusCode !== 200) return null
-      return typeof res.raw === "string" ? res.raw.slice(0, 800000) : null
-    } catch (err) { return null }
+      if (res && res.statusCode === 200 && typeof res.raw === "string" && res.raw.length > 200) return res.raw
+    } catch (eCap) { try { console.log("cfs-catch", "where", "tryJina", "err", String(eCap)) } catch (_) {} }
+    return null
+  }
+  var fetchHtml = function (url) {
+    // 2026-10-07 P18：PB $http.send 复用已断开的 keep-alive 连接会抛 GoError: EOF 且不自动重试——
+    // 空闲后首个请求必失败。此处显式重试一次（新拨连接），仍失败再走 jina 代理。
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        var res = $http.send({
+          url: url, method: "GET", timeout: 15,
+                    headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+            "Referer": String(url).replace(/^(https?:\/\/[^/]+).*/i, "$1/")
+          }
+        })
+        if (res.statusCode !== 200) {
+          var jh1 = tryJina(url)
+          if (jh1) return jh1
+          return null
+        }
+        return typeof res.raw === "string" ? res.raw.slice(0, 800000) : null
+      } catch (err) {
+        if (attempt === 0) continue
+        var jh2 = tryJina(url)
+        if (jh2) return jh2
+        return null
+      }
+    }
+    return null
   }
   // 从官网首页里找"医院概况/简介/介绍"类内链
   var findIntroLink = function (html, base) {
@@ -178,16 +211,25 @@ routerAdd("POST", "/api/customers/fetch-site", (e) => {
   }
   // 抓取页面：utf8 返回 {enc:'utf8', html}；非 utf8 返回 {enc, b64, html(乱码仅用于提链接)}
   var fetchPageObj = function (url) {
-    try {
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
       var res = $http.send({
         url: url, method: "GET", timeout: 15,
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "Accept-Language": "zh-CN,zh;q=0.9"
-        }
+                  headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+            "Referer": String(url).replace(/^(https?:\/\/[^/]+).*/i, "$1/")
+          }
       })
-      if (!res || res.statusCode !== 200) return null
+      if (!res || res.statusCode !== 200) {
+        if (/\.gov\.cn/i.test(url)) {
+          var jmd = tryJina(url)
+          if (jmd) return { enc: "utf8", html: "<body>" + jmd + "</body>", b64: "" }
+        }
+        if (attempt === 0) continue
+        return null
+      }
       var raw = typeof res.raw === "string" ? res.raw : ""
       var enc = detectEncoding(res, raw)
       if (enc !== "utf8") {
@@ -197,7 +239,16 @@ routerAdd("POST", "/api/customers/fetch-site", (e) => {
         return { enc: enc, html: raw, b64: bytesToB64(capped) }
       }
       return { enc: "utf8", html: raw.slice(0, 800000), b64: "" }
-    } catch (err) { return null }
+      } catch (err) {
+        if (attempt === 0) continue
+        if (/\.gov\.cn/i.test(url)) {
+          var jmd2 = tryJina(url)
+          if (jmd2) return { enc: "utf8", html: "<body>" + jmd2 + "</body>", b64: "" }
+        }
+        return null
+      }
+    }
+    return null
   }
   // 按标签正则 OR href 关键词提内链（GBK 站标签乱码时靠 href 兜底），最多 limit 个
   var findLinksByHints = function (html, base, labelRe, hrefRe, limit) {
@@ -328,10 +379,70 @@ routerAdd("POST", "/api/customers/fetch-site", (e) => {
 
     $app.logger().info("customer fetch-site ok", "user", userId, "name", name, "url", site, "intro", introUrls[0] || "-", "len", text.length, "bin", binSections.length)
     var images = collectImages(homeHtml, site)
-    return e.json(200, { ok: true, url: site, introUrl: introUrls[0] || "", title: title.slice(0, 200), text: text, binSections: binSections, sources: sources, images: images })
+
+    // ---- 商机线索（2026-10-07 用户需求：从医院官网/卫健委/政府网站同步信息化相关商机） ----
+    // 只收标题带「信息化/智慧/系统/平台/软件/数据/信创/电子病历/互联互通/评级」等 IT 词的公告；
+    // 设备采购/食堂/后勤/基建类自然被滤掉。每条 {title,url,src}，最多 15 条，尽力而为不阻塞主路径。
+    var leadsError = ""
+    try {
+    var itRe = /信息化|智慧|智能|系统集成|信息平台|软件|数据中台|数据中心|数据治理|信创|国产化|互联网医院|电子病历|互联互通|医院信息|医疗信息|HIS|EMR|LIS|PACS|RIS|评级|测评|等保|机房|网络安全|运维服务|升级改造|一体化/i
+    var leads = []
+    var leadSeen = {}
+    var pushLead = function (lt, lu, ls) {
+      lt = unesc(String(lt || "").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim()
+      lu = String(lu || "")
+      if (lt.length < 10 || lt.length > 120) return
+      if (!/^https?:\/\//i.test(lu)) return
+      if (!itRe.test(lt)) return
+      var key = lt.slice(0, 24)
+      if (leadSeen[key]) return
+      leadSeen[key] = true
+      leads.push({ title: lt.slice(0, 120), url: lu.slice(0, 500), src: ls })
+    }
+    var collectLeadAnchors = function (html, base, srcName) {
+      var re = /<a\s[^>]*?href\s*=\s*["']([^"'\s>]+)["'][^>]*>([\s\S]{0,160}?)<\/a>/gi
+      var m
+      while ((m = re.exec(html)) !== null && leads.length < 12) {
+        var href = unesc(m[1]).trim()
+        var label = unesc(String(m[2]).replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim()
+        if (/^(javascript|mailto|tel):/i.test(href)) continue
+        if (label.length < 10 || label.length > 120) continue
+        if (!/(公告|招标|采购|中标|遴选|成交|结果公示|询价|竞争性磋商)/.test(label) && !/zhaobiao|zbgg|cggg|zhongbiao|gonggao/i.test(href)) continue
+        pushLead(label, absUrl(href, base), srcName)
+      }
+    }
+    // ① 官网首页公告类锚点 + 通知公告/招标采购栏目页（1 层）
+    collectLeadAnchors(homeHtml, site, "官网")
+    var noticeUrls = findLinksByHints(homeHtml, site, /通知公告|公告公示|招标采购|院内公告|采购信息|招标信息/, /zbgg|zhaobiao|cggg|zhongbiao|gonggao|tongzhi|news|notice/i, 2)
+    for (var ni2 = 0; ni2 < noticeUrls.length && leads.length < 12; ni2++) {
+      var nobj2 = fetchPageObj(noticeUrls[ni2])
+      if (nobj2 && nobj2.html) collectLeadAnchors(nobj2.html, noticeUrls[ni2], "官网·公告栏")
+    }
+    // ② 卫健委/政府网站/权威源检索（Bing best-effort；gov.cn 优先，全部须信息化相关）
+    var govQueries = [name + " 信息化 招标公告", name + " 信息化建设 中标 结果公示"]
+    for (var qi = 0; qi < govQueries.length && leads.length < 15; qi++) {
+      var shtml = fetchHtml("https://www.bing.com/search?q=" + encodeURIComponent(govQueries[qi]))
+      if (!shtml) continue
+      var sre = /<h2[^>]*>\s*<a[^>]*?href\s*=\s*["'](https?:\/\/[^"']+)["'][^>]*>([\s\S]{0,200}?)<\/a>/gi
+      var sm
+      while ((sm = sre.exec(shtml)) !== null && leads.length < 15) {
+        var su = unesc(sm[1])
+        var st = unesc(String(sm[2]).replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim()
+        if (/bing\.com|microsoft|\.msn\.|baike\.|baidu|sohu|zhihu|weixin|so\.com|qcc|tianyancha/i.test(su)) continue
+        if (st.length < 10 || st.length > 120) continue
+        if (!itRe.test(st)) continue
+        var skey2 = st.slice(0, 24)
+        if (leadSeen[skey2]) continue
+        leadSeen[skey2] = true
+        leads.push({ title: st.slice(0, 120), url: su.slice(0, 500), src: /\.gov\.cn/i.test(su) ? "政府网站" : "权威检索" })
+      }
+    }
+    } catch (exLeads) { leadsError = String(exLeads && exLeads.message || exLeads) }
+
+    return e.json(200, { ok: true, url: site, introUrl: introUrls[0] || "", title: title.slice(0, 200), text: text, binSections: binSections, sources: sources, images: images, leads: leads, leadsError: leadsError })
   } catch (ex) {
     $app.logger().error("customer fetch-site failed", "err", String(ex))
-    return e.json(500, { error: "fetch_site_failed", message: "抓取官网失败，请稍后重试", fingerprint: "cfs-" + Math.floor(Math.random() * 1e9).toString(36) })
+    return e.json(500, { error: "fetch_site_failed", message: "抓取官网失败：" + String(ex).slice(0, 200), fingerprint: "cfs-" + Math.floor(Math.random() * 1e9).toString(36) })
   }
 })
 

@@ -1,9 +1,10 @@
-// AI 动态页面 VM：拉取 AIHOT 精选流 + 分类筛选 + 转情报中心（R139）
+// AI 动态页面 VM：拉取 AIHOT 精选流 + 医疗软件信息化行业过滤 + 分类筛选 + 转情报中心（R139）
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import {
   aiHotCategories,
   fetchAiHotFeed,
+  filterMedicalAiHot,
   saveAiHotToIntel,
   type AiHotItem,
 } from "@/lib/aiHotFeed"
@@ -35,9 +36,12 @@ export function useAiHot() {
   const load = useCallback(async (force = false) => {
     try {
       const r = await fetchAiHotFeed(force)
-      setItems(r.items)
+      // 2026-10-07 用户口径：AI 动态只展示「AI × 医疗软件信息化」相关条目，
+      // 通用 AI 资讯（大模型发布/编程工具等）不进页面
+      const medical = filterMedicalAiHot(r.items)
+      setItems(medical)
       setFetchedAt(r.fetchedAt)
-      setError(r.items.length === 0 ? "AIHOT 精选流暂时为空，可稍后刷新重试" : null)
+      setError(medical.length === 0 ? "AIHOT 精选流暂无医疗软件信息化相关动态，可稍后刷新重试" : null)
     } catch (err) {
       const e = err as Error & { httpStatus?: number }
       setError(

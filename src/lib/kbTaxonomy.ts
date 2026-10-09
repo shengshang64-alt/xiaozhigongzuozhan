@@ -120,7 +120,7 @@ export function deriveBucket(pathName: string): KbBucket {
   return "其他"
 }
 
-/** 供入库/回填统一调用：给定检索语料的组合文本 + 路径，产出 track/bucket */
+/** 供入库/回填统一调用：给定检索语料的组合文本 + 路径，产出 track/bucket/section */
 export function deriveTaxonomy(input: {
   /** 参与赛道判定的文本（title + keywords + 正文开头等） */
   trackText: string
@@ -128,9 +128,13 @@ export function deriveTaxonomy(input: {
   pathName: string
   /** 入库幂等键；soltpl:/bidtpl: 前缀为桶的确定性证据，优先于路径猜测 */
   sourceFileName?: string
-}): { track: KbTrack; bucket: KbBucket } {
+}): { track: KbTrack; bucket: KbBucket; section: KbSection } {
   const forced = templateBucketOf(input.sourceFileName ?? "")
-  return { track: deriveTrack(input.trackText), bucket: forced ?? deriveBucket(input.pathName) }
+  return {
+    track: deriveTrack(input.trackText),
+    bucket: forced ?? deriveBucket(input.pathName),
+    section: deriveSection(input.trackText),
+  }
 }
 
 export const isKbTrack = (v: unknown): v is KbTrack =>
@@ -138,3 +142,53 @@ export const isKbTrack = (v: unknown): v is KbTrack =>
 
 export const isKbBucket = (v: unknown): v is KbBucket =>
   typeof v === "string" && (KB_BUCKETS as readonly string[]).includes(v)
+
+// ---------------------------------------------------------------------------
+// 章节用途（2026-10-07 用户口径：按标书实战章节体系分级分类，11 档 + 其他兜底）——
+// 设计方案 / 项目建设背景 / 项目建设要求 / 需求分析 / 实施方案 / 售后方案 / 培训方案 /
+// 安全保障 / 架构图 / 流程图 / 项目案例。落库 kb_docs.kb_section；应用层（标书/方案
+// 生成检索）按当前章节用途软加权，同用途语料排前。
+// ---------------------------------------------------------------------------
+
+export const KB_SECTIONS = [
+  "架构图",
+  "流程图",
+  "需求分析",
+  "建设要求",
+  "售后方案",
+  "培训方案",
+  "安全保障",
+  "建设背景",
+  "实施方案",
+  "设计方案",
+  "项目案例",
+] as const
+
+export type KbSection = (typeof KB_SECTIONS)[number] | "其他"
+
+// 顺序即优先级（最具体的图类/专项最先），首命中即胜出
+const SECTION_RULES: [KbSection, RegExp][] = [
+  ["架构图", /架构图|拓扑图|系统架构|总体架构|网络架构|应用架构|架构设计/],
+  ["流程图", /流程图|泳道图|业务流程图|业务流程/],
+  ["需求分析", /需求分析|需求调研|需求理解|业务需求|功能需求|用户需求|需求规格|需求响应/],
+  ["建设要求", /建设要求|建设内容|采购需求|技术要求|招标要求|采购要求|考核要求|建设标准|响应要求/],
+  ["售后方案", /售后服务|售后方案|运维方案|运维服务|维保|质保|驻场|巡检|服务承诺/],
+  ["培训方案", /培训/],
+  ["安全保障", /安全保障|安全方案|等级保护|等保|应急预案|应急响应|备份|容灾|数据安全|网络安全/],
+  ["建设背景", /建设背景|项目背景|政策背景|背景分析|现状分析|政策依据|发展现状/],
+  ["实施方案", /实施方案|项目实施|实施部署|部署方案|上线方案|割接|数据迁移|进度计划|项目组织|人员配备|项目管理|施工组织/],
+  ["设计方案", /设计方案|总体设计|功能设计|数据库设计|技术方案|建设方案|总体建设|方案设计|技术架构|应用架构|技术路线/],
+  ["项目案例", /项目案例|同类案例|业绩案例|成功案例|典型案例/],
+]
+
+/** 从文本派生章节用途：最具体的专项规则最先命中；全不命中回退「其他」 */
+export function deriveSection(text: string): KbSection {
+  const hay = text ?? ""
+  for (const [section, re] of SECTION_RULES) {
+    if (re.test(hay)) return section
+  }
+  return "其他"
+}
+
+export const isKbSection = (v: unknown): v is KbSection =>
+  typeof v === "string" && (KB_SECTIONS as readonly string[]).includes(v)

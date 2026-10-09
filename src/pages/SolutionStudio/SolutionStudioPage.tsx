@@ -151,6 +151,7 @@ export function SolutionStudioPage(p: ReturnType<typeof useSolutionStudio>) {
         outlineLoading={p.outlineLoading}
         confirming={p.confirming}
         submitWizardInfo={p.submitWizardInfo}
+        assembleOutlineFromChecklist={p.assembleOutlineFromChecklist}
         confirmOutline={p.confirmOutline}
         outlineRename={p.outlineRename}
         outlineRemove={p.outlineRemove}

@@ -1,10 +1,11 @@
 import { useState } from "react"
-import { Gauge, Loader2, NotebookPen, RefreshCw, Scale, TriangleAlert, TrendingUp } from "lucide-react"
+import { ArrowRight, Gauge, Loader2, NotebookPen, RefreshCw, Scale, TriangleAlert, TrendingUp } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { formatDateTimeDisplay } from "@/lib/dateDisplay"
+import { COMPOSE_STEP, composeChaptersHint, stepGoLabel } from "@/components/bid-workspace/pipelineStep"
 import {
   filterEvalRowIndexes,
   isGapBidItem,
@@ -36,6 +37,7 @@ type MockEvalPanelProps = Pick<
   | "evalPathFailed"
   | "startEvalPathRerun"
   | "isArchivedLocked"
+  | "requestStep"
 >
 
 /** 第九轮改造 3：格式规范路 severity → 语义四档 badge variant */
@@ -305,6 +307,7 @@ export function MockEvalPanel({
   evalPathFailed,
   startEvalPathRerun,
   isArchivedLocked,
+  requestStep,
 }: MockEvalPanelProps) {
   // 第九轮改造 3：三路页签（纯 UI 状态）
   const [evalTab, setEvalTab] = useState<EvalPath>("tech")
@@ -338,7 +341,7 @@ export function MockEvalPanel({
             <Button
               onClick={startAiReview}
               disabled={anyBusy || !scoringCount || !chaptersReady || isArchivedLocked}
-              title={isArchivedLocked ? "已归档项目为只读，解除归档后可重新评标" : undefined}
+              title={isArchivedLocked ? "已归档项目为只读，解除归档后可重新评标" : !chaptersReady ? composeChaptersHint() : undefined}
               className="bg-primary text-primary-foreground shadow-md hover:bg-primary/90 focus-visible:shadow-[var(--focus-ring)]"
             >
               {evalLoading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Scale className="mr-1.5 h-4 w-4" />}
@@ -364,9 +367,17 @@ export function MockEvalPanel({
           </div>
         )}
         {scoringCount > 0 && !chaptersReady && (
-          <p className="mt-3 rounded-md border border-dashed border-border bg-card/60 px-3 py-2 text-xs text-muted-foreground">
-            投标文件还没有正文，请先完成「投标文件编制」环节
-          </p>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed border-border bg-card/60 px-3 py-2">
+              <p className="text-xs text-muted-foreground">{composeChaptersHint()}</p>
+              <button
+                type="button"
+                onClick={() => requestStep(COMPOSE_STEP)}
+                className="flex items-center gap-1 rounded text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <ArrowRight className="h-3 w-3" />
+                前往第 {COMPOSE_STEP} 步 · {stepGoLabel(COMPOSE_STEP)}
+              </button>
+            </div>
         )}
       </header>
 

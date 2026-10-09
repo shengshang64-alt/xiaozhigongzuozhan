@@ -279,6 +279,7 @@ export function NewDeckWizard({
                     disabled={deckGenerating}
                     className="h-7 rounded-md border border-border bg-background px-1.5 text-[11px] text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60"
                   >
+                    <option value="pixabay">Pixabay（中文直搜）</option>
                     <option value="pexels">Pexels</option>
                     <option value="unsplash">Unsplash</option>
                   </select>

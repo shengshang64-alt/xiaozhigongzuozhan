@@ -46,6 +46,7 @@ import type { UseCompetitors } from "./useCompetitors"
 import { CopyrightDialog } from "./CopyrightDialog"
 import { resolveAvailableModels, type ModelRef } from "@/lib/modelGateway"
 import { useCompetitorAnalysis } from "./useCompetitorAnalysis"
+import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 
 function Field({ label, value }: { label: string; value: string }) {
   if (!value) return null
@@ -330,6 +331,19 @@ function AIAnalysisSection({ row, modelRef }: { row: CompetitorRow; modelRef: Mo
           ))}
         </div>
       </div>
+
+      {/* R158：采纳无事实依据建议的二次确认——替代原原生 window.confirm，收敛到全站统一 ConfirmDialog */}
+      <ConfirmDialog
+        open={analysis.pendingNoEvidenceCount > 0}
+        onOpenChange={(open) => {
+          if (!open) analysis.cancelApply()
+        }}
+        title="采纳无事实依据的建议？"
+        description={`本次勾选中有 ${analysis.pendingNoEvidenceCount} 条建议未附事实依据，采纳后将直接写入厂商档案。确定继续吗？`}
+        confirmText="仍要采纳"
+        cancelText="返回检查"
+        onConfirm={() => void analysis.confirmApply()}
+      />
     </div>
   )
 }

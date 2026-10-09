@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button"
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
 import { PageHeader } from "@/components/shell/PageHeader"
 import { ArchivePanel } from "@/components/bid-workspace/ArchivePanel"
+import { BidOpenDateBar } from "@/components/bid-workspace/BidOpenDateBar"
 import { BidProjectList } from "@/components/bid-workspace/BidProjectList"
 import { BidReviewSummary } from "@/components/bid-workspace/BidReviewSummary"
 import { BidToolbar } from "@/components/bid-workspace/BidToolbar"
@@ -56,6 +57,13 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
             linkedOpportunityName={p.linkedOpportunityName}
             isArchivedLocked={p.isArchivedLocked}
             warRoomSlot={<BidWarRoom activeProject={p.activeProject} missCount={p.uncoveredClauses.length} riskCount={p.voidCriticalUnresolved} />}
+          />
+          {/* R198 §3.5：开标时间就地补录/修改/清除（key 绑项目 id，切项目重挂载避免陈旧草稿） */}
+          <BidOpenDateBar
+            key={p.activeProject.id}
+            activeProject={p.activeProject}
+            isArchivedLocked={p.isArchivedLocked}
+            updateProject={p.updateProject}
           />
           {/* 循环 5 A3：归档只读硬锁横幅——导出与查看保留，解除归档后可编辑 */}
           {p.isArchivedLocked && (
@@ -142,6 +150,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                   report={p.activeProject.parse_report}
                   archived={p.isArchivedLocked}
                   tenderText={p.activeProject.tender_text}
+                  chapters={p.activeProject.bid_chapters}
                   onImportSections={p.updateParseReport}
                   runWithCostConfirm={p.costConfirm.runWithCostConfirm}
                 />
@@ -167,6 +176,11 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               setFiguresEnabled={p.setFiguresEnabled}
               maxFigures={p.maxFigures}
               setMaxFigures={p.setMaxFigures}
+              figureTemplates={p.figureTemplates}
+              figureUploadBusy={p.figureUploadBusy}
+              uploadChapterFigure={p.uploadChapterFigure}
+              insertFigureTemplate={p.insertFigureTemplate}
+              removeFigureTemplateById={p.removeFigureTemplateById}
               orchestrationSummary={p.orchestrationSummary}
               orchestrationBusy={p.orchestrationBusy}
               orchestrationProgress={p.orchestrationProgress}
@@ -180,6 +194,8 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               setAutoConsistencyAudit={p.setAutoConsistencyAudit}
               setComplianceMode={p.setComplianceMode}
               setIncludeBiz={p.setIncludeBiz}
+              scope={p.scope}
+              setScope={p.setScope}
               bizRemoveCount={p.bizRemoveCount}
               confirmRemoveBizChapters={p.confirmRemoveBizChapters}
               cancelRemoveBizChapters={p.cancelRemoveBizChapters}
@@ -226,6 +242,12 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               setEditingContent={p.setEditingContent}
               autoSaveState={p.autoSaveState}
               chapterBusy={p.chapterBusy}
+              refMaterialsDraft={p.refMaterialsDraft}
+              refFileBusy={p.refFileBusy}
+              saveMaterialLibrary={p.saveMaterialLibrary}
+              applyLibraryDefaults={p.applyLibraryDefaults}
+              importLibraryFile={p.importLibraryFile}
+              classifyLibraryDraft={p.classifyLibraryDraft}
               generateChapter={p.generateChapter}
               regenerateChapter={p.regenerateChapter}
               regenerateSection={p.regenerateSection}
@@ -251,6 +273,10 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               startAiFigures={p.startAiFigures}
               aiFigureBusy={p.aiFigureBusy}
               aiFigureProgress={p.aiFigureProgress}
+              figureBackfillBusy={p.figureBackfillBusy}
+              figureBackfillProgress={p.figureBackfillProgress}
+              figureBackfillPending={p.figureBackfillPending}
+              startFigureBackfill={p.startFigureBackfill}
               contentFocus={p.contentFocus}
               focusSectionInChapter={p.focusSectionInChapter}
               outlineClauseTotal={p.outlineClauseTotal}
@@ -284,6 +310,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
             <DupCheckPanel
               activeProject={p.activeProject}
               dupLoading={p.dupLoading}
+              requestStep={p.requestStep}
               runDupCheck={p.runDupCheck}
               jumpToChapter={p.jumpToChapter}
               isArchivedLocked={p.isArchivedLocked}
@@ -296,6 +323,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
             <VoidCheckPanel
               activeProject={p.activeProject}
               voidLoading={p.voidLoading}
+              requestStep={p.requestStep}
               startVoidCheck={p.startVoidCheck}
               toggleVoidManual={p.toggleVoidManual}
               setVoidManualStatus={p.setVoidManualStatus}
@@ -312,6 +340,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
             {/* T18+：文本审计卡同步挂第5步——错别字/逻辑检查只依赖正文成稿（比第6步准入门槛低），成稿即可审 */}
             <SubmissionCheckPanel
               activeProject={p.activeProject}
+              requestStep={p.requestStep}
               submissionLoading={p.submissionLoading}
               submissionFailed={p.submissionFailed}
               startSubmissionCheck={p.startSubmissionCheck}
@@ -339,6 +368,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               <MockEvalPanel
                 activeProject={p.activeProject}
                 evalLoading={p.evalLoading}
+                requestStep={p.requestStep}
                 startAiReview={p.startAiReview}
                 initManualReview={p.initManualReview}
                 setManualScore={p.setManualScore}
@@ -352,6 +382,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               />
               <SubmissionCheckPanel
                 activeProject={p.activeProject}
+                requestStep={p.requestStep}
                 submissionLoading={p.submissionLoading}
                 submissionFailed={p.submissionFailed}
                 startSubmissionCheck={p.startSubmissionCheck}
@@ -402,6 +433,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
           {p.activeStep === 7 && (
             <ArchivePanel
               activeProject={p.activeProject}
+              requestStep={p.requestStep}
               exportBusy={p.exportBusy}
               exportBidWord={p.exportBidWord}
               exportReport={p.exportReport}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
-import { unzipSync, strFromU8 } from "fflate"
+import { unzipSync, zipSync, strFromU8 } from "fflate"
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx"
-import { refreshStylesXml, refreshDocumentXml, refreshDocxFile } from "./refreshDocx"
+import { refreshStylesXml, refreshDocumentXml, refreshDocxFile, removeUnusedStylesXml, collectUsedStyleIds } from "./refreshDocx"
 import { DEFAULT_FORMAT_SETTINGS, type FormatSettings } from "@/pages/BidWorkspace/bidTypes"
 import type { FormatScope } from "./formatDiff"
 
@@ -132,5 +132,72 @@ describe("refreshDocxFile · 真实 docx 往返（docx 库生成 → 改写 → 
     expect(docXml).toContain('w:left="1701"')
     // 缺 2-6 级标题样式 → 如实记 notes（docx 库默认模板含更多标题样式则可能不缺）
     expect(Array.isArray(notes)).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 附三用户需求（2026-10-07）：导出可选删除未应用的样式定义
+// ---------------------------------------------------------------------------
+
+const STYLES_WITH_UNUSED = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri"/></w:rPr></w:rPrDefault></w:docDefaults>
+<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>
+<w:style w:type="paragraph" w:styleId="1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:pPr><w:outlineLvl w:val="0"/></w:pPr></w:style>
+<w:style w:type="character" w:styleId="UnusedChar"><w:name w:val="Unused Char Style"/></w:style>
+<w:style w:type="paragraph" w:styleId="UnusedBlock"><w:name w:val="Unused Block"/><w:basedOn w:val="UsedParent"/></w:style>
+<w:style w:type="paragraph" w:styleId="UsedParent"><w:name w:val="Used Parent"/></w:style>
+</w:styles>`
+
+const DOC_WITH_REFS = `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+<w:p><w:pPr><w:pStyle w:val="1"/></w:pPr><w:r><w:rPr><w:rStyle w:val="UsedParent"/></w:rPr><w:t>标题</w:t></w:r></w:p>
+<w:p><w:r><w:t>正文</w:t></w:r></w:p>
+</w:body></w:document>`
+
+describe("removeUnusedStylesXml · 删除未应用的样式（附三）", () => {
+  it("删除未被引用的样式；默认样式与被引用样式保留", () => {
+    const used = collectUsedStyleIds([DOC_WITH_REFS])
+    expect(used.has("1")).toBe(true)
+    expect(used.has("UsedParent")).toBe(true)
+    const notes: string[] = []
+    const out = removeUnusedStylesXml(STYLES_WITH_UNUSED, used, notes)
+    expect(out).not.toContain('w:styleId="UnusedChar"')
+    expect(out).not.toContain('w:styleId="UnusedBlock"')
+    expect(out).toContain('w:styleId="Normal"') // 默认样式保留
+    expect(out).toContain('w:styleId="1"') // 被引用保留
+    expect(out).toContain('w:styleId="UsedParent"') // 被引用保留
+    expect(notes[0]).toContain("已删除 2 个未应用的样式")
+  })
+
+  it("继承链级联：被保留样式 basedOn 的父样式即使未被直接引用也保留", () => {
+    const used = new Set(["UnusedBlock"]) // 只引用 UnusedBlock，其 basedOn=UsedParent 应级联保留
+    const out = removeUnusedStylesXml(STYLES_WITH_UNUSED, used, [])
+    expect(out).toContain('w:styleId="UsedParent"')
+    expect(out).not.toContain('w:styleId="UnusedChar"')
+  })
+
+  it("全部保留时原文返回、零删除备注", () => {
+    const used = collectUsedStyleIds([DOC_WITH_REFS])
+    used.add("UnusedChar").add("UnusedBlock")
+    const notes: string[] = []
+    const out = removeUnusedStylesXml(STYLES_WITH_UNUSED, used, notes)
+    expect(out).toBe(STYLES_WITH_UNUSED)
+    expect(notes).toHaveLength(0)
+  })
+})
+
+describe("refreshDocxFile · opts.removeUnusedStyles（附三导出选项）", () => {
+  it("勾选后导出的 docx 不再含未应用样式；未勾选时保留", async () => {
+    const zip: Record<string, Uint8Array> = {
+      "word/styles.xml": new TextEncoder().encode(STYLES_WITH_UNUSED),
+      "word/document.xml": new TextEncoder().encode(DOC_WITH_REFS),
+    }
+    const file = new File([zipSync(zip)], "t.docx")
+    const withOpt = await refreshDocxFile(file, cfg(), ALL_SCOPES, { removeUnusedStyles: true })
+    const outXml = strFromU8(unzipSync(new Uint8Array(await withOpt.blob.arrayBuffer()))["word/styles.xml"])
+    expect(outXml).not.toContain('w:styleId="UnusedChar"')
+    const withoutOpt = await refreshDocxFile(file, cfg(), ALL_SCOPES)
+    const keepXml = strFromU8(unzipSync(new Uint8Array(await withoutOpt.blob.arrayBuffer()))["word/styles.xml"])
+    expect(keepXml).toContain('w:styleId="UnusedChar"')
   })
 })

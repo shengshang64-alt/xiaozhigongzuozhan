@@ -1,7 +1,6 @@
 import { pb, getPocketBaseUrl, pbAuthHeader } from "./pb"
 import { getAuthHeaders } from "./auth"
-import { triggerBlobDownload } from "./download"
-
+import { isLocalDeployHost } from "./rhLogin"
 export async function fileToDataUrl(f: File): Promise<string> {
   return await new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -378,7 +377,7 @@ export async function callAigc<T = AigcSubmitResponse>(path: string, body: unkno
     const text = await res.text().catch(() => "")
     // hook 的结构化 message (如 429 "上一个任务还在生成中") 是给用户看的, 优先当
     // Error.message 抛出, 页面 catch 后直接展示; 技术细节保留在 status/body 上。
-    let serverMsg = ""
+    let serverMsg: string
     try {
       serverMsg = String((JSON.parse(text || "{}") as { message?: string }).message || "")
     } catch {
@@ -718,7 +717,7 @@ export async function callAigcAndPoll(
   }
   if (!submitRes.ok) {
     const text = await submitRes.text().catch(() => "")
-    let data: Partial<AigcSubmitResponse> | null = null
+    let data: Partial<AigcSubmitResponse> | null
     try {
       data = JSON.parse(text || "{}") as Partial<AigcSubmitResponse>
     } catch {
@@ -963,42 +962,6 @@ export async function loadAigcHistory(
   }
 }
 
-export async function updateAigcHistoryItem(
-  modelName: string,
-  jobId: string,
-  patch: AigcHistoryPatch,
-): Promise<AigcHistoryItem | null> {
-  const res = await fetchAigcRoute(
-    `/api/aigc/history/${encodeURIComponent(jobId)}/update`,
-    `/api/aigc/${encodeURIComponent(modelName)}/history/${encodeURIComponent(jobId)}/update`,
-    {
-      method: "POST",
-      credentials: "include",
-      headers: buildHeaders(),
-      body: JSON.stringify({ ...patch, model: modelName }),
-    },
-  )
-  if (!res.ok) return null
-  const data = (await res.json().catch(() => ({}))) as { item?: AigcHistoryItem }
-  return data.item || null
-}
-
-export async function deleteAigcHistoryItem(modelName: string, jobId: string): Promise<boolean> {
-  const res = await fetchAigcRoute(
-    `/api/aigc/history/${encodeURIComponent(jobId)}/delete`,
-    `/api/aigc/${encodeURIComponent(modelName)}/history/${encodeURIComponent(jobId)}/delete`,
-    {
-      method: "POST",
-      credentials: "include",
-      headers: buildHeaders(),
-      body: JSON.stringify({ model: modelName }),
-    },
-  )
-  if (!res.ok) return false
-  const data = (await res.json().catch(() => ({}))) as { deleted?: boolean }
-  return !!data.deleted
-}
-
 export async function listAigcModels(): Promise<AigcModelInfo[]> {
   const res = await fetch(`${getPocketBaseUrl()}/api/aigc/models`, {
     method: "GET",
@@ -1008,14 +971,6 @@ export async function listAigcModels(): Promise<AigcModelInfo[]> {
   if (!res.ok) return []
   const data = (await res.json().catch(() => ({}))) as { models?: AigcModelInfo[] }
   return Array.isArray(data.models) ? data.models : []
-}
-
-// listAigcModels() 的便捷查找: 拿到单个模型的参数契约 (scalar_params 的 enum/required/default,
-// media_params 的 multiple/max_num), 用于页面挂载时驱动分辨率/比例/多图上传等控件的渲染。
-// 找不到时返回 null —— 调用方应回退到"只渲染主文本输入", 不要因此崩溃或整页报错。
-export async function getAigcModelInfo(modelName: string): Promise<AigcModelInfo | null> {
-  const models = await listAigcModels()
-  return models.find((m) => m.model === modelName) || null
 }
 
 // 多图/多文件上传的标准通路 —— media_params.multiple=true 的参数 (如图生图 imageUrls) 必须走这个,
@@ -1067,6 +1022,15 @@ export async function previewAigcPrice(
   modelName: string,
   body: unknown,
 ): Promise<AigcPricePreview> {
+  // R170 (r130-price-preview-404)：本地部署 PocketBase 未挂 /api/aigc/price-preview 路由
+  // （补该端点要动 pb_hooks，受"本地部署不碰 pb_hooks"红线约束），每次 AI 生图/报价预估都会
+  // 在浏览器 console 留一条原生 404 报错，标书侧 generateAiFigures 与 PPT 侧共用本 helper，
+  // 属高频噪音。这里在本地域直接短路返回 { ok: false }，不发起 fetch——契约不变（"从不
+  // throw"、失败归一 ok:false），View 仍按既有三态降级显示"按实际扣费"，不影响真实计费
+  // 链路（实际扣费走 callAigcAndPoll，与本预估函数无关）。线上域行为完全不变。
+  if (isLocalDeployHost()) {
+    return { ok: false, message: "本地部署未挂 price-preview 端点，已跳过预估" }
+  }
   try {
     const base = getPocketBaseUrl()
     const res = await fetch(`${base}/api/aigc/price-preview`, {
@@ -1080,80 +1044,6 @@ export async function previewAigcPrice(
   } catch (e) {
     return { ok: false, message: String((e as Error)?.message || e) }
   }
-}
-
-// AI 应用价格预估: body 跟提交 callAiApp(.../run, body) 时完全一样的参数 (manifest.fields[].key
-// 逐个平铺在顶层)。AI 应用没有固定单价, RH price-preview 端点未必覆盖这类任务, 失败(含 404)一律
-// 归一成 { ok: false } —— 页面应隐藏价格徽标, 改显示"按 RunningHub 实际扣费", 不阻塞提交。
-export async function previewAiAppPrice(slug: string, body: unknown): Promise<AigcPricePreview> {
-  try {
-    return await callAiApp<AigcPricePreview>(`/api/aigc/ai-app/${slug}/price-preview`, body)
-  } catch (e) {
-    return { ok: false, message: String((e as Error)?.message || e) }
-  }
-}
-
-export async function updateAiAppHistoryItem(
-  slug: string,
-  jobId: string,
-  patch: AigcHistoryPatch,
-): Promise<AigcHistoryItem | null> {
-  const res = await callAiApp<{ ok: boolean; item?: AigcHistoryItem }>(
-    `/api/aigc/ai-app/${slug}/history/${encodeURIComponent(jobId)}/update`,
-    patch,
-  )
-  return res.item || null
-}
-
-export async function deleteAiAppHistoryItem(slug: string, jobId: string): Promise<boolean> {
-  const res = await callAiApp<{ ok: boolean; deleted?: boolean }>(
-    `/api/aigc/ai-app/${slug}/history/${encodeURIComponent(jobId)}/delete`,
-    {},
-  )
-  return !!res.deleted
-}
-
-/**
- * 跨域结果图/视频下载。直接用 a.href + a.download 对跨域 URL 无效(浏览器忽略
- * download 属性, 退化成新标签打开), 必须先 fetch 拿 blob, 再用本地 blob URL 触发下载。
- */
-export async function downloadAigcResult(url: string, filename?: string): Promise<void> {
-  try {
-    const res = await fetch(url)
-    const blob = await res.blob()
-    const ext = blob.type.includes("video")
-      ? "mp4"
-      : blob.type.includes("png")
-      ? "png"
-      : "jpg"
-    const name = filename ?? `result-${Date.now()}.${ext}`
-    triggerBlobDownload(blob, name)
-  } catch {
-    window.open(url, "_blank") // 兜底: 至少能看到
-  }
-}
-
-// ---- 历史代际兼容导出（新代码不要使用, 上传请用 uploadAigcMedia / uploadAiAppMedia）----
-// 2026-06 一代 lib 的页面代码 import { uploadRefImage(s) }（base64 dataURL 上传）。
-// 发布刷新（rh_vc_deploy 把旧 lib 刷成本模板）要求本文件导出面是全部历史拷贝的
-// 超集，否则 vite build 失败触发回滚保险丝，连 rhLogin.ts 一起退回旧版，沙箱域
-// (*.apps.vibex.cn) 登录态直接失效（真实事故: prompt.apps.vibex.cn）。这里用当前
-// 上传链路实现同签名薄包装：dataURL → File → uploadAigcMedia（multipart）。
-export async function uploadRefImage(
-  dataUrl: string,
-): Promise<{ download_url: string; fileName: string }> {
-  const blob = await (await fetch(dataUrl)).blob()
-  const ext = (blob.type.split("/")[1] || "png").split("+")[0]
-  const file = new File([blob], `ref-${Date.now()}.${ext}`, { type: blob.type || "image/png" })
-  const res = await uploadAigcMedia(file, "image")
-  return { download_url: res.download_url || res.downloadUrl || "", fileName: res.fileName || "" }
-}
-
-// 批量版本: 与老签名一致, 并发上传, 任意一张失败整体抛错。
-export async function uploadRefImages(
-  dataUrls: string[],
-): Promise<Array<{ download_url: string; fileName: string }>> {
-  return Promise.all(dataUrls.map((u) => uploadRefImage(u)))
 }
 
 // 相对路径 → 当前 origin 绝对 URL（老代际导出, persistMediaUrl 依赖）。
@@ -1185,6 +1075,3 @@ export async function persistMediaUrl(url: string, kind: string): Promise<string
   return url
 }
 
-export async function persistMediaUrls(urls: string[], kind: string): Promise<string[]> {
-  return Promise.all(urls.map((u) => persistMediaUrl(u, kind)))
-}

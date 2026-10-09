@@ -172,3 +172,71 @@ describe("recommendFromHistory", () => {
     expect(r.note).not.toContain("已优先展示")
   })
 })
+
+describe("recommendFromHistory 床位归一化投影（R176 按床位数智能推荐名实相符）", () => {
+  // 当前：500 床的三甲新报价。样本：同为三甲但体量差异大——1000 床成交 ¥800000（每床 ¥800）、
+  // 200 床成交 ¥120000（每床 ¥600）。原始总价区间被大项目拉高，每床折算才可比。
+  const cur500 = { hospital_level: "三级甲等", beds_total: 500, modules: ["软件"] }
+  const BIG = mkRec({
+    id: "BIG",
+    quote_name: "大项目",
+    hospital_level: "三甲",
+    beds_total: 1000,
+    groups: [{ id: "g1", name: "软件", items: [item("HIS", 800000)] }],
+  })
+  const SMALL = mkRec({
+    id: "SMALL",
+    quote_name: "小项目",
+    hospital_level: "三甲",
+    beds_total: 200,
+    groups: [{ id: "g1", name: "软件", items: [item("HIS", 120000)] }],
+  })
+
+  it("SimilarMatch 携带样本床位数 beds", () => {
+    const r = recommendFromHistory(cur500, [BIG, SMALL])
+    expect(r.matches.map((m) => m.beds).sort((a, b) => a - b)).toEqual([200, 1000])
+  })
+
+  it("每床单价区间对规模不敏感：600~800/床", () => {
+    const r = recommendFromHistory(cur500, [BIG, SMALL])
+    expect(r.per_bed_range).not.toBeNull()
+    expect(r.per_bed_range!.low).toBe(600)
+    expect(r.per_bed_range!.high).toBe(800)
+    expect(r.per_bed_range!.count).toBe(2)
+  })
+
+  it("按当前 500 床折算总价区间 30万~40万（中位 35万）", () => {
+    const r = recommendFromHistory(cur500, [BIG, SMALL])
+    expect(r.projected_total).not.toBeNull()
+    expect(r.current_beds).toBe(500)
+    expect(r.projected_total!.low).toBe(300000)
+    expect(r.projected_total!.median).toBeLessThanOrEqual(400000)
+    expect(r.projected_total!.high).toBe(400000)
+    expect(r.note).toContain("已按当前 500 床")
+  })
+
+  it("当前无床位数 → 每床区间仍在，但 projected_total=null（无从折算）", () => {
+    const noBeds = { hospital_level: "三级甲等", beds_total: 0, modules: ["软件"] }
+    const r = recommendFromHistory(noBeds, [BIG, SMALL])
+    expect(r.per_bed_range).not.toBeNull()
+    expect(r.projected_total).toBeNull()
+    expect(r.current_beds).toBe(0)
+    expect(r.note).not.toContain("已按当前")
+  })
+
+  it("样本全无床位数 → per_bed_range/projected_total 均为 null（不误投影）", () => {
+    const NOBED1 = mkRec({ id: "N1", hospital_level: "三甲", beds_total: 0, groups: [{ id: "g", name: "软件", items: [item("HIS", 100000)] }] })
+    const NOBED2 = mkRec({ id: "N2", hospital_level: "三甲", beds_total: 0, groups: [{ id: "g", name: "软件", items: [item("HIS", 200000)] }] })
+    const r = recommendFromHistory(cur500, [NOBED1, NOBED2])
+    expect(r.per_bed_range).toBeNull()
+    expect(r.projected_total).toBeNull()
+  })
+
+  it("空样本池早退也带新字段（结构一致）", () => {
+    const r = recommendFromHistory(cur500, [])
+    expect(r.available).toBe(false)
+    expect(r.per_bed_range).toBeNull()
+    expect(r.projected_total).toBeNull()
+    expect(r.current_beds).toBe(500)
+  })
+})

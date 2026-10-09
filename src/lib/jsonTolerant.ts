@@ -117,3 +117,36 @@ export function parseJsonTolerant(text: string, repair?: (s: string) => string):
   }
   throw new Error("AI 返回内容不是有效 JSON，请重试")
 }
+
+/**
+ * 从一段可能夹带散文或 ```json 代码围栏的 AI 原始输出中，截出可解析的 JSON 候选串。
+ * - 先 trim，再剥离开头的 ```/```json 与结尾的 ```；
+ * - 数组起点早于对象起点（或无对象）时取 `[..]`，否则取 `{..}`，均截到最后一个对应闭括号；
+ * - 截不到闭括号（弱模型输出被切断）时：默认返回空串（交由上层解析级报错）；
+ *   仅当 opts.truncateFromOpen 为真，才从首个 `{`/`[` 取到末尾，交给结构修复器兜底
+ *   （复刻 bidTypes 原有的截断容错路径）。
+ * 抽自标书 / 方案 / PPT 三处此前逐字节重复的实现，作为单一真源收敛。
+ * @param text AI 原始输出
+ * @param opts truncateFromOpen 是否在被截断时取到末尾（bidTypes 需要，solution/ppt 不需要）
+ * @returns JSON 候选串；无 JSON 起点时返回空串
+ */
+export function extractJsonCandidate(
+  text: string,
+  opts?: { truncateFromOpen?: boolean },
+): string {
+  let t = (text ?? "").trim()
+  t = t.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim()
+  const objStart = t.indexOf("{")
+  const arrStart = t.indexOf("[")
+  let candidate = ""
+  if (arrStart >= 0 && (objStart < 0 || arrStart < objStart)) {
+    candidate = t.slice(arrStart, t.lastIndexOf("]") + 1)
+  } else if (objStart >= 0) {
+    candidate = t.slice(objStart, t.lastIndexOf("}") + 1)
+  }
+  if (!candidate && opts?.truncateFromOpen) {
+    const openIdx = objStart >= 0 ? objStart : arrStart
+    if (openIdx >= 0) candidate = t.slice(openIdx)
+  }
+  return candidate
+}

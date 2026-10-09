@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   buildComplianceRows,
+  countMarkerLossRows,
   isCriticalComplianceRow,
   summarizeCompliance,
   type ComplianceProgressMap,
@@ -135,5 +136,36 @@ describe("summarizeCompliance / isCriticalComplianceRow · 按类覆盖汇总（
     expect(s.uncovered).toBe(0)
     expect(s.uncoveredCritical).toBe(0)
     expect(s.kinds.qual.total).toBe(0)
+  })
+})
+
+describe("countMarkerLossRows · 矩阵行符号丢失签名计数（R163 闭环 r159-marker-badge-ui 挂账）", () => {
+  it("「标注 + 空引号对」与私用区字符计入，正常条款不计", () => {
+    const rows = [
+      { text: '针对标注“”的技术参数及要求，每满足一项得2分。' },
+      { text: "数据处理能力：保障历史诊疗数据完整性。" },
+      { text: "★1 软件性能支持日均门诊15000人次" },
+    ]
+    expect(countMarkerLossRows(rows)).toBe(2)
+  })
+
+  it("空行集与空文本返回 0，不抛错", () => {
+    expect(countMarkerLossRows([])).toBe(0)
+    expect(countMarkerLossRows([{ text: "" }, { text: "   " }])).toBe(0)
+  })
+
+  it("同一文本重复只计一次（先去重再判定）", () => {
+    const text = '注：“”的条款为实质性要求'
+    expect(countMarkerLossRows([{ text }, { text }, { text }])).toBe(1)
+  })
+
+  it("真实矩阵行（已去列表符号）仍按原文命中判定", () => {
+    const content = [
+      "★1",
+      '评标委员会针对标注“”的技术参数及要求，每满足一项得2分。',
+    ].join("\n")
+    const rows = buildComplianceRows(report(content)).filter((r) => r.kind === "star")
+    expect(rows).toHaveLength(1)
+    expect(countMarkerLossRows(rows)).toBe(1)
   })
 })

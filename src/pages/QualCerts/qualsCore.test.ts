@@ -1,6 +1,6 @@
 // 资质台账纯函数单测（分档口径是「废标风险预警」的地基，必须锁死）
 import { describe, expect, it } from "vitest"
-import { qualBucket, summarizeQuals, qualDueLabel, parseDay } from "./qualsCore"
+import { qualBucket, summarizeQuals, qualDueLabel, parseDay, qualRiskView } from "./qualsCore"
 
 // 固定时钟：2026-09-28
 const TODAY = new Date("2026-09-28T00:00:00").getTime()
@@ -63,5 +63,23 @@ describe("parseDay · 日期解析", () => {
     expect(Number.isNaN(parseDay("2026-09-28"))).toBe(false)
     expect(Number.isNaN(parseDay("2026-9-28"))).toBe(true)
     expect(Number.isNaN(parseDay("abc"))).toBe(true)
+  })
+})
+
+describe("qualRiskView · 驾驶舱/台账/导出统一风险口径（O-006）", () => {
+  it("urgent=已过期+30天内，watch=90天内，total=urgent+watch", () => {
+    const v = qualRiskView({ expired: 1, critical: 0, warning: 3 })
+    expect(v.urgent).toBe(1)
+    expect(v.watch).toBe(3)
+    expect(v.total).toBe(4)
+  })
+  it("line 逐档明细与台账分档标签逐字一致，仅列非零档", () => {
+    expect(qualRiskView({ expired: 1, critical: 0, warning: 3 }).line).toBe("已过期 1 · 90 天内到期 3")
+    expect(qualRiskView({ expired: 2, critical: 4, warning: 0 }).line).toBe("已过期 2 · 30 天内到期 4")
+  })
+  it("空/缺失分档 → 全 0 空串，不报错（拉取失败或未建台账时静默）", () => {
+    expect(qualRiskView(null)).toEqual({ urgent: 0, watch: 0, total: 0, line: "" })
+    expect(qualRiskView({}).total).toBe(0)
+    expect(qualRiskView({ expired: 0, critical: 0, warning: 0 }).line).toBe("")
   })
 })

@@ -115,7 +115,15 @@ export function BidNodesCard() {
               <span className="text-foreground">
                 {missing.length} 个项目未填开标时间
               </span>
-              （如：{missing[0].project_name?.slice(0, 20) || missing[0].id}）——补录后开标前会在这里提醒。
+              ——点
+              <button
+                type="button"
+                onClick={() => navigate(`/bid-workspace?project=${missing[0].id}`)}
+                className="mx-0.5 font-medium text-primary underline-offset-2 hover:underline"
+              >
+                「{(missing[0].project_name || "未命名项目").slice(0, 16)}」
+              </button>
+              等项目去补录，补录后开标前会在这里提醒。
             </>
           ) : null}
         </div>

@@ -8,6 +8,7 @@ import {
   LayoutGrid,
   Layers,
   Monitor,
+  Images,
   Search,
   Settings,
   Flame,
@@ -15,6 +16,7 @@ import {
   UserCog,
   Users,
   ShieldCheck,
+  ArrowLeftRight,
 } from "lucide-react"
 import { preloadRoute } from "@/lib/routePreload"
 import { decodeRhToken, isLocalDeployHost, type RhAccountInfo } from "@/lib/rhLogin"
@@ -45,7 +47,9 @@ const NAV_SECTIONS: NavSection[] = [
     title: "制胜",
     items: [
       { path: "/solution-studio", label: "方案工作室", icon: FileText },
+      { path: "/product-mapping", label: "产品映射", icon: ArrowLeftRight },
       { path: "/ppt-quote", label: "PPT 与报价", icon: Monitor },
+      { path: "/materials", label: "素材库", icon: Images },
     ],
   },
   {

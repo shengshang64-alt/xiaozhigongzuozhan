@@ -1,5 +1,5 @@
 import type { LlmMessage } from "@/lib/llm"
-import { parseJsonTolerant } from "@/lib/jsonTolerant"
+import { extractJsonCandidate, parseJsonTolerant } from "@/lib/jsonTolerant"
 import { makeUid, outlineToText, type Chapter, type FigureSpec, type OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
 import type { CheckProduct, ChecklistLine } from "@/pages/SolutionStudio/checklistTypes"
 
@@ -180,8 +180,6 @@ export const REFINE_LABEL: Record<RefineKind, string> = {
   condense: "精简要点",
 }
 
-export const DEFAULT_TAX_NOTE = "软件与服务按 6% 增值税计，硬件按 13% 计；报价有效期 30 天，最终以合同为准。"
-
 /** 汇报时长换算建议页数：约 1.5 分钟一页，6-20 页 */
 export function suggestPageCount(durationMin: number): number {
   const d = Number(durationMin) || 10
@@ -212,19 +210,6 @@ export function bumpVersion(version: string): string {
   const m = /^v(\d+)$/i.exec((version || "").trim())
   if (m) return `v${Number(m[1]) + 1}`
   return "v2"
-}
-
-export function parseMaterialRef(raw: string): MaterialRef | null {
-  if (!raw) return null
-  try {
-    const rec = JSON.parse(raw) as Record<string, unknown>
-    const type = rec.type === "bid" ? "bid" : "solution"
-    const id = String(rec.id ?? "")
-    if (!id) return null
-    return { type, id, name: String(rec.name ?? "") }
-  } catch {
-    return null
-  }
 }
 
 export function emptySlide(title = ""): Slide {
@@ -581,18 +566,9 @@ export function sanitizeQuote(rec: QuoteRecord): QuoteRecord {
 // ---------------------------------------------------------------------------
 
 export function parseJsonLoose(text: string): unknown {
-  let t = (text || "").trim()
-  t = t.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim()
-  const objStart = t.indexOf("{")
-  const arrStart = t.indexOf("[")
-  let candidate = ""
-  if (arrStart >= 0 && (objStart < 0 || arrStart < objStart)) {
-    candidate = t.slice(arrStart, t.lastIndexOf("]") + 1)
-  } else if (objStart >= 0) {
-    candidate = t.slice(objStart, t.lastIndexOf("}") + 1)
-  }
+  // ai-stability-01：截候选走 extractJsonCandidate 单一真源，失败抛可读错误而非裸 SyntaxError
+  const candidate = extractJsonCandidate(text)
   if (!candidate) throw new Error("AI 返回格式解析失败，请重试")
-  // ai-stability-01：宽松解析（含裸控制字符转义），失败抛可读错误而非裸 SyntaxError
   return parseJsonTolerant(candidate)
 }
 
@@ -645,7 +621,24 @@ function normalizeBulletList(raw: unknown): string[] {
   return []
 }
 
-export function normalizeSlides(raw: unknown, plan: SlidePlan[] | null): Slide[] {
+/**
+ * 单发生成页数防御（R149）：模型被明确告知「共生成 N 页」，但小目标页数时偶发自行加页
+ * （如目标 3 页返回 6 页），旧 normalizeSlides 单发路径完全不限页数、照单全收。
+ * 超页时保留首页(开场)与末页(收尾致谢)、仅裁剪中间正文页并维持大纲次序；
+ * 不足 target 不补（无法凭空编页）。target 非正数或不超页时原样返回。
+ */
+export function trimSlidesToTarget<T extends { title: string }>(slides: T[], target: number): T[] {
+  if (!Number.isFinite(target) || target <= 0 || slides.length <= target) return slides
+  if (target === 1) return [slides[0]]
+  const middleCount = Math.max(0, target - 2)
+  return [
+    slides[0],
+    ...slides.slice(1, slides.length - 1).slice(0, middleCount),
+    slides[slides.length - 1],
+  ]
+}
+
+export function normalizeSlides(raw: unknown, plan: SlidePlan[] | null, maxPages?: number): Slide[] {
   const arr = pickArray(raw, ["slides", "pages"])
   const out: Slide[] = []
   arr.forEach((it, i) => {
@@ -656,7 +649,7 @@ export function normalizeSlides(raw: unknown, plan: SlidePlan[] | null): Slide[]
     out.push({ id: makeUid(), title, bullets: bullets.length ? bullets : [title], notes, ...slideVisual(rec) })
   })
   if (!out.length) throw new Error("AI 返回的页面内容为空，请重试")
-  return out
+  return maxPages === undefined ? out : trimSlidesToTarget(out, maxPages)
 }
 
 /**
@@ -798,6 +791,8 @@ function deckSystem(ctx: DeckContext): string {
   return [
     `你是医疗信息化行业资深售前顾问，正在制作一份「${DECK_PERSONA[ctx.deckType] ?? DECK_PERSONA.general}」。`,
     "内容要求：贴合医院真实业务场景，专业、克制、可落地；要点用短句，避免空话套话；讲稿备注是汇报人口语化讲解词。",
+    // 2026-10-08 全站审查：标题/要点纯中文，杜绝「信息化 overview」式中英混排
+    "【语言铁律】title、bullets、notes 一律用简体中文，禁止中英混排标题（如「信息化 overview」）；行业通用缩写（HIS、EMR、LIS、PACS、FHIR、DIP、ESB、SOA、KPI、UAT）与必要数字可保留。",
     // —— 借鉴 Anthropic pptx skill + academic-pptx 编辑方法论（作为默认质量基线，对所有用户生效）——
     "【行动标题 Action Title】每页 title 必须是一句有信息量的结论/观点（≤20 字），读者只看标题串起来就能读懂整份汇报的逻辑；" +
       "禁止用名词标签式标题（如「项目背景」「建设方案」「系统架构」），应改写为承载判断的陈述句（如「老系统孤岛数据拖慢全院协作」「一体化平台把门诊准备时间压缩 40%」）。",

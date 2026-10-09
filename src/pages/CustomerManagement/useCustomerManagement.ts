@@ -41,6 +41,7 @@ import {
   type ChainAssetItem,
   type ContactInfo,
   type CustomerDraft,
+  type CustomerLead,
   type CustomerRow,
   type FollowRecordRow,
   type OppStage,
@@ -116,7 +117,8 @@ async function registerNextActionTodo(
 }
 
 // A2-7 分页：照抄 intel-center 的 page/per_page/loadMore 模式，只调既有 REST list 参数
-const CRM_PER_PAGE = 20
+// 2026-10-08：20 → 200（客户 160 家要求「全量补全」必须整列表在内存里，分页 20 会让全量入口只处理当前页）
+const CRM_PER_PAGE = 200
 const REFS_PER_PAGE = 20
 const RECORDS_PER_PAGE = 20
 // A3：商机首屏/加载更多 perPage 提到 200（与全站 D3 治理口径一致），拉满设 capped 标志；
@@ -977,6 +979,39 @@ export function useCustomerManagement() {
     }
   }, [customerDraft.hospital_name, customerDraft.website, extractFromText, setDraftField])
 
+  // ---------------- 2026-10-07 用户需求：官网/政府网站商机线索（fetch-site leads） ----------------
+  const [siteLeads, setSiteLeads] = useState<{ customerId: string; leads: CustomerLead[] } | null>(null)
+  const [leadSavingKey, setLeadSavingKey] = useState("")
+
+  /** 把一条商机线索建为商机（stage=lead 线索），notes 带来源链接，便于回溯核实 */
+  const convertLeadToOpportunity = useCallback(
+    async (customer: CustomerRow, lead: CustomerLead) => {
+      const key = `${customer.id}:${lead.url}`
+      setLeadSavingKey(key)
+      try {
+        const rec = await apiFetch<OpportunityRow>("/api/opportunities", {
+          method: "POST",
+          body: JSON.stringify({
+            customer_id: customer.id,
+            customer_name: customer.hospital_name,
+            opp_name: lead.title.slice(0, 120),
+            stage: "lead",
+            next_action: "核实线索真伪与预算口径，确认跟进人",
+            notes: `来源：${lead.src}
+${lead.url}`,
+          }),
+        })
+        setOpportunities((prev) => (prev.some((o) => o.id === rec.id) ? prev : [rec, ...prev]))
+        toast.success(`已建为线索商机：${lead.title.slice(0, 30)}`)
+      } catch {
+        toast.error("转商机失败，请稍后重试")
+      } finally {
+        setLeadSavingKey("")
+      }
+    },
+    [],
+  )
+
   const runFetchSite = useCallback(() => {
     if (!requireLogin()) return
     if (!customerDraft.hospital_name.trim()) {
@@ -1005,13 +1040,13 @@ export function useCustomerManagement() {
     name: string,
     website: string,
     direct: boolean,
-  ): Promise<{ ok: boolean; url?: string; text?: string; message?: string; sources?: string[] }> => {
+  ): Promise<{ ok: boolean; url?: string; text?: string; message?: string; sources?: string[]; leads?: CustomerLead[] }> => {
     try {
       const r = await apiFetch<{
-        ok: boolean; url?: string; text?: string; message?: string; sources?: string[]; binSections?: BinSection[]
+        ok: boolean; url?: string; text?: string; message?: string; sources?: string[]; binSections?: BinSection[]; leads?: CustomerLead[]
       }>("/api/customers/fetch-site", { method: "POST", body: JSON.stringify({ name, website, direct }) })
       if (r.ok) r.text = decodeBinSections(r.text || "", r.binSections)
-      return { ok: r.ok, url: r.url, text: r.text, message: r.message, sources: r.sources }
+      return { ok: r.ok, url: r.url, text: r.text, message: r.message, sources: r.sources, leads: Array.isArray(r.leads) ? r.leads : [] }
     } catch {
       return { ok: false, message: "网络异常，抓取失败" }
     }
@@ -1058,6 +1093,12 @@ export function useCustomerManagement() {
   // 批量补全单个客户：抓官网→抽取→仅回填当前为空的字段→PATCH 写库；返回本次实际补上的字段数
   const enrichCustomerRow = useCallback(async (row: CustomerRow): Promise<{ filled: number; note: string; sources?: string[] }> => {
     const fetched = await fetchSiteText(row.hospital_name, row.website, false)
+    // 2026-10-07 用户需求：抓官网时同步的「信息化商机线索」落到详情面板（官网公告/招标栏目 + 政府网站检索）
+    if (fetched.ok && fetched.leads?.length) {
+      setSiteLeads({ customerId: row.id, leads: fetched.leads })
+    } else if (fetched.ok) {
+      setSiteLeads({ customerId: row.id, leads: [] })
+    }
     if (!fetched.ok || !fetched.text) return { filled: 0, note: fetched.message || "官网抓取失败", sources: fetched.sources }
     const profile = await extractProfileFromText(fetched.text)
     if (!profile) return { filled: 0, note: "正文未能抽取到可核实字段", sources: fetched.sources }
@@ -1874,6 +1915,10 @@ export function useCustomerManagement() {
     runExtract,
     fetchingSite,
     runFetchSite,
+    // 2026-10-07 用户需求：官网/政府网站商机线索
+    siteLeads,
+    leadSavingKey,
+    convertLeadToOpportunity,
     articleUrl,
     setArticleUrl,
     runFetchUrl,

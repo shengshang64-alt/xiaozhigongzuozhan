@@ -61,6 +61,7 @@ function FolderRow({
         <button
           type="button"
           aria-label={expanded ? "收起" : "展开"}
+          aria-expanded={expanded}
           onClick={(e) => {
             e.stopPropagation()
             setExpanded((v) => !v)

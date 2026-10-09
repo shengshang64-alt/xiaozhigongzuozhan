@@ -8,6 +8,7 @@ import { CompanyTemplateHint } from "@/components/common/CompanyTemplateHint"
 import type { UseSolutionStudio } from "@/pages/SolutionStudio/useSolutionStudio"
 import { exportToCsv } from "@/lib/exportCsv"
 import { localDateStamp } from "@/lib/dateStamp"
+import { formatShortDateTime } from "@/lib/dateDisplay"
 import {
   DOC_STATUS_LABEL,
   SOLUTION_TYPES,
@@ -102,7 +103,7 @@ function SolutionCard({
           {DOC_STATUS_LABEL[rec.doc_status] ?? rec.doc_status}
         </span>
         {totalCount > 0 && <span>正文 {doneCount}/{totalCount} 章</span>}
-        <span>更新于 {new Date(rec.updated).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+        <span>更新于 {formatShortDateTime(rec.updated)}</span>
       </div>
       <div className="mt-auto flex items-center gap-2 pt-4">
         {/* A2-10：卡片动作统一 outline，唯一 bg-primary 留给列表页「新建方案」 */}

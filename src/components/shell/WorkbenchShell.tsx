@@ -44,8 +44,10 @@ export function WorkbenchShell() {
   const routeLabels: Record<string, string> = {
     "/": "作战驾驶舱",
     "/solution-studio": "方案编制",
+    "/product-mapping": "产品映射",
     "/bid-workspace": "标书工作台",
     "/ppt-quote": "PPT 与报价",
+    "/materials": "素材库",
     "/intel-center": "情报中心",
     "/competitors": "竞品分析",
     "/customer-management": "客户管理",

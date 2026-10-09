@@ -16,7 +16,7 @@ import {
   type KbSearchHit,
 } from "@/lib/kbCore"
 import { getCachedVisibleDocs, assembleKbContext } from "@/lib/kbAssemble"
-import { deriveTrack } from "@/lib/kbTaxonomy"
+import { deriveSection, deriveTrack } from "@/lib/kbTaxonomy"
 import { contextSnippetOf } from "@/lib/kbPolicy"
 import { listKbQaPairs, matchQaPair, visibleQaPairs, type KbQaPairRow } from "@/lib/kbQa"
 import { useCostConfirm } from "@/hooks/useCostConfirm"
@@ -38,6 +38,7 @@ import { runBulkPool } from "@/lib/bulkPool"
 import { DEFAULT_EXPORT_TEMPLATE, buildExportFrontMatter, readSolutionExportTemplate, writeSolutionExportTemplate, type SolutionExportTemplate } from "./exportTemplate"
 import { useChecklist } from "./checklistLogic"
 import { snapshotFromChecklist, type ChecklistRecord } from "./checklistTypes"
+import { checklistToOutlineSkeleton } from "./checklistToOutline"
 import { bulkResumeNotice, deriveSolutionDocStatus, shouldRecoverStaleGenerating } from "./bulkResume"
 import {
   addChildToTree,
@@ -491,7 +492,7 @@ export function useSolutionStudio() {
     setOutlineDraft([])
     setWizardStep(1)
     setWizardOpen(true)
-  }, [])
+  }, [userId])
 
   const openReuseWizard = useCallback((rec: SolutionRecord) => {
     draftSourceRef.current = { outline: deepCopyOutline(rec.outline ?? []) }
@@ -609,6 +610,18 @@ export function useSolutionStudio() {
       void generateOutlineDraft()
     }, `将根据项目信息生成方案大纲，${currentStudioCostText()}${skillCostSuffix("solution-outline")}`)
   }, [costConfirm, formHospital, formInfo.systems.length, generateOutlineDraft])
+
+  // R168：按清单组装标准方案骨架（零 AI）——把清单命中的系统按方案类型标准章节铺成大纲，
+  // 不走大模型、不产生费用；骨架仍可在第三步编辑，再复用既有逐章生成填正文。
+  const assembleOutlineFromChecklist = useCallback(() => {
+    if (!formInfo.systems.length) {
+      toast.error("请至少勾选一个建设系统/产品，或先在清单里勾选后带入")
+      return
+    }
+    setOutlineDraft(checklistToOutlineSkeleton(formInfo.systems, formTypeKey))
+    setWizardStep(3)
+    toast.success(`已按清单 ${formInfo.systems.length} 个系统组装标准方案骨架，可继续调整再确认`)
+  }, [formInfo.systems, formTypeKey])
 
   // 大纲树编辑操作（向导第三步）
   const outlineRename = useCallback((id: string, title: string) => {
@@ -903,6 +916,7 @@ export function useSolutionStudio() {
             query: q,
             track: deriveTrack(q),
             buckets: ["方案素材", "政策法规标准", "产品资料"],
+            sections: [deriveSection(q)],
             topN: 5,
           })
           if (hits.length) {
@@ -1757,6 +1771,7 @@ export function useSolutionStudio() {
     outlineLoading,
     confirming,
     submitWizardInfo,
+    assembleOutlineFromChecklist,
     confirmOutline,
     outlineRename,
     outlineRemove,

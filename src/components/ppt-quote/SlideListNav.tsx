@@ -8,9 +8,11 @@ type SlideListNavProps = {
   onAdd: () => void
   onDelete: (index: number) => void
   onMove: (index: number, dir: -1 | 1) => void
+  /** R166：导出前自检 warn 级命中页（0 基下标集合）；未传或空集合时不渲染任何徽标 */
+  warnPages?: ReadonlySet<number>
 }
 
-export function SlideListNav({ slides, currentIndex, onSelect, onAdd, onDelete, onMove }: SlideListNavProps) {
+export function SlideListNav({ slides, currentIndex, onSelect, onAdd, onDelete, onMove, warnPages }: SlideListNavProps) {
   return (
     <aside className="flex h-full flex-col rounded-lg border border-border bg-card shadow-md">
       <div className="flex min-h-14 shrink-0 items-center justify-between border-b border-border px-4">
@@ -49,6 +51,12 @@ export function SlideListNav({ slides, currentIndex, onSelect, onAdd, onDelete, 
                 <span className={active ? "min-w-0 flex-1 truncate text-sm font-medium text-foreground" : "min-w-0 flex-1 truncate text-sm text-muted-foreground"}>
                   {slide.title || "（未命名页）"}
                 </span>
+                {warnPages?.has(index) ? (
+                  <span
+                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-destructive"
+                    title="导出前自检：本页有需要处理的项"
+                  />
+                ) : null}
               </button>
               <div className="mt-0.5 flex items-center justify-end gap-0.5 opacity-60 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                 <button

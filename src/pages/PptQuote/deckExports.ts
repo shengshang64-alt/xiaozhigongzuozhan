@@ -6,9 +6,11 @@ import {
   type DeckRecord,
   type DeckTransition,
   type Slide,
-  type SlideLayout,
 } from "./pptQuoteTypes"
 import { renderDeckChartPng } from "./deckChart"
+import { shade, type DeckThemeTokens } from "./deckTheme"
+import { buildFidelityDeck } from "./templateFidelity"
+import { effectiveLayout, planFidelityExport } from "./deckFidelityPlan"
 import type { FigureSpec } from "@/pages/SolutionStudio/solutionTypes"
 import { buildFigureSvg, tokenPalette } from "@/components/bid-workspace/BidFigure"
 import { triggerBlobDownload } from "@/lib/download"
@@ -19,13 +21,17 @@ import { buildSafeFileName } from "@/lib/fileName"
 // 导出文件用中性商务配色，与站内 UI token 无关。
 // ---------------------------------------------------------------------------
 
-const NAVY = "1F3864"
-const ACCENT = "2E74B5"
-const ACCENT_SOFT = "D6E4F0"
-const BODY = "333333"
-const SUBTLE = "D6E4F0"
-const MUTED = "9AA7B5"
-const LIGHT_BG = "F5F7FA"
+// R169：以下导出调色板默认值 = 内置中性商务版式；exportDeckPptx 收到用户模板主题令牌时
+// 经 applyDeckTheme 逐轮导出覆盖（let 而非 const 是有意的导出期可变，函数结束前全部重赋）。
+const DEFAULT_NAVY = "1F3864"
+const DEFAULT_ACCENT = "2E74B5"
+let NAVY = DEFAULT_NAVY
+let ACCENT = DEFAULT_ACCENT
+let ACCENT_SOFT = "D6E4F0"
+let BODY = "333333"
+let SUBTLE = "D6E4F0"
+let MUTED = "9AA7B5"
+let LIGHT_BG = "F5F7FA"
 
 const PAGE_W = 13.333
 
@@ -53,21 +59,7 @@ function bulletFontSize(slides: Slide[]): number {
   return 14
 }
 
-/** 决定一页实际使用的版式；hasImage = 有真实配图或已有图示 PNG */
-function effectiveLayout(s: Slide, hasImage: boolean): SlideLayout {
-  if (s.chart && (s.chart.categories?.length ?? 0) > 0) return "chart"
-  if (s.kpi && s.kpi.length) return "kpi"
-  const l = s.layout ?? "auto"
-  if (l === "auto") {
-    if (hasImage) return "image-right"
-    return "bullets"
-  }
-  // 显式选了图文版式但没有图，则退回纯要点
-  if ((l === "image-right" || l === "image-left" || l === "banner") && !hasImage) return "bullets"
-  if (l === "chart" && !(s.chart && (s.chart.categories?.length ?? 0) > 0)) return "bullets"
-  if (l === "kpi" && !(s.kpi && s.kpi.length)) return "bullets"
-  return l
-}
+// R189：effectiveLayout 移至 deckFidelityPlan.ts——保真计划侧与现通道渲染侧共用单一口径
 
 /**
  * 结构化图示 → PNG dataURL（浏览器内 canvas 转换）。
@@ -110,15 +102,81 @@ async function figureSpecToDataUrl(spec: FigureSpec): Promise<string | null> {
 
 export interface ExportDeckOptions {
   transition?: DeckTransition
+  /** R169：用户公司模板提取的主题令牌（缺省=内置商务版式） */
+  theme?: DeckThemeTokens
+  /** R189（r169 切片二）：母版级保真通道的模板字节（deckTheme.decodeTemplateBytes）；缺省=现通道 */
+  templateBytes?: Uint8Array
 }
 
-export async function exportDeckPptx(deck: DeckRecord, opts: ExportDeckOptions = {}): Promise<void> {
+/**
+ * R169 模板主题套用：accent1 作强调色、其 55% 压暗作深色标题底（NAVY），
+ * 软色/浅底按提亮派生；正文/弱化色保持可读中性。全部回落默认值当 theme 缺省。
+ */
+function applyDeckTheme(pptx: PptxGenJS, theme?: DeckThemeTokens): void {
+  if (!theme) {
+    NAVY = DEFAULT_NAVY; ACCENT = DEFAULT_ACCENT; ACCENT_SOFT = "D6E4F0"; BODY = "333333"
+    SUBTLE = "D6E4F0"; MUTED = "9AA7B5"; LIGHT_BG = "F5F7FA"
+    CHART_PALETTE = ["2E74B5", "1F3864", "5B9BD5", "8FAADC", "375623", "C55A11"]
+    return
+  }
+  const a1 = theme.accents[0] ?? DEFAULT_ACCENT
+  const navy = shade(a1, 0.55)
+  NAVY = navy
+  ACCENT = a1
+  ACCENT_SOFT = shade(a1, 1.8)
+  SUBTLE = shade(a1, 1.8)
+  LIGHT_BG = shade(a1, 2.4)
+  BODY = shade("333333", 1)
+  MUTED = shade("9AA7B5", 1)
+  const a2 = theme.accents[1] ?? shade(a1, 0.7)
+  CHART_PALETTE = [a1, navy, shade(a1, 1.35), shade(a2, 1.35), a2, "C55A11"]
+  pptx.theme = {
+    ...(theme.headFont ? { headFontFace: theme.headFont } : {}),
+    ...(theme.bodyFont ? { bodyFontFace: theme.bodyFont } : {}),
+  }
+}
+
+/** R189：本次导出实际走的通道——fidelity=模板母版/版式级保真；legacy=现 pptxgenjs 通道 */
+export type DeckExportPath = "fidelity" | "legacy"
+
+export async function exportDeckPptx(deck: DeckRecord, opts: ExportDeckOptions = {}): Promise<DeckExportPath> {
   const slides = deck.slides ?? []
   if (!slides.length) throw new Error("没有可导出的页面")
+  // R189（r169 切片二）：pptxgenjs 构造前先分流——用户上传了模板且整册都是「标题+正文」页时
+  // 克隆模板母版/版式生成；无模板字节/含图表KPI图文页/引擎拒绝，下方现通道行为逐字不变
+  if (opts.templateBytes?.length) {
+    // 附三图文并茂：先解析图文页配图字节（真实配图为持久化 dataURL；AI 图示渲染 PNG），
+    // 全部解析成功才进保真通道；缺图回退现通道（契约不变）
+    const imageMap = new Map<number, { dataUrl: string }>()
+    for (let i = 0; i < slides.length; i++) {
+      const s = slides[i]
+      if (s.image) imageMap.set(i, { dataUrl: s.image })
+      else if (s.figures?.length) {
+        try {
+          const png = await figureSpecToDataUrl(s.figures[0])
+          if (png) imageMap.set(i, { dataUrl: png })
+        } catch {
+          // 图示渲染失败：该页缺配图字节 → 整册回退现通道（契约不变）
+        }
+      }
+    }
+    const specs = planFidelityExport(deck, todayText(), imageMap)
+    if (specs) {
+      const fid = buildFidelityDeck(opts.templateBytes, specs)
+      if (fid.ok) {
+        const fidTransition = opts.transition ?? "none"
+        const fidBytes = fidTransition === "none" ? fid.bytes : injectTransitions(fid.bytes, fidTransition)
+        downloadBlob(fidBytes, safeFileName(deck.deck_name, "pptx"))
+        return "fidelity"
+      }
+    }
+  }
   const pptx = new PptxGenJS()
   pptx.layout = "LAYOUT_WIDE"
   pptx.author = "医疗售前工作台"
   pptx.title = deck.deck_name
+  // R169：套用公司模板主题（配色 + 默认字体）；未上传模板时逐项回落内置默认
+  applyDeckTheme(pptx, opts.theme)
   pptx.subject = deckTypeLabel(deck.deck_type)
 
   const pageNumber = { x: 12.55, y: 7.02, w: 0.6, h: 0.35, color: MUTED, fontSize: 10 } as const
@@ -178,12 +236,13 @@ export async function exportDeckPptx(deck: DeckRecord, opts: ExportDeckOptions =
   const transition = opts.transition ?? "none"
   if (transition === "none") {
     await pptx.writeFile({ fileName: safeFileName(deck.deck_name, "pptx") })
-    return
+    return "legacy"
   }
   // 后处理注入页面切换动画（PowerPoint 与 WPS 通用）
   const buf = (await pptx.write({ outputType: "arraybuffer" })) as unknown as ArrayBuffer
   const withTransition = injectTransitions(buf, transition)
   downloadBlob(withTransition, safeFileName(deck.deck_name, "pptx"))
+  return "legacy"
 }
 
 // ---------------------------------------------------------------------------
@@ -274,7 +333,8 @@ function renderContentSlide(pptx: PptxGenJS, sl: SlideCtx, s: Slide, bodyFontSiz
 }
 
 /** 图表原生配色（与商务主色一致，不受站内 token 约束） */
-const CHART_PALETTE = ["2E74B5", "1F3864", "5B9BD5", "8FAADC", "375623", "C55A11"]
+// R169：图表色板随模板主题重排（accent1 主序列 → 压暗作对比序列），未套模板时保持内置序
+let CHART_PALETTE = ["2E74B5", "1F3864", "5B9BD5", "8FAADC", "375623", "C55A11"]
 
 /**
  * 原生可编辑图表：用 pptxgenjs.addChart 生成真正的 OOXML chart 对象
@@ -412,8 +472,8 @@ function renderKpi(pptx: PptxGenJS, sl: SlideCtx, s: Slide) {
 // 页面切换动画注入 + 下载
 // ---------------------------------------------------------------------------
 
-function injectTransitions(buf: ArrayBuffer, transition: DeckTransition): Uint8Array {
-  const zip = unzipSync(new Uint8Array(buf))
+function injectTransitions(buf: ArrayBuffer | Uint8Array, transition: DeckTransition): Uint8Array {
+  const zip = unzipSync(buf instanceof Uint8Array ? buf : new Uint8Array(buf))
   const xml = transition === "none" ? "" : TRANSITION_XML[transition]
   const slideRe = /^ppt\/slides\/slide\d+\.xml$/
   for (const key of Object.keys(zip)) {
@@ -500,5 +560,3 @@ export async function exportSpeechDocx(deck: DeckRecord): Promise<void> {
   await saveDocx(safeFileName(`${deck.deck_name}-讲稿`, "docx"), children)
 }
 
-// 供 quoteExports 复用的浅色底纹常量（导出文件配色，不受站内 token 约束）
-export const DOCX_TABLE_HEADER_FILL = LIGHT_BG

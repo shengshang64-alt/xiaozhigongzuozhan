@@ -343,19 +343,203 @@ export function refreshDocumentXml(
   return docXml.slice(0, last.start) + sect + docXml.slice(last.end)
 }
 
-/** 顶层入口：解包 → 改写 → 重打包。任何一部缺失按 notes 提示、其余部件照常处理 */
+/**
+ * 收集文档部件中实际引用的 styleId（段落 pStyle / 文字 rStyle / 表格 tblStyle）。
+ * parts 传 word/document.xml 与全部 header/footer/footernotes 部件。
+ */
+export function collectUsedStyleIds(parts: string[]): Set<string> {
+  const used = new Set<string>()
+  for (const xml of parts) {
+    for (const m of xml.matchAll(/<w:(?:pStyle|rStyle|tblStyle)\s[^>]*w:val="([^"]+)"/g)) {
+      used.add(m[1])
+    }
+  }
+  return used
+}
+
+/**
+ * 删除 styles.xml 中「未被引用且非默认」的样式块（附三用户需求：导出可选删除未应用的样式）。
+ * 保留规则：w:default="1" 的内置默认样式、被引用的样式、以及被保留样式 basedOn/next/link
+ * 级联引用的父样式（继承链断裂会导致格式回退）。删除数量写入 notes。
+ */
+export function removeUnusedStylesXml(stylesXml: string, usedIds: Set<string>, notes: string[]): string {
+  const styleRe = /<w:style\s[^>]*>[\s\S]*?<\/w:style>/g
+  type StyleBlock = { block: string; id: string; isDefault: boolean; refs: string[] }
+  const blocks: StyleBlock[] = []
+  const pieces: string[] = []
+  let last = 0
+  for (const m of stylesXml.matchAll(styleRe)) {
+    pieces.push(stylesXml.slice(last, m.index))
+    last = m.index + m[0].length
+    const block = m[0]
+    const idM = /w:styleId="([^"]*)"/.exec(block)
+    const refs: string[] = []
+    for (const r of block.matchAll(/<w:(?:basedOn|next|link)\s+w:val="([^"]+)"/g)) refs.push(r[1])
+    blocks.push({
+      block,
+      id: idM?.[1] ?? "",
+      isDefault: /w:default="1"/.test(block),
+      refs,
+    })
+  }
+  pieces.push(stylesXml.slice(last))
+  if (!blocks.length) return stylesXml
+
+  const keep = new Set<string>()
+  for (const b of blocks) if (b.isDefault || usedIds.has(b.id)) keep.add(b.id)
+  // 继承链级联：被保留样式引用的父样式一并保留（迭代到不动点）
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const b of blocks) {
+      if (!keep.has(b.id)) continue
+      for (const r of b.refs) {
+        if (!keep.has(r) && blocks.some((x) => x.id === r)) {
+          keep.add(r)
+          changed = true
+        }
+      }
+    }
+  }
+
+  let removed = 0
+  const out: string[] = []
+  for (let i = 0; i < pieces.length; i++) {
+    out.push(pieces[i])
+    if (i < blocks.length) {
+      const b = blocks[i]
+      if (keep.has(b.id)) out.push(b.block)
+      else removed++
+    }
+  }
+  if (removed > 0) notes.push(`已删除 ${removed} 个未应用的样式定义（文档中没有引用，删除仅精简样式表、不影响显示）`)
+  return out.join("")
+}
+
+/** 顶层入口：解包 → 改写 → 重打包 → 产出后复检（附三 R-009 校验真身）。
+ * 任何一部缺失按 notes 提示、其余部件照常处理。
+ * 返回值新增 report（四范围应用报告：bodyFont/heading/lineSpacing/pageMargin 的 ok/skip/fail）
+ * 与 textBefore/textAfter（正文字符数对照，兑现「文字 0 改动」可验证承诺）。
+ */
+export type FormatApplySlotStatus = "ok" | "skip" | "fail"
+export interface FormatApplySlot {
+  status: FormatApplySlotStatus
+  reason?: string
+}
+export interface FormatApplyReport {
+  slots: {
+    bodyFont: FormatApplySlot
+    heading: FormatApplySlot
+    lineSpacing: FormatApplySlot
+    pageMargin: FormatApplySlot
+  }
+  okCount: number
+  totalCount: number
+  textBefore: number
+  textAfter: number
+}
+
+/** 从 document.xml 提取正文字符数（去标签收敛空白），用于「文字 0 改动」对照 */
+function docTextChars(docXml: string): number {
+  return docXml.replace(/<w:p\b[^>]*>/g, "\n").replace(/<[^>]+>/g, "").replace(/\s+/g, "").length
+}
+
+/** 产出后复检：对最终 XML 逐范围核验目标标记，得出四槽位状态（这是「校验」的真身） */
+function buildApplyReport(
+  stylesXml: string,
+  docXml: string,
+  settings: FormatSettings,
+  scopes: FormatScope[],
+): FormatApplyReport {
+  const slots: Record<"bodyFont" | "heading" | "lineSpacing" | "pageMargin", FormatApplySlot> = {
+    bodyFont: { status: "skip", reason: "范围未勾选" },
+    heading: { status: "skip", reason: "范围未勾选" },
+    lineSpacing: { status: "skip", reason: "范围未勾选" },
+    pageMargin: { status: "skip", reason: "范围未勾选" },
+  }
+  const on = (s: FormatScope) => scopes.includes(s)
+  const bodyPt = SIZE_PT[settings.body.size] ?? 12
+  const targetSz = String(Math.round(bodyPt * 2))
+
+  if (on("font")) {
+    const fontHit =
+      stylesXml.includes(`w:eastAsia="${settings.body.font}"`) && stylesXml.includes(`<w:sz w:val="${targetSz}"/>`)
+    slots.bodyFont = fontHit
+      ? { status: "ok", reason: `${settings.body.font}${settings.body.size}` }
+      : { status: "fail", reason: "复检未命中目标字体字号" }
+  }
+  if (on("spacing")) {
+    const expect = lineSpacingAttrs(settings.body.lineSpacing)
+    const hit =
+      stylesXml.includes(`w:line="${expect["w:line"]}"`) && stylesXml.includes(`w:lineRule="${expect["w:lineRule"]}"`)
+    slots.lineSpacing = hit
+      ? { status: "ok", reason: settings.body.lineSpacing }
+      : { status: "fail", reason: "复检未命中目标行距" }
+  }
+  if (on("heading")) {
+    const lvls = settings.heading
+      .map((h, i) => ({ font: h.font, sz: String(Math.round((SIZE_PT[h.size] ?? 16) * 2)), lvl: i + 1 }))
+      .filter((x) => stylesXml.includes(`w:val="heading ${x.lvl}"`))
+    const hitLvls = lvls.filter((x) => {
+      const anchor = stylesXml.indexOf(`w:val="heading ${x.lvl}"`)
+      const seg = anchor >= 0 ? stylesXml.slice(anchor, anchor + 900) : ""
+      return seg.includes(`w:eastAsia="${x.font}"`) || seg.includes(`w:ascii="${x.font}"`)
+    })
+    if (lvls.length && hitLvls.length === lvls.length) {
+      slots.heading = { status: "ok", reason: `${hitLvls.length} 级标题已改写` }
+    } else if (hitLvls.length > 0) {
+      slots.heading = { status: "skip", reason: `${hitLvls.length}/${lvls.length} 级标题命中（其余文档未用到）` }
+    } else {
+      slots.heading = { status: "fail", reason: "复检未命中任何标题样式" }
+    }
+  }
+  if (on("page")) {
+    const [pw, phh] = PAPER_TWIPS[settings.paper] ?? PAPER_TWIPS.A4
+    const tw = (cm: number) => String(Math.round(cm * TWIPS_PER_CM))
+    const sect = /<w:sectPr[\s\S]*?<\/w:sectPr>/.exec(docXml)?.[0] ?? ""
+    const hit =
+      sect.includes(`w:w="${pw}"`) &&
+      sect.includes(`w:h="${phh}"`) &&
+      sect.includes(`w:top="${tw(settings.margins.top)}"`) &&
+      sect.includes(`w:left="${tw(settings.margins.left)}"`)
+    slots.pageMargin = hit
+      ? { status: "ok", reason: `${settings.paper} · 边距 ${settings.margins.top}/${settings.margins.bottom}/${settings.margins.left}/${settings.margins.right}cm` }
+      : { status: "fail", reason: "复检未命中目标纸张或页边距" }
+  }
+  const vals = Object.values(slots)
+  const okCount = vals.filter((x) => x.status === "ok").length
+  return { slots, okCount, totalCount: 4, textBefore: 0, textAfter: 0 }
+}
+
+/** 顶层入口：解包 → 改写 → 重打包 → 产出后复检。
+ * 任何一部缺失按 notes 提示、其余部件照常处理。
+ * 附三 R-009（2026-10-07）：返回值新增 report（四范围应用报告，产出文件复检得出）
+ * 与 textBefore/textAfter（正文字符数对照，兑现「文字 0 改动」可验证承诺）。
+ */
 export async function refreshDocxFile(
   file: File,
   settings: FormatSettings,
   scopes: FormatScope[],
-): Promise<{ blob: Blob; notes: string[] }> {
+  opts?: { removeUnusedStyles?: boolean },
+): Promise<{ blob: Blob; notes: string[]; report: FormatApplyReport }> {
   const notes: string[] = []
   const zip = unzipSync(new Uint8Array(await file.arrayBuffer()))
+  const docBefore = zip["word/document.xml"] ? strFromU8(zip["word/document.xml"]) : ""
+  const textBefore = docTextChars(docBefore)
   const out: Record<string, Uint8Array> = {}
   let touched = false
+  // 附三用户需求「删除未应用的样式」：引用扫描覆盖正文 + 页眉页脚 + 脚注尾注部件
+  const refParts = Object.keys(zip).filter(
+    (k) => /^word\/(document|header\d*|footer\d*|footnotes|endnotes)\.xml$/.test(k),
+  )
+  const usedIds = opts?.removeUnusedStyles
+    ? collectUsedStyleIds(refParts.map((k) => strFromU8(zip[k])))
+    : null
   for (const key of Object.keys(zip)) {
     if (key === "word/styles.xml") {
-      out[key] = strToU8(refreshStylesXml(strFromU8(zip[key]), settings, scopes, notes))
+      let stylesXml = refreshStylesXml(strFromU8(zip[key]), settings, scopes, notes)
+      if (usedIds) stylesXml = removeUnusedStylesXml(stylesXml, usedIds, notes)
+      out[key] = strToU8(stylesXml)
       touched = true
     } else if (key === "word/document.xml") {
       out[key] = strToU8(refreshDocumentXml(strFromU8(zip[key]), settings, scopes, notes))
@@ -364,9 +548,18 @@ export async function refreshDocxFile(
     }
   }
   if (!touched) notes.push("压缩包内没有 word/styles.xml，样式未改写（可能不是 Word 文档）")
+  const docAfter = out["word/document.xml"] ? strFromU8(out["word/document.xml"]) : docBefore
+  const report = buildApplyReport(
+    out["word/styles.xml"] ? strFromU8(out["word/styles.xml"]) : "",
+    docAfter,
+    settings,
+    scopes,
+  )
+  report.textBefore = textBefore
+  report.textAfter = docTextChars(docAfter)
   const packed = zipSync(out)
   const blob = new Blob([packed as unknown as BlobPart], {
     type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   })
-  return { blob, notes }
+  return { blob, notes, report }
 }

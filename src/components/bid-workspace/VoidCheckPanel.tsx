@@ -1,10 +1,11 @@
 import { useState } from "react"
-import { ArrowRightCircle, CheckCircle2, Loader2, ShieldAlert, ShieldCheck } from "lucide-react"
+import { ArrowRight, ArrowRightCircle, CheckCircle2, Loader2, ShieldAlert, ShieldCheck } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { formatDateTimeDisplay } from "@/lib/dateDisplay"
+import { COMPOSE_STEP, composeChaptersHint, stepGoLabel } from "@/components/bid-workspace/pipelineStep"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import {
   REVIEW_STATUS_LABEL,
@@ -35,6 +36,7 @@ type VoidCheckPanelProps = Pick<
   | "sealBusy"
   | "sealResult"
   | "startSealCheck"
+  | "requestStep"
 >
 
 /** 第九轮改造 2：合规状态 / 严重度 → 语义四档 badge variant */
@@ -261,6 +263,7 @@ export function VoidCheckPanel({
   sealBusy,
   sealResult,
   startSealCheck,
+  requestStep,
 }: VoidCheckPanelProps) {
   // 第九轮改造 2：核销矩阵筛选器 + 跳过原因弹窗（纯 UI 状态）
   const [reviewFilter, setReviewFilter] = useState<"all" | ReviewStatus>("all")
@@ -304,7 +307,7 @@ export function VoidCheckPanel({
           <Button
             onClick={startVoidCheck}
             disabled={voidLoading || !clauseCount || !chaptersReady || isArchivedLocked}
-            title={isArchivedLocked ? "已归档项目为只读，解除归档后可重新检查" : undefined}
+            title={isArchivedLocked ? "已归档项目为只读，解除归档后可重新检查" : !chaptersReady ? composeChaptersHint() : undefined}
             className="shrink-0 bg-primary text-primary-foreground shadow-md hover:bg-primary/90 focus-visible:shadow-[var(--focus-ring)]"
           >
             {voidLoading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-1.5 h-4 w-4" />}
@@ -329,9 +332,17 @@ export function VoidCheckPanel({
           </div>
         )}
         {clauseCount > 0 && !chaptersReady && (
-          <p className="mt-3 rounded-md border border-dashed border-border bg-card/60 px-3 py-2 text-xs text-muted-foreground">
-            投标文件还没有正文，请先完成「投标文件编制」环节
-          </p>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed border-border bg-card/60 px-3 py-2">
+              <p className="text-xs text-muted-foreground">{composeChaptersHint()}</p>
+              <button
+                type="button"
+                onClick={() => requestStep(COMPOSE_STEP)}
+                className="flex items-center gap-1 rounded text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <ArrowRight className="h-3 w-3" />
+                前往第 {COMPOSE_STEP} 步 · {stepGoLabel(COMPOSE_STEP)}
+              </button>
+            </div>
         )}
       </header>
 

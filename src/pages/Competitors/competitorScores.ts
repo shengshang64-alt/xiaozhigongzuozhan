@@ -1,4 +1,4 @@
-// 竞品对比分析支撑层：能力维度定义 + 档案启发式评分 + 对比配色。
+// 竞品对比分析支撑层：能力维度定义 + 档案启发式评分。
 // 评分为「基于档案文本关键词与软著规模」的自动估算，仅供对比参考，界面需注明非实测数据。
 import type { CompetitorRow } from "./competitorsCore"
 
@@ -11,22 +11,6 @@ export const CAPABILITY_DIMS = [
   "实施交付",
   "价格竞争力",
 ] as const
-
-/** 对比图配色（我方固定用第一个品牌青；其余按序分配，与图表色板同源） */
-export const COMPARE_COLORS = [
-  "#0E7C99",
-  "#2E6FB0",
-  "#E8973C",
-  "#7B4FB0",
-  "#1F9D63",
-  "#3CAEC4",
-  "#D64545",
-  "#5A6672",
-] as const
-
-export function compareColor(index: number): string {
-  return COMPARE_COLORS[index % COMPARE_COLORS.length]
-}
 
 /** 各维度的档案关键词：命中越多分越高。短英文词（ai/app/esb…）按词边界匹配，防 "maintenance" 误命中 "ai" */
 const DIM_KEYWORDS: string[][] = [
@@ -109,17 +93,6 @@ function readOverrides(): ScoreOverrides {
     return obj && typeof obj === "object" ? (obj as ScoreOverrides) : {}
   } catch {
     return {}
-  }
-}
-
-/** 保存某竞品的 AI 校准入分（key 用竞品 id，跨端不共享、清除浏览器数据即回退估算） */
-export function saveScoreOverride(id: string, scores: number[]): void {
-  try {
-    const all = readOverrides()
-    all[id] = scores.slice(0, CAPABILITY_DIMS.length).map((v) => clamp5(Math.round(v)))
-    localStorage.setItem(GUARD_KEY, JSON.stringify(all))
-  } catch {
-    /* 存储满等异常忽略，回退启发式 */
   }
 }
 

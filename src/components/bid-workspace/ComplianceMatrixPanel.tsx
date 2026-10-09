@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { Loader2, ShieldAlert, Sparkles } from "lucide-react"
+import { Copy, Loader2, ShieldAlert, Sparkles } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { chatViaGateway } from "@/lib/modelGateway"
 import type { ParseReport, ParseSection } from "@/pages/BidWorkspace/bidTypes"
@@ -13,14 +13,32 @@ import {
   type ComplianceKind,
   type ComplianceProgress,
   type ComplianceProgressMap,
+  countMarkerLossRows,
   type ComplianceRowStatus,
 } from "@/pages/BidWorkspace/complianceMatrix"
+import { lineHasMarkerLoss } from "@/pages/BidWorkspace/materialIntegrity"
+import {
+  auditComplianceCoverage,
+  buildCompliancePendingText,
+  COMPLIANCE_COVERAGE_LABEL,
+  type ComplianceCoverageLevel,
+} from "@/pages/BidWorkspace/complianceCoverage"
+import type { Chapter } from "@/pages/SolutionStudio/solutionTypes"
+import { copyTextToClipboard } from "@/lib/clipboard"
 
 // R005/R009（B-1）：实质性条款覆盖矩阵面板（挂标书工作第 2 步·解析报告下方）。
 // 阶段一：从解析报告分节本地推导（零 AI）；阶段二（R016）：AI 补扫——
 // 一次 LLM 调用从招标原文归纳四类条款并写回解析报告分节（走费用确认门禁）。
 
 const STATUS_OPTIONS: ComplianceRowStatus[] = ["open", "covered", "na"]
+
+// R195：正文自动核对提示色（仅提示，不覆盖左侧人工标注的状态下拉）
+const COVERAGE_TONE: Record<ComplianceCoverageLevel, string> = {
+  full: "bg-primary/10 text-primary",
+  partial: "bg-warning/10 text-warning",
+  outline: "bg-muted text-muted-foreground",
+  missing: "bg-destructive/10 text-destructive",
+}
 
 const AI_SCAN_SECTIONS = ["star_clauses", "void_items", "qualification", "compliance"] as const
 
@@ -78,6 +96,7 @@ export function ComplianceMatrixPanel({
   report,
   archived,
   tenderText,
+  chapters,
   onImportSections,
   runWithCostConfirm,
 }: {
@@ -85,6 +104,8 @@ export function ComplianceMatrixPanel({
   report: ParseReport | null
   archived: boolean
   tenderText: string
+  /** R195：已生成的投标正文章节，用于「正文自动核对」（缺省=正文未生成，降级为预判） */
+  chapters?: Chapter[]
   /** R016（B-1 阶段二）：AI 补扫写回解析报告分节的回调（= hook 的 updateParseReport） */
   onImportSections: (patch: { sections: ParseSection[] }) => void
   runWithCostConfirm: (fn: () => void, message: string) => void
@@ -100,6 +121,9 @@ export function ComplianceMatrixPanel({
   }, [projectId])
 
   const rows = useMemo(() => buildComplianceRows(report), [report])
+
+  // R195：★ 技术条款「正文自动核对」——对已生成正文逐字命中判定（零 AI、零费用，口径同 R162 落位核验）
+  const coverage = useMemo(() => auditComplianceCoverage(rows, chapters), [rows, chapters])
 
   const rowsWithStatus = useMemo(
     () =>
@@ -119,6 +143,9 @@ export function ComplianceMatrixPanel({
       ),
     [rowsWithStatus, kindFilter, onlyUncovered],
   )
+
+  // R163：当前筛选视图内命中符号丢失签名的条款数（零 AI；徽标随筛选收敛，不放大成长期噪音）
+  const markerLossRows = useMemo(() => countMarkerLossRows(visibleRows), [visibleRows])
 
   const patchRow = (id: string, patch: Partial<ComplianceProgress>) => {
     const prev: ComplianceProgress = progress[id] ?? { status: "open", ref: "", note: "" }
@@ -201,9 +228,43 @@ export function ComplianceMatrixPanel({
             <Badge variant="outline" className={`rounded-full ${summary.uncovered ? "border-warning/40 bg-warning/10 text-warning" : "border-border text-muted-foreground"}`}>
               未覆盖 {summary.uncovered}
             </Badge>
+            {coverage.total > 0 && coverage.generatedChapters > 0 && (
+              <Badge
+                variant="outline"
+                title={`对已生成的 ${coverage.generatedChapters}/${coverage.chapterCount} 章正文逐字核对 ★ 技术条款（零费用）：${coverage.responded} 条要点已全部出现，${coverage.pending} 条待人工确认（未命中可能只是换了表述，以人工标注为准）`}
+                className={`rounded-full ${coverage.pending ? "border-border text-muted-foreground" : "border-primary/40 bg-primary/10 text-primary"}`}
+              >
+                正文核对 已回应 {coverage.responded}/{coverage.total}
+              </Badge>
+            )}
+            {coverage.total > 0 && coverage.generatedChapters > 0 && coverage.pending > 0 && (
+              <button
+                type="button"
+                onClick={() =>
+                  void copyTextToClipboard(buildCompliancePendingText(coverage, rows), {
+                    successMessage: "已复制待核对清单，可作为补写要求粘贴使用",
+                    errorMessage: "复制失败，请手动选择文本复制",
+                  })
+                }
+                className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-background px-2.5 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+              >
+                <Copy className="h-3 w-3" />
+                复制待核对清单
+              </button>
+            )}
             {summary.uncoveredCritical > 0 && (
               <Badge variant="outline" className="rounded-full border-destructive/40 bg-destructive/10 text-destructive">
                 废标/★ 未覆盖 {summary.uncoveredCritical}
+              </Badge>
+            )}
+            {markerLossRows > 0 && (
+              <Badge
+                variant="outline"
+                title={`当前视图内 ${markerLossRows} 条条款文本命中符号丢失签名（空引号对/私用区字符），属原招标文件转换损坏而非本页漏列，请对照招标原件核实`}
+                className="cursor-help rounded-full border-amber-500/40 bg-amber-500/10 text-amber-700"
+              >
+                <ShieldAlert className="mr-1 h-3 w-3" />
+                疑符号丢失 {markerLossRows} 条
               </Badge>
             )}
           </div>
@@ -279,7 +340,10 @@ export function ComplianceMatrixPanel({
                   </td>
                 </tr>
               )}
-              {visibleRows.map((r) => (
+              {visibleRows.map((r) => {
+                // R163：原文命中符号丢失签名时行尾挂徽标（悬停看口径），判定与表头汇总同一真源
+                const markerLoss = lineHasMarkerLoss(r.text)
+                return (
                 <tr key={r.id} className="border-b border-border/60 align-top hover:bg-secondary/50">
                   <td className="py-2 pr-2">
                     <span className={`inline-block rounded-full px-2 py-0.5 ${r.kind === "void" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground"}`}>
@@ -290,6 +354,15 @@ export function ComplianceMatrixPanel({
                     <span className="line-clamp-2 whitespace-pre-wrap" title={r.text}>
                       {r.text.length > 120 ? `${r.text.slice(0, 120)}…` : r.text}
                     </span>
+                    {markerLoss && (
+                      <span
+                        title={`该行疑似丢失 ★/▲ 等标注符号（原招标文件制作/转换时符号已损坏，文本仅留空引号对）\n摘录：${r.text.trim().slice(0, 60)}\n★/▲ 重点条款扫描可能不全，请对照招标原件核实。`}
+                        className="ml-1.5 inline-flex shrink-0 cursor-help items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 align-middle text-[11px] font-medium text-amber-700"
+                      >
+                        <ShieldAlert className="h-3 w-3" />
+                        疑符号丢失
+                      </span>
+                    )}
                   </td>
                   <td className="py-2 pr-2">
                     <select
@@ -304,6 +377,18 @@ export function ComplianceMatrixPanel({
                         </option>
                       ))}
                     </select>
+                    {(() => {
+                      const cov = coverage.byRow[r.id]
+                      if (!cov || coverage.generatedChapters === 0) return null
+                      return (
+                        <div
+                          title={`本地逐字自动核对（零费用，仅供提示，以左侧人工标注为准）：${cov.missingKeys.length ? "正文未见要点 " + cov.missingKeys.join("、") : "条款要点已在正文逐字出现"}`}
+                          className={`mt-1 inline-block rounded-full px-1.5 py-0.5 text-[10px] font-medium ${COVERAGE_TONE[cov.level]}`}
+                        >
+                          {COMPLIANCE_COVERAGE_LABEL[cov.level]}
+                        </div>
+                      )
+                    })()}
                   </td>
                   <td className="py-2 pr-2">
                     <input
@@ -324,7 +409,8 @@ export function ComplianceMatrixPanel({
                     />
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </div>

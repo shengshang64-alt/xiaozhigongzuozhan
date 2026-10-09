@@ -1,8 +1,9 @@
-import { ArrowRightCircle, Copy, Loader2, ScanSearch } from "lucide-react"
+import { ArrowRight, ArrowRightCircle, Copy, Loader2, ScanSearch } from "lucide-react"
 import { formatDateTimeDisplay } from "@/lib/dateDisplay"
 import { Button } from "@/components/ui/button"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import { DUP_VERDICT_LABEL, type DupPair, type IntraDupPair } from "@/pages/BidWorkspace/bidTypes"
+import { COMPOSE_STEP, composeChaptersHint, stepGoLabel } from "@/components/bid-workspace/pipelineStep"
 
 type DupCheckPanelProps = Pick<
   UseBidWorkspace,
@@ -13,6 +14,7 @@ type DupCheckPanelProps = Pick<
   | "isArchivedLocked"
   | "intraDupThreshold"
   | "setIntraDupThreshold"
+  | "requestStep"
 >
 
 const VERDICT_BADGE: Record<string, string> = {
@@ -119,6 +121,7 @@ export function DupCheckPanel({
   isArchivedLocked,
   intraDupThreshold,
   setIntraDupThreshold,
+  requestStep,
 }: DupCheckPanelProps) {
   const report = activeProject?.dup_report ?? null
   // 第七轮改造 4：老数据没有 intra_pairs 字段时按空数组容错，不影响既有跨项目分组
@@ -137,7 +140,7 @@ export function DupCheckPanel({
           <Button
             onClick={runDupCheck}
             disabled={dupLoading || !chaptersReady || isArchivedLocked}
-            title={isArchivedLocked ? "已归档项目为只读，解除归档后可重新查重" : undefined}
+            title={isArchivedLocked ? "已归档项目为只读，解除归档后可重新查重" : !chaptersReady ? composeChaptersHint() : undefined}
             className="shrink-0 bg-primary text-primary-foreground shadow-md hover:bg-primary/90 focus-visible:shadow-[var(--focus-ring)]"
           >
             {dupLoading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ScanSearch className="mr-1.5 h-4 w-4" />}
@@ -145,9 +148,17 @@ export function DupCheckPanel({
           </Button>
         </div>
         {!chaptersReady && (
-          <p className="mt-3 rounded-md border border-dashed border-border bg-card/60 px-3 py-2 text-xs text-muted-foreground">
-            投标文件还没有正文，请先完成「投标文件编制」环节
-          </p>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed border-border bg-card/60 px-3 py-2">
+              <p className="text-xs text-muted-foreground">{composeChaptersHint()}</p>
+              <button
+                type="button"
+                onClick={() => requestStep(COMPOSE_STEP)}
+                className="flex items-center gap-1 rounded text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <ArrowRight className="h-3 w-3" />
+                前往第 {COMPOSE_STEP} 步 · {stepGoLabel(COMPOSE_STEP)}
+              </button>
+            </div>
         )}
       </header>
 

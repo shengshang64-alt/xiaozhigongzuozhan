@@ -94,7 +94,7 @@ describe("deriveTaxonomy", () => {
         pathName: "方案范本/智慧医院/某医院招标文件含可研",
         sourceFileName: "soltpl:某医院/规划方案.docx",
       }),
-    ).toEqual({ track: "智慧医院", bucket: "方案素材" })
+    ).toEqual({ track: "智慧医院", bucket: "方案素材", section: "设计方案" })
   })
   it("赛道取自 trackText、桶取自 pathName，各自独立", () => {
     expect(
@@ -102,7 +102,7 @@ describe("deriveTaxonomy", () => {
         trackText: "电子病历五级评级改造",
         pathName: "售前知识库/友商公司产品/某应答.docx",
       }),
-    ).toEqual({ track: "电子病历评级", bucket: "竞品情报" })
+    ).toEqual({ track: "电子病历评级", bucket: "竞品情报", section: "其他" })
   })
 })
 

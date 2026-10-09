@@ -87,6 +87,14 @@ export interface CustomerRow {
   updated: string
 }
 
+/** 官网/政府网站同步来的信息化商机线索（customer fetch-site leads） */
+export interface CustomerLead {
+  title: string
+  url: string
+  /** 来源：官网 | 官网·公告栏 | 政府网站 | 权威检索 */
+  src: string
+}
+
 export interface OpportunityRow {
   id: string
   rh_user_id: string

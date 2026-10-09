@@ -102,11 +102,19 @@ export function useChecklist(deps: {
   const loadProducts = useCallback(async () => {
     setProductsLoading(true)
     try {
-      // B6：服务端单页上限 200（传 500 会被钳到 200 且无翻页），显式声明 200 边界；
-      // >200 条产品属极端场景，暂接受单页截断
-      const data = await apiFetch<ListResponse<CheckProduct>>("/api/check_products?page=1&perPage=200")
-      setProducts(data.items ?? [])
-      return data.items ?? []
+      // 产品映射轮：ONE-LINK 标准清单导入后公司库可达 550+ 行，服务端单页上限 200，
+      // 故按页拉全（上限 10 页防失控），否则映射与产品下拉只会看到前 200 条
+      const all: CheckProduct[] = []
+      let total = 0
+      for (let page = 1; page <= 10; page += 1) {
+        const data = await apiFetch<ListResponse<CheckProduct>>(`/api/check_products?page=${page}&perPage=200&sort=created`)
+        const items = data.items ?? []
+        all.push(...items)
+        total = data.totalItems ?? all.length
+        if (!items.length || all.length >= total) break
+      }
+      setProducts(all)
+      return all
     } catch {
       toast.error("产品库加载失败，请稍后重试")
       return []

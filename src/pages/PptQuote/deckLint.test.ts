@@ -3,7 +3,7 @@
 // 并补齐既有 6 条规则的回归用例，锁定导出前自检行为。
 import { describe, expect, it } from "vitest"
 
-import { lintDeck, lintSummaryText, type DeckLintIssue } from "./deckLint"
+import { groupIssuesByPage, lintDeck, lintSummaryText, type DeckLintIssue } from "./deckLint"
 import type { Slide } from "./pptQuoteTypes"
 
 function mk(over: Partial<Slide> = {}): Slide {
@@ -133,5 +133,28 @@ describe("lintSummaryText", () => {
 
   it("returns the all-clear message for an empty list", () => {
     expect(lintSummaryText([])).toBe("未发现结构问题")
+  })
+})
+describe("groupIssuesByPage（R166 编辑期常驻自检的页级聚合）", () => {
+  it("同页 warn 优先于 info，页码原样保留", () => {
+    const issues: DeckLintIssue[] = [
+      { level: "info", page: 1, code: "long_bullet", msg: "" },
+      { level: "warn", page: 1, code: "too_many_bullets", msg: "" },
+      { level: "info", page: 2, code: "noun_title", msg: "" },
+    ]
+    const m = groupIssuesByPage(issues)
+    expect(m.get(1)).toBe("warn")
+    expect(m.get(2)).toBe("info")
+    expect(m.size).toBe(2)
+  })
+
+  it("整份级问题聚合到 page 0", () => {
+    const m = groupIssuesByPage([{ level: "warn", page: 0, code: "no_visual", msg: "" }])
+    expect(m.get(0)).toBe("warn")
+    expect(m.size).toBe(1)
+  })
+
+  it("空清单聚合为空 Map", () => {
+    expect(groupIssuesByPage([]).size).toBe(0)
   })
 })

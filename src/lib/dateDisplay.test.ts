@@ -3,7 +3,9 @@
 // expected strings below hold in any timezone while still pinning the format.
 import { describe, expect, it } from "vitest"
 
-import { formatDateDisplay, formatDateTime, formatDateTimeDisplay } from "./dateDisplay"
+import { formatDateDisplay, formatDateTime, formatDateTimeDisplay, formatShortDateTime } from "./dateDisplay"
+import { readdirSync, readFileSync, statSync } from "node:fs"
+import { resolve } from "node:path"
 
 describe("formatDateDisplay", () => {
   it("renders YYYY-MM-DD with zero padding", () => {
@@ -39,5 +41,39 @@ describe("formatDateTime", () => {
   })
   it("returns empty string for Invalid Date", () => {
     expect(formatDateTime(new Date("nope"))).toBe("")
+  })
+})
+
+describe("formatShortDateTime", () => {
+  it("renders compact M/D HH:MM (unpadded month/day, 24h) matching legacy toLocaleString", () => {
+    expect(formatShortDateTime("2026-01-05T03:04:00")).toBe("1/5 03:04")
+    expect(formatShortDateTime("2026-01-05T13:04:00")).toBe("1/5 13:04")
+    expect(formatShortDateTime("2026-12-31T23:59:00")).toBe("12/31 23:59")
+  })
+  it("returns empty string for empty input", () => {
+    expect(formatShortDateTime("")).toBe("")
+  })
+  it("returns empty string for unparsable input (was 'Invalid Date' at 2 leaked sites)", () => {
+    expect(formatShortDateTime("garbage")).toBe("")
+    expect(formatShortDateTime("2026-13-45T99:99:00")).toBe("")
+  })
+})
+
+describe("formatShortDateTime anti-regression (R164)", () => {
+  it("compact M/D date formatting lives only in dateDisplay.ts", () => {
+    const root = resolve(process.cwd(), "src")
+    const walk = (dir: string): string[] => {
+      const acc: string[] = []
+      for (const name of readdirSync(dir)) {
+        const p = resolve(dir, name)
+        if (statSync(p).isDirectory()) acc.push(...walk(p))
+        else if (/\.tsx?$/.test(name)) acc.push(p)
+      }
+      return acc
+    }
+    const offenders = walk(root)
+      .filter((f) => !f.endsWith("dateDisplay.ts") && !f.endsWith(".test.ts"))
+      .filter((f) => readFileSync(f, "utf-8").includes('month: "numeric"'))
+    expect(offenders).toEqual([])
   })
 })

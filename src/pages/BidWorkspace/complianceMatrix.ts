@@ -1,4 +1,5 @@
 import type { ParseReport } from "./bidTypes"
+import { lineHasMarkerLoss } from "./materialIntegrity"
 import { isStarClauseNoiseLine } from "./starClauseNoise"
 
 // ---------------------------------------------------------------------------
@@ -87,6 +88,23 @@ function clausesOf(report: ParseReport | null | undefined, key: string): string[
   }
   if (cur.length) clauses.push(cur.join(" "))
   return clauses
+}
+
+/**
+ * R163（闭环 r159-marker-badge-ui 展示层挂账）：矩阵行里命中「疑符号丢失」签名的去重条款数。
+ * 判定走 materialIntegrity.lineHasMarkerLoss（与解析报告面板、扫描前 toast 同一真源），
+ * 同一文本先去重再计数——矩阵本身已按文本去重，这里只作防御，防调用方传未去重行集重复计。
+ */
+export function countMarkerLossRows(rows: readonly { text: string }[]): number {
+  const seen = new Set<string>()
+  let n = 0
+  for (const r of rows) {
+    const text = (r?.text ?? "").trim()
+    if (!text || seen.has(text)) continue
+    seen.add(text)
+    if (lineHasMarkerLoss(text)) n += 1
+  }
+  return n
 }
 
 /** 从解析报告推导矩阵行（纯函数；同文本去重，截断提示行不算条款） */

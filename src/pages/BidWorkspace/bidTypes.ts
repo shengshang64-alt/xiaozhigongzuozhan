@@ -1,4 +1,6 @@
-import { parseJsonTolerant } from "@/lib/jsonTolerant"
+import { extractJsonCandidate, parseJsonTolerant } from "@/lib/jsonTolerant"
+// R187（r184-bid-amount-consistency-wiring）：金额大小写一致性内核（R184 交付的确定性互逆解析），本轮接入交卷体检
+import { scanAmountMismatches } from "@/lib/currencyCn"
 import type { Chapter, FigureSpec, OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
 import { makeUid } from "@/pages/SolutionStudio/solutionTypes"
 import { sanitizeMermaidCode } from "./mermaidFigure"
@@ -1433,6 +1435,11 @@ export function missingSectionTitles(report: ParseReport | null, keys: string[])
   return keys.filter((k) => !sectionText(report, k).trim()).map((k) => parseSectionTitle(k))
 }
 
+/** R207 切片 2（R-003）：解析报告是否含「响应文件组成」（response_req 非空）——无底稿兜底的对齐依据 */
+export function hasBidComposition(report: ParseReport | null): boolean {
+  return sectionText(report, "response_req").trim().length > 0
+}
+
 export type ScoringItem = { item: string; score: number; criteria: string }
 
 /** 从评分办法文本行里恢复评分项（兼容「项名（N 分）：标准」与「项名：N 分」两种行格式；
@@ -2143,11 +2150,16 @@ export const BID_RESULT_LABEL: Record<Exclude<BidResult, "">, string> = {
  * 用户反馈轮项 3：include_biz=大纲是否包含商务标骨架章（缺省/非法 → true，默认包含） */
 /** 05 三模式（合并稿 v1.0 重定义 R30）：compliance_mode 三档写作模式 strict 严格响应（只做对标响应禁扩展）/ moderate 场景扩展（骨架+项目应用场景描述 30%~50%）/ full 大量充实（骨架+场景+通用充实材料，设编造红线）；
  *  section_words_touched=用户是否手动调过每小节字数（true 时切换模式不再自动覆盖字数，方案B 第5步联动） */
+/** R206 切片 1（R-002）：内容范围三模式——biz 仅商务 / tech 仅技术 / both 商务+技术 */
+export type BidScope = "biz" | "tech" | "both"
+
 export type GenOptions = {
   clause_response: boolean
   material_boost: boolean
   intra_dup_threshold?: number
   include_biz?: boolean
+  /** R206 切片 1（R-002）：内容范围三模式；缺省时由 include_biz 派生（===false → tech，否则 both），存量项目零行为变化 */
+  scope?: BidScope
   compliance_mode?: ComplianceMode
   section_words_touched?: boolean
   /** T15：字数精调（局部操作式增删，生成链尾自动执行）；缺省视为 true（旧配置兼容） */
@@ -2164,6 +2176,7 @@ export function defaultGenOptions(): GenOptions {
     clause_response: false,
     material_boost: false,
     include_biz: true,
+    scope: "both",
     compliance_mode: COMPLIANCE_MODE_DEFAULT,
     word_refine: true,
     auto_consistency_audit: true,
@@ -2182,11 +2195,28 @@ export function normalizeGenOptions(raw: unknown): GenOptions {
     intra_dup_threshold:
       typeof th === "number" && Number.isFinite(th) && th >= 0.2 && th <= 0.6 ? th : undefined,
     include_biz: rec.include_biz !== false,
+    scope: isBidScope(rec.scope) ? rec.scope : rec.include_biz === false ? "tech" : "both",
     compliance_mode: isComplianceMode(rec.compliance_mode) ? rec.compliance_mode : COMPLIANCE_MODE_DEFAULT,
     section_words_touched: rec.section_words_touched === true,
     word_refine: rec.word_refine !== false,
     auto_consistency_audit: rec.auto_consistency_audit !== false,
   }
+}
+
+function isBidScope(v: unknown): v is BidScope {
+  return v === "biz" || v === "tech" || v === "both"
+}
+
+/** R206 切片 1：从 gen_options 读取内容范围三模式（缺省由 include_biz 派生，存量零变化） */
+export function normalizeBidScope(genOptions: GenOptions | null | undefined): BidScope {
+  if (isBidScope(genOptions?.scope)) return genOptions.scope
+  return genOptions?.include_biz === false ? "tech" : "both"
+}
+
+/** R206 切片 1：该章在当前 scope 下是否为「生成正文目标」——
+ *  both/tech：技术章是目标、商务章仅骨架（不生成正文）；biz：商务章是目标、技术章不参与 */
+export function isGenTargetChapter(item: { part?: string } | null | undefined, scope: BidScope): boolean {
+  return scope === "biz" ? item?.part === "biz" : item?.part !== "biz"
 }
 
 /** 05 三模式：合规严格度开关，只切「超出招标原文的程度」；新增可验收承诺始终受 BID_STYLE_RULES 忠实/克制底线约束 */
@@ -2397,10 +2427,18 @@ export type FormatSettings = {
   /** 页眉页脚 */
   headerFooter: boolean
   titleNumbering: TitleNumbering
-  /** 暗标开关：true 时导出加暗标声明占位页且不输出页码 */
+  /**
+   * Q28 切片B：暗标开关。true 时正文生成注入身份脱敏硬规则，并按招标文件常见暗标口径导出：
+   * 页码=页面底端居中裸连续阿拉伯数字、页眉强制不输出、配图/图片黑白化。
+   */
   sealed: boolean
   /** 暗标页数（null=未填） */
   sealedPages: number | null
+  /**
+   * Q28 切片B：是否输出「暗标声明」占位页。仅招标文件明确要求暗标声明时才开；
+   * 原实现只要 sealed 就硬插一页声明，导致页数虚增（默认 false）。
+   */
+  sealedDeclarationPage: boolean
 }
 
 /** 面板缺省值（format_settings=null 时按此展示；任一改动即生成完整配置落库） */
@@ -2416,6 +2454,7 @@ export const DEFAULT_FORMAT_SETTINGS: FormatSettings = {
   titleNumbering: "1.1.1",
   sealed: false,
   sealedPages: null,
+  sealedDeclarationPage: false,
 }
 
 /**
@@ -2536,6 +2575,8 @@ export function normalizeFormatSettings(raw: unknown): FormatSettings | null {
         : d.titleNumbering,
     sealed,
     sealedPages: sealed && Number.isFinite(sealedPagesRaw) && sealedPagesRaw > 0 ? Math.min(9999, Math.round(sealedPagesRaw)) : null,
+    // Q28 切片B：显式 true 才插声明页（存量配置无该字段 → false）；非暗标恒 false
+    sealedDeclarationPage: sealed && rec.sealedDeclarationPage === true,
   }
 }
 
@@ -2594,7 +2635,7 @@ export const FORMAT_CHECK_LABEL: Record<FormatCheckKey, string> = {
 }
 
 /** 交叉警告规则（暗标页数 × 目标页数联动生成，不在禁则勾选清单内）；number_conflict 为循环 8 A4 本地数字口径核对 */
-export type FormatCheckRule = FormatCheckKey | "sealed_pages_cross" | "number_conflict" | "param_escalation" | "metric_conflict" | "meta_leftover" | "deviation_undercommit" | "over_price_ceiling"
+export type FormatCheckRule = FormatCheckKey | "sealed_pages_cross" | "number_conflict" | "param_escalation" | "metric_conflict" | "meta_leftover" | "deviation_undercommit" | "over_price_ceiling" | "amount_case_mismatch"
 
 export const FORMAT_RULE_LABEL: Record<FormatCheckRule, string> = {
   ...FORMAT_CHECK_LABEL,
@@ -2605,6 +2646,7 @@ export const FORMAT_RULE_LABEL: Record<FormatCheckRule, string> = {
   meta_leftover: "占位元话语与绝对化承诺残留",
   deviation_undercommit: "承诺不够（偏离表负偏离：响应低于招标要求）",
   over_price_ceiling: "投标报价超最高限价/预算（废标风险）",
+  amount_case_mismatch: "金额大小写一致性（大写与小写重述对账，经典废标项）",
 }
 
 export type FormatCheckHit = { chapter: string; rule: FormatCheckRule; quote: string; level: "warn" | "info" }
@@ -3299,6 +3341,66 @@ export function quoteRecordCeilingHits(
 }
 
 // ---------------------------------------------------------------------------
+// R187（r184-bid-amount-consistency-wiring）：金额大小写一致性接入交卷体检（零 AI、只报不拦）
+// 内核 R184 已交付（src/lib/currencyCn.ts 的 scanAmountMismatches：大写串与小写串精确互逆），
+// 本轮把它接进本地格式路，与 over_price_ceiling 并列为经典废标项的确定性硬核验。
+// 保守口径（防误伤优先）：
+//  - mismatch（两侧都可解析且相邻重述不等）→ warn，文案标【废标风险】；
+//  - malformed（大写形状可疑但解析失败）门槛更严：须与一个小写金额同一片落相邻（中间不含换行）才提示 info，
+//    否则正文/表头高频出现的「（单位：万元）」会被当成畸形大写刷屏（该串恰是 UPPER_RE 的合法碎片），
+//    跨行/跨表格格的「万元」列头 + 邻格数字也不是同一笔金额的大小写重述（真实标书语料实测出来的噪声）。
+// 只读既有 bid_chapters / response_map，不依赖全局事实表、不改 AI 提示词、不做导出门禁。
+// ---------------------------------------------------------------------------
+
+/** 金额大小写一致性：逐章正文与偏离表响应扫「大写金额 × 相邻小写重述」对账（纯函数、零 AI；总 ≤15 条） */
+export function amountCaseMismatchHits(
+  chapters: Chapter[],
+  deviationTable: DeviationTable | null,
+): FormatCheckHit[] {
+  const hits: FormatCheckHit[] = []
+  const seen = new Set<string>()
+  const emit = (label: string, text: string) => {
+    for (const m of scanAmountMismatches(text)) {
+      if (hits.length >= 15) return
+      if (m.kind === "malformed" && (!m.arabicRaw || m.sep.includes("\n"))) continue
+      const exact = `${label}|${m.upperRaw}|${m.arabicRaw ?? ""}|${m.kind}`
+      if (seen.has(exact)) continue
+      seen.add(exact)
+      hits.push(
+        m.kind === "mismatch"
+          ? {
+              chapter: label,
+              rule: "amount_case_mismatch",
+              quote: `【废标风险】大写「${m.upperRaw}」与小写「${m.arabicRaw}」金额不一致，导出前必核`.slice(0, 80),
+              level: "warn",
+            }
+          : {
+              chapter: label,
+              rule: "amount_case_mismatch",
+              quote: `大写「${m.upperRaw}」书写不规范、无法解析（紧邻小写「${m.arabicRaw}」），请复核`.slice(0, 80),
+              level: "info",
+            },
+      )
+    }
+  }
+
+  for (let ci = 0; ci < (chapters ?? []).length; ci++) {
+    if (hits.length >= 15) break
+    const c = chapters[ci]
+    const content = c.content ?? ""
+    if (!content.trim()) continue
+    emit((c.title ?? "").trim() || `第${ci + 1}章`, content)
+  }
+  for (const row of deviationTable?.rows ?? []) {
+    if (hits.length >= 15) break
+    const summary = (row.response_summary ?? "").trim()
+    if (!summary) continue
+    emit(`偏离表 · ${(row.clause_id || row.clause_text || "").trim().slice(0, 16) || "未编号条款"}`, summary)
+  }
+  return hits
+}
+
+// ---------------------------------------------------------------------------
 // content-guard-02（docs/06 #9 事后一致性拦截，纯本地零 AI）
 // 与 number_conflict 互补：number_conflict 要有全局事实表才比；本组只扫正文自身，
 // 抓同一份标书内部“RPO 写 0 / 又写 <1h”类口径矛盾与绝对化承诺残留（R1 事前块的反向拦截）。
@@ -3631,7 +3733,7 @@ export type BidProjectRecord = {
   global_facts: string
   /** 第十六轮 B2 改造 2.1：预编排结果（json 列；存量项目缺列容错为 null=未编排，正文生成走旧逻辑） */
   orchestration: BidOrchestration | null
-  /** 第十六轮 B2 改造 2.1：全文配图上限（number 列，0-20；null=默认 6；figures_enabled 仍是配图总开关） */
+  /** 第十六轮 B2 改造 2.1：全文配图上限（number 列，0-99；null=不限，宜图即配；0=不配图；figures_enabled 仍是配图总开关） */
   max_figures: number | null
   /** 第十七轮 17B：编制依据规范库补选（json 列，StandardItem 数组；存量项目缺列容错为 null=未补选） */
   compilation_basis_extra: StandardItem[] | null
@@ -4004,23 +4106,9 @@ function repairJsonCandidate(s: string): string {
 }
 
 export function extractJsonLoose(text: string): unknown {
-  let t = text.trim()
-  t = t.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim()
-  const objStart = t.indexOf("{")
-  const arrStart = t.indexOf("[")
-  let candidate = ""
-  if (arrStart >= 0 && (objStart < 0 || arrStart < objStart)) {
-    candidate = t.slice(arrStart, t.lastIndexOf("]") + 1)
-  } else if (objStart >= 0) {
-    candidate = t.slice(objStart, t.lastIndexOf("}") + 1)
-  }
-  if (!candidate) {
-    // 完全没有闭合括号时（弱模型输出被截断）：从首个 { 或 [ 起取到末尾尝试修复
-    const openIdx = objStart >= 0 ? objStart : arrStart
-    if (openIdx < 0) throw new Error("AI 返回内容不是有效 JSON，请重试")
-    candidate = t.slice(openIdx)
-  }
-  // ai-stability-01：逐级放宽（原样→结构修复→转义字符串内裸控制字符→叠加），全失败才抛可读错误，不再裸抛 SyntaxError
+  // ai-stability-01：截候选走 extractJsonCandidate 单一真源；truncateFromOpen 复刻弱模型被切断时从首个 { / [ 取到末尾的兜底
+  const candidate = extractJsonCandidate(text, { truncateFromOpen: true })
+  if (!candidate) throw new Error("AI 返回内容不是有效 JSON，请重试")
   return parseJsonTolerant(candidate, repairJsonCandidate)
 }
 
@@ -4661,11 +4749,12 @@ export function trimOutlineDepth(nodes: OutlineNode[], depth: number): OutlineNo
   }))
 }
 
-/** 第五轮改造 2：由总页数反推大纲目标叶子数——总字数(页数×500)/每小节字数，clamp 12–400 */
+/** 第五轮改造 2：由总页数反推大纲目标叶子数——总字数(页数×DEFAULT_CHARS_PER_PAGE)/每小节字数，clamp 12–400。
+ *  每小节字数与 UI 契约（400-5000）一致取值；旧值 2000 顶会让 150 页标书被拆出 71 个碎小节。 */
 export function leafTargetFromPages(pages: number, sectionWords = 800): number {
   const p = Math.max(1, Math.min(9999, Math.round(pages) || 1))
-  const sw = Math.min(2000, Math.max(400, Math.round(sectionWords) || 800))
-  return Math.min(400, Math.max(12, Math.round((p * 500) / sw)))
+  const sw = Math.min(5000, Math.max(400, Math.round(sectionWords) || 800))
+  return Math.min(400, Math.max(12, Math.round((p * DEFAULT_CHARS_PER_PAGE) / sw)))
 }
 
 /** 大纲叶子节点（无子节点的末端节点）总数 */
@@ -4685,6 +4774,24 @@ export function outlineLeafCount(nodes: OutlineNode[]): number {
 export function outlineMaxDepth(nodes: OutlineNode[]): number {
   if (!nodes?.length) return 0
   return 1 + Math.max(0, ...nodes.map((n) => outlineMaxDepth(n.children ?? [])))
+}
+
+/** 技术章叶子数（只数技术顶层章子树，商务骨架章不计——与条款覆盖/预算同一口径） */
+export function techOutlineLeafCount(nodes: OutlineNode[]): number {
+  return collectLeafTitles(techOutlineNodes(nodes ?? [])).length
+}
+
+/**
+ * 大纲「整树重写」结果的采纳闸门（Q28 切片D）：结构修复与门禁修复都是把全树重写成一份
+ * JSON 返回，输出被 max_tokens 截断时模型 JSON 修复会把尾部章节整段丢掉，返回一棵只剩
+ * 开头一两章的「合法但残缺」的树；旧判断只看非空即整树替换，实测把 70 叶大纲砍成 1 章、
+ * 条款覆盖直接归零。新树技术叶数不足原树 80% 即判为截断残缺，拒绝采纳、保留原树。
+ */
+export function acceptRewrittenOutline(prev: OutlineNode[], next: OutlineNode[]): boolean {
+  if (!next?.length) return false
+  const before = techOutlineLeafCount(prev)
+  if (before <= 0) return true
+  return techOutlineLeafCount(next) >= Math.ceil(before * 0.8)
 }
 
 /**
@@ -4720,8 +4827,14 @@ export function validateOutlineShape(nodes: OutlineNode[], level: 0 | 1 | 2 | 3,
   return issues
 }
 
-/** 每页折算系数默认值（A4 四号仿宋 1.5 倍行距约 500 字/页，与历史硬编码一致） */
-export const DEFAULT_CHARS_PER_PAGE = 500
+/**
+ * 每页折算系数默认值（2026-10-07 实测校准：A4 四号仿宋 1.5 倍行距整本有效 ≈950 字/页）。
+ * 纯正文物理容量约 725 字/页（版心 29 字/行 × 25 行）；标书固有的偏离表/参数表（表格内容
+ * 宋体五号，密度约为正文 1.6 倍）把整本有效密度拉到 ≈950。实测锚点：「安庆二院」项目 4.93 万字
+ * 正文，旧值 500 估出 99 页、导出 docx 实际仅 55 页（有效 946 字/页）——旧值会把字数预算与
+ * 达标判定整体高估约 1.9 倍，按它写满正文只够目标页数的一半。
+ */
+export const DEFAULT_CHARS_PER_PAGE = 950
 
 /** 中文字号 → 磅值（Pt），用于按正文动态折算每页字数 */
 const FORMAT_SIZE_PT: Record<FormatFontSize, number> = {
@@ -4772,9 +4885,9 @@ function usableAreaFactor(settings: FormatSettings | null | undefined): number {
 
 /**
  * 切片 E1/E3：按正文格式（字号 + 行距 + 纸张 + 页边距）折算「每页约多少字」。
- * 以 A4 四号 / 1.5 倍行距 / 默认页边距 = 500 字/页为基准：字号按 (14/pt)^2、
- * 行距按 1.5/倍率、可用版面按 (纸张 × 边距) 面积比缩放。
- * 未配置格式（settings 为空或全部默认）时恒等于 DEFAULT_CHARS_PER_PAGE（500），存量项目零行为变化。
+ * 以 A4 四号 / 1.5 倍行距 / 默认页边距 = DEFAULT_CHARS_PER_PAGE（950，2026-10-07 实测校准值，
+ * 含标书表格密度）为基准：字号按 (14/pt)^2、行距按 1.5/倍率、可用版面按 (纸张 × 边距) 面积比缩放。
+ * 未配置格式（settings 为空或全部默认）时恒等于 DEFAULT_CHARS_PER_PAGE。
  * 结果限制在 [150, 2600]，避免极端纸张/字号把预算拉飞。
  */
 export function formatCharsPerPage(settings?: FormatSettings | null): number {
@@ -4786,13 +4899,13 @@ export function formatCharsPerPage(settings?: FormatSettings | null): number {
   return Math.max(150, Math.min(2600, Math.round(cpp)))
 }
 
-/** 目标页数留空时：按招标文件文本体量估算（字数/500 向上取整，最少 10 页） */
+/** 目标页数留空时：按招标文件文本体量估算（字数/每页字数 向上取整，最少 10 页） */
 export function estimatePagesFromText(text: string, charsPerPage = DEFAULT_CHARS_PER_PAGE): number {
   const chars = (text ?? "").replace(/\s/g, "").length
   return Math.max(10, Math.ceil(chars / charsPerPage))
 }
 
-/** 第十轮修复 3：字数 → 页数换算（约 500 字/页，至少 1 页），生成后治理与页面信息条共用 */
+/** 第十轮修复 3：字数 → 页数换算（按 DEFAULT_CHARS_PER_PAGE 折算，至少 1 页），生成后治理与页面信息条共用 */
 export function estimatePagesFromChars(chars: number, charsPerPage = DEFAULT_CHARS_PER_PAGE): number {
   return Math.max(1, Math.ceil(Math.max(0, chars) / charsPerPage))
 }
@@ -4852,7 +4965,7 @@ export function rebuildSectionContent(pieces: string[]): string {
 }
 
 /**
- * 整份目标页数按章节权重（小节数 + 标题关键词）折算每章字数预算（约 500 字/页）；页数不设上限（1-9999 防呆）。
+ * 整份目标页数按章节权重（小节数 + 标题关键词）折算每章字数预算（每页字数取 DEFAULT_CHARS_PER_PAGE 校准值）；页数不设上限（1-9999 防呆）。
  * 第十三轮改造 4：商务骨架章不占预算不计字数（预算恒 0，权重不参与分配），预算全部分给技术章。
  */
 export function chapterWordBudgets(chapters: { title: string; sections?: string[]; part?: string }[], targetPages: number, charsPerPage = DEFAULT_CHARS_PER_PAGE): number[] {
@@ -5074,6 +5187,11 @@ export const BID_STYLE_RULES: string[] = [
   "技术参数忠实：引用招标技术参数、指标与条款表述时逐字照抄进正文，不漏项、不改原意、不换说法、不做「优化改写」；",
   "承诺克制（最小值响应）：功能点、响应时间、故障到场时限、质保与运维期等承诺按满足招标要求的最小档响应，禁止超出招标要求多加功能或拔高指标——过度响应就是验收义务；仅投标有效期、授权期限、交货期等形式项在招标未明确时按从宽口径自信满足；",
   "禁绝对化承诺：不得使用「确保通过 / 保证中标 / 满分响应 / 100% 满足 / 万无一失 / 零风险 / 完全无误差」等绝对化、保证性表述；可承诺处一律用「满足招标要求 / 按招标文件响应 / 承诺……（可验收的具体措施与量化值）」等可核实口径，把结论落在证据上而非形容词上；",
+  // 易标 v2.16+ 正文写作口径（2026-10 对齐轮）：落点具体 / 伪标题禁令
+  "落点具体：每节正文必须落到本节相关的实施措施、执行条件、责任分工或交付成果上，做到准确、具体、可执行；禁止整节只有概括性描述而无具体做法，禁止用形容词堆砌代替方案内容；",
+  "伪标题禁令：小节标题行已由大纲给定，正文内禁止再输出与标题同义的首行、结尾重复标题行或「本章包含以下内容」式引导语；正文的层次用段落自然展开，编号列举（一、/1./（1））仅用于步骤、流程、时间顺序或并列要点，禁止用额外编号在小节内再造与大纲重复的层级；",
+  "响应句式轮换：「完全满足招标文件要求」等同一响应承诺句式全篇不超过 8 次——逐项响应时轮换使用「满足/响应/符合/达到招标文件要求」「完全响应」等表述；带★号条款仍须逐条明确响应结论，轮换仅指措辞、不弱化响应强度；",
+  "评标人视角收尾：每章末尾如需总结，用一句可核验的落地承诺收束（量化指标、责任分工或时限），禁止用「综上所述/总而言之」式空泛总结；",
 ]
 
 /**
@@ -5086,6 +5204,8 @@ export const FULLTEXT_GUARD_RULES: string[] = [
   "规模量级自洽：架构选型与技术配置的规模必须与项目预算量级、医院等级和招标范围相匹配，禁止在数百万级预算项目里堆砌「双活数据中心 / PB 级存储 / 全栈容器中台」等明显超配的旗舰架构；招标未明确要求的高规格设施不得自行写入，规模拿不准时以招标原文界定的范围为上限；",
   "政策法规时效：引用国家政策、行业标准、规划文件时须为其现行有效的版本与名称，禁止把已过期的阶段性目标当作建设依据（如当前已越过原文件有效期仍写「到 2025 年底前」「《2021—2025 年行动方案》」）；不确定是否现行时，统称「国家及行业现行有效的相关政策与标准」，不写死过期文件名与年份区间；",
   "术语文字统一：同一指标、系统、评级在全篇使用同一中文名称与口径（如「电子病历系统应用水平分级评价」不要一会儿简称「EMR 评级」一会儿「病历评分」），英文缩写首次出现附中文全称；禁止错别字、无必要的中英文混排与同一概念多名并存；",
+  // 易标「全局事实设定」稳定性口径（2026-10 对齐轮）：事实表是统一口径而非写作清单，防各章重复罗列
+  "事实克制：全局事实表用于统一全文事实口径，不是各章必须逐项覆盖的写作清单——事实信息与事实表不冲突即可，禁止为覆盖事实条目增加无关段落，禁止在各章重复罗列项目概况、人员名单、设备清单或制度条文；确需引用某条事实时在与本节主题相关的段落中自然使用一次即可；",
 ]
 
 /**
@@ -5922,7 +6042,8 @@ export { buildSectionResizeMessages, PROMPT_VERSION as SECTION_RESIZE_PROMPT_VER
 // 第十六轮 B2 改造 2.1：预编排（表格/配图）——类型、本地工具与批量编排 prompt
 // ---------------------------------------------------------------------------
 
-export type OrchestrationFigureType = "architecture" | "flow" | "demo" | "mermaid" | "ai"
+// 2026-10 配图需求轮：gantt=项目实施甘特图（mermaid gantt 语法渲染，走 mermaid 同一条本地渲染链）
+export type OrchestrationFigureType = "architecture" | "flow" | "demo" | "mermaid" | "ai" | "gantt"
 
 /** T17：AI 位图两档风格（易标 AI_IMAGE_TYPES / normalizeImagePrompt 口径） */
 export type AiImageStyle = "engineering_diagram" | "realistic_photo"
@@ -5933,6 +6054,7 @@ export const ORCHESTRATION_FIGURE_TYPE_LABEL: Record<OrchestrationFigureType, st
   demo: "界面示意",
   mermaid: "关系图",
   ai: "AI 配图",
+  gantt: "甘特图",
 }
 
 export const AI_IMAGE_STYLE_LABEL: Record<AiImageStyle, string> = {
@@ -5982,14 +6104,19 @@ export type BidOrchestration = {
   generated_at: string
 }
 
-/** 全文配图上限默认值（max_figures 留空时生效；0=不配图；figures_enabled 仍是总开关） */
-export const DEFAULT_MAX_FIGURES = 6
+/**
+ * 全文配图上限的「不限」哨兵值：max_figures 留空（null）即不限量，编排判断宜图即配。
+ * 2026-10-07 语义变更（应使用者要求）：留空原为「默认 6 张」——要求的配图常常超过 20，
+ * 现改为不限；成本侧天然有闸：mermaid/甘特图为本地渲染零成本，AI 位图生成前有逐张费用确认。
+ * 0=不配图；figures_enabled 仍是总开关。
+ */
+export const FIGURES_UNLIMITED = 999
 
 export function effectiveMaxFigures(v: number | null | undefined): number {
-  if (v === null || v === undefined) return DEFAULT_MAX_FIGURES
+  if (v === null || v === undefined) return FIGURES_UNLIMITED
   const n = Number(v)
-  if (!Number.isFinite(n)) return DEFAULT_MAX_FIGURES
-  return Math.min(20, Math.max(0, Math.round(n)))
+  if (!Number.isFinite(n)) return FIGURES_UNLIMITED
+  return Math.min(FIGURES_UNLIMITED, Math.max(0, Math.round(n)))
 }
 
 export type TechLeafRef = { nodeId: string; title: string; chapter: string }
@@ -6038,7 +6165,7 @@ export { buildOrchestrationMessages, PROMPT_VERSION as ORCHESTRATION_PROMPT_VERS
 export function sanitizeOrchestrationBatch(
   rawText: string,
   validIds: Set<string>,
-  opts?: { knowledgeText?: Map<string, string> },
+  opts?: { knowledgeText?: Map<string, string>; figureCap?: number },
 ): Record<string, LeafOrchestration> {
   const data = extractJsonLoose(rawText)
   const rec = (data ?? {}) as Record<string, unknown>
@@ -6054,13 +6181,17 @@ export function sanitizeOrchestrationBatch(
     if (t.needed === true && tPurpose) entry.table = { needed: true, purpose: tPurpose }
     const f = (r.figure ?? {}) as Record<string, unknown>
     const fTypeRaw = asString(f.type).trim()
-    // T16/T17：type 白名单加 mermaid 与 ai（ai=AI 位图，补图阶段生成）
+    // T16/T17：type 白名单加 mermaid 与 ai（ai=AI 位图，补图阶段生成）；2026-10 加 gantt（实施甘特图）
     const fType: OrchestrationFigureType =
-      fTypeRaw === "flow" || fTypeRaw === "demo" || fTypeRaw === "mermaid" || fTypeRaw === "ai" ? fTypeRaw : "architecture"
+      fTypeRaw === "flow" || fTypeRaw === "demo" || fTypeRaw === "mermaid" || fTypeRaw === "ai" || fTypeRaw === "gantt"
+        ? fTypeRaw
+        : "architecture"
     const fPriority = Math.min(5, Math.max(1, Math.round(asNumber(f.priority) || 3)))
     const fTitle = asString(f.title).trim().slice(0, 40)
     const fCaption = asString(f.caption).trim().slice(0, 60)
-    if (f.needed === true && fPriority >= 3 && fTitle) {
+    // 配图门槛：默认 3（克制口径）；figureCap ≥ 20 的高配图需求模式放宽到 2（与编排提示词的放宽规则配套）
+    const figurePriorityGate = (opts?.figureCap ?? 0) >= 20 ? 2 : 3
+    if (f.needed === true && fPriority >= figurePriorityGate && fTitle) {
       entry.figure = {
         needed: true,
         type: fType,
@@ -6103,7 +6234,8 @@ export function sanitizeOrchestrationBatch(
 /**
  * 改造 2.1 程序全局择优：figure 候选按叶子文档顺序均分成 maxFigures 段、每段取 priority 最高者
  * （同分取段内靠前者）。均分分段保证配图均匀散布全文，避免「头重脚轻」（前几章堆满、后面全无）。
- * 候选数 ≤ 上限时全选；上限 0 或无候选时不选。直接改写 leaves 里的 selected 标记，返回选中张数。
+ * 候选数 ≤ 上限时全选——因此 maxFigures=不限（FIGURES_UNLIMITED）时所有候选天然全选，仅保留
+ * 邻接避同约束。上限 0 或无候选时不选。直接改写 leaves 里的 selected 标记，返回选中张数。
  * 循环 2 批 2-1 邻接避同：段选后按文档序校验，选中序列相邻两叶 figure.type 相同时，
  * 后者换成段内类型不同的次高 priority 候选；段内无次高则弃选该段（宁缺毋滥，不强凑同类型相邻图）。
  */
@@ -6117,7 +6249,7 @@ export function selectOrchestrationFigures(
     const entry = leaves[id]
     if (entry?.figure) leaves[id] = { ...entry, figure: { ...entry.figure, selected: false } }
   }
-  const cap = Math.max(0, Math.min(20, Math.round(maxFigures)))
+  const cap = Math.max(0, Math.min(FIGURES_UNLIMITED, Math.round(maxFigures)))
   const candidates = (leafOrder ?? []).filter((id) => leaves[id]?.figure?.needed)
   if (!candidates.length || cap === 0) return 0
   // 分段：候选数 ≤ 上限时每候选自成一档；否则均分 cap 段（段间不重不漏，与既有口径一致）
@@ -6136,6 +6268,9 @@ export function selectOrchestrationFigures(
   }
   const typeOf = (idx: number): OrchestrationFigureType => leaves[candidates[idx]]?.figure?.type ?? "architecture"
   const prioOf = (idx: number): number => leaves[candidates[idx]]?.figure?.priority ?? 0
+  // 2026-10-07 高配图需求模式（上限 ≥20）：邻接同类型且段内无替代类型时保留原选——
+  // 使用者明确要多图时，数量承诺优先于类型交替；默认口径维持「无替代则弃选」不变。
+  const keepAdjacentSameType = cap >= 20
   const pickBest = (seg: number[], used: Set<number>, avoidType?: OrchestrationFigureType): number => {
     let best = -1
     for (const i of seg) {
@@ -6151,8 +6286,10 @@ export function selectOrchestrationFigures(
     const prevType = winners.length ? typeOf(winners[winners.length - 1]) : undefined
     let pick = pickBest(seg, used)
     if (pick !== -1 && prevType !== undefined && typeOf(pick) === prevType) {
-      // 邻接同类型：换段内类型不同的次高；无次高则弃选本段
-      pick = pickBest(seg, used, prevType)
+      // 邻接同类型：换段内类型不同的次高；无次高则弃选本段（高配图需求模式下保留）
+      const alt = pickBest(seg, used, prevType)
+      if (alt !== -1) pick = alt
+      else if (!keepAdjacentSameType) pick = -1
     }
     if (pick === -1) continue
     used.add(pick)
@@ -6186,7 +6323,9 @@ export function normalizeOrchestration(raw: unknown): BidOrchestration | null {
       const fTypeRaw = asString(f.type).trim()
       const fCaption = asString(f.caption).trim().slice(0, 60)
       const fType: OrchestrationFigureType =
-        fTypeRaw === "flow" || fTypeRaw === "demo" || fTypeRaw === "mermaid" || fTypeRaw === "ai" ? fTypeRaw : "architecture"
+        fTypeRaw === "flow" || fTypeRaw === "demo" || fTypeRaw === "mermaid" || fTypeRaw === "ai" || fTypeRaw === "gantt"
+          ? fTypeRaw
+          : "architecture"
       entry.figure = {
         needed: true,
         type: fType,

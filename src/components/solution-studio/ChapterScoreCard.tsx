@@ -2,6 +2,7 @@ import { useState } from "react"
 import { ChevronDown, ChevronUp, Loader2, RefreshCw, Wand2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { REVIEW_DIMS, VERDICT_LABEL, type ChapterSelfCheck, type ChapterReviewVerdict } from "@/pages/SolutionStudio/solutionTypes"
+import { formatShortDateTime } from "@/lib/dateDisplay"
 
 // ---------------------------------------------------------------------------
 // 章节自检评分卡（轮次 E-4）：总分 + verdict 徽标 + 五维条形 + issues 列表，
@@ -45,9 +46,7 @@ function totalTextTone(total: number): string {
 
 export function ChapterScoreCard({ selfCheck, busy, onOptimize, onRecheck }: ChapterScoreCardProps) {
   const [expanded, setExpanded] = useState(false)
-  const checkedLabel = selfCheck.checked_at
-    ? new Date(selfCheck.checked_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
-    : ""
+  const checkedLabel = formatShortDateTime(selfCheck.checked_at)
 
   return (
     <div className="shrink-0 rounded-lg border border-border bg-secondary/40 shadow-sm">

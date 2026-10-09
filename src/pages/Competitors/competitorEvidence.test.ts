@@ -5,6 +5,7 @@ import {
   buildCopyrightFactsFromRows,
   buildCustomerShareFromRows,
   matchVendor,
+  assembleEvidenceContext,
 } from "./competitorEvidence"
 import { parseAnalysisResponse } from "./useCompetitorAnalysis"
 
@@ -234,5 +235,22 @@ describe("parseAnalysisResponse · evidence_refs 校验与降级", () => {
     expect(r?.updates).toHaveLength(1)
     expect(r?.threat_level_change).toBe("stable")
     expect(r?.action_items).toEqual([])
+  })
+})
+
+describe("assembleEvidenceContext · 知识库片段 PII 二次掩码（R188）", () => {
+  it("KB 片段含手机号：进入 AI 的事实串被掩码", () => {
+    const kb = [
+      { evidenceId: "kb:d1#0", docId: "d1", docTitle: "案例", folderPath: "/", category: "项目案例", snippet: "项目经理 王五 电话 13800138000" },
+    ]
+    const ctx = assembleEvidenceContext(
+      buildCopyrightFactsFromRows([], ["某某"]),
+      buildCustomerShareFromRows([], ["某某"]),
+      kb,
+      [],
+    )
+    expect(ctx).not.toContain("13800138000")
+    expect(ctx).toContain("138")
+    expect(ctx).toContain("****")
   })
 })

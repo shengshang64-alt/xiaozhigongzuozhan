@@ -27,9 +27,19 @@ export interface LlmCallResult {
   model?: string
   usage?: unknown
   needsLogin?: boolean
+  /**
+   * R203 模型通道自动回退：本次实际出活的通道唯一键（source:configId:modelId）。
+   * 仅当网关把请求改投备用通道并成功产出时存在，供上层把延迟 / 预算证据记到真正
+   * 干活的那一路，而不是用户所选（但刚刚失败）的通道。缺省 = 未发生回退。
+   */
+  actualModelRefKey?: string
 }
 
-const CHAT_ABORT_MS = 25000
+// 2026-10-07 25000 → 240000：本地 model-gw 的 /chat 是同步返回（响应头要等上游生成完才回来），
+// 25s 会把所有超过 25s 的生成（大 JSON 编排、长章节）在响应头阶段就中止，随后轮询本地不存在的
+// 平台轮询路由 → 必失败（表现为「返回格式异常，回复内容为空」「编排调用均未产出有效结果」）。
+// 平台异步路径不受影响：任务提交的响应头本来就秒回，中止只兜底「提交即挂死」的异常场景。
+const CHAT_ABORT_MS = 240000
 const POLL_INTERVAL_MS = 3000
 const POLL_ATTEMPTS = 200
 

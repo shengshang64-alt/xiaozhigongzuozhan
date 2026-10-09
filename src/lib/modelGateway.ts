@@ -6,8 +6,25 @@ import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders, decodeRhToken } from "@/lib/rhLogin"
 import { callLlmWithFallback, type LlmCallResult, type LlmMessage } from "@/lib/llm"
 import { llmCacheGet, llmCacheSet } from "@/lib/llmCache"
+// R203（docs/13 §3.3）：账号级失败时换一路已启用通道再试一次的决策内核
+import { toast } from "sonner"
+import { isLocalDeployHost } from "@/lib/rhLogin"
+import { isTextGenerationModel } from "@/lib/modelModality"
+import {
+  shouldShowFailoverNotice,
+  tryFailoverCall,
+  type FailoverCandidate,
+  type FailoverRefLite,
+} from "@/lib/modelFailover"
 
 export const PLATFORM_MODEL_ID = "gpt-5.5"
+
+// R208：个人配置不可用（被删 / 缺 Key / 无启用模型）的网关内部错误哨兵——不再在回退内核前直接 return 平台，
+// 而是交回封装层先试个人备用通道，无可用候选才兜底（modelFailover 据此归为 config_broken 可回退类）
+export const PERSONAL_CONFIG_UNAVAILABLE_ERR = "personal_config_unavailable"
+// 无可用个人备用通道且本地自用域（平台令牌恒空必然 412）时的可执行引导文案（不含内部字段名）
+const PERSONAL_CONFIG_UNAVAILABLE_HINT =
+  "当前所选模型的个人配置不可用（可能已删除、缺少 API Key 或没有启用模型），也没有其他可用的已启用通道。请在顶部模型选择器切换到其他已配置的模型后重试。"
 export const TEST_PROMPT = "请用一句话介绍你自己"
 
 export type ModelSource = "platform" | "personal"
@@ -213,12 +230,13 @@ function llmCacheIdentity(opts: ChatViaGatewayOptions): string {
 }
 
 export async function chatViaGateway(opts: ChatViaGatewayOptions): Promise<LlmCallResult> {
-  if (!opts.cacheable) return chatViaGatewayUncached(opts)
+  // R203：缓存未命中/不缓存的路径都经回退包装（命中缓存的答复本就成功）
+  if (!opts.cacheable) return chatViaGatewayWithFailover(opts)
   const userId = decodeRhToken()?.sub ?? null
   const identity = llmCacheIdentity(opts)
   const hit = await llmCacheGet(userId, identity)
   if (hit) return hit
-  const result = await chatViaGatewayUncached(opts)
+  const result = await chatViaGatewayWithFailover(opts)
   void llmCacheSet(userId, identity, result, opts.cacheTtlMs)
   return result
 }
@@ -227,16 +245,85 @@ export async function chatViaGateway(opts: ChatViaGatewayOptions): Promise<LlmCa
 // 防跨服务重启的请求连接半开挂死、生成按钮无限转圈不报错
 const PERSONAL_CHAT_TIMEOUT_MS = 150_000
 
+/**
+ * 个人模型「超时」失败的可执行引导文案（R177）。
+ * 网关服务端单请求转发上限约 120s（model_gateway.pb.js 红线区），慢模型 / 超长小节易触发；
+ * 旧文案「请重试或切换平台内置模型」在本地自用域是死路——平台内置令牌恒空必然 412 且已禁用
+ * （见 ModelSelect.tsx 本地禁用逻辑），故改为「切换到更快的已配置模型 / 分章生成」的正确指引。
+ */
+export const PERSONAL_TIMEOUT_MSG =
+  "该模型本次响应超时（网关单次请求上限约 120 秒，偏慢的模型或超长小节容易触发）。请在顶部切换到更快的已配置模型（例如 sensenova-flash-lite）后点「继续生成 / 继续生成正文」重试，或改为逐章分次生成。"
+
+/**
+ * 把客户端 abort 或服务端返回的超时详情串归一为可执行文案；命中超时返回 PERSONAL_TIMEOUT_MSG，
+ * 非超时返回 null（交由调用方按原始信息透出）。纯函数，便于单测锁口径。
+ */
+export function personalTimeoutError(rawMessage?: string): string | null {
+  const t = (rawMessage ?? "").toLowerCase()
+  if (/超时|限定时间内返回|timeout|timed out|deadline/.test(t)) return PERSONAL_TIMEOUT_MSG
+  return null
+}
+
+// 超时降级重试的单次输出预算下限（R178 抽为可测契约，供 llmGenerate 恢复循环节流）
+export const TIMEOUT_RETRY_MIN_TOKENS = 2048
+
+/**
+ * 超时降级重试的下一档输出预算：折半但不低于下限。纯函数，锁死恢复节奏防重构回退。
+ */
+export function nextDegradedBudget(prevTokens: number): number {
+  return Math.max(Math.floor(prevTokens / 2), TIMEOUT_RETRY_MIN_TOKENS)
+}
+
+/**
+ * 是否应走超时降级重试：仅「请求失败（ok=false）且错误串命中超时」为真。
+ * 用户取消 / 需登录 / 内容审核 / 余额等非超时一律假，交由调用方原样处理，不盲目重试计费。
+ */
+export function shouldDegradeRetry(resultOk: boolean, error?: string): boolean {
+  return !resultOk && personalTimeoutError(error) !== null
+}
+
+// R215：挑第一个「已配 Key 且有可用模型」的个人网关配置，返回其 ModelRef（平台需登录时的兜底）
+async function pickFirstPersonalModelRef(): Promise<ModelRef | null> {
+  try {
+    const cfgs = await gwFetch<{ items: GatewayConfig[] }>(`/api/model-gw/configs`)
+    if (!cfgs.ok) return null
+    for (const c of cfgs.items || []) {
+      if (c.is_platform) continue
+      if (!c.has_key) continue
+      const enabled = (c.models || []).filter((m) => m.enabled !== false)
+      const modelId = c.default_model || (enabled[0] && enabled[0].id) || ""
+      if (!modelId) continue
+      const live = enabled.some((m) => m.id === modelId) || !enabled.length
+      if (!live) continue
+      return { source: "personal", configId: c.id, configName: c.config_name || c.id, modelId }
+    }
+  } catch {
+    /* 配置拉取失败则放弃兜底 */
+  }
+  return null
+}
+
 async function chatViaGatewayUncached(opts: ChatViaGatewayOptions): Promise<LlmCallResult> {
   const ref = opts.modelRef
   if (!ref || ref.source === "platform") {
-    return callLlmWithFallback(PLATFORM_MODEL_ID, {
+    const plat = await callLlmWithFallback(PLATFORM_MODEL_ID, {
       messages: opts.messages,
       page: opts.page,
       max_tokens: opts.max_tokens,
       temperature: opts.temperature,
       signal: opts.signal,
     })
+    // R215：本地部署未登录 RunningHub 时平台通道必挂（rh_login_required）。
+    // 自动落回第一个可用的个人网关配置，让补全/生成等 AI 功能在本地环境照样可用；
+    // RH 已登录用户不受影响（平台成功时直接返回）。
+    if (!plat.ok && plat.needsLogin) {
+      const alt = await pickFirstPersonalModelRef()
+      if (alt) {
+        const r2 = await chatViaGatewayUncached({ ...opts, modelRef: alt })
+        if (r2.ok) return { ...r2, model: r2.model || alt.modelId }
+      }
+    }
+    return plat
   }
   const ctrl = new AbortController()
   const timer = window.setTimeout(() => ctrl.abort(), PERSONAL_CHAT_TIMEOUT_MS)
@@ -274,14 +361,99 @@ async function chatViaGatewayUncached(opts: ChatViaGatewayOptions): Promise<LlmC
     return { ok: false, status: "failed", text: "", error: "user_cancelled" }
   }
   if (!res.ok && ctrl.signal.aborted) {
-    return { ok: false, status: "failed", text: "", error: "个人模型请求超时（可能网络波动或服务重启），请重试或切换平台内置模型" }
+    return { ok: false, status: "failed", text: "", error: PERSONAL_TIMEOUT_MSG }
   }
   if (!res.ok) {
     if (res.needLogin) {
       return { ok: false, status: "failed", text: "", error: "rh_login_required", needsLogin: true }
     }
-    // 个人配置不可用（被删 / 缺 Key / 无启用模型）→ 回退平台模型，保证生成不中断
+    // R208：个人配置不可用（被删 / 缺 Key / 无启用模型）→ 抛内部哨兵交回封装层，先试个人备用通道再谈兜底
     if (res.code === "fallback_to_platform") {
+      return { ok: false, status: "failed", text: "", error: PERSONAL_CONFIG_UNAVAILABLE_ERR }
+    }
+    return {
+      ok: false,
+      status: "failed",
+      text: "",
+      error: (personalTimeoutError(res.message) ?? res.message) || "生成失败，请重试",
+    }
+  }
+  return { ok: true, status: "success", text: res.text, model: res.model ?? ref.modelId }
+}
+
+// ---------------------------------------------------------------------------
+// R203（docs/13 §3.3）：通道级自动回退接线——决策与冷却登记在 @/lib/modelFailover，
+// 此处只提供「候选来源 + 出站 + 用户提示」三件网关层才知道的事。
+// ---------------------------------------------------------------------------
+
+/** 候选缓存 TTL：只有某次调用已经失败才拉配置，健康路径零额外请求 */
+const FAILOVER_CANDIDATE_TTL_MS = 60_000
+
+/**
+ * 把可用模型清单转成回退候选：只保留文本生成模型（向量 / 图像 / 视频 / 语音模型拿去聊天
+ * 必然胡说，模态口径复用 R88 modelModality 单一真源），并标记各配置自身的默认模型。
+ * 纯函数，便于单测锁口径。
+ */
+export function buildFailoverCandidates(av: AvailableModels): FailoverCandidate[] {
+  const defaultKeys = new Set(
+    av.configs
+      .filter((c) => !!c.default_model)
+      .map((c) => `${c.is_platform ? "platform" : "personal"}:${c.id}:${c.default_model}`),
+  )
+  const out: FailoverCandidate[] = []
+  for (const m of av.models) {
+    if (!isTextGenerationModel(m.modelId)) continue
+    const key = modelRefKey(m)
+    out.push({ key, ref: m, configId: m.configId, isConfigDefault: defaultKeys.has(key) })
+  }
+  return out
+}
+
+let failoverCandidatesCache: { at: number; items: FailoverCandidate[] } | null = null
+
+async function getCachedFailoverCandidates(): Promise<FailoverCandidate[]> {
+  const now = Date.now()
+  const cached = failoverCandidatesCache
+  if (cached && now - cached.at < FAILOVER_CANDIDATE_TTL_MS) return cached.items
+  const items = buildFailoverCandidates(await resolveAvailableModels())
+  failoverCandidatesCache = { at: now, items }
+  return items
+}
+
+/** 回退成功的可见提示：30s 去重窗内同一次批量只说一次（文案不含内部字段名） */
+function notifyModelFailover(from: FailoverRefLite | null, to: FailoverRefLite): void {
+  if (!shouldShowFailoverNotice()) return
+  toast.info(
+    `${from ? modelRefLabel(from) : "当前模型"} 的接口暂时不可用，本次已自动改用备用通道「${modelRefLabel(to)}」完成生成。如需长期更换，请在顶部模型选择器里切换。`,
+  )
+}
+
+/**
+ * 统一出站的「先按所选通道，账号级失败则换一路再试一次」包装：
+ * 回退成功返回备用通道结果（带 actualModelRefKey），否则原样交回首调错误。
+ */
+async function chatViaGatewayWithFailover(opts: ChatViaGatewayOptions): Promise<LlmCallResult> {
+  const first = await chatViaGatewayUncached(opts)
+  if (first.ok) return first
+  const ref = opts.modelRef
+  const failed: FailoverCandidate | null = ref
+    ? { key: modelRefKey(ref), ref, configId: ref.configId, isConfigDefault: false }
+    : null
+  const out = await tryFailoverCall({
+    first,
+    failed,
+    deps: {
+      chat: (r) => chatViaGatewayUncached({ ...opts, modelRef: r }),
+      candidates: getCachedFailoverCandidates,
+      notify: notifyModelFailover,
+      localDeploy: isLocalDeployHost,
+    },
+  })
+  if (out) return out
+  // R208：个人配置不可用且无可用个人备用通道时才兜底——云端落平台、本地自用域给可执行引导，
+  // 修复此前「配置坏了」在回退内核之前就直接 return 平台、本地域被导成 412 死路且绕过候选挑选的问题
+  if (first.error === PERSONAL_CONFIG_UNAVAILABLE_ERR) {
+    if (!isLocalDeployHost()) {
       return callLlmWithFallback(PLATFORM_MODEL_ID, {
         messages: opts.messages,
         page: opts.page,
@@ -290,9 +462,9 @@ async function chatViaGatewayUncached(opts: ChatViaGatewayOptions): Promise<LlmC
         signal: opts.signal,
       })
     }
-    return { ok: false, status: "failed", text: "", error: res.message || "生成失败，请重试" }
+    return { ok: false, status: "failed", text: "", error: PERSONAL_CONFIG_UNAVAILABLE_HINT }
   }
-  return { ok: true, status: "success", text: res.text, model: res.model ?? ref.modelId }
+  return first
 }
 
 // ---------------------------------------------------------------------------

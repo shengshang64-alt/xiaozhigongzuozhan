@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { createKbDoc, extractKbIndex, listKbDocs } from "@/lib/kbCore"
 import { KB_CATEGORIES } from "@/lib/kbPolicy"
 import { decodeRhToken } from "@/lib/rhLogin"
+import { deriveSection, deriveTrack } from "@/lib/kbTaxonomy"
 import type { SolutionRecord } from "@/pages/SolutionStudio/solutionTypes"
 
 // ---------------------------------------------------------------------------
@@ -97,6 +98,10 @@ export function SolutionToKbWizard({ solution, userId, open, onOpenChange, onImp
           continue
         }
         const { summary, keywords } = extractKbIndex(title, content)
+        // 2026-10-07 用户口径：入库即按「章节用途/赛道」自动打标（设计方案/实施方案/售后方案…），
+        // 生成检索（kbAssemble sections 软加权）可直接按用途取用
+        const hay = `${title}
+${content.slice(0, 2000)}`
         await createKbDoc({
           rh_user_id: userId,
           title,
@@ -109,6 +114,9 @@ export function SolutionToKbWizard({ solution, userId, open, onOpenChange, onImp
           source_file_name: "",
           uploader_name: uploaderName,
           doc_category: docCategory,
+          kb_section: deriveSection(hay),
+          kb_track: deriveTrack(hay),
+          kb_bucket: "方案素材",
         })
         existingKeys.add(`${folder}||${title}`)
         created += 1

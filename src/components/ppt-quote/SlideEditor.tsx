@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react"
 import {
   Camera,
   Image as ImageIcon,
+  Images,
   Key,
   Link2,
   Loader2,
@@ -63,6 +64,8 @@ type SlideEditorProps = {
   setAutoFigureProvider?: (v: ImageSearchProvider) => void
   /** 本页当前正在跑的图相关任务（逐页 busy） */
   figureBusyKind?: "search" | "ai" | ""
+  /** R-008：打开「从素材库选图」弹窗（弹窗由上层承载） */
+  onPickFromLibrary?: () => void
 }
 
 const REFINE_ICONS: Record<RefineKind, typeof PenLine> = {
@@ -114,6 +117,7 @@ export function SlideEditor({
   autoFigureProvider = "pexels",
   setAutoFigureProvider,
   figureBusyKind = "",
+  onPickFromLibrary,
 }: SlideEditorProps) {
   // A2-8：要点列表编辑期保留原文（空行 / 首尾空格不即时吞掉），失焦或触发 AI 改写时统一 trim 提交
   const [bulletsDraft, setBulletsDraft] = useState<{ slideId: string; text: string } | null>(null)
@@ -426,6 +430,7 @@ export function SlideEditor({
                   disabled={imageDisabled}
                   className="ml-auto h-7 rounded-md border border-border bg-background px-1.5 text-[11px] text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60"
                 >
+                  <option value="pixabay">Pixabay 图库（中文直搜）</option>
                   <option value="pexels">Pexels 图库</option>
                   <option value="unsplash">Unsplash 图库</option>
                 </select>
@@ -501,6 +506,16 @@ export function SlideEditor({
                 >
                   {figureBusyKind === "ai" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
                   AI 生图
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onPickFromLibrary?.()}
+                  disabled={imageDisabled}
+                  title="从素材库选图插入本页（原图内嵌导出，商用无忧）"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-card-foreground transition-colors hover:border-primary hover:text-primary disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <Images className="h-3.5 w-3.5" />
+                  素材库选图
                 </button>
               </div>
               <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">

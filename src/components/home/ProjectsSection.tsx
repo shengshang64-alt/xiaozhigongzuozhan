@@ -74,8 +74,8 @@ export function ProjectsSection({
             <FolderOpen className="h-4 w-4" />
           </div>
           <div className="min-w-0">
-            <h2 className="text-lg font-semibold text-foreground">进行中的项目</h2>
-            <p className="truncate text-xs text-muted-foreground">方案 / 标书 / PPT / 报价，未完成优先展示</p>
+            <h2 className="text-lg font-semibold text-foreground">我的项目跟进清单</h2>
+            <p className="truncate text-xs text-muted-foreground">手工登记的跟进事项，进度随时可改；各工作台在制项目见上方聚合卡</p>
           </div>
         </div>
         <button
@@ -97,7 +97,7 @@ export function ProjectsSection({
         <div className="mt-4 flex flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-card py-14 text-center shadow-md">
           <FolderOpen className="h-8 w-8 text-muted-foreground" />
           <p className="text-sm font-medium text-foreground">
-            还没有进行中的项目
+            还没有登记跟进事项
           </p>
           <p className="text-xs text-muted-foreground">
             项目按方案 / 标书 / PPT / 报价分类跟进，进度随时可改

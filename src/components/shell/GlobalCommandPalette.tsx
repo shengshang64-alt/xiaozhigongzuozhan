@@ -10,11 +10,13 @@ import {
   LayoutGrid,
   Loader2,
   Monitor,
+  Images,
   Newspaper,
   Search,
   Settings,
   Target,
   Users,
+  ArrowLeftRight,
   type LucideIcon,
 } from "lucide-react"
 import {
@@ -33,8 +35,10 @@ import { useGlobalSearch, type SearchResultGroup } from "./useGlobalSearch"
 const NAV_ICONS: Record<string, LucideIcon> = {
   "/": LayoutGrid,
   "/solution-studio": FileText,
+  "/product-mapping": ArrowLeftRight,
   "/bid-workspace": FileCheck2,
   "/ppt-quote": Monitor,
+  "/materials": Images,
   "/intel-center": Newspaper,
   "/competitors": Building2,
   "/customer-management": Users,

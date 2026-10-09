@@ -7,7 +7,9 @@ import {
   buildUserMessage,
   formatExternalBlock,
   parseAnalysisResponse,
+  suggestionsNeedingConfirm,
   type ExternalEvidenceResult,
+  type FieldSuggestion,
 } from "./useCompetitorAnalysis"
 
 // R145：竞品 AI 深度分析「可写字段白名单」单一真源 + 解析/写回双拦截回归。
@@ -100,5 +102,30 @@ describe("buildUserMessage · 事实片段与外部块拼装", () => {
   it("非空外部块被拼接进消息", () => {
     const msg = buildUserMessage(row, bundle, "【招投标中标】bid:1")
     expect(msg).toContain("【招投标中标】bid:1")
+  })
+})
+
+// R158：采纳二次确认判据（原 window.confirm 的过滤逻辑抽纯函数后回归）——
+// 无事实依据且非 low 才需确认；low 在解析阶段已降级不再二次打扰；字段缺失按空处理。
+describe("suggestionsNeedingConfirm · 采纳二次确认口径", () => {
+  const sg = (confidence: FieldSuggestion["confidence"], refs?: string[]): FieldSuggestion => ({
+    field: "products",
+    suggested: "s",
+    reason: "r",
+    confidence,
+    evidence_refs: refs,
+  })
+  it("无事实依据且非 low → 需二次确认", () => {
+    expect(suggestionsNeedingConfirm([sg("high", []), sg("medium", [])])).toHaveLength(2)
+  })
+  it("low 置信度（解析时已降级）不再触发确认", () => {
+    expect(suggestionsNeedingConfirm([sg("low", [])])).toHaveLength(0)
+  })
+  it("带 evidence_refs 不触发；字段缺失按空处理仍触发", () => {
+    expect(suggestionsNeedingConfirm([sg("high", ["cr:1"])])).toHaveLength(0)
+    expect(suggestionsNeedingConfirm([sg("high")])).toHaveLength(1)
+  })
+  it("空输入得空数组", () => {
+    expect(suggestionsNeedingConfirm([])).toHaveLength(0)
   })
 })

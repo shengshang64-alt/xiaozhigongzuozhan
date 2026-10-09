@@ -5,7 +5,9 @@ import { decodeRhToken, vibexAuthHeaders, type RhAccountInfo } from "@/lib/rhLog
 import type { CrmOppBrief, CrmStats } from "@/components/home/CustomerOverviewSection"
 import type { BidReview } from "@/components/home/BidReviewCard"
 import { useActivityFeed } from "@/hooks/useActivityFeed"
+import { useActiveWork } from "@/hooks/useActiveWork"
 import { cleanIntelLine, displayizeIntel } from "@/pages/IntelCenter/intelBodyClean"
+import { qualRiskView, type QualRiskView } from "@/pages/QualCerts/qualsCore"
 
 // ---------------------------------------------------------------------------
 // 数据类型（字段名与 PocketBase collection 完全一致，snake_case，不做转换层）
@@ -291,6 +293,8 @@ export function useHome() {
 
   // ------------------------------ 活动流（B-3 跨实体聚合，零后端） ------------------------------
   const { activityEvents, activityLoading } = useActivityFeed(userId)
+  // ------------------------------ 工作台进行中事项（R196 §3.2 跨工作台聚合，只读零后端） ------------------------------
+  const { activeWork, activeWorkTotal, activeWorkByKind, activeWorkLoading } = useActiveWork(userId)
 
   // ------------------------------ 待办 ------------------------------
   const [todos, setTodos] = useState<TodoItem[]>([])
@@ -696,14 +700,16 @@ export function useHome() {
   const [intelPendingCount, setIntelPendingCount] = useState(0)
   const [intelLoading, setIntelLoading] = useState(false)
 
-  // Q20 配套（2026-09-28）：资质台账预警联动驾驶舱——已过期/30 天内到期的证书数。
+  // Q20 配套（2026-09-28）：资质台账预警联动驾驶舱，口径与台账/导出硬拦截对齐（O-006）——
+  // 读 summary.buckets 走 qualRiskView：urgent = 已过期 + 30 天内（需马上处理），
+  // watch = 90 天内（观察），line 逐档明细与台账分档标签逐字一致。
   // 拉取失败静默为 0（资质台账未建时不打扰首页），有风险才提示。
-  const [qualAlertCount, setQualAlertCount] = useState(0)
+  const [qualRisk, setQualRisk] = useState<QualRiskView>({ urgent: 0, watch: 0, total: 0, line: "" })
   useEffect(() => {
     let alive = true
-    apiFetch<{ alerts?: unknown[] }>("/api/qual_certs/summary")
+    apiFetch<{ buckets?: { expired?: number; critical?: number; warning?: number } }>("/api/qual_certs/summary")
       .then((data) => {
-        if (alive) setQualAlertCount((data.alerts ?? []).length)
+        if (alive) setQualRisk(qualRiskView(data.buckets))
       })
       .catch(() => {
         /* 资质台账未建或未登录：静默 */
@@ -852,14 +858,14 @@ export function useHome() {
 
     active.sort((a, b) => (a.project?.deadline || "9999-12-31").localeCompare(b.project?.deadline || "9999-12-31"))
 
-    // 资质预警（Q20 配套）：已过期/临期证书进「今日必看」overdue 组置顶——过期证书与逾期待办
-    // 同属"已经出问题"的事，提示必须有出路（route 直达资质台账）
-    if (qualAlertCount > 0) {
+    // 资质预警（Q20 配套 / O-006）：已过期 + 30 天内到期证书进「今日必看」overdue 组置顶——
+    // 与导出硬拦截同口径，只把"已经出问题/马上要出事"的置顶；90 天内观察项不上置顶条（提示须有出路，route 直达台账）。
+    if (qualRisk.urgent > 0) {
       overdue.push({
         id: "qual_alerts",
         group: "overdue",
         category: "qual",
-        title: `${qualAlertCount} 项资质已过期或临期`,
+        title: `${qualRisk.urgent} 项资质已过期或 30 天内到期`,
         meta: "资质台账",
         detail: "证书过期直接废标，点击核实",
         route: "/qual-certs",
@@ -867,7 +873,7 @@ export function useHome() {
     }
 
     return { overdue, dueToday, active, total: overdue.length + dueToday.length + active.length }
-  }, [visibleTodos, followDueOpps, projects, nowTick, qualAlertCount])
+  }, [visibleTodos, followDueOpps, projects, nowTick, qualRisk.urgent])
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours()
@@ -929,13 +935,18 @@ export function useHome() {
     // 情报
     intelItems,
     intelPendingCount,
-    qualAlertCount,
+    qualRisk,
     intelLoading,
     expandedIntelId,
     toggleIntel,
     // 活动流
     activityEvents,
     activityLoading,
+    // 工作台进行中事项（R196 聚合卡 / R197 顶部数字与明细）
+    activeWork,
+    activeWorkTotal,
+    activeWorkByKind,
+    activeWorkLoading,
     // 派生
     mustSee,
     activeProjectCount,

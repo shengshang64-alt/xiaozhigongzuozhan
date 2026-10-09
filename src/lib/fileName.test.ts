@@ -64,3 +64,42 @@ describe("explicit behavior", () => {
     expect(buildSafeFileName("报价", "xlsx", "报价单")).toBe("报价.xlsx")
   })
 })
+
+// ---------------------------------------------------------------------------
+// R183 加固：保留设备名 / 控制字符 / 结尾点空格。常规名逐字节等价由上方 oracle 用例守护，
+// 此处仅覆盖新逻辑触发路径，确认加固不误伤普通名。
+// ---------------------------------------------------------------------------
+describe("R183 sanitizeFileBase 加固", () => {
+  it("中和 Windows 保留设备名 CON/PRN/AUX/NUL/COM1-9/LPT1-9（大小写不敏感）", () => {
+    for (const n of ["CON", "con", "PrN", "auX", "NUL", "COM1", "com9", "LPT1", "lpt9"]) {
+      expect(sanitizeFileBase(n)).toBe("_" + n)
+    }
+  })
+
+  it("非保留设备名不误伤（console/com0/aux1/cool/nullish 保持原样）", () => {
+    for (const n of ["console", "com0", "aux1", "cool", "nullish", "printer"]) {
+      expect(sanitizeFileBase(n)).toBe(n)
+    }
+  })
+
+  it("带扩展名的保留基底同样中和；buildSafeFileName 拼扩展名后仍安全", () => {
+    expect(sanitizeFileBase("con.txt")).toBe("_con.txt")
+    expect(buildSafeFileName("COM1", "docx")).toBe("_COM1.docx")
+  })
+
+  it("清洗裸控制字符（制表/换行/NUL）为下划线", () => {
+    expect(sanitizeFileBase("a\tb\nc")).toBe("a_b_c")
+    expect(sanitizeFileBase("报价\u0000单")).toBe("报价_单")
+  })
+
+  it("去除 Windows 会静默剥离的结尾点与空格", () => {
+    expect(sanitizeFileBase("方案  ")).toBe("方案")
+    expect(sanitizeFileBase("方案...")).toBe("方案")
+    expect(sanitizeFileBase("方案 .  ")).toBe("方案")
+  })
+
+  it("普通名逐字节等价不回归（R116 契约守护的补充断言）", () => {
+    expect(sanitizeFileBase("医院-三甲-信息化项目_2026")).toBe("医院-三甲-信息化项目_2026")
+    expect(buildSafeFileName("季度报价  ", "xlsx", "报价单")).toBe("季度报价.xlsx")
+  })
+})

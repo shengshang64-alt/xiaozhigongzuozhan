@@ -4,6 +4,8 @@
 // ---------------------------------------------------------------------------
 import { toast } from "sonner"
 
+import { copyTextToClipboard } from "@/lib/clipboard"
+
 // 防抖：同消息 5s 内只弹一次，避免错误风暴刷 UI
 let lastMsg = ""
 let lastTs = 0
@@ -28,7 +30,9 @@ function showGlobalError(msg: string) {
   lastTs = now
   toast.error(`系统异常：${msg}`, {
     duration: 6000,
-    action: { label: "复制", onClick: () => navigator.clipboard.writeText(msg) },
+    // 走 R111 剪贴板唯一入口：能力探测 + execCommand 回退 + 失败反馈，且不会因
+    // writeText 的 rejection 逃逸再触发 unhandledrejection 造成错误 toast 递归。
+    action: { label: "复制", onClick: () => void copyTextToClipboard(msg, { successMessage: "已复制" }) },
   })
 }
 

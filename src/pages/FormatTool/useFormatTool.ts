@@ -11,7 +11,7 @@ import {
   type FormatFontSize,
 } from "@/pages/BidWorkspace/bidTypes"
 import { extractFormatSpecFromFile, specToFormatSettings, type FormatSpec } from "./formatSpec"
-import { refreshDocxFile } from "./refreshDocx"
+import { refreshDocxFile, type FormatApplyReport } from "./refreshDocx"
 import type { FormatScope } from "./formatDiff"
 
 // ---------------------------------------------------------------------------
@@ -70,6 +70,13 @@ export function useFormatTool() {
   // R58：第 1 步上传的「待刷新原文档」引用（仅内存，不落库）——导出刷新后文档用
   const [sourceFile, setSourceFile] = useState<File | null>(null)
   const [exporting, setExporting] = useState(false)
+  // R-009：一键应用 → 校验报告 → 导出 三段式（应用与导出解耦）
+  const [applyResult, setApplyResult] = useState<{
+    blob: Blob
+    report: FormatApplyReport
+    notes: string[]
+  } | null>(null)
+  const [applying, setApplying] = useState(false)
 
   // 当前编辑中的模板
   const [name, setName] = useState("")
@@ -95,7 +102,24 @@ export function useFormatTool() {
     void loadTemplates()
   }, [loadTemplates])
 
-  // ---- 上传识别 ----
+  // ---- 上传要刷新的文档（附三用户需求解耦：只设源文件 + 识别原格式供改前对比，
+  // 不再覆盖当前模板配置——v1 上传即覆盖模板，导致「按我的模板刷新」不成立）----
+  const handleUploadSource = useCallback(async (file: File) => {
+    setUploading(true)
+    try {
+      setSourceFile(file)
+      try {
+        setSpec(await extractFormatSpecFromFile(file))
+      } catch {
+        setSpec(null) // 识别失败不阻塞上传：diff 预览空、导出仍按当前模板执行
+      }
+      toast.success(`已上传「${file.name}」，请在第 2 步选择套用的模板后导出`)
+    } finally {
+      setUploading(false)
+    }
+  }, [])
+
+  // ---- 上传格式方案识别（建模板专用：识别结果覆盖当前编辑配置）----
   const handleRecognize = useCallback(async (file: File) => {
     setUploading(true)
     try {
@@ -116,15 +140,67 @@ export function useFormatTool() {
 
   }, [name])
 
+  // ---- R-009：一键应用格式（应用 + 产出后复检，不直接下载）----
+  const applyFormat = useCallback(
+    async (scopes: FormatScope[], opts?: { removeUnusedStyles?: boolean }) => {
+      if (!sourceFile) {
+        toast.error("请先在第 1 步上传要刷新的 .docx 文档")
+        return
+      }
+      setApplying(true)
+      try {
+        const r = await refreshDocxFile(sourceFile, settings, scopes, opts)
+        setApplyResult({ blob: r.blob, report: r.report, notes: r.notes })
+        const fails = [r.report.slots.bodyFont, r.report.slots.heading, r.report.slots.lineSpacing, r.report.slots.pageMargin].filter(
+          (x) => x.status === "fail",
+        )
+        if (fails.length) {
+          toast.warning(`格式应用完成，${fails.length} 项未生效——导出前请查看报告`, {
+            description: fails.map((f) => f.reason).slice(0, 2).join("；"),
+          })
+        } else if (r.report.textBefore !== r.report.textAfter) {
+          toast.warning(`格式已生效 ${r.report.okCount}/${r.report.totalCount}，但正文文字数发生变化（${r.report.textBefore} → ${r.report.textAfter}），请在报告中核对`)
+        } else {
+          toast.success(`格式应用完成：已生效 ${r.report.okCount}/${r.report.totalCount}，正文字符 0 改动`)
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "应用失败，请确认文档是未加密的 .docx")
+      } finally {
+        setApplying(false)
+      }
+    },
+    [sourceFile, settings],
+  )
+
+  // ---- 导出已应用的结果（须先一键应用；下载 applyResult.blob，不再重复改写）----
+  const exportApplied = useCallback(() => {
+    if (!applyResult) {
+      toast.error("请先点「一键应用格式」生成校验报告，再导出")
+      return
+    }
+    if (!sourceFile) {
+      toast.error("请先在第 1 步上传要刷新的 .docx 文档")
+      return
+    }
+    const downloadName = sourceFile.name.replace(/\.docx$/i, "") + "-格式刷新.docx"
+    triggerBlobDownload(applyResult.blob, downloadName)
+    toast.success(`已导出「${downloadName}」，正文文字 0 改动`)
+    if (applyResult.notes.length) {
+      toast.info(applyResult.notes[0], {
+        description: applyResult.notes.length > 1 ? `另有 ${applyResult.notes.length - 1} 条提示` : undefined,
+      })
+    }
+  }, [applyResult, sourceFile])
+
   // ---- R58：按当前模板配置改写原文档并下载（文字 0 改动）----
-  const exportRefreshed = useCallback(async (scopes: FormatScope[]) => {
+  const exportRefreshed = useCallback(async (scopes: FormatScope[], opts?: { removeUnusedStyles?: boolean }) => {
     if (!sourceFile) {
       toast.error("请先在第 1 步上传要刷新的 .docx 文档")
       return
     }
     setExporting(true)
     try {
-      const { blob, notes } = await refreshDocxFile(sourceFile, settings, scopes)
+      const { blob, notes } = await refreshDocxFile(sourceFile, settings, scopes, opts)
       const downloadName = sourceFile.name.replace(/\.docx$/i, "") + "-格式刷新.docx"
       triggerBlobDownload(blob, downloadName)
       toast.success(`已导出「${downloadName}」，正文文字 0 改动`)
@@ -250,9 +326,14 @@ export function useFormatTool() {
     editingId,
     // 动作
     handleRecognize,
-    exportRefreshed,
-    exporting,
+    handleUploadSource,
     sourceFile,
+    exporting,
+    exportRefreshed,
+    exportApplied,
+    applying,
+    applyResult,
+    applyFormat,
     startBlank,
     editTemplate,
     patchSettings,

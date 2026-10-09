@@ -1,4 +1,5 @@
 import { useContext } from "react"
+import { ActiveWorkSection } from "@/components/home/ActiveWorkSection"
 import { ActivityFeedSection } from "@/components/home/ActivityFeedSection"
 import { BidReviewCard } from "@/components/home/BidReviewCard"
 import { OppsCard } from "@/components/home/CustomerOverviewSection"
@@ -30,10 +31,10 @@ export function HomePage(p: ReturnType<typeof useHome>) {
         greeting={p.greeting}
         displayName={displayName}
         summaryLines={[
-          p.activeProjectCount > 0 ? `有 ${p.activeProjectCount} 个项目进行中` : "",
+          p.activeWorkTotal > 0 ? `各工作台共 ${p.activeWorkTotal} 项工作在制` : "",
           p.overdueTodoCount > 0 ? `${p.overdueTodoCount} 条待办已逾期` : "",
           p.intelPendingCount > 0 ? `${p.intelPendingCount} 条情报待确认` : "",
-          p.qualAlertCount > 0 ? `${p.qualAlertCount} 项资质已过期或临期（投标核验）` : "",
+          p.qualRisk.total > 0 ? `资质${p.qualRisk.line}（投标核验）` : "",
         ].filter(Boolean)}
       />
 
@@ -46,8 +47,8 @@ export function HomePage(p: ReturnType<typeof useHome>) {
       <BidNodesCard />
 
       <StatsRow
-        activeProjectCount={p.activeProjectCount}
-        activeProjectsCapped={p.projectsCapped}
+        activeWorkCount={p.activeWorkTotal}
+        activeWorkByKind={p.activeWorkByKind}
         pendingTodoCount={p.pendingTodoCount}
         doneTodoCount={p.doneTodoCount}
         overdueTodoCount={p.overdueTodoCount}
@@ -90,6 +91,8 @@ export function HomePage(p: ReturnType<typeof useHome>) {
       <ActivityFeedSection events={p.activityEvents} loading={p.activityLoading} />
 
       <IntelSection intelItems={p.intelItems} intelLoading={p.intelLoading} />
+
+      <ActiveWorkSection items={p.activeWork} loading={p.activeWorkLoading} />
 
       <ProjectsSection
         projects={p.projects}

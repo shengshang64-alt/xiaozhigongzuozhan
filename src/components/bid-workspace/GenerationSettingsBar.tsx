@@ -4,7 +4,10 @@ import { Input } from "@/components/ui/input"
 import {
   CLAUSE_GRANULARITY_LABEL,
   COMPLIANCE_MODE_LABEL,
+  DEFAULT_CHARS_PER_PAGE,
+  FIGURES_UNLIMITED,
   type ClauseGranularity,
+  type BidScope,
   type ComplianceMode,
 } from "@/pages/BidWorkspace/bidTypes"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
@@ -24,6 +27,8 @@ type GenerationSettingsBarProps = Pick<
   | "sectionWords"
   | "setSectionWords"
   | "genOptions"
+  | "scope"
+  | "setScope"
   | "setClauseResponse"
   | "setMaterialBoost"
   | "setWordRefine"
@@ -51,6 +56,18 @@ const COMPLIANCE_MODE_HINT: Record<ComplianceMode, string> = {
   full: "骨架+场景之上可写行业背景/方法论/制度等充实材料；严禁包装成本项目已发生的事实",
 }
 
+// R206 切片 1（R-002）：内容范围三模式——biz 仅商务 / tech 仅技术 / both 商务+技术（缺省由 include_biz 派生，存量零变化）
+const SCOPE_OPTIONS: { value: BidScope; label: string }[] = [
+  { value: "both", label: "商务+技术" },
+  { value: "tech", label: "仅技术" },
+  { value: "biz", label: "仅商务" },
+]
+const SCOPE_HINT: Record<BidScope, string> = {
+  both: "商务骨架章（线下填写，不生成正文）+ 技术部分详细大纲（默认）",
+  tech: "仅技术章，投标函/资质/偏离表等商务内容由投标人线下自行处理",
+  biz: "仅商务章，正文按招标商务要求逐条生成，技术内容由技术标单独编制",
+}
+
 /**
  * 第五轮改造 1：编制步骤顶部常驻「生成设置」条——目标页数 / 目录级数 / 配图开关 /
  * 偏离表维度 / 每小节字数，全部持久化到项目记录（防抖自动保存 + 「已保存」徽标）；
@@ -59,7 +76,7 @@ const COMPLIANCE_MODE_HINT: Record<ComplianceMode, string> = {
 export function GenerationSettingsBar(p: GenerationSettingsBarProps) {
   const [pagesDraft, setPagesDraft] = useState(p.targetPages === null ? "" : String(p.targetPages))
   const [wordsDraft, setWordsDraft] = useState(String(p.sectionWords))
-  // 第十六轮 B2：全文配图上限草稿（空=默认 6）
+  // 第十六轮 B2：全文配图上限草稿（空=不限）
   const [figsDraft, setFigsDraft] = useState("")
   // A2-8：onBlur clamp + 行内提示，不再静默归一
   const [pagesHint, setPagesHint] = useState("")
@@ -68,8 +85,8 @@ export function GenerationSettingsBar(p: GenerationSettingsBarProps) {
 
   useEffect(() => setPagesDraft(p.targetPages === null ? "" : String(p.targetPages)), [p.targetPages])
   useEffect(() => setWordsDraft(String(p.sectionWords)), [p.sectionWords])
-  // 留空 / 恰好等于默认值 6 时输入框显示空（占位符已标「留空=6」），避免误导成手动设置
-  useEffect(() => setFigsDraft(p.maxFigures === 6 ? "" : String(p.maxFigures)), [p.maxFigures])
+  // 留空（=不限）时输入框显示空（占位符已标「留空=不限」），避免误导成手动设置
+  useEffect(() => setFigsDraft(p.maxFigures >= FIGURES_UNLIMITED ? "" : String(p.maxFigures)), [p.maxFigures])
 
   const handlePagesBlur = () => {
     const raw = pagesDraft.trim()
@@ -115,21 +132,27 @@ export function GenerationSettingsBar(p: GenerationSettingsBarProps) {
     }
     const n = Number(raw)
     if (!Number.isFinite(n) || n < 0) {
-      setFigsHint("请输入 0–20 的数字，已恢复原值")
-      setFigsDraft(p.maxFigures === 6 ? "" : String(p.maxFigures))
+      setFigsHint("请输入 0–99 的数字，已恢复原值")
+      setFigsDraft(p.maxFigures >= FIGURES_UNLIMITED ? "" : String(p.maxFigures))
       return
     }
-    const clamped = Math.min(20, Math.round(n))
-    setFigsHint(clamped !== n ? `配图上限应在 0–20 之间，已自动调整为 ${clamped}` : "")
-    setFigsDraft(clamped === 6 ? "" : String(clamped))
+    const clamped = Math.min(99, Math.round(n))
+    setFigsHint(clamped !== n ? `配图上限应在 0–99 之间，已自动调整为 ${clamped}` : "")
+    setFigsDraft(clamped >= FIGURES_UNLIMITED ? "" : String(clamped))
     p.setMaxFigures(String(clamped))
   }
 
   const summary =
     p.targetPages === null
       ? `未设页数：按招标文件体量估算约 ${p.estimatedPages} 页（仅作参考，不会覆盖你的设置）；大纲规模按约 ${p.leafTarget} 个叶子节点、每叶子约 ${p.sectionWords} 字参考`
-      : `当前生效：全文 ${p.targetPages} 页 ≈ ${p.targetPages * 500} 字，大纲目标叶子数约 ${p.leafTarget} 个（每叶子约 ${p.sectionWords} 字），章节预算按权重折算${
-          p.figuresEnabled ? `；已开启章节配图（全文上限 ${p.maxFigures} 张，智能编排按上限全局择优）` : ""
+      : `当前生效：全文 ${p.targetPages} 页 ≈ ${p.targetPages * DEFAULT_CHARS_PER_PAGE} 字（实测校准约 ${DEFAULT_CHARS_PER_PAGE} 字/页，随格式设置缩放），大纲目标叶子数约 ${p.leafTarget} 个（每叶子约 ${p.sectionWords} 字），章节预算按权重折算${
+          p.figuresEnabled
+            ? p.maxFigures === 0
+              ? "；已开启章节配图，但全文配图上限为 0（0=不配图）——请把上限调高（留空=不限）并重新编排，否则全文不会生成任何配图"
+              : p.maxFigures >= FIGURES_UNLIMITED
+                ? "；已开启章节配图（上限=不限：编排判断宜图即配，均匀散布全文；AI 位图生成前另有逐张费用确认）"
+                : `；已开启章节配图（全文上限 ${p.maxFigures} 张，智能编排按上限全局择优）`
+            : ""
         }`
 
   return (
@@ -266,6 +289,28 @@ export function GenerationSettingsBar(p: GenerationSettingsBarProps) {
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <div className="grid gap-1.5 text-xs">
+            <span className="font-medium text-muted-foreground">生成内容范围（越界最小最安全的为「仅技术」）</span>
+            <div className="grid grid-cols-3 gap-1">
+              {SCOPE_OPTIONS.map((opt) => {
+                const active = (p.scope ?? "both") === opt.value
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => p.setScope(opt.value)}
+                    className={`flex h-9 items-center justify-center rounded-md px-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                      active ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted text-muted-foreground hover:text-card-foreground"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                )
+              })}
+            </div>
+            <span className="text-muted-foreground">{SCOPE_HINT[p.scope ?? "both"]}</span>
+          </div>
+
+          <div className="grid gap-1.5 text-xs">
             <span className="font-medium text-muted-foreground">章节配图</span>
             <label className="flex h-9 cursor-pointer items-center justify-between gap-2 rounded-md border border-border bg-background px-3">
               <span className="text-xs font-medium text-foreground">架构 / 流程 / 界面示意</span>
@@ -279,12 +324,12 @@ export function GenerationSettingsBar(p: GenerationSettingsBarProps) {
           </div>
 
           <label className="grid gap-1.5 text-xs">
-            <span className="font-medium text-muted-foreground">全文配图上限（0-20，留空=6）</span>
+            <span className="font-medium text-muted-foreground">全文配图上限（0-99，0=不配图，留空=不限）</span>
             <Input
               type="number"
               min={0}
-              max={20}
-              placeholder="6"
+              max={99}
+              placeholder="不限"
               value={figsDraft}
               aria-invalid={Boolean(figsHint)}
               onChange={(e) => {
@@ -300,7 +345,7 @@ export function GenerationSettingsBar(p: GenerationSettingsBarProps) {
             {figsHint ? (
               <span className="text-xs text-destructive">{figsHint}</span>
             ) : (
-              <span className="text-xs text-muted-foreground">智能编排按上限全局择优，0=不配图</span>
+              <span className="text-xs text-muted-foreground">留空=不限（宜图即配，均匀散布全文），0=不配图，设数字按上限择优</span>
             )}
           </label>
         </div>

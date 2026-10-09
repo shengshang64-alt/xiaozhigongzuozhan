@@ -86,13 +86,13 @@ export function AiHotPage(p: ReturnType<typeof useAiHot>) {
       <main className="pb-10">
         <PageHeader
           title="AI 动态"
-          desc="AI 行业 168 个精选信源的每日动态（AIHOT），作为情报中心医疗信息化情报流之外的外部视角补充；有价值的一键转入情报流，走团队确认沉淀"
+          desc="AIHOT 精选流按「AI × 医疗软件信息化」过滤：医疗大模型、AI 辅诊、智慧医院、医院智能体等行业动态；通用 AI 资讯已过滤，有价值的一键转入情报流，走团队确认沉淀"
         />
 
         <section className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-md">
           <Flame className="h-4 w-4 shrink-0 text-primary" />
           <p className="text-xs leading-relaxed text-muted-foreground md:text-sm">
-            仅拉取 AIHOT 公开行业资讯，零 AI 计费、不发送任何本地数据；转入的情报默认仅自己可见，打开右侧开关可公开到团队。
+            仅拉取 AIHOT 公开行业资讯并按「AI × 医疗软件信息化」相关过滤，零 AI 计费、不发送任何本地数据；转入的情报默认仅自己可见，打开右侧开关可公开到团队。
           </p>
           <label className="ml-auto flex shrink-0 cursor-pointer select-none items-center gap-2 text-xs font-medium text-muted-foreground">
             <input

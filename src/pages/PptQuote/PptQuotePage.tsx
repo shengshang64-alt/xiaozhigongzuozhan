@@ -117,6 +117,10 @@ export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
               persistFailed={p.deckPersistFailed}
               onSaveNow={() => void p.saveDeckNow()}
               onExportPptx={p.exportPptx}
+              deckTemplateName={p.deckTemplateName}
+              onUploadDeckTemplate={p.uploadDeckTemplate}
+              onClearDeckTemplate={p.clearDeckTemplateChoice}
+              deckTemplateProbe={p.deckTemplateProbe}
               onExportSpeech={p.exportSpeech}
               refinePickerSlot={<SkillPickerFor scope="ppt-deck" source={p.deckSkills} align="right" />}
               deckTransition={p.deckTransition}
@@ -131,6 +135,8 @@ export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
               applyPoolImagesToHinted={p.applyPoolImagesToHinted}
               searchAndAttachImage={p.searchAndAttachImage}
               aiGenerateImageForSlide={p.aiGenerateImageForSlide}
+              attachImageFromLibrary={p.attachImageFromLibrary}
+              reloadLocalMaterials={p.reloadLocalMaterials}
               autoFigureProvider={p.autoFigureProvider}
               setAutoFigureProvider={p.setAutoFigureProvider}
               slideFigureBusy={p.slideFigureBusy}

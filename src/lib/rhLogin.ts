@@ -830,8 +830,3 @@ export function openRhWindow(url: string, onClose?: () => void): void {
   }, 800)
 }
 
-// 历史别名, 等价于 openRhWindow(RH_MENU_LINKS.rechargeCash.url, onClose)。
-// 新代码直接用 openRhWindow + RH_MENU_LINKS, 保留这个只是兼容旧文案/旧调用点。
-export function openRhRechargeWindow(onClose: () => void): void {
-  openRhWindow(RH_MENU_LINKS.rechargeCash.url, onClose)
-}

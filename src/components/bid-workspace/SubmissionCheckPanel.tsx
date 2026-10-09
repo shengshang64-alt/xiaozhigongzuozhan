@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from "@/components/ui/textarea"
 import { SubmissionChecklistPanel } from "@/components/bid-workspace/SubmissionChecklistPanel"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
+import { PARSE_STEP } from "@/components/bid-workspace/pipelineStep"
 import {
   aggregateAuditByChapter,
   COVERAGE_LEVEL_LABEL,
@@ -31,6 +32,7 @@ import { CONSISTENCY_RULE_LABEL, CONSISTENCY_SEVERITY_LABEL } from "@/pages/BidW
 type SubmissionCheckPanelProps = Pick<
   UseBidWorkspace,
   | "activeProject"
+  | "requestStep"
   | "submissionLoading"
   | "submissionFailed"
   | "startSubmissionCheck"
@@ -690,6 +692,7 @@ function FactConflictCard({
 
 export function SubmissionCheckPanel({
   activeProject,
+  requestStep,
   submissionLoading,
   submissionFailed,
   startSubmissionCheck,
@@ -965,7 +968,7 @@ export function SubmissionCheckPanel({
                       </span>
                     </h2>
                     <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                      按编制环节「格式与暗标设置」中勾选的检查项对各章正文本地扫描（零费用）：超链接 / 加粗下划线标记 / 水印词 / 彩色标记 / 空白页 / 连续空行 / 半角标点密度 / 暗标页数交叉核对 / 数字口径一致性（有全局事实表时自动加测）
+                      按编制环节「格式与暗标设置」中勾选的检查项对各章正文本地扫描（零费用）：超链接 / 加粗下划线标记 / 水印词 / 彩色标记 / 空白页 / 连续空行 / 半角标点密度 / 暗标页数交叉核对 / 数字口径一致性（有全局事实表时自动加测）/ 报价超最高限价 / 承诺不够与参数加码 / 占位元话语残留 / 金额大小写一致性
                       {formatReport.checked_at ? ` · 检查时间 ${formatDateTimeDisplay(formatReport.checked_at)}` : ""}
                     </p>
                   </div>
@@ -1114,6 +1117,7 @@ export function SubmissionCheckPanel({
           projectId={activeProject?.id ?? ""}
           report={activeProject?.parse_report ?? null}
           locked={isArchivedLocked}
+          onGoParse={!isArchivedLocked ? () => requestStep(PARSE_STEP) : undefined}
         />
       </div>
 

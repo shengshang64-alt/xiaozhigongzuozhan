@@ -1,11 +1,17 @@
-import { useState, type ReactNode } from "react"
-import { ArrowLeft, Download, Eye, FileText, Pencil, Play } from "lucide-react"
+import { useMemo, useState, type ReactNode } from "react"
+import { useNavigate } from "react-router-dom"
+import { ArrowLeft, Download, Eye, FileText, Images, Pencil, Play, Upload } from "lucide-react"
+import { MaterialPickerDialog } from "./MaterialPickerDialog"
 import { deckTypeLabel, TRANSITION_LABEL, type DeckRecord, type DeckTransition, type RefineKind, type Slide } from "@/pages/PptQuote/pptQuoteTypes"
 import type { ImageSearchProvider } from "@/pages/PptQuote/imageSearch"
 import { SlideListNav } from "./SlideListNav"
 import { SlideEditor } from "./SlideEditor"
 import { SlidePreviewGrid } from "./SlidePreviewGrid"
 import { DeckPresent } from "./DeckPresent"
+import { DeckLintPanel } from "./DeckLintPanel"
+import { groupIssuesByPage, lintDeck } from "@/pages/PptQuote/deckLint"
+import { TemplateFidelityPanel } from "./TemplateFidelityPanel"
+import type { TemplateFacts } from "@/pages/PptQuote/deckFidelityProbe"
 
 type ImagePool = { source: string; loading: boolean; urls: string[]; error: string }
 
@@ -28,6 +34,12 @@ type DeckEditorWorkspaceProps = {
   persistFailed: boolean
   onSaveNow: () => void
   onExportPptx: () => void
+  /** R169：公司模板主题——当前模板名（null=内置版式）、上传 .pptx/.potx、清除 */
+  deckTemplateName?: string | null
+  onUploadDeckTemplate: (file: File) => void
+  onClearDeckTemplate: () => void
+  /** R190（r169 切片三）：模板保真体检事实，非空即在编辑期展示体检卡片 */
+  deckTemplateProbe?: TemplateFacts | null
   onExportSpeech: () => void
   /** 逐页编辑「改写 / 扩写 / 精简」旁的带入技能选择器（页面注入） */
   refinePickerSlot?: ReactNode
@@ -46,6 +58,9 @@ type DeckEditorWorkspaceProps = {
   /** 逐页联网搜图 / AI 生图 */
   searchAndAttachImage: (index: number, query?: string, providerOverride?: ImageSearchProvider) => Promise<boolean>
   aiGenerateImageForSlide: (index: number, promptOverride?: string) => void
+  /** R-008 素材库：选图弹窗插入 + 缓存重拉 */
+  attachImageFromLibrary: (index: number, materialId: string) => Promise<boolean>
+  reloadLocalMaterials?: () => Promise<void>
   autoFigureProvider: ImageSearchProvider
   setAutoFigureProvider: (v: ImageSearchProvider) => void
   slideFigureBusy: { index: number; kind: "search" | "ai" | "" }
@@ -70,6 +85,10 @@ export function DeckEditorWorkspace({
   onSaveNow,
   onExportPptx,
   onExportSpeech,
+  deckTemplateName,
+  onUploadDeckTemplate,
+  onClearDeckTemplate,
+  deckTemplateProbe,
   refinePickerSlot,
   deckTransition,
   setDeckTransition,
@@ -83,10 +102,20 @@ export function DeckEditorWorkspace({
   applyPoolImagesToHinted,
   searchAndAttachImage,
   aiGenerateImageForSlide,
+  attachImageFromLibrary,
+  reloadLocalMaterials,
   autoFigureProvider,
   setAutoFigureProvider,
   slideFigureBusy,
 }: DeckEditorWorkspaceProps) {
+  // R166：导出前自检接入编辑期（同一套 deckLint 规则，memo 随 slides 重算，非阻断）
+  const lintIssues = useMemo(() => lintDeck(deck.slides), [deck.slides])
+  // warn 级命中页集合（页面列表圆点用；info 不打点，避免正常编辑满屏红点）
+  const lintWarnPages = useMemo(() => {
+    const set = new Set<number>()
+    for (const [page, level] of groupIssuesByPage(lintIssues)) if (level === "warn" && page > 0) set.add(page - 1)
+    return set
+  }, [lintIssues])
   // 用户反馈轮：可编辑性提示条（可关闭，sessionStorage 记忆）
   const [editHintDismissed, setEditHintDismissed] = useState(() => {
     try {
@@ -97,6 +126,9 @@ export function DeckEditorWorkspace({
   })
   // 应用内放映预览（按 deckTransition 播放页面切换动画）
   const [presenting, setPresenting] = useState(false)
+  // R-008：素材库选图弹窗（插入当前页）+ 工具栏跳转素材库页
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const navigate = useNavigate()
   return (
     <section className="py-6 pb-16">
       <header className="rounded-2xl border border-border bg-gradient-to-br from-background via-secondary to-card px-5 py-4 shadow-md animate-in fade-in duration-500">
@@ -154,6 +186,42 @@ export function DeckEditorWorkspace({
             >
               <FileText className="h-4 w-4" />
               导出讲稿 Word
+            </button>
+            <label
+              className="flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-card-foreground shadow-sm transition-all hover:border-primary hover:text-primary focus-within:outline-none focus-within:ring-2 focus-within:ring-primary"
+              title="上传公司 .pptx/.potx 模板：提取主题色与字体，导出 PPT 时自动套用；整册纯文字页时按模板母版/版式保真导出（不上传则用内置商务版式）"
+            >
+              <Upload className="h-4 w-4" />
+              {deckTemplateName ? "更换模板" : "上传公司模板"}
+              <input
+                type="file"
+                accept=".pptx,.potx,application/vnd.openxmlformats-officedocument.presentationml.template,application/vnd.ms-powerpoint.template.macrofree.12"
+                className="sr-only"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) onUploadDeckTemplate(f)
+                  e.target.value = ""
+                }}
+              />
+            </label>
+            {deckTemplateName ? (
+              <button
+                type="button"
+                onClick={onClearDeckTemplate}
+                title={`当前已套用模板「${deckTemplateName}」主题；点击改用内置商务版式`}
+                className="max-w-[180px] truncate rounded-md border border-primary/40 bg-primary/5 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                模板：{deckTemplateName}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => navigate("/materials")}
+              title="管理架构图 / 系统截图 / 现场照 / 图库素材；PPT 配图优先命中素材库"
+              className="flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-card-foreground shadow-sm transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <Images className="h-4 w-4" />
+              素材库
             </button>
             <button
               type="button"
@@ -225,6 +293,19 @@ export function DeckEditorWorkspace({
         </div>
       ) : null}
 
+      {deckTemplateName && deckTemplateProbe ? (
+        <TemplateFidelityPanel templateName={deckTemplateName} facts={deckTemplateProbe} slides={deck.slides} />
+      ) : null}
+
+      <DeckLintPanel
+        issues={lintIssues}
+        currentIndex={currentSlideIndex}
+        onJumpToPage={(index) => {
+          setCurrentSlideIndex(index)
+          setEditorTab("edit")
+        }}
+      />
+
       {editorTab === "edit" ? (
         <div className="mt-5 grid gap-5 lg:grid-cols-[280px_1fr]">
           <SlideListNav
@@ -234,6 +315,7 @@ export function DeckEditorWorkspace({
             onAdd={addSlide}
             onDelete={deleteSlideAt}
             onMove={moveSlide}
+            warnPages={lintWarnPages}
           />
           <SlideEditor
             slide={currentSlide}
@@ -267,6 +349,10 @@ export function DeckEditorWorkspace({
             autoFigureProvider={autoFigureProvider}
             setAutoFigureProvider={setAutoFigureProvider}
             figureBusyKind={slideFigureBusy.index === currentSlideIndex ? slideFigureBusy.kind : ""}
+            onPickFromLibrary={() => {
+              void reloadLocalMaterials?.()
+              setPickerOpen(true)
+            }}
           />
         </div>
       ) : (
@@ -291,6 +377,12 @@ export function DeckEditorWorkspace({
           onClose={() => setPresenting(false)}
         />
       ) : null}
+
+      <MaterialPickerDialog
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        onPick={(materialId) => attachImageFromLibrary(currentSlideIndex, materialId)}
+      />
     </section>
   )
 }

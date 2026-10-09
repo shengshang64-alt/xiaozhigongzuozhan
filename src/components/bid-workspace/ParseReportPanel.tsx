@@ -21,6 +21,7 @@ import {
   type ParseSectionStatus,
   type StandardItem,
 } from "@/pages/BidWorkspace/bidTypes"
+import { countMarkerLossLines, lineHasMarkerLoss } from "@/pages/BidWorkspace/materialIntegrity"
 
 type ParseReportPanelProps = {
   report: ParseReport | null
@@ -63,6 +64,28 @@ function renderStarLine(line: string): ReactNode {
     <>
       <span className="font-semibold text-primary">{m[1]}</span>
       {line.slice(m[1].length)}
+    </>
+  )
+}
+
+/** R160：解析报告逐行渲染，命中符号丢失签名的行尾挂「疑符号丢失」徽标（悬停看摘录说明，零 AI 零 schema） */
+function renderDetailLine(line: string, isStar: boolean): ReactNode {
+  const body = isStar ? renderStarLine(line) : line
+  if (!lineHasMarkerLoss(line)) return body
+  return (
+    <>
+      {body}
+      <span
+        title={
+          "该行疑似丢失 ★/▲ 等标注符号（原招标文件制作/转换时符号已损坏，文本仅留空引号对）\n" +
+          "摘录：" + line.trim().slice(0, 60) + "\n" +
+          "★/▲ 重点条款扫描可能不全，请对照招标原件核实。"
+        }
+        className="ml-1.5 inline-flex shrink-0 cursor-help items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 align-middle text-[11px] font-medium text-amber-700"
+      >
+        <ShieldAlert className="h-3 w-3" />
+        疑符号丢失
+      </span>
     </>
   )
 }
@@ -141,6 +164,8 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
   const okCount = shown.filter((s) => sectionStatus(s) === "ok").length
   const pct = shown.length ? Math.round((okCount / shown.length) * 100) : 0
   const busyHere = reparseBusyKey === selected.key
+  // R160：选中分区内命中符号丢失的行数（零 AI；供 header 徽标，跨会话可复核）
+  const markerLossInSelected = countMarkerLossLines(selected.content)
   // Q26 切片A：详情区降级原文折叠计算（〔系统降级 开头且超阈值时默认节选，可一键展开）
   const DEGRADED_FOLD_LIMIT = 15
   const detailLines = selected.content.split(/\n+/).filter((l) => l.trim())
@@ -284,6 +309,15 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
             <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[selectedStatus]}`}>
               {PARSE_STATUS_LABEL[selectedStatus]}
             </span>
+            {markerLossInSelected > 0 && (
+              <span
+                title={`本分区有 ${markerLossInSelected} 行疑似丢失 ★/▲ 等标注符号（原招标文件符号已损坏，仅留空引号对），命中行已逐条标徽标，请对照招标原件核实`}
+                className="flex shrink-0 cursor-help items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-700"
+              >
+                <ShieldAlert className="h-3 w-3" />
+                疑符号丢失 {markerLossInSelected} 行
+              </span>
+            )}
             {selected.human_edited && (
               <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
                 <PencilLine className="h-3 w-3 text-primary" />
@@ -373,7 +407,7 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
               <ul className="flex flex-col gap-1.5">
                 {shownDetailLines.map((line, i) => (
                   <li key={i} className="rounded-md border border-border/60 bg-background px-3 py-2 text-sm leading-relaxed text-foreground">
-                    {selected.key === "star_clauses" ? renderStarLine(line) : line}
+                    {renderDetailLine(line, selected.key === "star_clauses")}
                   </li>
                 ))}
               </ul>

@@ -555,7 +555,7 @@ export function FormatSettingsPanel(p: FormatSettingsPanelProps) {
             />
             <ToggleRow
               label="输出页码"
-              desc="页脚居中「第 X 页」；暗标开启时强制不输出页码"
+              desc="页脚居中「第 X 页」；暗标开启时改为底端居中裸数字页码"
               checked={fmt.pageNumber}
               onChange={(v) => p.setFormatSettingsPatch({ pageNumber: v })}
             />
@@ -571,7 +571,7 @@ export function FormatSettingsPanel(p: FormatSettingsPanelProps) {
             <div className="grid gap-2 sm:grid-cols-2">
               <ToggleRow
                 label="暗标"
-                desc="开启后导出加暗标声明占位页，且全文不输出页码"
+                desc="正文自动身份脱敏；页码底端居中裸数字、不出页眉、配图黑白化"
                 checked={fmt.sealed}
                 onChange={(v) => p.setFormatSettingsPatch({ sealed: v, ...(v ? {} : { sealedPages: null }) })}
               />
@@ -594,6 +594,16 @@ export function FormatSettingsPanel(p: FormatSettingsPanelProps) {
                 </label>
               )}
             </div>
+            {fmt.sealed && (
+              <div className="mt-2 border-t border-border pt-2">
+                <ToggleRow
+                  label="插入「暗标声明」占位页"
+                  desc="仅招标文件明确要求暗标声明时勾选；不勾选则正文直接从标题/目录起排，避免多余页"
+                  checked={fmt.sealedDeclarationPage}
+                  onChange={(v) => p.setFormatSettingsPatch({ sealedDeclarationPage: v })}
+                />
+              </div>
+            )}
             {fmt.sealed && (
               <p className="mt-2 flex items-start gap-1.5 text-xs leading-relaxed text-muted-foreground">
                 <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />

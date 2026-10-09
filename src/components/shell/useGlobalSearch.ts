@@ -31,8 +31,10 @@ export type PageNavItem = { path: string; label: string; keywords: string[] }
 export const PAGE_NAV: PageNavItem[] = [
   { path: "/", label: "工作台首页", keywords: ["首页", "home", "工作台", "总览", "待办"] },
   { path: "/solution-studio", label: "方案编制", keywords: ["方案", "solution", "编制", "文档"] },
+  { path: "/product-mapping", label: "产品映射", keywords: ["产品映射", "ONE-LINK", "对照", "映射", "建设清单"] },
   { path: "/bid-workspace", label: "标书工作", keywords: ["标书", "投标", "招标", "bid", "tender"] },
   { path: "/ppt-quote", label: "PPT 与报价", keywords: ["ppt", "报价", "幻灯片", "quote", "幻灯"] },
+  { path: "/materials", label: "素材库", keywords: ["素材", "图片", "架构图", "截图", "图库", "material"] },
   { path: "/intel-center", label: "情报中心", keywords: ["情报", "资讯", "政策", "intel"] },
   { path: "/competitors", label: "竞品分析", keywords: ["竞品", "竞争对手", "友商", "厂商", "competitor"] },
   { path: "/customer-management", label: "客户管理", keywords: ["客户", "crm", "商机", "医院", "customer"] },

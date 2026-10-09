@@ -21,6 +21,7 @@ export type SkillScope =
   | "solution-chapter"
   | "solution-rewrite"
   | "checklist-match"
+  | "product-map"
   | "bid-parse"
   | "bid-outline"
   | "bid-chapter"
@@ -37,13 +38,14 @@ export interface ScopeDef {
   label: string
 }
 
-/** 15 个功能点目录（含中文标签），技能表单「适用功能点」多选与选择器展示都以此为准 */
+/** 16 个功能点目录（含中文标签），技能表单「适用功能点」多选与选择器展示都以此为准 */
 export const SCOPE_CATALOG: ScopeDef[] = [
   { scope: "assistant", label: "小智对话" },
   { scope: "solution-outline", label: "方案大纲" },
   { scope: "solution-chapter", label: "方案正文" },
   { scope: "solution-rewrite", label: "方案改写" },
   { scope: "checklist-match", label: "清单 AI 匹配" },
+  { scope: "product-map", label: "产品映射对照" },
   { scope: "bid-parse", label: "标书解析" },
   { scope: "bid-outline", label: "标书大纲" },
   { scope: "bid-chapter", label: "标书正文" },

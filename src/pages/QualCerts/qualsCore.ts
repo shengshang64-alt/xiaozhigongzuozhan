@@ -100,3 +100,41 @@ export function qualDueLabel(validTo: string | null | undefined, todayMs: number
   if (days <= WARNING_DAYS) return `剩 ${days} 天`
   return `剩 ${Math.round(days / 30)} 个月`
 }
+
+// ---------------------------------------------------------------------------
+// 资质风险统一口径（O-006 修复 2026-10-08）：驾驶舱「今日必看 / 欢迎语」此前用
+// summary.alerts.length（含 90 天内 warning），而台账按 expired/critical/warning
+// 三档分别展示、导出硬拦截只认「已过期 + 30 天内」——三处口径漂移导致同一「临期」
+// 概念出现 4 vs 1 的对不上。本函数以台账 buckets 为唯一真源，逐档明细与台账分档
+// 标签逐字一致；urgent 与导出硬拦截同口径。纯函数便于单测锁死。
+// ---------------------------------------------------------------------------
+
+export type QualRiskBuckets = { expired: number; critical: number; warning: number }
+
+/** 与 QualCertsPage.BUCKET_LABEL 同口径的分档标签，驾驶舱复用可杜绝文案漂移 */
+export const QUAL_RISK_BAND_LABEL: Record<keyof QualRiskBuckets, string> = {
+  expired: "已过期",
+  critical: "30 天内到期",
+  warning: "90 天内到期",
+}
+
+export type QualRiskView = { urgent: number; watch: number; total: number; line: string }
+
+/**
+ * urgent = 已过期 + 30 天内到期（需马上处理，与导出硬拦截一致）；
+ * watch  = 90 天内到期（观察项，不进「已出问题」置顶条）；
+ * total  = urgent + watch；
+ * line   = 逐档明细串，仅列非零档，标签与台账三档预警条逐字一致。
+ */
+export function qualRiskView(buckets: Partial<QualRiskBuckets> | null | undefined): QualRiskView {
+  const num = (v: unknown) => (Number(v) || 0)
+  const expired = num(buckets?.expired)
+  const critical = num(buckets?.critical)
+  const warning = num(buckets?.warning)
+  const parts: string[] = []
+  if (expired > 0) parts.push(`${QUAL_RISK_BAND_LABEL.expired} ${expired}`)
+  if (critical > 0) parts.push(`${QUAL_RISK_BAND_LABEL.critical} ${critical}`)
+  if (warning > 0) parts.push(`${QUAL_RISK_BAND_LABEL.warning} ${warning}`)
+  const urgent = expired + critical
+  return { urgent, watch: warning, total: urgent + warning, line: parts.join(" · ") }
+}

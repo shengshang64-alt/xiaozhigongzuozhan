@@ -27,10 +27,10 @@ import {
   RESPONSE_LEVEL_LABEL,
   REVIEW_STATUS_LABEL,
   SEVERITY_LABEL,
-  displayStageLabel,
   VOID_STATUS_LABEL,
   effectiveVoidStatus,
   isBizPart,
+  normalizeBidScope,
   normalizeDeviationTable,
   parseFixedLineSpacing,
   sanitizeChapterText,
@@ -41,6 +41,19 @@ import {
   type FormatSettings,
   type HeadingFormat,
 } from "./bidTypes"
+
+/** R206 切片 1（R-002）：按内容范围三模式决定导出分册收录哪些章——
+ *  biz 仅商务章 / tech 仅技术章 / both 全部（商务骨架章保留占位供线下填写） */
+function bidExportChapters(project: BidProjectRecord): Chapter[] {
+  const scope = normalizeBidScope(project.gen_options)
+  return project.bid_chapters.filter((c) => (scope === "biz" ? isBizPart(c) : scope === "tech" ? !isBizPart(c) : true))
+}
+
+/** R206 切片 1：分册标题随内容范围切换 */
+function bidVolumeTitle(project: BidProjectRecord): string {
+  const scope = normalizeBidScope(project.gen_options)
+  return scope === "biz" ? "投标文件（商务标）" : scope === "tech" ? "投标文件（技术标）" : "投标文件"
+}
 
 // ---------------------------------------------------------------------------
 // 本地文件解析（.docx / .pdf → 纯文本，全部在浏览器内完成，不上传原文件）
@@ -241,6 +254,14 @@ export type DocxExportOptions = {
   }
   headerText?: string
   footerPageNumber?: boolean
+  /** Q28 切片B：true 时页脚只出裸页码数字（暗标「任何一页不得设页眉页脚，只准出现页码」口径） */
+  footerPageNumberBare?: boolean
+  /**
+   * Q28 切片B：true 时把 docx 内置 Title/Heading1-6/Hyperlink 默认样式颜色压成纯黑。
+   * docx 9.x 的 Heading1/2/3 默认 run 色为 2E74B5（蓝），而标题段落只覆盖字号/加粗不覆盖颜色，
+   * 暗标「所有文字（含图表）均为黑色」的口径会因此判为不符（评标模块可整块 0 分）。
+   */
+  allTextBlack?: boolean
   updateFields?: boolean
 }
 
@@ -260,13 +281,33 @@ export async function downloadDocx(
           children: [
             new Paragraph({
               alignment: AlignmentType.CENTER,
-              children: [new TextRun({ children: ["第 ", PageNumber.CURRENT, " 页"], size: 18, font: { ascii: "SimSun", hAnsi: "SimSun", eastAsia: "宋体" } })],
+              // Q28 切片B：暗标页脚只准出现页码本身（裸连续阿拉伯数字、底端居中）；非暗标保留「第 X 页」字样
+              children: opts.footerPageNumberBare
+                ? [new TextRun({ children: [PageNumber.CURRENT], size: 18, font: { ascii: "SimSun", hAnsi: "SimSun", eastAsia: "宋体" } })]
+                : [new TextRun({ children: ["第 ", PageNumber.CURRENT, " 页"], size: 18, font: { ascii: "SimSun", hAnsi: "SimSun", eastAsia: "宋体" } })],
             }),
           ],
         }),
       }
     : undefined
+  // Q28 切片B：暗标全黑口径——内置标题/超链接样式默认色改黑；非暗标 styles 不下发，零行为变化
+  const blackRun = { color: "000000" }
+  const blackStyles = opts?.allTextBlack
+    ? {
+        default: {
+          title: { run: blackRun },
+          heading1: { run: blackRun },
+          heading2: { run: blackRun },
+          heading3: { run: blackRun },
+          heading4: { run: blackRun },
+          heading5: { run: blackRun },
+          heading6: { run: blackRun },
+          hyperlink: { run: blackRun },
+        },
+      }
+    : undefined
   const doc = new Document({
+    ...(blackStyles ? { styles: blackStyles } : {}),
     ...(opts?.updateFields ? { features: { updateFields: true } } : {}),
     sections: [
       {
@@ -347,15 +388,63 @@ export async function imageUrlToPng(url: string): Promise<{ data: Uint8Array; wi
   }
 }
 
+/** 画布像素原地转灰度（Rec.601 亮度加权，保留 alpha）；异常静默返回原图，不阻断导出 */
+function toGrayscale(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+  try {
+    const frame = ctx.getImageData(0, 0, width, height)
+    const d = frame.data
+    for (let i = 0; i < d.length; i += 4) {
+      const y = Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2])
+      d[i] = y
+      d[i + 1] = y
+      d[i + 2] = y
+    }
+    ctx.putImageData(frame, 0, 0)
+  } catch {
+    /* 画布被跨源污染等异常：保留彩色原图，交由人工核对 */
+  }
+}
+
+/**
+ * Q28 切片B：位图黑白化。暗标招标文件普遍要求「图片（含 PPT 幻灯片）、图表均为黑白色」，
+ * 彩色位图直接进 Word 属编制要求不符（暗标评审模块可能整块 0 分）。on=false 原样返回，零行为变化。
+ */
+async function grayscalePng(
+  png: { data: Uint8Array; width: number; height: number },
+  on: boolean,
+): Promise<{ data: Uint8Array; width: number; height: number }> {
+  if (!on) return png
+  try {
+    const bitmap = await createImageBitmap(new Blob([png.data as BlobPart], { type: "image/png" }))
+    const canvas = document.createElement("canvas")
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return png
+    ctx.drawImage(bitmap, 0, 0)
+    bitmap.close()
+    toGrayscale(ctx, canvas.width, canvas.height)
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"))
+    if (!blob) return png
+    return { data: new Uint8Array(await blob.arrayBuffer()), width: canvas.width, height: canvas.height }
+  } catch {
+    return png
+  }
+}
+
 /** 章节配图 SVG → PNG（浏览器内 canvas 转换）；任何一步失败返回 null，由调用方降级为文字段落（方案编制导出同样复用） */
-export async function figureToPng(spec: FigureSpec): Promise<{ data: Uint8Array; width: number; height: number } | null> {
+export async function figureToPng(
+  spec: FigureSpec,
+  opts?: { grayscale?: boolean },
+): Promise<{ data: Uint8Array; width: number; height: number } | null> {
+  const grayscale = opts?.grayscale === true
   try {
     // T17：image 型是现成位图，fetch→canvas→PNG（尺寸超宽时等比压到 960 防止 docx 版面溢出）
     if (spec.type === "image") {
       const png = await imageUrlToPng(spec.url)
       if (!png) return null
       const maxW = 960
-      if (png.width <= maxW) return png
+      if (png.width <= maxW) return grayscalePng(png, grayscale)
       const ratio = maxW / png.width
       const canvas = document.createElement("canvas")
       canvas.width = maxW
@@ -367,7 +456,8 @@ export async function figureToPng(spec: FigureSpec): Promise<{ data: Uint8Array;
       bitmap.close()
       const resized = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"))
       if (!resized) return null
-      return { data: new Uint8Array(await resized.arrayBuffer()), width: canvas.width, height: canvas.height }
+      const scaled = { data: new Uint8Array(await resized.arrayBuffer()), width: canvas.width, height: canvas.height }
+      return grayscalePng(scaled, grayscale)
     }
     // T16：mermaid 型走异步渲染（mermaid.render → SVG）再进同一条 SVG→canvas 链路；渲染失败返回 null 走文字降级
     const svg =
@@ -411,6 +501,8 @@ export async function figureToPng(spec: FigureSpec): Promise<{ data: Uint8Array;
         return d[0] < 10 && d[1] < 10 && d[2] < 10
       })
       if (allBlack) return null
+      // Q28 切片B：暗标导出图表黑白（SVG 分支渲染后的位图同样过灰度）
+      if (grayscale) toGrayscale(ctx, canvas.width, canvas.height)
       const pngBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"))
       if (!pngBlob) return null
       const buf = await pngBlob.arrayBuffer()
@@ -588,7 +680,7 @@ export async function exportBidDocx(project: BidProjectRecord): Promise<void> {
 /** 现状默认导出（存量项目 format_settings=null 走此路径） */
 async function exportBidDocxDefaults(project: BidProjectRecord): Promise<void> {
   const children: Paragraph[] = []
-  children.push(titlePara(`${project.project_name} 投标文件（技术标）`))
+  children.push(titlePara(`${project.project_name} ${bidVolumeTitle(project)}`))
   children.push(
     new Paragraph({
       alignment: AlignmentType.CENTER,
@@ -601,11 +693,11 @@ async function exportBidDocxDefaults(project: BidProjectRecord): Promise<void> {
       ],
     }),
   )
-  for (const [idx, ch] of project.bid_chapters.entries()) {
+  for (const [idx, ch] of bidExportChapters(project).entries()) {
     const chapter: Chapter = ch
     children.push(h1(`第${idx + 1}章 ${chapter.title}`))
     // 标书第十三轮改造 4：商务骨架章导出「章标题 + 小节标题 + 每节占位行」，供线下填写后合并
-    if (isBizPart(chapter)) {
+    if (isBizPart(chapter) && !(chapter.content ?? "").trim()) {
       const bizSections = chapter.sections ?? []
       if (!bizSections.length) {
         children.push(body("（商务文书，请线下填写）"))
@@ -618,11 +710,54 @@ async function exportBidDocxDefaults(project: BidProjectRecord): Promise<void> {
     }
     const paras: Paragraph[] = []
     let firstBodyAt = -1
+    // 2026-10-07 图位锚点：正文行「【图：标题】」= 该图的插入位置（按标题精确匹配，每图一次）；
+    // 未匹配到图的锚点行直接丢弃（不把标记文字带进 Word）；剩余未锚定图回落到旧聚合位置
+    const figsAll = chapter.figures ?? []
+    const usedFigTitles = new Set<string>()
     // 第十轮修复 1/4：导出前整体净化正文（存量脏数据——围栏/JSON 块/markdown 残留——导出也干净）
     const cleanContent = sanitizeChapterText(chapter.content || "")
     for (const rawLine of cleanContent.split("\n")) {
       const line = rawLine.trim()
       if (!line) continue
+      const anchorMatch = /^【图[:：](.+?)】$/.exec(line)
+      if (anchorMatch) {
+        const spec = figsAll.find((f) => f.title === anchorMatch[1].trim() && !usedFigTitles.has(f.title))
+        if (spec) {
+          usedFigTitles.add(spec.title)
+          const rendered = await figureToPng(spec)
+          const figCaption = (spec.caption ?? "").trim()
+          if (rendered) {
+            const drawW = 460
+            const drawH = Math.max(40, Math.round((drawW * rendered.height) / rendered.width))
+            paras.push(
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 160, after: 60 },
+                children: [new ImageRun({ type: "png", data: rendered.data, transformation: { width: drawW, height: drawH } })],
+              }),
+            )
+          } else {
+            paras.push(body(`【图】${spec.title}`))
+          }
+          paras.push(
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              spacing: { after: figCaption ? 40 : 160 },
+              children: [new TextRun({ text: spec.title, italics: true, size: 20 })],
+            }),
+          )
+          if (figCaption) {
+            paras.push(
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 160 },
+                children: [new TextRun({ text: figCaption, size: 18 })],
+              }),
+            )
+          }
+        }
+        continue
+      }
       const isSubHeading =
         chapter.sections.some((s) => line.startsWith(s)) || /^\d+[.、]\s*\S/.test(line) || /^\d+\.\d+/.test(line)
       // 修复 4：（一）（二）… 式小标题用 h3，既有 h2 判定保留并优先
@@ -630,7 +765,7 @@ async function exportBidDocxDefaults(project: BidProjectRecord): Promise<void> {
       if (!isSubHeading && !isH3 && firstBodyAt === -1) firstBodyAt = paras.length
       paras.push(isSubHeading ? h2(line) : isH3 ? h3(line) : body(line))
     }
-    const figs = chapter.figures ?? []
+    const figs = figsAll.filter((f) => !usedFigTitles.has(f.title))
     if (figs.length) {
       const figParas: Paragraph[] = []
       for (const spec of figs) {
@@ -677,7 +812,9 @@ async function exportBidDocxDefaults(project: BidProjectRecord): Promise<void> {
 
 /**
  * 第十七轮 17C：格式配置驱动导出——字体/字号映射、行距、页边距、首行缩进、标题编号样式、
- * 目录/页码/页眉页脚开关；sealed=true 加暗标声明占位页且全文不输出页码。
+ * 目录/页码/页眉页脚开关。
+ * Q28 切片B：sealed=true 按暗标编制口径出件——页码为页面底端居中裸连续阿拉伯数字（不再关闭页码）、
+ * 强制不输出页眉、配图与图片黑白化；「暗标声明」占位页改由 sealedDeclarationPage 单独控制（默认不出）。
  * 章节配图逻辑与默认导出一致（SVG→PNG 插入正文首段后，失败降级「【图】标题」）。
  */
 async function exportBidDocxFormatted(project: BidProjectRecord, fmt: FormatSettings): Promise<void> {
@@ -685,8 +822,8 @@ async function exportBidDocxFormatted(project: BidProjectRecord, fmt: FormatSett
   const { fontRun, headingAt, headingPara, bodyPara, splitTableRow, buildFmtTable } = createFormatDocxKit(fmt)
 
   const children: (Paragraph | Table | TableOfContents)[] = []
-  // 暗标：声明占位页置顶（正文前独立一页），页码在 downloadDocx 选项里整体关闭
-  if (fmt.sealed) {
+  // Q28 切片B：声明占位页仅在显式勾选时置顶（多数暗标招标文件不要求，多余页反成不符项）
+  if (fmt.sealed && fmt.sealedDeclarationPage) {
     const sealHead = headingAt(0)
     children.push(
       new Paragraph({
@@ -697,7 +834,7 @@ async function exportBidDocxFormatted(project: BidProjectRecord, fmt: FormatSett
       }),
     )
     children.push(bodyPara("（暗标声明页占位：请按招标文件要求在此粘贴暗标声明与密封标注。）"))
-    children.push(bodyPara("暗标部分不得出现投标人名称、印章或任何身份标识；本导出已按暗标要求不输出页码。"))
+    children.push(bodyPara("暗标部分不得出现投标人名称、印章或任何身份标识；页码按招标文件要求编制于页面底端居中。"))
     children.push(new Paragraph({ pageBreakBefore: true }))
   }
   const h0 = headingAt(0)
@@ -706,7 +843,7 @@ async function exportBidDocxFormatted(project: BidProjectRecord, fmt: FormatSett
       heading: HeadingLevel.TITLE,
       alignment: AlignmentType.CENTER,
       spacing: { after: 200 },
-      children: [fontRun(`${project.project_name} 投标文件（技术标）`, { font: h0.font, size: h0.size, bold: true })],
+      children: [fontRun(`${project.project_name} ${bidVolumeTitle(project)}`, { font: h0.font, size: h0.size, bold: true })],
     }),
   )
   children.push(
@@ -732,7 +869,8 @@ async function exportBidDocxFormatted(project: BidProjectRecord, fmt: FormatSett
         children: [fontRun("目  录", { font: tocHead.font, size: tocHead.size, bold: true })],
       }),
     )
-    children.push(new TableOfContents("目录", { hyperlink: true, headingStyleRange: "1-3" }))
+    // Q28 切片B：暗标目录不做超链接——Word 更新域后会给超链接目录项套 Hyperlink 字符样式（蓝色下划线）
+    children.push(new TableOfContents("目录", { hyperlink: !fmt.sealed, headingStyleRange: "1-3" }))
     breakBeforeNext = true
   }
   // 标题编号样式：数字层级 "1 / 1.1"；章—节式 "第1章 / 1.1"（现状默认）；无编号
@@ -740,11 +878,11 @@ async function exportBidDocxFormatted(project: BidProjectRecord, fmt: FormatSett
     fmt.titleNumbering === "none" ? "" : fmt.titleNumbering === "chapter" ? `第${idx + 1}章 ` : `${idx + 1} `
   const sectionPrefix = (idx: number, j: number) =>
     fmt.titleNumbering === "none" ? "" : `${idx + 1}.${j + 1} `
-  for (const [idx, ch] of project.bid_chapters.entries()) {
+  for (const [idx, ch] of bidExportChapters(project).entries()) {
     const chapter: Chapter = ch
     children.push(headingPara(0, `${chapterPrefix(idx)}${chapter.title}`, { before: 320, after: 200, pageBreakBefore: breakBeforeNext }))
     breakBeforeNext = false
-    if (isBizPart(chapter)) {
+    if (isBizPart(chapter) && !(chapter.content ?? "").trim()) {
       const bizSections = chapter.sections ?? []
       if (!bizSections.length) children.push(bodyPara("（商务文书，请线下填写）"))
       bizSections.forEach((s, j) => {
@@ -755,6 +893,45 @@ async function exportBidDocxFormatted(project: BidProjectRecord, fmt: FormatSett
     }
     const paras: (Paragraph | Table)[] = []
     let firstBodyAt = -1
+    // 2026-10-07 图位锚点（与默认导出同语义）：「【图：标题】」行 = 该图插入位置，每图一次；
+    // 未匹配的锚点行丢弃；剩余未锚定图回落到旧聚合位置（首段后）
+    const figsAll = chapter.figures ?? []
+    const usedFigTitles = new Set<string>()
+    const renderAnchoredFig = async (spec: FigureSpec): Promise<(Paragraph | Table)[]> => {
+      const out: (Paragraph | Table)[] = []
+      const rendered = await figureToPng(spec, { grayscale: fmt.sealed })
+      const figCaption = (spec.caption ?? "").trim()
+      if (rendered) {
+        const drawW = 460
+        const drawH = Math.max(40, Math.round((drawW * rendered.height) / rendered.width))
+        out.push(
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 160, after: 60 },
+            children: [new ImageRun({ type: "png", data: rendered.data, transformation: { width: drawW, height: drawH } })],
+          }),
+        )
+      } else {
+        out.push(bodyPara(`【图】${spec.title}`))
+      }
+      out.push(
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { after: figCaption ? 40 : 160 },
+          children: [fontRun(spec.title, { font: fmt.body.font, size: "小五", italics: true })],
+        }),
+      )
+      if (figCaption) {
+        out.push(
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 160 },
+            children: [fontRun(figCaption, { font: fmt.body.font, size: "小五" })],
+          }),
+        )
+      }
+      return out
+    }
     const cleanContent = sanitizeChapterText(chapter.content || "")
     const contentLines = cleanContent
       .split("\n")
@@ -763,6 +940,17 @@ async function exportBidDocxFormatted(project: BidProjectRecord, fmt: FormatSett
     let li = 0
     while (li < contentLines.length) {
       const line = contentLines[li]
+      const anchorMatch = /^【图[:：](.+?)】$/.exec(line)
+      if (anchorMatch) {
+        const spec = figsAll.find((f) => f.title === anchorMatch[1].trim() && !usedFigTitles.has(f.title))
+        if (spec) {
+          usedFigTitles.add(spec.title)
+          if (firstBodyAt === -1) firstBodyAt = paras.length
+          paras.push(...(await renderAnchoredFig(spec)))
+        }
+        li++
+        continue
+      }
       // 循环 6 A4：连续 ≥2 行可拆分（全角空格分列）视为表格块，转 docx Table；孤立单行仍按正文段落
       const headCols = splitTableRow(line)
       if (headCols) {
@@ -788,11 +976,11 @@ async function exportBidDocxFormatted(project: BidProjectRecord, fmt: FormatSett
       paras.push(isSubHeading ? headingPara(1, line) : isH3 ? headingPara(2, line) : bodyPara(line))
       li++
     }
-    const figs = chapter.figures ?? []
+    const figs = figsAll.filter((f) => !usedFigTitles.has(f.title))
     if (figs.length) {
       const figParas: Paragraph[] = []
       for (const spec of figs) {
-        const png = await figureToPng(spec)
+        const png = await figureToPng(spec, { grayscale: fmt.sealed })
         // 循环 2 批 2-1：编排图注（caption）非空时图后追加图注行（正文字体、不斜体、小五号）
         const figCaption = (spec.caption ?? "").trim()
         if (png) {
@@ -840,8 +1028,13 @@ async function exportBidDocxFormatted(project: BidProjectRecord, fmt: FormatSett
         right: cmToTwips(fmt.margins.right),
       },
     },
-    headerText: fmt.headerFooter ? `${project.project_name} 投标文件` : "",
-    footerPageNumber: fmt.pageNumber && !fmt.sealed,
+    // Q28 切片B：暗标任何一页不得设页眉，强制不输出页眉文字
+    headerText: fmt.headerFooter && !fmt.sealed ? `${project.project_name} 投标文件` : "",
+    // Q28 切片B：暗标同样必须编页码（底端居中·连续阿拉伯数字），只把样式换成裸数字
+    footerPageNumber: fmt.pageNumber,
+    footerPageNumberBare: fmt.sealed,
+    // Q28 切片B：暗标全黑（内置标题/超链接样式默认色改黑）
+    allTextBlack: fmt.sealed,
     updateFields: fmt.toc,
   })
 }
@@ -1089,6 +1282,3 @@ export async function exportDeviationDocx(project: BidProjectRecord): Promise<vo
   await downloadDocx(`${project.project_name}-技术偏离表.docx`, children, pageOpts)
 }
 
-export function stageOf(project: BidProjectRecord): string {
-  return displayStageLabel(project)
-}

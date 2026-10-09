@@ -1,7 +1,11 @@
-import { Archive, ClipboardList, Download, FileCheck2, Loader2, RotateCcw, Scale, Table2 } from "lucide-react"
+import { Archive, ArrowRight, ClipboardList, Download, FileCheck2, Loader2, RotateCcw, Scale, Table2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { GateChecklist } from "@/components/bid-workspace/GateChecklist"
+import {
+  archiveCardGuidance,
+  type ArchiveExportKey,
+} from "@/components/bid-workspace/archiveExport"
 import { ResultRegisterCard } from "@/components/bid-workspace/ResultRegisterCard"
 import { StageHistoryPanel } from "@/components/bid-workspace/StageHistoryPanel"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
@@ -9,6 +13,7 @@ import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 type ArchivePanelProps = Pick<
   UseBidWorkspace,
   | "activeProject"
+  | "requestStep"
   | "exportBusy"
   | "exportBidWord"
   | "exportReport"
@@ -53,11 +58,10 @@ export function ArchivePanel(p: ArchivePanelProps) {
   // 循环 6 A1：归档判定与 isArchivedLocked 同口径（archived 位或 stage 任一命中），兼容存量单口径数据
   const archived = proj.archived === true || proj.stage === "archived"
   const cards: {
-    key: "bid" | "parse" | "check" | "eval" | "deviation"
+    key: ArchiveExportKey
     title: string
     desc: string
     icon: typeof Download
-    ready: boolean
     onClick: () => void
   }[] = [
     {
@@ -65,7 +69,6 @@ export function ArchivePanel(p: ArchivePanelProps) {
       title: "投标文件 Word",
       desc: "技术标全文，章—节标题层级完整，配图自动转图片插入",
       icon: FileCheck2,
-      ready: proj.bid_chapters.some((c) => (c.content ?? "").trim()),
       onClick: () => void exportBidWord(),
     },
     {
@@ -73,7 +76,6 @@ export function ArchivePanel(p: ArchivePanelProps) {
       title: "技术偏离表",
       desc: "招标技术条款逐条响应程度、摘要与响应位置（归档全套文档含此表）",
       icon: Table2,
-      ready: (proj.response_map?.rows.length ?? 0) > 0,
       onClick: () => void exportDeviationWord(),
     },
     {
@@ -81,7 +83,6 @@ export function ArchivePanel(p: ArchivePanelProps) {
       title: "解析报告",
       desc: "项目概况、评分办法、资质、废标条款、时间节点",
       icon: ClipboardList,
-      ready: !!proj.parse_report,
       onClick: () => void exportReport("parse"),
     },
     {
@@ -89,7 +90,6 @@ export function ArchivePanel(p: ArchivePanelProps) {
       title: "查重与废标检查报告",
       desc: "相似段落对照 + 废标条款逐条判定",
       icon: FileCheck2,
-      ready: !!proj.dup_report || !!proj.void_check,
       onClick: () => void exportReport("dup_void"),
     },
     {
@@ -97,7 +97,6 @@ export function ArchivePanel(p: ArchivePanelProps) {
       title: "模拟评标报告",
       desc: "AI 逐项打分、人工打分与对比结论",
       icon: Scale,
-      ready: !!proj.ai_review,
       onClick: () => void exportReport("eval"),
     },
   ]
@@ -194,6 +193,7 @@ export function ArchivePanel(p: ArchivePanelProps) {
         {cards.map((card) => {
           const Icon = card.icon
           const busy = exportBusy === card.key
+          const g = archiveCardGuidance(card.key, proj)
           return (
             <article key={card.key} className="flex h-full flex-col rounded-lg border border-border bg-card p-5 shadow-md">
               <div className="flex items-start gap-3">
@@ -209,12 +209,23 @@ export function ArchivePanel(p: ArchivePanelProps) {
                 <Button
                   variant="outline"
                   onClick={card.onClick}
-                  disabled={!card.ready || busy}
+                  disabled={!g.ready || busy}
+                  title={!g.ready ? g.missingHint : undefined}
                   className="w-full border-border text-card-foreground shadow-sm hover:bg-secondary disabled:opacity-60"
                 >
                   {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Download className="mr-1.5 h-4 w-4" />}
-                  {busy ? "导出中…" : card.ready ? "导出 Word" : "内容未就绪"}
+                  {busy ? "导出中…" : g.ready ? "导出 Word" : "内容未就绪"}
                 </Button>
+                {!g.ready && !busy && (
+                  <button
+                    type="button"
+                    onClick={() => p.requestStep(g.step)}
+                    className="mt-2 flex w-full items-center justify-center gap-1 rounded text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <ArrowRight className="h-3 w-3" />
+                    前往第 {g.step} 步 · {g.goLabel}
+                  </button>
+                )}
               </div>
             </article>
           )

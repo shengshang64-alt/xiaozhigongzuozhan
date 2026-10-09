@@ -89,6 +89,29 @@ export function parseAiHotRss(xml: string): AiHotItem[] {
   return out
 }
 
+// ---------------------------------------------------------------------------
+// 医疗软件信息化行业过滤（2026-10-07 用户口径：AI 动态只留「AI × 医疗软件信息化」，
+// 通用大模型发布/编程工具/自动驾驶等泛 AI 资讯不展示）。
+// 判定看 标题+分类+摘要 三处（AIHOT 条目标题常不带领域词，摘要补齐；信源是 AI 精选媒体，
+// 不存在情报中心那种多行业厂商导航噪声，看摘要安全）。
+// ---------------------------------------------------------------------------
+
+const MED_RE =
+  /医院|医疗|医学|临床|患者|医生|医师|护士|护理|卫健|卫生|医保|诊疗|问诊|导诊|分诊|预问诊|病历|电子病历|影像|检验|病理|诊断|随访|健康管理|体检|中医|口腔|肿瘤|康复|手术|科室|门诊|互联网医院|智慧医院|分级诊疗|医联体|医共体|基层医疗|慢病|药物|药学|制药|药企|医疗器械|医保/i
+const AI_RE =
+  /\bAI\b|人工智能|大模型|LLM|GPT|DeepSeek|通义|文心|豆包|讯飞星火|开源模型|多模态|机器学习|深度学习|神经网络|智能体|\bAgent\b|生成式|AIGC|算力|推理模型|\bRAG\b|辅助诊断|智能问答/i
+
+/** 单条判定：领域词（医院/医疗/临床/患者…）AND AI 词（AI/大模型/智能体…）双命中才保留 */
+export function isMedicalAiHot(item: Pick<AiHotItem, "title" | "summary" | "category">): boolean {
+  const text = `${item.title} ${item.category} ${item.summary}`
+  return MED_RE.test(text) && AI_RE.test(text)
+}
+
+/** 过滤出医疗软件信息化相关的 AI 动态（页面默认只展示这些） */
+export function filterMedicalAiHot(items: AiHotItem[]): AiHotItem[] {
+  return items.filter(isMedicalAiHot)
+}
+
 /** 分类按出现频次降序（页面筛选 chips 用） */
 export function aiHotCategories(items: AiHotItem[]): string[] {
   const count = new Map<string, number>()

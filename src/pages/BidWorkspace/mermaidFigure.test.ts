@@ -16,6 +16,13 @@ describe("sanitizeMermaidCode", () => {
     expect(sanitizeMermaidCode(`flowchart TD\n ${"x".repeat(MERMAID_MAX_CODE_CHARS + 1)}`)).toBe("")
     expect(sanitizeMermaidCode(null)).toBe("")
   })
+  it("2026-10 配图需求轮：gantt（甘特图）进入白名单", () => {
+    const code = "gantt\n dateFormat YYYY-MM-DD\n section 准备期\n 需求调研 :a1, 2026-01-01, 15d"
+    expect(sanitizeMermaidCode(code)).toBe(code)
+    expect(sanitizeMermaidCode('```mermaid\ngantt\n dateFormat YYYY-MM-DD\n section 实施\n 部署 :a1, 2026-02-01, 30d\n```')).toContain("gantt")
+    // 非白名单起点的类 gantt 变体仍拒绝
+    expect(sanitizeMermaidCode("ganttx\n dateFormat YYYY-MM-DD")).toBe("")
+  })
 })
 
 describe("sanitizeFigures mermaid 分支", () => {

@@ -9,12 +9,39 @@ import {
   chatViaGateway,
   costTextForModel,
   modelRefKey,
+  nextDegradedBudget,
+  personalTimeoutError,
   resolveAvailableModels,
+  shouldDegradeRetry,
+  TIMEOUT_RETRY_MIN_TOKENS,
   type ModelRef,
 } from "@/lib/modelGateway"
+// R180：按模型实测延迟自适应首轮预算（r177-followup 残项落地，会话内存零持久化零 collection）
+import { noteKnownGoodBudget, noteThinkingEmptyReply, observeModelCall, suggestInitialBudget } from "@/lib/latencyBudget"
+// Q28 切片F：上游 429 限流的会话内冷却闸门（并发 worker 取号错峰，见模块头注释）
+import { noteCallSucceeded, noteRateLimited, waitCallSlot } from "@/lib/rateLimitGate"
+// R191：长文「单次调用输出预算」分块口径（网关 120s 红线实测，见模块头注释）
+import { longformCallTokens, planLongformChunks, shouldDisableThinking, stripDuplicateSectionHead } from "./longformBudget"
 import { useCostConfirm } from "@/hooks/useCostConfirm"
 import { useScopeSkills } from "@/hooks/useScopeSkills"
 import { injectSkillBlock, skillBlockFor, skillCostSuffix, type SkillScope } from "@/lib/skillCore"
+// R159：招标文本标注符号丢失检测（素材完整性·零费用纯函数）
+import { detectMarkerSymbolLoss, markerLossNotice } from "./materialIntegrity"
+// R167：标书优质素材库（五类标准件）——分类基线取用与素材库读写（纯本地，零 AI）
+import {
+  COMPANY_DEFAULTS,
+  MATERIAL_KIND_MAP,
+  autoClassifyLibrary,
+  baselineMarkForKind,
+  composeRefMaterials,
+  libraryBaselineFor,
+  libraryFilledKinds,
+  libraryKindFor,
+  parseMaterialLibrary,
+  renderMaterialLibrary,
+  type MaterialKind,
+  type MaterialLibrary,
+} from "./materialLibrary"
 import {
   addChildToTree,
   deepCopyOutline,
@@ -140,8 +167,11 @@ import {
   GATE_KINDS,
   GATE_LABEL,
   hasAnySection,
+  hasBidComposition,
   insertClauseIntoOutline,
   isBizPart,
+  isGenTargetChapter,
+  normalizeBidScope,
   leafTargetFromPages,
   makeSnippet,
   markParseSectionStatus,
@@ -168,6 +198,8 @@ import {
   structuredNumberConflictHits,
   // prompt-fabscan-03（子集）：偏离表负偏离 surfaced 到交卷体检（只读既有 response_map、零 AI、只 warn）
   deviationCommitHits,
+  // R187（r184-bid-amount-consistency-wiring）：金额大小写一致性——R184 确定性内核接入本地格式路（零 AI、只 warn）
+  amountCaseMismatchHits,
   // numeric-consistency-02（做法 A）：投标报价 vs 最高限价/预算 方向性废标核对（纯本地、零 AI、只 warn）
   overPriceCeilingHits,
   // numeric-consistency-02（做法 B）：关联商机的报价单真实总额接入同一核对（跨模块取数、后端零改动）
@@ -232,6 +264,8 @@ import {
   summarizeOrchestration,
   techChapters,
   techOutlineNodes,
+  techOutlineLeafCount,
+  acceptRewrittenOutline,
   trimOutlineDepth,
   trimToBudget,
   upsertParseSection,
@@ -262,6 +296,7 @@ import {
   type FormatCheckKey,
   type FormatCheckReport,
   type FormatIssue,
+  type BidScope,
   type ComplianceMode,
   type FormatSettings,
   type GateKind,
@@ -295,7 +330,7 @@ import { scanPdfForSeal, type SealScanSummary } from "./sealDetect"
 // 第十三轮改造 3：素材优先注入——复用轮次 D 知识库块级检索（本地检索零 AI，命中为空静默跳过）
 import { type KbDocRow } from "@/lib/kbCore"
 import { getCachedVisibleDocs, getCachedVisibleDocsNonBlocking, prewarmKbCache, assembleKbContext } from "@/lib/kbAssemble"
-import { deriveTrack } from "@/lib/kbTaxonomy"
+import { deriveSection, deriveTrack } from "@/lib/kbTaxonomy"
 import type { OpportunityRow } from "@/pages/CustomerManagement/customerTypes"
 // numeric-consistency-02（做法 B）：只复用 PptQuote 的类型与纯函数 quoteTotal（无副作用依赖，不拉重模块进标书 chunk）
 import { quoteTotal, type QuoteRecord } from "@/pages/PptQuote/pptQuoteTypes"
@@ -352,20 +387,145 @@ async function llmGenerate(
   temperature?: number,
   opts?: { disableThinking?: boolean },
 ): Promise<string> {
-  const r = await chatViaGateway({
+  // R180（r177-followup 残项落地）：把 120s 红线从「首调税」变成自适应起点——同模型
+  // 会话内已证实超时/贴红线偏慢时，首调直接从已验证可用档起步（无验证档按折半）并同步
+  // 关闭思考；无证据模型（首调或快模型）原样放行，行为与 R177 后完全一致。成功后回写
+  // 验证档（只升不降），后续同请求免交重复超时。纯会话内存，见 lib/latencyBudget.ts。
+  const latencyKey = activeModelRef ? modelRefKey(activeModelRef) : "platform"
+  const bidMessages = injectSkillBlock(messages, skillBlockFor(scope))
+  const suggest = suggestInitialBudget(latencyKey, maxTokens)
+  const effTokens = suggest.tokens
+  const effDisableThinking = !!opts?.disableThinking || suggest.disableThinking
+  // Q28 切片F：并发 worker 共用限流闸门取号错峰——上游 TPM 按分钟滚动，同秒并发必撞 429
+  await waitCallSlot()
+  const gwReq = {
     modelRef: activeModelRef,
-    messages: injectSkillBlock(messages, skillBlockFor(scope)),
+    messages: bidMessages,
     page: "bid-workspace",
-    max_tokens: maxTokens,
+    max_tokens: effTokens,
     // docs/07 §5.2（第 19 轮）：确定性任务（解析抽取 / JSON 语法修复）显式 temperature=0 降输出方差；
     // 未传（undefined）时保持模型默认，与其余调用行为、计费口径完全不变
     temperature,
     // T13：推理型模型思考耗尽输出配额会导致空回复，解析调用关闭思考（网关按 400 回退兜底）
-    disableThinking: opts?.disableThinking,
-  })
+    disableThinking: effDisableThinking,
+  }
+  let t0 = Date.now()
+  let r = await chatViaGateway(gwReq)
   if (r.needsLogin) throw new AuthRequiredError("请求需要重新验证，请稍后重试")
+  // Q28 切片F（实测根因）：个人密钥在「2.4~2.6 万字上下文 + 章间并发 2」下被上游秒拒
+  // （~0.7s 返回「接口限流或余额不足（HTTP 429）」），而 R173 的 withTransientRetry 是零间隔
+  // 立即重发、必然二次命中——一次限流就把整章打成 0 字 failed（实测 9 章批量 7 章 failed）。
+  // 解析链路 T12b 早就用「退避 20s 重试一次」兜住同一问题，这里把该结论补到生成链路统一入口：
+  // 退避后同参重发一次（参数、预算、计费口径均不变），仍限流则按既有文案透出真实原因。
+  if (!r.ok && isRateLimitError(r.error ?? "")) {
+    noteRateLimited()
+    await waitCallSlot()
+    t0 = Date.now()
+    r = await chatViaGateway(gwReq)
+  }
+  // 成功返回说明限流窗已过：清连击计数，冷却不再逐次叠加
+  if (r.ok) noteCallSucceeded()
+  // R180：只记两类延迟证据——超时（累计证据）与成功返回（耗时判偏慢/释放证据）；
+  // 内容审核 / 余额等非超时明确失败不反映该档位执行能力，不记
+  // R203：网关可能已把本次请求改投备用通道（actualModelRefKey）——延迟证据要记到真正出活
+  // 的那一路，免得备用通道的快慢污染用户所选通道的自适应预算起点
+  const obsKey = r.actualModelRefKey ?? latencyKey
+  if (personalTimeoutError(r.error)) observeModelCall(latencyKey, Date.now() - t0, "timeout")
+  else if (r.ok && r.status === "success") observeModelCall(obsKey, Date.now() - t0, "success")
+  // 生成链路 F1（R167）：推理型/vision 模型把 max_tokens 耗在「思考」上会返回 200 但 content 空，
+  // 直接抛错会让批量逐章「0 成稿」、同参重试再空（网关 §5.2/T13 已记同类问题）。故对「成功但空回复」
+  // 做一次关闭思考的降级重试，把最常见的选型/瞬时空返回兜住；仍空则维持既有抛错口径与计费不变。
+  // 显式已关思考的调用（解析类）不重复重试，避免额外计费。
+  // R192：网关把「200 但 content 空」标成 ok:false +「返回格式异常，回复内容为空」（model_gateway.pb.js
+  // doChat 口径），原 F1 条件 r.ok && !text 在其出现时恒为 false——重试实为死代码，空回复直接
+  // 抛错冒泡。这里把「网关报空回复错」并入口径：未关思考的调用同样做一次关思考降级重试。
+  const gwEmptyReply = !r.ok && /回复内容为空|内容为空/.test((r.error ?? "").trim())
+  if (!r.needsLogin && ((r.ok && r.status === "success" && !r.text?.trim()) || gwEmptyReply) && !effDisableThinking) {
+    // Q28 切片E：本次已证实「该模型开思考却返回空正文」，先记证据位——本次重试与同模型
+    // 后续所有首调都直接关思考，杜绝每个小节/每个精调候选都白烧一次 85s 级空回复（并发下会连锁 429）
+    noteThinkingEmptyReply(latencyKey)
+    const retry = await chatViaGateway({
+      modelRef: activeModelRef,
+      messages: bidMessages,
+      page: "bid-workspace",
+      max_tokens: effTokens,
+      temperature,
+      disableThinking: true,
+    })
+    if (retry.needsLogin) throw new AuthRequiredError("请求需要重新验证，请稍后重试")
+    if (retry.ok && retry.status === "success" && retry.text?.trim()) {
+      // R203：验证档记到实际出活的通道（备用通道成功不能给用户所选通道记功）
+      noteKnownGoodBudget(retry.actualModelRefKey ?? latencyKey, effTokens)
+      return retry.text
+    }
+    r = retry
+  }
+  // R177：超时是标书「只出几页 / 根本生成不出来」的真正根因——慢模型单个长小节实测 ~81s，
+  // 偶发 >120s 被服务端（model_gateway.pb.js 红线，不可改）判超时 → 章节 0 字标 failed。
+  // F1 只兜「成功但空回复」，兜不住超时失败。故对超时做自动降级重试：关闭思考 + 逐次缩减单次
+  // 输出预算，让同一个小节在 120s 红线内跑完；小节级串行 + 自动补足链路后续补齐长度。
+  // 命中非超时的明确失败立即透出；缩到下限仍超时才抛出可执行文案。非超时调用行为完全不变。
+  if (shouldDegradeRetry(r.ok, r.error)) {
+    // R180：阶梯从自适应起点 effTokens 继续降（原从 maxTokens 起步）
+    let budget = effTokens
+    while (budget > TIMEOUT_RETRY_MIN_TOKENS) {
+      budget = nextDegradedBudget(budget)
+      const dT0 = Date.now()
+      const degraded = await chatViaGateway({
+        modelRef: activeModelRef,
+        messages: bidMessages,
+        page: "bid-workspace",
+        max_tokens: budget,
+        temperature,
+        disableThinking: true,
+      })
+      if (degraded.needsLogin) throw new AuthRequiredError("请求需要重新验证，请稍后重试")
+      if (degraded.ok && degraded.status === "success" && degraded.text?.trim()) {
+        // R180：记下已验证可用档，后续同请求直接从该档起步，不再首调交超时税
+        observeModelCall(latencyKey, Date.now() - dT0, "success")
+        noteKnownGoodBudget(latencyKey, budget)
+        return degraded.text
+      }
+      if (!degraded.ok && !personalTimeoutError(degraded.error)) {
+        // 非超时的明确失败（内容审核 / 余额等）不再盲目重试，直接透出真实原因
+        throw new Error(llmErrorText(degraded))
+      }
+      if (!degraded.ok) observeModelCall(latencyKey, Date.now() - dT0, "timeout")
+      r = degraded
+    }
+  }
   if (!r.ok || r.status !== "success" || !r.text) throw new Error(llmErrorText(r))
+  // R180：首调（或 F1 重试后的 r）成功返回正文，验证当前档可用
+  // R203：若本次由备用通道产出，验证档记到备用通道
+  noteKnownGoodBudget(r.actualModelRefKey ?? latencyKey, effTokens)
   return r.text
+}
+
+/**
+ * R191：长文目标的「分次累加」执行器（配合 ./longformBudget）。
+ * 网关单次请求约 120s 红线不可改，而标书正文各链路把整段缺口一次性写进 prompt 的字数预算
+ * （实测单小节 5409 字、整章缺口 53849 字、一键补齐 47900 字）——目标越大越必然超时，且超时
+ * 的表现是「0 字 + 标 failed」而不是「少写一点」，于是正文永远停在十来页。
+ * 这里把目标拆成红线内可完成的小块依序调用、逐块累加：每块把已产出的净新增文本回喂给调用方
+ * 作衔接上下文（避免后块照抄前块），块间尊重取消标志，单块抛错由调用方兜底（已落库块不丢）。
+ * @param oneCall 单块执行：入参 = 该块目标字数 + 已拼接的净新增文本，返回该块净新增（可为空串）
+ * @returns 全部块的拼接结果（空串 = 本轮没产出任何内容）
+ */
+async function generateInChunks(
+  targetChars: number,
+  oneCall: (chunkChars: number, acc: string) => Promise<string>,
+  opts?: { maxChunks?: number; shouldStop?: () => boolean; onChunk?: (acc: string) => void },
+): Promise<string> {
+  const plan = planLongformChunks(targetChars, { maxChunks: opts?.maxChunks })
+  let acc = ""
+  for (const chunkChars of plan) {
+    if (opts?.shouldStop?.()) break
+    const piece = ((await oneCall(chunkChars, acc)) ?? "").trim()
+    if (!piece) continue
+    acc = acc ? `${acc}\n\n${piece}` : piece
+    opts?.onChunk?.(acc)
+  }
+  return acc
 }
 
 import {
@@ -382,7 +542,23 @@ import { buildMermaidRepairMessages } from "./prompts/mermaidFigure"
 import { repairMermaidCode } from "./mermaidFigure"
 import { buildAiImagePrompt, AI_IMAGE_MODEL, AI_IMAGE_PAGE } from "./prompts/aiImage"
 import { applyAiFigureToChapters, collectAiFigureTargets, leafTitleOf } from "./aiFigure"
-import { callAigcAndPoll, persistMediaUrl, previewAigcPrice } from "@/lib/aigc"
+// Q28 切片G：编排配图补齐——缺图判定 / 单图小请求提示词 / 严格解析 / 图位锚点（纯函数层，见模块注释）
+import {
+  applyFigureAnchors,
+  buildFigureBackfillMessages,
+  collectFigureBackfillTargets,
+  collectFigurePlacements,
+  parseFigureBackfill,
+} from "./prompts/figureBackfill"
+import { callAigcAndPoll, persistMediaUrl, previewAigcPrice, uploadAigcMedia } from "@/lib/aigc"
+import {
+  addFigureTemplate,
+  figureKindFromName,
+  listFigureTemplates,
+  removeFigureTemplate as removeFigureTemplateRecord,
+  type FigureTemplate,
+  type FigureTemplateKind,
+} from "./figureAssets"
 import {
   buildVerifiedExcerpt,
   lineAt,
@@ -404,6 +580,7 @@ import {
   type ConsistencyIssue,
 } from "./prompts/consistencyGuard"
 import { createSubmissionTracker } from "./submissionTracker"
+import { hasPendingSections, isIncompleteSectionChapter, isTrulyDoneChapter, reflowStatsAfterAppend, sectionGenStatus, trackedPrefixLength, withTransientRetry } from "./chapterCompletion"
 import { buildOutlineGateReviewMessages, sanitizeOutlineGateReview } from "./prompts/outlineGate"
 import {
   adjustGranularity,
@@ -426,11 +603,17 @@ import {
 import { splitTenderText } from "./prompts/tenderSplit"
 
 const MAX_TOKENS_OUTLINE = 4096
+// Q28 切片D：结构修复/门禁修复是「整树重写」调用，70 叶大纲的 JSON 远超 4096 token，
+// 沿用旧值必被截断（截断后模型补全会整段丢尾部章节）；网关出站上限 16384，取 8192
+const MAX_TOKENS_OUTLINE_FIX = 8192
 // 生成链路 D2 配套：同一项目的 persist 串行发送——updateProject 每次携带全量快照，
 // 串行链保证「较新快照必然后发」，杜绝并发批量下旧快照 PATCH 覆盖丢正文
 const persistChain = new Map<string, Promise<unknown>>()
 
 const MAX_TOKENS_LONGFORM = 8192
+// Q28 切片G：单张补齐配图的小请求预算——结构化 JSON、元素 ≤8，1200 token 足够，
+// 且刻意把上下文压到千字级摘录（不重烧整章），限流窗下补齐链路比正文生成容易得多
+const FIGURE_BACKFILL_MAX_TOKENS = 1200
 // T13：网关出站上限 16384（model_gateway.pb.js）——空回复翻倍重试的封顶值
 const MAX_TOKENS_HARD_CAP = 16384
 
@@ -797,7 +980,12 @@ const REF_MATERIALS_MAX_PARAS = 3
 function refMaterialsFor(cur: BidProjectRecord, query: Parameters<typeof retrieveTenderFragments>[1]): string {
   const text = (cur.ref_materials_text ?? "").trim()
   if (!text) return ""
-  return retrieveTenderFragments(text, query, REF_MATERIALS_MAX_CHARS, REF_MATERIALS_MAX_PARAS)
+  const kind = libraryKindFor(query.title, query.sections)
+  const baseline = libraryBaselineFor(text, kind)
+  const fragments = retrieveTenderFragments(text, query, REF_MATERIALS_MAX_CHARS, REF_MATERIALS_MAX_PARAS)
+  // R167：素材库启用且本章/节命中类别时，先带该类公司标准件作为结构基线（带标记头，≤1500 字），
+  // 由 builder 拆成独立提示词槽；未启用/未命中时基线为空串，注入文本与第十七轮 17D 现状逐字一致。
+  return composeRefMaterials(baselineMarkForKind(baseline ? kind : null), baseline, fragments)
 }
 
 // 大纲生成依赖的解析项（任一存在即可生成，全缺则提示回解析环节）
@@ -854,11 +1042,11 @@ function normalizeRecord(rec: BidProjectRecord): BidProjectRecord {
     gen_options: normalizeGenOptions(rec.gen_options),
     // 第十六轮 B1 改造 1.1：存量项目没有 global_facts 列时容错为空串（回退本地自动抽取，行为与现状一致）
     global_facts: typeof rec.global_facts === "string" ? rec.global_facts : "",
-    // 第十六轮 B2 改造 2.1：存量项目没有 orchestration / max_figures 列时容错（null=未编排走旧逻辑 / 上限默认 6）
+    // 第十六轮 B2 改造 2.1：存量项目没有 orchestration / max_figures 列时容错（null=未编排走旧逻辑 / 留空=不限）
     orchestration: normalizeOrchestration(rec.orchestration),
     max_figures:
       rec.max_figures !== null && rec.max_figures !== undefined && Number.isFinite(Number(rec.max_figures))
-        ? Math.min(20, Math.max(0, Math.round(Number(rec.max_figures))))
+        ? Math.min(99, Math.max(0, Math.round(Number(rec.max_figures))))
         : null,
     // 第十七轮 17B：存量项目没有 compilation_basis_extra / basis_style 列时容错（null=未补选 / ""=未设置样式，消费侧默认 table）
     compilation_basis_extra: normalizeBasisExtra(rec.compilation_basis_extra),
@@ -1618,7 +1806,7 @@ export function useBidWorkspace() {
         applySetting("section_words", null)
         return
       }
-      applySetting("section_words", Math.min(2000, Math.max(400, n)))
+      applySetting("section_words", Math.min(5000, Math.max(400, n)))
       // 方案B 第5步：用户手动调过字数即置 touched 标记，后续切换生成模式不再自动覆盖
       const base = activeProjectRef.current?.gen_options ?? defaultGenOptions()
       if (base.section_words_touched !== true) {
@@ -1628,7 +1816,7 @@ export function useBidWorkspace() {
     [applySetting],
   )
 
-  // 第十六轮 B2 改造 2.1：全文配图上限（0-20，留空=默认 6；0=不配图；figures_enabled 仍是配图总开关）——同款 applySetting 防抖持久化
+  // 第十六轮 B2 改造 2.1：全文配图上限（0-99，留空=不限；0=不配图；figures_enabled 仍是配图总开关）——同款 applySetting 防抖持久化
   const maxFigures = effectiveMaxFigures(activeProject?.max_figures ?? null)
   const setMaxFigures = useCallback(
     (raw: string | number | null) => {
@@ -1641,7 +1829,7 @@ export function useBidWorkspace() {
         applySetting("max_figures", null)
         return
       }
-      applySetting("max_figures", Math.min(20, n))
+      applySetting("max_figures", Math.min(99, n))
     },
     [applySetting],
   )
@@ -1688,6 +1876,18 @@ export function useBidWorkspace() {
     },
     [setGenOption],
   )
+  // R206 切片 1（R-002）：内容范围三模式开关——写 gen_options.scope，并同步派生 include_biz 保持旧字段一致
+  const setScope = useCallback(
+    (next: BidScope) => {
+      const base = activeProjectRef.current?.gen_options ?? defaultGenOptions()
+      applySetting("gen_options", { ...base, scope: next, include_biz: next !== "tech" })
+      if ((activeProjectRef.current?.bid_chapters ?? []).length > 0) {
+        toast.info("内容范围已更新，重新生成大纲后按新范围组织章节（存量章节暂不受影响）")
+      }
+    },
+    [applySetting],
+  )
+  const scope = normalizeBidScope(genOptions)
   const confirmRemoveBizChapters = useCallback(() => {
     const cur = activeProjectRef.current
     if (!cur) return
@@ -1816,6 +2016,9 @@ export function useBidWorkspace() {
     report.hits.push(...metricConflictHits(cur.bid_chapters), ...metaLeftoverHits(cur.bid_chapters))
     // prompt-fabscan-03（子集）：承诺不够（偏离表负偏离）补进交卷体检，与 param_escalation（加码）成镜像；不依赖事实表，只读既有结构化字段
     report.hits.push(...deviationCommitHits(cur.response_map))
+    // R187（r184-bid-amount-consistency-wiring）：金额大小写一致性（大写与小写重述对账）随体检白拿，
+    // 与 over_price_ceiling 同为经典废标项的确定性核验；不依赖事实表、零 AI、只报不拦
+    report.hits.push(...amountCaseMismatchHits(cur.bid_chapters, cur.response_map))
     return report
   }, [])
 
@@ -2284,9 +2487,11 @@ export function useBidWorkspace() {
     const factsLines = effectiveGlobalFactsLines(cur)
     const scoringItems = scoringItemsFromReport(cur.parse_report)
     // T16：知识库候选素材（每叶 top2 检索、批内去重编号 K1…K12）——编排期为各叶定向挑素材，失败静默降级为无候选
+    // 2026-10-07：改用非阻塞缓存读取——全库 1.14 亿字，冷缓存 await 全量拉取会把整个编排挂住数分钟
+    // （且 13 页 ×9MB 的 list 请求串行挤占 PB 单线程 hook），而 KB 候选只是可选增强，拉不到就该降级。
     let kbDocs: KbDocRow[] = []
     try {
-      kbDocs = await getCachedVisibleDocs(userId)
+      kbDocs = await getCachedVisibleDocsNonBlocking(userId)
     } catch {
       kbDocs = []
     }
@@ -2304,6 +2509,7 @@ export function useBidWorkspace() {
             query: [leaf.chapter, leaf.title].filter(Boolean).join(" ").slice(0, 600),
             track: projectTrack,
             buckets: ["标书弹药", "产品资料", "方案素材"],
+            sections: [deriveSection([leaf.chapter, leaf.title].filter(Boolean).join(" "))],
             topN: 2,
           })
           for (const h of hits) {
@@ -2344,6 +2550,7 @@ export function useBidWorkspace() {
                 knowledgeCandidates: batchKnowledge.candidates,
                 mermaidEnabled: cap > 0,
                 aiImageEnabled: cap > 0,
+                figureCap: cap,
               }),
               MAX_TOKENS_LONGFORM,
             )
@@ -2351,7 +2558,7 @@ export function useBidWorkspace() {
             const idSet = new Set(batches[b].map((l) => l.nodeId))
             Object.assign(
               acc,
-              await withJsonRepair(raw, (t) => sanitizeOrchestrationBatch(t, idSet, { knowledgeText: batchKnowledge.textMap })),
+              await withJsonRepair(raw, (t) => sanitizeOrchestrationBatch(t, idSet, { knowledgeText: batchKnowledge.textMap, figureCap: cap })),
             )
             ok = true
           } catch (e) {
@@ -2527,7 +2734,12 @@ export function useBidWorkspace() {
     }
     const targetCount = collectAiFigureTargets(cur.orchestration, cur.bid_outline).length
     if (!targetCount) {
-      toast.info("编排里没有选中的「AI 配图」；智能编排只为具象场景节标记 AI 配图，可重新编排")
+      // 配图上限为 0 时编排必然选不中任何配图——给出可操作的指引，而不是让用户误以为编排漏标
+      toast.info(
+        cur.figures_enabled && maxFigures === 0
+          ? "全文配图上限为 0（0=不配图），编排不会选中任何配图：请在「生成设置 → 全文配图上限」调高（留空=不限），重新编排后再生成配图"
+          : "编排里没有选中的「AI 配图」；智能编排只为具象场景节标记 AI 配图，可重新编排",
+      )
       return
     }
     void previewAigcPrice(AI_IMAGE_MODEL, { prompt: "预算预估", aspectRatio: "16:9", page: AI_IMAGE_PAGE }).then((price) => {
@@ -2544,10 +2756,167 @@ export function useBidWorkspace() {
           .finally(() => setAiFigureBusy(false))
       }, `将为编排选中的 ${targetCount} 处具象场景生成 AI 配图（工程图示/实景照片风格，16:9，生成后自动插入对应章节，约 ${targetCount} 次生图调用${priceText}），生成失败不阻塞正文，${costText()}`)
     })
-  }, [blockIfArchived, costConfirm, handleLlmError, requireLogin, runAiFigures])
+  }, [blockIfArchived, costConfirm, handleLlmError, maxFigures, requireLogin, runAiFigures])
 
-  const openProject = useCallback(
-    (rec: BidProjectRecord) => {
+  // ------------------------------ Q28 切片G：编排配图补齐（figure backfill + 图位落位） ------------------------------
+  // 实测缺陷（项目13 / 2026-10-07）：智能编排选定 35 张配图覆盖 27 个小节，9 章正文全部 done 后库里只有 14 张。
+  // 机理是配图只随「小节首块」的 JSON 契约（{"content","figures"}）顺带产出：模型对 2000 字块直接返纯文本
+  // （figures 键丢失）、mermaid 渲染校验失败弃图、断点续跑跳过已产出小节（图随首轮丢失）三条路都静默丢图，
+  // 而产品侧此前唯一的补图入口「AI 配图生成」只覆盖编排里 type=ai 的位图（本项目 3 张），结构化图根本没有补口。
+  // 这里补上独立后置阶段：按编排计划逐张发「千字摘录 + 单图 JSON 契约」的小请求，解析不出合法图即弃图
+  // （宁缺毋滥——坏 mermaid 进暗标是废标风险），并把每张图按其小节写回图位锚点行，让导出的 Word 不再把
+  // 一章 3-5 张图全挤在章首（bidFiles 早就支持「【图：标题】」按标题精确插位，但生成链路从未写过这种行）。
+
+  const [figureBackfillBusy, setFigureBackfillBusy] = useState(false)
+  const [figureBackfillProgress, setFigureBackfillProgress] = useState<{ current: number; total: number; title: string } | null>(null)
+
+  /** 待补齐张数：编排选中却尚未落库的本地图型数量（纯本地计算，零 AI；按钮文案与禁用态用） */
+  const figureBackfillPending = useMemo(
+    () =>
+      collectFigureBackfillTargets(
+        activeProject?.orchestration ?? null,
+        activeProject?.bid_outline ?? null,
+        activeProject?.bid_chapters ?? null,
+      ).length,
+    [activeProject?.orchestration, activeProject?.bid_outline, activeProject?.bid_chapters],
+  )
+
+  /**
+   * 补齐执行编排：单图单请求（关思考 + temperature=0，走切片F 限流闸门）、并发 2 路，
+   * 单图失败/弃图只计数不阻塞其余；成功后按章聚合 append figures，并对全章重排图位锚点。
+   * 正文只做「插入独立标记行」这一种改动：不删不改任何既有行，可重复执行（幂等）。
+   */
+  const runFigureBackfill = useCallback(
+    async (): Promise<{ ok: number; failed: number; placed: number; skipped: boolean }> => {
+      const cur = activeProjectRef.current
+      const skip = { ok: 0, failed: 0, placed: 0, skipped: true }
+      if (!cur?.orchestration) {
+        toast.error("请先完成智能编排（配图计划来自编排结果），再补齐配图")
+        return skip
+      }
+      const targets = collectFigureBackfillTargets(cur.orchestration, cur.bid_outline, cur.bid_chapters)
+      if (!targets.length) {
+        toast.info("编排选中的配图已全部落库，无需补齐")
+        return skip
+      }
+      setFigureBackfillBusy(true)
+      let ok = 0
+      let failed = 0
+      const added = new Map<string, FigureSpec[]>()
+      try {
+        const queue = [...targets]
+        const worker = async (): Promise<void> => {
+          for (;;) {
+            const t = queue.shift()
+            if (!t) return
+            if (cancelBulkRef.current) return
+            setFigureBackfillProgress({ current: targets.length - queue.length, total: targets.length, title: t.plan.title })
+            try {
+              const raw = await llmGenerate(
+                buildFigureBackfillMessages({
+                  projectName: cur.project_name,
+                  chapterTitle: t.chapterTitle,
+                  sectionTitle: t.sectionTitle,
+                  plan: t.plan,
+                  excerpt: t.excerpt,
+                }),
+                FIGURE_BACKFILL_MAX_TOKENS,
+                "bid-chapter",
+                0,
+                { disableThinking: true },
+              )
+              const spec = parseFigureBackfill(raw, t.plan)
+              if (!spec) {
+                failed += 1
+                continue
+              }
+              // mermaid 型逐张渲染校验（错误回传模型修一次，仍不过即弃图），本地 SVG 型原样透传
+              const kept = await repairMermaidFigures([spec])
+              const ch = cur.bid_chapters.find((c) => c.node_id === t.nodeId)
+              const dup = kept[0] && (ch?.figures ?? []).some((f) => (f.title ?? "").trim() === kept[0].title.trim())
+              if (!kept[0] || dup) {
+                failed += 1
+                continue
+              }
+              const list = added.get(t.nodeId) ?? []
+              list.push(kept[0])
+              added.set(t.nodeId, list)
+              ok += 1
+            } catch (e) {
+              if (e instanceof AuthRequiredError) throw e
+              failed += 1
+            }
+          }
+        }
+        await Promise.all([worker(), worker()])
+        // 先在「含新图」的快照上算落位计划（新图标题即编排计划标题，既有图标题用库内实际名），再整章写回
+        const withNew = (cur.bid_chapters ?? []).map((c) => {
+          const extra = added.get(c.node_id)
+          return extra?.length ? { ...c, figures: [...(c.figures ?? []), ...extra] } : c
+        })
+        const placements = collectFigurePlacements(cur.orchestration, cur.bid_outline, withNew)
+        let placed = 0
+        for (const c of withNew) {
+          const rows = placements.filter((x) => x.nodeId === c.node_id)
+          const nextContent = rows.length ? applyFigureAnchors(c.content ?? "", c.sections ?? [], rows) : c.content
+          const patchObj: Partial<Chapter> = {}
+          if (added.has(c.node_id)) patchObj.figures = c.figures
+          if (nextContent !== c.content) {
+            patchObj.content = nextContent
+            placed += 1
+          }
+          if (Object.keys(patchObj).length) updateChapter(c.node_id, patchObj)
+        }
+        if (ok > 0 || placed > 0) {
+          writeStageSnapshot("chapter", `编排配图补齐：新增 ${ok} 张、落位 ${placed} 章`, {})
+        }
+        return { ok, failed, placed, skipped: false }
+      } finally {
+        setFigureBackfillBusy(false)
+        setFigureBackfillProgress(null)
+      }
+    },
+    [updateChapter, writeStageSnapshot],
+  )
+
+  /** 手动入口：补齐编排配图（费用确认；只新增配图与图位标记行，不改写正文一字） */
+  const startFigureBackfill = useCallback(() => {
+    if (!requireLogin()) return
+    if (blockIfArchived()) return
+    const cur = activeProjectRef.current
+    if (!cur) return
+    if (bulkGeneratingRef.current) {
+      toast.error("批量生成进行中，请等待其完成再补齐配图")
+      return
+    }
+    if (!cur.orchestration) {
+      toast.error("请先完成智能编排（配图计划来自编排结果），再补齐配图")
+      return
+    }
+    const n = collectFigureBackfillTargets(cur.orchestration, cur.bid_outline, cur.bid_chapters).length
+    if (!n) {
+      toast.info(
+        cur.figures_enabled && maxFigures === 0
+          ? "全文配图上限为 0（0=不配图），编排不会选中任何配图：请在「生成设置 → 全文配图上限」调高后重新编排"
+          : "编排选中的配图已全部落库，无需补齐",
+      )
+      return
+    }
+    costConfirm.runWithCostConfirm(() => {
+      setFigureBackfillBusy(true)
+      void runFigureBackfill()
+        .then((r) => {
+          if (r.skipped) return
+          const tail = r.failed ? `，${r.failed} 张未通过校验已弃图（可重试）` : ""
+          if (r.ok > 0) toast.success(`配图补齐完成：新增 ${r.ok} 张${tail}，图位已按小节落位（导出 Word 时插到各自小节末尾）`)
+          else toast.error(`配图补齐未成功${tail}——多是本小节正文过短或模型没按 JSON 返回，可重试`)
+        })
+        .catch((e) => handleLlmError(e, "配图补齐失败"))
+        .finally(() => setFigureBackfillBusy(false))
+    }, `将为编排选中但未落库的 ${n} 处配图各发一次小请求（约 ${n} 次调用，只新增配图与图位标记行、不改写正文，${costText()}）`)
+  }, [blockIfArchived, costConfirm, handleLlmError, maxFigures, requireLogin, runFigureBackfill])
+
+  const openProject = useCallback(    (rec: BidProjectRecord) => {
       // A1 修复：进入新项目前先按旧项目 id 冲刷三组防抖草稿，再兜底设置补丁，杜绝跨项目串写
       flushTenderDraft()
       flushRefTpl()
@@ -2674,6 +3043,9 @@ export function useBidWorkspace() {
         }
         setTenderDraft(text)
         toast.success(`已解析「${file.name}」，共 ${text.length} 字，确认无误后点「保存招标文件」`)
+        // R159：符号丢失签名诚实提示（源文件上游损坏，系统不猜符号，只提示人工对照）
+        const loss = detectMarkerSymbolLoss(text)
+        if (loss.hits) toast.warning(markerLossNotice(loss))
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "文件解析失败，请改用粘贴文本方式导入")
       } finally {
@@ -2782,6 +3154,89 @@ export function useBidWorkspace() {
     },
     [blockIfArchived, setRefTemplateDraft, setRefMaterialsDraft],
   )
+
+  /** R167：素材库写入（五类标准件 + 自由资料）——渲染回 ref_materials_text 走同款防抖落盘，零 schema */
+  const saveMaterialLibrary = useCallback(
+    (sections: Partial<MaterialLibrary>) => {
+      if (blockIfArchived()) return false
+      const cur = activeProjectRef.current
+      if (!cur) {
+        toast.error("请先打开一个投标项目")
+        return false
+      }
+      const lib = parseMaterialLibrary(refMaterialsDraftRef.current)
+      const next: MaterialLibrary = { ...lib, ...sections }
+      setRefMaterialsDraft(renderMaterialLibrary(next))
+      const filled = libraryFilledKinds(next).length
+      toast.success(
+        filled
+          ? `素材库已保存：${filled}/5 类标准件有内容，编制正文时按章/节类别自动带上对应基线`
+          : "素材库已清空（保留的自由资料仍按原方式按需引用）",
+      )
+      return true
+    },
+    [blockIfArchived, setRefMaterialsDraft],
+  )
+
+  /** R167：一键套用公司默认标准件（只填空类，已写内容不被覆盖） */
+  const applyLibraryDefaults = useCallback(
+    (kinds: MaterialKind[]) => {
+      if (blockIfArchived()) return false
+      if (!kinds.length) return false
+      const lib = parseMaterialLibrary(refMaterialsDraftRef.current)
+      const next: MaterialLibrary = { ...lib }
+      for (const k of kinds) {
+        if ((next[k] ?? "").trim()) continue
+        next[k] = COMPANY_DEFAULTS[k]
+      }
+      setRefMaterialsDraft(renderMaterialLibrary(next))
+      toast.success(`已套用公司默认标准件（${kinds.map((k) => MATERIAL_KIND_MAP[k].label).join("、")}），请按本院口径替换占位内容`)
+      return true
+    },
+    [blockIfArchived, setRefMaterialsDraft],
+  )
+
+  /** R167：上传公司素材并自动归类（本地按块首行命中词分入五类，未命中留在自由资料区） */
+  const importLibraryFile = useCallback(
+    async (file: File | null | undefined) => {
+      if (!file) return
+      if (blockIfArchived()) return
+      setRefFileBusy(true)
+      try {
+        const text = await extractTenderFileText(file)
+        if (!text) {
+          toast.error("没有从文件中提取到文字，扫描版文档请改用粘贴文本方式导入")
+          return
+        }
+        const lib = parseMaterialLibrary(refMaterialsDraftRef.current)
+        lib.other = [lib.other, text].filter(Boolean).join("\n\n")
+        const classified = autoClassifyLibrary(lib)
+        setRefMaterialsDraft(renderMaterialLibrary(classified))
+        toast.success(
+          `已导入「${file.name}」并自动归类：素材库 ${libraryFilledKinds(classified).length}/5 类有内容，未命中内容保留在自由资料区`,
+        )
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "文件解析失败，请改用粘贴文本方式导入")
+      } finally {
+        setRefFileBusy(false)
+      }
+    },
+    [blockIfArchived, setRefMaterialsDraft],
+  )
+
+  /** R167：对现有自由资料做一键归类（不改字，只按块首行命中词搬运到对应类别） */
+  const classifyLibraryDraft = useCallback(() => {
+    if (blockIfArchived()) return false
+    const lib = parseMaterialLibrary(refMaterialsDraftRef.current)
+    const next = autoClassifyLibrary(lib)
+    const before = libraryFilledKinds(lib).length
+    const after = libraryFilledKinds(next).length
+    setRefMaterialsDraft(renderMaterialLibrary(next))
+    toast.success(
+      after > before ? `已归类：新增命中 ${after - before} 类标准件（未命中内容留在自由资料区）` : "已归类：本次没有新的命中块，内容保持不变",
+    )
+    return true
+  }, [blockIfArchived, setRefMaterialsDraft])
 
   // ------------------------------ ② AI 解析（配置弹窗 + sections 结构） ------------------------------
   const [parseLoading, setParseLoading] = useState(false)
@@ -3047,6 +3502,9 @@ export function useBidWorkspace() {
           toast.success(
             `解析完成：${okCount} 项成功${report.sections.length - okCount ? `，${report.sections.length - okCount} 项未解析可在报告中单独重解析` : ""}${starLines.length ? `，另本地扫描出 ★/▲ 重点条款 ${starClauseCount(starLines)} 条（零费用）` : ""}${backfillToast}，请人工核对`,
           )
+          // R159：解析完成同步提示素材符号丢失签名（只提示不拦截，零新调用）
+          const markerLoss = detectMarkerSymbolLoss(text)
+          if (markerLoss.hits) toast.warning(markerLossNotice(markerLoss))
         } else {
           setToolParseWarnings(warnings)
           setToolParseConfig(cfg)
@@ -3202,6 +3660,9 @@ export function useBidWorkspace() {
     }
     const lines = extractStarClauses(text)
     const sec = starClauseSectionFrom(lines)
+    // R159：扫描前先报符号丢失签名：源文本缺标注符号时扫出的★/▲ 条款可能天然不全
+    const scanLoss = detectMarkerSymbolLoss(text)
+    if (scanLoss.hits) toast.warning(markerLossNotice(scanLoss))
     if (!sec) {
       toast.info("未在招标文件中发现 ★/▲ 标记条款")
       return
@@ -3382,6 +3843,10 @@ export function useBidWorkspace() {
       )
       return
     }
+    // R207 切片 2（R-003）：无底稿兜底——缺「响应文件组成」时诚实告警但不阻断（可继续按评分办法+常规骨架兜底编排）
+    if (!hasBidComposition(cur.parse_report)) {
+      toast.info("未解析到「响应文件要求」的响应文件组成，大纲将按评分办法与常规骨架兜底编排；建议回到第 2 步补勾并解析该项以严格对齐招标组成要求")
+    }
     setOutlineLoading(true)
     try {
       // 改造 3：注入本地抽取的招标要求条款清单，要求每条条款落到叶子节点并输出 coverage 映射
@@ -3392,12 +3857,13 @@ export function useBidWorkspace() {
       const leafGoal = leafTargetFromPages(pages, sectionWords)
       const globalFacts = effectiveGlobalFacts(cur)
       const implicit = extractImplicitConstraints(cur.tender_text)
-      // 用户反馈轮项 3：大纲商务标范围用户可控（gen_options.include_biz，缺省/非法 → true 默认包含）
-      const includeBiz = cur.gen_options?.include_biz !== false
+      // R206 切片 1（R-002）：内容范围三模式；用户反馈轮项 3 的 includeBiz 由 scope 派生（缺省存量零变化）
+      const outlineScope = normalizeBidScope(cur.gen_options)
+      const includeBiz = outlineScope !== "tech"
       // 第十六轮 B2 改造 2.3：长标书（目标叶子数 >40）自动分步——call1 只出顶层章，
       // 逐技术章 call2 展开节/条（注入其余章标题防重复 + 叶子配额=leafGoal/技术章数 ±2），
       // 程序拼装后走既有 trim/validate/fix 流程；≤40 走现状单次生成，行为不变。
-      const staged = leafGoal > STAGED_OUTLINE_LEAF_GOAL
+      const staged = outlineScope !== "biz" && leafGoal > STAGED_OUTLINE_LEAF_GOAL
       const stagedFailed: string[] = []
       let raw = ""
       let parsed: OutlineNode[]
@@ -3409,6 +3875,7 @@ export function useBidWorkspace() {
             // 顶层技术章数提示：按每章将来承载约 8 个叶子折算，clamp 4-16
             techChapterHint: Math.round(leafGoal / 8),
             includeBiz,
+            scope: outlineScope,
           }),
           MAX_TOKENS_OUTLINE,
           "bid-outline",
@@ -3459,6 +3926,7 @@ export function useBidWorkspace() {
             // 第十七轮 17D：历史范本目录结构（本地抽标题行，零 AI；未导入为空数组，builder 静默不注入）
             refTemplateOutline: extractTemplateOutlineLines(cur.ref_template_text),
             includeBiz,
+            scope: outlineScope,
             // 05 三模式（§5.4）：透传合规严格度驱动骨架宽度（strict/缺省 builder 不追加，行为同现状）
             complianceMode: cur.gen_options?.compliance_mode,
           }),
@@ -3470,7 +3938,7 @@ export function useBidWorkspace() {
       // 级数不指定时不做裁剪，由 AI 按招标要求自定；指定时 trimOutlineDepth 兜底
       let nodes = outlineLevel > 0 ? trimOutlineDepth(parsed, outlineLevel) : parsed
       // 用户反馈轮项 3 防御：关闭商务标时过滤模型违例/存量缓存产出的商务节点（开启时不过滤）
-      if (!includeBiz) nodes = nodes.filter((n) => !isBizPart(n))
+      if (outlineScope !== "both") nodes = nodes.filter((n) => (outlineScope === "biz" ? isBizPart(n) : !isBizPart(n)))
       if (!nodes.length) throw new Error("大纲格式解析失败，请重试")
       // 第五轮改造 2：本地结构校验，级数或叶子规模不符时自动一次结构修复（费用含在同一次确认内）；
       // OpenBidKit 借鉴（评审→修复闭环）：R31 评分承接缺口并入同一次修复调用的问题清单，不新增调用次数
@@ -3484,11 +3952,16 @@ export function useBidWorkspace() {
         try {
           const fixRaw = await llmGenerate(
             buildOutlineFixMessages(nodes, outlineLevel, leafGoal, sectionWords, issues),
-            MAX_TOKENS_OUTLINE,
+            MAX_TOKENS_OUTLINE_FIX,
           )
           const fixedParsed = await withJsonRepair(fixRaw, (t) => normalizeOutline(parseOutlineJson(t)))
           const fixed = outlineLevel > 0 ? trimOutlineDepth(fixedParsed, outlineLevel) : fixedParsed
-          if (fixed.length) {
+          // Q28 切片D：整树重写防缩水——残缺树一旦整树替换会把几十叶砍成一两章，覆盖直接归零
+          if (fixed.length && !acceptRewrittenOutline(nodes, fixed)) {
+            toast.error(
+              `大纲自动修复返回的结构较原树缩水（技术叶 ${techOutlineLeafCount(nodes)} → ${techOutlineLeafCount(fixed)}），判定为模型输出被截断，已保留原大纲树`,
+            )
+          } else if (fixed.length) {
             const stillIssues = validateOutlineShape(fixed, outlineLevel, leafGoal)
             const stillUncovered = findUncoveredScoringIds(fixed, numberedForFix)
             if (stillUncovered.length) {
@@ -3517,13 +3990,14 @@ export function useBidWorkspace() {
           if (review.passed || !review.issues.length) break
           const gateFixRaw = await llmGenerate(
             buildOutlineFixMessages(nodes, outlineLevel, leafGoal, sectionWords, review.issues, { lockTopLevel: true }),
-            MAX_TOKENS_OUTLINE,
+            MAX_TOKENS_OUTLINE_FIX,
           )
           const gateParsed = await withJsonRepair(gateFixRaw, (t) => normalizeOutline(parseOutlineJson(t)))
           const gateFixed = outlineLevel > 0 ? trimOutlineDepth(gateParsed, outlineLevel) : gateParsed
-          if (!gateFixed.length) break
+          // Q28 切片D：门禁重写同样整树替换，缩水即视为截断残缺——保留现状并终止门禁轮次
+          if (!gateFixed.length || !acceptRewrittenOutline(nodes, gateFixed)) break
           nodes = gateFixed
-          if (!includeBiz) nodes = nodes.filter((n) => !isBizPart(n))
+          if (outlineScope !== "both") nodes = nodes.filter((n) => (outlineScope === "biz" ? isBizPart(n) : !isBizPart(n)))
         }
       } catch (e) {
         if (e instanceof AuthRequiredError) throw e
@@ -3536,7 +4010,7 @@ export function useBidWorkspace() {
         setOutlineCoverage([])
       }
       // 用户反馈轮项 3 防御（兜底）：结构修复路径可能重新引入商务节点，setOutlineDraft 前再过滤一次
-      if (!includeBiz) nodes = nodes.filter((n) => !isBizPart(n))
+      if (outlineScope !== "both") nodes = nodes.filter((n) => (outlineScope === "biz" ? isBizPart(n) : !isBizPart(n)))
       setOutlineDraft(nodes)
       writeStageSnapshot("outline", "大纲生成完成", { outline: nodes })
       // 本地覆盖核验：AI 声称的 coverage 不算数，以技术章叶子标题与条款文本匹配为准（商务章不计入）
@@ -3584,10 +4058,11 @@ export function useBidWorkspace() {
   const generateOutline = useCallback(() => {
     if (!requireLogin()) return
     if (blockIfArchived()) return // 循环 5 A3：归档只读
-    const includeBizForConfirm = activeProjectRef.current?.gen_options?.include_biz !== false
+    const scopeForConfirm = normalizeBidScope(activeProjectRef.current?.gen_options)
+    const includeBizForConfirm = scopeForConfirm !== "tech"
     costConfirm.runWithCostConfirm(() => {
       void runGenerateOutline()
-    }, `将根据评分办法与响应要求生成投标文件大纲——${includeBizForConfirm ? "商务部分骨架章（线下填写，不生成正文）+ 技术部分详细大纲" : "仅技术部分详细大纲（本次不含商务章节）"}，招标要求条款逐条覆盖到技术章，并按设置的页数与级数约束技术部分规模；目标叶子数超过 ${STAGED_OUTLINE_LEAF_GOAL} 的长标书自动改为分步生成（顶层章一次调用 + 技术章逐章展开，费用按实际用量累加、含在本次确认内）；结构不符时会自动做一次结构修复、格式异常时自动修复一次（费用均含在本次确认内），${costText()}${skillCostSuffix("bid-outline")}`)
+    }, `将根据评分办法与响应要求生成投标文件大纲——${scopeForConfirm === "biz" ? "仅商务部分详细大纲（本次不含技术章节）" : includeBizForConfirm ? "商务部分骨架章（线下填写，不生成正文）+ 技术部分详细大纲" : "仅技术部分详细大纲（本次不含商务章节）"}，招标要求条款逐条覆盖到技术章，并按设置的页数与级数约束技术部分规模；目标叶子数超过 ${STAGED_OUTLINE_LEAF_GOAL} 的长标书自动改为分步生成（顶层章一次调用 + 技术章逐章展开，费用按实际用量累加、含在本次确认内）；结构不符时会自动做一次结构修复、格式异常时自动修复一次（费用均含在本次确认内），${costText()}${skillCostSuffix("bid-outline")}`)
   }, [blockIfArchived, costConfirm, requireLogin, runGenerateOutline])
 
   // 循环 5 A3：归档只读——大纲树编辑六件套统一 silent 拦截（View 层已禁用控件，此处兜底）
@@ -3713,6 +4188,95 @@ export function useBidWorkspace() {
 
   // 章节编辑器（与方案编制一致的形态：自动保存 + 单章生成 + 改写/扩写/精简 + 批量串行）
   const [activeChapterId, setActiveChapterId] = useState<string | null>(null)
+
+  // ------------------------- 2026-10 配图需求轮：上传截图 / 图模板库（用户自有架构图/流程图/系统截图） -------------------------
+
+  const [figureTemplates, setFigureTemplates] = useState<FigureTemplate[]>(() => listFigureTemplates())
+  const [figureUploadBusy, setFigureUploadBusy] = useState(false)
+
+  /** 把一张图片 URL 以 {type:"image"} 追加进当前章 figures（同名 image 图替换不堆叠；落 PB 持久化） */
+  const insertImageFigure = useCallback(
+    async (url: string, title: string, saveTemplateAs?: FigureTemplateKind): Promise<boolean> => {
+      const cur = activeProjectRef.current
+      const nodeId = activeChapterId
+      if (!cur || !nodeId) {
+        toast.error("请先选中要插图的技术章")
+        return false
+      }
+      const ch = cur.bid_chapters.find((c) => c.node_id === nodeId)
+      if (!ch) {
+        toast.error("未找到当前章节，请刷新后重试")
+        return false
+      }
+      setFigureUploadBusy(true)
+      try {
+        // 外链落地 PB（已落地的 URL 原样返回），与 AI 位图同一条持久化链路
+        const landed = await persistMediaUrl(url, "bid-figure-upload")
+        const titleClean = title.trim().slice(0, 40) || "章节插图"
+        const figure: FigureSpec = { type: "image", title: titleClean, url: landed }
+        const figures = [...(ch.figures ?? []).filter((f) => !(f.type === "image" && f.title === titleClean)), figure]
+        updateChapter(nodeId, { figures })
+        if (saveTemplateAs) {
+          setFigureTemplates(addFigureTemplate({ name: titleClean, url: landed, kind: saveTemplateAs }))
+        }
+        return true
+      } catch {
+        return false
+      } finally {
+        setFigureUploadBusy(false)
+      }
+    },
+    [activeChapterId, updateChapter],
+  )
+
+  /** 上传本地图片（系统截图/架构图/流程图模版）→ aigc 直传 → 插入当前章 → 自动登记进模板库 */
+  const uploadChapterFigure = useCallback(
+    async (file: File) => {
+      if (!file.type.startsWith("image/")) {
+        toast.error("请选择图片文件（PNG/JPG）")
+        return
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error("图片不能超过 10MB，请压缩后再上传")
+        return
+      }
+      const kind = figureKindFromName(file.name)
+      const title = file.name.replace(/\.[^.]+$/, "").slice(0, 40)
+      setFigureUploadBusy(true)
+      try {
+        const r = await uploadAigcMedia(file, "image")
+        const url = r.downloadUrl || r.download_url || ""
+        if (!url) {
+          toast.error("图片上传失败：服务端未返回地址，请重试")
+          return
+        }
+        const okFlag = await insertImageFigure(url, title, kind)
+        if (okFlag) toast.success(`已插入「${title}」，并存入图模板库（${kind === "architecture" ? "架构图" : kind === "flow" ? "流程图" : "系统截图"}）`)
+        else toast.error("图片已上传但插入章节失败，请重试")
+      } catch (e) {
+        const status = (e as { status?: number }).status
+        toast.error(status === 412 ? "登录态已过期，请重新登录后再上传" : "图片上传失败，请检查网络后重试")
+      } finally {
+        setFigureUploadBusy(false)
+      }
+    },
+    [insertImageFigure],
+  )
+
+  /** 从模板库插入一张图到当前章 */
+  const insertFigureTemplate = useCallback(
+    async (t: FigureTemplate) => {
+      const okFlag = await insertImageFigure(t.url, t.name)
+      if (okFlag) toast.success(`已插入模板「${t.name}」`)
+    },
+    [insertImageFigure],
+  )
+
+  /** 删除模板库中的一条登记（不影响已插入章节的图） */
+  const removeFigureTemplateById = useCallback((id: string) => {
+    setFigureTemplates(removeFigureTemplateRecord(id))
+  }, [])
+
   const [editingContent, setEditingContentState] = useState("")
   const editingContentRef = useRef("")
   const [autoSaveState, setAutoSaveState] = useState<"idle" | "saving" | "saved">("idle")
@@ -3729,6 +4293,10 @@ export function useBidWorkspace() {
   const [supplementState, setSupplementState] = useState<{ nodeId: string; round: number } | null>(null)
   // 第八轮改造 3：小节级生成进行中状态（章节徽标「小节 j/k」）
   const [sectionGenState, setSectionGenState] = useState<{ nodeId: string; current: number; total: number } | null>(null)
+  // R191：「一键补齐」需要复用小节断点续跑，但该能力（generateChapterContent）定义在 runFillPages
+  // 之后——useCallback 的 deps 在定义时求值，直接引用会踩块级 const 的 TDZ（R172 当年正是因此退化成
+  // 「跳过 + 提示」）。用 ref 桥接：赋值在能力就绪后的 useEffect 里完成，调用发生在运行时。
+  const resumePendingSectionsRef = useRef<((nodeId: string, idx: number, budget: number) => Promise<number>) | null>(null)
 
   /**
    * 章节生成后的自动补足循环：content.length 不足预算 90% 时自动续写（复用续写 prompt + stripOverlap 合并），
@@ -3744,48 +4312,67 @@ export function useBidWorkspace() {
         if (!cur) break
         const ch = cur.bid_chapters.find((c) => c.node_id === nodeId)
         if (!ch || ch.content.length >= budget * SUPPLEMENT_TARGET_RATIO) break
+        // R179：小节残缺章不做整章 blob 补足——补足只会把已有小节续长、产不出缺失的具名小节，
+        // 还持续新增「done+stats 陈旧」脏记录；缺洞交由「继续生成」走小节断点续跑（R171 路由）
+        if (hasPendingSections(ch)) break
         rounds += 1
         setSupplementState({ nodeId, round: rounds })
         try {
-          const remain = Math.max(400, budget - ch.content.length)
+          const base = ch.content
+          const remain = Math.max(400, budget - base.length)
           const contIdx = Math.max(0, chapterNo - 1)
           const contClauses = mapClausesToChapters(outlineClauses, outlineCoverage, cur.bid_chapters)[contIdx] ?? []
-          const raw = await llmGenerate(
-            buildBidContinueMessages(
-              cur.project_name,
-              cur.hospital,
-              cur.parse_report,
-              ch.title,
-              chapterNo,
-              ch.content,
-              remain,
-              effectiveGlobalFacts(cur),
-              {
-                clauses: contClauses,
-                outlineText: outlineToText(cur.bid_outline),
-                scoring: assignScoringToChapters(scoringItemsFromReport(cur.parse_report), cur.bid_chapters)[contIdx] ?? [],
-                // 第八轮改造 2：续写也注入招标原文相关段（tender_text 为空时静默降级为空串）
-                tenderFragments: retrieveTenderFragments(cur.tender_text, {
-                  title: ch.title,
-                  sections: ch.sections ?? [],
-                  clauses: contClauses.map((c) => c.text),
-                }),
+          // R191：整章缺口（实测 53849 字）一次性交给单次调用必撞网关 120s 红线 → 0 字。
+          // 改为 ≤2000 字/块串行累加，每块即时落库（关页/取消不丢已产出，续跑从新长度接着补）。
+          const grown = await generateInChunks(
+            remain,
+            async (chunkChars, acc) => {
+              const ctx = acc ? `${base}\n\n${acc}` : base
+              const raw = await llmGenerate(
+                buildBidContinueMessages(
+                  cur.project_name,
+                  cur.hospital,
+                  cur.parse_report,
+                  ch.title,
+                  chapterNo,
+                  ctx,
+                  chunkChars,
+                  effectiveGlobalFacts(cur),
+                  {
+                    clauses: contClauses,
+                    outlineText: outlineToText(cur.bid_outline),
+                    scoring: assignScoringToChapters(scoringItemsFromReport(cur.parse_report), cur.bid_chapters)[contIdx] ?? [],
+                    // 第八轮改造 2：续写也注入招标原文相关段（tender_text 为空时静默降级为空串）
+                    tenderFragments: retrieveTenderFragments(cur.tender_text, {
+                      title: ch.title,
+                      sections: ch.sections ?? [],
+                      clauses: contClauses.map((c) => c.text),
+                    }),
+                  },
+                ),
+                longformCallTokens(chunkChars),
+                "bid-chapter",
+                undefined,
+                { disableThinking: shouldDisableThinking(chunkChars) },
+              )
+              return sanitizeChapterText(stripOverlap(ctx, raw)).trim()
+            },
+            {
+              shouldStop: () => cancelBulkRef.current,
+              onChunk: (acc) => {
+                const merged = `${base.trimEnd()}\n\n${acc}`
+                // R179：生产端回写 section_stats——整章补足增量按切片口径并入末节，杜绝 stats 陈旧
+                const nextStats = reflowStatsAfterAppend(ch.section_stats ?? [], merged)
+                updateChapter(nodeId, { content: merged, gen_status: "done", ...(nextStats ? { section_stats: nextStats } : {}) })
+                if (activeChapterId === nodeId) {
+                  editingContentRef.current = merged
+                  setEditingContentState(merged)
+                }
               },
-            ),
-            MAX_TOKENS_LONGFORM,
-            "bid-chapter",
+            },
           )
-          const cont = sanitizeChapterText(stripOverlap(ch.content, raw))
-          if (cont.trim()) {
-            const merged = `${ch.content.trimEnd()}\n\n${cont.trim()}`
-            updateChapter(nodeId, { content: merged, gen_status: "done" })
-            if (activeChapterId === nodeId) {
-              editingContentRef.current = merged
-              setEditingContentState(merged)
-            }
-          }
           // 单轮新增太少：模型写不动了，提前熔断
-          if (cont.trim().length < SUPPLEMENT_MIN_GAIN) break
+          if (grown.length < SUPPLEMENT_MIN_GAIN) break
         } catch {
           // 补足轮失败：保留已生成正文，不阻断整章流程
           updateChapter(nodeId, { gen_status: "done" })
@@ -3861,7 +4448,7 @@ export function useBidWorkspace() {
   }, [activeProject, activeEffectivePages])
 
   /**
-   * 总量治理：全文总字数超过硬上限（1.1×有效目标页×500 字）时，按章字数从大到小
+   * 总量治理：全文总字数超过硬上限（1.1×有效目标页×每页字数，见 DEFAULT_CHARS_PER_PAGE）时，按章字数从大到小
    * 段落边界裁剪收敛回上限内，并 toast 告知；低于下限不在此处理（由「一键补齐」负责）。
    */
   const governTotalPages = useCallback(() => {
@@ -3980,6 +4567,10 @@ export function useBidWorkspace() {
               }),
               MAX_TOKENS_LONGFORM,
               "bid-chapter",
+              undefined,
+              // Q28 切片E：精调是「按锚点输出 JSON 局部操作」的确定性任务，提示词已锁死边界；
+              // 开思考实测 85s 级空回复（配额耗在思考上），R192 关思考口径此前漏了这条路径
+              { disableThinking: true },
             )
             const ops = await withJsonRepair(raw, normalizeWordAdjustmentOps)
             if (!ops.length) break
@@ -4185,6 +4776,7 @@ export function useBidWorkspace() {
     cancelBulkRef.current = false
     setPageFillBusy(true)
     const failedTitles: string[] = []
+    const pendingSectionTitles: string[] = []
     let filled = 0
     let autoRepaired = 0
     // T18+：本轮补齐实际写过正文的章（精调/审计只扫这些，不重扫全项目）
@@ -4215,47 +4807,94 @@ export function useBidWorkspace() {
         if (!cur) break
         const ch = cur.bid_chapters.find((c) => c.node_id === x.node.node_id)
         if (!ch || !ch.content.trim()) continue
+        // R172 遇小节残缺章只是「跳过 + 提示用户去点继续生成」，但继续生成入口当时同样受单次调用
+        // 超网关红线所困（见 longformBudget 头注释）——用户看到的是「新增约 0 字 + 让我自己点」的死循环。
+        // R191：补齐链路自己闭环——小节残缺章内联走小节断点续跑（stats 对齐的已产出小节不重复付费，
+        // 只补缺失小节），补齐后仍未达预算再走分块自动补足。
+        if (hasPendingSections(ch)) {
+          const resume = resumePendingSectionsRef.current
+          // R192：断点续跑此前不在逐章 try 内——单章某个小节调用抛错（空回复/瞬时失败重抛）直接穿透
+          // runFillPages 成 unhandledrejection（「系统异常：回复内容为空」），本轮其余章节连尝试都没有。
+          // 与下方整章续写的 catch 同口径：记入失败清单、继续下一章；登录失效仍即时冒泡。
+          try {
+            const gained = resume ? await resume(ch.node_id, x.idx, Math.max(1, budgets[x.idx] ?? 1500)) : 0
+            if (gained > 0) {
+              filled += gained
+              touchedNodes.add(ch.node_id)
+            } else {
+              pendingSectionTitles.push(ch.title)
+            }
+          } catch (e) {
+            if (e instanceof AuthRequiredError) throw e
+            failedTitles.push(ch.title)
+          }
+          continue
+        }
         const remain = Math.max(300, Math.round((gap * Math.max(1, budgets[x.idx] ?? 1500)) / weightSum))
+        const base = ch.content
         try {
           const contClauses = mapClausesToChapters(outlineClauses, outlineCoverage, cur.bid_chapters)[x.idx] ?? []
-          const raw = await llmGenerate(
-            buildBidContinueMessages(
-              cur.project_name,
-              cur.hospital,
-              cur.parse_report,
-              ch.title,
-              x.idx + 1,
-              ch.content,
-              remain,
-              effectiveGlobalFacts(cur),
-              {
-                clauses: contClauses,
-                outlineText: outlineToText(cur.bid_outline),
-                scoring: assignScoringToChapters(scoringItemsFromReport(cur.parse_report), cur.bid_chapters)[x.idx] ?? [],
-                tenderFragments: retrieveTenderFragments(cur.tender_text, {
-                  title: ch.title,
-                  sections: ch.sections ?? [],
-                  clauses: contClauses.map((c) => c.text),
-                }),
+          // R191：缺口按章权重折算后仍是万字级（实测 47900 字），一次性交给单次调用必撞 120s 红线；
+          // 改为 ≤2000 字/块串行累加、每块落库，取消即停在当前块。
+          const grown = await generateInChunks(
+            remain,
+            async (chunkChars, acc) => {
+              const ctx = acc ? `${base}\n\n${acc}` : base
+              const raw = await llmGenerate(
+                buildBidContinueMessages(
+                  cur.project_name,
+                  cur.hospital,
+                  cur.parse_report,
+                  ch.title,
+                  x.idx + 1,
+                  ctx,
+                  chunkChars,
+                  effectiveGlobalFacts(cur),
+                  {
+                    clauses: contClauses,
+                    outlineText: outlineToText(cur.bid_outline),
+                    scoring: assignScoringToChapters(scoringItemsFromReport(cur.parse_report), cur.bid_chapters)[x.idx] ?? [],
+                    tenderFragments: retrieveTenderFragments(cur.tender_text, {
+                      title: ch.title,
+                      sections: ch.sections ?? [],
+                      clauses: contClauses.map((c) => c.text),
+                    }),
+                  },
+                ),
+                longformCallTokens(chunkChars),
+                "bid-chapter",
+                undefined,
+                { disableThinking: shouldDisableThinking(chunkChars) },
+              )
+              return sanitizeChapterText(stripOverlap(ctx, raw)).trim()
+            },
+            {
+              shouldStop: () => cancelBulkRef.current,
+              onChunk: (acc) => {
+                const merged = `${base.trimEnd()}\n\n${acc}`
+                // R191：本链路补齐 section_stats 回写（R179 只修了 supplement/continue 两处，
+                // 这里此前直接 blob 追加不回写，仍在生产「done + stats 陈旧」脏数据）
+                const nextStats = reflowStatsAfterAppend(ch.section_stats ?? [], merged)
+                updateChapter(ch.node_id, {
+                  content: merged,
+                  gen_status: "done",
+                  underlength: false,
+                  ...(nextStats ? { section_stats: nextStats } : {}),
+                })
+                if (activeChapterId === ch.node_id) {
+                  editingContentRef.current = merged
+                  setEditingContentState(merged)
+                }
               },
-            ),
-            MAX_TOKENS_LONGFORM,
-            "bid-chapter",
+            },
           )
-          const cont = sanitizeChapterText(stripOverlap(ch.content, raw))
-          if (cont.trim()) {
-            const merged = `${ch.content.trimEnd()}\n\n${cont.trim()}`
-            updateChapter(ch.node_id, { content: merged, gen_status: "done", underlength: false })
+          if (grown) {
             touchedNodes.add(ch.node_id)
-            if (activeChapterId === ch.node_id) {
-              editingContentRef.current = merged
-              setEditingContentState(merged)
-            }
-            filled += cont.trim().length
+            filled += grown.length
             writeStageSnapshot("chapter", `页数补齐：${ch.title}`, {
               chapter_id: ch.node_id,
               title: ch.title,
-              content: merged,
+              content: `${base.trimEnd()}\n\n${grown}`,
             })
             if (applyAutoRepair(ch.node_id)) autoRepaired += 1
           }
@@ -4291,10 +4930,23 @@ export function useBidWorkspace() {
       const repairNote = autoRepaired ? `，已自动修正 ${autoRepaired} 章格式问题` : ""
       const refinedNote = filledRefined ? `，字数精调 ${filledRefined} 处` : ""
       const auditNote = filledAuditFixed ? `，一致性修复 ${filledAuditFixed} 处` : ""
+      // R191：不再把问题推回给用户（旧文案「已跳过整章扩写，请点继续生成」是死循环来源）——
+      // 汇报本轮实产字数 + 距治理下限仍差的字数/页数，缺口靠再点一次继续分块补足
+      const nowRec = activeProjectRef.current
+      const remainChars = nowRec
+        ? Math.max(0, lower - techChapters(nowRec.bid_chapters).reduce((sum, c) => sum + (c.content?.length ?? 0), 0))
+        : 0
+      const remainNote =
+        remainChars > 0
+          ? `；距目标仍差约 ${remainChars} 字（约 ${Math.max(1, Math.ceil(remainChars / cpp))} 页），再点一次「一键补齐」会继续分块补足`
+          : "，篇幅已达标"
+      const pendingNote = pendingSectionTitles.length
+        ? `；「${pendingSectionTitles.join("」「")}」章本轮小节续跑未产出新内容，可对它们单独「重新生成本章」`
+        : ""
       if (failedTitles.length) {
-        toast.error(`页数补齐结束，新增约 ${filled} 字${repairNote}${refinedNote}${auditNote}；「${failedTitles.join("」「")}」章补齐失败，可单独「继续生成」`)
+        toast.error(`页数补齐结束，新增约 ${filled} 字${repairNote}${refinedNote}${auditNote}${remainNote}；「${failedTitles.join("」「")}」章补齐失败，可单独「继续生成」${pendingNote}`)
       } else {
-        toast.success(`页数补齐完成，新增约 ${filled} 字${repairNote}${refinedNote}${auditNote}，请查看正文页数是否达标`)
+        toast.success(`页数补齐完成，新增约 ${filled} 字${repairNote}${refinedNote}${auditNote}${remainNote}${pendingNote}`)
       }
     } finally {
       setPageFillBusy(false)
@@ -4306,7 +4958,7 @@ export function useBidWorkspace() {
     if (blockIfArchived()) return // 循环 5 A3：归档只读
     costConfirm.runWithCostConfirm(() => {
       void runFillPages()
-    }, `将按各章缺口权重逐章扩写补齐约 ${pageInfo.gapPages} 页篇幅（每章一次调用，串行执行），费用按实际用量累加，${costText()}${skillCostSuffix("bid-chapter")}`)
+    }, `将按各章缺口权重逐章扩写补齐约 ${pageInfo.gapPages} 页篇幅（单次调用控制在网关可完成量内，缺口按 ≤2000 字/次分块串行累加；小节未生成全的章会自动断点续跑补足小节），费用按实际用量累加，${costText()}${skillCostSuffix("bid-chapter")}`)
   }, [blockIfArchived, costConfirm, pageFillBusy, pageInfo.gapPages, requireLogin, runFillPages])
 
   // 第五轮改造 3：全文总字数校正阶段进度（顶部显示「全文校正中 x/y 章」）
@@ -4560,13 +5212,18 @@ export function useBidWorkspace() {
    * 逐条应答强化（★/▲ 重点条款段）与素材优先注入（原文检索上限翻倍 + 知识库块级检索），零新增 LLM 调用。
    */
   const generateChapterContent = useCallback(
-    async (nodeId: string, idx: number, opts?: { fresh?: boolean }): Promise<{ content: string; figures: FigureSpec[]; budget: number; title: string; sectionStats?: { title: string; chars: number }[] }> => {
+    async (nodeId: string, idx: number, opts?: { fresh?: boolean }): Promise<{ content: string; figures: FigureSpec[]; budget: number; title: string; sectionStats?: { title: string; chars: number }[]; cancelledMid?: boolean }> => {
       const cur = activeProjectRef.current
       if (!cur) throw new Error("项目未加载")
       const chaptersNow = cur.bid_chapters
       const ch = chaptersNow[idx]
       if (!ch) throw new Error("章节不存在")
-      if (isBizPart(ch)) throw new Error("商务骨架章不生成正文，请线下填写后随 Word 导出合并")
+      if (!isGenTargetChapter(ch, normalizeBidScope(cur.gen_options)))
+        throw new Error(
+          normalizeBidScope(cur.gen_options) === "biz"
+            ? "本章为技术章，不在「仅商务」生成范围内，请在生成设置切换内容范围后重试"
+            : "商务骨架章不生成正文，请线下填写后随 Word 导出合并",
+        )
       const budgets = chapterWordBudgets(chaptersNow, effectiveTargetPages(cur), formatCharsPerPage(cur.format_settings))
       const budget = budgets[idx] ?? 1500
       // 改造 3：本章须响应的条款清单；第七轮改造 1：本章评分细则 + 相邻章摘要；改造 3：隐式硬约束
@@ -4657,12 +5314,19 @@ export function useBidWorkspace() {
             const firstEmpty = priorStats.findIndex((s) => !(s.chars > 0))
             resumeFrom = firstEmpty === -1 ? priorStats.length : firstEmpty
             if (resumeFrom > 0) {
-              // 正文种子：全部小节已完成时沿用既有正文原样（与循环 6 一致）；存在 chars:0 失败小节时
-              // 只取前 resumeFrom 片——失败小节之后的既有内容会被本轮重新生成，整段保留会拼接重复
+              // 正文种子：全部小节已完成（resumeFrom>=k）时沿用既有正文原样（与循环 6 一致）。
+              // R174：仍存在未跟踪小节（resumeFrom<k）时，种子只保留「已跟踪小节正文」并裁掉历史
+              // 整章 blob 追加留下的未跟踪尾巴——否则续跑会把未跟踪内容当作已有正文继续往后追加缺失
+              // 小节，导致内容重复膨胀（实测 done 但 section_stats=[3131]、content 17548 的残缺章命中）。
               acc =
-                firstEmpty === -1
+                resumeFrom >= k
                   ? ch.content
-                  : rebuildSectionContent(sliceSectionPieces(ch.content, priorStats).slice(0, resumeFrom))
+                  : rebuildSectionContent(
+                      sliceSectionPieces(
+                        (ch.content ?? "").slice(0, trackedPrefixLength(priorStats, resumeFrom, k)),
+                        priorStats,
+                      ).slice(0, resumeFrom),
+                    )
               for (let i = 0; i < resumeFrom; i++) accStats.push({ title: priorStats[i].title, chars: priorStats[i].chars })
               // 循环 7 A2：配图种子——FigureSpec 无小节归属字段，按「既有 figures 全量保留 + 续跑小节新图追加」，
               // 续跑不丢已落盘配图（最终 updateChapter 全量覆盖 figures，不种子则被跳过小节的配图必丢）
@@ -4670,9 +5334,10 @@ export function useBidWorkspace() {
             }
           }
         }
+        let cancelledMid = false
         for (let j = 0; j < k; j++) {
           if (j < resumeFrom) continue // 循环 6 A2：已产出小节不再重新生成（其内容已在 acc 种子里）
-          if (cancelBulkRef.current) break
+          if (cancelBulkRef.current) { cancelledMid = true; break }
           setSectionGenState({ nodeId, current: j + 1, total: k })
           const sectionName = sections[j]
           // 检索 query 聚焦「章标题 + 当前小节名 + 归本小节的条款」
@@ -4691,54 +5356,87 @@ export function useBidWorkspace() {
             fragChars,
             fragParas,
           )
-          const raw = await llmGenerate(
-            buildBidSectionMessages(
-              cur.project_name,
-              cur.hospital,
-              cur.parse_report,
-              cur.bid_outline,
-              chaptersNow,
-              idx,
-              outlineToText,
-              {
-                ...baseOpts,
-                // 小节级串行：节级编排视图覆盖 baseOpts 里的章级视图（一节一判断）
-                orchestration: secOrchOpt,
-                // 循环 2 批 2-1：节级定向事实覆盖章级（无 facts 回退章级/全量口径）
-                directedFacts: secOrchOpt?.facts?.length ? buildDirectedFactsBlock(secOrchOpt.facts) : undefined,
-                // T16：节级定向知识覆盖章级（无 knowledge 回退章级/检索口径）
-                directedKnowledge: secOrchOpt?.knowledge?.length ? secOrchOpt.knowledge : undefined,
-                wordBudget: sectionBudget,
-                figures: false,
-                tenderFragments: fragments,
-                kbMaterial: kbMaterialFor([ch.title, sectionName, ...sectionClauses.map((c) => c.text)]),
-                // 第十七轮 17D：节级资料检索 query 覆盖章级（章标题+当前小节名+归本小节的条款）
-                refMaterials: refMaterialsFor(cur, {
-                  title: ch.title,
-                  sections: [sectionName],
-                  clauses: sectionClauses.map((c) => c.text),
-                }),
-                sectionName,
-                sectionNo: `${idx + 1}.${j + 1}`,
-                sectionIndex: j,
-                sectionCount: k,
-                sectionClauses,
-                writtenTitles: writtenSectionTitles(acc),
-                writtenTail: acc.slice(-600),
-              },
-            ),
-            MAX_TOKENS_LONGFORM,
-            "bid-chapter",
-          )
-          // B2：被编排选中配图的小节输出 JSON（content+figures），其余维持纯文本契约
-          const secOut = secOrchOpt?.figure
-            ? parseChapterOutput(raw, true)
-            : { content: sanitizeChapterText(raw), figures: [] as FigureSpec[] }
-          // T16：小节级 mermaid 配图即时校验修复（渲染错误回传模型一次；修复失败弃图，正文照常落库）
-          if (secOut.figures.length) {
-            secOut.figures = await repairMermaidFigures(secOut.figures)
+          // R173：小节级瞬时失败重试（见 chapterCompletion.withTransientRetry）——单小节模型调用抛错
+          // （网络抖动 / 偶发超时 / 网关 5xx）自动重试 1 次，不让一次坏请求拖垮整章；登录失效即时冒泡、
+          // 用户取消不再重试；重试后仍失败则上抛，交既有 catch 将整章标 failed（保留已生成小节可断点续跑）。
+          // R191：单小节目标字数 = 章预算 / 小节数（实测某项目 59500/11 = 5409 字）远超网关单次可完成量
+          // → 同一小节拆成 ≤2000 字的块依序生成，逐块把已产出文本回喂 writtenTail 续写；token 档同步
+          // 封顶到实测可完成档（4096），超长块首调关闭思考。单块目标（预算 ≤2000）时链路形状不变。
+          const secPlan = planLongformChunks(sectionBudget)
+          const secNo = `${idx + 1}.${j + 1}`
+          // R191：续块摘掉编排配图（保留 writing_focus/table）——配图 JSON 契约只在首块要，
+          // 否则同一小节会被要求重复出图、续块输出 JSON 污染纯文本正文
+          const contOrch = secOrchOpt?.figure ? { ...secOrchOpt, figure: undefined } : secOrchOpt
+          let secText = ""
+          const secFigs: FigureSpec[] = []
+          for (let ci = 0; ci < secPlan.length; ci++) {
+            if (cancelBulkRef.current) {
+              cancelledMid = true
+              break
+            }
+            const chunkChars = secPlan[ci]
+            const raw = await withTransientRetry(
+              () =>
+                llmGenerate(
+                  buildBidSectionMessages(
+                    cur.project_name,
+                    cur.hospital,
+                    cur.parse_report,
+                    cur.bid_outline,
+                    chaptersNow,
+                    idx,
+                    outlineToText,
+                    {
+                      ...baseOpts,
+                      // 小节级串行：节级编排视图覆盖 baseOpts 里的章级视图（一节一判断）
+                      orchestration: ci === 0 ? secOrchOpt : contOrch,
+                      // 循环 2 批 2-1：节级定向事实覆盖章级（无 facts 回退章级/全量口径）
+                      directedFacts: secOrchOpt?.facts?.length ? buildDirectedFactsBlock(secOrchOpt.facts) : undefined,
+                      // T16：节级定向知识覆盖章级（无 knowledge 回退章级/检索口径）
+                      directedKnowledge: secOrchOpt?.knowledge?.length ? secOrchOpt.knowledge : undefined,
+                      wordBudget: chunkChars,
+                      figures: false,
+                      tenderFragments: fragments,
+                      kbMaterial: kbMaterialFor([ch.title, sectionName, ...sectionClauses.map((c) => c.text)]),
+                      // 第十七轮 17D：节级资料检索 query 覆盖章级（章标题+当前小节名+归本小节的条款）
+                      refMaterials: refMaterialsFor(cur, {
+                        title: ch.title,
+                        sections: [sectionName],
+                        clauses: sectionClauses.map((c) => c.text),
+                      }),
+                      sectionName,
+                      sectionNo: secNo,
+                      sectionIndex: j,
+                      sectionCount: k,
+                      sectionClauses,
+                      // R191：已写小节清单始终按「已完成小节」计（不含本小节自己），
+                      // 否则同一小节的续块会被提示「该主题已写过」而跑题
+                      writtenTitles: writtenSectionTitles(acc),
+                      // 首块衔接上一小节结尾；续块衔接本小节已产出的结尾（分次生成靠它续写、不重复）
+                      writtenTail: secText ? secText.slice(-600) : acc.slice(-600),
+                    },
+                  ),
+                  longformCallTokens(chunkChars),
+                  "bid-chapter",
+                  undefined,
+                  { disableThinking: shouldDisableThinking(chunkChars) },
+                ),
+              { isFatal: (e) => e instanceof AuthRequiredError, shouldStop: () => cancelBulkRef.current },
+            )
+            // B2：被编排选中配图的小节首块输出 JSON（content+figures），其余块维持纯文本契约
+            const secOut =
+              ci === 0 && secOrchOpt?.figure
+                ? parseChapterOutput(raw, true)
+                : { content: sanitizeChapterText(raw), figures: [] as FigureSpec[] }
+            // T16：小节级 mermaid 配图即时校验修复（渲染错误回传模型一次；修复失败弃图，正文照常落库）
+            if (secOut.figures.length) secFigs.push(...(await repairMermaidFigures(secOut.figures)))
+            // R191：提示词要求每块首行都是「N.M 小节名」标题行，续块去掉重复标题行再拼接
+            const body = ci === 0 ? secOut.content : stripDuplicateSectionHead(secOut.content, secNo, sectionName)
+            const t = body.trim()
+            if (!t) continue
+            secText = secText ? `${secText}\n\n${t}` : t
           }
-          const piece = trimToBudget(secOut.content, Math.round(sectionBudget * 1.5)).text.trim()
+          const piece = trimToBudget(secText, Math.round(sectionBudget * 1.5)).text.trim()
           if (!piece) {
             // 循环 8 A2：失败小节（空产出）不 push 配图——配图 push 移到 piece 非空检查之后，
             // 从源头杜绝失败小节配图随增量落库、续跑种子全量保留后重新生成同小节又 append 的重复配图
@@ -4746,7 +5444,7 @@ export function useBidWorkspace() {
             continue
           }
           // 循环 2 批 2-1：编排图注按标题挂到本节产出的图上（导出时图注随图落盘）
-          if (secOut.figures.length) figs.push(...attachFigureCaptions(secOut.figures, secOrchOpt?.figure))
+          if (secFigs.length) figs.push(...attachFigureCaptions(secFigs, secOrchOpt?.figure))
           acc = acc ? `${acc}\n\n${piece}` : piece
           accStats.push({ title: sectionName, chars: piece.length })
           // 每小节产出即时写入章节（沿用既有 updateChapter 持久化时机；第十五轮改造 2：section_stats 同步持久化）
@@ -4760,7 +5458,7 @@ export function useBidWorkspace() {
         if (!acc.trim()) throw new Error("小节生成未产出有效内容，请重试")
         // T16：mermaid 配图校验修复（渲染错误回传模型一次；修复失败弃图）
         const fixedFigs = await repairMermaidFigures(figs)
-        return { content: acc, figures: fixedFigs, budget, title: ch.title, sectionStats: accStats }
+        return { content: acc, figures: fixedFigs, budget, title: ch.title, sectionStats: accStats, cancelledMid }
       }
       // 现状单次生成 + 招标原文相关段注入
       const fragments = retrieveTenderFragments(
@@ -4803,6 +5501,45 @@ export function useBidWorkspace() {
     [activeChapterId, figuresEnabled, outlineClauses, outlineCoverage, targetPages, updateChapter, userId],
   )
 
+  /**
+   * R191：小节级残缺章的「断点续跑补足」——供「一键补齐」内联调用。复用 generateChapterContent 的
+   * 非 fresh 分支（stats 对齐的已产出小节直接跳过，只补缺失小节），成稿后按既有口径落库
+   * section_stats / gen_status；小节补齐后仍未达预算则续跑分块自动补足。
+   * @returns 本轮新增字数（0 = 未产出，调用方记入待处理清单，不当作成功）
+   */
+  const runResumePendingSections = useCallback(
+    async (nodeId: string, idx: number, budget: number) => {
+      const cur = activeProjectRef.current
+      const ch = cur?.bid_chapters[idx]
+      if (!cur || !ch) return 0
+      const before = (ch.content ?? "").length
+      const out = await generateChapterContent(nodeId, idx)
+      if (!out.content.trim()) return 0
+      updateChapter(nodeId, {
+        content: out.content,
+        gen_status: sectionGenStatus({ cancelledMid: !!out.cancelledMid }),
+        figures: out.figures,
+        section_stats: out.sectionStats ?? [],
+      })
+      if (activeChapterId === nodeId) {
+        editingContentRef.current = out.content
+        setEditingContentState(out.content)
+      }
+      writeStageSnapshot("chapter", `页数补齐·小节断点续跑：${ch.title}`, { chapter_id: nodeId, title: ch.title, content: out.content })
+      // 小节补齐后仍未达预算（且不再有未生成小节）→ 走自动补足循环（其内部已按 R191 分块）
+      if (!out.cancelledMid && budget > 0) {
+        const now = activeProjectRef.current?.bid_chapters.find((c) => c.node_id === nodeId)
+        if (now && !hasPendingSections(now)) await runSupplementLoop(nodeId, idx + 1, budget)
+      }
+      const after = activeProjectRef.current?.bid_chapters.find((c) => c.node_id === nodeId)
+      return Math.max(0, (after?.content.length ?? out.content.length) - before)
+    },
+    [activeChapterId, generateChapterContent, runSupplementLoop, updateChapter, writeStageSnapshot],
+  )
+  useEffect(() => {
+    resumePendingSectionsRef.current = runResumePendingSections
+  }, [runResumePendingSections])
+
   const runGenerateChapter = useCallback(
     async (nodeId: string, opts?: { fresh?: boolean }) => {
       const cur = activeProjectRef.current
@@ -4834,8 +5571,19 @@ export function useBidWorkspace() {
           toast.error(prevContent.trim() ? "本次生成未产出内容，已保留原有正文，请稍后重试" : "本次生成未产出内容，请重试")
           return
         }
+        // R170：小节级串行生成被中断（停止批量/返回列表/生成中刷新触发 cancelBulkRef）时，只产出了部分小节的章
+        // 不得按 done 落库——改标 failed，保留已生成小节并让「继续生成」按断点续跑补足剩余小节。
+        if (out.cancelledMid) {
+          updateChapter(nodeId, { content: out.content, gen_status: "failed", figures: out.figures, section_stats: out.sectionStats ?? [] })
+          if (activeChapterId === nodeId) {
+            editingContentRef.current = out.content
+            setEditingContentState(out.content)
+          }
+          toast.info(`「${out.title}」生成已中断，已保留 ${out.content.length} 字（${out.sectionStats?.length ?? 0} 个小节）；点「继续生成」或「重新生成本章」可断点续跑补足剩余小节`)
+          return
+        }
         // 第十五轮改造 2：小节串行分支随章持久化 section_stats；单次生成分支置空防陈旧统计误启用条级重写
-        updateChapter(nodeId, { content: out.content, gen_status: "done", figures: out.figures, section_stats: out.sectionStats ?? [] })
+        updateChapter(nodeId, { content: out.content, gen_status: sectionGenStatus({ cancelledMid: !!out.cancelledMid }), figures: out.figures, section_stats: out.sectionStats ?? [] })
         if (activeChapterId === nodeId) {
           editingContentRef.current = out.content
           setEditingContentState(out.content)
@@ -5018,57 +5766,72 @@ export function useBidWorkspace() {
           }
           return Object.keys(base).length ? base : undefined
         })()
-        const raw = await llmGenerate(
-          buildBidSectionMessages(
-            cur.project_name,
-            cur.hospital,
-            cur.parse_report,
-            cur.bid_outline,
-            cur.bid_chapters,
-            idx,
-            outlineToText,
-            {
-              clauses: chapterClauses,
-              globalFacts: effectiveGlobalFacts(cur),
-              scoring,
-              prevSummaries: prevChapterSummaries(cur.bid_chapters, idx),
-              implicitConstraints: extractImplicitConstraints(cur.tender_text),
-              starBlock,
-              orchestration: rewriteOrchOpt,
-              // 循环 2 批 2-1：小节重写同口径消费节级定向事实（编排 facts 非空时替代全量全局事实注入）
-              directedFacts:
-                rewriteOrchView?.covered && rewriteOrchView.merged.facts?.length
-                  ? buildDirectedFactsBlock(rewriteOrchView.merged.facts)
-                  : undefined,
-              // 第十七轮 17B：小节重写继承章级编制依据判断（与串行生成同口径）
-              compilationBasis: compilationBasisOptFor(cur, idx),
-              wordBudget: sectionBudget,
-              figures: false,
-              tenderFragments: fragments,
-              kbMaterial,
-              // 第十七轮 17D：小节重写同样注入写作资料（与串行生成同口径检索）
-              refMaterials: refMaterialsFor(cur, {
-                title: ch.title,
-                sections: [sectionName],
-                clauses: sectionClauses.map((c) => c.text),
-              }),
-              // 循环 2 批 1-4：小节重写同口径注入暗标身份脱敏规则条
-              sealedIdentityRules: sealedIdentityBlock(cur.format_settings?.sealed === true, cur.identity_words),
-              // 05 三模式：小节重写同口径透传合规严格度
-              complianceMode: cur.gen_options?.compliance_mode,
-              sectionName,
-              sectionNo: `${idx + 1}.${sectionIdx + 1}`,
-              sectionIndex: sectionIdx,
-              sectionCount: k,
-              sectionClauses,
-              writtenTitles,
-              writtenTail,
-            },
-          ),
-          MAX_TOKENS_LONGFORM,
-          "bid-chapter",
-        )
-        const piece = trimToBudget(sanitizeChapterText(raw), Math.round(sectionBudget * 1.5)).text.trim()
+        // R191：小节重写的目标字数与串行生成同源（章预算/小节数，实测 5409 字）——同样分块，
+        // 逐块把本节已产出文本回喂 writtenTail 续写，末块拼完再整体裁剪，避免单次调用撞 120s 红线
+        const rewritePlan = planLongformChunks(sectionBudget)
+        const rewriteSecNo = `${idx + 1}.${sectionIdx + 1}`
+        let rewriteText = ""
+        for (let ci = 0; ci < rewritePlan.length; ci++) {
+          const chunkChars = rewritePlan[ci]
+          const raw = await llmGenerate(
+            buildBidSectionMessages(
+              cur.project_name,
+              cur.hospital,
+              cur.parse_report,
+              cur.bid_outline,
+              cur.bid_chapters,
+              idx,
+              outlineToText,
+              {
+                clauses: chapterClauses,
+                globalFacts: effectiveGlobalFacts(cur),
+                scoring,
+                prevSummaries: prevChapterSummaries(cur.bid_chapters, idx),
+                implicitConstraints: extractImplicitConstraints(cur.tender_text),
+                starBlock,
+                orchestration: rewriteOrchOpt,
+                // 循环 2 批 2-1：小节重写同口径消费节级定向事实（编排 facts 非空时替代全量全局事实注入）
+                directedFacts:
+                  rewriteOrchView?.covered && rewriteOrchView.merged.facts?.length
+                    ? buildDirectedFactsBlock(rewriteOrchView.merged.facts)
+                    : undefined,
+                // 第十七轮 17B：小节重写继承章级编制依据判断（与串行生成同口径）
+                compilationBasis: compilationBasisOptFor(cur, idx),
+                wordBudget: chunkChars,
+                figures: false,
+                tenderFragments: fragments,
+                kbMaterial,
+                // 第十七轮 17D：小节重写同样注入写作资料（与串行生成同口径检索）
+                refMaterials: refMaterialsFor(cur, {
+                  title: ch.title,
+                  sections: [sectionName],
+                  clauses: sectionClauses.map((c) => c.text),
+                }),
+                // 循环 2 批 1-4：小节重写同口径注入暗标身份脱敏规则条
+                sealedIdentityRules: sealedIdentityBlock(cur.format_settings?.sealed === true, cur.identity_words),
+                // 05 三模式：小节重写同口径透传合规严格度
+                complianceMode: cur.gen_options?.compliance_mode,
+                sectionName,
+                sectionNo: rewriteSecNo,
+                sectionIndex: sectionIdx,
+                sectionCount: k,
+                sectionClauses,
+                writtenTitles,
+                // 首块衔接上一小节结尾；续块衔接本节已产出的结尾
+                writtenTail: ci === 0 ? writtenTail : `${writtenTail}\n\n${rewriteText}`.slice(-600),
+              },
+            ),
+            longformCallTokens(chunkChars),
+            "bid-chapter",
+            undefined,
+            { disableThinking: shouldDisableThinking(chunkChars) },
+          )
+          const body = ci === 0 ? sanitizeChapterText(raw) : stripDuplicateSectionHead(sanitizeChapterText(raw), rewriteSecNo, sectionName)
+          const t = body.trim()
+          if (!t) continue
+          rewriteText = rewriteText ? `${rewriteText}\n\n${t}` : t
+        }
+        const piece = trimToBudget(rewriteText, Math.round(sectionBudget * 1.5)).text.trim()
         if (!piece) throw new Error("小节重写未产出有效内容")
         // 替换第 idx 片后重组正文（其余片字符原样不变）
         const nextPieces = pieces.map((p, i) => (i === sectionIdx ? piece : p))
@@ -5294,40 +6057,66 @@ export function useBidWorkspace() {
       try {
         const budgets = chapterWordBudgets(cur.bid_chapters, effectiveTargetPages(cur), formatCharsPerPage(cur.format_settings))
         const budget = budgets[idx] ?? 1500
-        const remain = Math.max(400, budget - ch.content.length)
+        const base = ch.content
+        const remain = Math.max(400, budget - base.length)
         const contClauses = mapClausesToChapters(outlineClauses, outlineCoverage, cur.bid_chapters)[idx] ?? []
-        const raw = await llmGenerate(
-          buildBidContinueMessages(
-            cur.project_name,
-            cur.hospital,
-            cur.parse_report,
-            ch.title,
-            idx + 1,
-            ch.content,
-            remain,
-            effectiveGlobalFacts(cur),
-            {
-              clauses: contClauses,
-              outlineText: outlineToText(cur.bid_outline),
-              scoring: assignScoringToChapters(scoringItemsFromReport(cur.parse_report), cur.bid_chapters)[idx] ?? [],
-              // 第八轮改造 2：手动续写同样注入招标原文相关段
-              tenderFragments: retrieveTenderFragments(cur.tender_text, {
-                title: ch.title,
-                sections: ch.sections ?? [],
-                clauses: contClauses.map((c) => c.text),
-              }),
+        // R191：手动续写的缺口与自动补足同源（实测 53849 字）——一次性大目标必撞网关 120s 红线，
+        // 表现为「续写失败 / 0 字」。改为分块串行累加、每块落库，用户实时看到篇幅上涨，取消即停在当前块。
+        const grown = await generateInChunks(
+          remain,
+          async (chunkChars, acc) => {
+            const ctx = acc ? `${base}\n\n${acc}` : base
+            const raw = await llmGenerate(
+              buildBidContinueMessages(
+                cur.project_name,
+                cur.hospital,
+                cur.parse_report,
+                ch.title,
+                idx + 1,
+                ctx,
+                chunkChars,
+                effectiveGlobalFacts(cur),
+                {
+                  clauses: contClauses,
+                  outlineText: outlineToText(cur.bid_outline),
+                  scoring: assignScoringToChapters(scoringItemsFromReport(cur.parse_report), cur.bid_chapters)[idx] ?? [],
+                  // 第八轮改造 2：手动续写同样注入招标原文相关段
+                  tenderFragments: retrieveTenderFragments(cur.tender_text, {
+                    title: ch.title,
+                    sections: ch.sections ?? [],
+                    clauses: contClauses.map((c) => c.text),
+                  }),
+                },
+              ),
+              longformCallTokens(chunkChars),
+              "bid-chapter",
+              undefined,
+              { disableThinking: shouldDisableThinking(chunkChars) },
+            )
+            return sanitizeChapterText(stripOverlap(ctx, raw)).trim()
+          },
+          {
+            shouldStop: () => cancelBulkRef.current,
+            onChunk: (acc) => {
+              const merged = `${base.trimEnd()}\n\n${acc}`
+              // R179：生产端回写 section_stats——续写增量按切片口径并入末节，统计不再陈旧
+              const nextStats = reflowStatsAfterAppend(ch.section_stats ?? [], merged)
+              updateChapter(nodeId, { content: merged, ...(nextStats ? { section_stats: nextStats } : {}) })
+              if (activeChapterId === nodeId) {
+                editingContentRef.current = merged
+                setEditingContentState(merged)
+              }
             },
-          ),
-          MAX_TOKENS_LONGFORM,
-          "bid-chapter",
+          },
         )
-        const cont = sanitizeChapterText(stripOverlap(ch.content, raw))
-        if (!cont.trim()) throw new Error("续写内容为空，请重试或改用「重新生成本章」")
-        const merged = `${ch.content.trimEnd()}\n\n${cont.trim()}`
+        const merged = `${base.trimEnd()}\n\n${grown}`
+        if (!grown) throw new Error("续写内容为空，请重试或改用「重新生成本章」")
+        const nextStats = reflowStatsAfterAppend(ch.section_stats ?? [], merged)
         // 第十轮修复 3：手动续写达预算 60% 以上时清除「偏短」标记
         updateChapter(nodeId, {
           content: merged,
           gen_status: "done",
+          ...(nextStats ? { section_stats: nextStats } : {}),
           ...(merged.length >= budget * 0.6 ? { underlength: false } : {}),
         })
         if (activeChapterId === nodeId) {
@@ -5337,7 +6126,13 @@ export function useBidWorkspace() {
         writeStageSnapshot("chapter", `章节续写完成：${ch.title}`, { chapter_id: nodeId, title: ch.title, content: merged })
         const repaired = applyAutoRepair(nodeId)
         refreshFormatReport()
-        toast.success(`续写完成，本章新增约 ${cont.trim().length} 字${repaired ? `，已自动修正 ${repaired} 处格式问题` : ""}`)
+        // R191：如实汇报本轮产出与剩余缺口（不把「没补上」包装成让用户自己找入口）
+        const stillShort = Math.max(0, budget - merged.length)
+        toast.success(
+          `续写完成，本章新增约 ${grown.length} 字（现 ${merged.length} 字 / 预算 ${budget} 字）${
+            stillShort > 0 ? `，仍差约 ${stillShort} 字，可再点一次「继续生成」` : "，篇幅已达预算"
+          }${repaired ? `，已自动修正 ${repaired} 处格式问题` : ""}`,
+        )
       } catch (e) {
         updateChapter(nodeId, { gen_status: hadContent ? "done" : "failed" })
         handleLlmError(e, "续写失败，请重试")
@@ -5352,11 +6147,22 @@ export function useBidWorkspace() {
     (nodeId: string) => {
       if (!requireLogin()) return
       if (blockIfArchived()) return // 循环 5 A3：归档只读
+      // R171：小节级章节仍有未生成小节（section_stats 未覆盖全部小节）时，「继续生成」走小节断点续跑
+      // （runGenerateChapter 非 fresh：复位取消标志 + resumeFrom 跳过已产出小节 + 补足剩余小节），
+      // 而非整章 blob 续写——后者只往现有正文追加、不产出缺失的具名小节，且把 section_stats 留在陈旧态、
+      // 再次误标 done。全部小节均已生成、仅总长未达预算的章（hasPendingSections=false）仍走原续写补足。
+      const ch = activeProjectRef.current?.bid_chapters.find((c) => c.node_id === nodeId)
+      if (hasPendingSections(ch)) {
+        costConfirm.runWithCostConfirm(() => {
+          void runGenerateChapter(nodeId)
+        }, `本章尚有未生成的小节，将从断点续跑补足剩余小节（已生成小节不重复付费），未达篇幅预算再自动续写补足，${costText()}${skillCostSuffix("bid-chapter")}`)
+        return
+      }
       costConfirm.runWithCostConfirm(() => {
         void runContinueChapter(nodeId)
       }, `将从本章正文断点续写补足篇幅预算，${costText()}${skillCostSuffix("bid-chapter")}`)
     },
-    [blockIfArchived, costConfirm, requireLogin, runContinueChapter],
+    [blockIfArchived, costConfirm, requireLogin, runContinueChapter, runGenerateChapter],
   )
 
   const runBulkGenerate = useCallback(async () => {
@@ -5365,8 +6171,9 @@ export function useBidWorkspace() {
     cancelBulkRef.current = false
     bulkGeneratingRef.current = true
     setBulkGenerating(true)
-    // 第十三轮改造 4：批量生成只迭代技术章（商务骨架章跳过，进度只按技术章计）
-    const techIdx = startRec.bid_chapters.map((c, i) => ({ c, i })).filter((x) => !isBizPart(x.c)).map((x) => x.i)
+    // R206 切片 1（R-002）：批量迭代按内容范围三模式（both/tech 只跑技术章、biz 只跑商务章）
+    const bulkScope = normalizeBidScope(startRec.gen_options)
+    const techIdx = startRec.bid_chapters.map((c, i) => ({ c, i })).filter((x) => isGenTargetChapter(x.c, bulkScope)).map((x) => x.i)
     const total = techIdx.length
     setGenProgress({ current: 0, total })
     let failedCount = 0
@@ -5393,7 +6200,8 @@ export function useBidWorkspace() {
         const ch = cur.bid_chapters[i]
         // 循环 8 A1：skip 条件扩为 done || generating——手动路径正在生成的章（gen_status="generating"）
         // 留给手动收尾，批量不碰，杜绝同章双写
-        if (!ch || ch.gen_status === "done" || ch.gen_status === "generating") {
+        // R170：被历史中断误标 done、但小节未生成完整的章（section_stats 未覆盖全部小节）不跳过，纳入重跑续补
+        if (!ch || (ch.gen_status === "done" && !isIncompleteSectionChapter(ch)) || ch.gen_status === "generating") {
           cursor.done += 1
           setGenProgress({ current: cursor.done, total })
           continue
@@ -5412,7 +6220,13 @@ export function useBidWorkspace() {
           failedNodes.push({ nodeId: ch.node_id, idx: i, title: ch.title, reason: "模型空产出" })
           continue
         }
-        updateChapter(ch.node_id, { content: out.content, gen_status: "done", figures: out.figures, section_stats: out.sectionStats ?? [] })
+        if (out.cancelledMid) {
+          failedCount += 1
+          updateChapter(ch.node_id, { content: out.content, gen_status: "failed", figures: out.figures, section_stats: out.sectionStats ?? [] })
+          failedNodes.push({ nodeId: ch.node_id, idx: i, title: ch.title, reason: "已中断（可断点续跑）" })
+          continue
+        }
+        updateChapter(ch.node_id, { content: out.content, gen_status: sectionGenStatus({ cancelledMid: !!out.cancelledMid }), figures: out.figures, section_stats: out.sectionStats ?? [] })
         if (activeChapterId === ch.node_id) {
           editingContentRef.current = out.content
           setEditingContentState(out.content)
@@ -5457,7 +6271,12 @@ export function useBidWorkspace() {
             failedNodes.push({ nodeId: rt.nodeId, idx: rt.idx, title: rt.title, reason: "重试后仍空产出" })
             continue
           }
-          updateChapter(rt.nodeId, { content: rout.content, gen_status: "done", figures: rout.figures, section_stats: rout.sectionStats ?? [] })
+          if (rout.cancelledMid) {
+            updateChapter(rt.nodeId, { content: rout.content, gen_status: "failed", figures: rout.figures, section_stats: rout.sectionStats ?? [] })
+            failedNodes.push({ nodeId: rt.nodeId, idx: rt.idx, title: rt.title, reason: "重试中被中断（可断点续跑）" })
+            continue
+          }
+          updateChapter(rt.nodeId, { content: rout.content, gen_status: sectionGenStatus({ cancelledMid: !!rout.cancelledMid }), figures: rout.figures, section_stats: rout.sectionStats ?? [] })
           failedCount = Math.max(0, failedCount - 1)
           if (!cancelBulkRef.current) await runSupplementLoop(rt.nodeId, rt.idx + 1, rout.budget)
           if (!cancelBulkRef.current) applyBudgetGovernance(rt.nodeId, rout.budget)
@@ -5552,18 +6371,20 @@ export function useBidWorkspace() {
     if (blockIfArchived()) return // 循环 5 A3：归档只读
     const cur = activeProjectRef.current
     if (!cur) return
-    // 第十三轮改造 4：待生成计数只按技术章（商务骨架章不参与批量生成）
-    const pending = cur.bid_chapters.filter((c) => !isBizPart(c) && c.gen_status !== "done").length
+    // R206 切片 1（R-002）：待生成计数按内容范围三模式（both/tech 只算技术章、biz 只算商务章）
+    const bulkScope = normalizeBidScope(cur.gen_options)
+    const partLabel = bulkScope === "biz" ? "商务章节" : "技术章节"
+    const pending = cur.bid_chapters.filter((c) => isGenTargetChapter(c, bulkScope) && c.gen_status !== "done").length
     if (!pending) {
-      toast.info("全部技术章节已生成完毕")
+      toast.info(`全部${partLabel}已生成完毕`)
       if (cur.id) bulkQueueClear(cur.id)
       return
     }
     // 生成链路 D1：任务队列落 localStorage（刷新/换页后可恢复；正常结束与手动停止均清除）
-    if (cur.id) bulkQueueSave(cur.id, cur.bid_chapters.filter((c) => !isBizPart(c) && c.gen_status !== "done").map((c) => c.node_id))
+    if (cur.id) bulkQueueSave(cur.id, cur.bid_chapters.filter((c) => isGenTargetChapter(c, bulkScope) && c.gen_status !== "done").map((c) => c.node_id))
     costConfirm.runWithCostConfirm(() => {
       void runBulkGenerate()
-    }, `将逐章生成 ${pending} 个技术章节的投标正文，篇幅较大的章节将按小节分段生成，未达篇幅预算的章节将自动续写补足（每章最多 6 轮）；成稿后自动做字数精调与事实一致性核对（可在生成设置关闭），生成结束后若技术部分总字数缺口超过 10%，将按缺口最大章优先自动校正续写，费用按实际用量累加，${costText()}${skillCostSuffix("bid-chapter")}`)
+    }, `将逐章生成 ${pending} 个${partLabel}的投标正文，篇幅较大的章节将按小节分段生成，未达篇幅预算的章节将自动续写补足（每章最多 6 轮）；成稿后自动做字数精调与事实一致性核对（可在生成设置关闭），生成结束后若技术部分总字数缺口超过 10%，将按缺口最大章优先自动校正续写，费用按实际用量累加，${costText()}${skillCostSuffix("bid-chapter")}`)
   }, [blockIfArchived, costConfirm, requireLogin, runBulkGenerate])
 
   const cancelBulkGenerate = useCallback(() => {
@@ -5571,12 +6392,14 @@ export function useBidWorkspace() {
   }, [])
 
   // 第十三轮改造 4：done 进度只算技术章（商务骨架章无正文、不计入完成数）
+  // R175：分子只算「真正完成」的章（done 且小节已补齐）——done 但小节残缺的历史虚标章不再计入，
+  // 杜绝总览「完成 1/1」与实际「才几页」矛盾；残缺章改在总览以「待补小节」单列（见 ComposeStep）。
   const doneChapterCount = useMemo(
-    () => activeProject?.bid_chapters.filter((c) => !isBizPart(c) && c.gen_status === "done").length ?? 0,
+    () => activeProject?.bid_chapters.filter((c) => isGenTargetChapter(c, normalizeBidScope(activeProject?.gen_options)) && isTrulyDoneChapter(c)).length ?? 0,
     [activeProject],
   )
   const techChapterTotal = useMemo(
-    () => activeProject?.bid_chapters.filter((c) => !isBizPart(c)).length ?? 0,
+    () => activeProject?.bid_chapters.filter((c) => isGenTargetChapter(c, normalizeBidScope(activeProject?.gen_options))).length ?? 0,
     [activeProject],
   )
 
@@ -7528,6 +8351,11 @@ export function useBidWorkspace() {
     setRefMaterialsDraft,
     handleRefFile,
     refFileBusy,
+    // R167：标书优质素材库（五类标准件）
+    saveMaterialLibrary,
+    applyLibraryDefaults,
+    importLibraryFile,
+    classifyLibraryDraft,
     // ② 解析
     parseLoading,
     parseChunkProgress,
@@ -7579,6 +8407,9 @@ export function useBidWorkspace() {
     setComplianceMode,
     // 用户反馈轮项 3：大纲商务标章节开关（随项目持久化）
     setIncludeBiz,
+    // R206 切片 1（R-002）：内容范围三模式（随项目持久化）
+    scope,
+    setScope,
     // 用户反馈轮：关闭商务标开关时的存量章移除确认（null=不弹）
     bizRemoveCount,
     confirmRemoveBizChapters,
@@ -7659,6 +8490,12 @@ export function useBidWorkspace() {
     chapterBusy,
     generateChapter,
     regenerateChapter,
+    // 2026-10 配图需求轮：上传截图 / 图模板库（用户自有架构图/流程图/系统截图复用）
+    figureTemplates,
+    figureUploadBusy,
+    uploadChapterFigure,
+    insertFigureTemplate,
+    removeFigureTemplateById,
     // 第十五轮改造 4：小节级重写（大纲树小节行入口）
     regenerateSection,
     // 循环 5 A1：小节级局部扩写 / 缩写（条级重写按钮旁入口）
@@ -7687,6 +8524,11 @@ export function useBidWorkspace() {
     aiFigureBusy,
     aiFigureProgress,
     startAiFigures,
+    // Q28 切片G：编排配图补齐
+    figureBackfillBusy,
+    figureBackfillProgress,
+    figureBackfillPending,
+    startFigureBackfill,
     textAuditBusy,
     startTextAudit,
     fixTyposBusy,

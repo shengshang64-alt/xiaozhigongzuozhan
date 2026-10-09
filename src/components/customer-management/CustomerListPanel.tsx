@@ -1,4 +1,4 @@
-import { Building2, Download, Eye, EyeOff, Loader2, Search, Sparkles, MapPin, Target, Wand2 } from "lucide-react"
+import { Building2, Download, Eye, EyeOff, ListChecks, Loader2, Search, Sparkles, MapPin, Target, Wand2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import { normalizeHospitalLevel, normalizeRegion, isTestCustomer } from "@/pages/CustomerManagement/customerNormalize"
 import { computeMissingFields, HOSPITAL_TYPES, type CustomerRow } from "@/pages/CustomerManagement/customerTypes"
@@ -46,6 +46,8 @@ type CustomerListPanelProps = {
   batchProgress: { done: number; total: number }
   onBatchEnrich: (limit?: number) => void
   onCancelBatchEnrich: () => void
+  /** R216 数据体检面板 */
+  onOpenCheckup: () => void
 }
 
 export function CustomerListPanel({
@@ -73,6 +75,7 @@ export function CustomerListPanel({
   batchProgress,
   onBatchEnrich,
   onCancelBatchEnrich,
+  onOpenCheckup,
 }: CustomerListPanelProps) {
   // T7 演示模式（组件自持 state，不跨层传递）：给医院演示前一键隐藏名称含「测试」的客户；
   // localStorage 持久化让开关状态跨会话记住。过滤规则走 isTestCustomer 纯函数（有单测）。
@@ -130,16 +133,39 @@ export function CustomerListPanel({
               停止
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={() => onBatchEnrich(3)}
-              disabled={customers.length === 0}
-              title="优先补齐缺失最多的医院：抓取官网/概况/领导班子(含二级详情)/信息公开，并百科·公示·年报多来源兜底，用 AI 补全门诊量·床位·年收入·重点科室·领导团队等空白字段（已填字段不覆盖，结果均标记「AI 提供需核实」，请逐项核对）"
-              className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-primary/10 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            >
-              <Wand2 className="h-3.5 w-3.5" />
-              批量补全
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={onOpenCheckup}
+                disabled={customers.length === 0}
+                title="客户数据体检：集中核对 AI 补全遗留的待核实官网/字段，查看缺失排行与核对清单"
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <ListChecks className="h-3.5 w-3.5" />
+                数据体检
+              </button>
+              <button
+                type="button"
+                onClick={() => onBatchEnrich(3)}
+                disabled={customers.length === 0}
+                title="优先补齐缺失最多的 3 家：抓取官网/概况/领导班子(含二级详情)/信息公开，并百科·公示·年报多来源兜底，用 AI 补全门诊量·床位·年收入·重点科室·领导团队等空白字段（已填字段不覆盖，结果均标记「AI 提供需核实」，请逐项核对）"
+                className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-primary/10 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <Wand2 className="h-3.5 w-3.5" />
+                批量补全
+              </button>
+              {/* 2026-10-08 用户要求全部补全：不限量的全量入口，串行可中途停止 */}
+              <button
+                type="button"
+                onClick={() => onBatchEnrich(undefined)}
+                disabled={customers.length === 0}
+                title="对全部医院客户依次执行批量补全（串行、耗时长，可随时点「停止」中断；已填字段不覆盖）"
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <Wand2 className="h-3.5 w-3.5" />
+                全量补全
+              </button>
+            </>
           )}
           <button
             type="button"

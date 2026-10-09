@@ -11,6 +11,7 @@ import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/rhLogin"
 import { listKbDocs, searchKbDocs, type KbDocRow, type KbSearchHit } from "@/lib/kbCore"
 import { effectivePolicy } from "@/lib/kbPolicy"
+import { redactPii } from "@/lib/piiRedact"
 import { loadCopyrights, type CopyrightRow } from "./copyrightCore"
 
 // ---------------------------------------------------------------------------
@@ -328,7 +329,7 @@ export async function buildKbEvidence(aliases: string[], productHints: string[] 
   } catch {
     return []
   }
-  let hits: KbSearchHit[] = []
+  let hits: KbSearchHit[]
   try {
     hits = searchKbDocs(docs, question, 8)
   } catch {
@@ -453,7 +454,7 @@ function formatKbSection(kb: KbEvidence[]): string {
   const rows = kb
     .map(
       (h) =>
-        `- [${h.evidenceId}] ${h.docTitle}${h.headingPath ? " · " + h.headingPath : ""}（分类：${h.category}）\n  片段：${h.snippet}`,
+        `- [${h.evidenceId}] ${h.docTitle}${h.headingPath ? " · " + h.headingPath : ""}（分类：${h.category}）\n  片段：${redactPii(h.snippet)}`,
     )
     .join("\n")
   return `【内部知识库·命中 ${kb.length} 段（限制在允许进 AI 原文的分类）】\n${rows}`

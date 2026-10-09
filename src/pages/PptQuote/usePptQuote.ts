@@ -23,7 +23,20 @@ import {
   searchImages,
   type ImageSearchProvider,
 } from "./imageSearch"
+// R-008 素材库本地命中（取图顺序①本地库 → ②实时搜图 → ③留空）
+import { matchMaterials } from "@/pages/MaterialLibrary/materialCore"
+import type { MaterialItem } from "@/pages/MaterialLibrary/materialTypes"
 import { lintDeck, lintSummaryText } from "./deckLint"
+import {
+  clearDeckTemplate,
+  decodeTemplateBytes,
+  encodeTemplateBytes,
+  extractDeckTheme,
+  loadDeckTemplate,
+  saveDeckTemplate,
+  type StoredDeckTemplate,
+} from "./deckTheme"
+import { finalizeFidelityProbe, probeTemplateFacts } from "./deckFidelityProbe"
 import {
   buildDeckBatchMessages,
   buildDeckOutlineMessages,
@@ -565,7 +578,8 @@ export function usePptQuote() {
           async (attempt) => {
             setDeckProgress(attempt === 0 ? `正在生成 ${pageCount} 页内容…` : "生成未完成，正在自动重试…")
             const text = await llmGenerate(buildDeckSingleMessages(ctx, pageCount), MAX_TOKENS_LONGFORM, "ppt-deck", activeModelRef.current)
-            return normalizeSlides(parseJsonLoose(text), null)
+            // R149：单发路径按目标页数收敛，防模型自行加页（保留开场/致谢、裁中间正文）
+            return normalizeSlides(parseJsonLoose(text), null, pageCount)
           },
           { isEmptyResult: (got) => got.length === 0, emptyMessage: "AI 未返回可用的页面内容，请重试" },
         )
@@ -781,6 +795,51 @@ export function usePptQuote() {
     [costConfirm, currentSlideIndex, doRefineSlide],
   )
 
+  // ------------------------------ R169 公司模板主题（上传→提取→导出套用） ------------------------------
+  const [deckTemplate, setDeckTemplate] = useState<StoredDeckTemplate | null>(() => loadDeckTemplate())
+
+  // R190（r169 切片三）：模板保真体检——解包只随模板变化发生一次，逐页结论在展示层合成
+  const deckTemplateProbe = useMemo(() => probeTemplateFacts(deckTemplate), [deckTemplate])
+
+  const uploadDeckTemplate = useCallback(async (file: File) => {
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      const theme = extractDeckTheme(bytes)
+      if (!theme) {
+        toast.error("未能从该文件提取主题色/字体：请确认是有效的 .pptx/.potx 模板（另存为标准 PowerPoint 格式）")
+        return
+      }
+      // R189（r169 切片二）：模板字节同存 localStorage，纯文字页导出走母版级保真；超容量降级仅套主题
+      const base: StoredDeckTemplate = { name: file.name, savedAt: Date.now(), theme }
+      const bytesB64 = encodeTemplateBytes(bytes)
+      let fidelityOn = false
+      if (bytesB64) {
+        try {
+          saveDeckTemplate({ ...base, bytesB64 })
+          fidelityOn = true
+        } catch {
+          /* localStorage 配额不足：只存主题令牌，不阻断上传 */
+        }
+      }
+      if (!fidelityOn) saveDeckTemplate(base)
+      const tpl: StoredDeckTemplate = fidelityOn && bytesB64 ? { ...base, bytesB64 } : base
+      setDeckTemplate(tpl)
+      toast.success(
+        fidelityOn
+          ? `已套用模板「${file.name}」主题（主色 #${theme.accents[0]}）：整册纯文字页导出将按模板母版/版式保真，讲稿写入备注；含图表图文的页仍按内置版式+主题色导出`
+          : `已套用模板「${file.name}」主题（主色 #${theme.accents[0]}），下次导出 PPT 生效；模板过大或本地空间不足，未启用母版级保真`,
+      )
+    } catch {
+      toast.error("模板读取失败，请重试或换一个文件")
+    }
+  }, [])
+
+  const clearDeckTemplateChoice = useCallback(() => {
+    clearDeckTemplate()
+    setDeckTemplate(null)
+    toast.success("已改用内置商务版式")
+  }, [])
+
   // ------------------------------ PPT 导出 ------------------------------
   const exportPptx = useCallback(async () => {
     flushDeckPersist()
@@ -797,16 +856,32 @@ export function usePptQuote() {
     try {
       // R124：pptxgenjs/docx 导出库改为点击导出时才按需加载，PPT 页进页不再背这几百 kB
       const { exportDeckPptx } = await import("./deckExports")
-      await exportDeckPptx(deck, { transition: deckTransition })
+      // R189（r169 切片二）：模板字节可读且整册纯文字时，exportDeckPptx 内部走母版级保真通道
+      const path = await exportDeckPptx(deck, {
+        transition: deckTransition,
+        theme: deckTemplate?.theme,
+        templateBytes: decodeTemplateBytes(deckTemplate) ?? undefined,
+      })
       toast.success(
-        deckTransition === "none"
-          ? "PPT 文件已导出（无切换动画）；文本框可在 Office/WPS 直接修改，讲稿已写入演讲者备注"
-          : `PPT 文件已导出（含「${TRANSITION_LABEL[deckTransition]}」切换动画）；文本框与图片均可在 Office/WPS 直接修改`,
+        path === "fidelity"
+          ? "PPT 已按公司模板母版/版式保真导出（纯文字页复用模板版式，讲稿写入演讲者备注）；文本框可在 Office/WPS 直接修改"
+          : deckTransition === "none"
+            ? "PPT 文件已导出（无切换动画）；文本框可在 Office/WPS 直接修改，讲稿已写入演讲者备注"
+            : `PPT 文件已导出（含「${TRANSITION_LABEL[deckTransition]}」切换动画）；文本框与图片均可在 Office/WPS 直接修改`,
       )
+      // R190：套了模板却没走保真通道时补一句归因，避免用户只在导出后看到「没变样」
+      if (path === "legacy" && deckTemplate) {
+        const why = finalizeFidelityProbe(deckTemplateProbe, deck.slides)
+        toast.warning(
+          why.reasons.length
+            ? `本次未按模板版式保真导出：${why.reasons[0]}；详情见「模板保真体检」`
+            : "本次按内置版式导出，模板配色与字体仍已套用；详情见「模板保真体检」",
+        )
+      }
     } catch {
       toast.error("导出失败，请重试")
     }
-  }, [flushDeckPersist, deckTransition])
+  }, [flushDeckPersist, deckTransition, deckTemplate, deckTemplateProbe])
 
   // ------------------------------ 真实配图 ------------------------------
   const hostOf = (u: string) => {
@@ -980,6 +1055,76 @@ export function usePptQuote() {
     return r.dataUrl
   }, [])
 
+  // ---------------- 素材库（R-008）：本地命中优先 → 实时搜图兜底 ----------------
+
+  // 素材库元数据缓存（mode=meta 不含原图，量级轻）；ref + 在飞 promise，防 3 路并发重复拉取。
+  const localMaterialsRef = useRef<MaterialItem[] | null>(null)
+  const localMaterialsPromiseRef = useRef<Promise<MaterialItem[]> | null>(null)
+  const ensureLocalMaterials = useCallback(async (): Promise<MaterialItem[]> => {
+    if (localMaterialsRef.current) return localMaterialsRef.current
+    if (!localMaterialsPromiseRef.current) {
+      localMaterialsPromiseRef.current = apiFetch<{ items: MaterialItem[] }>("/api/materials?perPage=200&mode=meta")
+        .then((d) => {
+          const items = d.items || []
+          localMaterialsRef.current = items
+          return items
+        })
+        .catch(() => {
+          // 拉取失败按空库处理，不阻断联网搜图兜底
+          localMaterialsRef.current = []
+          return []
+        })
+    }
+    return localMaterialsPromiseRef.current
+  }, [])
+
+  /** 素材库有增删后由选图弹窗触发重拉 */
+  const reloadLocalMaterials = useCallback(async () => {
+    localMaterialsRef.current = null
+    localMaterialsPromiseRef.current = null
+    await ensureLocalMaterials()
+  }, [ensureLocalMaterials])
+
+  /** 素材库取全量记录并插入指定页（原图 dataURL 直接内嵌 deck，导出 PPTX 内嵌；引用数 +1） */
+  const attachImageFromLibrary = useCallback(
+    async (index: number, materialId: string) => {
+      const deck = activeDeckRef.current
+      const sl = deck?.slides?.[index]
+      if (!sl) return false
+      setSlideFigureBusy({ index, kind: "search" })
+      try {
+        const full = await apiFetch<MaterialItem>(`/api/materials/${materialId}`)
+        if (!full.image_data) throw new Error("素材原图缺失")
+        setSlideImage(index, full.image_data, `素材库 · ${full.name}`)
+        apiFetch(`/api/materials/${materialId}/usage`, { method: "POST" }).catch(() => { /* 引用计数失败不影响插图 */ })
+        toast.success(`已插入素材库图片「${full.name}」`)
+        return true
+      } catch (e) {
+        toast.error(String((e as Error)?.message || e) || "素材库图片插入失败")
+        return false
+      } finally {
+        setSlideFigureBusy({ index: -1, kind: "" })
+      }
+    },
+    [setSlideImage],
+  )
+
+  /** 素材库本地命中：imageHint + 标题 + 首条要点 匹配 name/tags/category，命中即插图返回 true */
+  const tryAttachFromLibrary = useCallback(
+    async (index: number, sl: { imageHint?: string; title: string; bullets: string[] }): Promise<boolean> => {
+      const materials = await ensureLocalMaterials()
+      if (!materials.length) return false
+      const pick = matchMaterials(sl.imageHint || "", sl.title, sl.bullets[0] || "", materials, 1)[0]
+      if (!pick) return false
+      const full = await apiFetch<MaterialItem>(`/api/materials/${pick.item.id}`)
+      if (!full.image_data) return false
+      setSlideImage(index, full.image_data, `素材库 · ${full.name}`)
+      apiFetch(`/api/materials/${pick.item.id}/usage`, { method: "POST" }).catch(() => { /* 引用计数失败不影响插图 */ })
+      return true
+    },
+    [ensureLocalMaterials, setSlideImage],
+  )
+
   /** 单页搜图：按 imageHint/标题取候选，默认插首张命中，失败不阻断 */
   const searchAndAttachImage = useCallback(
     async (index: number, query?: string, providerOverride?: ImageSearchProvider) => {
@@ -994,6 +1139,15 @@ export function usePptQuote() {
       }
       setSlideFigureBusy({ index, kind: "search" })
       try {
+        // R-008 取图顺序①：素材库本地命中优先（快、离线可用、商用无忧），未命中/异常再走联网
+        try {
+          if (await tryAttachFromLibrary(index, sl)) {
+            toast.success("已从素材库配图（本地图优先）")
+            return true
+          }
+        } catch {
+          /* 素材库未命中或异常 → 继续联网搜图 */
+        }
         const res = await searchImages(provider, q, { perPage: 6 })
         if (!res.ok || !res.hits.length) {
           toast.error(res.message || "未搜到相关图片")
@@ -1011,7 +1165,7 @@ export function usePptQuote() {
         setSlideFigureBusy({ index: -1, kind: "" })
       }
     },
-    [autoFigureProvider, setSlideImage, urlToDataUrl],
+    [autoFigureProvider, setSlideImage, urlToDataUrl, tryAttachFromLibrary],
   )
 
   /** 单页 AI 生图（nano-banana-pro）：本地无 RH Key 会 401/412，不阻断主流程 */
@@ -1100,22 +1254,33 @@ export function usePptQuote() {
           try {
             let inserted = false
             if (mode === "search" || mode === "hybrid") {
-              const q = buildSearchQuery({ imageHint: t.s.imageHint, title: t.s.title, firstBullet: t.s.bullets[0] })
-              if (q) {
-                try {
-                  const res = await searchImages(provider, q, { perPage: 4 })
-                  if (res.ok && res.hits.length) {
-                    const hit = res.hits[0]
-                    try {
-                      const dataUrl = await urlToDataUrl(hit.url)
-                      setSlideImage(t.i, dataUrl, hit.alt || `${provider} · ${q}`)
-                      inserted = true
-                    } catch {
-                      /* 代理下载失败→下面 fall back AI */
+              // R-008 取图顺序①：先试素材库本地命中，未命中再联网搜图
+              try {
+                if (await tryAttachFromLibrary(t.i, t.s)) {
+                  inserted = true
+                  toast.success(`第 ${t.i + 1} 页已命中素材库配图`)
+                }
+              } catch {
+                /* 本地未命中 → 联网搜图 */
+              }
+              if (!inserted) {
+                const q = buildSearchQuery({ imageHint: t.s.imageHint, title: t.s.title, firstBullet: t.s.bullets[0] })
+                if (q) {
+                  try {
+                    const res = await searchImages(provider, q, { perPage: 4 })
+                    if (res.ok && res.hits.length) {
+                      const hit = res.hits[0]
+                      try {
+                        const dataUrl = await urlToDataUrl(hit.url)
+                        setSlideImage(t.i, dataUrl, hit.alt || `${provider} · ${q}`)
+                        inserted = true
+                      } catch {
+                        /* 代理下载失败→下面 fall back AI */
+                      }
                     }
+                  } catch {
+                    /* search 失败 → fallback */
                   }
-                } catch {
-                  /* search 失败 → fallback */
                 }
               }
             }
@@ -1154,13 +1319,14 @@ export function usePptQuote() {
         toast.success(`自动配图完成：${ok}/${targets.length}`)
       }
     },
-    [setSlideImage, urlToDataUrl],
+    [setSlideImage, urlToDataUrl, tryAttachFromLibrary],
   )
 
   // 同步 ref，让定义更早的 doGenerateDeck 能安全调用。
   useEffect(() => {
     runAutoFigureRef.current = runAutoFigure
   }, [runAutoFigure])
+
 
   const exportSpeech = useCallback(async () => {
     flushDeckPersist()
@@ -2256,6 +2422,11 @@ export function usePptQuote() {
     moveSlide,
     slideAiKind,
     refineSlide,
+    // R169 公司模板主题（上传/清除/当前名）
+    deckTemplateName: deckTemplate?.name ?? null,
+    deckTemplateProbe,
+    uploadDeckTemplate,
+    clearDeckTemplateChoice,
     deckPersistFailed,
     saveDeckNow,
     exportPptx,
@@ -2274,6 +2445,9 @@ export function usePptQuote() {
     // 逐页搜图 / AI 生图 / 自动配图开关
     searchAndAttachImage,
     aiGenerateImageForSlide,
+    // 素材库（R-008）：选图弹窗插入 + 缓存重拉
+    attachImageFromLibrary,
+    reloadLocalMaterials,
     autoFigureMode,
     setAutoFigureMode,
     autoFigureProvider,

@@ -17,22 +17,22 @@ const withPaper = (paper: FormatSettings["paper"]): FormatSettings => ({
 })
 
 describe("formatCharsPerPage", () => {
-  it("默认/空配置恒等 500", () => {
-    expect(formatCharsPerPage()).toBe(500)
-    expect(formatCharsPerPage(null)).toBe(500)
-    expect(formatCharsPerPage(DEFAULT_FORMAT_SETTINGS)).toBe(500)
+  it("默认/空配置恒等校准值 950", () => {
+    expect(formatCharsPerPage()).toBe(950)
+    expect(formatCharsPerPage(null)).toBe(950)
+    expect(formatCharsPerPage(DEFAULT_FORMAT_SETTINGS)).toBe(950)
   })
 
   it("字号双向缩放", () => {
-    expect(formatCharsPerPage(withBody({ size: "小四" }))).toBe(681)
-    expect(formatCharsPerPage(withBody({ size: "三号" }))).toBe(383)
-    expect(formatCharsPerPage(withBody({ size: "五号" }))).toBe(889)
+    expect(formatCharsPerPage(withBody({ size: "小四" }))).toBe(1293)
+    expect(formatCharsPerPage(withBody({ size: "三号" }))).toBe(727)
+    expect(formatCharsPerPage(withBody({ size: "五号" }))).toBe(1689)
   })
 
   it("行距倍率", () => {
-    expect(formatCharsPerPage(withBody({ lineSpacing: "单倍" }))).toBe(750)
-    expect(formatCharsPerPage(withBody({ lineSpacing: "2倍" }))).toBe(375)
-    expect(formatCharsPerPage(withBody({ lineSpacing: "固定值21磅" }))).toBe(650)
+    expect(formatCharsPerPage(withBody({ lineSpacing: "单倍" }))).toBe(1425)
+    expect(formatCharsPerPage(withBody({ lineSpacing: "2倍" }))).toBe(713)
+    expect(formatCharsPerPage(withBody({ lineSpacing: "固定值21磅" }))).toBe(1235)
   })
 
   it("纸张与页边距影响可用版面", () => {
@@ -69,8 +69,7 @@ describe("charsPerPage 参数贯穿页数换算", () => {
     const chapters = [{ title: "第一部分" }, { title: "第二部分" }]
     const def = chapterWordBudgets(chapters, 10)
     const dbl = chapterWordBudgets(chapters, 10, 1000)
-    expect(def[0]).toBe(2500)
+    expect(def[0]).toBe(4750)
     expect(dbl[0]).toBe(5000)
-    expect(dbl[0]).toBe(def[0] * 2)
   })
 })

@@ -44,6 +44,8 @@ type ChapterEditorProps = Pick<
   insertNotice?: { label: string } | null
   /** sol5 插入回执：撤销最近一次插入 */
   onUndoInsert?: () => void
+  /** 2026-10 配图需求轮：配图区右上角工具槽（上传截图/图模板库，标书工作页注入；不传不渲染） */
+  figureToolbar?: ReactNode
 }
 
 export function ChapterEditor({
@@ -69,6 +71,7 @@ export function ChapterEditor({
   missingSections,
   insertNotice,
   onUndoInsert,
+  figureToolbar,
 }: ChapterEditorProps) {
   if (!activeChapter || !activeChapterId) {
     return (
@@ -259,10 +262,16 @@ export function ChapterEditor({
             className="min-h-96 flex-1 resize-none border-border bg-background font-sans text-sm leading-relaxed text-foreground focus-visible:shadow-[var(--focus-ring)]"
           />
         )}
-        {!!figures?.length && (
+        {(!!figures?.length || figureToolbar) && (
           <div className="grid shrink-0 grid-cols-1 gap-3">
-            <p className="text-xs font-medium text-muted-foreground">本章配图（{figures.length} 张，导出 Word 时自动插入正文）</p>
-            {figures.map((fig, i) => (
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-muted-foreground">
+                {figures?.length ? `本章配图（${figures.length} 张，导出 Word 时自动插入正文）` : "本章暂无配图"}
+              </p>
+              {/* 2026-10 配图需求轮：上传截图 / 图模板库工具槽（标书工作页注入，方案编制页不传不渲染） */}
+              {figureToolbar}
+            </div>
+            {(figures ?? []).map((fig, i) => (
               <BidFigure key={`${fig.type}-${i}`} spec={fig} />
             ))}
           </div>

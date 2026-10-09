@@ -15,11 +15,18 @@ export function looksLikeTocClauseLine(line: string): boolean {
   return TOC_HEAD_NUM_RE.test(line) && TOC_TAIL_PAGE_RE.test(line)
 }
 
-// 标注含义解释句：以 ★/▲ 开头、说明「该标记意味着什么/如何评分」的约定句。
-// 关键词收敛到「标注约定」专用语，避免误删 `▲ 某系统须支持……` 这类真实参数条款。
+// 标注含义解释句：说明「带 ★/▲ 标记的条款意味着什么/如何评分」的约定句，非需逐条响应的实质参数。
+// 两种形态——
+//  (a) 标记开头式：`▲ 条款为实质性要求……`（以 ★/▲ 起始 + 约定关键词）；
+//  (b) 行内式：`2.本文件中标注"▲"的条款为实质性要求……`（编号起头、不以标记开头，但整句为「标注X的条款」约定语）。
+// R143 只覆盖 (a)；R153 补 (b)——真实三明招标 6 条重点条款中此前有 2 条定义约定句以「行内含标记」被误当参数条款起条。
+// 用「标注…的条款」强约定语精确判别 (b)，避免误删 `▲ 某系统须支持……` 这类真实参数条款；含 | 的表格行按结构内容保留、不判为噪声。
 const STAR_DEFINE_RE = /^[★☆▲△][^\n]*?(为实质性要求|视为实质性|属于实质性|负偏离[^\n]{0,12}(扣分|无效投标|废标)|按无效投标处理|的含义|是指下列|标注说明)/
+const STAR_INLINE_CONVENTION_RE = /标注\s*["'“”‘’「」『』]?\s*[★☆▲△]\s*["'“”‘’「」『』]?\s*的\s*(?:条款|内容|要求|指标|项目)/
 export function looksLikeStarDefinitionLine(line: string): boolean {
-  return STAR_DEFINE_RE.test(line)
+  if (STAR_DEFINE_RE.test(line)) return true
+  if (line.includes("|")) return false // 表格行按结构内容保留，不判为约定句噪声
+  return STAR_INLINE_CONVENTION_RE.test(line)
 }
 
 /** 综合判定：该行是否为不应建条的噪声（目录行或标注含义解释句）。 */

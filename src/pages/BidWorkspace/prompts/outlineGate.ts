@@ -2,13 +2,15 @@
 // T15（2026-09-29）大纲门禁评审提示词（易标 runFinalOutlineGate 语义移植）：
 // 大纲生成 + 结构修复之后的一道 AI 评审门禁——评审「结构/覆盖/承接/体量」并输出问题清单，
 // 评审不过由调用方带问题清单走既有 buildOutlineFixMessages 修复（锁定顶层章身份）。
+// 2026-10 易标 v2.20.2 对齐轮：目录二审口径升级——判重细则（近义/换说法/同名不机械判重）
+// 与节点归属维度（易标 outline_review 的 duplicate-directory / professional-structure 审核维度移植）。
 // ---------------------------------------------------------------------------
 
 import { isBizPart } from "../bidTypes"
 import type { OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
 import type { LlmMessage } from "@/lib/llm"
 
-export const PROMPT_VERSION = 1
+export const PROMPT_VERSION = 2 // 2026-10 易标 v2.20.2 目录二审口径对齐：重复判重细则（近义/换说法/同名不机械判重）+ 节点归属维度
 
 export type OutlineGateReview = { passed: boolean; issues: string[] }
 
@@ -69,8 +71,10 @@ export function buildOutlineGateReviewMessages(
     `2. 层级结构：${structureExpectation}；商务骨架章（part="biz"）保持章+一级小节、不生成正文；`,
     `3. 叶子体量：技术章叶子（末端节点，商务章叶子不计入）当前 ${leafCount(nodes ?? [])} 个，应落在 ${leafLo}-${leafHi} 区间（目标 ${leafTarget} 个、每叶子约 ${sectionWords} 字），明显偏离必须指出；`,
     "4. 评分承接：下方给出技术评分项清单，叶子的 description 形如 [响应:R1,R3] 为承接标注；有分值的评分项没有被任何叶子承接时必须指出对应编号；",
-    "5. 重复与空泛：语义重复/高度相近的叶子标题、或「概述/说明/其他」式空泛命名（应改为具体响应式命名）必须指出；",
-    "6. 顶层章身份：商务章在前、技术章在后，part 归属错乱必须指出。",
+    // 2026-10 易标 v2.20.2 目录二审口径：判重细则 + 节点归属
+    "5. 重复与空泛：重复、近义、含义重叠或仅换一种说法的叶子标题必须指出；「概述/说明/其他」式空泛命名（应改为具体响应式命名）必须指出；注意不同专业分支下确有独立含义的同名标题（如不同系统各自的「安全保障」）不应机械判重；",
+    "6. 节点归属：叶子内容与其父章/父节主题不符（放错章节、应移到更贴切章节）时必须指出，给出建议归属；",
+    "7. 顶层章身份：商务章在前、技术章在后，part 归属错乱必须指出。",
     "",
     "输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式：",
     '{"passed":true,"issues":[]}',

@@ -5,6 +5,8 @@ import {
   aiHotSourceOf,
   rssHtmlToText,
   decodeXmlEntities,
+  filterMedicalAiHot,
+  isMedicalAiHot,
   type AiHotItem,
 } from "./aiHotFeed"
 
@@ -97,5 +99,42 @@ describe("辅助纯函数", () => {
     expect(aiHotSourceOf("noreply@aihot.news (官方博客)")).toBe("官方博客")
     expect(aiHotSourceOf("裸名")).toBe("裸名")
     expect(aiHotSourceOf("")).toBe("")
+  })
+})
+
+
+describe("filterMedicalAiHot · 2026-10-07 用户口径：只留「AI × 医疗软件信息化」", () => {
+  const mk = (title: string, summary = "", category = "行业动态"): AiHotItem => ({
+    id: title,
+    title,
+    link: "https://aihot.news/x",
+    summary,
+    category,
+    source: "测试信源",
+    publishedAt: "",
+  })
+
+  it("医疗 × AI 双命中保留（标题或摘要任一补齐领域词）", () => {
+    expect(isMedicalAiHot(mk("医疗大模型评测基准发布"))).toBe(true)
+    expect(isMedicalAiHot(mk("DeepSeek 开源新模型", "已在三家三甲医院完成本地化部署"))).toBe(true)
+    expect(isMedicalAiHot(mk("某厂商发布智能体框架", "面向医院院内的导诊智能体落地案例"))).toBe(true)
+    expect(isMedicalAiHot(mk("AI 辅助诊断进入临床", "肺结节 AI 辅诊系统通过验证", "AI 产品"))).toBe(true)
+  })
+
+  it("泛 AI 资讯不保留（编程工具/自动驾驶/通用模型发布）", () => {
+    expect(isMedicalAiHot(mk("Baseten 工程师实测：LLM 生成的推理引擎比 vLLM 快最多 90%"))).toBe(false)
+    expect(isMedicalAiHot(mk("某新模型发布", "直接发布，支持多模态"))).toBe(false)
+    expect(isMedicalAiHot(mk("自动驾驶公司获批测试牌照"))).toBe(false)
+    expect(isMedicalAiHot(mk("AI 编程助手对比评测"))).toBe(false)
+  })
+
+  it("filterMedicalAiHot 过滤列表并保持顺序", () => {
+    const items = [
+      mk("医疗大模型走红"),
+      mk("通用 Agent 框架发布"),
+      mk("医院智慧服务 AI 应用落地"),
+    ]
+    const out = filterMedicalAiHot(items)
+    expect(out.map((i) => i.title)).toEqual(["医疗大模型走红", "医院智慧服务 AI 应用落地"])
   })
 })

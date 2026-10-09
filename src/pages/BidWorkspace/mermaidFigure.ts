@@ -10,9 +10,9 @@
 
 export const MERMAID_MAX_CODE_CHARS = 4000
 
-/** 允许的图型起点（对齐易标口径：只放行确定性能渲染的常规图型，克制优先） */
+/** 允许的图型起点（对齐易标口径：只放行确定性能渲染的常规图型，克制优先；gantt=项目实施甘特图） */
 const MERMAID_ALLOWED_START_RE =
-  /^(flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|mindmap|timeline|pie)\b/
+  /^(flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|mindmap|timeline|pie|gantt)\b/
 
 /** 净化模型输出的 mermaid 源码：剥代码围栏、白名单起点、长度上限；不合格返回空串 */
 export function sanitizeMermaidCode(raw: unknown): string {
@@ -33,7 +33,29 @@ async function loadMermaid(): Promise<MermaidApi> {
   if (!mermaidPromise) {
     mermaidPromise = import("mermaid").then((m) => {
       const api = m.default
-      api.initialize({ startOnLoad: false, securityLevel: "strict", theme: "default" })
+      // 2026-10-07：v12 neo look 的标签走 <foreignObject>，安全级别/look/htmlLabels 配置均关不掉；
+      // 含 fo 的 SVG 进 <img>→canvas 会被跨源污染，Word 导出零配图（用户实报缺陷）。
+      // 解法：渲染后 stripForeignObject 把 fo 就地替换为 <text>（见下），此处保持 strict 安全级。
+      // themeVariables：标书配图观感——浅蓝主色、圆角、增大字号，甘特图分区着色。
+      api.initialize({
+        startOnLoad: false,
+        securityLevel: "strict",
+        theme: "base",
+        themeVariables: {
+          primaryColor: "#E8F1FC",
+          primaryBorderColor: "#2F6FBF",
+          primaryTextColor: "#1A3A5C",
+          lineColor: "#5B87B5",
+          fontSize: "14px",
+          fontFamily: "Microsoft YaHei, PingFang SC, sans-serif",
+          ganttSectionBkgColor: "#EAF2FB",
+          ganttAltSectionBkgColor: "#F7FAFE",
+          ganttTaskBkgColor: "#7FB0E5",
+          ganttTaskBorderColor: "#2F6FBF",
+          ganttTodayLineColor: "#E06C5A",
+        },
+        flowchart: { curve: "basis", padding: 10 },
+      })
       return api
     })
   }
@@ -84,7 +106,7 @@ export async function renderMermaidToSvg(code: string): Promise<string> {
     const id = `yibiao-mermaid-${Date.now()}-${renderSeq++}`
     const { svg } = await mermaid.render(id, src)
     if (!svg) return ""
-    const normalized = normalizeMermaidSvgSize(svg)
+    const normalized = stripForeignObject(normalizeMermaidSvgSize(svg))
     if (mermaidSvgCache.size >= MERMAID_CACHE_MAX) {
       const oldest = mermaidSvgCache.keys().next().value
       if (oldest !== undefined) mermaidSvgCache.delete(oldest)
@@ -104,6 +126,54 @@ function normalizeMermaidSvgSize(svg: string): string {
   const w = Math.max(320, Math.min(960, Math.round(Number(viewBoxMatch[1]) || 640)))
   const h = Math.max(160, Math.round(Number(viewBoxMatch[2]) || 320))
   return svg.replace(/<svg/, `<svg width="${w}" height="${h}"`)
+}
+
+/**
+ * 2026-10-07：把 SVG 里的 <foreignObject>（mermaid v12 neo look 的 HTML 标签）就地替换为等位的
+ * <text>。foreignObject 是 Word 导出零配图的根因——含 fo 的 SVG 装进 <img> 再画 canvas 会被
+ * Chromium 跨源污染（SecurityError: tainted），figureToPng 全量降级【图】文字；v12 的
+ * look/htmlLabels 配置关不掉 fo，只能在渲染后剥除。标签取 fo 内 textContent 按行拆 tspan，
+ * 居中放在 fo 的包围盒中心；样式从节点 <g> 继承（fill 由 mermaid 主题给出）。
+ */
+export function stripForeignObject(svg: string): string {
+  if (!svg.includes("foreignObject")) return svg
+  try {
+    const doc = new DOMParser().parseFromString(svg, "image/svg+xml")
+    if (doc.documentElement.nodeName === "parsererror") return svg
+    const fos = [...doc.querySelectorAll("foreignObject")]
+    for (const fo of fos) {
+      const text = (fo.textContent ?? "").replace(/\s+/g, " ").trim()
+      const parent = fo.parentNode
+      if (!parent) continue
+      const x = Number(fo.getAttribute("x") ?? 0)
+      const y = Number(fo.getAttribute("y") ?? 0)
+      const w = Number(fo.getAttribute("width") ?? 0)
+      const h = Number(fo.getAttribute("height") ?? 0)
+      const NS = "http://www.w3.org/2000/svg"
+      const textEl = doc.createElementNS(NS, "text")
+      textEl.setAttribute("x", String(x + w / 2))
+      textEl.setAttribute("y", String(y + h / 2))
+      textEl.setAttribute("text-anchor", "middle")
+      textEl.setAttribute("dominant-baseline", "middle")
+      const rawLines = text.split(/<br\s*\/?>|\n/i).filter(Boolean)
+      const lines = (fo.innerHTML.includes("<br") ? fo.innerHTML.split(/<br\s*\/?>/i) : rawLines.length ? [text] : [""])
+        .map((l) => l.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim())
+        .filter(Boolean)
+      const lineH = 18
+      const startDy = -((Math.max(1, lines.length) - 1) * lineH) / 2
+      lines.forEach((line, li) => {
+        const tspan = doc.createElementNS(NS, "tspan")
+        tspan.setAttribute("x", String(x + w / 2))
+        tspan.setAttribute("dy", li === 0 ? String(startDy) : String(lineH))
+        tspan.textContent = line
+        textEl.appendChild(tspan)
+      })
+      parent.replaceChild(textEl, fo)
+    }
+    return new XMLSerializer().serializeToString(doc.documentElement)
+  } catch {
+    return svg
+  }
 }
 
 /**

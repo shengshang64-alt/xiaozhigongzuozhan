@@ -1,8 +1,9 @@
 import { FolderKanban, ListTodo, TrendingUp } from "lucide-react"
+import { formatActiveWorkBreakdown, type ActiveWorkKind } from "@/pages/Home/activeWork"
 
 type StatsRowProps = {
-  activeProjectCount: number
-  activeProjectsCapped?: boolean
+  activeWorkCount: number
+  activeWorkByKind: Record<ActiveWorkKind, number>
   pendingTodoCount: number
   doneTodoCount: number
   overdueTodoCount: number
@@ -45,15 +46,14 @@ function StatItem({
   )
 }
 
-export function StatsRow({ activeProjectCount, activeProjectsCapped, pendingTodoCount, doneTodoCount, overdueTodoCount }: StatsRowProps) {
+export function StatsRow({ activeWorkCount, activeWorkByKind, pendingTodoCount, doneTodoCount, overdueTodoCount }: StatsRowProps) {
   return (
     <section className="mb-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       <StatItem
         icon={<FolderKanban className="h-5 w-5" />}
-        value={activeProjectCount}
-        label="进行中项目"
-        valueSuffix={activeProjectsCapped ? "+" : undefined}
-        valueTitle={activeProjectsCapped ? "仅显示最近 200 个项目，实际可能更多" : undefined}
+        value={activeWorkCount}
+        label="工作台进行中事项"
+        valueTitle={activeWorkCount > 0 ? formatActiveWorkBreakdown(activeWorkByKind) : undefined}
       />
       <StatItem
         icon={<ListTodo className="h-5 w-5" />}

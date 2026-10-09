@@ -3,10 +3,10 @@
 // ---------------------------------------------------------------------------
 
 import { buildLotsScopeHint, BID_OUTLINE_REQ_KEY, STAR_CLAUSE_SECTION, clipText, combinedScoringText, complianceOutlineRule, numberScoringItems, numberedScoringDetailLines, sectionText, sectionTextAny, truthPreamble } from "../bidTypes"
-import type { ComplianceMode, ParseReport, RequirementClause } from "../bidTypes"
+import type { BidScope, ComplianceMode, ParseReport, RequirementClause } from "../bidTypes"
 import type { LlmMessage } from "@/lib/llm"
 
-export const PROMPT_VERSION = 1
+export const PROMPT_VERSION = 3
 
 /** 大纲生成：注入评分办法 / 响应要求 / 商务条款 + 招标要求条款清单 + 全局事实表；级数与叶子规模（leafTarget ±20%）作硬约束 */
 export function buildBidOutlineMessages(
@@ -25,11 +25,15 @@ export function buildBidOutlineMessages(
     refTemplateOutline?: string[]
     /** 用户反馈轮项 3：是否输出商务标骨架章（缺省 true；false 时商务段整体替换为「不输出任何商务章节」） */
     includeBiz?: boolean
+    /** R206 切片 1（R-002）：内容范围三模式；缺省时由 includeBiz 派生（true→both / false→tech），存量零变化 */
+    scope?: BidScope
     /** 05 三模式（§5.4）：合规严格度驱动技术章骨架宽度（缺省/strict=现状零改动；full 允许增设支撑性技术章） */
     complianceMode?: ComplianceMode
   },
 ): LlmMessage[] {
-  const includeBiz = opts?.includeBiz !== false
+  const scope: BidScope = opts?.scope ?? (opts?.includeBiz === false ? "tech" : "both")
+  const includeBiz = scope !== "tech"
+  const includeTech = scope !== "biz"
   const scoringText = combinedScoringText(report)
   // R31：编号评分项列表，为大纲承接标注提供稳定 R-id 链
   const numberedItems = numberScoringItems(report)
@@ -69,16 +73,23 @@ export function buildBidOutlineMessages(
         : level === 2
           ? "级数硬约束（只按技术章计算）：技术章恰好两级（章—节），每个技术章下必须有节，节节点的 children 一律为空数组，禁止出现三级节点；商务骨架章固定为章+一级小节。"
           : "级数硬约束（只按技术章计算）：技术章恰好三级（章—节—条），每个技术章下必须有节，每节下必须至少有 1 个条级节点，条节点的 children 为空数组；商务骨架章仍只列一级小节、不展开三级。"
-  const numbered: string[] = includeBiz
+  const numbered: string[] = scope === "both"
     ? [
         "大纲顶层章分「商务部分」与「技术部分」两组：商务章在前、技术章在后，每个顶层章对象必须带 part 字段标明归属（\"biz\"=商务章、\"tech\"=技术章），深层节点不带 part；",
         "商务部分输出 6-10 个骨架章（part=\"biz\"）：投标函及报价、法定代表人授权、资质与证照证明、财务审计报告、同类项目业绩、商务条款响应/偏离表、售后服务承诺函、中小企业声明等，按下面【响应文件要求】【资质要求】【商务评分办法】的实际内容增删，下面给出【投标保证金】【合同关键条款】时商务部分还须有对应骨架章落点（保证金缴纳与退还、合同条款响应、质保衔接等）；商务章 children 只列一级小节名即可（不展开三级），这些章的正文由投标人线下填写、不生成正文；",
       ]
-    : [
-        "大纲顶层章全部为技术部分：每个顶层章对象必须带 part 字段（一律 \"tech\"），深层节点不带 part；",
-        "本次不输出任何商务部分章节（part=\"biz\"），大纲仅含技术标章节；投标函、资质证照、商务偏离表等商务内容由投标人线下自行处理，禁止为其安排任何章节；",
-      ]
-  numbered.push(
+    : scope === "tech"
+      ? [
+          "大纲顶层章全部为技术部分：每个顶层章对象必须带 part 字段（一律 \"tech\"），深层节点不带 part；",
+          "本次不输出任何商务部分章节（part=\"biz\"），大纲仅含技术标章节；投标函、资质证照、商务偏离表等商务内容由投标人线下自行处理，禁止为其安排任何章节；",
+        ]
+      : [
+          "大纲顶层章全部为商务部分：每个顶层章对象必须带 part 字段（一律 \"biz\"），深层节点不带 part；",
+          "本次仅编制商务标，输出 8-12 个商务章（part=\"biz\"）：投标函、法定代表人身份证明、授权委托书、报价一览表、分项报价表、商务条款响应偏离表、资格证明文件、财务审计报告、同类项目业绩、售后服务承诺函、中小企业声明等，按下面【响应文件要求】【资质要求】【商务评分办法】的实际内容增删；每章 children 展开到二级小节（本章正文将由系统按招标商务要求逐条生成，需具体小节承载，不得只列一级骨架）；",
+          "本次不输出任何技术部分章节（part=\"tech\"），技术方案、实施组织、售后技术内容等全部由技术标单独编制，禁止为其安排任何章节；",
+        ]
+  if (includeTech)
+    numbered.push(
     "技术部分（part=\"tech\"）为详细响应骨架，必须以评分办法为纲：逐条覆盖下面技术评分的评分点，每个重要评分项都要落到具体章或节标题；",
     "事实来源排他（防幻觉，2026-09-23 用户反馈轮：目录不一致/编造招标要求）：大纲中的章节主题、顺序与评分承接只能以下面【技术评分办法】【商务评分办法】【技术方案与响应要求】【招标文件规定的投标文件目录】【★/▲ 重点条款】等注入内容与常规骨架为依据；禁止编造注入内容中不存在的评分项、分值、条款编号或目录要求，禁止把行业常识写成「响应招标文件第X条」式标题；某方面无注入依据时用常规骨架命名，不得假称招标要求；",
     "承接标注（R31）：每个技术章下的叶子节点（末级节/条）必须在 description 字段中标注其承接的评分编号，格式 `[响应:R1]` 或 `[响应:R1,R3]`（多个逗号分隔）；一个叶子只标注其直接相关的 1-3 个编号；商务骨架章不标注；不承接任何评分项的叶子节点可省略 description；",
@@ -87,6 +98,19 @@ export function buildBidOutlineMessages(
     "标题只写名称、不带编号、不以标点结尾；层级命名规范：一级=部分/章，二级=节，三级=条；",
     "节/条标题必须用具体响应式命名：主题词+落点词（设计/范围/保障/机制/流程等），形如「设备兼容性设计」「多模态数据处理范围」「知识更新机制」；禁止「概述/说明/介绍/相关内容/其他」式空泛标题；",
   )
+  else
+    numbered.push(
+    "事实来源排他（防幻觉）：商务章的主题、顺序只能以下面【商务评分办法】【技术方案与响应要求】【招标文件规定的投标文件目录】等注入内容与常规商务骨架为依据；禁止编造注入内容中不存在的要求、分值或条款编号；某方面无注入依据时用常规商务骨架命名，不得假称招标要求；",
+    "响应文件要求须逐条落实（组成、格式、签字盖章与装订要求对应专门商务章节或节）；",
+    "标题只写名称、不带编号、不以标点结尾；层级命名规范：一级=章，二级=节；",
+    "节标题必须用具体响应式命名：主题词+落点词（承诺/响应/声明/证明/报价等），禁止「概述/说明/介绍/相关内容/其他」式空泛标题；",
+  )
+  // R207 切片 2（R-003）：无底稿兜底——解析到「响应文件组成」时强制顶层章逐项映射其顺序与命名（缺组成时不注入，走运行时告警）
+  if (respText) {
+    numbered.push(
+      "响应文件组成硬约束：下面【技术方案与响应要求】中「响应文件组成」列出的每个组成部分（如报价文件、商务文件、技术文件、资格证明、承诺函、授权委托书、响应表、偏离表等），必须逐项映射为目录中对应的顶层章或专门小节，顺序与命名保持一致，不允许合并或改名；组成未列出但编制必需的常规章可在末尾补充；",
+    )
+  }
   // 05 三模式（§5.4）：骨架宽度随模式追加（strict/缺省 不追加，大纲 prompt 与现状字节级一致）
   const outlineModeRule = complianceOutlineRule(opts?.complianceMode)
   if (outlineModeRule) {
@@ -133,7 +157,11 @@ export function buildBidOutlineMessages(
     "你是一位深耕医疗信息化行业十余年的资深投标顾问，擅长按评分办法组织技术标结构，确保每一分都有对应响应章节。",
     truthPreamble(),
     `当前任务：为投标项目「${projectName}」（采购人：${hospital || "未填写"}）生成投标文件响应大纲${
-      includeBiz ? "（商务部分骨架 + 技术部分详细大纲）" : "（仅技术部分详细大纲，不含任何商务章节）"
+      scope === "biz"
+        ? "（仅商务部分详细大纲，不含任何技术章节）"
+        : includeBiz
+          ? "（商务部分骨架 + 技术部分详细大纲）"
+          : "（仅技术部分详细大纲，不含任何商务章节）"
     }，${depthRule}`,
     fromDraft ? "本次在已有方案底稿基础上按招标文件要求调整结构，保留底稿中仍然适用的章节。" : "",
     "硬性要求：",

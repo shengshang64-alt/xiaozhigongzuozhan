@@ -6,6 +6,7 @@ import {
   numberConflictHits,
   structuredNumberConflictHits,
   deviationCommitHits,
+  amountCaseMismatchHits,
   overPriceCeilingHits,
   quoteRecordCeilingHits,
   pickLatestQuoteTotals,
@@ -409,5 +410,83 @@ describe("pickLatestQuoteTotals（同名多版本取最新、按商机过滤、�
     expect(priceCeilingFromFacts(["预算金额：3500万元"])?.src).toBe("预算金额")
     expect(priceCeilingFromFacts(["项目周期：180天"])).toBeNull()
     expect(priceCeilingFromFacts(["预算金额：3500万元【需人工确认】"])).toBeNull()
+  })
+})
+
+// R187（r184-bid-amount-consistency-wiring）：金额大小写一致性——R184 确定性内核接入交卷体检本地格式路
+describe("amountCaseMismatchHits（金额大小写一致性接入交卷体检）", () => {
+  it("相邻重述大小写不一致 → amount_case_mismatch（warn + 【废标风险】）", () => {
+    const hits = amountCaseMismatchHits(chObj("投标总报价：人民币肆仟万元整（¥4,000,00）"), null)
+    expect(hits).toHaveLength(1)
+    expect(hits[0].rule).toBe("amount_case_mismatch")
+    expect(hits[0].level).toBe("warn")
+    expect(hits[0].quote).toContain("废标风险")
+    expect(hits[0].chapter).toBe("第一章")
+  })
+
+  it("大小写一致 → 不报（正常开标一览表零误报）", () => {
+    expect(amountCaseMismatchHits(chObj("投标总报价：人民币肆仟万元整（¥40,000,000.00）"), null)).toHaveLength(0)
+    expect(amountCaseMismatchHits(chObj("报价 4000万元（人民币肆仟万元整）"), null)).toHaveLength(0)
+  })
+
+  it("回归锁：表头「（单位：万元）」这类高频碎片不误报畸形大写（畸形须紧邻小写才提示）", () => {
+    const text = "本项目预算金额 3500 万元（单位：万元），其中设备购置 1200 万元（单位：万元）\n质保期 3 年"
+    expect(amountCaseMismatchHits(chObj(text), null)).toHaveLength(0)
+  })
+
+  it("大写位置未填/书写不规范且紧邻小写 → 提示级 info（模板占位残留）", () => {
+    const hits = amountCaseMismatchHits(chObj("投标总价（大写）：人民币万元整（¥40,000,000）"), null)
+    expect(hits).toHaveLength(1)
+    expect(hits[0].level).toBe("info")
+    expect(hits[0].quote).toContain("无法解析")
+  })
+
+  it("偏离表响应面同样核对（chapter 标注「偏离表」）", () => {
+    const hits = amountCaseMismatchHits([], devSum("我方投标总报价人民币贰佰万元整（¥3,000,000）"))
+    expect(hits.some((h) => h.rule === "amount_case_mismatch" && h.chapter.startsWith("偏离表"))).toBe(true)
+  })
+
+  it("同章同串去重 + 全文 ≤15 条上限（防刷屏挤占体检列表）", () => {
+    const dup = amountCaseMismatchHits(chObj("甲：壹佰万元（¥200,000）；乙：壹佰万元（¥200,000）"), null)
+    expect(dup).toHaveLength(1)
+    const many = amountCaseMismatchHits(
+      Array.from({ length: 20 }, (_, i) => ({
+        title: `第${i + 1}章`,
+        content: `本项目合同金额人民币壹佰万元整（¥${i + 2},000,000）`,
+      })) as unknown as Chapter[],
+      null,
+    )
+    expect(many).toHaveLength(15)
+  })
+
+  it("空正文 / 无 title / null 入参容错", () => {
+    expect(amountCaseMismatchHits(null as unknown as Chapter[], null)).toHaveLength(0)
+    expect(amountCaseMismatchHits([{ title: "", content: "   " }] as unknown as Chapter[], null)).toHaveLength(0)
+    expect(amountCaseMismatchHits([{ title: "", content: "壹佰万元（¥2,000,000）" }] as unknown as Chapter[], null)[0].chapter).toBe("第1章")
+  })
+
+  it("新规则 amount_case_mismatch 在白名单存活（normalize 不丢弃）", () => {
+    const report = normalizeFormatCheckReport({
+      hits: [{ chapter: "第一章", rule: "amount_case_mismatch", quote: "x", level: "warn" }],
+      checked_at: "",
+    })
+    expect(report?.hits[0]?.rule).toBe("amount_case_mismatch")
+  })
+})
+
+// R187 真实标书语料（20 份含大写金额的 docx）复验出的噪声形态，在接线层锁死
+describe("amountCaseMismatchHits 真实语料噪声锁", () => {
+  it("表格列头「（单位：万元）」与邻格数字不构成大小写重述（跨行相邻不提示）", () => {
+    expect(amountCaseMismatchHits(chObj("金额（单位：万元）\n¥670.00\n质保期 3 年"), null)).toHaveLength(0)
+  })
+
+  it("「人民币1万元」式小写前缀不被拆出幻影大写", () => {
+    expect(amountCaseMismatchHits(chObj("本项目软件许可费为人民币1万元，含税；实施费另计"), null)).toHaveLength(0)
+  })
+
+  it("真实废标形态仍能报出：大写与小写重述数值不符", () => {
+    const hits = amountCaseMismatchHits(chObj("投标总报价（大写）人民币贰仟贰佰肆拾伍万元整 ¥22,100,000.00"), null)
+    expect(hits.filter((h) => h.rule === "amount_case_mismatch")).toHaveLength(1)
+    expect(hits[0].level).toBe("warn")
   })
 })
