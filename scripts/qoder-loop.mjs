@@ -168,6 +168,68 @@ function run(cmd, args, opts = {}) {
   };
 }
 
+/**
+ * 异步执行命令（spawn 版）。
+ * 存在意义：本环境（WorkBuddy 沙箱）下 spawnSync **偶发**失败 —— 返回 code=-1、stderr 为空、
+ * 进程根本没起来，表现为日志里只剩「git add 失败: 」这种零信息的报错。
+ * 改用 spawn（异步）可稳定成功（qodercli 调用即走这条通路，从未失败）。
+ */
+function runAsync(cmd, args, opts = {}) {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn(cmd, args, {
+        cwd: opts.cwd || PROJECT_ROOT,
+        shell: opts.shell === true,
+        windowsHide: true,
+        env: { ...process.env },
+      });
+    } catch (e) {
+      resolve({ code: -1, stdout: '', stderr: '', error: e.message });
+      return;
+    }
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    const finish = (payload) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(payload);
+    };
+    const timer = setTimeout(() => {
+      try { child.kill('SIGKILL'); } catch (_) { /* 进程可能已退出 */ }
+      finish({
+        code: -1,
+        stdout: stdout.trim(),
+        stderr: `${stderr.trim()}\n[timeout ${opts.timeout || 60000}ms]`.trim(),
+        error: 'timeout',
+      });
+    }, opts.timeout || 60000);
+    child.stdout.on('data', (d) => { stdout += d.toString(); });
+    child.stderr.on('data', (d) => { stderr += d.toString(); });
+    child.on('error', (e) => finish({ code: -1, stdout, stderr, error: e.message }));
+    child.on('close', (code) => finish({
+      code: code === null ? -1 : code,
+      stdout: stdout.trim(),
+      stderr: stderr.trim(),
+      error: null,
+    }));
+  });
+}
+
+/** 执行 git 子命令并重试：本环境 spawnSync 偶发失败，单次失败不代表命令本身有问题 */
+async function gitCmd(args, timeout = 60000, attempts = 3) {
+  let last = { code: -1, stdout: '', stderr: '', error: 'not-run' };
+  for (let i = 1; i <= attempts; i++) {
+    last = await runAsync('git', args, { timeout });
+    if (last.code === 0) return last;
+    log('warn', `git ${args.join(' ')} 第 ${i}/${attempts} 次失败（code=${last.code}${last.error ? `, ${last.error}` : ''}${last.stderr ? `, ${last.stderr.slice(0, 120)}` : ''}）`);
+    if (i < attempts) await new Promise((r) => setTimeout(r, 400 * i));
+  }
+  return last;
+}
+
 /** 时间戳：用于文件名 */
 function stamp(d = new Date()) {
   const p = (n) => String(n).padStart(2, '0');
@@ -692,11 +754,15 @@ function runQoderCli(prompt, opts) {
 // ============================================================ 8. Git 与备份
 
 /** 提交本轮改动；返回 { ok, hash, message } */
-function gitCommit(round, topic) {
-  const add = run('git', ['add', '-A'], { timeout: 60000 });
-  if (add.code !== 0) return { ok: false, hash: '', message: `git add 失败: ${add.stderr}` };
+async function gitCommit(round, topic) {
+  const add = await gitCmd(['add', '-A']);
+  if (add.code !== 0) {
+    // 报错必须带诊断信息：旧实现只拼 add.stderr，而 spawnSync 失败时 stderr 为空，
+    // 日志里只剩「git add 失败: 」，无法定位。现补 code/error 兜底。
+    return { ok: false, hash: '', message: `git add 失败: code=${add.code}${add.error ? `, ${add.error}` : ''}${add.stderr ? `, ${add.stderr}` : ''}` };
+  }
 
-  const staged = run('git', ['diff', '--cached', '--name-only'], { timeout: 30000 });
+  const staged = await gitCmd(['diff', '--cached', '--name-only'], 30000);
   if (staged.code !== 0 || !staged.stdout) {
     return { ok: false, hash: '', message: '无暂存改动（本轮可能未修改文件）' };
   }
@@ -711,9 +777,9 @@ function gitCommit(round, topic) {
     files.length > 20 ? `  ... 其余 ${files.length - 20} 个见 diff` : '',
   ].filter(Boolean).join('\n');
 
-  const c = run('git', ['commit', '-m', msg], { timeout: 120000 });
-  if (c.code !== 0) return { ok: false, hash: '', message: `git commit 失败: ${c.stderr || c.stdout}` };
-  const h = run('git', ['rev-parse', '--short', 'HEAD'], { timeout: 20000 });
+  const c = await gitCmd(['commit', '-m', msg], 120000);
+  if (c.code !== 0) return { ok: false, hash: '', message: `git commit 失败: code=${c.code}${c.stderr ? `, ${c.stderr}` : ''}${c.stdout ? `, ${c.stdout}` : ''}` };
+  const h = await gitCmd(['rev-parse', '--short', 'HEAD'], 20000);
   return { ok: true, hash: h.stdout.trim(), message: 'ok' };
 }
 
@@ -851,7 +917,7 @@ async function runOneRound(ctx) {
   let commit = { ok: false, hash: '', message: 'skipped' };
   if (opts.commit) {
     const topic = contract && contract.topic ? String(contract.topic).slice(0, 60) : '';
-    commit = gitCommit(round, topic);
+    commit = await gitCommit(round, topic);
     if (commit.ok) log('info', `已提交 ${commit.hash}`);
     else log('warn', `未提交：${commit.message}`);
   }
