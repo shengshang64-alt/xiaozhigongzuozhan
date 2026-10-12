@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { hitKey } from "@/pages/BidCheck/ReadingView"
-import type { CheckHit } from "@/pages/BidCheck/types"
+import type { CheckHit } from "@/pages/BidCheck/bidCheckTypes"
 
 // R216 缺陷修复配套测试：锁死命中项 key 的唯一性口径。
 // 回归价值：旧实现 `code#paragraphIndex` 在同一规则命中同一段落多次时必冲突，
