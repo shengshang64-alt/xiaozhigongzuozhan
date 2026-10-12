@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "total_rounds_run": 0,
-  "consecutive_no_report": 1,
+  "total_rounds_run": 1,
+  "consecutive_no_report": 0,
   "consecutive_env_fail": 0,
   "history": [
     {
@@ -73,8 +73,30 @@
       "needsUserDecision": [],
       "honestNotes": [],
       "cliMeta": null
+    },
+    {
+      "round": 280,
+      "role": "presales-engineer",
+      "status": "ran",
+      "reason": "",
+      "topic": "方案编制生成失败留痕落库（genError）——delivery-p0-02 根因定位前置",
+      "workClass": "A",
+      "durationMs": 2441270,
+      "reportProduced": true,
+      "commitHash": "",
+      "needsUserDecision": [
+        "是否授权一次单章真实 AI 生成（delivery-p0-02 收口取证，最小费用）"
+      ],
+      "honestNotes": [
+        "R01 演练记录的历史失败原因在修复前已被程序丢弃，无法回收；本轮只保证『此后的失败有痕可查』",
+        "genError 落库路径未做端到端真实失败验证（不触发真实 AI），验证方式=单测+代码路径审查+UI 实机 tooltip（旧数据兜底分支）",
+        "vite build 首跑失败是沙箱 safe-delete 已知环境问题，清 NODE_OPTIONS 后通过，非改动引入",
+        "实机 tooltip 验证为浏览器真机（未降级）；delivery-p0-03 关闭基于接口直查（服务端事实），未再走浏览器全页截图",
+        "批量空产出的逐章点名文案由『模型空产出』统一为『模型返回空正文』，属同一含义的口径归一，非功能变更"
+      ],
+      "cliMeta": null
     }
   ],
-  "last_run_at": "2026-10-12T13:08:07.628Z",
+  "last_run_at": "2026-10-12T13:52:31.799Z",
   "last_stop_reason": "completed_requested_rounds"
 }

@@ -34,6 +34,7 @@ import { useScopeSkills } from "@/hooks/useScopeSkills"
 import { skillCostSuffix } from "@/lib/skillCore"
 import { currentStudioCostText, llmGenerate, setStudioModelRef } from "./studioLlm"
 import { formatFailedChapterList, isBlankChapterOutput } from "./chapterGenGuard"
+import { BLANK_OUTPUT_REASON, describeGenFailure } from "./genFailureNote"
 import { runBulkPool } from "@/lib/bulkPool"
 import { buildSelfCheckOverview } from "./solSelfCheckOverview"
 import { DEFAULT_EXPORT_TEMPLATE, buildExportFrontMatter, readSolutionExportTemplate, writeSolutionExportTemplate, type SolutionExportTemplate } from "./exportTemplate"
@@ -1039,12 +1040,13 @@ export function useSolutionStudio() {
         const chNow = cur.chapters[idx]
         const { content, figures, underlength } = await generateChapterContent(cur, idx)
         // R139：模型空产出不得标 done（否则空章被批量按「已生成」永久跳过），与标书侧循环 8 A2 保底同口径
+        // R280：失败原因随章落库（genError）——以前只在 toast 里一闪，刷新即丢，导致「11 章全 failed 查无原因」考古无门
         if (isBlankChapterOutput(content)) {
-          updateChapter(nodeId, { gen_status: "failed" })
+          updateChapter(nodeId, { gen_status: "failed", genError: BLANK_OUTPUT_REASON })
           toast.error("模型返回空正文，本章未标记完成，可重新生成")
           return
         }
-        updateChapter(nodeId, { content, figures, underlength, gen_status: "done" })
+        updateChapter(nodeId, { content, figures, underlength, gen_status: "done", genError: "" })
         if (activeChapterId === nodeId) {
           editingContentRef.current = content
           setEditingContentState(content)
@@ -1059,7 +1061,7 @@ export function useSolutionStudio() {
         toast.success(`「${chNow.title}」正文已生成（${content.length} 字${figures.length ? `，含 ${figures.length} 张配图` : ""}）`)
         if (underlength) toast.warning("本章成稿明显低于字数预算，可用「扩写」补充")
       } catch (e) {
-        updateChapter(nodeId, { gen_status: "failed" })
+        updateChapter(nodeId, { gen_status: "failed", genError: describeGenFailure(e, "正文生成失败，请重试") })
         toast.error(e instanceof Error ? e.message : "正文生成失败，请重试")
       } finally {
         setChapterBusy(null)
@@ -1563,13 +1565,14 @@ export function useSolutionStudio() {
         try {
           const { content, figures, underlength } = await generateChapterContent(cur, i)
           // R139：空产出一律不标 done（空章会被后续批量/补齐按「已生成」永久跳过）
+          // R280：failed 落库带真实原因，收口 toast 一闪而过的原因从此可回溯
           if (isBlankChapterOutput(content)) {
             failedCount += 1
-            updateChapter(ch.node_id, { gen_status: "failed" })
-            failedNodes.push({ nodeId: ch.node_id, idx: i, title: ch.title, reason: "模型空产出" })
+            updateChapter(ch.node_id, { gen_status: "failed", genError: BLANK_OUTPUT_REASON })
+            failedNodes.push({ nodeId: ch.node_id, idx: i, title: ch.title, reason: BLANK_OUTPUT_REASON })
             return
           }
-          updateChapter(ch.node_id, { content, figures, underlength, gen_status: "done" })
+          updateChapter(ch.node_id, { content, figures, underlength, gen_status: "done", genError: "" })
           okCount += 1
           if (activeChapterId === ch.node_id) {
             editingContentRef.current = content
@@ -1577,10 +1580,10 @@ export function useSolutionStudio() {
           }
         } catch (e) {
           failedCount += 1
-          const msg = (e instanceof Error ? e.message : String(e)).slice(0, 60)
+          const msg = describeGenFailure(e, "生成异常")
           if (!firstError) firstError = msg
-          updateChapter(ch.node_id, { gen_status: "failed" })
-          failedNodes.push({ nodeId: ch.node_id, idx: i, title: ch.title, reason: msg || "生成异常" })
+          updateChapter(ch.node_id, { gen_status: "failed", genError: msg })
+          failedNodes.push({ nodeId: ch.node_id, idx: i, title: ch.title, reason: msg })
         }
       },
     })
@@ -1593,6 +1596,7 @@ export function useSolutionStudio() {
         const ridx = startRec.chapters.findIndex((c) => c.node_id === rt.nodeId)
         if (ridx < 0) continue
         updateChapter(rt.nodeId, { gen_status: "generating" }, { persist: false })
+        let retryReason: string
         try {
           const rout = await generateChapterContent(startRec, ridx)
           if (!isBlankChapterOutput(rout.content)) {
@@ -1601,6 +1605,7 @@ export function useSolutionStudio() {
               figures: rout.figures,
               underlength: rout.underlength,
               gen_status: "done",
+              genError: "",
             })
             okCount += 1
             failedCount = Math.max(0, failedCount - 1)
@@ -1610,11 +1615,13 @@ export function useSolutionStudio() {
             }
             continue
           }
-          failedNodes.push({ ...rt, reason: "重试后仍空产出" })
+          retryReason = "重试后仍空产出"
+          failedNodes.push({ ...rt, reason: retryReason })
         } catch (e) {
-          failedNodes.push({ ...rt, reason: (e instanceof Error ? e.message : String(e)).slice(0, 60) || "重试异常" })
+          retryReason = describeGenFailure(e, "重试异常")
+          failedNodes.push({ ...rt, reason: retryReason })
         }
-        updateChapter(rt.nodeId, { gen_status: "failed" })
+        updateChapter(rt.nodeId, { gen_status: "failed", genError: retryReason })
       }
     }
     const doneTotal = initialDone + okCount

@@ -46,6 +46,8 @@ export type Chapter = {
   draftLocked?: boolean
   /** R245：底稿原文的章标题，用于溯源展示（仅 draftLocked 章有） */
   draftFrom?: string
+  /** R280：最近一次生成失败的真实原因（一行内，随 chapters json 持久化；重新生成成功即清空。存量记录无此字段=修复前失败未留痕） */
+  genError?: string
 }
 
 // ---------------------------------------------------------------------------

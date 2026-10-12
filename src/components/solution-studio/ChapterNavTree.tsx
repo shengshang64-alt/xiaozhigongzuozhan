@@ -61,7 +61,10 @@ export function ChapterNavTree({ activeSolution, activeChapterId, selectChapter,
                     : "border border-transparent text-card-foreground hover:bg-secondary"
                 }`}
               >
-                <span className={`h-2 w-2 shrink-0 rounded-full ${statusDot(ch.gen_status, isActive)}`} />
+                <span
+                  title={ch.gen_status === "failed" ? (ch.genError ? `失败原因：${ch.genError}` : "生成失败，可重试（旧记录未留存原因）") : undefined}
+                  className={`h-2 w-2 shrink-0 rounded-full ${statusDot(ch.gen_status, isActive)}`}
+                />
                 {ch.selfCheck && (
                   <span
                     title={`自检 ${ch.selfCheck.total} 分 · ${VERDICT_LABEL[ch.selfCheck.verdict]}`}
