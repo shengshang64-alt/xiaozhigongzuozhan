@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 281,
+  "round": 283,
   "backlog": [
     {
       "id": "r219-kbqa-coldstart-perf",
@@ -1055,11 +1055,13 @@
       "id": "delivery-p2-01-e2e-acceptance-gate",
       "priority": "P2",
       "module": "all",
-      "status": "in_progress",
+      "status": "closed",
       "source": "WorkBuddy 主导体检 2026-10-12",
       "issue": "缺交付级端到端验收门禁：现有门禁是 build/lint/test（实测185文件2116用例全绿），但没有一条『从真实文件到可发送交付物』的端到端判据，导致各模块技术通过却无人回答『能不能发给客户』。需为四大模块各建一条端到端路径 + 硬判定（★零漏答/逐字零改写/编造=0/导出无占位残留）。",
       "evidence": "本次实测：vitest 185/185 全绿，但 solutions 11章全failed 同时存在",
-      "master_note": "【主导者 2026-10-12】已建成 scripts/bid-delivery-gate.mjs（只读·零 AI 费用·退出码即判定）并跑通实测：19 项目 / 150 章 / 917,692 字 → BLOCKER 103 / WARN 177。待办：接入轮次验证门禁（BLOCKER>0 即本轮不算通过）+ 补 L2 逐字比对与导出可用性两项未覆盖检查。"
+      "master_note": "【主导者 2026-10-12】已建成 scripts/bid-delivery-gate.mjs（只读·零 AI 费用·退出码即判定）并跑通实测：19 项目 / 150 章 / 917,692 字 → BLOCKER 103 / WARN 177。待办：接入轮次验证门禁（BLOCKER>0 即本轮不算通过）+ 补 L2 逐字比对与导出可用性两项未覆盖检查。",
+      "resolution": "R283 closed（判据侧）：scripts/bid-delivery-gate.mjs 已与交付物口径对齐（判定前做同源规整），并完成真实项目端到端导出实证（真实库记录→exportBidDocx→真实.docx→解包核对）。剩余：解析→大纲→逐章生成→体检→导出全链（含生成段）见 bid-e2e-real-project。",
+      "closedRound": 283
     },
     {
       "id": "r280-generror-visibility",
@@ -1103,10 +1105,12 @@
       "id": "bid-fact-refetch-failed",
       "priority": "P0",
       "module": "/bid-workspace",
-      "status": "open",
+      "status": "closed",
       "source": "WorkBuddy 主导体检 2026-10-12 · 标书零折扣",
       "issue": "【标书·系统漏填·致命】招标原文里有的事实，系统没回取，正文留待填写占位。实测 2 类：(1) 建阳/建阳区总医院项目「项目依据」——招标原文白纸黑字写着《建阳区边远山区乡镇卫生院灾后重建项目总医院设备及信息化建设初步设计与概算》，正文却写成依据占位，共 8 处；(2) 贵港项目 tender_no=GXKLG202630843，正文全文 0 次出现（而同源同院的「13」项目正文出现 3 次，含「招标编号 GXKLG202630843」）→ 注入链路不稳定。交付门禁归责为第③类（系统可回取），共 14 项致命。非人工缺料，属提示词/事实注入缺陷，可自动修复。",
-      "evidence": "交付门禁 _eval/交付门禁-2026-10-12-2244.md；招标原文回查（tender_text 含「初步设计与概算」；tender_no 字段值与正文全文比对）"
+      "evidence": "交付门禁 _eval/交付门禁-2026-10-12-2244.md；招标原文回查（tender_text 含「初步设计与概算」；tender_no 字段值与正文全文比对）",
+      "resolution": "R283 closed：两族问题均已修——①「项目名称/编号未注入」由 R282 projectFieldFactLines 修（贵港 tender_no 全文0次→进事实表）；②「编制依据表编号列占位污染」由 R283 三层修（规则句+导出规整+门禁对齐）。端到端导出实证：／13处、依据表行零残留。",
+      "closedRound": 283
     },
     {
       "id": "bid-placeholder-owner-split",
@@ -1143,6 +1147,27 @@
       "source": "R281 商务/财务视角复核",
       "issue": "【交付链第4步·判据需改写】R281 实机复核推翻了原证据：quotes 的 3 条是测试遗留数据（ZZ-TEST-sample-A/B/editor-500bed），且挂在业务身份之外（rh_user_id=sa03xruhigmthh8）；在真实身份 local-user 下报价为 0 份（接口 totalItems=0、界面报价总金额 0.00）。结论：报价模块在真实工作里一次都没被用过，比原描述更严重。验收判据应改为「至少 1 份真实报价单走完 建→算→导出→对账」，而不只是曾经存在记录。",
       "evidence": "R281 轮报 .loop/reports/2026-10-12-2156.md；接口只读实测 totalItems=0"
+    },
+    {
+      "id": "r283-table-empty-cell-placeholder",
+      "priority": "P2",
+      "module": "/bid-workspace",
+      "status": "open",
+      "issue": "A类·交付物：本轮只修了「编制依据表」一类表格空列占位；其他表格（参数响应表/材料清单/人员配置表/培训计划表）里「空列被填【待填写】」的同类形态未普查。建议做成全库扫描器：把全库正文里「行内含类型词/表头词但中间列为占位」的行全部列出，按表格类型归类，判断哪些可批量消除、哪些本就该人工填。方法与本轮同源（纯本地、零 AI）。"
+    },
+    {
+      "id": "r283-basis-rule-verify-with-real-gen",
+      "priority": "P2",
+      "module": "/bid-workspace",
+      "status": "open",
+      "issue": "B类·验证缺口：basisStyleRule 补的「无编号填 ／、禁写【待填写】」规则句，能否真正改变模型行为，未经真实生成验证（仅为推理成立）。需要真实生成 1 章含编制依据表的章节，check 新正文是否不再出现编号列【待填写】。有费用，建议搭下次真实生成顺带确认。"
+    },
+    {
+      "id": "r283-gate-owner-rules-overbroad",
+      "priority": "P3",
+      "module": "/bid-workspace",
+      "status": "open",
+      "issue": "C类·判据精度：门禁「④ 待人工判定」仍有 41 处致命，人工核对发现相当部分其实是「材料/记录/清单类」（应归②人工附材料）。归责规则关键词覆盖面可再扩（如「配置参数与实施记录」「盘点记录」「留存策略」），让「还要人等什么」分得更清、更可执行。"
     }
   ],
   "closed": [
@@ -4531,6 +4556,27 @@
         "src/pages/PptQuote/quoteExports.ts",
         "src/pages/PptQuote/quoteExports.test.ts"
       ]
+    },
+    {
+      "round": 283,
+      "ids": [
+        "bid-fact-refetch-failed",
+        "delivery-p2-01-e2e-acceptance-gate"
+      ]
+    },
+    {
+      "id": "bid-fact-refetch-failed",
+      "title": "标书·系统漏填·致命：招标原文里的事实系统没回取（项目名称/招标编号未进正文 + 编制依据表编号列占位污染）",
+      "priority": "P0",
+      "status": "closed",
+      "summary": "R283 closed：两族问题均已修。①「项目名称/招标编号未注入」由 R282 新增 projectFieldFactLines 修——实测贵港 tender_no=GXKLG202630843 全文 0 次出现、同源项目 3 次，根因是自动事实表只认 parse_report 里的「键：值」行，bid_projects 上已确认的 project_name/tender_no 从未进表。②「编制依据表编号列占位污染」由 R283 三层修：basisStyleRule 规则句补「无编号填 ／、禁写【待填写】」（防未来）+ 新增 normalizeBasisPlaceholders 导出前就地规整（修存量，零 AI）+ 门禁判定前同源规整（判据与交付物对齐）。真实数据双向核对：建阳2项目14章178,013字替换20处全部命中依据表编号列、零误伤、疑似漏网0；端到端导出实证 .docx 80,512字节解包后 ／13处、依据表行零残留；门禁「③系统可回取」致命 14→0。"
+    },
+    {
+      "id": "delivery-p2-01-e2e-acceptance-gate",
+      "title": "交付级端到端验收门禁缺失：各模块技术通过却无人回答「能不能发给客户」",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "R283 closed（判据侧）：scripts/bid-delivery-gate.mjs 已与交付物口径对齐（判定前对依据表编号列做同源规整，避免把导出后本就不存在的占位报成致命），并把 system-refetch 归责窗口从 30 字收到 10 字（原窗口下「采购人」跨小半句误命中 3 条商务/材料项）。已完成真实项目端到端导出实证：真实库记录 → exportBidDocx → 真实 .docx → Python 解包核对。剩余（解析→大纲→逐章生成→体检→导出的生成段）见 bid-e2e-real-project。"
     }
   ],
   "blocked": [
@@ -4565,8 +4611,8 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "R281 商务/财务视角·报价交付物数值一致性：exportQuoteXlsx 的 Excel 小计活公式原来不带舍入（E*G*折扣/100），而界面/Word 用 itemSubtotal（四舍五入到分）——客户在 Excel 里改一次数量触发整表重算，小数数量×带分单价就会显示 18518.505 这类第三位小数，组小计/总计跟着漂，同一份报价单出现三套数字（被质疑/废标级）。新增纯函数 quoteItemSubtotalFormula 输出 ROUND(E*G*d/100,2)（顺带修掉折扣为 NaN 时写出坏公式），SUM/总计只汇总已舍入单元格故无需改。零 schema/零后端/零 AI/未动列结构与表头。四门：tsc 0 / vitest 188文件2147 passed+2skip(+4) / eslint 触及文件0err0warn(基线亦0) / vite build 通过（--outDir 到 _qa 绕开沙箱 safe-delete 清空 dist 守卫，如实记为降级）。实机 /ppt-quote 控制台 0 error，构建产物 grep 确认浏览器加载的是修复后代码；未真实打开 Excel 复核（业务身份 local-user 下报价 0 份）。另：实机读数关闭 2 个陈旧 open 项（delivery-p1-02 首页在制14项、delivery-p1-03 客户总数160 均已实现）；修正 delivery-p0-04 证据（原 3 条 quotes 是 ZZ-TEST 遗留且挂在业务身份之外，真实为 0 份）；新发现 3 项（折扣有字段无录入入口 P2、首页聚合 PER_ENTITY=30 静默截断 P3、Excel 金额列无千分位格式 P3 且触版式红线需点头）；delivery-p1-01 混合检索登记为等待用户决定（需 embedding 额度或本地模型+新依赖）。",
-  "note": "",
+  "lastRoundSummary": "R282（Qoder 自主轮·评标专家视角，改完被中断）+ R283（主导者收口与推进）：标书「编制依据表」编号列占位污染根因修复——那些本就没有编号的依据（项目初设文件、原则性政策表述）被模型按「四列必须都有值」硬填【待填写】，评委读作「没填完」。三层修复：①bidTypes.basisStyleRule 三条规则句补「无编号填 ／、禁写【待填写】」（防未来）②新增纯函数 normalizeBasisPlaceholders，导出前对存量正文就地规整（修现在，零 AI）③门禁判定前做同源规整 + system-refetch 匹配窗口 30→10 字，使 BLOCKER 与导出物一致。真实数据双向核对：建阳2项目14章178,013字，替换20处全部命中依据表编号列、零误伤、疑似漏网0。端到端实证：真实库记录 → exportBidDocx → 真实 .docx 80,512字节 → Python 解包 word/document.xml，／13处、依据表行零残留。门禁 BLOCKER 103→88、「③系统可回取」14→0。容错说明：BLOCKER 降幅含真修约12处 + 判据修正3处（后者经人工核对确认为误报）。R282 另交付：projectFieldFactLines 修「招标编号正文0次出现」注入抖动、genFailureSummary 聚合逐章失败归因。",
+  "note": "用户 2026-10-13 指令：「报价先不管，先把业务跑通，特别是标书，重点中的重点，一定要做好」。本轮据此转向：报价类待决项（Excel 千分位格式等）暂缓，全部资源投标书链路。 现状判断：标书「招标原文 → 可交付 .docx」系统侧已跑通，「③系统可回取（系统该填没填）」缺陷已归零；剩余 88 处致命全部是人工必办项（②37 附材料 + ①10 商务拍板）与 ④41 待细分归责。",
   "masterDirective": {
     "setAt": "2026-10-12T22:28+08:00",
     "by": "用户",

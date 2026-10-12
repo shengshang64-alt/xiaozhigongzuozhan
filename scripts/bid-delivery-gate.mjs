@@ -119,6 +119,19 @@ const PLACEHOLDER_RULES = [
  *   交付前无法回答「还有几项要等我拍板」「还有几项要附材料」。
  * 顺序即优先级：先归商务决策，再归人工材料，最后才是系统可回取。
  */
+/** 标书正文占位符字面量（与 src/pages/BidWorkspace/bidTypes.ts 同源） */
+const BASIS_PLACEHOLDER = "【待填写】"
+/** 无编号依据的「编号」列填充（与 bidTypes.BASIS_NO_CODE_TABLE_TOKEN 同源） */
+const BASIS_NO_CODE_TOKEN = "／"
+/** 标准编号特征：名称里已含编号却仍留空 → 属真漏填，规整时必须保留占位暴露问题 */
+const BASIS_CODE_RE =
+  /((?:GB|WS|GM|YD|HJ|QX)(?:\/[TZ])?[\s]*\d+(?:\.\d+)*(?:[-—]\d{4})?|HL7\s*v?[\dx.]+|FHIR\s*R\d|DICOM(?:\s*[\d.]+)?|IHE(?:\s*TF)?)/i
+
+/** 正则元字符转义（仅用于拼接固定常量，防未来常量混入元字符导致静默失配） */
+function escapeRe(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
 const OWNER_RULES = [
   {
     id: "biz-decision",
@@ -136,7 +149,11 @@ const OWNER_RULES = [
     id: "system-refetch",
     label: "③ 系统可回取（须查为何没填）",
     action: "招标原文/项目字段里已有该事实，系统却留空 —— 须查注入链路为何失效",
-    re: /(项目依据|编制依据|依据文件|项目编号|招标编号|采购编号|项目名称|采购人|预算金额|最高限价)[^。；\n]{0,30}【待填写】|【待填写】[^。；\n]{0,20}(项目依据|依据文件|项目编号|招标编号|采购编号)/,
+    // 窗口从 30 收到 10：原窗口下「采购人」这类自然语句高频词会跨小半句命中，
+    // 实测把 3 条商务/材料项（「提交采购人确认，…考核依据【待填写】」「采购人可选择…费用为【待填写】元/年」
+    // 「采购人报备并完成工作交接，交接期不少于【待填写】个工作日」）误报成系统漏填。
+    // 收到 10 字后「采购人为【待填写】」这类字段式短语仍能命中，不损真阳性。
+    re: /(项目依据|编制依据|依据文件|项目编号|招标编号|采购编号|项目名称|采购人|预算金额|最高限价)[^。；\n]{0,10}【待填写】|【待填写】[^。；\n]{0,10}(项目依据|依据文件|项目编号|招标编号|采购编号)/,
   },
   {
     id: "unclassified",
@@ -375,6 +392,32 @@ function classifyOwner(item) {
 }
 
 /**
+ * 依据表「编号」列的无编号占位规整 —— **与 src/pages/BidWorkspace/bidTypes.ts#normalizeBasisPlaceholders 同源**。
+ *
+ * 为什么要在这里做一遍：导出链路（bidFiles.ts exportBidDocx*）出件前会对正文调用该规整，
+ * 把「无编号依据」的编号列占位 `【待填写】` 换成 `／`。门禁若拿**未规整的库内原文**判定，
+ * 就会把「导出后本就不存在」的占位报成致命 —— 判据与交付物不一致，BLOCKER 数字虚高。
+ * 因此在判定前先对齐口径。两处实现需同步修改；任一侧调整判据，另一侧必须跟进。
+ *
+ * 三道判据（同时成立才替换）：① 占位符后紧跟「短词 + 依据类后缀」的类型词且以条目分隔/行尾收束；
+ * ② 占位符之前有名称文本；③ 名称文本不含标准编号特征（含则属真漏填，保留占位暴露问题）。
+ * @param {string} content 章节正文
+ * @returns {string} 规整后正文（无命中时原样返回，幂等）
+ */
+function normalizeBasisPlaceholders(content) {
+  const src = content || ""
+  if (!src || !src.includes(BASIS_PLACEHOLDER)) return src
+  const re = new RegExp(
+    `([^；;。\\n]{1,120}?)(\\s*)${escapeRe(BASIS_PLACEHOLDER)}(\\s*)([\\u4e00-\\u9fa5A-Za-z]{1,16}?(?:依据|标准|规范|文件|法规|导则|指南|准则|规则))(?=[；;。\\n]|$|\\s+\\d)`,
+    "g",
+  )
+  return src.replace(re, (whole, name, preGap, postGap, typeWord) => {
+    if (BASIS_CODE_RE.test(name)) return whole
+    return `${name}${preGap}${BASIS_NO_CODE_TOKEN}${postGap}${typeWord}`
+  })
+}
+
+/**
  * 项目级事实一致性硬检查（与逐字比对不同的另一类硬缺陷）。
  * 判据只认「源数据里已有该事实」——没有源就不判，避免制造假警报。
  * @param {string} name 项目名（用于报错定位）
@@ -468,6 +511,9 @@ function runGate(opts) {
     if (keyword && !name.includes(keyword) && !String(r.hospital || "").includes(keyword)) continue
 
     const { chapters, parseError } = parseChapters(r.bid_chapters)
+    // 判据与交付物对齐：导出链路（bidFiles.ts exportBidDocx*）出件前会规整依据表「编号」列的无编号占位，
+    // 判定前先做同一规整，否则会把「导出后本就不存在」的占位报成致命，使 BLOCKER 数字虚高。
+    for (const c of chapters) c.content = normalizeBasisPlaceholders(c.content || "")
     if (parseError) notCovered.push(`${name}：${parseError}`)
 
     const project = {

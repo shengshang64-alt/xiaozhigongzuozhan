@@ -32,6 +32,7 @@ import {
   effectiveVoidStatus,
   isBizPart,
   normalizeBidScope,
+  normalizeBasisPlaceholders,
   normalizeDeviationTable,
   parseFixedLineSpacing,
   isRealSectionHeading,
@@ -703,7 +704,8 @@ async function exportBidDocxDefaults(project: BidProjectRecord): Promise<void> {
     const figsAll = chapter.figures ?? []
     const usedFigTitles = new Set<string>()
     // 第十轮修复 1/4：导出前整体净化正文（存量脏数据——围栏/JSON 块/markdown 残留——导出也干净）
-    const cleanContent = sanitizeChapterText(chapter.content || "")
+    // 交付物治理：依据表「编号」列的无编号占位（【待填写】）规整为「／」，不动库内原文
+    const cleanContent = normalizeBasisPlaceholders(sanitizeChapterText(chapter.content || ""))
     for (const rawLine of cleanContent.split("\n")) {
       const line = rawLine.trim()
       if (!line) continue
@@ -920,7 +922,8 @@ async function exportBidDocxFormatted(project: BidProjectRecord, fmt: FormatSett
       }
       return out
     }
-    const cleanContent = sanitizeChapterText(chapter.content || "")
+    // 交付物治理：依据表「编号」列的无编号占位（【待填写】）规整为「／」，不动库内原文
+    const cleanContent = normalizeBasisPlaceholders(sanitizeChapterText(chapter.content || ""))
     const contentLines = cleanContent
       .split("\n")
       .map((l) => l.trim())

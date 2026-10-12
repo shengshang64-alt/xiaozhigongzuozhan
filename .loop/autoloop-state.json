@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "total_rounds_run": 2,
-  "consecutive_no_report": 0,
+  "consecutive_no_report": 1,
   "consecutive_env_fail": 0,
   "history": [
     {
@@ -121,8 +121,22 @@
         "关闭 2 项 + 新增 3 项待办，账本 backlog 由 95 增至 98；未动 PocketBase schema、未动 pb_hooks、未动提示词、未动认证与费用逻辑"
       ],
       "cliMeta": null
+    },
+    {
+      "round": 282,
+      "role": "bid-evaluator",
+      "status": "failed",
+      "reason": "",
+      "topic": "",
+      "workClass": "",
+      "durationMs": 3209444,
+      "reportProduced": false,
+      "commitHash": "7a7568f",
+      "needsUserDecision": [],
+      "honestNotes": [],
+      "cliMeta": null
     }
   ],
-  "last_run_at": "2026-10-12T14:49:54.104Z",
+  "last_run_at": "2026-10-12T15:46:38.734Z",
   "last_stop_reason": "completed_requested_rounds"
 }
