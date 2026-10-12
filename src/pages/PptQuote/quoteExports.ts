@@ -51,6 +51,19 @@ function safeFileName(name: string, ext: string): string {
   return buildSafeFileName(name, ext, "报价单")
 }
 
+/**
+ * 小计列的 Excel 活公式（R281）：必须与 itemSubtotal 的「四舍五入到分」口径完全一致。
+ * 为什么包 ROUND：客户在 Excel 里改数量/单价会触发整表重算，若公式不舍入，
+ * 半个人月（qty=1.5）× 带分单价就会算出 18,518.505 这类第三位小数，
+ * 小计、组小计、总计全部与界面和 Word 版对不上——报价单是给客户的交付物，
+ * 两套数字属于废标/被质疑级风险。SUM 与总计公式只汇总已舍入的单元格，无需再包。
+ * 列锚点：E=数量 G=单价 H=小计（见 QUOTE_EXPORT_HEADERS）。
+ */
+export function quoteItemSubtotalFormula(excelRow: number, it: QuoteItem): string {
+  const discount = it.discount == null || !Number.isFinite(it.discount) ? 100 : it.discount
+  return `ROUND(E${excelRow}*G${excelRow}*${discount}/100,2)`
+}
+
 export async function exportQuoteXlsx(quote: QuoteRecord): Promise<void> {
   const groups = quote.groups ?? []
   if (!groups.length) throw new Error("报价内容为空，无法导出")
@@ -92,7 +105,7 @@ export async function exportQuoteXlsx(quote: QuoteRecord): Promise<void> {
       put(r, 4, { t: "n", v: Number(row[4]) || 0 })
       str(r, 5, String(row[5] ?? ""))
       put(r, 6, { t: "n", v: Number(row[6]) || 0 })
-      put(r, 7, { t: "n", v: itemSubtotal(it), f: `E${r + 1}*G${r + 1}*${Number(it.discount == null ? 100 : it.discount)}/100` })
+      put(r, 7, { t: "n", v: itemSubtotal(it), f: quoteItemSubtotalFormula(r + 1, it) })
       str(r, 8, String(row[8] ?? ""))
       str(r, 9, String(row[9] ?? ""))
       r += 1

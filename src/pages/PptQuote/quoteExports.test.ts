@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { QUOTE_EXPORT_HEADERS, quoteRowCells } from "./quoteExports"
-import type { QuoteItem } from "./pptQuoteTypes"
+import { quoteItemSubtotalFormula, QUOTE_EXPORT_HEADERS, quoteRowCells } from "./quoteExports"
+import { itemSubtotal, type QuoteItem } from "./pptQuoteTypes"
 
 // ---------------------------------------------------------------------------
 // 报价导出表头与建设清单同构（10 列，防漂移）
@@ -97,5 +97,52 @@ describe("quoteRowCells", () => {
     const row = quoteRowCells(ext, "硬件")
     expect(row[3]).toBe("外购")
     expect(row[8]).toBe("未指定评级目标")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 小计列 Excel 活公式（R281）：公式重算结果必须逐分等于界面/Word 用的 itemSubtotal。
+// 报价单在客户手里常被改数量/单价，改一次整表重算；公式若不舍入，
+// 半个人月 × 带分单价会算出第三位小数，交付物内部两套数字（废标/质疑级）。
+// ---------------------------------------------------------------------------
+
+/** 按 Excel 语义求值小计公式：E→数量、G→单价，ROUND(x,2) 为四舍五入（远离零） */
+function evalSubtotalFormula(formula: string, qty: number, price: number): number {
+  const m = /^ROUND\(E(\d+)\*G(\d+)\*([0-9.]+)\/100,2\)$/.exec(formula)
+  expect(m).not.toBeNull() // 公式形态漂移（列锚点/舍入）即判失败
+  const [, rowE, rowG, discount] = m as unknown as [unknown, string, string, string]
+  expect(rowE).toBe(rowG)
+  const raw = qty * price * (Number(discount) / 100)
+  const sign = raw < 0 ? -1 : 1
+  return (sign * Math.round(Math.abs(raw) * 100)) / 100
+}
+
+describe("quoteItemSubtotalFormula", () => {
+  it("小数数量：公式重算结果 = 界面小计（不舍入会多出一位小数，正是本项修掉的缺陷）", () => {
+    const item = { id: "i1", qty: 1.5, price: 12345.67, discount: 100 } as QuoteItem
+    const formula = quoteItemSubtotalFormula(3, item)
+    expect(formula).toBe("ROUND(E3*G3*100/100,2)")
+    expect(evalSubtotalFormula(formula, item.qty, item.price)).toBe(itemSubtotal(item))
+    // 旧公式（无 ROUND）会给出 18,518.505，与界面 18,518.51 不一致
+    expect(1.5 * 12345.67).not.toBe(itemSubtotal(item))
+  })
+
+  it("带折扣：公式与 itemSubtotal 完全一致（口径同源，含折扣换算）", () => {
+    const item = { id: "i2", qty: 3, price: 12345.67, discount: 90 } as QuoteItem
+    expect(quoteItemSubtotalFormula(7, item)).toBe("ROUND(E7*G7*90/100,2)")
+    expect(evalSubtotalFormula(quoteItemSubtotalFormula(7, item), item.qty, item.price)).toBe(itemSubtotal(item))
+  })
+
+  it("折扣缺失或非数 → 按 100 计，公式里不出现 NaN（否则会写出坏公式）", () => {
+    expect(quoteItemSubtotalFormula(4, { id: "a", qty: 1, price: 100 } as QuoteItem)).toBe("ROUND(E4*G4*100/100,2)")
+    expect(quoteItemSubtotalFormula(4, { id: "b", qty: 1, price: 100, discount: NaN } as QuoteItem)).toBe(
+      "ROUND(E4*G4*100/100,2)",
+    )
+  })
+
+  it("行号锚点随写入行推进（H 列汇总区间依赖它）", () => {
+    const item = { id: "i3", qty: 2, price: 500, discount: 100 } as QuoteItem
+    expect(quoteItemSubtotalFormula(12, item)).toContain("E12*G12")
+    expect(evalSubtotalFormula(quoteItemSubtotalFormula(12, item), item.qty, item.price)).toBe(1000)
   })
 })
