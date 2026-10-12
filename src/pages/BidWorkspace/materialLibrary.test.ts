@@ -200,9 +200,9 @@ describe("buildBidChapterMessages 素材库基线注入（B类 R167 v3）", () =
 })
 
 describe("buildBidSectionMessages 小节级同口径注入", () => {
-  it("小节 PROMPT_VERSION 升到 4，带标记时出现标准件槽", async () => {
+  it("小节 PROMPT_VERSION 升到 5，带标记时出现标准件槽", async () => {
     const mod = await import("./prompts/bidSection")
-    expect(mod.PROMPT_VERSION).toBe(4)
+    expect(mod.PROMPT_VERSION).toBe(5)
     const composed = composeRefMaterials(baselineMarkForKind("testing"), "用例追溯矩阵基线", "")
     const msgs = buildBidSectionMessages("项目", "医院", null, [], chapters, 0, () => "", {
       ...baseOpts,

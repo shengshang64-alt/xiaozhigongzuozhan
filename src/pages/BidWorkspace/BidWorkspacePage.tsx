@@ -10,6 +10,7 @@ import { BidToolbar } from "@/components/bid-workspace/BidToolbar"
 import { BidWarRoom } from "@/components/bid-workspace/BidWarRoom"
 import { ComplianceMatrixPanel } from "@/components/bid-workspace/ComplianceMatrixPanel"
 import { ComposeStep } from "@/components/bid-workspace/ComposeStep"
+import { DraftMergePanel } from "@/components/bid-workspace/DraftMergePanel"
 import { DupCheckPanel } from "@/components/bid-workspace/DupCheckPanel"
 import { DefensePanel } from "@/components/bid-workspace/DefensePanel"
 import { MockEvalPanel } from "@/components/bid-workspace/MockEvalPanel"
@@ -141,6 +142,8 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                   onRescanStar={p.rescanStarClauses}
                   basisMerged={p.basisMergedItems}
                   onOpenStandardsPicker={p.openStandardsPicker}
+                  runWithCostConfirm={p.costConfirm.runWithCostConfirm}
+                  archived={p.isArchivedLocked}
                 />
               </div>
               {/* R005（B-1 阶段一）：实质性条款覆盖矩阵——解析报告本地推导，零 AI 费用 */}
@@ -162,6 +165,146 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
             </section>
           )}
           {p.activeStep === 3 && (
+            <>
+            {p.outlineResidueFixes && p.outlineResidueFixes.length > 0 && (
+              <details
+                open
+                style={{ margin: "0 0 12px", border: "1px solid rgba(14,159,138,0.25)", background: "rgba(14,159,138,0.06)", borderRadius: 14, padding: "8px 12px", fontSize: 13 }}
+              >
+                <summary style={{ cursor: "pointer", color: "#0e9f8a", fontWeight: 600 }}>
+                  本次大纲已自动修正 {p.outlineResidueFixes.length} 处（残句治理）——命中残句的标题已并入规范父章、同主题冗余兄弟章已合并，章节正文内容未删除
+                </summary>
+                <ul style={{ margin: "8px 0 0", paddingLeft: 18, color: "#16324f" }}>
+                  {p.outlineResidueFixes.map((f, i) => (
+                    <li key={i} style={{ marginBottom: 4 }}>
+                      <span style={{ textDecoration: "line-through", opacity: 0.6 }}>{f.from}</span>
+                      {" → "}<b>{f.to}</b>
+                      <span style={{ marginLeft: 6, opacity: 0.6 }}>（{f.note}）</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {p.mustWriteRescued && p.mustWriteRescued.length > 0 && (
+              <div
+                style={{ margin: '0 0 12px', border: '1px solid rgba(192,57,43,0.28)', background: 'rgba(192,57,43,0.06)', borderRadius: 14, padding: '8px 12px', fontSize: 13, color: '#16324f' }}
+              >
+                <b style={{ color: '#c0392b' }}>R-020 判定纠偏：</b>
+                {p.mustWriteRescued.length} 个原被模型判为「商务」的章节，按评分办法/技术关键词/★▲ 改判为必写技术内容并已保留：
+                {p.mustWriteRescued.map((x) => x.title).join('、')}
+                （如需回退，可在大纲中手动调整其归属）
+              </div>
+            )}
+            {p.catalogDiff && p.catalogDiff.hasCatalog && (
+              <details
+                style={{ margin: '0 0 12px', border: '1px solid rgba(22,50,79,0.15)', background: '#f8fafb', borderRadius: 14, padding: '8px 12px', fontSize: 13 }}
+              >
+                <summary style={{ cursor: 'pointer', color: '#16324f', fontWeight: 600 }}>
+                  目录比对（R-023）：已匹配 {p.catalogDiff.matchedCount} / 缺失 {p.catalogDiff.missingCount} / 追加 {p.catalogDiff.extraCount}
+                </summary>
+                {p.catalogDiff.missingCount > 0 && (
+                  <div style={{ marginTop: 6 }}>
+                    <b style={{ color: '#c0392b' }}>招标目录中未生成的条目：</b>
+                    <ul style={{ margin: '4px 0 0', paddingLeft: 16 }}>
+                      {p.catalogDiff.entries.filter((e) => e.status === 'missing').slice(0, 10).map((e, i) => (
+                        <li key={i} style={{ color: '#c0392b' }}>{e.name}</li>
+                      ))}
+                      {p.catalogDiff.missingCount > 10 && <li style={{ opacity: 0.6 }}>…另有 {p.catalogDiff.missingCount - 10} 条</li>}
+                    </ul>
+                    <button
+                      type='button'
+                      onClick={p.addMissingCatalogToOutline}
+                      style={{ marginTop: 6, background: '#16324f', color: '#fff', border: 'none', borderRadius: 8, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}
+                    >
+                      补入 {p.catalogDiff.missingCount} 条缺失目录
+                    </button>
+                  </div>
+                )}
+                {p.catalogDiff.extraCount > 0 && (
+                  <div style={{ marginTop: 6, opacity: 0.7 }}>
+                    大纲新增（非招标目录要求）：{p.catalogDiff.entries.filter((e) => e.status === 'extra').map((e) => e.name).join('、')}
+                  </div>
+                )}
+              </details>
+            )}
+            {p.scoreCheckup && p.scoreCheckup.hasScoring && (
+              <div
+                style={{ margin: "0 0 12px", border: "1px solid rgba(22,50,79,0.18)", background: "rgba(22,50,79,0.04)", borderRadius: 14, padding: "10px 14px", fontSize: 13 }}
+              >
+                <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, color: "#16324f", fontWeight: 600 }}>
+                  <span>评分覆盖体检（按分值）：技术总分 {p.scoreCheckup.techTotal} 分</span>
+                  <span>· 已落点 <span style={{ color: "#0e9f8a" }}>{p.scoreCheckup.techLanded} 分</span></span>
+                  <span>· 未落点 <span style={{ color: p.scoreCheckup.techMissing > 0 ? "#c0392b" : "#0e9f8a" }}>{p.scoreCheckup.techMissing} 分</span></span>
+                  {p.scoreCheckup.missingRows.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={p.addUncoveredScoringToOutline}
+                      style={{ marginLeft: "auto", background: "#0e9f8a", color: "#fff", border: "none", borderRadius: 8, padding: "4px 12px", fontSize: 12, cursor: "pointer" }}
+                    >
+                      一键补入 {p.scoreCheckup.missingRows.length} 个未落点评分项
+                    </button>
+                  )}
+                </div>
+                {p.scoreCheckup.missingRows.length > 0 && (
+                  <ul style={{ margin: "8px 0 0", paddingLeft: 18, color: "#16324f" }}>
+                    {p.scoreCheckup.missingRows.slice(0, 12).map((r) => (
+                      <li key={r.id} style={{ marginBottom: 2 }}>
+                        {r.name}
+                        <span style={{ marginLeft: 6, color: "#c0392b" }}>丢 {r.score} 分</span>
+                        {r.subjective && <span style={{ marginLeft: 6, opacity: 0.55 }}>（主观分）</span>}
+                      </li>
+                    ))}
+                    {p.scoreCheckup.missingRows.length > 12 && (
+                      <li style={{ opacity: 0.6 }}>…另有 {p.scoreCheckup.missingRows.length - 12} 项未落点</li>
+                    )}
+                  </ul>
+                )}
+                {p.scoreCheckup.missingRows.length === 0 && (
+                  <div style={{ marginTop: 6, color: "#0e9f8a" }}>全部技术评分项均已有对应章节落点。</div>
+                )}
+              </div>
+            )}
+            {p.scoringSuggestions.length > 0 && (
+              <details
+                style={{ margin: '0 0 12px', border: '1px solid rgba(14,159,138,0.35)', background: 'rgba(14,159,138,0.05)', borderRadius: 14, padding: '8px 12px', fontSize: 13 }}
+              >
+                <summary style={{ cursor: 'pointer', color: '#16324f', fontWeight: 600 }}>
+                  评分策略建议（{p.scoringSuggestions.length} 条，纯本地零 AI）
+                </summary>
+                <ul style={{ margin: '8px 0 0', paddingLeft: 18, color: '#16324f' }}>
+                  {p.scoringSuggestions.map((s) => (
+                    <li key={s.id} style={{ marginBottom: 4 }}>
+                      「{s.title}」（{s.score} 分）
+                      <span style={{ marginLeft: 6, color: s.kind === 'evidence' ? '#c0392b' : '#0e9f8a' }}>
+                        {s.kind === 'evidence' ? '证据挂载' : '可加分'}
+                      </span>
+                      <span style={{ marginLeft: 6 }}>{s.text}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {p.demoScoreSummary.hasDemo && (
+              <div style={{ margin: '0 0 12px', fontSize: 13 }}>
+                <button
+                  type='button'
+                  onClick={p.insertDemoSkeleton}
+                  style={{ background: '#0e9f8a', color: '#fff', border: 'none', borderRadius: 8, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}
+                >
+                  {`一键插入演示准备骨架（${p.demoScoreSummary.count} 个演示节点）`}
+                </button>
+              </div>
+            )}
+            {/* R245 用户 P0 需求 R-001：底稿增量合并——上传商务同事已写好的标书，逐章匹配大纲后原文保留 / 带参考重写 / 缺失补齐 */}
+            <DraftMergePanel
+              key={`draft-merge-${p.activeProject.id}`}
+              activeProject={p.activeProject}
+              updateProject={p.updateProject}
+              isArchivedLocked={p.isArchivedLocked}
+              bidSourceMode={p.bidSourceMode}
+              refMaterialsDraft={p.refMaterialsDraft}
+              setRefMaterialsDraft={p.setRefMaterialsDraft}
+            />
             <ComposeStep
               activeProject={p.activeProject}
               outlineDraft={p.outlineDraft}
@@ -190,6 +333,8 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               genOptions={p.genOptions}
               setClauseResponse={p.setClauseResponse}
               setMaterialBoost={p.setMaterialBoost}
+              setGenerateDemo={p.setGenerateDemo}
+              demoScoreSummary={p.demoScoreSummary}
               setWordRefine={p.setWordRefine}
               setAutoConsistencyAudit={p.setAutoConsistencyAudit}
               setComplianceMode={p.setComplianceMode}
@@ -229,6 +374,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               outlineSetPart={p.outlineSetPart}
               outlineMove={p.outlineMove}
               confirmOutline={p.confirmOutline}
+              generateCommitmentLetter={p.generateCommitmentLetter}
               importDialogOpen={p.importDialogOpen}
               setImportDialogOpen={p.setImportDialogOpen}
               importCandidates={p.importCandidates}
@@ -297,6 +443,8 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               bidOutlineSkills={p.bidOutlineSkills}
               bidChapterSkills={p.bidChapterSkills}
               deviationSkills={p.deviationSkills}
+              techParamCoverage={p.techParamCoverage}
+              addUncoveredTechParamsToOutline={p.addUncoveredTechParamsToOutline}
               requestStep={p.requestStep}
               bidSourceMode={p.bidSourceMode}
               bidExternalText={p.bidExternalText}
@@ -305,6 +453,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               setBidExternalText={p.setBidExternalText}
               handleBidExternalFile={p.handleBidExternalFile}
             />
+            </>
           )}
           {p.activeStep === 4 && (
             <DupCheckPanel
@@ -505,6 +654,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
           factCheckResult={p.factCheckResult}
           factPatchBusy={p.factPatchBusy}
           startFactPatch={p.startFactPatch}
+          costConfirm={p.costConfirm}
         />
       ) : (
         <main>

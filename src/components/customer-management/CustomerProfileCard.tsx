@@ -1,7 +1,8 @@
 import { useState } from "react"
 import { normalizeHospitalLevel, normalizeRegion } from "@/pages/CustomerManagement/customerNormalize"
-import { ExternalLink, Loader2, Pencil, Phone, Plus, Trash2, UserRound, Wand2 } from "lucide-react"
+import { ExternalLink, Loader2, MoreHorizontal, Pencil, Phone, Plus, Trash2, UserRound, Wand2 } from "lucide-react"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
 import { AiBadge } from "@/components/customer-management/AiBadge"
 import { formatMoney } from "@/lib/money"
 import {
@@ -90,7 +91,9 @@ export function CustomerProfileCard({
             {customer.level && (
               <span className="badge-neutral">
                 {normalizeHospitalLevel(customer.level)}
-                {aiFields.includes("level") ? " · AI" : ""}
+                {aiFields.includes("level") && (
+                  <span className="cursor-help" title="医院等级由 AI 补全提供，请人工核实"> · AI</span>
+                )}
               </span>
             )}
           </div>
@@ -120,16 +123,30 @@ export function CustomerProfileCard({
             <Pencil className="h-3.5 w-3.5 text-primary" />
             编辑档案
           </button>
-          <button
-            type="button"
-            onClick={() => setPendingDeleteCustomer(true)}
-            disabled={deleting}
-            title="删除该客户（需确认，删除后不可恢复）"
-            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-destructive/30 bg-background px-2.5 py-1.5 text-xs font-medium text-destructive shadow-sm transition-colors hover:bg-destructive/10 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            {deleting ? "删除中…" : "删除"}
-          </button>
+          {/* docs13-3.4：删除为破坏性低频操作，收进「更多操作」下拉，远离常用操作防误触 */}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label="更多操作"
+              title="更多操作"
+              className="inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem
+                disabled={deleting}
+                onClick={() => setPendingDeleteCustomer(true)}
+                className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+              >
+                {deleting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
+                {deleting ? "删除中…" : "删除客户"}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
@@ -167,7 +184,7 @@ export function CustomerProfileCard({
               <p className="mt-1 text-xs text-muted-foreground">
                 {metric.label}
                 {aiFields.includes(String(metric.key)) && !missing && (
-                  <span className="ml-0.5 text-primary">·AI</span>
+                  <span className="ml-0.5 cursor-help text-primary" title="该数值由 AI 补全提供，请人工核实">·AI</span>
                 )}
               </p>
             </div>
@@ -253,7 +270,7 @@ export function CustomerProfileCard({
             <span className="text-muted-foreground">
               年营业收入：
               <span className="font-medium text-foreground">{formatMoney(customer.annual_revenue)} 万元</span>
-              {aiFields.includes("annual_revenue") && <span className="ml-0.5 text-primary">·AI</span>}
+              {aiFields.includes("annual_revenue") && <span className="ml-0.5 cursor-help text-primary" title="该数值由 AI 补全提供，请人工核实">·AI</span>}
             </span>
           )}
           {flatLeaders.map((l) => {
@@ -263,7 +280,7 @@ export function CustomerProfileCard({
               <span key={String(l.key)} className="text-muted-foreground">
                 {l.label}：
                 <span className="font-medium text-foreground">{val}</span>
-                {aiFields.includes(String(l.key)) && <span className="ml-0.5 text-primary">·AI</span>}
+                {aiFields.includes(String(l.key)) && <span className="ml-0.5 cursor-help text-primary" title="该信息由 AI 补全提供，请人工核实">·AI</span>}
               </span>
             )
           })}

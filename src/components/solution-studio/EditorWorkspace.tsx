@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, type CSSProperties } from "react"
 import { FileText, Library, Loader2, Play, Square } from "lucide-react"
 import { PrintChapterFlow, PrintExportButton } from "@/components/common/PrintExport"
 import { Badge } from "@/components/ui/badge"
@@ -7,7 +7,10 @@ import { ChapterEditor } from "@/components/solution-studio/ChapterEditor"
 import { ChapterNavTree } from "@/components/solution-studio/ChapterNavTree"
 import { MaterialAmmoPanel } from "@/components/solution-studio/MaterialAmmoPanel"
 import { RequirementCoverageCard } from "@/components/solution-studio/RequirementCoverageCard"
+import { SolutionDeliveryCheckCard } from "@/components/solution-studio/SolutionDeliveryCheckCard"
+import { SolutionSelfCheckOverviewCard } from "@/components/solution-studio/SolutionSelfCheckOverviewCard"
 import { SkillPickerFor } from "@/components/common/SkillPicker"
+import { useResizableSidebar } from "@/components/common/useResizableSidebar"
 import type { UseSolutionStudio } from "@/pages/SolutionStudio/useSolutionStudio"
 import { typeLabel, SOL_COMPLIANCE_MODES, SOL_COMPLIANCE_MODE_LABEL, SOL_COMPLIANCE_MODE_HINT } from "@/pages/SolutionStudio/solutionTypes"
 import { bulkResumeNotice, resumeBannerVisible } from "@/pages/SolutionStudio/bulkResume"
@@ -26,6 +29,11 @@ type EditorWorkspaceProps = Pick<
   | "refineChapter"
   | "reviewChapter"
   | "optimizeByIssues"
+  | "selfCheckOverview"
+  | "bulkReviewBusy"
+  | "reviewProgress"
+  | "startBulkReview"
+  | "cancelBulkReview"
   | "chapterTextareaRef"
   | "materialTab"
   | "setMaterialTab"
@@ -63,6 +71,13 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
   // 素材栏折叠 / 窄屏抽屉均为纯 UI 状态，留在 View 层
   const [materialCollapsed, setMaterialCollapsed] = useState(false)
   const [mobileMaterialOpen, setMobileMaterialOpen] = useState(false)
+  // 大纲侧栏可拖拽宽度：拖动右侧分隔条调宽，双击恢复默认，localStorage 持久化（与标书侧一致）
+  const { width: outlineW, onDragStart: outlineDrag, reset: outlineReset } = useResizableSidebar({
+    storageKey: "solkit.editor.outlineW",
+    initial: 280,
+    min: 200,
+    max: 600,
+  })
   const sol = p.activeSolution
   if (!sol) return null
   const chapterIndex = sol.chapters.findIndex((c) => c.node_id === p.activeChapterId)
@@ -107,7 +122,7 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
               {sol.hospital} · {sol.hospital_info?.hospital_level} · 建设内容：{(sol.hospital_info?.systems ?? []).join("、")}
             </p>
           </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <Button
               variant="outline"
               onClick={() => setMobileMaterialOpen((prev) => !prev)}
@@ -235,15 +250,42 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
         onSelectChapter={p.selectChapter}
       />
 
+      {/* R252 交付前本地体检：与标书交卷体检同口径的确定性硬核验（零 AI 零费用），随正文自动保存实时重算；只报不拦 */}
+      <SolutionDeliveryCheckCard
+        chapters={sol.chapters}
+        onSelectChapter={p.selectChapter}
+      />
+
+      {/* R276 整本五维自检总览 + 一键批量自检：汇总各章 AI 自检评分，弱项/待重写一目了然，可逐章跳转整改 */}
+      <SolutionSelfCheckOverviewCard
+        overview={p.selfCheckOverview}
+        busy={p.bulkReviewBusy}
+        progress={p.reviewProgress}
+        onStart={p.startBulkReview}
+        onCancel={p.cancelBulkReview}
+        onSelectChapter={p.selectChapter}
+      />
+
       {/* 窄屏：素材栏改为成稿区上方抽屉式弹层（按钮唤出，默认隐藏） */}
       {mobileMaterialOpen && <div className="mt-4 lg:hidden">{materialPanel}</div>}
 
       <div
         className={`mt-5 grid grid-cols-1 items-start gap-4 ${
-          materialCollapsed ? "lg:grid-cols-[200px_minmax(0,1fr)_2.75rem]" : "lg:grid-cols-[200px_minmax(0,1fr)_300px]"
+          materialCollapsed ? "lg:grid-cols-[var(--ow)_minmax(0,1fr)_2.75rem]" : "lg:grid-cols-[var(--ow)_minmax(0,1fr)_300px]"
         }`}
+        style={{ "--ow": `${outlineW}px` } as CSSProperties}
       >
-        <div className="lg:sticky lg:top-20">
+        <div className="relative lg:sticky lg:top-20">
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            title="按住拖动调整大纲宽度，双击恢复默认"
+            onPointerDown={outlineDrag}
+            onDoubleClick={outlineReset}
+            className="group absolute top-0 -right-2 z-10 hidden h-full w-3 cursor-col-resize items-center justify-center lg:flex"
+          >
+            <span className="h-full w-0.5 rounded-full bg-border transition-colors group-hover:bg-primary/60" />
+          </div>
           <ChapterNavTree
             activeSolution={p.activeSolution}
             activeChapterId={p.activeChapterId}

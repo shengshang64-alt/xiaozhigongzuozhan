@@ -563,7 +563,12 @@ routerAdd("POST", "/api/model-gw/test", (e) => {
       }
       return out
     }
-    var doChat = function (baseUrl, apiKey, model, messages, maxTokens, timeoutSec) {
+    // 测试链路同样受「推理模型吃满预算 → content 空」影响（测试消息固定 200 token 预算，
+    // 推理模型几乎必空）。与 chat 路由同构修复：读 reasoning_content 兜底 + 判定预算耗尽后升预算重试。
+    var TEST_MIN_RETRY_TOKENS = 1024
+    var TEST_RETRY_FACTOR = 4
+    var TEST_MAX_TOKENS = 16384
+    var testChatOnce = function (baseUrl, apiKey, model, messages, maxTokens, timeoutSec) {
       var b = String(baseUrl).replace(/\/+$/, "")
       var urls = [b + "/chat/completions", b + "/v1/chat/completions"]
       var started = new Date().getTime()
@@ -589,11 +594,30 @@ routerAdd("POST", "/api/model-gw/test", (e) => {
             return { ok: false, message: "接口返回异常（HTTP " + res.statusCode + "）" + (detail ? "：" + detail : "") }
           }
           var data = null
-          try { data = JSON.parse(typeof res.raw === "string" ? res.raw : "") } catch (e3) { return { ok: false, message: "返回格式异常，无法解析回复内容" } }
-          var text = ""
-          if (data && data.choices && data.choices.length && data.choices[0] && data.choices[0].message) text = String(data.choices[0].message.content || "")
-          if (!text) return { ok: false, message: "返回格式异常，回复内容为空" }
-          return { ok: true, text: text, elapsed_ms: elapsed }
+          try { data = JSON.parse(typeof res.raw === "string" ? res.raw : "") } catch (e3) { return { ok: false, message: "返回格式异常，无法解析上游响应（对方可能返回了非 JSON 内容）" } }
+          var choice = (data && data.choices && data.choices.length) ? data.choices[0] : null
+          var msgObj = choice && choice.message ? choice.message : null
+          var usage = (data && data.usage) ? data.usage : null
+          var text = msgObj ? String(msgObj.content == null ? "" : msgObj.content) : ""
+          if (!text && msgObj) {
+            var rc = msgObj.reasoning_content != null ? msgObj.reasoning_content : msgObj.reasoning
+            if (rc != null && String(rc) !== "") text = String(rc)
+          }
+          if (!text) {
+            var reasoningUsed = usage && usage.completion_tokens_details && usage.completion_tokens_details.reasoning_tokens
+              ? Number(usage.completion_tokens_details.reasoning_tokens) : 0
+            var truncated = String(choice && choice.finish_reason ? choice.finish_reason : "") === "length"
+            if (reasoningUsed > 0 || truncated || (msgObj && (msgObj.reasoning_content != null || msgObj.reasoning != null))) {
+              return {
+                ok: false,
+                retryReasoning: true,
+                message: "推理型模型本次把输出预算全部消耗在思考阶段，未产出正文（已自动提升预算重试仍失败）。"
+                  + "该模型可正常使用，但不适合短文本测试——请在模型配置页确认其输出上限，或改用非推理模型。"
+              }
+            }
+            return { ok: false, message: "返回格式异常：上游响应中没有任何正文内容（content 与 reasoning_content 均为空），请检查该模型 ID 是否正确" }
+          }
+          return { ok: true, text: text, elapsed_ms: elapsed, usage: usage }
         } catch (err) {
           var msg = String((err && err.message) || err || "")
           if (/timeout|deadline|Timeout/i.test(msg)) return { ok: false, message: "请求超时，对方接口未在限定时间内返回" }
@@ -601,6 +625,15 @@ routerAdd("POST", "/api/model-gw/test", (e) => {
         }
       }
       return { ok: false, message: "接口返回异常（HTTP " + lastStatus + "）" }
+    }
+    var doChat = function (baseUrl, apiKey, model, messages, maxTokens, timeoutSec) {
+      var first = testChatOnce(baseUrl, apiKey, model, messages, maxTokens, timeoutSec)
+      if (first.ok || !first.retryReasoning) return first
+      var escalated = Math.min(TEST_MAX_TOKENS, Math.max(maxTokens * TEST_RETRY_FACTOR, TEST_MIN_RETRY_TOKENS))
+      if (escalated <= maxTokens) return first
+      $app.logger().warn("model-gw test reasoning budget exhausted, retrying with larger max_tokens",
+        "model", model, "from", maxTokens, "to", escalated)
+      return testChatOnce(baseUrl, apiKey, model, messages, escalated, timeoutSec)
     }
     var body = e.requestInfo().body || {}
     var configId = norm(body.config_id)
@@ -612,9 +645,9 @@ routerAdd("POST", "/api/model-gw/test", (e) => {
     if (rec.get("is_platform")) return e.json(200, { ok: false, code: "platform_model", message: "平台内置模型由前端直接走平台通道测试" })
     var plainKey = rec.get("api_key") ? unxorHex(rec.get("api_key")) : ""
     if (!plainKey) return e.json(200, { ok: false, code: "no_key", message: "该配置缺少 API Key，请先编辑补填" })
-    var r = doChat(String(rec.get("base_url") || ""), plainKey, model, [{ role: "user", content: "请用一句话介绍你自己" }], 200, 60)
+    var r = doChat(String(rec.get("base_url") || ""), plainKey, model, [{ role: "user", content: "请用一句话介绍你自己" }], TEST_MIN_RETRY_TOKENS, 60)
     if (!r.ok) return e.json(200, { ok: false, code: "upstream_error", message: r.message })
-    return e.json(200, { ok: true, reply: r.text, elapsed_ms: r.elapsed_ms })
+    return e.json(200, { ok: true, reply: r.text, elapsed_ms: r.elapsed_ms, usage: r.usage })
   } catch (ex) {
     $app.logger().error("model-gw test failed", "err", String(ex))
     return e.json(500, { error: "model_gateway_error", message: "模型测试失败，请稍后重试", fingerprint: "mgw-test-" + new Date().getTime().toString(36) })
@@ -663,10 +696,21 @@ routerAdd("POST", "/api/model-gw/chat", (e) => {
       }
       return out
     }
-    // T13（2026-09-28）：推理型模型（deepseek-v4 等）会把 max_tokens 全部耗在思考上，content 返回空
-    // → 前端报「返回格式异常，回复内容为空」（解析批量失败实锤）。解析类调用带 disable_thinking=true，
-    //   出站补两家主流方言关闭思考参数；个别严格网关若 400 拒收未知参数，去掉重试一次。
-    var doChat = function (baseUrl, apiKey, model, messages, maxTokens, temperature, timeoutSec, disableThinking) {
+    // T13（2026-09-28）：推理型模型（deepseek-v4 等）会把 max_tokens 全部耗在思考上，content 返回空。
+    // 缺陷修复（2026-10-12 实测坐实）：原实现把这种「预算耗尽」当成硬失败，直接返回
+    //   「返回格式异常，回复内容为空」——文案掩盖真实成因，且不自动恢复（实测 max_tokens=30 时 5/5 全失败，
+    //   同一模型 max_tokens=40 即成功；usage 实测 reasoning_tokens=106，即预算全被思考吃掉）。
+    // 现为三级兜底：
+    //   ① 解析层读 reasoning_content 兜底（部分方言把正文放思考字段）；
+    //   ② 判定「思考耗尽预算」（content 空但有 reasoning_content 或 finish_reason=length）时，
+    //      自动提升 max_tokens 重试一次（×4，下限 1024，上限 16384），不做无意义的人工重试；
+    //   ③ 仍失败才报错，且文案直说真实原因，不再用「格式异常」误导排查方向。
+    var MIN_REASONING_RETRY_TOKENS = 1024
+    var REASONING_RETRY_FACTOR = 4
+    var MAX_CHAT_TOKENS = 16384
+    // 单次出站：URL 兜底 + 关思考参数兼容 + 响应解析。
+    // 「思考耗尽预算」以 retryReasoning 标记返回，交外层 doChat 升预算重试（此处不自行重试，避免与 URL 循环纠缠）。
+    var chatOnce = function (baseUrl, apiKey, model, messages, maxTokens, temperature, timeoutSec, disableThinking) {
       var b = String(baseUrl).replace(/\/+$/, "")
       var urls = [b + "/chat/completions", b + "/v1/chat/completions"]
       var payload = { model: model, messages: messages, stream: false, max_tokens: maxTokens }
@@ -707,11 +751,33 @@ routerAdd("POST", "/api/model-gw/chat", (e) => {
             return { ok: false, message: "接口返回异常（HTTP " + res.statusCode + "）" + (detail ? "：" + detail : "") }
           }
           var data = null
-          try { data = JSON.parse(typeof res.raw === "string" ? res.raw : "") } catch (e3) { return { ok: false, message: "返回格式异常，无法解析回复内容" } }
-          var text = ""
-          if (data && data.choices && data.choices.length && data.choices[0] && data.choices[0].message) text = String(data.choices[0].message.content || "")
-          if (!text) return { ok: false, message: "返回格式异常，回复内容为空" }
-          return { ok: true, text: text, elapsed_ms: elapsed, usage: data.usage || null }
+          try { data = JSON.parse(typeof res.raw === "string" ? res.raw : "") } catch (e3) { return { ok: false, message: "返回格式异常，无法解析上游响应（对方可能返回了非 JSON 内容）" } }
+          var choice = (data && data.choices && data.choices.length) ? data.choices[0] : null
+          var msgObj = choice && choice.message ? choice.message : null
+          var usage = (data && data.usage) ? data.usage : null
+          var text = msgObj ? String(msgObj.content == null ? "" : msgObj.content) : ""
+          // 兜底 ①：部分推理方言把正文写在 reasoning_content，content 留空
+          if (!text && msgObj) {
+            var rc = msgObj.reasoning_content != null ? msgObj.reasoning_content : msgObj.reasoning
+            if (rc != null && String(rc) !== "") text = String(rc)
+          }
+          if (!text) {
+            // 兜底 ②判定：content 空 + 有思考痕迹，或因长度被截断 → 交外层升预算重试
+            var reasoningUsed = usage && usage.completion_tokens_details && usage.completion_tokens_details.reasoning_tokens
+              ? Number(usage.completion_tokens_details.reasoning_tokens) : 0
+            var truncated = String(choice && choice.finish_reason ? choice.finish_reason : "") === "length"
+            if (reasoningUsed > 0 || truncated || (msgObj && (msgObj.reasoning_content != null || msgObj.reasoning != null))) {
+              return {
+                ok: false,
+                retryReasoning: true,
+                reasoning_tokens: reasoningUsed,
+                message: "推理型模型本次把输出预算全部消耗在思考阶段，未产出正文（已自动提升预算重试仍失败）。"
+                  + "请改用非推理模型，或在模型配置页为该模型设置更大的输出上限。"
+              }
+            }
+            return { ok: false, message: "返回格式异常：上游响应中没有任何正文内容（content 与 reasoning_content 均为空），请检查该模型 ID 是否正确" }
+          }
+          return { ok: true, text: text, elapsed_ms: elapsed, usage: usage }
         } catch (err) {
           var msg = String((err && err.message) || err || "")
           if (/timeout|deadline|Timeout/i.test(msg)) return { ok: false, message: "请求超时，对方接口未在限定时间内返回，可稍后重试或切换模型" }
@@ -722,12 +788,25 @@ routerAdd("POST", "/api/model-gw/chat", (e) => {
       }
       return { ok: false, message: "接口返回异常（HTTP " + lastStatus + "）" }
     }
+    // 出站总控：单次失败且判定为「思考耗尽预算」时升预算重试一次（仅一次，避免无界重试与重复计费）
+    var doChat = function (baseUrl, apiKey, model, messages, maxTokens, temperature, timeoutSec, disableThinking) {
+      var first = chatOnce(baseUrl, apiKey, model, messages, maxTokens, temperature, timeoutSec, disableThinking)
+      if (first.ok || !first.retryReasoning) return first
+      var escalated = Math.min(MAX_CHAT_TOKENS, Math.max(maxTokens * REASONING_RETRY_FACTOR, MIN_REASONING_RETRY_TOKENS))
+      if (escalated <= maxTokens) return first
+      $app.logger().warn("model-gw chat reasoning budget exhausted, retrying with larger max_tokens",
+        "model", model, "from", maxTokens, "to", escalated)
+      return chatOnce(baseUrl, apiKey, model, messages, escalated, temperature, timeoutSec, disableThinking)
+    }
     var body = e.requestInfo().body || {}
     var messages = sanitizeMessages(body.messages)
     if (!messages.length) return e.json(200, { ok: false, code: "bad_request", message: "messages 不能为空" })
     var maxTokens = parseInt(body.max_tokens, 10)
     if (isNaN(maxTokens) || maxTokens <= 0) maxTokens = 2048
-    if (maxTokens > 16384) maxTokens = 16384
+    // R216 缺陷修复：调用方给的预算若低于推理模型思考下限，一律抬到下限——
+    // 否则推理模型 100% 把预算耗在思考上、content 恒空，表现为「随机失败」（实测 30 必败 / 40 可成）
+    if (maxTokens < MIN_REASONING_RETRY_TOKENS) maxTokens = MIN_REASONING_RETRY_TOKENS
+    if (maxTokens > MAX_CHAT_TOKENS) maxTokens = MAX_CHAT_TOKENS
     var temperature = typeof body.temperature === "number" ? body.temperature : null
     if (temperature !== null && (temperature < 0 || temperature > 2)) temperature = null
 

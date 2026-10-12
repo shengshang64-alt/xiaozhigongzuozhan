@@ -17,6 +17,7 @@ import {
   Users,
   ShieldCheck,
   ArrowLeftRight,
+  ClipboardCheck,
 } from "lucide-react"
 import { preloadRoute } from "@/lib/routePreload"
 import { decodeRhToken, isLocalDeployHost, type RhAccountInfo } from "@/lib/rhLogin"
@@ -56,6 +57,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: "决胜",
     items: [
       { path: "/bid-workspace", label: "标书工作台", icon: FileCheck2 },
+      { path: "/bid-check", label: "标书检查", icon: ClipboardCheck },
       { path: "/format-tool", label: "格式刷新", icon: Type },
     ],
   },
@@ -106,7 +108,7 @@ export function SidebarNav({ accountInfo, collapsed = false }: SidebarNavProps) 
       }
     >
       {/* Logo */}
-      <header className={"flex items-center gap-2.5 border-b border-white/[.07] py-4 " + (collapsed ? "justify-center px-2" : "px-[18px]")}>
+      <header className={"flex shrink-0 items-center gap-2.5 border-b border-white/[.07] py-4 " + (collapsed ? "justify-center px-2" : "px-[18px]")}>
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-gradient-to-br from-primary to-[#0A5D76] text-white shadow-md">
           <Layers className="h-[19px] w-[19px]" />
         </span>
@@ -119,7 +121,7 @@ export function SidebarNav({ accountInfo, collapsed = false }: SidebarNavProps) 
       </header>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto px-2.5 pb-1.5 pt-2.5">
+      <nav className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-1.5 pt-2.5">
         {NAV_SECTIONS.map((section) => {
           const items = section.items.filter((it) => !it.adminOnly || showAdminOnly)
           if (items.length === 0) return null
@@ -165,7 +167,7 @@ export function SidebarNav({ accountInfo, collapsed = false }: SidebarNavProps) 
       </nav>
 
       {/* Account footer */}
-      <footer className="p-2.5 lg:p-4">
+      <footer className="shrink-0 p-2.5 lg:p-4">
         <button
           type="button"
           onClick={() => navigate("/model-config")}

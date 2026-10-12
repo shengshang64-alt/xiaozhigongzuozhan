@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ChevronDown, ChevronRight, ExternalLink, FileText, Loader2, Table2 } from "lucide-react"
+import { ChevronDown, ChevronRight, ExternalLink, FileText, Loader2, Plus, Table2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { SkillPickerFor } from "@/components/common/SkillPicker"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
@@ -11,6 +11,7 @@ import {
   type DeviationRow,
   type ResponseLevel,
 } from "@/pages/BidWorkspace/bidTypes"
+import { PARAM_KIND_LABEL } from "@/pages/BidWorkspace/techParamCoverage"
 
 // ---------------------------------------------------------------------------
 // 改造 4：技术偏离表面板——拆分维度单选 + 统计 + 按来源章节分组表格 + 独立导出
@@ -30,6 +31,8 @@ type DeviationPanelProps = Pick<
   | "exportDeviationWord"
   | "exportBusy"
   | "deviationSkills"
+  | "techParamCoverage"
+  | "addUncoveredTechParamsToOutline"
 >
 
 const LEVEL_BADGE: Record<Exclude<ResponseLevel, "">, string> = {
@@ -130,6 +133,52 @@ export function DeviationPanel(p: DeviationPanelProps) {
         <p className="mt-1.5 text-xs text-muted-foreground">{CLAUSE_GRANULARITY_HINT[p.clauseGranularity]}</p>
       </div>
 
+      {p.techParamCoverage.hasParams && (
+        <div className="border-b border-border px-4 py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground">技术参数落点（R-022）</span>
+            <span className={`text-sm font-bold ${p.techParamCoverage.uncovered > 0 ? "text-destructive" : "text-primary"}`}>
+              已覆盖 {p.techParamCoverage.covered}/{p.techParamCoverage.total}
+            </span>
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">【评审项】{p.techParamCoverage.reviewCount}</span>
+            <span className="rounded-full bg-warning/10 px-2 py-0.5 text-xs text-warning">▲实质性{p.techParamCoverage.starCount}</span>
+            <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">一般项{p.techParamCoverage.generalCount}</span>
+            {p.techParamCoverage.negativeCount > 0 && (
+              <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
+                负偏离 {p.techParamCoverage.negativeCount} 项 · 预计扣 {p.techParamCoverage.deviationPenalty} 分
+              </span>
+            )}
+            {p.techParamCoverage.uncovered > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={p.addUncoveredTechParamsToOutline}
+                className="ml-auto border-primary/40 text-primary hover:bg-primary/10"
+              >
+                <Plus className="mr-1 h-3.5 w-3.5" />
+                补入未覆盖（{p.techParamCoverage.uncovered}）
+              </Button>
+            )}
+          </div>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            第五章全部技术和服务要求参数逐条核对：进技术偏离表或建大纲节点记为已覆盖；未覆盖 {p.techParamCoverage.uncovered} 项待补入，负偏离每项扣 {p.techParamCoverage.perItemPenalty} 分。
+          </p>
+          {p.techParamCoverage.uncovered > 0 && (
+            <ul className="mt-2 max-h-40 overflow-y-auto rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">
+              {p.techParamCoverage.uncoveredRows.slice(0, 20).map((r) => (
+                <li key={r.id} className="flex items-start gap-1.5 border-b border-destructive/10 py-1 text-xs last:border-0">
+                  <span className="shrink-0 rounded bg-muted px-1 font-mono text-[10px] text-muted-foreground">{r.id}</span>
+                  <span className="shrink-0 font-medium text-warning">{PARAM_KIND_LABEL[r.kind]}</span>
+                  <span className="min-w-0 flex-1 text-foreground">{r.text}</span>
+                </li>
+              ))}
+              {p.techParamCoverage.uncovered > 20 && (
+                <li className="py-1 text-xs text-muted-foreground">…另有 {p.techParamCoverage.uncovered - 20} 条未覆盖参数</li>
+              )}
+            </ul>
+          )}
+        </div>
+      )}
       <div className="p-4">
         {rows.length === 0 ? (
           <p className="rounded-md border border-dashed border-border py-8 text-center text-xs text-muted-foreground">

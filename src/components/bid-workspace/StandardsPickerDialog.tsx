@@ -12,6 +12,7 @@ import {
   type BasisStyle,
   type StandardCategory,
 } from "@/pages/BidWorkspace/bidTypes"
+import { detectStaleVersionRefs, staleRefHint } from "@/pages/BidWorkspace/standardCurrency"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 
 type StandardsPickerDialogProps = Pick<
@@ -41,6 +42,7 @@ export function StandardsPickerDialog(p: StandardsPickerDialogProps) {
 
   const parsedKeys = useMemo(() => new Set(p.basisParsedItems.map(basisItemKey)), [p.basisParsedItems])
   const extraKeys = useMemo(() => new Set(p.basisExtraItems.map(basisItemKey)), [p.basisExtraItems])
+  const staleRefs = useMemo(() => detectStaleVersionRefs(p.basisParsedItems), [p.basisParsedItems])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -94,6 +96,21 @@ export function StandardsPickerDialog(p: StandardsPickerDialogProps) {
               })}
             </div>
           </div>
+
+          {staleRefs.length > 0 && (
+            <div className="rounded-lg border border-warning/40 bg-warning/10 p-3">
+              <p className="text-xs font-medium text-warning">
+                版本提示：解析提取的 {staleRefs.length} 条编制依据引用了旧版标准，注入正文前请核实（仅提示，不拦截）
+              </p>
+              <ul className="mt-1.5 flex flex-col gap-1">
+                {staleRefs.map((r) => (
+                  <li key={`${r.item.code}-${r.citedYear}`} className="text-xs leading-snug text-warning">
+                    {staleRefHint(r)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <div className="flex flex-wrap items-center gap-1.5">
             {(["all", ...STANDARD_CATEGORIES] as CategoryFilter[]).map((cat) => {

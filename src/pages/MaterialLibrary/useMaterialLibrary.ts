@@ -331,6 +331,9 @@ export function useMaterialLibrary() {
     setSelectedUrls((prev) => (prev.includes(url) ? prev.filter((u) => u !== url) : [...prev, url]))
   }, [])
 
+  // 一键清空当前选择：顶栏「取消选择」按钮语义是清空整批，而非仅移除首项
+  const clearSelection = useCallback(() => setSelectedUrls([]), [])
+
   // ---------- 本地导入（扫描入库的 PB 版：多选文件批量入库，sha256 去重） ----------
   const [importCategory, setImportCategory] = useState("03_现场照片")
   const [importProgress, setImportProgress] = useState<{ done: number; total: number; current: string } | null>(null)
@@ -509,7 +512,7 @@ export function useMaterialLibrary() {
     // 联网抓取
     webProvider, setWebProvider, webQuery, setWebQuery, webHits, webMessage, webSearching,
     hasWebKey, runWebSearch, saveWebHit, saveSelectedHits, savedUrls, savingUrl,
-    selectedUrls, toggleSelectUrl,
+    selectedUrls, toggleSelectUrl, clearSelection,
     // 本地导入
     importCategory, setImportCategory, importProgress, importResult, importFiles, cancelImport,
     // 内部源

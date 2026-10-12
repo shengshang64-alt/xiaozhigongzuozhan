@@ -18,6 +18,7 @@ import {
   Wand2,
 } from "lucide-react"
 import {
+  isBlankSlide,
   REFINE_LABEL,
   type RefineKind,
   type Slide,
@@ -72,6 +73,7 @@ const REFINE_ICONS: Record<RefineKind, typeof PenLine> = {
   rewrite: PenLine,
   expand: PlusCircle,
   condense: Minimize2,
+  fill: Wand2,
 }
 
 /** 用户可手动切换的版式（图表 / 数字亮点页由数据自动决定，不单列） */
@@ -150,7 +152,8 @@ export function SlideEditor({
       </div>
     )
   }
-  const refineKinds: RefineKind[] = ["rewrite", "expand", "condense"]
+  // 占位/空白页（批量生成失败留下的仅标题页）只给「补全此页」；已有正文的页给「改写/扩写/精简」
+  const refineKinds: RefineKind[] = isBlankSlide(slide) ? ["fill"] : ["rewrite", "expand", "condense"]
   const hasChart = !!slide.chart
   const hasKpi = !!slide.kpi?.length
   const imageDisabled = refineLocked || imageBusy

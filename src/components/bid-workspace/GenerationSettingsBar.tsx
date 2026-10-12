@@ -10,6 +10,7 @@ import {
   type BidScope,
   type ComplianceMode,
 } from "@/pages/BidWorkspace/bidTypes"
+import { DEMO_OFFLINE_HINT } from "@/pages/BidWorkspace/demoSection"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 
 type GenerationSettingsBarProps = Pick<
@@ -31,6 +32,8 @@ type GenerationSettingsBarProps = Pick<
   | "setScope"
   | "setClauseResponse"
   | "setMaterialBoost"
+  | "setGenerateDemo"
+  | "demoScoreSummary"
   | "setWordRefine"
   | "setAutoConsistencyAudit"
   | "setComplianceMode"
@@ -401,6 +404,30 @@ export function GenerationSettingsBar(p: GenerationSettingsBarProps) {
                 <span className="block text-muted-foreground">每章成稿后自动核对全局事实口径，发现矛盾自动修复一次（未唯一定位的留待人工）；关闭则仅在「事实一致性核对」手动执行</span>
               </span>
             </label>
+          </div>
+        </div>
+
+        <div className="grid gap-1.5 text-xs">
+          <span className="font-medium text-muted-foreground">演示分节点（R-019 / R-024）</span>
+          <div className="grid gap-2 rounded-md border border-border bg-background px-3 py-2">
+            <label className="flex cursor-pointer items-start gap-2">
+              <input
+                type="checkbox"
+                checked={p.genOptions.generate_demo === true}
+                onChange={(e) => p.setGenerateDemo(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+              />
+              <span className="text-xs leading-snug">
+                <span className="font-medium text-foreground">演示分节点生成正文</span>
+                <span className="block text-muted-foreground">默认关闭：标题含「演示 / 答辩 / 讲标」的技术章按现场评分项处理，不生成正文、不计入字数页数；开启后按占位应答生成。演示与答辩得分须线下实机演示取得。</span>
+              </span>
+            </label>
+            {p.demoScoreSummary.hasDemo && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+                <p className="font-medium">检测到 {p.demoScoreSummary.count} 个演示 / 答辩评分节点：{p.demoScoreSummary.titles.join("、")}</p>
+                <p className="mt-1">{DEMO_OFFLINE_HINT}</p>
+              </div>
+            )}
           </div>
         </div>
       </div>

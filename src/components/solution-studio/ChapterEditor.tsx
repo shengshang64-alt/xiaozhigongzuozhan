@@ -97,7 +97,7 @@ export function ChapterEditor({
             {activeChapter.title}
             {isBiz && (
               <span className="ml-2 rounded-full bg-muted px-2 py-0.5 align-middle text-xs font-medium text-muted-foreground">
-                商务·线下填写
+                {hasContent ? "商务文书" : "商务·线下填写"}
               </span>
             )}
             {autoSaveState !== "idle" && (
@@ -111,7 +111,9 @@ export function ChapterEditor({
             {readOnly
               ? "已归档项目为只读，解除归档后可编辑"
               : isBiz
-                ? "商务文书与证照章节，不生成 AI 正文，线下填写后随 Word 导出合并"
+                ? hasContent
+                  ? "本章由系统按 ★/▲ 实质性条款逐字生成，不参与 AI 逐章生成，可直接编辑校对并随 Word 导出"
+                  : "商务文书与证照章节，不生成 AI 正文，线下填写后随 Word 导出合并"
                 : busy
                   ? "AI 正在撰写本章…"
                   : hasContent
@@ -120,7 +122,7 @@ export function ChapterEditor({
           </p>
         </div>
         {!isBiz && (
-        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           {genPickerSlot}
           {!hasContent && (
             <Button
@@ -220,7 +222,7 @@ export function ChapterEditor({
             onRecheck={() => reviewChapter(activeChapter.node_id)}
           />
         )}
-        {isBiz ? (
+        {isBiz && !hasContent ? (
           <div className="flex flex-1 flex-col rounded-md border border-dashed border-border bg-muted/40 p-6">
             <p className="text-sm font-medium text-foreground">本章为商务骨架章，不参与 AI 正文生成</p>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">

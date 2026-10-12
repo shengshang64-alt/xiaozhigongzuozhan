@@ -1,13 +1,14 @@
 // 资质证书台账页：三档预警条 + 台账列表 + 登记/编辑/删除
 // 设计依据 docs/06 §一.1 与 docs/未来功能规划路线图.md（证书过期直接废标 → 提前预警）
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { AlertTriangle, Download, Loader2, Pencil, Plus, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { Input } from "@/components/ui/input"
+import { DataTable, type DataTableColumn } from "@/components/ui/DataTable"
 import type { UseQualCerts } from "./useQualCerts"
-import { QUAL_CATEGORIES, qualDueLabel, type QualBucket, type QualCertRow } from "./qualsCore"
+import { QUAL_CATEGORIES, filterQualRows, qualDueLabel, type QualBucket, type QualCertRow } from "./qualsCore"
 import { exportToCsv } from "@/lib/exportCsv"
 import { localDateStamp } from "@/lib/dateStamp"
 
@@ -28,6 +29,16 @@ const BUCKET_CLASS: Record<QualBucket, string> = {
 // 三档之外的桶只用于计数展示
 const ALERT_ORDER: QualBucket[] = ["expired", "critical", "warning"]
 
+/** 与 qualsCore 分档口径一致：已过期 danger、≤90 天 warning、正常 success、未登记 neutral */
+function qualDueBadge(row: Pick<QualCertRow, "valid_to">, todayMs: number): { due: string; cls: string } {
+  const due = qualDueLabel(row.valid_to, todayMs)
+  const isExpired = due.startsWith("已过期")
+  const daysMatch = /^剩 (\d+) 天$/.exec(due)
+  const isSoon = due === "今天到期" || (daysMatch != null && parseInt(daysMatch[1], 10) <= 90)
+  const cls = !row.valid_to ? "badge-neutral" : isExpired ? "badge-danger" : isSoon ? "badge-warning" : "badge-success"
+  return { due, cls }
+}
+
 function handleExport(p: UseQualCerts) {
   const headers = ["证照名称", "类别", "证书编号", "发证机关", "有效期开始", "有效期截止", "适用范围", "更新时间"]
   const rows = p.rows.map((r) => [r.cert_name, r.category, r.cert_no, r.issuer, r.valid_from, r.valid_to, r.scope, r.updated])
@@ -36,6 +47,68 @@ function handleExport(p: UseQualCerts) {
 
 export function QualCertsPage({ p }: { p: UseQualCerts }) {
   const { summary } = p
+  // R250(r2-r012 收尾)：台账改为复用全站 DataTable——点表头三态排序、超 20 条分页、
+  // 顶部按展示字段搜索。默认按「有效期至」升序，最急的证照排最前（原为服务端返回序）。
+  const [keyword, setKeyword] = useState("")
+  const visibleRows = useMemo(() => filterQualRows(p.rows, keyword), [p.rows, keyword])
+  const todayMs = new Date(new Date().toDateString()).getTime()
+  const columns: DataTableColumn<QualCertRow>[] = [
+    {
+      key: "cert_name",
+      header: "证照名称",
+      sortAccessor: (row) => row.cert_name,
+      render: (row) => (
+        <span>
+          <span className="font-medium text-foreground">{row.cert_name}</span>
+          {row.notes ? <span className="block text-xs text-muted-foreground/80">{row.notes.slice(0, 26)}</span> : null}
+        </span>
+      ),
+    },
+    {
+      key: "category",
+      header: "类别",
+      sortAccessor: (row) => row.category,
+      headerClassName: "hidden sm:table-cell",
+      className: "hidden sm:table-cell text-muted-foreground",
+      render: (row) => row.category || "—",
+    },
+    {
+      key: "cert_no",
+      header: "证书编号",
+      sortAccessor: (row) => row.cert_no,
+      headerClassName: "hidden md:table-cell",
+      className: "hidden md:table-cell font-mono text-xs text-muted-foreground",
+      render: (row) => row.cert_no || "—",
+    },
+    {
+      key: "valid_to",
+      header: "有效期至",
+      sortAccessor: (row) => row.valid_to,
+      render: (row) => {
+        const { due, cls } = qualDueBadge(row, todayMs)
+        return (
+          <span>
+            <span className={`inline-flex items-center gap-1 ${cls}`}>{row.valid_to || "未登记"}</span>
+            <span className="ml-1 text-xs text-muted-foreground">{row.valid_to ? due : ""}</span>
+          </span>
+        )
+      },
+    },
+    {
+      key: "scope",
+      header: "适用范围",
+      sortAccessor: (row) => row.scope,
+      headerClassName: "hidden lg:table-cell",
+      className: "hidden lg:table-cell text-xs text-muted-foreground",
+      render: (row) => row.scope || "—",
+    },
+    {
+      key: "actions",
+      header: "操作",
+      align: "right",
+      render: (row) => <QualRowActions row={row} p={p} />,
+    },
+  ]
   return (
     <div className="mx-auto w-full max-w-6xl">
       <header className="mb-5 flex items-start justify-between gap-3">
@@ -112,11 +185,31 @@ export function QualCertsPage({ p }: { p: UseQualCerts }) {
       </div>
 
       {/* 预警明细 */}
-      {summary.alerts.length > 0 ? (
+      {summary.alerts.length > 0 ? (() => {
+        // R228(r2-r010)：自检三档之和 == 预警总数，与驾驶舱 qualRiskView.total 同口径；
+        // 不等说明数据或分档逻辑有漂移，页面内标注提示而非静默忽略。
+        const tierSum = summary.buckets.expired + summary.buckets.critical + summary.buckets.warning
+        const selfCheckOk = tierSum === summary.alerts.length
+        return (
         <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
           <p className="flex items-center gap-1.5 text-sm font-semibold text-destructive">
             <AlertTriangle className="h-4 w-4" />
             到期预警（{summary.alerts.length} 项）——投标引用前必须核实
+            {selfCheckOk ? (
+              <span
+                className="ml-1 rounded bg-success/15 px-1.5 py-0.5 text-[10px] font-normal text-success"
+                title={`已过期 ${summary.buckets.expired} + 30天内 ${summary.buckets.critical} + 90天内 ${summary.buckets.warning} = ${tierSum}`}
+              >
+                ✓ 口径校验通过
+              </span>
+            ) : (
+              <span
+                className="ml-1 rounded bg-destructive/20 px-1.5 py-0.5 text-[10px] font-normal text-destructive"
+                title={`三档之和 ${tierSum} ≠ 预警数 ${summary.alerts.length}，请联系维护`}
+              >
+                ⚠ 口径异常
+              </span>
+            )}
           </p>
           <ul className="mt-2 flex flex-col gap-1.5">
             {summary.alerts.map((a) => (
@@ -132,7 +225,8 @@ export function QualCertsPage({ p }: { p: UseQualCerts }) {
             ))}
           </ul>
         </div>
-      ) : null}
+        )
+      })() : null}
 
       {/* 台账列表 */}
       {p.loading ? (
@@ -153,25 +247,42 @@ export function QualCertsPage({ p }: { p: UseQualCerts }) {
           </Button>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-border bg-card shadow-md">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/50 text-xs text-muted-foreground">
-                <th className="px-3 py-2 font-medium">证照名称</th>
-                <th className="hidden px-3 py-2 font-medium sm:table-cell">类别</th>
-                <th className="hidden px-3 py-2 font-medium md:table-cell">证书编号</th>
-                <th className="px-3 py-2 font-medium">有效期至</th>
-                <th className="hidden px-3 py-2 font-medium lg:table-cell">适用范围</th>
-                <th className="px-3 py-2 text-right font-medium">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {p.rows.map((row) => (
-                <QualRow key={row.id} row={row} p={p} />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <Input
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              placeholder="搜索证照名称 / 类别 / 编号 / 发证机关 / 适用范围"
+              aria-label="搜索资质台账"
+              className="max-w-sm border-border bg-card shadow-sm"
+            />
+            {keyword.trim() ? (
+              <>
+                <span className="text-xs text-muted-foreground">匹配 {visibleRows.length} / {p.rows.length} 条</span>
+                <button
+                  type="button"
+                  onClick={() => setKeyword("")}
+                  className="rounded-md px-2 py-1 text-xs text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  清除搜索
+                </button>
+              </>
+            ) : null}
+          </div>
+          <DataTable<QualCertRow>
+            columns={columns}
+            rows={visibleRows}
+            getRowId={(row) => row.id}
+            initialSort={{ key: "valid_to", dir: "asc" }}
+            pageSize={20}
+            caption="资质证书台账"
+            emptyState={
+              keyword.trim()
+                ? "没有匹配的证照，换个关键词或清除搜索"
+                : "暂无证照，点上方「登记资质」开始维护台账"
+            }
+          />
+        </>
       )}
 
       {/* 登记/编辑表单 */}
@@ -274,31 +385,11 @@ export function QualCertsPage({ p }: { p: UseQualCerts }) {
   )
 }
 
-function QualRow({ row, p }: { row: QualCertRow; p: UseQualCerts }) {
-  const today = new Date(new Date().toDateString()).getTime()
-  const due = qualDueLabel(row.valid_to, today)
-  // 与 qualsCore 分档口径一致：已过期 danger、≤90 天 warning、正常 success、未登记 neutral
-  const isExpired = due.startsWith("已过期")
-  const daysMatch = /^剩 (\d+) 天$/.exec(due)
-  const isSoon = due === "今天到期" || (daysMatch != null && parseInt(daysMatch[1], 10) <= 90)
-  const cls = !row.valid_to ? "badge-neutral" : isExpired ? "badge-danger" : isSoon ? "badge-warning" : "badge-success"
+function QualRowActions({ row, p }: { row: QualCertRow; p: UseQualCerts }) {
   const [pendingDelete, setPendingDelete] = useState(false)
   return (
-    <tr className="border-b border-border/60 last:border-0">
-      <td className="px-3 py-2">
-        {/* 2026-10-08 全站审查：备注换行弱化展示，不再拼在证照名称后一行（曾误读为名称一部分） */}
-        <span className="font-medium text-foreground">{row.cert_name}</span>
-        {row.notes ? <span className="block text-xs text-muted-foreground/80">{row.notes.slice(0, 26)}</span> : null}
-      </td>
-      <td className="hidden px-3 py-2 text-muted-foreground sm:table-cell">{row.category || "—"}</td>
-      <td className="hidden px-3 py-2 font-mono text-xs text-muted-foreground md:table-cell">{row.cert_no || "—"}</td>
-      <td className="px-3 py-2">
-        <span className={`inline-flex items-center gap-1 ${cls}`}>{row.valid_to || "未登记"}</span>
-        <span className="ml-1 text-xs text-muted-foreground">{row.valid_to ? due : ""}</span>
-      </td>
-      <td className="hidden px-3 py-2 text-xs text-muted-foreground lg:table-cell">{row.scope || "—"}</td>
-      <td className="px-3 py-2 text-right">
-        <div className="inline-flex items-center gap-1">
+    <>
+      <div className="inline-flex items-center gap-1">
           <button
             type="button"
             onClick={() => p.openEdit(row)}
@@ -315,22 +406,21 @@ function QualRow({ row, p }: { row: QualCertRow; p: UseQualCerts }) {
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
-        </div>
-        <ConfirmDialog
-          open={pendingDelete}
-          onOpenChange={(o) => {
-            if (!o) setPendingDelete(false)
-          }}
-          title="删除资质"
-          description={`确定删除「${row.cert_name}」吗？删除后不可恢复。`}
-          confirmText="删除"
-          tone="danger"
-          onConfirm={() => {
-            setPendingDelete(false)
-            void p.removeRow(row)
-          }}
-        />
-      </td>
-    </tr>
+      </div>
+      <ConfirmDialog
+        open={pendingDelete}
+        onOpenChange={(o) => {
+          if (!o) setPendingDelete(false)
+        }}
+        title="删除资质"
+        description={`确定删除「${row.cert_name}」吗？删除后不可恢复。`}
+        confirmText="删除"
+        tone="danger"
+        onConfirm={() => {
+          setPendingDelete(false)
+          void p.removeRow(row)
+        }}
+      />
+    </>
   )
 }

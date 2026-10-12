@@ -13,6 +13,11 @@ import type { ParseReport } from "./bidTypes"
 // 由表头确定，其后只在列数完全一致的行上按列取值，任一行对不上即模板失效；描述格还须带评分语汇
 // 才采纳——同形状的采购清单/数据集目录/付款方式表因此不会被误读为分值。另修类目小计（「①价格项
 // （F1×A1）满分为30分」）被误当全表总分的口径缺陷。
+// R247（收 r195-score-table-n1-merged-col）：提取端（bidFiles 表格遍历的 filter(Boolean)、pdfjs 按列拆行）
+// 丢掉空单元时连同其分隔符一起丢，评分表里「评标项目」格本就没有编号的行因此从三列退化成两列
+// （`3 | 投标人或所投品牌…得3分`）；旧实现「列数不符即模板失效」把这类行判死，连带其后的正常行整表漏配
+// （真实信息化招标评分表差分实测 6 项 -> 21 项，新增 15 项逐条人工判真、删失 0 项）。现在允许「列数恰差 1 且整行只有唯一一个分值形状单元」的近形行
+// 按内容对齐取分值，护栏不足仍按原口径失效模板——宁可漏报不虚报。
 // R194（closing r193-score-scan-multiline-table）：表格抽取的两种常见断裂形态补全——
 // ①项名与分值分居两行（pdfjs 按列拆行：上一行是项名、下一行是裸「（20分）」），按「纯分值行
 //   回并上一行」聚合；②竖线/制表符分隔的表格行（markdown 导出、剪贴板/TSV），列分隔符归一为
@@ -136,6 +141,47 @@ function tableItemName(prev: string, desc: string): string {
     .replace(/[\s\u3000]+/g, "")
 }
 
+/**
+ * R195：精确按列取分值——分值列下标由表头授权，其右描述格须带评分语汇才采纳。
+ * 拿不到可信分值或项名时返回 null（该行回落单行启发式，列模板保持有效）。
+ */
+function resolveTemplateRow(cells: string[], scoreIdx: number): { name: string; score: number } | null {
+  const v = cellScore(cells[scoreIdx])
+  const desc = cells[scoreIdx + 1] ?? ""
+  if (v === null || !RE_TABLE_VOCAB.test(desc)) return null
+  const name = tableItemName(cells[scoreIdx - 1] ?? "", desc)
+  return name.length >= 2 ? { name, score: v } : null
+}
+
+/**
+ * R247：列数恰差 1 的「近形行」按内容对齐取分值（空单元被提取端连分隔符一起丢掉的退化形态）。
+ * 护栏逐条收紧，任一不成立即返回 null（由调用方按旧口径判死模板）：
+ * ①列数只允许差 1；②整行只允许出现一个分值形状单元——两个及以上就分不清哪列才是分值列；
+ * ③该单元须落在表头授权分值列的 ±1 内（只是少一列，不是换了一张表）；
+ * ④其右描述格带评分语汇；⑤项名仍走 R195 那套规则（名称格优先，没有名称格取描述格主题）。
+ */
+function alignNearTemplateRow(
+  cells: string[],
+  tpl: { cells: number; scoreIdx: number },
+): { name: string; score: number } | null {
+  if (Math.abs(cells.length - tpl.cells) !== 1) return null
+  const scoreIdxs: number[] = []
+  cells.forEach((c, i) => {
+    if (cellScore(c) !== null) scoreIdxs.push(i)
+  })
+  if (scoreIdxs.length !== 1) return null
+  const j = scoreIdxs[0]
+  if (Math.abs(j - tpl.scoreIdx) > 1) return null
+  const v = cellScore(cells[j])
+  const desc = cells[j + 1] ?? ""
+  if (v === null || !RE_TABLE_VOCAB.test(desc)) return null
+  const name = tableItemName(cells[j - 1] ?? "", desc)
+  // 名称格被吞掉时项名落在描述格主题上，尾巴常挂着「…的得1分」这类评分从句——剥掉后项名才是可核对的名称
+  const lean = name.split(/[得扣]\s*\d+(?:\.\d+)?\s*分/)[0].replace(/[的得扣，,、；;：:（(]+$/, "")
+  const finalName = lean.length >= 2 ? lean : name
+  return finalName.length >= 2 ? { name: finalName, score: v } : null
+}
+
 /** R195：模板行按行内证据归类（表格块与正文类目头两套状态不共享，取自身关键词更稳） */
 function categoryOfRow(text: string): ScanCategory {
   if (/价格|报价/.test(text)) return "price"
@@ -212,21 +258,19 @@ export function scanScoreItems(text: string): {
         continue
       }
       if (tpl) {
-        if (cells.length === tpl.cells) {
-          const v = cellScore(cells[tpl.scoreIdx])
-          const desc = cells[tpl.scoreIdx + 1] ?? ""
-          const name = v !== null && RE_TABLE_VOCAB.test(desc) ? tableItemName(cells[tpl.scoreIdx - 1] ?? "", desc) : ""
-          if (name.length >= 2 && v !== null) {
-            const guess = categoryOfRow(cells.join(" "))
-            const c = guess === "other" ? tplCat : guess
-            if (guess !== "other") tplCat = guess
-            items.push({ name, score: v, raw: raw.slice(0, 120), cat: c })
-            categorySums[c] += v
-            continue
-          }
-        } else {
-          tpl = null
+        // R247：列数一致走精确取列；列数恰差 1 的近形行按内容对齐（不再一判死就整表漏配）。
+        // 两条分支都没拿到可信分值时，列数不符的行仍按原口径失效模板
+        const hit =
+          cells.length === tpl.cells ? resolveTemplateRow(cells, tpl.scoreIdx) : alignNearTemplateRow(cells, tpl)
+        if (hit) {
+          const guess = categoryOfRow(cells.join(" "))
+          const c = guess === "other" ? tplCat : guess
+          if (guess !== "other") tplCat = guess
+          items.push({ name: hit.name, score: hit.score, raw: raw.slice(0, 120), cat: c })
+          categorySums[c] += hit.score
+          continue
         }
+        if (cells.length !== tpl.cells) tpl = null
       }
     }
     let t = rawLine

@@ -10,6 +10,7 @@ import { NotFound } from "@/components/common/NotFound"
 const HomeRoute = lazy(() => import("./pages/Home/index.tsx"))
 const SolutionStudioRoute = lazy(() => import("./pages/SolutionStudio/index.tsx"))
 const BidWorkspaceRoute = lazy(() => import("./pages/BidWorkspace/index.tsx"))
+const BidCheckRoute = lazy(() => import("./pages/BidCheck/index.tsx"))
 const PptQuoteRoute = lazy(() => import("./pages/PptQuote/index.tsx"))
 const ModelConfigRoute = lazy(() => import("./pages/ModelConfig/index.tsx"))
 const IntelCenterRoute = lazy(() => import("./pages/IntelCenter/index.tsx"))
@@ -62,6 +63,14 @@ function App() {
           element={
             <Suspense fallback={<RouteFallback />}>
               <BidWorkspaceRoute />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/bid-check"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <BidCheckRoute />
             </Suspense>
           }
         />

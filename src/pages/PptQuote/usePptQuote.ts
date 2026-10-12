@@ -49,6 +49,7 @@ import {
   emptySlide,
   groupSubtotal,
   historyQuotesFor,
+  isBlankSlide,
   makeDefaultGroups,
   mergeItemsIntoGroups,
   normalizeDraftItemsFromCatalog,
@@ -336,6 +337,9 @@ export function usePptQuote() {
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
   const [editorTab, setEditorTab] = useState<"edit" | "preview">("edit")
   const [slideAiKind, setSlideAiKind] = useState<RefineKind | null>(null)
+  // R249：占位/空白页「一键补全」进行态与进度文案
+  const [fillingBlank, setFillingBlank] = useState(false)
+  const [fillProgress, setFillProgress] = useState("")
 
   const deckPersistRef = useRef<number | null>(null)
   // B4：防抖保存失败标志——quiet 模式下不弹 toast，改由编辑器顶部非阻断横幅提示，
@@ -794,6 +798,69 @@ export function usePptQuote() {
     },
     [costConfirm, currentSlideIndex, doRefineSlide],
   )
+
+  // ------------------------------ R249 占位/空白页一键补全（串行、单页失败跳过、封顶 12 页控费） ------------------------------
+  const blankSlideCount = useMemo(
+    () => (activeDeck?.slides ?? []).filter(isBlankSlide).length,
+    [activeDeck],
+  )
+
+  const doFillBlankSlides = useCallback(async () => {
+    const deck = activeDeckRef.current
+    if (!deck) return
+    const targets = deck.slides.filter(isBlankSlide).slice(0, 12)
+    if (!targets.length) {
+      toast.info("没有需要补全的空白页")
+      return
+    }
+    setFillingBlank(true)
+    let ok = 0
+    try {
+      for (let k = 0; k < targets.length; k += 1) {
+        const slide = targets[k]
+        setFillProgress(`正在补全空白页（${k + 1}/${targets.length}）…`)
+        const cur = activeDeckRef.current
+        if (!cur) break
+        try {
+          const text = await llmGenerate(buildSlideRefineMessages("fill", cur, slide), MAX_TOKENS_OUTLINE, "ppt-deck", activeModelRef.current)
+          const filled = normalizeSlides(parseJsonLoose(text), null)[0]
+          if (filled && filled.bullets?.length) {
+            mutateDeck((d) => ({
+              ...d,
+              slides: d.slides.map((x) =>
+                x.id === slide.id
+                  ? {
+                      ...x,
+                      title: filled.title && !/^第\s*\d+\s*页$/.test(filled.title) ? filled.title : x.title,
+                      bullets: filled.bullets,
+                      notes: filled.notes || x.notes,
+                    }
+                  : x,
+              ),
+            }))
+            ok += 1
+          }
+        } catch {
+          /* 单页补全失败：跳过继续，其余页照常（口径对齐逐页生成韧性） */
+        }
+      }
+    } finally {
+      setFillingBlank(false)
+      setFillProgress("")
+    }
+    if (ok === 0) toast.error("空白页补全均未成功，请稍后逐页重试")
+    else if (ok < targets.length) toast.warning(`已补全 ${ok}/${targets.length} 页，其余可在编辑器逐页重试`)
+    else toast.success(`已补全 ${ok} 页空白内容`)
+  }, [mutateDeck])
+
+  const fillBlankSlides = useCallback(() => {
+    costConfirm.runWithCostConfirm(
+      () => {
+        void doFillBlankSlides()
+      },
+      `将逐个补全 ${Math.min(blankSlideCount, 12)} 个空白页的正文，${costTextForModel(activeModelRef.current)}${skillCostSuffix("ppt-deck")}`,
+    )
+  }, [blankSlideCount, costConfirm, doFillBlankSlides])
 
   // ------------------------------ R169 公司模板主题（上传→提取→导出套用） ------------------------------
   const [deckTemplate, setDeckTemplate] = useState<StoredDeckTemplate | null>(() => loadDeckTemplate())
@@ -2422,6 +2489,11 @@ export function usePptQuote() {
     moveSlide,
     slideAiKind,
     refineSlide,
+    // R249 占位/空白页一键补全
+    fillBlankSlides,
+    fillingBlank,
+    fillProgress,
+    blankSlideCount,
     // R169 公司模板主题（上传/清除/当前名）
     deckTemplateName: deckTemplate?.name ?? null,
     deckTemplateProbe,

@@ -1,4 +1,5 @@
 import { useRef, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { ArrowLeftRight, Database, Download, FileUp, ListChecks, Loader2, Save, Sparkles, Table2, Trash2, Upload } from "lucide-react"
 import { CompanyLibraryDialog } from "./CompanyLibraryDialog"
 import { toast } from "sonner"
@@ -72,6 +73,7 @@ function NumCell({ value, ariaLabel, onCommit }: { value: number; ariaLabel: str
 
 function SourcePanel({ p }: { p: UseProductMapping }) {
   const fileRef = useRef<HTMLInputElement | null>(null)
+  const navigate = useNavigate()
   const [bidId, setBidId] = useState("")
   const [solId, setSolId] = useState("")
 
@@ -177,6 +179,15 @@ function SourcePanel({ p }: { p: UseProductMapping }) {
           </div>
         )}
 
+        {p.sourceTab === "bid" && !p.sourceLoading && p.bids.length === 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
+            <span>还没有已解析的招标项目：先到标书工作台上传解析招标公告，「采购清单」即可一键导入做对照。</span>
+            <Button type="button" size="sm" variant="outline" onClick={() => navigate("/bid-workspace")}>
+              去标书工作台
+            </Button>
+          </div>
+        )}
+
         {p.sourceTab === "solution" && (
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-[280px] flex-1">
@@ -204,6 +215,15 @@ function SourcePanel({ p }: { p: UseProductMapping }) {
             >
               <Sparkles className="mr-1 h-4 w-4" />
               导入需求条目并对照
+            </Button>
+          </div>
+        )}
+
+        {p.sourceTab === "solution" && !p.sourceLoading && p.solutions.length === 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
+            <span>还没有带建设清单快照的方案：在方案工作室生成并保存清单快照后，即可回到这里挑选导入。</span>
+            <Button type="button" size="sm" variant="outline" onClick={() => navigate("/solution-studio")}>
+              去方案工作室
             </Button>
           </div>
         )}

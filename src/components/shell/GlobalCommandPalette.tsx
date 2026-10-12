@@ -37,6 +37,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   "/solution-studio": FileText,
   "/product-mapping": ArrowLeftRight,
   "/bid-workspace": FileCheck2,
+  "/bid-check": FileCheck2,
   "/ppt-quote": Monitor,
   "/materials": Images,
   "/intel-center": Newspaper,

@@ -43,6 +43,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn, spawnSync } from 'node:child_process';
+import http from 'node:http';
+import https from 'node:https';
 import { fileURLToPath } from 'node:url';
 
 // ============================================================ 1. 常量
@@ -360,21 +362,58 @@ function locateQoderCli() {
   return { found: false, cmd: null, path: null };
 }
 
-/** 探测 HTTP 服务状态 */
+/**
+ * 探测 HTTP 服务状态（进程内直连实现）。
+ *
+ * 为什么不用子进程：旧实现以 spawnSync(node, ['-e', script]) 派生孙进程发请求。
+ * 在受限环境（容器沙箱、部分终端安全策略）下「node 派生 node」会被直接拒绝
+ * （Windows 上报 EBUSY），于是出现**服务明明在跑却报 HTTP ERR 的误报**，
+ * 进而让整轮迭代在调用 AI 之前就被拦下 —— 且该失败与用户环境无关，极具误导性。
+ * 改为进程内直连后：零进程开销、无引号转义风险、跨沙箱稳定。
+ *
+ * 返回：HTTP 状态码字符串 | 'ERR'（连接失败/URL 非法）| 'TIMEOUT'（超时）。
+ * 复杂度 O(1)，无阻塞（异步），不抛异常（内部全兜底，避免单点失败中断整轮预检）。
+ */
 function probeHttp(url, timeoutMs = 6000) {
-  const node = process.execPath;
-  const script = `
-    const http=require('http');
-    const req=http.get(${JSON.stringify(url)},(res)=>{process.stdout.write(String(res.statusCode));res.resume();});
-    req.on('error',()=>{process.stdout.write('ERR');});
-    req.setTimeout(${timeoutMs},()=>{req.destroy();process.stdout.write('TIMEOUT');});
-  `;
-  const r = run(node, ['-e', script], { timeout: timeoutMs + 4000 });
-  return r.stdout || 'ERR';
+  return new Promise((resolve) => {
+    // settled 保证 resolve 只生效一次（超时与 error 可能先后触发）
+    let settled = false;
+    const settle = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+
+    let client;
+    try {
+      client = new URL(url).protocol === 'https:' ? https : http;
+    } catch (_) {
+      // URL 非法：判定为不可达，不抛异常
+      settle('ERR');
+      return;
+    }
+
+    let req;
+    try {
+      req = client.get(url, (res) => {
+        res.resume(); // 主动排空响应体，避免 keep-alive socket 悬挂
+        settle(String(res.statusCode));
+      });
+    } catch (_) {
+      settle('ERR');
+      return;
+    }
+
+    req.on('error', () => settle('ERR'));
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      settle('TIMEOUT');
+    });
+  });
 }
 
-/** 完整环境预检：返回 { ok, checks[] } */
-function checkEnv() {
+/** 完整环境预检：返回 Promise<{ ok, checks[] }>（服务探测为异步，故本函数 async） */
+async function checkEnv() {
   const checks = [];
   const push = (name, ok, detail, hint) => checks.push({ name, ok, detail, hint: hint || '' });
 
@@ -405,10 +444,12 @@ function checkEnv() {
     tokenEnv ? '' : '如需 token：https://qoder.com/account/integrations → 设为环境变量 QODER_PERSONAL_ACCESS_TOKEN'
   );
 
-  // 4) 服务
-  const viteCode = probeHttp('http://127.0.0.1:8000/');
+  // 4) 服务 —— 两个探测并发执行，避免串行超时叠加（最坏 6s 而非 12s）
+  const [viteCode, pbCode] = await Promise.all([
+    probeHttp('http://127.0.0.1:8000/'),
+    probeHttp('http://127.0.0.1:7000/api/health'),
+  ]);
   push('Vite 前端 :8000', viteCode === '200', `HTTP ${viteCode}`, viteCode === '200' ? '' : '启动：双击项目根目录 start-local.cmd');
-  const pbCode = probeHttp('http://127.0.0.1:7000/api/health');
   push('PocketBase :7000', pbCode === '200', `HTTP ${pbCode}`, pbCode === '200' ? '' : '启动：双击项目根目录 start-local.cmd');
 
   // 5) 关键文件
@@ -696,17 +737,32 @@ async function runOneRound(ctx) {
 
   // 9.1 环境预检（dry-run 只关心提示词质量，不做任何拦截）
   if (!opts.dryRun) {
-    const env = checkEnv();
-    if (!env.ok) {
-      const failed = env.checks.filter((c) => !c.ok);
-      for (const f of failed) log('error', `预检未过：${f.name} —— ${f.detail}${f.hint ? ` | ${f.hint}` : ''}`);
+    const env = await checkEnv();
+
+    // 统一豁免名单：所有「可放宽项」集中在一处声明，避免多个分支各自为政。
+    // 修正历史缺陷：旧实现里 --allow-dirty 是死代码 —— 工作区脏会使 env.ok=false，
+    // 在 !env.ok 分支就提前 return 了，永远走不到下面那句 dirty 放行判断。
+    const relaxed = new Set();
+    if (opts.skipPrecheck) {
+      relaxed.add('Vite 前端 :8000');
+      relaxed.add('PocketBase :7000');
+    }
+    if (opts.allowDirty) relaxed.add('Git 工作区');
+
+    const failed = env.checks.filter((c) => !c.ok && !relaxed.has(c.name));
+    if (failed.length > 0) {
+      for (const f of failed) {
+        log('error', `预检未过：${f.name} —— ${f.detail}${f.hint ? ` | ${f.hint}` : ''}`);
+      }
       return { status: 'env_fail', reason: failed.map((f) => f.name).join(', ') };
     }
-    // 服务/CLI/账本任意一项不过即停；仅「工作区脏」可由 --allow-dirty 放宽
-    const dirty = env.checks.find((c) => c.name === 'Git 工作区');
-    if (dirty && !dirty.ok && !opts.allowDirty) {
-      log('error', `Git 工作区不干净：${dirty.detail}。先提交或回滚，或用 --allow-dirty 强制继续。`);
-      return { status: 'env_fail', reason: 'dirty_worktree' };
+
+    // 每个被用到的豁免都出声，确保「放宽」不被静默误用
+    for (const name of relaxed) {
+      const c = env.checks.find((x) => x.name === name);
+      if (c && !c.ok) {
+        log('warn', `⚠ 已豁免预检项「${name}」：${c.detail}。若本轮任务依赖该项，产出可能不完整。`);
+      }
     }
   }
 
@@ -834,6 +890,10 @@ function parseArgs(argv) {
       case '--model': opts.model = next() || ''; break;
       case '--no-commit': opts.commit = false; break;
       case '--allow-dirty': opts.allowDirty = true; break;
+      // 逃生开关：跳过 8000/7000 服务可达性断言。
+      // 适用场景：纯代码/文档类任务（如静态分析、标书文本处理）无需前端与数据库在跑，
+      // 或处于无 GUI 的 headless/CI 环境。跳过时会打醒目告警，避免被静默误用。
+      case '--skip-precheck': opts.skipPrecheck = true; break;
       case '--backup-pb': opts.backupPb = true; break;
       case '--json': opts.json = true; break;
       case '-h': case '--help': opts.help = true; break;
@@ -864,6 +924,7 @@ function printHelp() {
       '  --model <名>            指定模型',
       '  --no-commit             不自动 git 提交',
       '  --allow-dirty           允许脏工作区开跑',
+      '  --skip-precheck         跳过 8000/7000 服务可达性断言（无 GUI/CI 环境用）',
       '  --backup-pb             跑前备份 pb_data',
       '  --json                  JSON 输出',
       '',
@@ -922,9 +983,9 @@ function doStatus(opts) {
   return 0;
 }
 
-/** --check：环境预检输出 */
-function doCheck(opts) {
-  const env = checkEnv();
+/** --check：环境预检输出（async：内部 await 服务探测） */
+async function doCheck(opts) {
+  const env = await checkEnv();
   if (opts.json) {
     process.stdout.write(JSON.stringify(env, null, 2) + '\n');
     return env.ok ? 0 : 1;
@@ -947,7 +1008,7 @@ async function main() {
   ensureDir(LOG_DIR);
 
   if (opts.status) return doStatus(opts);
-  if (opts.check) return doCheck(opts);
+  if (opts.check) return await doCheck(opts);
 
   // ---- 循环模式 ----
   log('info', `驱动器启动：rounds=${opts.rounds} agent=${opts.agent} mode=${opts.permissionMode}${opts.dryRun ? ' [DRY-RUN]' : ''}`);

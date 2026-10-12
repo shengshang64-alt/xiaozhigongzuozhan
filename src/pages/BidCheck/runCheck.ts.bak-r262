@@ -1,0 +1,93 @@
+// ---------------------------------------------------------------------------
+// runCheck —— 检查编排：把 DocContext 喂给各规则层，汇成一份 BidCheckResult。
+//
+// 一期接入：L1 格式 + L5 暗标（合规）。L2/L3/L4 按分期计划后续接入，此处按层级开关预留。
+// ⚠️ 只标不改：本函数只调用只读规则，产出结果对象，绝不改动 ctx 或原文件。
+// ---------------------------------------------------------------------------
+
+import type { BidProjectRecord } from "@/pages/BidWorkspace/bidTypes"
+import {
+  summarize,
+  type BidCheckMode,
+  type BidCheckResult,
+  type CheckItem,
+  type CheckLevel,
+  type DocContext,
+} from "./bidCheckTypes"
+import { emptyMeta } from "./engine/docxInspect"
+import { runFormatChecks } from "./rules/format"
+import { runAnbidChecks } from "./rules/anbid"
+import type { CheckConfig } from "./config/checkConfig"
+import type { AnbidCheckConfig } from "./config/anbidCheckConfig"
+
+/** 从「选择的标书项目」构建 DocContext（正文来自 bid_chapters；无文件包，L5-B 节点项标 skipped） */
+export function buildDocContextFromProject(rec: BidProjectRecord): DocContext {
+  const chapters = (rec.bid_chapters ?? [])
+    .map((c) => ({ title: (c.title ?? "").trim() || "（无题）", content: c.content ?? "" }))
+    .filter((c) => c.content.trim())
+  const fullText = chapters.map((c) => `${c.title}\n${c.content}`).join("\n")
+  return {
+    sourceName: (rec.project_name ?? "").trim() || "未命名项目",
+    inputKind: "project",
+    hasPackage: false,
+    chapters,
+    fullText,
+    meta: emptyMeta(),
+  }
+}
+
+/** 项目是否声明暗标（FormatSettings.sealed）——用于进入页面时的模式初值建议 */
+export function projectSealed(rec: BidProjectRecord): boolean {
+  return rec.format_settings?.sealed === true
+}
+
+/** 项目自带身份词（逗号/顿号分隔）→ 数组，供暗标词库合并 */
+export function projectIdentityWords(rec: BidProjectRecord): string[] {
+  return (rec.identity_words ?? "")
+    .split(/[,，、；;\n]+/)
+    .map((w) => w.trim())
+    .filter(Boolean)
+}
+
+/** 生效层级：暗标严格模式取 sealedLevels，普通模式取 normalLevels */
+export function activeLevels(cfg: CheckConfig, mode: BidCheckMode): CheckLevel[] {
+  return mode === "sealed" ? cfg.sealedLevels : cfg.normalLevels
+}
+
+/**
+ * 主检查入口（纯函数，可测）。
+ * @param extraIdentityWords 额外并入的身份词（如来自所选项目），只影响本次检查、不写回配置
+ */
+export function runCheck(
+  ctx: DocContext,
+  mode: BidCheckMode,
+  cfg: CheckConfig,
+  anbid: AnbidCheckConfig,
+  extraIdentityWords: string[] = [],
+): BidCheckResult {
+  const levels = activeLevels(cfg, mode)
+  const effAnbid: AnbidCheckConfig = extraIdentityWords.length
+    ? { ...anbid, identityWords: [...new Set([...anbid.identityWords, ...extraIdentityWords])] }
+    : anbid
+
+  const items: CheckItem[] = []
+  if (levels.includes("L1")) items.push(...runFormatChecks(ctx, cfg, effAnbid, mode))
+  if (levels.includes("L5")) items.push(...runAnbidChecks(ctx, effAnbid, mode === "sealed"))
+  // L2 响应 / L3 内容 / L4 查重：一期未接入（分期计划二~四期），层级预留位待补。
+
+  return {
+    mode,
+    sourceName: ctx.sourceName,
+    inputKind: ctx.inputKind,
+    hasPackage: ctx.hasPackage,
+    items,
+    summary: summarize(items),
+    generatedAt: formatNow(),
+  }
+}
+
+function formatNow(): string {
+  const d = new Date()
+  const p = (n: number): string => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}

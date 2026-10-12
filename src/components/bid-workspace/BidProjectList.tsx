@@ -1,10 +1,11 @@
 import { useRef, useState, type ReactNode } from "react"
-import { Archive, ArchiveRestore, CalendarClock, Download, FileCheck2, Loader2, Plus, Search, Trash2, Undo2 } from "lucide-react"
+import { Archive, ArchiveRestore, CalendarClock, Download, FileCheck2, LayoutGrid, Loader2, Plus, Search, Table2, Trash2, Undo2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { CompanyTemplateHint } from "@/components/common/CompanyTemplateHint"
+import { DataTable, type DataTableColumn } from "@/components/ui/DataTable"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import { daysUntil, displayStageLabel, effectiveHospital, type BidProjectRecord, type BidStage } from "@/pages/BidWorkspace/bidTypes"
 import { exportToCsv } from "@/lib/exportCsv"
@@ -86,6 +87,22 @@ function trashRemainDays(deletedAt: string): number | null {
   return Math.max(0, TRASH_RETAIN_DAYS + d)
 }
 
+function TrashRemainChip({ deletedAt }: { deletedAt: string }) {
+  const remain = trashRemainDays(deletedAt)
+  return (
+    <span
+      className={`flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs ${
+        remain !== null && remain <= 3
+          ? "bg-destructive/10 font-medium text-destructive"
+          : "bg-muted text-muted-foreground"
+      }`}
+    >
+      <CalendarClock className="h-3 w-3" />
+      {remain === null ? "即将自动清除" : `${remain} 天后自动清除`}
+    </span>
+  )
+}
+
 function CardActionButton({
   title,
   danger,
@@ -135,7 +152,6 @@ function ProjectCard({
   onRestore: (rec: BidProjectRecord) => void
   onPurge: (rec: BidProjectRecord) => void
 }) {
-  const remain = view === "trash" ? trashRemainDays(proj.deleted_at) : null
   return (
     <article
       role="button"
@@ -162,16 +178,7 @@ function ProjectCard({
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {view === "trash" ? (
-          <span
-            className={`flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs ${
-              remain !== null && remain <= 3
-                ? "bg-destructive/10 font-medium text-destructive"
-                : "bg-muted text-muted-foreground"
-            }`}
-          >
-            <CalendarClock className="h-3 w-3" />
-            {remain === null ? "即将自动清除" : `${remain} 天后自动清除`}
-          </span>
+          <TrashRemainChip deletedAt={proj.deleted_at} />
         ) : (
           <CountdownChip dateStr={proj.bid_open_date} />
         )}
@@ -241,6 +248,109 @@ export function BidProjectList(p: BidProjectListProps) {
     const rows = p.projects.map((proj) => [proj.project_name, proj.tender_no, proj.hospital, proj.stage, proj.bid_open_date])
     exportToCsv(`投标项目_${localDateStamp()}.csv`, headers, rows)
   }
+  // R250（r2-r012 收尾）：项目列表「卡片/表格」双视图。默认仍是卡片，既有行为零变化；
+  // 表格复用全站 DataTable（点表头三态排序 + 超 20 条分页），列全部取卡片已在用的字段，零新增数据。
+  const [displayMode, setDisplayMode] = useState<"card" | "table">("card")
+  const chapterDoneCount = (proj: BidProjectRecord) => proj.bid_chapters.filter((c) => (c.content ?? "").trim()).length
+  const chaptersColumn: DataTableColumn<BidProjectRecord> = {
+    key: "chapters",
+    header: "成稿章节",
+    align: "right",
+    sortAccessor: chapterDoneCount,
+    render: (proj) => (
+      <span className="text-xs text-muted-foreground">
+        {chapterDoneCount(proj)}/{proj.bid_chapters.length || 0}
+      </span>
+    ),
+  }
+  const tableColumns: DataTableColumn<BidProjectRecord>[] = [
+    {
+      key: "project_name",
+      header: "项目名称",
+      sortAccessor: (proj) => proj.project_name,
+      render: (proj) => <span className="font-medium text-foreground">{proj.project_name}</span>,
+    },
+    {
+      key: "hospital",
+      header: "客户医院",
+      sortAccessor: (proj) => effectiveHospital(proj),
+      render: (proj) => <span className="text-muted-foreground">{effectiveHospital(proj) || "采购人未填写"}</span>,
+    },
+    {
+      key: "tender_no",
+      header: "招标编号",
+      sortAccessor: (proj) => proj.tender_no,
+      render: (proj) => <span className="font-mono text-xs text-muted-foreground">{proj.tender_no || "—"}</span>,
+    },
+    {
+      key: "stage",
+      header: "阶段",
+      sortAccessor: (proj) => displayStageLabel(proj),
+      render: (proj) =>
+        p.listView === "archived" ? (
+          <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">已归档 · 只读留档</span>
+        ) : (
+          <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STAGE_BADGE[proj.stage] ?? STAGE_BADGE.pending_parse}`}>
+            {displayStageLabel(proj)}
+          </span>
+        ),
+    },
+    {
+      key: "bid_open_date",
+      header: "开标时间",
+      sortAccessor: (proj) => proj.bid_open_date,
+      render: (proj) =>
+        p.listView === "trash" ? (
+          <TrashRemainChip deletedAt={proj.deleted_at} />
+        ) : (
+          <span className="inline-flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">{proj.bid_open_date || "未登记"}</span>
+            <CountdownChip dateStr={proj.bid_open_date} />
+          </span>
+        ),
+    },
+    // 回收站卡片本就不显示成稿进度，表格同口径
+    ...(p.listView === "trash" ? [] : [chaptersColumn]),
+    {
+      key: "actions",
+      header: "操作",
+      align: "right",
+      render: (proj) => (
+        <span className="inline-flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+          {p.listView === "active" && (
+            <>
+              <CardActionButton title="归档项目" onClick={() => void p.setProjectArchived(proj, true)}>
+                <Archive className="h-4 w-4" />
+              </CardActionButton>
+              <CardActionButton title="删除（移入回收站）" danger onClick={() => void p.softDeleteProject(proj)}>
+                <Trash2 className="h-4 w-4" />
+              </CardActionButton>
+            </>
+          )}
+          {p.listView === "archived" && (
+            <>
+              <CardActionButton title="取消归档" onClick={() => void p.setProjectArchived(proj, false)}>
+                <ArchiveRestore className="h-4 w-4" />
+              </CardActionButton>
+              <CardActionButton title="删除（移入回收站）" danger onClick={() => void p.softDeleteProject(proj)}>
+                <Trash2 className="h-4 w-4" />
+              </CardActionButton>
+            </>
+          )}
+          {p.listView === "trash" && (
+            <>
+              <CardActionButton title="还原项目" onClick={() => void p.restoreProject(proj)}>
+                <Undo2 className="h-4 w-4" />
+              </CardActionButton>
+              <CardActionButton title="彻底删除（不可恢复）" danger onClick={() => setPendingDelete(proj)}>
+                <Trash2 className="h-4 w-4" />
+              </CardActionButton>
+            </>
+          )}
+        </span>
+      ),
+    },
+  ]
 
   return (
     <main className="animate-in fade-in duration-500">
@@ -301,6 +411,31 @@ export function BidProjectList(p: BidProjectListProps) {
                 {v.label}
               </button>
             ))}
+          </div>
+          {/* R250：卡片/表格显示方式切换（默认卡片） */}
+          <div className="flex items-center gap-1 rounded-full border border-border bg-card p-1 shadow-sm" role="group" aria-label="显示方式">
+            <button
+              type="button"
+              aria-pressed={displayMode === "card"}
+              onClick={() => setDisplayMode("card")}
+              className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                displayMode === "card" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              卡片
+            </button>
+            <button
+              type="button"
+              aria-pressed={displayMode === "table"}
+              onClick={() => setDisplayMode("table")}
+              className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                displayMode === "table" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Table2 className="h-3.5 w-3.5" />
+              表格
+            </button>
           </div>
           <div className="relative min-w-56 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -372,7 +507,9 @@ export function BidProjectList(p: BidProjectListProps) {
             </p>
             <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
               {p.listView === "archived"
-                ? "在项目卡片上点「归档」，完结的项目会收进这里留档，随时可取消归档"
+                ? displayMode === "table"
+                  ? "在表格行的「操作」列点「归档」，完结的项目会收进这里留档，随时可取消归档"
+                  : "在项目卡片上点「归档」，完结的项目会收进这里留档，随时可取消归档"
                 : p.listView === "trash"
                   ? "删除的项目会先进回收站保留 30 天，期间可还原，超期自动彻底清除"
                   : "点「新建投标项目」，导入招标文件后 AI 会提取评分办法、资质要求与废标条款，帮你把标书做扎实"}
@@ -383,6 +520,18 @@ export function BidProjectList(p: BidProjectListProps) {
                 新建第一个项目
               </Button>
             )}
+          </div>
+        ) : displayMode === "table" ? (
+          <div className="mt-5 pb-16">
+            <DataTable<BidProjectRecord>
+              columns={tableColumns}
+              rows={p.projects}
+              getRowId={(proj) => proj.id}
+              onRowClick={(proj) => p.openProject(proj)}
+              pageSize={20}
+              emptyState="没有匹配的投标项目"
+              caption="投标项目列表表格视图"
+            />
           </div>
         ) : (
           <div className="mt-5 grid grid-cols-1 gap-4 pb-16 md:grid-cols-2 xl:grid-cols-3">

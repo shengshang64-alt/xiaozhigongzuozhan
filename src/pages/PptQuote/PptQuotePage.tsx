@@ -140,6 +140,10 @@ export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
               autoFigureProvider={p.autoFigureProvider}
               setAutoFigureProvider={p.setAutoFigureProvider}
               slideFigureBusy={p.slideFigureBusy}
+              blankSlideCount={p.blankSlideCount}
+              fillingBlank={p.fillingBlank}
+              fillProgress={p.fillProgress}
+              onFillBlankSlides={p.fillBlankSlides}
             />
           ) : null
         ) : p.quoteMode === "list" ? (

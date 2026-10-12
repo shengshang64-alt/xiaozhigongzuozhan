@@ -5,6 +5,8 @@
 // 造成「完成 x/y 虚高、批量重跑按 done 跳过、用户误以为整章已生成」——表现为一份大章只出了
 // 开头一小节（约几页）就再也不动。这里把两处判定收敛成纯函数并补单测。
 
+import { sliceSectionPieces } from "./bidTypes"
+
 export interface SectionChapterLike {
   gen_status?: string
   sections?: unknown[]
@@ -153,4 +155,64 @@ export function reflowStatsAfterAppend(
   const newLast = merged.length - otherChars - Math.max(0, nonEmptyCount - 1) * 2
   if (newLast <= 0) return null
   return stats.map((s, i) => (i === lastIdx ? { ...s, chars: newLast } : { ...s }))
+}
+
+/** R276：断点续跑种子规划结果 */
+export type SectionResumePlan = {
+  /** 每小节保留片段（长度=sections.length，未产出为 ""），按小节序重建即得续跑正文 */
+  pieces: string[]
+  /** 与 pieces 对齐的小节统计（title 取小节名，chars 为种子片段长度；待补小节记 0 占位） */
+  stats: { title: string; chars: number }[]
+  /** 需要（重新）生成的小节下标：空洞 + 尾部未覆盖 */
+  pendingIndices: number[]
+}
+
+/**
+ * R276：细粒度断点续跑规划（纯函数，可单测）。
+ *
+ * 背景缺口：旧续跑以「首个失败小节的连续前缀」为界（resumeFrom=firstEmpty），界之后的已产出小节
+ * 全部推倒重生成——一份章若第 3 节瞬时失败、第 4/5 节已成功，续跑会把 4/5 也重新付费生成并冲掉
+ * 用户对其的手工修补。本函数把「哪些小节已完成可保留」与「哪些仍需补」拆成显式集合：
+ * - 已完成小节（种子切片非空且 chars>0）保留原文，即便位于某个空洞之后；
+ * - 空洞（chars<=0）与未覆盖尾部（下标 >= priorStats.length）计入待补；
+ * - 全新章节 / 空正文 / 小节 title 与 stats 错位 / fresh → 全部待补（与原逐章串行行为一致）。
+ * 沿用 R174 口径：续跑种子只保留「已跟踪小节正文」，裁掉历史整章 blob 追加留下的未跟踪尾巴，
+ * 防续跑把未跟踪内容当既有正文继续往后追加缺失小节而重复膨胀。
+ */
+export function planSectionResume(
+  content: string,
+  priorStats: { title: string; chars?: number }[],
+  sections: string[],
+  opts: { fresh?: boolean } = {},
+): SectionResumePlan {
+  const k = sections.length
+  const pieces = new Array<string>(Math.max(0, k)).fill("")
+  const stats = sections.map((t) => ({ title: t, chars: 0 }))
+  const ps = priorStats ?? []
+  const aligned =
+    !opts?.fresh &&
+    (content ?? "").trim().length > 0 &&
+    ps.length > 0 &&
+    ps.length <= k &&
+    ps.every((st, i) => st.title === sections[i])
+  if (!aligned) {
+    return { pieces, stats, pendingIndices: Array.from({ length: k }, (_, i) => i) }
+  }
+  // sliceSectionPieces / trackedPrefixLength 要求 chars 必填，规整缺省 undefined 的统计为 0
+  const statsReq = ps.map((x) => ({ title: x.title, chars: Math.max(0, x.chars ?? 0) }))
+  // 未跟踪 blob 尾巴裁剪口径同 R174：trackedPrefixLength 全部小节已跟踪时返回 Infinity（不裁），
+  // 否则截到「已跟踪小节正文 + 小节间分隔符」，历史整章 blob 追加留下的多余尾巴不进种子。
+  const limit = trackedPrefixLength(statsReq, statsReq.length, k)
+  const priorPieces = sliceSectionPieces((content ?? "").slice(0, limit), statsReq)
+  const pending: number[] = []
+  for (let i = 0; i < k; i++) {
+    const piece = (priorPieces[i] ?? "").trim() ? priorPieces[i] : ""
+    if (piece && (statsReq[i]?.chars ?? 0) > 0) {
+      pieces[i] = piece
+      stats[i] = { title: statsReq[i].title, chars: piece.length }
+    } else {
+      pending.push(i)
+    }
+  }
+  return { pieces, stats, pendingIndices: pending }
 }

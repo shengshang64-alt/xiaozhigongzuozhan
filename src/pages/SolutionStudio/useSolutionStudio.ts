@@ -35,6 +35,7 @@ import { skillCostSuffix } from "@/lib/skillCore"
 import { currentStudioCostText, llmGenerate, setStudioModelRef } from "./studioLlm"
 import { formatFailedChapterList, isBlankChapterOutput } from "./chapterGenGuard"
 import { runBulkPool } from "@/lib/bulkPool"
+import { buildSelfCheckOverview } from "./solSelfCheckOverview"
 import { DEFAULT_EXPORT_TEMPLATE, buildExportFrontMatter, readSolutionExportTemplate, writeSolutionExportTemplate, type SolutionExportTemplate } from "./exportTemplate"
 import { useChecklist } from "./checklistLogic"
 import { snapshotFromChecklist, type ChecklistRecord } from "./checklistTypes"
@@ -724,6 +725,10 @@ export function useSolutionStudio() {
   const [bulkGenerating, setBulkGenerating] = useState(false)
   const [genProgress, setGenProgress] = useState({ current: 0, total: 0 })
   const cancelBulkRef = useRef(false)
+  // R276 整本批量自检：运行态 + 进度 + 取消门（与批量生成同构、相互独立）
+  const [bulkReviewBusy, setBulkReviewBusy] = useState(false)
+  const [reviewProgress, setReviewProgress] = useState({ current: 0, total: 0 })
+  const cancelReviewRef = useRef(false)
 
   const activeChapter = useMemo(
     () => activeSolution?.chapters.find((c) => c.node_id === activeChapterId) ?? null,
@@ -1194,6 +1199,93 @@ export function useSolutionStudio() {
       }, `将按自检建议改写本章正文，${currentStudioCostText()}${skillCostSuffix("solution-rewrite")}`)
     },
     [costConfirm, runRefineChapter],
+  )
+
+  // ------------------------------ 整本批量自检（R276） ------------------------------
+
+  const runBulkReview = useCallback(async () => {
+    flushEditingContent()
+    await lastPersistRef.current
+    const cur = activeSolutionRef.current
+    if (!cur) return
+    const targets = cur.chapters.filter((c) => (c.content ?? "").trim())
+    if (!targets.length) {
+      toast.info("还没有已生成正文的章节，请先生成正文后再自检")
+      return
+    }
+    cancelReviewRef.current = false
+    setBulkReviewBusy(true)
+    // 大纲 / 医院上下文对整本恒定，起跑前算一次复用，避免逐章重复拼接
+    const info = cur.hospital_info
+    const outlineContext = [
+      `方案名称：${cur.solution_name}（${typeLabel(cur.solution_type)}）`,
+      `客户医院：${cur.hospital || "未填"}`,
+      info
+        ? `医院等级：${info.hospital_level || "未填"}；床位规模：${info.bed_scale || "未填"}；建设系统清单：${(info.systems ?? []).join("、") || "未填"}；特殊要求：${info.special_requirements || "无"}`
+        : "",
+      `方案大纲：\n${outlineToText(cur.outline ?? [])}`,
+    ]
+      .filter(Boolean)
+      .join("\n")
+    const total = targets.length
+    setReviewProgress({ current: 0, total })
+    let okCount = 0
+    let failCount = 0
+    // 章间有限并发（2）复用 runBulkPool；各章 prompt 相互独立，updateChapter 按 node_id patch 互不覆盖
+    await runBulkPool({
+      total,
+      concurrency: 2,
+      isCancelled: () => cancelReviewRef.current,
+      onTaskStart: (_i, processed) => setReviewProgress({ current: processed, total }),
+      runTask: async (i) => {
+        const rec = activeSolutionRef.current
+        if (!rec) return
+        const target = targets[i]
+        const ch = rec.chapters.find((c) => c.node_id === target.node_id)
+        if (!ch || !(ch.content ?? "").trim()) return
+        let review: Omit<ChapterSelfCheck, "checked_at"> | null = null
+        const messages = buildChapterReviewMessages(ch.title, ch.content, outlineContext)
+        // JSON 解析失败重试一次（与单章自检同容错），仍失败计失败不落数据
+        for (let attempt = 0; attempt < 2 && !review; attempt++) {
+          const text = await llmGenerate(messages, MAX_TOKENS_REVIEW)
+          review = parseChapterReview(text)
+        }
+        if (!review) {
+          failCount += 1
+          return
+        }
+        updateChapter(ch.node_id, { selfCheck: { ...review, checked_at: new Date().toISOString() } })
+        okCount += 1
+      },
+    })
+    await lastPersistRef.current
+    setBulkReviewBusy(false)
+    setReviewProgress({ current: 0, total: 0 })
+    if (cancelReviewRef.current) toast.info("已暂停批量自检，可再次点击对全部成正文章节重新自检")
+    else if (failCount) toast.error(`批量自检完成 ${okCount} 章，${failCount} 章解析失败，可对失败章单独重试`)
+    else toast.success(`批量自检完成：${okCount} 章`)
+  }, [flushEditingContent, updateChapter])
+
+  const startBulkReview = useCallback(() => {
+    const cur = activeSolutionRef.current
+    if (!cur) return
+    const pending = cur.chapters.filter((c) => (c.content ?? "").trim()).length
+    if (!pending) {
+      toast.info("还没有已生成正文的章节，请先生成正文后再自检")
+      return
+    }
+    costConfirm.runWithCostConfirm(() => {
+      void runBulkReview()
+    }, `将对 ${pending} 个已生成正文的章节逐章做五维自检评分，${currentStudioCostText()}`)
+  }, [costConfirm, runBulkReview])
+
+  const cancelBulkReview = useCallback(() => {
+    cancelReviewRef.current = true
+  }, [])
+
+  const selfCheckOverview = useMemo(
+    () => buildSelfCheckOverview(activeSolution?.chapters ?? []),
+    [activeSolution],
   )
 
   // ------------------------------ 素材弹药面板（轮次 E-1） ------------------------------
@@ -1792,6 +1884,12 @@ export function useSolutionStudio() {
     // 章节自检（轮次 E-4）
     reviewChapter,
     optimizeByIssues,
+    // R276 整本五维自检总览 + 一键批量自检
+    selfCheckOverview,
+    bulkReviewBusy,
+    reviewProgress,
+    startBulkReview,
+    cancelBulkReview,
     // 素材弹药面板（轮次 E-1）
     materialTab,
     setMaterialTab,

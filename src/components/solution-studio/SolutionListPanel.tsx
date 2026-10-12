@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react"
-import { Archive, Boxes, Copy, Download, FilePlus2, Layers, Loader2, Search, Trash2, X } from "lucide-react"
+import { Archive, Boxes, Copy, Download, FilePlus2, Layers, LayoutGrid, Loader2, Search, Table2, Trash2, X } from "lucide-react"
+import { DataTable, type DataTableColumn } from "@/components/ui/DataTable"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -142,9 +143,81 @@ function SolutionCard({
 export function SolutionListPanel(p: SolutionListPanelProps) {
   // 类型筛选为纯前端视图过滤（叠加在 hook 的搜索过滤之上），不改动数据层，风险最低。
   const [activeType, setActiveType] = useState<SolutionTypeKey | "all">("all")
+  // O-004：列表表格化（DataTable 复用第五站），默认卡片保持既有体验不变
+  const [listView, setListView] = useState<"card" | "table">("card")
   const visible = useMemo(
     () => (activeType === "all" ? p.solutions : p.solutions.filter((s) => s.solution_type === activeType)),
     [p.solutions, activeType],
+  )
+
+  const solutionColumns = useMemo<DataTableColumn<SolutionRecord>[]>(
+    () => [
+      {
+        key: "name",
+        header: "方案名称",
+        sortAccessor: (r) => r.solution_name,
+        render: (r) => (
+          <span className="block max-w-[280px] truncate font-medium text-foreground">{r.solution_name}</span>
+        ),
+      },
+      {
+        key: "type",
+        header: "类型",
+        width: "96px",
+        className: "px-2 py-2",
+        headerClassName: "px-2 py-2",
+        sortAccessor: (r) => r.solution_type,
+        render: (r) => (
+          <Badge variant="outline" className="rounded-full border-primary/30 bg-primary/10 text-xs font-normal text-primary">
+            {typeLabel(r.solution_type)}
+          </Badge>
+        ),
+      },
+      {
+        key: "hospital",
+        header: "医院",
+        sortAccessor: (r) => r.hospital,
+        render: (r) => <span className="block max-w-[180px] truncate">{r.hospital || "—"}</span>,
+      },
+      {
+        key: "status",
+        header: "状态",
+        width: "96px",
+        className: "px-2 py-2",
+        headerClassName: "px-2 py-2",
+        sortAccessor: (r) => r.doc_status,
+        render: (r) => (
+          <span className={`rounded-full px-2 py-0.5 text-xs ${statusTone(r.doc_status)}`}>
+            {DOC_STATUS_LABEL[r.doc_status] ?? r.doc_status}
+          </span>
+        ),
+      },
+      {
+        key: "chapters",
+        header: "正文",
+        width: "64px",
+        align: "right",
+        className: "px-2 py-2",
+        headerClassName: "px-2 py-2",
+        sortAccessor: (r) => (r.chapters ?? []).filter((c) => c.gen_status === "done").length,
+        render: (r) => {
+          const total = (r.chapters ?? []).length
+          if (!total) return <span className="text-muted-foreground">—</span>
+          const doneCount = (r.chapters ?? []).filter((c) => c.gen_status === "done").length
+          return <span className="tabular-nums">{doneCount}/{total} 章</span>
+        },
+      },
+      {
+        key: "updated",
+        header: "更新时间",
+        width: "128px",
+        className: "px-2 py-2",
+        headerClassName: "px-2 py-2",
+        sortAccessor: (r) => r.updated,
+        render: (r) => <span className="whitespace-nowrap text-muted-foreground">{formatShortDateTime(r.updated)}</span>,
+      },
+    ],
+    [],
   )
 
   const handleExportSolutions = () => {
@@ -242,6 +315,41 @@ export function SolutionListPanel(p: SolutionListPanelProps) {
         </div>
       </div>
 
+      {!p.listLoading && visible.length > 0 && (
+        <div className="mt-5 flex items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">
+            共 {visible.length} 个方案{filtering ? "（已按搜索/类型筛选）" : ""}
+          </p>
+          {/* O-004 视图切换：卡片网格 / 对照表格 */}
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setListView("card")}
+              className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                listView === "card"
+                  ? "bg-primary/10 font-medium text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              卡片
+            </button>
+            <button
+              type="button"
+              onClick={() => setListView("table")}
+              className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                listView === "table"
+                  ? "bg-primary/10 font-medium text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Table2 className="h-3.5 w-3.5" />
+              表格
+            </button>
+          </div>
+        </div>
+      )}
+
       {p.listLoading ? (
         <div className="mt-6 flex items-center justify-center gap-2 rounded-lg border border-border bg-card py-16 text-sm text-muted-foreground shadow-md">
           <Loader2 className="h-4 w-4 animate-spin text-primary" />
@@ -273,6 +381,17 @@ export function SolutionListPanel(p: SolutionListPanelProps) {
             </Button>
           )}
         </div>
+      ) : listView === "table" ? (
+        <DataTable<SolutionRecord>
+          className="mt-4"
+          columns={solutionColumns}
+          rows={visible}
+          getRowId={(r) => r.id}
+          onRowClick={(r) => p.openSolution(r)}
+          initialSort={{ key: "updated", dir: "desc" }}
+          emptyState="无匹配方案"
+          caption="方案列表表格视图"
+        />
       ) : (
         <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {visible.map((rec) => (

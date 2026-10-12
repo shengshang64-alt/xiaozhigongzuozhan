@@ -46,6 +46,7 @@ export function WorkbenchShell() {
     "/solution-studio": "方案编制",
     "/product-mapping": "产品映射",
     "/bid-workspace": "标书工作台",
+    "/bid-check": "标书检查",
     "/ppt-quote": "PPT 与报价",
     "/materials": "素材库",
     "/intel-center": "情报中心",

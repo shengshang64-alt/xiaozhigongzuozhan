@@ -171,7 +171,25 @@ export function AiHotPage(p: ReturnType<typeof useAiHot>) {
               />
             ))}
             {p.visible.length === 0 && (
-              <p className="py-12 text-center text-sm text-muted-foreground">该分类下暂无条目</p>
+              <div className="flex flex-col items-center gap-2.5 rounded-xl border border-dashed border-border bg-card py-12 shadow-sm">
+                <Inbox className="h-7 w-7 text-muted-foreground/60" />
+                <p className="px-4 text-center text-sm text-muted-foreground">
+                  {p.activeCat
+                    ? `「${p.activeCat}」分类下暂无医疗信息化相关条目`
+                    : "当前暂无条目"}
+                </p>
+                {p.activeCat ? (
+                  <Button type="button" size="sm" variant="outline" onClick={() => p.setActiveCat("")}>
+                    <Check className="h-3.5 w-3.5" />
+                    <span className="ml-1.5">浏览全部分类</span>
+                  </Button>
+                ) : (
+                  <Button type="button" size="sm" variant="outline" disabled={p.loading} onClick={p.refresh}>
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    <span className="ml-1.5">刷新拉取最新动态</span>
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         )}

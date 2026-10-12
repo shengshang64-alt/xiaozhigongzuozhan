@@ -33,6 +33,7 @@ export const PAGE_NAV: PageNavItem[] = [
   { path: "/solution-studio", label: "方案编制", keywords: ["方案", "solution", "编制", "文档"] },
   { path: "/product-mapping", label: "产品映射", keywords: ["产品映射", "ONE-LINK", "对照", "映射", "建设清单"] },
   { path: "/bid-workspace", label: "标书工作", keywords: ["标书", "投标", "招标", "bid", "tender"] },
+  { path: "/bid-check", label: "标书检查", keywords: ["检查", "暗标", "合规", "废标", "体检", "check"] },
   { path: "/ppt-quote", label: "PPT 与报价", keywords: ["ppt", "报价", "幻灯片", "quote", "幻灯"] },
   { path: "/materials", label: "素材库", keywords: ["素材", "图片", "架构图", "截图", "图库", "material"] },
   { path: "/intel-center", label: "情报中心", keywords: ["情报", "资讯", "政策", "intel"] },

@@ -180,8 +180,11 @@ export function SourceManagerPanel({
     document.addEventListener("keydown", onKey)
     return () => document.removeEventListener("keydown", onKey)
   }, [open, pendingDelete, onClose])
-  if (!open) return null
   // 源贡献度统计（2026-09-28）：近 7 天新增按源聚合，识别贡献源与僵尸源（抓成功但 0 新增）
+  // R216 缺陷修复：本 Hook 原先排在 `if (!open) return null` 之后，属条件性 Hook 调用——
+  //   面板关闭时 React 少注册一个 Hook，再次打开时 Hook 顺序变化，会抛
+  //   "Rendered fewer hooks than expected" 并导致整页白屏（情报源管理是最高频入口）。
+  //   修法：所有 Hook 一律提到 early-return 之前，用 open 作为 effect 内部守卫而非跳过调用。
   const [weekStats, setWeekStats] = useState<Record<string, number> | null>(null)
   useEffect(() => {
     if (!open || weekStats) return
@@ -194,6 +197,8 @@ export function SourceManagerPanel({
       })
       .catch(() => setWeekStats({}))
   }, [open, weekStats])
+  // Hook 全部调用完毕后才允许 early-return（React Hooks 规则：Hook 不得出现在条件分支中）
+  if (!open) return null
   // T3 健康概览：失败源置顶展示，问题源不用在 40 行里逐条找
   const failedOf = (list: IntelSourceRow[]) => list.filter((s) => s.enabled && s.last_status === "error")
   const errorCount = failedOf(sources).length

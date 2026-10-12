@@ -121,6 +121,29 @@ interface CoolingEntry {
 
 const cooling = new Map<string, CoolingEntry>()
 
+// R233：UI（ModelSelect）只读订阅冷却登记表的变化，以便通道刚被戳上冷却时即时呈现徽标，
+// 无需轮询。纯内存监听器集合，零持久化；回调异常一律吞掉，绝不影响回退主流程。
+type CoolingListener = () => void
+const coolingListeners = new Set<CoolingListener>()
+
+function notifyCoolingChange(): void {
+  for (const cb of coolingListeners) {
+    try {
+      cb()
+    } catch {
+      /* 徽标刷新失败不得影响回退判定 */
+    }
+  }
+}
+
+/** 订阅冷却登记变化；返回退订函数（供 React effect 清理） */
+export function onCoolingChange(cb: CoolingListener): () => void {
+  coolingListeners.add(cb)
+  return () => {
+    coolingListeners.delete(cb)
+  }
+}
+
 /** 配置级冷却键（429 / 欠费 / 认证失败都是账号维度，同账号换模型同样撞窗） */
 export function configCoolingKey(configId: string): string {
   return `cfg:${configId}`
@@ -131,11 +154,12 @@ export function markChannelCooling(key: string, now: number = Date.now()): numbe
   const strikes = (cooling.get(key)?.strikes ?? 0) + 1
   const window = Math.min(BASE_COOL_MS * strikes, MAX_COOL_MS)
   cooling.set(key, { until: now + window, strikes })
+  notifyCoolingChange()
   return window
 }
 
 export function clearChannelCooling(key: string): void {
-  cooling.delete(key)
+  if (cooling.delete(key)) notifyCoolingChange()
 }
 
 /** 是否仍在冷却；窗已过则顺手清掉条目（连击计数随之归零） */
@@ -153,9 +177,20 @@ export function channelCoolingStrikes(key: string): number {
   return cooling.get(key)?.strikes ?? 0
 }
 
+/**
+ * 冷却剩余毫秒：未在冷却或窗已过返回 0。纯读、不剪枝（区别于 isChannelCooling 会
+ * 顺带清过期条目并归零连击），供 UI 渲染恢复倒计时。
+ */
+export function channelCoolingRemainingMs(key: string, now: number = Date.now()): number {
+  const e = cooling.get(key)
+  if (!e) return 0
+  return Math.max(0, e.until - now)
+}
+
 /** 单测边界用：清空整张登记表 */
 export function resetChannelCooling(): void {
   cooling.clear()
+  notifyCoolingChange()
 }
 
 /**

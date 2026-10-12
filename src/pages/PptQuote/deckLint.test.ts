@@ -3,7 +3,7 @@
 // 并补齐既有 6 条规则的回归用例，锁定导出前自检行为。
 import { describe, expect, it } from "vitest"
 
-import { groupIssuesByPage, lintDeck, lintSummaryText, type DeckLintIssue } from "./deckLint"
+import { findPlaceholderLeftovers, groupIssuesByPage, lintDeck, lintSummaryText, type DeckLintIssue } from "./deckLint"
 import type { Slide } from "./pptQuoteTypes"
 
 function mk(over: Partial<Slide> = {}): Slide {
@@ -118,6 +118,61 @@ describe("lintDeck", () => {
   it("R121: unique titles produce no duplicate issue", () => {
     const deck = [mk({ title: "结论A句", bullets: ["x"] }), mk({ title: "结论B句", bullets: ["y"] })]
     expect(find(lintDeck(deck), "duplicate_title")).toBeFalsy()
+  })
+
+  // ---- R277 模板/占位残留检测 ----
+  it("R277: flags XX-style redaction leftover in a bullet", () => {
+    const issues = lintDeck([mk({ title: "建设目标", bullets: ["为XX医院部署一体化平台"] })])
+    const pl = find(issues, "placeholder_leftover")
+    expect(pl).toBeTruthy()
+    expect(pl?.level).toBe("warn")
+    expect(pl?.page).toBe(1)
+    expect(pl?.msg).toContain("XX")
+  })
+
+  it("R277: flags 待补充 keyword leftover", () => {
+    expect(find(lintDeck([mk({ title: "实施方案", bullets: ["具体里程碑待补充"] })]), "placeholder_leftover")).toBeTruthy()
+  })
+
+  it("R277: flags double-brace template variable leftover", () => {
+    expect(find(lintDeck([mk({ title: "{{项目名称}}建设方案", bullets: ["要点"] })]), "placeholder_leftover")).toBeTruthy()
+  })
+
+  it("R277: scans speaker notes too", () => {
+    const issues = lintDeck([mk({ title: "总结页", bullets: ["已完成要点"], notes: "此处填写讲稿" })])
+    expect(find(issues, "placeholder_leftover")).toBeTruthy()
+  })
+
+  it("R277: clean content produces no placeholder issue", () => {
+    const issues = lintDeck([mk({ title: "三院区统一云平台方案", bullets: ["年门诊量180万人次"] })])
+    expect(find(issues, "placeholder_leftover")).toBeFalsy()
+  })
+
+  it("R277: placeholder warning is prioritized ahead of structural warns when capped", () => {
+    const deck = Array.from({ length: 12 }, (_, i) =>
+      mk({ title: `结论${i}`, bullets: Array.from({ length: 8 }, (_, n) => `要${n}`) }),
+    )
+    deck[8] = mk({ title: "第9页结论", bullets: ["为XX医院部署"] })
+    const issues = lintDeck(deck)
+    expect(issues.length).toBeLessThanOrEqual(6)
+    expect(find(issues, "placeholder_leftover")).toBeTruthy()
+  })
+})
+
+describe("findPlaceholderLeftovers", () => {
+  it("命中 XX 打码、待补充关键词、双花括号变量", () => {
+    expect(findPlaceholderLeftovers("XX医院")).toContain("XX")
+    expect(findPlaceholderLeftovers("内容待补充")).toContain("待补充")
+    expect(findPlaceholderLeftovers("{{公司名称}}").length).toBeGreaterThan(0)
+  })
+
+  it("正常内容不误报、返回空数组", () => {
+    expect(findPlaceholderLeftovers("三院区统一云平台")).toEqual([])
+    expect(findPlaceholderLeftovers("")).toEqual([])
+  })
+
+  it("同一关键词多页重复出现只回一条（去重）", () => {
+    expect(findPlaceholderLeftovers("待补充待补充").length).toBe(1)
   })
 })
 

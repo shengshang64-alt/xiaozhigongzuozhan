@@ -129,6 +129,7 @@ export const PAGE_NAMES: Record<string, string> = {
   "/solution-studio": "方案编制页",
   "/product-mapping": "产品映射页",
   "/bid-workspace": "标书工作页",
+  "/bid-check": "标书检查页",
   "/ppt-quote": "PPT 与报价页",
   "/model-config": "模型配置页",
   "/intel-center": "情报中心页",

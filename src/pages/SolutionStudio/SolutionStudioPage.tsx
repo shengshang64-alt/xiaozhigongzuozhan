@@ -84,6 +84,11 @@ export function SolutionStudioPage(p: ReturnType<typeof useSolutionStudio>) {
             refineChapter={p.refineChapter}
             reviewChapter={p.reviewChapter}
             optimizeByIssues={p.optimizeByIssues}
+            selfCheckOverview={p.selfCheckOverview}
+            bulkReviewBusy={p.bulkReviewBusy}
+            reviewProgress={p.reviewProgress}
+            startBulkReview={p.startBulkReview}
+            cancelBulkReview={p.cancelBulkReview}
             chapterTextareaRef={p.chapterTextareaRef}
             materialTab={p.materialTab}
             setMaterialTab={p.setMaterialTab}

@@ -9,7 +9,7 @@ import type { CheckProduct, ChecklistLine } from "@/pages/SolutionStudio/checkli
 
 export type DeckTypeKey = "general" | "planning" | "topic"
 export type DeckStatus = "draft" | "generating" | "done"
-export type RefineKind = "rewrite" | "expand" | "condense"
+export type RefineKind = "rewrite" | "expand" | "condense" | "fill"
 
 export type SlideLayout =
   | "auto"
@@ -178,6 +178,7 @@ export const REFINE_LABEL: Record<RefineKind, string> = {
   rewrite: "重写本页",
   expand: "扩写要点",
   condense: "精简要点",
+  fill: "补全此页",
 }
 
 /** 汇报时长换算建议页数：约 1.5 分钟一页，6-20 页 */
@@ -214,6 +215,24 @@ export function bumpVersion(version: string): string {
 
 export function emptySlide(title = ""): Slide {
   return { id: makeUid(), title, bullets: [], notes: "", layout: "auto" }
+}
+
+/**
+ * 占位/空白页判定：有标题位置但正文全空（无要点/图表/KPI/图示/配图/配图关键词），
+ * 且不是章节分隔页。批量逐页生成失败时会按大纲留下这种「仅标题占位页」，
+ * 供编辑期「补全此页」与「一键补全空白页」定位；口径与 deckLint 的 empty_page 一致。
+ */
+export function isBlankSlide(s: Slide): boolean {
+  if ((s.layout ?? "auto") === "section") return false
+  const hasBody = Boolean(
+    (s.bullets ?? []).some((b) => (b ?? "").trim()) ||
+      (s.chart && (s.chart.categories?.length ?? 0) > 0) ||
+      (s.kpi && s.kpi.length > 0) ||
+      s.figures?.length ||
+      s.image ||
+      (s.imageHint ?? "").trim(),
+  )
+  return !hasBody
 }
 
 /** 新建报价的初始分组：空数组，等待用户从产品库/清单导入或手工加行时再建组 */
@@ -863,7 +882,9 @@ export function buildSlideRefineMessages(kind: RefineKind, deck: DeckRecord, sli
       ? "重写：保持本页信息定位，换更专业、更有说服力的表达，重组要点顺序"
       : kind === "expand"
         ? "扩写：补充医疗行业细节、量化指标与落地举措，要点条数可增加 1-3 条"
-        : "精简：压缩到 3 条以内核心要点，每条 ≤26 字，不丢关键信息"
+        : kind === "condense"
+          ? "精简：压缩到 3 条以内核心要点，每条 ≤26 字，不丢关键信息"
+          : "补全：本页目前只有标题、还没有正文要点，请紧扣该页标题在全篇中的定位，撰写 3-5 条要点（每条 ≤32 字），并配一段 80-150 字的讲稿备注；内容须贴合全篇主题、不与其它页重复，数字与承诺无出处时留【待填写】，不要编造"
   const system = [
     `你是医疗信息化行业资深售前顾问，正在精修「${deck.deck_name}」（${deckTypeLabel(deck.deck_type)}，汇报对象：${deck.audience || "院领导"}）中的第 ${slide.title} 页。`,
     `请对该页执行「${action}」。讲稿备注同步调整，与要点保持一致。`,

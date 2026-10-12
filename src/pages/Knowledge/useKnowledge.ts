@@ -33,6 +33,7 @@ import {
   visibleKbDocs,
   type KbDocRow,
 } from "@/lib/kbCore"
+import { getCachedVisibleDocs, prewarmKbCache } from "@/lib/kbAssemble"
 import { categoryOf, contextSnippetOf, guessCategoryFromFileName, classifyKbDoc, KB_CATEGORY_POLICY } from "@/lib/kbPolicy"
 import { KB_CACHE_TTL_MS, loadKbCache, saveKbCache } from "@/lib/kbDocCache"
 import {
@@ -246,8 +247,12 @@ export function useKnowledge() {
   }, [])
 
   // R87：QA 全文检索语料通道——列表是 slim 形态（content 空串），searchKbDocs 的正文通道需要全文。
-  // 首次提问时懒加载一次全量 listKbDocs()（不带 slim），会话内复用；
-  // refreshDocs（一切数据变更入口）失效并重取。与助手/方案工坊/竞品证据同用全量通道，行为对齐。
+  // R229(r219-kbqa-coldstart-perf)：改走 kbAssemble 的共享全量缓存 getCachedVisibleDocs——原注释
+  // 声称「与助手/方案工坊/竞品同用全量通道，行为对齐」，但代码各拉各的：那几个模块走共享缓存，
+  // QA 却裸调 listKbDocs()，同一批 300MB/6000+ 篇全量语料冷启动会被重复下载两遍。共享缓存自带
+  // 并发去重（同一在飞 promise）、5 分钟 TTL、以及经 onKbMutation 的统一变更失效——refreshDocs 置
+  // qaCorpusRef=null 后，下一次提问命中已被广播失效的共享缓存即重取最新全量，语义与原实现一致。
+  // getCachedVisibleDocs 已按 userId 过滤可见子集，scopeDocs 再次 visibleKbDocs 为幂等，结果不变。
   const qaCorpusRef = useRef<KbDocRow[] | null>(null)
   const qaCorpusPromiseRef = useRef<Promise<void> | null>(null)
   const [qaIndexing, setQaIndexing] = useState(false)
@@ -255,12 +260,12 @@ export function useKnowledge() {
     if (qaCorpusRef.current) return
     if (!qaCorpusPromiseRef.current) {
       setQaIndexing(true)
-      qaCorpusPromiseRef.current = listKbDocs()
+      qaCorpusPromiseRef.current = getCachedVisibleDocs(userIdRef.current)
         .then((rows) => {
           qaCorpusRef.current = rows
         })
         .catch(() => {
-          /* 失败不缓存：本轮退回列表元数据通道，下一次提问自动重试 */
+          /* 失败不缓存：本轮退回列表元数据通道，下一次提问自动重试（共享缓存失败时自置 null，下次重取） */
         })
         .finally(() => {
           qaCorpusPromiseRef.current = null
@@ -1207,8 +1212,11 @@ export function useKnowledge() {
   }, [])
 
   // 打开问答抽屉时拉一次（approved + pending 同表，一次取齐）
+  // R229：同时 fire-and-forget 预热共享全量语料缓存，把冷启动的全量下载与用户「读抽屉 /
+  // 组织第一个问题」的时间重叠，避免提交后才开始拉取造成的长时间静默等待；已热则内部跳过。
   useEffect(() => {
     if (qaOpen && !qaPairsLoadedRef.current) void loadQaPairs()
+    if (qaOpen) prewarmKbCache(userIdRef.current)
   }, [qaOpen, loadQaPairs])
 
   const approvedQaPairs = useMemo(

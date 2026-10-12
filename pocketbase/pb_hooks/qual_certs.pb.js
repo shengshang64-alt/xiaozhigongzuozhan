@@ -170,13 +170,16 @@ routerAdd("GET", "/api/qual_certs/summary", function (e) {
     var records = $app.findRecordsByFilter("qual_certs", "rh_user_id = {:rh_user_id}", "valid_to", 500, 0, { rh_user_id: uid })
     var buckets = { expired: 0, critical: 0, warning: 0, ok: 0, unknown: 0 }
     var alerts = []
-    var todayMs = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00Z").getTime()
+    // R228(r2-r010)：改与客户端一致的本地零点，消除 00:00-08:00 UTC 与本地日期错位导致的分档漂移
+    var _nowD = new Date()
+    _nowD.setHours(0, 0, 0, 0)
+    var todayMs = _nowD.getTime()
     for (var i = 0; i < records.length; i++) {
       var r = records[i]
       var validTo = String(r.get("valid_to") || "").trim()
       var b = "unknown"
       if (validTo) {
-        var toMs = new Date(validTo + "T00:00:00Z").getTime()
+        var toMs = new Date(validTo + "T00:00:00").getTime()
         if (!isNaN(toMs)) {
           var days = Math.round((toMs - todayMs) / 86400000)
           if (days < 0) b = "expired"
@@ -193,7 +196,7 @@ routerAdd("GET", "/api/qual_certs/summary", function (e) {
           category: String(r.get("category") || ""),
           valid_to: validTo,
           bucket: b,
-          days_left: b === "expired" ? null : Math.round((new Date(validTo + "T00:00:00Z").getTime() - todayMs) / 86400000),
+          days_left: b === "expired" ? null : Math.round((new Date(validTo + "T00:00:00").getTime() - todayMs) / 86400000),
         })
       }
     }

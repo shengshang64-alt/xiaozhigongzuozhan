@@ -83,3 +83,65 @@ describe("qualRiskView · 驾驶舱/台账/导出统一风险口径（O-006）",
     expect(qualRiskView({ expired: 0, critical: 0, warning: 0 }).line).toBe("")
   })
 })
+
+describe("R228 不变量自检：三档之和 == alerts.length == qualRiskView.total", () => {
+  // r2-r010 核心需求：驾驶舱和台账两处数字差值=0，由以下不变量保证
+  //   不变量 A：summarizeQuals.buckets.expired + critical + warning == alerts.length
+  //   不变量 B：qualRiskView(任意 buckets).total == expired + critical + warning
+
+  it("不变量 A：三档之和 == alerts.length（含全量与边界数据）", () => {
+    const cases: [Array<{ id: string; cert_name: string; category: string; valid_to: string }>, string][] = [
+      // [rows, description]
+      [[], "空列表"],
+      [[{ id: "1", cert_name: "A", category: "", valid_to: "2026-09-20" }], "全部 expired"],
+      [[
+        { id: "1", cert_name: "A", category: "", valid_to: "2026-09-20" }, // expired
+        { id: "2", cert_name: "B", category: "", valid_to: "2026-10-10" }, // critical ≤30
+        { id: "3", cert_name: "C", category: "", valid_to: "2026-11-15" }, // warning ≤90
+      ], "各档一个"],
+      [[
+        { id: "1", cert_name: "A", category: "", valid_to: "2026-09-20" }, // expired
+        { id: "2", cert_name: "B", category: "", valid_to: "2026-10-28" }, // critical=30天边界
+        { id: "3", cert_name: "C", category: "", valid_to: "2026-10-29" }, // warning=31天
+        { id: "4", cert_name: "D", category: "", valid_to: "2026-12-27" }, // warning=90天边界
+        { id: "5", cert_name: "E", category: "", valid_to: "2026-12-28" }, // ok
+        { id: "6", cert_name: "F", category: "", valid_to: "" },            // unknown
+      ], "含 ok 和 unknown（不进 alerts）"],
+    ]
+    for (const [rows, desc] of cases) {
+      const s = summarizeQuals(rows, TODAY)
+      const sum = s.buckets.expired + s.buckets.critical + s.buckets.warning
+      expect(sum, `A fail: ${desc}`).toBe(s.alerts.length)
+    }
+  })
+
+  it("不变量 B：qualRiskView.total == expired + critical + warning（任意分档输入）", () => {
+    const inputs = [
+      { expired: 0, critical: 0, warning: 0 },
+      { expired: 1, critical: 0, warning: 0 },
+      { expired: 0, critical: 2, warning: 3 },
+      { expired: 5, critical: 10, warning: 20 },
+      { expired: NaN as unknown as number, critical: 1, warning: 2 },  // NaN 会被 num() 归 0
+    ]
+    for (const buckets of inputs) {
+      const v = qualRiskView(buckets)
+      const expected = (Number(buckets.expired) || 0) + (Number(buckets.critical) || 0) + (Number(buckets.warning) || 0)
+      expect(v.total).toBe(expected)
+    }
+  })
+
+  it("不变量 A+B 联合：从同一行数据出发，驾驶舱 total 与台账 alerts.length 完全相等", () => {
+    const rows = [
+      { id: "1", cert_name: "A", category: "硬资质", valid_to: "2026-09-20" },  // expired
+      { id: "2", cert_name: "B", category: "体系认证", valid_to: "2026-10-20" }, // critical
+      { id: "3", cert_name: "C", category: "其他", valid_to: "2026-12-01" },   // warning
+      { id: "4", cert_name: "D", category: "人员证书", valid_to: "2027-10-20" }, // ok
+    ]
+    const summary = summarizeQuals(rows, TODAY)
+    const riskView = qualRiskView(summary.buckets)
+    // 两处数字差值=0（r2-r010 核心验收条件）
+    expect(riskView.total).toBe(summary.alerts.length)
+    expect(riskView.urgent).toBe(summary.buckets.expired + summary.buckets.critical)
+    expect(riskView.watch).toBe(summary.buckets.warning)
+  })
+})

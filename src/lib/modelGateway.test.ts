@@ -10,6 +10,7 @@ import {
   TIMEOUT_RETRY_MIN_TOKENS,
   modelRefKey,
   modelRefLabel,
+  modelMismatchNotice,
   type AvailableModels,
   type GatewayConfig,
   type GatewayConfigModel,
@@ -217,5 +218,39 @@ describe("R203 buildFailoverCandidates（自动回退候选口径，纯函数）
 
   it("空清单返回空数组（无备用通道时上层原样透出首调错误）", () => {
     expect(buildFailoverCandidates(avOf([]))).toEqual([])
+  })
+})
+
+// R216 缺陷修复配套测试：模型回显一致性校验。
+// 回归价值：原实现直接把网关回显的 model 透传给上层，从不与所选模型比对，
+// 上游一旦改道（别名 / 降级 / 网关重写）用户完全无感——这正是「选 A 调 B」能长期潜伏的原因。
+describe("R216 modelMismatchNotice（实际模型与所选模型不一致须可见）", () => {
+  it("完全一致 → 不提示（正常路径零打扰）", () => {
+    expect(modelMismatchNotice("sensenova-6.8-flash-lite", "sensenova-6.8-flash-lite")).toBeNull()
+  })
+
+  it("不一致 → 给出同时含「实际」与「所选」的告警文案", () => {
+    const msg = modelMismatchNotice("sensenova-6.8-flash-lite", "Ling-3.1-flash")
+    expect(msg).not.toBeNull()
+    expect(msg).toContain("Ling-3.1-flash")
+    expect(msg).toContain("sensenova-6.8-flash-lite")
+  })
+
+  it("上游未回显模型 → 不提示（缺信息不误报，避免制造噪音）", () => {
+    expect(modelMismatchNotice("m-a", undefined)).toBeNull()
+    expect(modelMismatchNotice("m-a", null)).toBeNull()
+    expect(modelMismatchNotice("m-a", "")).toBeNull()
+  })
+
+  it("未传所选模型（兜底场景）→ 不提示", () => {
+    expect(modelMismatchNotice("", "Ling-3.1-flash")).toBeNull()
+  })
+
+  it("两端空白差异视为一致（上游偶发带空格不应误报）", () => {
+    expect(modelMismatchNotice("  m-a  ", "m-a")).toBeNull()
+  })
+
+  it("仅大小写不同的模型 ID 视为不一致（模型 ID 大小写敏感，必须提示）", () => {
+    expect(modelMismatchNotice("Model-A", "model-a")).not.toBeNull()
   })
 })

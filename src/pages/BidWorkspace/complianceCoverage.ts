@@ -37,6 +37,37 @@ function normalizeText(value: string): string {
   return (value ?? "").replace(/\s+/g, "")
 }
 
+/**
+ * 原文逐字响应阈值：条款特征串（去行首标记/序号后）在正文里的字符二元组命中率 ≥ 该值，
+ * 判为「原文逐字响应达标」。R277 已要求 ▲★ 照录招标原文（仅换人称、句末加结论），真·原文
+ * 响应命中率通常 ≥0.85；改写/概括会打散连续用词、拉低命中率，0.7 可有效区分「逐字」与「换说法」。
+ */
+const VERBATIM_RATIO_THRESHOLD = 0.7
+
+/** 去掉条款行首 ★☆▲△ 标记及紧随序号（如「★3.」「▲ 2、」），得到用于逐字比对的特征正文 */
+function clauseCoreForVerbatim(text: string): string {
+  const stripped = (text ?? "")
+    .replace(/^[★☆▲△＊*]+\s*(?:\d+[.、)）]?[\s\u3000]*)?/, "")
+    .replace(/^[、，,：:.\u3000\s]+/, "")
+  return normalizeText(stripped)
+}
+
+function charBigrams(s: string): string[] {
+  const out: string[] = []
+  for (let i = 0; i + 1 < s.length; i++) out.push(s.slice(i, i + 2))
+  return out
+}
+
+/** 条款特征串对全正文的字符二元组命中率（0-1）；正文命中集由调用方预构建、逐条复用 */
+function verbatimRatioOf(core: string, bodyBigrams: Set<string>, fullBodyNorm: string): number {
+  if (core.length < 2) return core.length === 1 && fullBodyNorm.includes(core) ? 1 : 0
+  const grams = charBigrams(core)
+  if (!grams.length) return 0
+  let hit = 0
+  for (const g of grams) if (bodyBigrams.has(g)) hit += 1
+  return hit / grams.length
+}
+
 function emptyCounts(): Record<ComplianceCoverageLevel, number> {
   return { full: 0, partial: 0, outline: 0, missing: 0 }
 }
@@ -59,6 +90,10 @@ export type ComplianceCoverageRow = {
   /** 参与逐字核对的要点（去泛词后长度≥2；分不出段则整条原文兜底） */
   keys: string[]
   level: ComplianceCoverageLevel
+  /** 条款特征串（去行首标记/序号）在全正文里的字符二元组命中率（0-1，衡量是否逐字原文响应） */
+  verbatimRatio: number
+  /** verbatimRatio ≥ 阈值：判为「原文逐字响应达标」（未达标即疑改写/概括，交人工确认） */
+  originalHit: boolean
   /** 正文命中其中任一要点的章（按章序） */
   bodyChapters: ComplianceCoverageHit[]
   /** 章节标题/小节名命中其中任一要点的章（按章序） */
@@ -73,6 +108,8 @@ export type ComplianceCoverageResult = {
   counts: Record<ComplianceCoverageLevel, number>
   /** 全部要点命中的条数（level=full） */
   responded: number
+  /** 原文逐字响应达标（originalHit）的条数（R195+R277 原文响应硬校验口径） */
+  verbatimResponded: number
   /** 需要人看一眼的条数（未全命中：partial + outline + missing） */
   pending: number
   /** 按行 id 索引的逐条结果（仅含 ★ 行；其余 kind 不在此表） */
@@ -104,6 +141,7 @@ export function auditComplianceCoverage(
       total: 0,
       counts,
       responded: 0,
+      verbatimResponded: 0,
       pending: 0,
       byRow,
       boilerplateKeys: [],
@@ -119,6 +157,11 @@ export function auditComplianceCoverage(
     outline: normalizeText(`${c.title ?? ""} ${(c.sections ?? []).join(" ")}`),
   }))
 
+  // 原文逐字核对：跨章合并全正文的字符二元组集合（构建一次、逐条复用）
+  const fullBodyNorm = normalizeText(chapterList.map((c) => c.content ?? "").join(""))
+  const bodyBigrams = new Set<string>()
+  for (let i = 0; i + 1 < fullBodyNorm.length; i++) bodyBigrams.add(fullBodyNorm.slice(i, i + 2))
+
   // 先按整片 ★ 条款统计要点出现频次：被超过 1/3 条款共用的要点是模板套话而非特征信息，
   // 命中一次就大面积升格，故排除；条款不足 BOILERPLATE_MIN_ROWS 条时不做此降权。
   const keySets = starRows.map((r) => clauseMatchKeys(r.text))
@@ -131,6 +174,7 @@ export function auditComplianceCoverage(
     for (const [k, n] of docFreq) if (n * 3 > starRows.length) boilerplateKeys.push(k)
   }
   const boiler = new Set(boilerplateKeys)
+  let verbatimResponded = 0
 
   for (let idx = 0; idx < starRows.length; idx++) {
     const r = starRows[idx]
@@ -158,14 +202,18 @@ export function auditComplianceCoverage(
     else if (hitKeys.size) level = "partial"
     else if (outlineChapters.length) level = "outline"
     else level = "missing"
+    const verbatimRatio = verbatimRatioOf(clauseCoreForVerbatim(r.text), bodyBigrams, fullBodyNorm)
+    const originalHit = verbatimRatio >= VERBATIM_RATIO_THRESHOLD
+    if (originalHit) verbatimResponded += 1
     counts[level] += 1
-    byRow[r.id] = { id: r.id, keys, level, bodyChapters, outlineChapters, missingKeys }
+    byRow[r.id] = { id: r.id, keys, level, verbatimRatio, originalHit, bodyChapters, outlineChapters, missingKeys }
   }
 
   return {
     total: starRows.length,
     counts,
     responded: counts.full,
+    verbatimResponded,
     pending: starRows.length - counts.full,
     byRow,
     boilerplateKeys: boilerplateKeys.sort(),

@@ -1,12 +1,13 @@
 // 竞品分析页视图：市场总览 / 订单能力对标 / 厂商档案（数据集∪档案库按名合并）+ 新增/编辑弹窗 + 软著基线导入。
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Award, BarChart3, Boxes, Brain, CalendarRange, Check, ChevronDown, Copy, Crosshair, Download, ExternalLink, FileBadge, FileText, LayoutGrid, List, MessageCircle, Newspaper, Pencil, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Trash2, TrendingUp, X } from "lucide-react"
+import { Award, BarChart3, Boxes, Brain, CalendarRange, Check, ChevronDown, Copy, Crosshair, Download, ExternalLink, FileBadge, FileText, LayoutGrid, List, MessageCircle, Newspaper, Pencil, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Table2, Trash2, TrendingUp, X } from "lucide-react"
 import { PageHeader } from "@/components/shell/PageHeader"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { DataTable, type DataTableColumn } from "@/components/ui/DataTable"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { copyTextToClipboard } from "@/lib/clipboard"
@@ -79,6 +80,15 @@ const RANK_STYLES = [
   { background: "#3CC4AC", color: "#fff" },
   { background: "#7FB8AD", color: "#fff" },
 ]
+
+/** 档案列表条目：数据集厂商 ∪ 档案库按名合并后的行形状 */
+interface ArchiveItem {
+  name: string
+  rk: number
+  core: boolean
+  intel: VendorOrder | null
+  row: CompetitorRow | null
+}
 
 function RankBadge({ rank }: { rank: number }) {
   if (!rank || rank < 1) return null
@@ -744,7 +754,7 @@ export function CompetitorsPage(p: UseCompetitors) {
     })
   }, [p])
   // 档案列表：核心 15 家（按订单名次）+ 扩展层（软著参考位）+ 档案库独有厂商；支持搜索/排序
-  const archiveItems = useMemo(() => {
+  const archiveItems = useMemo<ArchiveItem[]>(() => {
     const items = [...coreVendors(), ...extendedVendors()].map((v) => ({
       name: v.name,
       rk: orderRankOf(v.name),
@@ -768,6 +778,73 @@ export function CompetitorsPage(p: UseCompetitors) {
     else if (p.sortKey === "updated") shown.sort((a, b) => String(b.row?.updated ?? "").localeCompare(String(a.row?.updated ?? "")))
     return shown
   }, [p.rows, p.search, p.sortKey])
+
+  // R238 厂商「表格」视图：窄列复用 DataTable，名次/中标/软著可横向比对与排序
+  const [archiveView, setArchiveView] = useState<"card" | "table">("card")
+  const archiveColumns = useMemo<DataTableColumn<ArchiveItem>[]>(
+    () => [
+      {
+        key: "rank",
+        header: "名次",
+        width: "44px",
+        align: "center",
+        className: "px-1.5 py-2",
+        headerClassName: "px-1.5 py-2",
+        render: (it) =>
+          it.rk > 0 ? (
+            <RankBadge rank={it.rk} />
+          ) : (
+            <span
+              className="inline-flex h-4 min-w-[16px] items-center justify-center rounded bg-muted px-1 text-[10px] font-bold text-muted-foreground"
+              title={it.intel ? "扩展层：未纳入 15 家订单口径，仅作参考" : "档案库自建厂商"}
+            >
+              {it.intel ? "扩" : "新"}
+            </span>
+          ),
+      },
+      {
+        key: "name",
+        header: "厂商",
+        className: "px-2 py-2",
+        headerClassName: "px-2 py-2",
+        sortAccessor: (it) => it.name,
+        render: (it) => (
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-sm font-medium text-foreground">{it.name}</span>
+            {it.name === SELF_NAME && (
+              <Badge variant="warning" className="shrink-0 px-1.5 py-0 text-[10px]">
+                我方
+              </Badge>
+            )}
+          </span>
+        ),
+      },
+      {
+        key: "bid",
+        header: "中标",
+        width: "72px",
+        align: "right",
+        className: "px-1.5 py-2 text-xs tabular-nums",
+        headerClassName: "px-1.5 py-2",
+        sortAccessor: (it) => it.intel?.bid5y ?? null,
+        render: (it) => (it.intel?.bid5y != null ? fmtYi(it.intel.bid5y, 1) : "—"),
+      },
+      {
+        key: "cr",
+        header: "软著",
+        width: "60px",
+        align: "right",
+        className: "px-1.5 py-2 text-xs tabular-nums",
+        headerClassName: "px-1.5 py-2",
+        sortAccessor: (it) => it.row?.software_copyrights || it.intel?.copyrights || 0,
+        render: (it) => {
+          const n = it.row?.software_copyrights || it.intel?.copyrights || 0
+          return n ? formatCount(n) : "—"
+        },
+      },
+    ],
+    [],
+  )
   // 软著明细查询：公司维度默认当前选中厂商，无选中时为全部
   const [crOpen, setCrOpen] = useState(false)
   const [crCompany, setCrCompany] = useState("all")
@@ -856,9 +933,37 @@ export function CompetitorsPage(p: UseCompetitors) {
                     </SelectContent>
                   </Select>
                 </div>
-                <p className="px-1 text-xs text-muted-foreground">
-                  核心 {coreVendors().length} 家按五年中标排名 · 扩展层仅作参考位 · 共 {archiveItems.length} 家
-                </p>
+                <div className="flex items-center justify-between gap-2 px-1">
+                  <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+                    核心 {coreVendors().length} 家按五年中标排名 · 扩展层仅作参考位 · 共 {archiveItems.length} 家
+                  </p>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setArchiveView("card")}
+                      className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                        archiveView === "card"
+                          ? "bg-primary/10 font-medium text-primary"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <LayoutGrid className="h-3.5 w-3.5" />
+                      卡片
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setArchiveView("table")}
+                      className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                        archiveView === "table"
+                          ? "bg-primary/10 font-medium text-primary"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Table2 className="h-3.5 w-3.5" />
+                      表格
+                    </button>
+                  </div>
+                </div>
                 <div className="space-y-2">
                   {p.loading ? (
                     <p className="py-8 text-center text-sm text-muted-foreground">加载中…</p>
@@ -877,6 +982,16 @@ export function CompetitorsPage(p: UseCompetitors) {
                         </Button>
                       ) : null}
                     </div>
+                  ) : archiveView === "table" ? (
+                    <DataTable<ArchiveItem>
+                      columns={archiveColumns}
+                      rows={archiveItems}
+                      getRowId={(it) => it.name}
+                      onRowClick={(it) => setVendorName(it.name)}
+                      selectedRowId={activeName}
+                      emptyState="无匹配厂商"
+                      caption="厂商档案表格视图"
+                    />
                   ) : (
                     archiveItems.map((it) => {
                       const active = it.name === activeName

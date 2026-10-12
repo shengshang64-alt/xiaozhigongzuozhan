@@ -11,7 +11,7 @@ import { baselineLabelFromText, extractBaselineSegment, extractFragmentSegment }
 
 // R167 v3：小节级同步新增「公司优质素材库标准件基线」独立注入槽（无标记时与 v2 逐字一致）
 // R167 v4：2026-10 易标对齐轮——素材融入不提及来源（与 bidChapter 同口径同步），PROMPT_VERSION 3→4
-export const PROMPT_VERSION = 4
+export const PROMPT_VERSION = 5
 
 export function buildBidSectionMessages(
   projectName: string,
@@ -125,7 +125,7 @@ export function buildBidSectionMessages(
   // 第十三轮改造 3：逐条应答强化（开关开启才注入，零新增 LLM 调用）
   if (opts.starBlock) {
     rules.push(
-      `${ruleNo}. 本小节内容须对所涉下面【★/▲ 重点条款】逐条正面应答：涉及到的每一条重点条款都要有明确应答结论（满足/优于），给出落地措施或量化承诺，禁止回避、禁止只写通用套话；与本小节无关的条款不必展开；`,
+      `${ruleNo}. 硬约束——★/▲ 重点条款原文响应（无条件执行，优先于上面生成模式档与下面任何扩写授权）：下面【★/▲ 重点条款】中的每一条，只要与本小节相关，都必须在本小节逐条原文响应：逐条照录条款原文内容——数值、单位、限定语、功能描述一字不改，仅将「要求/需/应/投标人应」等要求类字眼改为投标人自述人称，句末给出「完全满足招标文件要求」或「优于招标文件要求（具体说明）」的应答结论；禁止改写句式、禁止扩写压缩或概括条款、禁止在条款应答处插入【待填写】占位；与本小节无关的条款不必展开；`,
     )
     ruleNo += 1
   }

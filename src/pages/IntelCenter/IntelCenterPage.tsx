@@ -1,5 +1,5 @@
-import { useState } from "react"
-import { Loader2, Plus, RefreshCw, Inbox, Copy, ChevronDown, ChevronRight } from "lucide-react"
+import { useMemo, useState } from "react"
+import { Loader2, Plus, RefreshCw, Inbox, Copy, ChevronDown, ChevronRight, LayoutGrid, Star, Table2 } from "lucide-react"
 import { copyTextToClipboard } from "@/lib/clipboard"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -15,7 +15,9 @@ import { ManualEntryDialog } from "@/components/intel-center/ManualEntryDialog"
 import { CleanupIrrelevantDialog } from "@/components/intel-center/CleanupIrrelevantDialog"
 import { PrefsDialog } from "@/components/intel-center/PrefsDialog"
 import { SourceManagerPanel } from "@/components/intel-center/SourceManagerPanel"
-import { SOURCE_TYPE_LABEL, type useIntelCenter } from "./useIntelCenter"
+import { DataTable, type DataTableColumn } from "@/components/ui/DataTable"
+import { localDateStamp } from "@/lib/dateStamp"
+import { ITEM_STATUS_LABEL, SOURCE_TYPE_LABEL, type IntelItemRow, type useIntelCenter } from "./useIntelCenter"
 
 export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
   const enabledCount = p.sources.filter((s) => s.enabled).length
@@ -24,6 +26,23 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
   // intel-01 降噪：右栏低频面板默认折叠为一行，压进场屏数
   const [srcOpen, setSrcOpen] = useState(false)
   const [aiHelpOpen, setAiHelpOpen] = useState(false)
+
+  // R237 情报「表格」视图：卡片/表格切换，表格便于横向比对与排序（复用 DataTable）
+  const [intelView, setIntelView] = useState<"card" | "table">("card")
+  const isStarred = p.isStarred
+  const intelColumns = useMemo<DataTableColumn<IntelItemRow>[]>(
+    () => [
+      { key: "star", header: "收藏", width: "52px", align: "center", render: (r) => (isStarred(r.id) ? <Star className="mx-auto h-3.5 w-3.5 text-warning" fill="currentColor" /> : <span className="text-muted-foreground/40">—</span>) },
+      { key: "title", header: "标题", sortAccessor: (r) => r.title, render: (r) => <span className="line-clamp-1 font-medium text-foreground">{r.title}</span> },
+      { key: "type", header: "类型", width: "88px", sortAccessor: (r) => r.item_type, render: (r) => SOURCE_TYPE_LABEL[r.item_type] ?? "-" },
+      { key: "region", header: "地区", width: "84px", sortAccessor: (r) => r.region, render: (r) => r.region || "-" },
+      { key: "source", header: "来源", sortAccessor: (r) => r.source_name, render: (r) => <span className="line-clamp-1 text-muted-foreground">{r.source_name}</span> },
+      { key: "status", header: "状态", width: "72px", sortAccessor: (r) => r.my_status || r.item_status, render: (r) => ITEM_STATUS_LABEL[r.my_status || r.item_status] ?? "-" },
+      { key: "published", header: "发布", width: "104px", sortAccessor: (r) => r.published_at, render: (r) => (r.published_at ? localDateStamp(new Date(r.published_at)) : "-") },
+    ],
+    [isStarred],
+  )
+
 
   return (
     <div className="animate-in fade-in duration-500 text-foreground">
@@ -118,6 +137,34 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
               sortKey={p.listSortKey}
               onSortChange={p.setListSortKey}
             />
+
+            {/* R237 视图切换：卡片流 / 紧凑表格 */}
+            <div className="flex items-center justify-end gap-1">
+              <button
+                type="button"
+                onClick={() => setIntelView("card")}
+                className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                  intelView === "card"
+                    ? "bg-primary/10 font-medium text-primary"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                卡片
+              </button>
+              <button
+                type="button"
+                onClick={() => setIntelView("table")}
+                className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                  intelView === "table"
+                    ? "bg-primary/10 font-medium text-primary"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Table2 className="h-3.5 w-3.5" />
+                表格
+              </button>
+            </div>
 
             {/* 循环 12：存量不相关情报引导横幅（静默预览命中 >0 时显示） */}
             {p.cleanupSuggested && (
@@ -223,6 +270,17 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
                 </div>
               </div>
             ) : (
+              intelView === "table" ? (
+                <DataTable<IntelItemRow>
+                  columns={intelColumns}
+                  rows={p.displayItems}
+                  getRowId={(r) => r.id}
+                  onRowClick={p.openDetail}
+                  selectedRowId={p.detailItem?.id ?? null}
+                  initialSort={{ key: "published", dir: "desc" }}
+                  caption="情报列表表格视图"
+                />
+              ) : (
               <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
                 {p.displayItems.map((item) => (
                   <IntelItemCard
@@ -244,6 +302,7 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
                   />
                 ))}
               </div>
+              )
             )}
 
             {p.hasMore && (

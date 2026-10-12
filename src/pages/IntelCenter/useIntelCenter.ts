@@ -5,6 +5,14 @@ import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, vibexAuthHeaders, type RhAccountInfo } from "@/lib/rhLogin"
 import { buildIntelToOppQuery } from "@/lib/intelToOpp"
 import { cleanIntelBody, cleanIntelLine, looksJunkIntel } from "./intelBodyClean"
+import { triggerBlobDownload } from "@/lib/download"
+import {
+  canProceedToDelete,
+  cleanupBackupFileName,
+  formatBackupStamp,
+  serializeCleanupBackup,
+  type CleanupBackupItem,
+} from "./intelCleanupBackup"
 import { formatDateTimeDisplay } from "@/lib/dateDisplay"
 import { localizeLlmError } from "@/lib/llmError"
 import type { LlmMessage } from "@/lib/llm"
@@ -763,10 +771,41 @@ export function useIntelCenter() {
     }
   }, [requireLogin])
 
-  /** 第二段：确认后真正删除并刷新列表 */
+  /** 第二段：先导出本地备份，备份成功且数量对齐后才删除并刷新列表（R-033 数据安全） */
   const confirmCleanup = useCallback(async () => {
     setCleanupBusy(true)
+    const expected = cleanupInfo?.count ?? 0
     try {
+      // 1) 取全量命中记录做本地备份（backup 模式不删除，与下方 delete 同一命中集）
+      const bk = await apiFetch<{
+        ok: boolean
+        backup?: boolean
+        count?: number
+        items?: CleanupBackupItem[]
+        message?: string
+      }>("/api/intel/cleanup-irrelevant", {
+        method: "POST",
+        body: JSON.stringify({ backup: true }),
+      })
+      const items = Array.isArray(bk.items) ? bk.items : []
+      // 2) 删除前安全闸：备份未取得 / 条数漂移一律拒绝删除，绝不删掉没备份到的条目
+      const gate = canProceedToDelete({
+        backupOk: !!bk.ok,
+        backupCount: items.length,
+        expectedCount: expected,
+      })
+      if (!gate.proceed) {
+        toast.error("已取消清理（" + gate.reason + "），未删除任何条目，请稍后重试")
+        return
+      }
+      // 3) 落本地 JSON 备份文件（可离线查阅 / 后续再导入）
+      const now = new Date()
+      const text = serializeCleanupBackup(items, {
+        generatedAt: now.toISOString(),
+        reason: "不相关情报清理前本地备份（医疗信息化建设口径）",
+      })
+      triggerBlobDownload(new Blob([text], { type: "application/json" }), cleanupBackupFileName(formatBackupStamp(now)))
+      // 4) 备份就绪后才真正删除
       const r = await apiFetch<{ ok: boolean; deleted?: number; message?: string }>(
         "/api/intel/cleanup-irrelevant",
         { method: "POST", body: JSON.stringify({ confirm: true }) },
@@ -775,7 +814,7 @@ export function useIntelCenter() {
         toast.error(r.message || "清理失败，请稍后重试")
         return
       }
-      toast.success(`已清理 ${r.deleted ?? 0} 条不相关情报`)
+      toast.success("已导出 " + items.length + " 条本地备份，并清理 " + (r.deleted ?? 0) + " 条不相关情报")
       setCleanupOpen(false)
       setCleanupInfo(null)
       setCleanupSuggested(false)
@@ -785,7 +824,7 @@ export function useIntelCenter() {
     } finally {
       setCleanupBusy(false)
     }
-  }, [refreshItems])
+  }, [cleanupInfo, refreshItems])
 
   const closeCleanup = useCallback(() => {
     setCleanupOpen(false)

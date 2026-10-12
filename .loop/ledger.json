@@ -1,13 +1,16 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 219,
+  "round": 279,
   "backlog": [
     {
       "id": "r219-kbqa-coldstart-perf",
       "priority": "P1",
       "issue": "A类·性能：问知识库首次冷启动 ensureQaCorpus 重复拉取 72 页/300MB 语料（我的笔记 4825 篇单页 24.5MB，slim 未生效或重复拉取无缓存复用），5 分钟未完成、LLM 0 调用、问答静默无响应——可用性级体验缺陷。证据：performance 72 个 kb_docs 请求 / model-gw 0 次调用。修法建议：①审查缓存命中失败原因（kbDocCache/kbChunkCache）②我的笔记拉取改 slim 字段 ③拉取进度 UI+可中断",
-      "module": "/knowledge"
+      "module": "/knowledge",
+      "status": "closed",
+      "resolution": "R230 closed：见 closed r230-kbqa-coldstart-perf",
+      "closedRound": 230
     },
     {
       "id": "r152-star-symbol-loss",
@@ -302,10 +305,11 @@
       "module": "/全站",
       "issue": "UI重构阶段3：逐页改造(方案 docs/redesign/)：①作战驾驶舱(今日作战聚合)②情报中心三栏处理台③标书作战室密度④方案编辑器三栏⑤知识库⑥客户档案+其余页。红线：只改信息架构与视觉，业务行为与数据等价，每页可回退",
       "priority": "P2",
-      "status": "open",
+      "status": "closed",
       "evidence": "docs/redesign/ 设计方案+静态原型；R75 审计：7诊断中2已修/2本轮修/3 open",
       "plan": "进度：3-1 驾驶舱✓ 3-2 情报✓(核验即关) 3-3 作战室✓(R82侧栏+R83对话框/评分列表) 3-4 方案三栏 3-5 知识库密度。",
-      "round": 75
+      "round": 75,
+      "resolution": "R272 核验即关：所有子项（驾驶舱/情报/作战室/方案编辑器/知识库）均标✓；剩余视觉密度属自然迭代不立独立任务，R271 已落地响应式收敛。"
     },
     {
       "id": "quote-history-3-mining",
@@ -322,10 +326,11 @@
       "module": "/全站",
       "issue": "UI重构阶段3进度（核验+密度）：3-1 驾驶舱横幅✓(R76) 3-2 情报三栏✓(核验即关) 3-3 标书作战室✓(R82侧栏+R83对话框/评分列表) 3-4 方案编辑器✓(核验即关,三栏+五维自检已齐) 3-5 知识库✓(核验即关,三栏)。剩余：整体视觉密度(卡片/留白)按自然迭代逐步收敛，不动业务。",
       "priority": "P3",
-      "status": "open",
+      "status": "closed",
       "evidence": "R85 代码取证 EditorWorkspace 三栏+ScoreCard；知识库截图 _shots/R80/",
       "plan": "后续随自然迭代收敛视觉密度；新增页面直接按 docs/redesign/ 设计系统实现",
-      "round": 85
+      "round": 85,
+      "resolution": "R272 核验即关：所有子项（驾驶舱/情报/作战室/方案编辑器/知识库）均标✓；剩余视觉密度属自然迭代不立独立任务，R271 已落地响应式收敛。"
     },
     {
       "id": "r89-guard-kb-cold-01",
@@ -765,10 +770,11 @@
       "module": "/bid-workspace",
       "issue": "R195观察（P3）：pdfjs 抽取的空序号列被合并掉时，评分表退化为 n-1 列形态（如「3 | 投标人或…」），与「序号3 | 名称」单列不可区分——本轮列模板算法故意不覆盖（宁可漏报不虚报），此类表仍整表漏配。",
       "priority": "P3",
-      "status": "open",
+      "status": "closed",
       "evidence": "R195 设计迭代：v1 无护栏时该场景与采购清单/目录页码无法区分（海沧误报 107 项）",
       "plan": "候选解法：先按「表头标签列 + 相邻两列同为数值」判定分值列，再用整表列数众数对齐补列；需先补真实 n-1 列语料取证。",
-      "round": 195
+      "round": 247,
+      "resolution": "R247：提取端把空单元连同分隔符一起丢，评分表「评标项目」格无编号的行从三列退化成两列；旧口径「列数不符即模板失效」连带其后正常行整表漏配。现在列数恰差 1 且整行只有唯一一个分值形状单元、该单元落在授权分值列 ±1 内、右邻描述格带评分语汇时按内容对齐取分值，项名剥「得/扣 N 分」从句尾巴；护栏不足仍判死模板。真实语料差分：信息化招标 6→21 项（新增 15 条逐条人工判真、删失 0），海沧/池州/R142/r48b 四份零回归。"
     },
     {
       "id": "r195-skillcore-scope-count-stale",
@@ -801,57 +807,70 @@
       "module": "/model-config,/assistant",
       "issue": "R203 观察（P3）：账号级失败会给通道打会话冷却戳，但 ModelSelect 里没有任何「刚失败/冷却中」标记，用户看到「接口暂时不可用」却不知道是哪一路、何时恢复。可直接读 modelFailover 的登记表渲染只读徽标（会话内、零持久化），与既有 last_check_status 健康信息区分展示。",
       "priority": "P3",
-      "status": "open",
+      "status": "closed",
       "evidence": "src/lib/modelFailover.ts isChannelCooling/channelCoolingStrikes；ModelSelect.tsx 现仅展示 last_check_status",
-      "plan": "跨模块展示层，需评估「冷却戳是会话内存、刷新即清」是否会让徽标显得随机；下一轮再做"
+      "plan": "跨模块展示层，需评估「冷却戳是会话内存、刷新即清」是否会让徽标显得随机；下一轮再做",
+      "closedRound": 233,
+      "title": "冷却通道状态在模型选择器可视化",
+      "summary": "R233 r203-cooling-not-surfaced：模型通道冷却状态在 ModelSelect 可视化。modelFailover.ts 新增 channelCoolingRemainingMs（只读倒计时，不剪枝）+ onCoolingChange 订阅（mark/clear/reset 通知，异常吞掉不影响回退）；ModelSelect.tsx 新增 useCoolingKeys hook（合并模型级+配置级冷却，订阅即时刷新+冷却存续期逐秒自续倒计时、清空即停表，无常驻定时器），为所选通道渲染只读 badge-warning 徽标（Clock+冷却中·约Ns+连击×N，status/aria-live/title），下拉冷却通道补「· 冷却中」后缀；不改回退与禁用口径。纯会话内存/零持久化/collection/pb_hooks/提示词。tsc0/vitest 1705 passed+2skip（较基线+2，modelFailover 28→30）/eslint 触及3文件0增error/build0。避开 bid-workspace/solution-studio 等 R220-R232 连续在途域，触及文件均 git-clean。未 commit。"
     },
     {
       "id": "docs13-3.4-customer-delete-demote",
       "module": "/customers",
       "issue": "docs/13 §3.4：客户详情「删除」红字常驻头部紧邻常用操作，误触风险高；二次确认已有，位置仍嫌顺手。建议收进「更多操作」下拉或与「智能补全缺失项」拉开间距。",
       "priority": "P3",
-      "status": "open"
+      "status": "closed",
+      "closedRound": 239
     },
     {
       "id": "docs13-3.8-assistant-memory-discoverability",
       "module": "/assistant",
       "issue": "docs/13 §3.8：会话/记忆/技能三 Tab 藏在会话列表上方，新用户难发现长期记忆能力。建议首次进入时欢迎卡加一句说明 + 入口链接（仅需一次性会话标记，零 schema）。",
       "priority": "P3",
-      "status": "open"
+      "status": "closed",
+      "closedRound": 240
     },
     {
       "id": "docs13-3.9-style-details",
       "module": "/shell",
       "issue": "docs/13 §3.9 风格细节残余：侧栏内容超高时双滚动条；驾驶舱「今日必看」慢网下加载文案闪现偏长（可换骨架屏）；客户详情「AI」徽章含义不自明（建议 hover 说明）。",
       "priority": "P3",
-      "status": "open"
+      "status": "closed",
+      "closedRound": 241
     },
     {
       "id": "bidkit-plan-slice3-draft-incremental",
       "module": "/bid-workspace",
       "issue": "R-001 用户 P0 需求：上传商务同事已写好的 docx/pdf 作底稿 → 系统解析章节结构 → 保留原有商务章节与架构章节不动 → 自动补齐缺失的技术材料与偏离表 → 合并为一份完整标书。现状 bid_source_mode=external 上传只做整本检查不做底稿增量；input[type=file] 需要切 external 才渲染。",
       "priority": "P0",
-      "status": "open",
-      "evidence": "ComposeStep.tsx#L672-L706 external 上传入口已存在但仅接整本 tender_text；bidFiles 无 mammoth 集成；Chapter 无 locked/source 字段",
-      "plan": "复用 package.json 已有 mammoth@^1.12.3（不引入新依赖）解析 docx；Chapter 增 source/locked/draftRef；BidProject 增 bid_draft_file/chapters/match_report；三段式匹配（精确/模糊/AI 兜底）；startBulkGenerate 增 skipLocked；ChapterEditor readOnly 分支；A 类小 schema；工作量 5 天"
+      "status": "closed",
+      "evidence": ".loop/reports/2026-10-09-r245-slice3-draft-merge-wiring.md；tests/records/2026-10-09-r245-bid-draft-merge-panel.md。R245 实机自测发现遗留项：Bug C 修复前已点过「交 AI 重写」的历史项目里，商务底稿章会停在 part=biz + pending 的不可生成状态（本次自测数据已还原，存量若有同类状态可在章节目录一键切回技术章）。",
+      "plan": "复用 package.json 已有 mammoth@^1.12.3（不引入新依赖）解析 docx；Chapter 增 source/locked/draftRef；BidProject 增 bid_draft_file/chapters/match_report；三段式匹配（精确/模糊/AI 兜底）；startBulkGenerate 增 skipLocked；ChapterEditor readOnly 分支；A 类小 schema；工作量 5 天",
+      "progress": "R235 已交付纯函数匹配/合并引擎 bidDraftMerge.ts（+13 单测，四门全绿）。剩余：UI 接线（ComposeStep 上传入口解耦常显、mammoth-DOM→parseDraftHtml→buildMergePlan→合并计划展示+一键续跑）与 schema（Chapter/BidProject source/locked/draftRef），因落在 R220–R234 在途密集改动区，待其落定后续切片。",
+      "round": 245,
+      "summary": "R235 交付纯函数匹配引擎 bidDraftMerge.ts（+13 单测）；R245 交付 UI 接线 + 落库口径并在真实三甲项目跑通全流程（上传底稿→五态计划→应用→落库校验→交 AI 重写），同时修掉实机发现的 4 个产品级缺陷（摘要口径割裂 / Word 二级标题冒充独立章 / 交 AI 重写对商务骨架章断链 / 刷新后解除入口消失）。schema 口径较原 plan 收敛：不动 PocketBase collection、不加 BidProject 列，Chapter 仅加 draftLocked?/draftFrom? 两个可选字段随 bid_chapters json 透传；批量跳过不改 startBulkGenerate 而复用 gen_status=done 既有语义；ChapterEditor 无需 readOnly 分支（保留章仍可手改）。剩余细化项另立 bidkit-draft-refine-01（P2）。closed: r245-slice3-draft-merge-wiring。"
     },
     {
       "id": "bidkit-plan-slice4-word-paginated-preview",
       "module": "/bid-workspace",
       "issue": "R-004 用户 P0 需求：生成结果改为仿 Word 的分页视图（A4 版心、页边距、页眉页脚、页码、三级标题编号 1/1.1/1.1.1、正文首行缩进 2 字符、图表居中带题注、支持翻页/滚动连续预览，打印/存 PDF 沿用现有纸张设置）。现状只有浏览器打印对话框，屏幕预览是窄栏流式。",
       "priority": "P0",
-      "status": "open",
+      "status": "closed",
       "evidence": "FormatSettingsPanel.tsx#L286 已有 A4/边距/字体/首行缩进配置可复用；PrintExportButton 走浏览器 print CSS；无 A4 版心 div 容器",
-      "plan": "新增 WordPreviewPanel.tsx：CSS @page + .a4-page + counter-reset/increment 三级编号 + 估算分页算法（复用 formatCharsPerPage.test.ts 表）；IntersectionObserver 虚拟化；编辑/预览 Tab；打印复用同份 CSS。工作量 4 天"
+      "plan": "新增 WordPreviewPanel.tsx：CSS @page + .a4-page + counter-reset/increment 三级编号 + 估算分页算法（复用 formatCharsPerPage.test.ts 表）；IntersectionObserver 虚拟化；编辑/预览 Tab；打印复用同份 CSS。工作量 4 天",
+      "closedRound": 235,
+      "summary": "R235 核验关闭：slice4（仿 Word 分页预览）已于 r211 完整实现（BidWordPreview.tsx + bidWordPreviewLogic）并接线可达（ComposeStep「Word 预览」按钮→Dialog→渲染；A4 版心/页边距/页眉页脚/页码/三级标题编号/首行缩进/图表题注/连续滚动预览，打印仍走 PrintExportButton）。滚动连续预览已满足『翻页/滚动连续』之一，不改代码，仅补关账。"
     },
     {
       "id": "bidkit-plan-slice5-observations-misc",
       "module": "/ai-hot,/product-mapping,/customer-management,/intel-center,/solution-studio,/knowledge",
       "issue": "用户实测 6 项 P1/P2 观察：O-001 AI 动态 440 字符、O-002 产品映射 373 字符（空态无引导）、O-003 客户管理 12539px/178 card/0 table（信息密度低）、O-004 4 个主视图页全 card 无 table、O-005 知识库团队库/笔记均 0 无引导、O-006 驾驶舱资质临期 4 与台账页『已过期 1、30 天内 0』数字口径不一致。",
       "priority": "P1",
-      "status": "open",
+      "status": "closed",
       "evidence": "实测页面文本长度与容器数（详见需求记录 §二）；O-006 需先审计两侧计算函数是否用同一阈值/字段",
-      "plan": "空态引导卡（AI 动态/产品映射/知识库 3 页）；卡片/表格视图切换（客户管理/情报中心/方案工作室/标书工作台 4 页，复用 BidProjectList.listView 模式）；资质口径审计 → 若非 bug 则在驾驶舱加 90/60/30 各档明细。工作量 1.5 天 O-006（资质口径）已由 R210 闭环：qualRiskView 统一驾驶舱/台账/导出三处，见 closed r210-qual-alert-consistency；O-001..O-005 仍待排期。"
+      "plan": "空态引导卡（AI 动态/产品映射/知识库 3 页）；卡片/表格视图切换（客户管理/情报中心/方案工作室/标书工作台 4 页，复用 BidProjectList.listView 模式）；资质口径审计 → 若非 bug 则在驾驶舱加 90/60/30 各档明细。工作量 1.5 天 O-006（资质口径）已由 R210 闭环：qualRiskView 统一驾驶舱/台账/导出三处，见 closed r210-qual-alert-consistency；O-001..O-005 仍待排期。",
+      "progress": "六项观察全关：O-001/O-002✓(R242) O-003✓(R236) O-004 方案工作室✓(R243 表格视图)、标书工作台侧并入 r2-r012 在途避让；O-005 知识库空态核验即关(R243 勘察 DocListPanel 引导已在 R89-R148 累积 commit 入库)；O-006✓(R210)。",
+      "closedRound": 243
     },
     {
       "id": "bidkit-plan-slice05b-material-ammo",
@@ -863,6 +882,175 @@
       "plan": "把 MaterialAmmoPanel 以 tab 化接入标书右栏（与 ScoreMappingPanel 并列），复用方案侧知识/弹药/历史三源 hook；需先与切片 4 WordPreviewPanel 右栏占用统筹。挂起待切片 4 定稿后排期",
       "round": 212,
       "resolution": "R212 落地：三源(知识库/弹药库/本标书其它章节)素材检索 + 按章主题智能推荐，ComposeStep 右栏双 Tab(评分映射/素材弹药)。零 AI 零新 collection。"
+    },
+    {
+      "id": "r2-r010-qual-count-reconcile",
+      "module": "/dashboard+/quals",
+      "issue": "R-010 资质数量口径统一(涉废标)：以台账三档(已过期/30天内/90天内,互斥)为唯一事实源、驾驶舱只引用不二次计算，两处数字差值=0；列表显示到期天数;自检三档之和==顶部预警N项。",
+      "priority": "P0",
+      "status": "closed",
+      "round": 228,
+      "resolution": "R228 closed"
+    },
+    {
+      "id": "r2-r011-customer-table",
+      "module": "/customers",
+      "issue": "R-011 客户管理表格化(177卡片→表格+分页+排序+搜索)，保留卡片切换。列设计待用户确认(客户+情报一起改的裁定已记录)。",
+      "priority": "P1",
+      "status": "closed",
+      "round": 220,
+      "closedRound": 236
+    },
+    {
+      "id": "r2-r012-list-tableize",
+      "module": "/intel+/competitors",
+      "issue": "R-012 全站本质是列表的页面表格化(情报中心117卡片/竞品/标书项目列表/资质明细)，搜索+排序+分页；不动该用卡片的仪表盘KPI/方案卡/PPT模板/配置项。",
+      "priority": "P1",
+      "status": "closed",
+      "round": 220,
+      "progress": "DataTable 全站六站收口：客户✓(R236) 情报✓(R237) 竞品✓(R238) 方案工作室✓(R243) 标书项目列表✓(R250) 资质明细✓(R250)。仪表盘 KPI/方案卡/PPT 模板/配置项按裁定保持卡片不动。P1 闭环。",
+      "closedRound": 250
+    },
+    {
+      "id": "bidkit-draft-refine-01",
+      "module": "/bid-workspace",
+      "issue": "R245 底稿增量合并收口后的三项细化：①参考重写口径——大纲位已有正文转「底稿参考段」时按 900 字上限截断，长底稿的要点选取可更智能（标题命中 + 首段 + 量化承诺优先）；②「底稿多出章」清退——换一份更短的底稿重新应用时，上一轮追加的 draft-extra-* 孤儿章不被回收（现仅靠同名节点幂等覆盖）；③大纲未确认（bid_chapters 为空）时DraftMergePanel 整体不渲染，缺「先生成/确认大纲再合并底稿」的入口引导。",
+      "standard": [
+        "D14"
+      ],
+      "priority": "P2",
+      "status": "closed",
+      "evidence": "R245 实机自测（安庆二院项目三轮实测）与 .loop/reports/2026-10-09-r245-slice3-draft-merge-wiring.md §6 挂账。R245 实机自测发现遗留项：Bug C 修复前已点过「交 AI 重写」的历史项目里，商务底稿章会停在 part=biz + pending 的不可生成状态（本次自测数据已还原，存量若有同类状态可在章节目录一键切回技术章）。",
+      "plan": "①②属 bidDraftPlan.ts 纯函数口径，需补单测钉住「孤儿章识别」与「参考段要点选取」；③为面板可见性引导，零 schema。",
+      "round": 245,
+      "closedRound": 246,
+      "resolution": "R246 closed：三项细化（要点择优 / 孤儿清退 / 空大纲引导）全部交付，见 closed r246-draft-refine-trio"
+    },
+    {
+      "id": "r250-fab-pagination-overlap",
+      "module": "/bid-project+/qual-certs",
+      "issue": "R250 实机发现：窄视口下「小智快捷问答」FAB 悬浮按钮与 DataTable 分页「下一页」按钮位置重叠，真实点击命中的是 FAB 而非分页；另表格视图空态文案仍写「在项目卡片上点『归档』」（措辞与表格视图不符）。P3 体验缺陷，非阻断。",
+      "priority": "P3",
+      "status": "closed",
+      "round": 250,
+      "closedRound": 251,
+      "resolution": "R251 closed：DataTable 触发分页时预留 mb-16 底部避让（抽 shouldReserveFabClearance 单一真源），把右对齐的「下一页」抬到固定右下角浮窗助手 FAB 命中带之上；BidProjectList 已归档空态文案按 displayMode 自适应。见 closed r251-fab-pagination-clearance。窄视口实机零重叠 + 点击翻页 1→2 验证。"
+    },
+    {
+      "id": "kb-docs-pagination-loop",
+      "priority": "P2",
+      "issue": "R252 浏览器实机走查顺带发现：知识库模块后台连续拉 /api/collections/kb_docs/records?page=1..30，末尾数条 pending。疑似分页循环未收敛或过度预取（页大小/总数判定口径不一致），属性能与请求浪费，且可能造成 loading 长期挂住。需定位是客户端预取循环还是列表分页判定问题。",
+      "module": "知识库",
+      "status": "closed",
+      "closedBy": "r263",
+      "resolution": "kb-docs-pagination-loop(P2)：listKbDocs 旧实现在获知服务端 totalItems 前就按满批(KB_LIST_PAGE_BATCH=3)并发发整批页请求——空库/单页库照发 3 页(含 2 越界空页)、末页落批中间仍多发越界空页。改为首页单独串行取→学习 effectivePerPage+totalItems→精确算 lastPage=min(60,ceil(total/epp))→从第 2 页起按批并发取到 lastPage 即停。零 collection/零 pb_hooks 变更；totalItems 缺失时保守降级=旧行为。新增 kbCore.test.ts(+1 文件/+5 用例)覆盖空库/单页/中小库/大库6423/onBatch。四门全绿：tsc 0、vitest 263 169 files/1909 passed+2 skipped、eslint 触及文件 0、vite build ok。注：账本 round 由并发 agent 占至 262(r262-bidcheck-reading-view)，本轮避让顺延为 263。"
+    },
+    {
+      "id": "narrow-viewport-toolbar-overflow",
+      "priority": "P3",
+      "issue": "R252 浏览器实机走查顺带发现：视口宽 < lg 断点时 document.scrollWidth(803) > clientWidth(464)，横向溢出源为既有章操作条（带入技能/生成正文/改写/扩写/精简/自检，right=803）与顶部操作条（素材/逐章生成/导出 Word/打印，right=771）的 shrink-0 单行不换行。非本轮新卡所致（新卡 scrollWidth==clientWidth 已验）。窄屏可用性待评估：需允许换行或收纳为溢出菜单。",
+      "module": "方案工作室/SolutionStudio",
+      "status": "closed",
+      "resolution": "R271 已交付（见 closed r271-narrow-viewport-toolbar-wrap）：三处工具条 shrink-0 → min-w-0 恢复响应式折行；R252 记录点名的章操作条 / 顶部操作条 + 全站页头 actions 区一并覆盖。"
+    },
+    {
+      "id": "bidkit-yibiao-parse-p0",
+      "priority": "P0",
+      "issue": "易标可复用能力分析 R-026~R-032 标书解析层 P0 缺口（用户拍板：评分项改回 JSON 结构化、废标真三轮、17 老项目标记需重解析、授权三轮 AI 成本）。Slice1 R-026 结构化存储已完成(R253)；余 Slice2 R-028 废标三轮(voidCheckRounds+invalidBid/rejectionItem)、Slice3 R-029 扫描件检测(parse_quality)、Slice4 R-030 required 分级阻断、Slice5 R-026③ 条数下限报警+建阳区样例端到端回归。",
+      "module": "标书工作台/BidWorkspace",
+      "status": "closed",
+      "progress": "五切片全部落地：Slice1 R-026 结构化存储(R253)✓ / Slice2 R-028 废标三轮(R254)✓ / Slice3 R-029 扫描件检测(R255)✓ / Slice4 R-030 required 分级(R256)✓ / Slice5 R-026③ 废标条数下限(R257)✓。标书解析层 P0 伞项收口。"
+    },
+    {
+      "id": "bidkit-global-opt-p0",
+      "title": "《小智工作站-全局优化汇总》P0 伞项（R-001~R-040 中 13 项 P0，第一优先 R-038 覆盖率门禁 / 次高 R-039 mustWrite 落库）",
+      "priority": "P0",
+      "status": "open",
+      "module": "标书工作台/BidWorkspace",
+      "progress": "R-038③ Slice A（覆盖率可见+生成门禁）已闭合(R258)✓ / R-039②④（mustWrite 读时自愈+大纲「必写」标识）已闭合(R259)✓ / R-038 Slice B（分层切段上限：废标/评分关键项 tech_score/biz_score/void_items/qualification/compliance 整文全量覆盖+跨段合并跨块汇总，PARSE_MAX_SEGMENTS_CRITICAL=24，其余项维持通用上限6与检索回落控成本）已闭合(R260)✓（用户已就额外 AI token 成本授权）。R-033 cleanup-irrelevant 数据安全已闭合(R265)✓（改为删除前导出本地备份+数量对齐安全闸）；待续（零 AI 成本优先）: / R-027 补 5 解析项（R274 编制依据版本时效 + R275 正文级时效检测已交付 2/5） / R-028 废标三轮 / R-010 资质口径逐条评估。 R-027 编制依据质量补强切片①『标准版本时效体检』（确定性检出旧版国标悄悄注入正文、只报不拦、零 AI/零 schema）已闭合(R274)✓；R-027 剩余『新增 5 解析任务项』涉 AI 成本+B 类提示词流程，按零 AI 成本优先次序另轮评估。"
+    },
+    {
+      "id": "r261-bidcheck-followons",
+      "title": "标书检查中枢后续期次（二期 L2 响应整合 / 三期 L4 查重含串标多文件 / 四期 L3+L5-D AI 语义标置信度 / 五期 标注版 docx Word 批注引擎 + PB 集合 anbid_checks + 分工流转）",
+      "priority": "P2",
+      "status": "closed-residual-l5d",
+      "module": "标书检查/BidCheck",
+      "openedRound": 261,
+      "issue": "R261 一期仅接入 L1+L5（零 AI 规则 + 三件套 + 普通/暗标严格一开关）。【R266 二期 L2 响应已交付 closed: r266-bidcheck-l2-response】待续：二期 L2 响应（复用 complianceMatrix/complianceCoverage/scoreCoverageCheckup/voidCheck）整合展示；【R267 三期 L4 查重已交付 closed: r267-bidcheck-l4-dedup】三期 L4 查重（内部自重复/跨章节/历史标书；串标 L4-4 多文件对比默认关）；【R268 四期 L3 内容已交付 closed: r268-bidcheck-l3-content】四期 L3 内容 + L5-D 语义 AI 类（标置信度）；五期 标注版 docx（Word 批注引擎）+ PB 集合 anbid_checks + 分工流转。另：待用户提供 招标文件正文.pdf 暗标条款 + 标书检查.xlsm 检查项 → 映射进 anbidCheckConfig 后判定精度才拉满（当前可配置占位、不编造）。【R270 五期 标注版 docx（Word 批注引擎）已交付 closed: r270-bidcheck-annotated-docx】剩余：L5-D 语义 AI 类、PB 集合 anbid_checks、分工流转（详见 resolution）。",
+      "resolution": "R266 closed 二期 L2 响应；R267 closed 三期 L4 查重；R268 closed 四期 L3 内容；R270 closed 五期「标注版 docx（Word 批注引擎）」子项（见 closed r270-bidcheck-annotated-docx）。五级检查体系已全部接入（均只报不拦、只标不改）；五期剩余 L5-D 语义 AI 类（破纯规则口径，需产品决策）+ PB 集合 anbid_checks + 分工流转（触发数据模型改动，按零 collection 原则暂缓），故本伞项维持 open。",
+      "note": "R273 闭环 L5-D AI 类置信度接入"
+    },
+    {
+      "id": "delivery-p0-01-ocr-input",
+      "priority": "P0",
+      "module": "/knowledge,/bid-workspace",
+      "status": "open",
+      "source": "WorkBuddy 主导体检 2026-10-12",
+      "issue": "【交付链第1步·输入侧】扫描件进不来：真实招标文件以扫描PDF为主，现有pdfjs抽不到文字层，解析链路直接空转。docs/10 §4.2自评『扫描件是当前最大的输入缺口』。已核实方案：ocrmypdf/OCRmyPDF（MPL-2.0，离线命令行为扫描PDF加文字层，加完pdfjs立即可抽）。不修则后续90%能力在真实场景无效。",
+      "evidence": "docs/10 §4.2；本机未检测到 OCR 工具链"
+    },
+    {
+      "id": "delivery-p0-02-solution-gen-all-failed",
+      "priority": "P0",
+      "module": "/solution-studio",
+      "status": "open",
+      "source": "WorkBuddy 主导体检 2026-10-12",
+      "issue": "【交付链第2步·方案模块从未产出】solutions 表唯一记录（solution_name=【演练】R01-solution-20261004）实测：11个章节 gen_status 全部=failed、content 全部0字、doc_status=outline。方案模块从未产出过完整正文。需先定位失败根因（模型通道/提示词/超时/额度），再谈优化。",
+      "evidence": "SQLite 只读实测 solutions 表：chapters[*].gen_status=failed, content=0"
+    },
+    {
+      "id": "delivery-p0-03-kb-invisible",
+      "priority": "P0",
+      "module": "/knowledge",
+      "status": "open",
+      "source": "WorkBuddy 主导体检 2026-10-12",
+      "issue": "【交付链第3步·素材找不到】知识库静默不可见：kb_docs 实测6998篇（content>200字6115篇），前端 MAX_PAGES=30 × perPage 200 = 6000 硬上限，至少998篇不可见；叠加首屏40-61秒。素材是真实存在的，但用户看不到、检索不到。",
+      "evidence": "SQLite 实测 kb_docs=6998；AI-ITERATION.md §3 记录 MAX_PAGES=30"
+    },
+    {
+      "id": "delivery-p0-04-ppt-never-used",
+      "priority": "P0",
+      "module": "/ppt-quote",
+      "status": "open",
+      "source": "WorkBuddy 主导体检 2026-10-12",
+      "issue": "【交付链第4步·PPT从未真实使用】ppt_decks 实测仅2份、quotes 仅3份；且模板驱动导出(r167-ppt-template-driven-export)与母版级保真(r169-ppt-template-master-fidelity)均未落地。售前交付的PPT必须套公司模板，套不上=交付物不合格。",
+      "evidence": "SQLite 实测 ppt_decks=2, quotes=3；ledger backlog r167/r169 未关闭"
+    },
+    {
+      "id": "delivery-p1-01-hybrid-retrieval",
+      "priority": "P1",
+      "module": "/knowledge",
+      "status": "open",
+      "source": "WorkBuddy 主导体检 2026-10-12",
+      "issue": "混合检索：kbCore.ts 为纯词法 IDF+BM25+短语邻接，说人话的查询召不回写法不同的文档，直接导致生成时引不到素材。docs/10 §4.1 已给正确解法：两阶段（文档级向量粗排11ms → 现有BM25在候选集内精排），并实测否决全库块级向量化(268ms/292MB，本机不可接受)。",
+      "evidence": "docs/10 §4.1 实测；kbCore.ts 单一入口 searchKbDocs()"
+    },
+    {
+      "id": "delivery-p1-02-dashboard-aggregate",
+      "priority": "P1",
+      "module": "/",
+      "status": "open",
+      "source": "WorkBuddy 主导体检 2026-10-12",
+      "issue": "驾驶舱『进行中的项目』恒显空，但 bid_projects 实测有19个项目。聚合未接，使总览名不副实。docs/13 §3.2 已记录，至今未修。",
+      "evidence": "SQLite 实测 bid_projects=19；docs/13 §3.2"
+    },
+    {
+      "id": "delivery-p1-03-customer-count",
+      "priority": "P1",
+      "module": "/customer-management",
+      "status": "open",
+      "source": "WorkBuddy 主导体检 2026-10-12",
+      "issue": "客户总数显示20而实际160条：CrmStatsRow.tsx 的 customerCount 未传 capped（同文件其他指标已传），显示已加载数而非真实总数。docs/09/§3 记为 B-03。",
+      "evidence": "SQLite 实测 customers=160；AI-ITERATION.md §3 B-03"
+    },
+    {
+      "id": "delivery-p2-01-e2e-acceptance-gate",
+      "priority": "P2",
+      "module": "all",
+      "status": "open",
+      "source": "WorkBuddy 主导体检 2026-10-12",
+      "issue": "缺交付级端到端验收门禁：现有门禁是 build/lint/test（实测185文件2116用例全绿），但没有一条『从真实文件到可发送交付物』的端到端判据，导致各模块技术通过却无人回答『能不能发给客户』。需为四大模块各建一条端到端路径 + 硬判定（★零漏答/逐字零改写/编造=0/导出无占位残留）。",
+      "evidence": "本次实测：vitest 185/185 全绿，但 solutions 11章全failed 同时存在"
     }
   ],
   "closed": [
@@ -3411,6 +3599,835 @@
       "files": [],
       "gates": "未改代码；演练情报已清理",
       "round": 219
+    },
+    {
+      "id": "r2-r021-outline-residue",
+      "title": "R-021 残句治理：大纲收尾本地质检（零 AI）",
+      "priority": "P0",
+      "summary": "新建 outlineResidue.ts 纯模块：命中显式特征表的残句标题并入规范主题父章、子级残句合并回父章、同后缀冗余兄弟章（术语×4）合并，叶子正文不删除；接 useBidWorkspace 大纲收尾 setOutlineDraft 前执行并 toast「已自动修正 N 处」，页面 <details> 留痕原→新对照。6 例单测覆盖 14 条建阳区残句命中 + 14 条合法章节零误伤。四门全绿（tsc 0/vitest 1605+6/eslint 零新增/build 3.48s）。",
+      "files": [
+        "src/pages/BidWorkspace/outlineResidue.ts",
+        "src/pages/BidWorkspace/outlineResidue.test.ts",
+        "src/pages/BidWorkspace/useBidWorkspace.ts",
+        "src/pages/BidWorkspace/BidWorkspacePage.tsx"
+      ],
+      "gates": "tsc 0 / vitest 1605(+6) / eslint 零新增 / build 3.48s",
+      "round": 220
+    },
+    {
+      "id": "r2-r025-score-coverage-checkup",
+      "title": "R-025 评分覆盖体检：按分值统计技术评分项落点（零 AI）",
+      "priority": "P0",
+      "summary": "新建 scoreCoverageCheckup.ts 纯模块：复用 R31 numberScoringItems+buildScoringCoverageMatrix 按【分值】聚合「技术总分/已落点/未落点」+ 逐评分项明细 + 未落点丢分清单（分值降序）。接 useBidWorkspace：scoreCheckup useMemo 实时随大纲变化、addUncoveredScoringToOutline 一键补入未落点评分项为技术章节（同名跳过、落库、toast 涉及分值）。页面步骤3 渲染体检卡片（三段分值+未落点明细含主观分标记+一键补入按钮），零涟漪。4 例单测覆盖无表不呈现/空大纲全未落点(53分)/标注即落点分值前移/标题去重。四门全绿（tsc 0/vitest 1609+4/eslint 零新增/build 4.14s）。",
+      "files": [
+        "src/pages/BidWorkspace/scoreCoverageCheckup.ts",
+        "src/pages/BidWorkspace/scoreCoverageCheckup.test.ts",
+        "src/pages/BidWorkspace/useBidWorkspace.ts",
+        "src/pages/BidWorkspace/BidWorkspacePage.tsx"
+      ],
+      "gates": "tsc 0 / vitest 1609(+4) / eslint 零新增 / build 4.14s",
+      "round": 221
+    },
+    {
+      "id": "r2-r020-mustwrite-decouple",
+      "title": "R-020 商务/技术判定改按评分办法 + mustWrite 与 part 解耦（零 AI）",
+      "priority": "P0",
+      "summary": "新建 bidMustWrite.ts 六级信号纯判定（①评分办法含技术评分项②③分值>0且技术关键词/形态④★▲实质性⑤目录归类仅降权⑥要求性表述兜底·用户追加→uncertain），命中任一强信号即 mustWrite，与模型 part 解耦；商务专属词命中且无技术强信号才判 biz。OutlineNode 加 mustWrite?:boolean。useBidWorkspace 三处 outlineScope 过滤 tech 分支由 !isBizPart 改为 !isBizPart||judgeMustWrite().mustWrite（现算防模型重写丢失），收尾 applyMustWrite 持久化+回收误标 biz 的必写技术章(rescued)+toast，页面渲染判定纠偏提示条可手动回退。6 例单测。四门全绿（tsc 0/vitest 1615+6/eslint 零新增/build 4.04s）。",
+      "files": [
+        "src/pages/BidWorkspace/bidMustWrite.ts",
+        "src/pages/BidWorkspace/bidMustWrite.test.ts",
+        "src/pages/SolutionStudio/solutionTypes.ts",
+        "src/pages/BidWorkspace/useBidWorkspace.ts",
+        "src/pages/BidWorkspace/BidWorkspacePage.tsx"
+      ],
+      "gates": "tsc 0 / vitest 1615(+6) / eslint 零新增 / build 4.04s",
+      "round": 222
+    },
+    {
+      "id": "r2-r023-dual-layer-outline",
+      "title": "R-023 双层目录：招标目录命中/评分项派生分类 + 三态差异 + 补入（零 AI）",
+      "priority": "P0",
+      "summary": "新建 bidOutlineOrigin.ts 按招标目录逐行互含匹配给顶层章打 origin(tender/scoring)，生成后三态 CatalogDiff(matched/missing/extra)；OutlineNode 加 origin 字段；useBidWorkspace 收尾调 classifyOrigins 持久化+设置 catalogDiff，addMissingCatalogToOutline 补入缺失目录条目为 tender 顶层章；页面步骤3 渲染目录比对可折叠卡片(三态计数+缺失红色明细+补入按钮)。5 例单测。四门全绿(tsc0/vitest1620+5/eslint 零新增/build3.58s)。同时覆盖 R-018 三态差异视图要求。",
+      "files": [
+        "src/pages/BidWorkspace/bidOutlineOrigin.ts",
+        "src/pages/BidWorkspace/bidOutlineOrigin.test.ts",
+        "src/pages/SolutionStudio/solutionTypes.ts",
+        "src/pages/BidWorkspace/useBidWorkspace.ts",
+        "src/pages/BidWorkspace/BidWorkspacePage.tsx"
+      ],
+      "gates": "tsc 0 / vitest 1620(+5) / eslint 零新增 / build 3.58s",
+      "round": 223
+    },
+    {
+      "id": "r2-r022-tech-param-landing",
+      "title": "R-022 技术参数落点：全量参数逐条核对+三态权重+负偏离扣分联动（零 AI）",
+      "priority": "P0",
+      "summary": "新建 techParamCoverage.ts：l3 全量抽取第五章技术和服务要求参数(默认上限240覆盖116项)，classifyKind 标【评审项】/▲实质性/一般项，逐条核对是否命中技术大纲叶子(建节点)或偏离表行(进偏离表)=已覆盖，负偏离(deviation)×每项扣分(默认0.5可覆盖)=预计扣分，输出未覆盖明细。hook techParamCoverage=useMemo(coverageNodes,parse_report,deviationTable)+addUncoveredTechParamsToOutline 复用 insertClauseIntoOutline 逐条补入技术章。DeviationPanel 拆分维度下方插入技术参数落点卡片(已覆盖N/总数+三态计数+负偏离扣分+补入按钮+未覆盖高亮前20)，ComposeStep/BidWorkspacePage 透传两 prop。7 例单测。四门全绿(tsc0/vitest1627+7/eslint零新增/build3.11s)。",
+      "files": [
+        "src/pages/BidWorkspace/techParamCoverage.ts",
+        "src/pages/BidWorkspace/techParamCoverage.test.ts",
+        "src/pages/BidWorkspace/useBidWorkspace.ts",
+        "src/components/bid-workspace/DeviationPanel.tsx",
+        "src/components/bid-workspace/ComposeStep.tsx",
+        "src/pages/BidWorkspace/BidWorkspacePage.tsx"
+      ],
+      "gates": "tsc 0 / vitest 1627(+7) / eslint 零新增 / build 3.11s",
+      "round": 224
+    },
+    {
+      "id": "r2-r017-018-tender-dir-backbone",
+      "title": "R-017 必备技术内容可配置清单（mustWrite+大纲 prompt 双口径，零改代码）",
+      "priority": "P1",
+      "summary": "新建 mustWriteConfig.ts：DEFAULT_REQUIRED_TECH_KEYWORDS(技术/交付/服务下限词)+parseRequiredKeywords+mergeRequiredKeywords+readRequiredTechKeywords(localStorage 键 bid_mustwrite_required_keywords，异常/SSR 回退默认)。bidMustWrite MustWriteCtx 增 requiredKeywords，judgeMustWrite 增②级(命中清单且非商务专属→必写tech，bizHit 优先不误伤)。bidOutline opts.requiredTechContents(缺省字节不变)非空时注入 numbered 硬约束+stableParts 必备清单块，PROMPT_VERSION 3→4 且快照 31 例未破。hook 两口径读同一 readRequiredTechKeywords。5 例新单测(3 config+2 mustwrite)。四门全绿(tsc0/vitest1632+5/eslint零新增/build3.22s)。R-018 目录骨架已在 R220/R223 落地。",
+      "files": [
+        "src/pages/BidWorkspace/mustWriteConfig.ts",
+        "src/pages/BidWorkspace/mustWriteConfig.test.ts",
+        "src/pages/BidWorkspace/bidMustWrite.ts",
+        "src/pages/BidWorkspace/bidMustWrite.test.ts",
+        "src/pages/BidWorkspace/prompts/bidOutline.ts",
+        "src/pages/BidWorkspace/useBidWorkspace.ts"
+      ],
+      "gates": "tsc 0 / vitest 1632(+5) / eslint 零新增 / build 3.22s",
+      "round": 225
+    },
+    {
+      "id": "r2-r019-024-demo-off",
+      "title": "R-019/R-024 演示分默认不生成 + 线下准备提示 + 生成开关",
+      "priority": "P1",
+      "summary": "演示/答辩/讲标（及演示语境视频）标题的技术顶层章按现场评分项处理：默认不进正文生成、不计字数页数、醒目标「演示分·不响应」、提供随项目持久化的 generate_demo 开关、给线下准备演示提示语。复用商务骨架章生命周期：bidTypes isGenTargetChapter/chapterWordBudgets 各加默认 true 的可选参数（向后兼容 0 回归），demoSection.ts 纯模块（findDemoScoreNodes/summarizeDemoNodes/DEMO_OFFLINE_HINT + isDemoScoreTitle 单一真源，视频语境防误判）+ 5 例单测。hook 逐处 isGenTargetChapter(6)/chapterWordBudgets(8) 传 generate_demo、生成 gate 加专属文案、setGenerateDemo+demoScoreSummary 暴露。UI：GenerationSettingsBar 演示分开关+amber 线下提示；ComposeStep 章徽标三态；Page 透传。四门全绿(tsc0/vitest1637+5/eslint零新增/build3.34s)。",
+      "files": [
+        "src/pages/BidWorkspace/demoSection.ts",
+        "src/pages/BidWorkspace/demoSection.test.ts",
+        "src/pages/BidWorkspace/bidTypes.ts",
+        "src/pages/BidWorkspace/useBidWorkspace.ts",
+        "src/components/bid-workspace/GenerationSettingsBar.tsx",
+        "src/components/bid-workspace/ComposeStep.tsx",
+        "src/pages/BidWorkspace/BidWorkspacePage.tsx"
+      ],
+      "gates": "tsc 0 / vitest 1637(+5) / eslint 零新增 / build 3.34s",
+      "round": 226
+    },
+    {
+      "id": "r2-r010-qual-count-reconcile",
+      "title": "R-010 资质数量口径统一：服务端时区对齐 + 不变量测试 + 页面自检指标（零 AI）",
+      "priority": "P0",
+      "summary": "三处改动闭合 r2-r010 P0 资质口径漂移（涉废标级）：1. pb_hooks/qual_certs.pb.js summary 路由将 todayMs/toMs 由 UTC 零点改为本地零点（new Date().setHours(0,0,0,0) + 去掉 validTo+T00:00:00Z 的 Z 后缀），消除 00:00-08:00 UTC 与本地日期错位导致的分档漂移，与客户端 summarizeQuals/parseDay 口径完全对齐；2. qualsCore.test.ts 新增 3 条不变量测试：A 三档之和==alerts.length（多组边界数据）、B qualRiskView.total==expired+critical+warning（含 NaN 输入）、A+B 联合：从同一行数据出发驾驶舱 total 与台账 alerts.length 完全相等（r2-r010 核心验收）；3. QualCertsPage.tsx 预警明细顶部新增运行时自检徽章：计算 tierSum=expired+critical+warning，与 alerts.length 比较；口径通过时显示「口径校验通过」（hover 提示逐档明细），异常时红色标注「口径异常」提示联系维护（正常情况永不触发，仅作为未来改动的安全网）。四门全绿：tsc 0 / vitest 1667+2skip / eslint 0 / build 3.07s。",
+      "files": [
+        "pocketbase/pb_hooks/qual_certs.pb.js",
+        "src/pages/QualCerts/qualsCore.test.ts",
+        "src/pages/QualCerts/QualCertsPage.tsx"
+      ],
+      "gates": "tsc 0 / vitest 1667(+3 new invariant) / eslint 0 / build 3.07s",
+      "round": 228
+    },
+    {
+      "id": "r229-g1g2-compliance-risk-scan",
+      "title": "G1/G2 招标文件合规风险与红线扫描（八大禁止+六类陷阱+七条量化红线，规则为主+AI兜底，并入解析报告）",
+      "priority": "P1",
+      "summary": "按《医疗信息化投标全流程规范（整合版）V1.0》落地合规体检。① 纯本地零 AI 规则引擎 tenderComplianceRisk.ts（330 行）：12 条正则规则覆盖八大禁止情形（DIS-scale/region/brand/authorize/ownership）、七条量化红线（RL-copyright/sourcecode/scope/api/grade + RL-payment/maint 阈值判定，阈值集中 REDLINE 常量便于调整）、六类隐形陷阱（TRAP-accept/exclusive）；scanTenderComplianceRisk 逐行匹配+去重，summarizeComplianceRisk 汇总红/黄/分类，parseAiRiskFindings/mergeRiskFindings/sortRiskFindings 支撑 AI 兜底合并。② 27 例单测全绿（含误报防护：视频监控不触发品牌、质保2年不触发规模、同条款去重、阈值边界）。③ 解析报告内扩展（不新建页面）：ParseReportPanel 新增「合规风险与红线扫描」派生分区（照隐式硬约束模式，红/黄徽标+分类筛选 chips+原文摘录+依据+质疑/处置建议），规则命中对 tenderText 实时扫描零费用；「AI 深度体检」按钮走 chatViaGateway+runWithCostConfirm 门禁，语义级倾向性/矛盾判定写回 ParseReport.risk_ai_findings 新字段（独立字段不进 PARSE_* 分区、不影响项计数），origin=ai 标注须人工确认。④ 两处调用点（项目流水线 BidWorkspacePage + 快捷工具 QuickToolsPanel）透传 runWithCostConfirm/archived。四门全绿：tsc 0 / vitest 1667+2skip（+27 无回归）/ eslint 零新增（仅既有 setState-in-effect 与 bidTypes no-control-regex 基线）/ build 3.25s。实机：建阳区三甲医院集成平台招标原文命中 红5/黄31（L1790 知识产权归甲方、L1124 规模条件作门槛等），面板正常渲染、AI 按钮就绪。",
+      "round": 229,
+      "evidence": "tests/records/2026-10-09-r229-g1g2-compliance-risk-scan.md；.qoder/r228_risk_panel.png；.loop/reports/2026-10-09-r229-g1g2-compliance-risk.md"
+    },
+    {
+      "id": "r230-kbqa-coldstart-perf",
+      "title": "知识库问数冷启动性能修复：QA 全文语料通道改走 kbAssemble 共享缓存 + 开抽屉预热",
+      "priority": "P1",
+      "summary": "ensureQaCorpus 原裸调 listKbDocs() 与助手/方案/竞品的 getCachedVisibleDocs 共享全量缓存互不复用，同一批 ~300MB/6000+ 篇全量语料跨模块被重复下载两遍，冷启动长时间静默等待。改走 getCachedVisibleDocs(userId)：并发去重+TTL+onKbMutation 统一失效，scopeDocs 再过滤为幂等，结果不变；开问答抽屉 fire-and-forget prewarmKbCache 把下载与组织问题时间重叠。零 collection/零 pb_hooks/仅会话内 state。新增 kbAssemble.cache.test.ts 5 例锁死缓存契约（去重/TTL/失效重取/可见性/失败重试）。",
+      "round": 230,
+      "evidence": ".loop/reports/2026-10-09-r230-kbqa-coldstart-perf.md; 四门全绿 tsc0/vitest1672+5/eslint零新增/build0"
+    },
+    {
+      "id": "r231-g3-commitment-letter",
+      "round": 231,
+      "priority": "P1",
+      "title": "G3 ★/▲ 实质性条款逐字响应承诺函（本地零 AI，直接并入投标正文 biz 章）",
+      "summary": "commitmentLetter.ts 纯模块：splitStarClauses 按 ★/☆/▲/△ 标记切分 star_clauses 分区、续行并入、尾注(…另有N条)丢弃；buildCommitmentLetter 逐字引用「」+固定模板承诺语+盖章签字日期落款；commitmentChapter/OutlineNode + upsert* 以 part=biz、gen_status=done 幂等并入。useBidWorkspace 新增 generateCommitmentLetter（读分区→切分→生成→upsert bid_chapters/bid_outline 并同步 outlineDraft 抗重确认→updateProject）+ 暴露；ComposeStep 工具栏加「生成承诺函」按钮、BidWorkspacePage 透传、Pick 补字段；ChapterEditor 增 biz+hasContent 可编辑分支（承诺函可校阅，空骨架章仍占位）。bidFiles 对 content 非空的 biz 章走正常导出，符合『直接进投标正文』。单测 commitmentLetter.test.ts 9 例。",
+      "evidence": ".loop/reports/2026-10-09-r231-g3-commitment-letter.md; tests/records/2026-10-09-r231-g3-commitment-letter.md; 四门全绿 tsc0/vitest1681(+9)/eslint零新增/build0; 实机建阳区命中9条逐字引用+落款可见可编辑"
+    },
+    {
+      "id": "r232-g4-challenge-letter",
+      "round": 232,
+      "priority": "P1",
+      "title": "G4 质疑函六要素生成器（财政部令 94 号第十二条，模板为主 + AI 兜底）",
+      "summary": "新建纯模块 challengeLetter.ts：六要素类型 + STANDARD_LEGAL_REFS 内置法条模板 + challengeDeadline7WorkingDays（顺延 7 工作日跳周末）+ buildChallengeLetter（逐条编号组装正式质疑函，落款留空线下补签盖章）+ validateChallengeFields（缺失项校验）。8 例单测全绿。UI 侧新建 ChallengeLetterPanel.tsx：六要素表单（供应商/项目/动态多条质疑事项含 4 子段/日期）+ 生成 + AI 兜底补全事实/法律依据（chatViaGateway + runWithCostConfirm 费用门禁 + 容错 JSON 解析仅回填空缺项）+ 复制/下载。挂载于 QuickToolsPanel「质疑函生成」入口卡 + Dialog。",
+      "evidence": "四门：tsc --noEmit 0 错误 / vitest run 1689 passed | 2 skipped（+8 质疑函单测，无回归）/ eslint ChallengeLetterPanel·challengeLetter.ts·test 0，QuickToolsPanel:96 仅既有 baseline setState-in-effect（零新增）/ npm run build 成功 3.07s。实机回归：快捷工具→质疑函生成器→空表单点生成弹出缺失项提示；填六要素点生成→预览完整输出「一、供应商信息/二、项目信息/三、质疑事项·事实·法律·请求（事项1逐条）/四、日期与签章（签字盖章留空）」，顶部 7 工作日截止提示（2026-10-20）与预填日期正确。"
+    },
+    {
+      "id": "r203-cooling-not-surfaced",
+      "title": "模型通道冷却状态在 ModelSelect 可视化（恢复倒计时徽标 + 下拉冷却后缀）",
+      "priority": "P3",
+      "round": 233,
+      "summary": "R233 r203-cooling-not-surfaced：模型通道冷却状态在 ModelSelect 可视化。modelFailover.ts 新增 channelCoolingRemainingMs（只读倒计时，不剪枝）+ onCoolingChange 订阅（mark/clear/reset 通知，异常吞掉不影响回退）；ModelSelect.tsx 新增 useCoolingKeys hook（合并模型级+配置级冷却，订阅即时刷新+冷却存续期逐秒自续倒计时、清空即停表，无常驻定时器），为所选通道渲染只读 badge-warning 徽标（Clock+冷却中·约Ns+连击×N，status/aria-live/title），下拉冷却通道补「· 冷却中」后缀；不改回退与禁用口径。纯会话内存/零持久化/collection/pb_hooks/提示词。tsc0/vitest 1705 passed+2skip（较基线+2，modelFailover 28→30）/eslint 触及3文件0增error/build0。避开 bid-workspace/solution-studio 等 R220-R232 连续在途域，触及文件均 git-clean。未 commit。",
+      "files": [
+        "src/lib/modelFailover.ts",
+        "src/components/model-config/ModelSelect.tsx",
+        "src/lib/modelFailover.test.ts"
+      ],
+      "report": ".loop/reports/2026-10-09-r233-cooling-not-surfaced.md"
+    },
+    {
+      "id": "r234-g5-param-match-types",
+      "round": 234,
+      "priority": "P1",
+      "title": "G5 参数匹配四类研判（规范 4.1，模板为主 + AI 兜底，解析报告内扩展）",
+      "summary": "新建纯模块 paramMatchTypes.ts：PARAM_MATCH 四类元数据（01完全满足/02部分不满足/03替代方案/04完全不满足，定义+应对策略严格取自规范4.1）+ judgeParam（按 ★/▲ 实质性标记自动推导研判级别与红线冲突：partial+★不允许负偏离、alternative+★不接受替代、none+★建议放弃投标）+ summarizeParams（聚合投/不投决策：starReject>0→reject、starOpen>0→caution、untyped>0→pending、else bid）+ extractParamCandidates（仅收含★/▲标注行，key=L{行号}，零误报）+ applyChoices（合法值回填）。14 例单测全绿。ParseReportPanel.tsx 内新增「参数匹配四类研判」视图：overall 徽标 + 已研判 N/M + AI 兜底研判 + 规范4.1 说明 + 决策横幅 + 四类 chips + 产品能力概述 Textarea + 逐条参数行四选一按钮（带定义 tooltip、级别徽标、策略要点、★红线冲突提示）。选择持久化到 report.param_match_choices（PocketBase JSON 零迁移，沿用 risk_ai_findings 范式）。",
+      "evidence": "四门：tsc --noEmit 0 错误 / vitest run 1703 passed | 2 skipped（+14 参数研判单测，无回归）/ eslint paramMatchTypes.ts·test 0，ParseReportPanel:165 与 bidTypes:3635/3637 均为既有 baseline（零新增）/ npm run build 成功 3.37s。实机回归（建阳区项目第2步解析报告）：★（二）接口对接行点「04 完全不满足」→ 顶部徽标「建议放弃投标」、决策横幅「存在1项★实质性条款完全不满足…建议放弃投标或移交公司层面决策」、行徽标「★红线冲突」、冲突文本「★红线：★实质性条款完全不满足：依据规范4.1，建议放弃投标」、chips 04=1、已研判1/9 全部符合规范4.1；无 console 报错。"
+    },
+    {
+      "id": "r235-slice3-merge-engine",
+      "title": "底稿增量三段式匹配与合并计划引擎（slice3 P0 备料切片）",
+      "priority": "P0",
+      "round": 235,
+      "summary": "R235 bidkit-plan-slice3 底稿增量·匹配/合并引擎（P0 备料切片）。新增纯函数模块 bidDraftMerge.ts：normalizeTitle（剥编号去标点）/titleSimilarity（相等1·包含0.85·否则bigram Jaccard）/matchOutlineToDraft（三段式 exact→fuzzy≥0.6→none，exclude 不复用）/decideAction（未命中→补偏离表或自动生成，命中→技术·偏离参考重写·商务·架构原文保留）/buildMergePlan（MergePlanItem+extras+stats）/parseDraftHtml（h1/h2 切章去标签）。复用已存 mammoth 思路、零新增依赖、零 schema/pb_hooks/提示词、脱离 DOM 可单测。+13 单测。UI 接线（ComposeStep 上传入口解耦）与 schema（Chapter/BidProject source/locked/draftRef）留后续切片，因该区被 R220-R234 在途密集改动。同轮核验关闭 slice4：r211 已完整实现且接线可达（Word 预览按钮+Dialog+BidWordPreview），滚动连续预览满足需求，backlog 漏关。tsc0/vitest1718 passed+2skip(+13)/eslint 2新文件0/build3.10s。未 commit。",
+      "files": [
+        "src/pages/BidWorkspace/bidDraftMerge.ts",
+        "src/pages/BidWorkspace/bidDraftMerge.test.ts"
+      ],
+      "report": ".loop/reports/2026-10-09-r235-slice3-merge-engine.md"
+    },
+    {
+      "id": "r235-slice4-verification-close",
+      "title": "slice4 Word 分页预览核验关闭（r211 已实现且接线可达）",
+      "priority": "P0",
+      "round": 235,
+      "summary": "核验确认 r211 已完整实现并接线可达，本次无代码变更，仅补关账。见 bidkit-plan-slice4 backlog closed 摘要。",
+      "files": [
+        "src/components/bid-workspace/BidWordPreview.tsx"
+      ],
+      "report": ".loop/reports/2026-10-09-r235-slice3-merge-engine.md"
+    },
+    {
+      "id": "r2-r011-customer-table",
+      "title": "客户管理表格化：可复用 DataTable 基元 + 客户页表格视图（排序/分页/搜索/行点击详情）",
+      "priority": "P1",
+      "round": 236,
+      "summary": "新建可复用 DataTable（纯 sortRows/paginate 分文件满足 react-refresh + 泛型可访问化组件 + 13 单测），客户管理页新增「表格」视图：view 联合类型 +table，抽出 detailPanel 常量供列表/表格复用，表格列全取既有字段（含床位数/等级归一/本地日期），点行复用 selectCustomer 详情流。零 collection/pb_hooks/提示词/schema；四门全绿（tsc0 / vitest 1731+2skip 增量+13 / eslint 触及文件0 / build0）。",
+      "files": [
+        "src/components/ui/dataTableLogic.ts",
+        "src/components/ui/DataTable.tsx",
+        "src/components/ui/DataTable.test.ts",
+        "src/pages/CustomerManagement/useCustomerManagement.ts",
+        "src/pages/CustomerManagement/CustomerManagementPage.tsx"
+      ],
+      "report": ".loop/reports/2026-10-09-r236-customer-datatable.md"
+    },
+    {
+      "id": "r237-intel-table",
+      "title": "情报中心表格视图（DataTable 复用，r2-r012 情报侧接线）",
+      "priority": "P1",
+      "round": 237,
+      "summary": "R237 情报「卡片/表格」视图切换：复用 R236 DataTable 交付 7 列（收藏/标题/类型/地区/来源/状态/发布，6 列三态排序），行点击开详情面板并与右栏选中联动，初始排序发布↓；pageSize=0 匹配服务端分页，保留加载更多；零 schema/pb_hooks/提示词，仅改 IntelCenterPage.tsx 单文件，useIntelCenter 与在途域未动。四门全绿 tsc0/vitest1731+2skip/eslint0/build0。",
+      "files": [
+        "src/pages/IntelCenter/IntelCenterPage.tsx"
+      ],
+      "report": ".loop/reports/2026-10-09-r237-intel-datatable.md"
+    },
+    {
+      "id": "r238-competitor-table",
+      "title": "竞品厂商档案表格视图（DataTable 第三处落地，r2-r012 竞品侧接线）",
+      "priority": "P1",
+      "round": 238,
+      "summary": "R238 竞品「厂商档案」卡片/表格切换：窄列 4 列（名次徽标/厂商+我方Badge/中标额/软著数，中标与软著可排序），twMerge 覆盖 padding 适配 360px；行点击选厂商与右栏详情联动，默认顺序沿用页面 Select 排序；仅 CompetitorsPage 单文件+ArchiveItem 接口固化形状，数据层零改动；四门一次全绿 tsc0/eslint0/vitest1731+2skip/build0。",
+      "files": [
+        "src/pages/Competitors/CompetitorsPage.tsx"
+      ],
+      "report": ".loop/reports/2026-10-09-r238-competitor-datatable.md"
+    },
+    {
+      "id": "r239-customer-delete-demote",
+      "title": "客户详情「删除」按钮降位至「更多操作」下拉（docs13-3.4 关闭）+ dropdown-menu 基元",
+      "priority": "P3",
+      "round": 239,
+      "summary": "R239 docs13-3.4：红字常驻删除按钮收进 ⋮「更多操作」下拉，与常用操作物理隔离防误触；ConfirmDialog 二次确认与删除中 loading 原样保留。新建 @radix-ui/react-dropdown-menu 薄封装 dropdown-menu.tsx（依赖已在 package.json 且实装，复用不自研），全站第二枚通用 ui 基元。四门全绿 tsc0/eslint0/vitest1731+2skip/build0，一次通过零修复。",
+      "files": [
+        "src/components/ui/dropdown-menu.tsx",
+        "src/components/customer-management/CustomerProfileCard.tsx"
+      ],
+      "report": ".loop/reports/2026-10-09-r239-customer-delete-demote.md"
+    },
+    {
+      "id": "r240-assistant-welcome-card",
+      "title": "助手记忆/技能可发现性欢迎卡（docs13-3.8 关闭，零 schema）",
+      "priority": "P3",
+      "round": 240,
+      "summary": "R240 docs13-3.8：小智助手空会话时展示一次性欢迎卡，说明长期记忆与技能能力，内嵌「记忆」「技能」直达按钮（复用 setLeftTab）；关闭写 localStorage assistant.welcomeDismissed（仿 bidkit.compose 惯例，try/catch 静默降级）。仅 AssistantPage.tsx 单文件，面板与 hooks 零改动；四门全绿一次通过 tsc0/eslint0/vitest1731+2skip/build0。",
+      "files": [
+        "src/pages/Assistant/AssistantPage.tsx"
+      ],
+      "report": ".loop/reports/2026-10-09-r240-assistant-welcome-card.md"
+    },
+    {
+      "id": "r241-style-details-close",
+      "title": "docs13-3.9 风格细节三项合一：侧栏双滚动条根因/今日必看骨架屏/·AI hover（docs13 线清零）",
+      "priority": "P3",
+      "round": 241,
+      "summary": "R241 三处纯 CSS/属性级修复：SidebarNav nav 补 min-h-0（flex min-height:auto 撑破 h-screen 侧栏致双滚动条的根因）+ header/footer shrink-0；MustSeeTodayBar 加载文案换三列 animate-pulse 骨架（role=status+sr-only 语义保留）；CustomerProfileCard 等级/指标/营收/班子 4 处裸 ·AI 角标统一补 cursor-help+title hover。零新状态零依赖；8 处锚点一次通过；四门全绿 tsc0/eslint0/vitest1731+2skip/build0。docs13 走查线全部关闭。",
+      "files": [
+        "src/components/shell/SidebarNav.tsx",
+        "src/components/home/MustSeeTodayBar.tsx",
+        "src/components/customer-management/CustomerProfileCard.tsx"
+      ],
+      "report": ".loop/reports/2026-10-09-r241-style-details-close.md"
+    },
+    {
+      "id": "r242-empty-state-guides",
+      "title": "slice5 空态引导：AI 动态分类空态双分支 + 产品映射 bid/solution 两 tab 跨页直达引导（O-001/O-002）",
+      "priority": "P1",
+      "round": 242,
+      "summary": "R242 落地 slice5 plan 的「空态引导卡」线之 AI 动态/产品映射两页（均 git-clean）：AiHotPage 分类空态升格为虚线引导卡，筛选态给「浏览全部分类」、无数据态给「刷新」；ProductMappingPage 把 Select placeholder 内的无数据提示升格为显式引导卡，bid tab 直达 /bid-workspace、solution tab 直达 /solution-studio（useNavigate 项目惯例，路由经 App.tsx 核验）。仅加载完且确为空时出现，零新组件零依赖。Knowledge(O-005)因 useKnowledge.ts 在途避让拆后轮。5 处锚点一次通过；四门全绿 tsc0/eslint0/vitest1731+2skip/build3.44s。",
+      "files": [
+        "src/pages/AiHot/AiHotPage.tsx",
+        "src/pages/ProductMapping/ProductMappingPage.tsx"
+      ],
+      "report": ".loop/reports/2026-10-09-r242-empty-state-guides.md"
+    },
+    {
+      "id": "r243-solution-datatable",
+      "title": "方案工作室列表表格视图（DataTable 第五站）+ O-005 知识库空态核验关闭——slice5 六项观察全清",
+      "priority": "P1",
+      "round": 243,
+      "summary": "R243 落地 slice5 O-004 方案工作室侧：SolutionListPanel 新增计数+卡片/表格切换行与 DataTable 表格分支（6 列：名称/类型/医院/状态/正文章节/更新时间，默认更新时间倒序，行点击打开编辑，默认卡片视图不变），复用第五站；三在途文件（ChapterEditor/solutionTypes）零触碰，锚点全走既有导出。O-005 勘察确认知识库空态引导早已存在（R89-R148 累积 commit），核验即关。slice5 六项观察全部关闭。vitest 基线 149/1741（+1 文件系用户在途 complaintLetter.test.ts，非本轮，已甄别）。四门全绿 tsc0/eslint0/build3.34s。r2-r012 仅剩标书/资质两侧等清出。",
+      "files": [
+        "src/components/solution-studio/SolutionListPanel.tsx"
+      ],
+      "report": ".loop/reports/2026-10-09-r243-solution-datatable.md"
+    },
+    {
+      "id": "r244-g6-complaint-letter",
+      "round": 244,
+      "priority": "P1",
+      "title": "G6 投诉书六要素生成器（财政部令 94 号第十八条，模板为主 + AI 兜底）",
+      "summary": "新建纯模块 complaintLetter.ts：复用质疑函 ChallengeSupplier/ChallengeProject 类型 + ComplaintChallengeContext（质疑函编号/提出日期/答复情况 no_reply|unsatisfied/答复日期，体现投诉以质疑为前置）+ ComplaintItem（含 evidence 证据材料字段，规范第十八条逐条附证据）+ REPLY_STATUS_LABEL 正式文书措辞 + EVIDENCE_SOURCE_HINT 证据来源标注模板 + complaintReplyDeadline7WorkingDays/complaintFilingDeadline15WorkingDays（答复期满 +7、投诉截止 +15 工作日，内部 addWorkingDays 跳周末）+ buildComplaintLetter（五段式正式投诉书，落款留空）+ validateComplaintFields（含质疑函编号前置与逐条证据缺失校验）。10 例单测全绿。UI 新建 ComplaintLetterPanel.tsx：投诉人/项目/质疑情况（含答复情况下拉、答复日期条件显示）/投诉事项动态多条含 5 子段（附证据）/日期 + AI 兜底补全事实·法律·证据（chatViaGateway + runWithCostConfirm 费用门禁 + 容错 JSON 仅回填空缺项）+ 复制/下载。挂载 QuickToolsPanel「投诉书生成」入口卡 + Dialog。",
+      "evidence": "四门：tsc --noEmit 0 错误 / vitest run 1741 passed | 2 skipped（+10 投诉书单测，无回归，无 FAIL）/ eslint complaintLetter.ts·test·ComplaintLetterPanel.tsx 0，QuickToolsPanel.tsx:98 set-state-in-effect 为既有 baseline（G4 遗留 effect，state 插入仅使其行号位移，零新增）/ npm run build 成功 3.27s。实机回归（快捷工具→打开投诉书生成器）：空表单点生成→toast 列出全部缺失项含「质疑函编号（投诉前置）」「投诉事项1（证据材料）」；填六要素点生成→预览完整五段式「一、投诉人信息/二、项目信息/三、质疑情况（前置·含答复情况不满意与答复日期）/四、投诉事项·事实·法律·请求·证据材料/五、日期与签章（签字盖章留空）」，第十八条 15 工作日与质疑前置注、证据来源标注均正确；无 console 报错。"
+    },
+    {
+      "id": "r245-slice3-draft-merge-wiring",
+      "round": 245,
+      "priority": "P0",
+      "title": "标书底稿增量合并「UI 接线 + 落库口径」实机收口（bidkit-plan-slice3 剩余片）+ 实机发现 4 缺陷全修",
+      "summary": "承接 R235 挂账的「UI 接线 + schema」片并在真实三甲项目（安庆二院 14 章：8 空商务章 + 6 已成稿技术章）下跑通全流程：上传 .docx → 五态合并计划 → 应用 → 落库校验 → 保留章交 AI 重写。实机自测发现并闭合 4 个产品级缺陷：Bug A 摘要与列表口径割裂（0 章 vs 8 章）→ 摘要改用 kept+appended 折算口径；Bug B Word「标题 2」小节被拆成 4 个伪章并抽走父章正文（落库 chapters 14→22/伪 locked 8）→ 新增 parentIndexOfDraft + previewExtras 折叠口径，子节按「最近更上层标题」并进所属章（正文/参考段两种落点皆可，父章缺位才兜底独立成章），收敛到 chapters 18/locked 4，正文零丢失；Bug C「交 AI 重写」断链——底稿多出章按 part=biz 追加，而商务骨架章不参与逐章生成，toast 承诺的「下次生成会被覆盖」不成立→ releaseDraftChapter 增 outline/scope，连同大纲节点一起切 tech（scope=biz 保持不动、未传 outline 不改 part），toast 如实说明；Bug D 刷新后保留章管理入口随解析结果消失导致「锁死解不开」→ keptList 抽为不依赖解析结果的共享节点。零 collection/零 pb_hooks/零迁移（Chapter 仅加 draftLocked?/draftFrom? 两个可选字段随 bid_chapters json 透传）、零提示词改动（参考重写走既有 ref_materials_text + retrieveTenderFragments 通道，B 类流程不触发）、零改批量生成（保留章 gen_status=done 天然跳过）、零新依赖（mammoth 动态 import，R124 重库哨兵随全量 vitest 通过）。四门全绿：tsc 0 / vitest 150 files 1767 passed 2 skipped（基线 149 files 1741 passed，+1 文件 +26 用例）/ eslint 触及 6 文件 exit 0 / vite build 4.40s。实测前后备份并还原用户项目数据（match backup: True），未 commit。",
+      "evidence": "tests/records/2026-10-09-r245-bid-draft-merge-panel.md（三轮实机自测 + 修复前后 DB 取证对比）；.loop/reports/2026-10-09-r245-slice3-draft-merge-wiring.md（选题依据/变更表/四门数字/零 schema 零提示词论证/挂账）；截图 .qoder/tmp/r245_plan.png、r245_applied_fixed.png、r245_release_lock.png；取证脚本 scripts/r245_{backup,verify_db,verify_release,restore,gates}.py；补丁脚本 scripts/r245_{fold,panel,tests,fix_assert,release,release2,keptlist,docs}.py。",
+      "files": [
+        "src/pages/BidWorkspace/bidDraftPlan.ts",
+        "src/pages/BidWorkspace/bidDraftPlan.test.ts",
+        "src/components/bid-workspace/DraftMergePanel.tsx",
+        "src/pages/BidWorkspace/bidDraftImport.ts",
+        "src/pages/BidWorkspace/BidWorkspacePage.tsx",
+        "src/pages/SolutionStudio/solutionTypes.ts"
+      ]
+    },
+    {
+      "id": "r246-draft-refine-trio",
+      "round": 246,
+      "priority": "P2",
+      "title": "底稿增量合并三项细化（bidkit-draft-refine-01 全清）：参考段要点择优 / 孤儿底稿多出章清退 / 空大纲引导卡",
+      "summary": "用户建议的 quote-history-01、prompt-fabscan-03 复核均已关闭（R40/R79/R102、R101/R103），按「标书>方案>PPT、弱化报价」改选 R245 实测新开的 bidkit-draft-refine-01 三项细化：①selectRefExcerpt 把参考段超上限的机械截断升级为「首句+标题命中句+量化承诺句」按原文顺序择优，保住质保/工期/响应时长等可核对承诺；②applyMergePlan 记 keptExtraIds，换用更短底稿重新应用时清退上一轮遗留、本轮已不存在的 draft-extra-* 孤儿章（章节+大纲同步删，只动仍 draftLocked 者，appendExtras=false 不清退），summary 新增 pruned；③DraftMergePanel 在 bid_chapters 为空时渲染「先确认大纲再合并底稿」引导卡。四门全绿 tsc0/vitest1769+2skip(基线1767,+2)/eslint0/build3.22s，未 commit。",
+      "files": [
+        "src/pages/BidWorkspace/bidDraftPlan.ts",
+        "src/components/bid-workspace/DraftMergePanel.tsx",
+        "src/pages/BidWorkspace/bidDraftPlan.test.ts"
+      ],
+      "report": ".loop/reports/2026-10-09-r246-draft-refine-trio.md"
+    },
+    {
+      "id": "r247-score-near-miss-column-align",
+      "round": 247,
+      "priority": "P3",
+      "title": "评分表「列数恰差 1 的近形行」按内容对齐取分值（收 r195-score-table-n1-merged-col，R195 曾以误报面为由故意留空）",
+      "summary": "用户点名的 quote-history-01、prompt-fabscan-03 复核均已关闭（R40/R79/R102、R101/R103）；另巡检确认标书与方案侧章间并发 R162 已落地、需求覆盖四态核验完备，非缺口。据此按「标书 > 方案 > PPT、优先实质缺口」选 R195 显式挂账的 r195-score-table-n1-merged-col。取证：真实信息化招标评分表 3 列表头下，「评标项目」格无编号的行被 bidFiles 表格遍历的 map(cellText).filter(Boolean) 连分隔符一起吞掉，退化成两列 `3 | 投标人或…得3分`；旧实现「列数不符即模板失效」判死该行并连带其后所有正常行停止按列提取，整表级漏配（该表只拿到 6 项）。不动提取端（波及全部解析与 AI 素材口径），把容错收在扫描器侧：抽出 resolveTemplateRow（列数一致的精确取列，判据一字未改）与新增 alignNearTemplateRow（近形行按内容对齐，五重硬护栏：列数只允许差 1、整行只允许一个分值形状单元、该单元落在授权分值列 ±1 内、右邻描述格带 RE_TABLE_VOCAB 评分语汇、项名沿用 R195 tableItemName），并对名称格被吞时落在描述格主题上的项名剥掉「得/扣 N 分」从句尾巴；未命中且列数不符仍 tpl=null，保守判死口径与 R195 护栏用例语义不变。真实语料差分（基线取 git HEAD）：信息化 6→21 项（新增 15 条逐条人工判真、分值与原文一致、项名干净）、海沧 30→30、池州 3→3、R142 负控 0→0、r48b 负控 14→14 且总分 100 不变，REMOVED 全为 0。零 collection / 零 pb_hooks / 零提示词（未触发 B 类流程）/ 零迁移；面板与提取端未改。四门全绿：tsc 0 / vitest 150 files 1776 passed 2 skipped（基线 1769，+7 用例）/ eslint 触及 2 文件 0 error / vite build 3.13s。探针与基线模块收轮前已删除。维持裁定不推翻（编造嫌疑硬门禁只报告不拦截、lint-debt-01 不重构）。未 commit。",
+      "files": [
+        "src/pages/BidWorkspace/scoreItemsScan.ts",
+        "src/pages/BidWorkspace/scoreItemsScan.test.ts"
+      ],
+      "report": ".loop/reports/2026-10-09-r247-score-near-miss-column-align.md",
+      "evidence": "tests/records/2026-10-09-r247-score-near-miss-columns.md（五份真实招标全文差分 + 四条负控自测）；.loop/reports/2026-10-09-r247-score-near-miss-column-align.md；证据文件 .qoder/tmp/r247_probe_after.txt 与 r247_{tsc_final,eslint_final,vitest_final2_sum,vitest_final}.txt；补丁脚本 scripts/r247_*.py"
+    },
+    {
+      "id": "r248-material-deselect-clear-all",
+      "round": 248,
+      "priority": "P2",
+      "title": "素材库「取消选择」由只清首项改为清空整批选择（交互断链修复 + 防回流哨兵）",
+      "summary": "巡检新角度（交互断链）：素材库联网抓取 Tab 顶栏「取消选择」按钮此前实现为 onClick={() => p.toggleSelectUrl(p.selectedUrls[0])}，而 toggleSelectUrl 是单项开关语义——多选 N 张后点击「取消选择」只移除首张，其余 N-1 张仍高亮、提示条仍显示「已选 N-1 张」且「批量入库」仍可点，与按钮字面语义（清空整批选择）相悖，属真实交互断链。修复：useMaterialLibrary 新增并导出 clearSelection = useCallback(() => setSelectedUrls([]), [])，按钮改接 onClick={p.clearSelection}；新增 materialSelection.test.ts 源码扫描哨兵（沿用 disclosureA11y/onDemandHeavyLibs 风格，无 jsdom）同时断言 hook 暴露整批清空、且页面不再误用 p.toggleSelectUrl(p.selectedUrls[0])，防回流。选题依据：用户点名 quote-history-01/prompt-fabscan-03 均已 closed；P1 r2-r012-list-tableize 剩余两站（BidWorkspacePage/QualCertsPage）本轮复查仍为用户未提交在途(M)，按裁定绕开；素材库以图片卡展示、非「本质是列表」页，不做表格化。零 collection / 零 pb_hooks / 零提示词 / 零数据模型 / 零迁移。四门全绿：tsc 0 / vitest 151 files 1778 passed 2 skipped（基线 1776，+2）/ eslint 触及文件 0 error / build 3.32s。未 commit。",
+      "files": [
+        "src/pages/MaterialLibrary/useMaterialLibrary.ts",
+        "src/pages/MaterialLibrary/MaterialLibraryPage.tsx",
+        "src/pages/MaterialLibrary/materialSelection.test.ts"
+      ]
+    },
+    {
+      "id": "r249-deck-blank-fill",
+      "round": 249,
+      "priority": "P2",
+      "title": "PPT 编辑期「补全此页 / 一键补全空白页」——占位页生成接续（新增 fill 精修态，B 类只增不改）",
+      "summary": "巡检「生成接续」角度：批量逐页生成在慢模型下会按大纲留下『仅标题占位页』(emptySlide)，toast 让用户逐页补全，但编辑器只有『重写/扩写/精简』三态且全部以已有正文为前提，对空页语义错位、无明确『为此页生成内容』入口——属真实交互断链+能力缺口。落地(纯新增)：pptQuoteTypes RefineKind 追加 fill、REFINE_LABEL.fill=补全此页、buildSlideRefineMessages 三元链新增 fill 分支(condense 文本逐字未改)、新增 isBlankSlide(口径同 deckLint empty_page)；SlideEditor 空白页按钮组只渲染 [fill]；usePptQuote 新增串行一键补全 fillBlankSlides/doFillBlankSlides + blankSlideCount + fillingBlank/fillProgress，复用同一 buildSlideRefineMessages('fill') 单页口径(零新提示词)、单页失败跳过、封顶 12 页控费、走既有 runWithCostConfirm；DeckEditorWorkspace/PptQuotePage 接线空白页告警横幅(沿用 primary/5 既有横幅范式)。新增 slideFill.test.ts 8 例(isBlankSlide 五类 + fill 提示词落地 + rewrite/expand/condense 逐字回归且三态不含 fill 语义)。选题依据：用户点名 quote-history-01/prompt-fabscan-03 均已 closed 于 R102/R131、R103；P1 r2-r012 剩余两站(BidWorkspacePage/QualCertsPage)本轮复查仍为用户未提交在途(M)按裁定绕开——本轮触及 5 源文件 git 均干净。零 collection/零 pb_hooks/零数据模型/零迁移；唯一提示词改动为只增不改新增 fill 分支，标书 prompts 快照不覆盖 PPT 侧无需 -u。维持裁定不动：编造未清零禁导出仍只报告不拦截、lint-debt-01 残余不重构。四门全绿：tsc 0 / vitest 152 files 1786 passed 2 skipped(基线 1778，+8)/ eslint 触及文件基线 6 problems 改后仍 6 零新增 / build 3.82s。未 commit。",
+      "files": [
+        "src/pages/PptQuote/pptQuoteTypes.ts",
+        "src/components/ppt-quote/SlideEditor.tsx",
+        "src/pages/PptQuote/usePptQuote.ts",
+        "src/components/ppt-quote/DeckEditorWorkspace.tsx",
+        "src/pages/PptQuote/PptQuotePage.tsx",
+        "src/pages/PptQuote/slideFill.test.ts"
+      ]
+    },
+    {
+      "id": "r250-bidlist-qual-datatable",
+      "round": 250,
+      "priority": "P1",
+      "title": "标书项目列表 + 资质明细表格化收口——DataTable 全站六站落成（P1 r2-r012 闭环）",
+      "summary": "接续 P1 r2-r012-list-tableize 的最后两站（前五站 R236-R243 已落成）。选题依据：用户点名 quote-history-01（R102/R131 closed）、prompt-fabscan-03（R101/R103 closed）均已收口，按流程转巡检，择优 backlog 唯一 P1 实质项。BidProjectList.tsx（git CLEAN）：新增卡片/表格双视图（displayMode useState，默认 card 既有行为零变化），表格走复用 DataTable（7 列 project_name/hospital/tender_no/stage/bid_open_date/chapters/actions，pageSize20，行点击 openProject），抽 TrashRemainChip 单一来源收敛回收站倒计时天数口径（卡片/表格共用，消除重复内联计算）。qualsCore.ts（纯函数层）新增 filterQualRows 多词 AND 跨字段检索；QualCertsPage.tsx（在途 hunk 115-156 行 R228 预警徽标绕开，改动全在 imports+台账列表块 158+）：手搓 table 换 DataTable（6 列 5 sortAccessor）+ keyword 搜索 + 命中数外显 + qualDueBadge 分档单一来源，QualRow→QualRowActions。行为变化点：资质表格 initialSort valid_to 升序（最急证照排前）。A 类纯代码：零 collection/零 pb_hooks/零提示词/零迁移。新增 bidProjectListTable.test.ts 6 例 + qualCertsTable.test.ts 12 例（filterQualRows 真实单测 + 源码扫描哨兵钉接线防回流），+2 文件 +18 用例。四门全绿：tsc -b 0 / vitest 154 files·1804 passed+2 skipped（基线 152/1786+2）/ eslint 触及 5 文件零 error / vite build exit0。浏览器实机 A/B/C 全通过（表头排序图标、搜索 ISO→命中、三态排序、34>20 触发分页、默认卡片、卡片/表格切换、回收站去 chapters 列、行点击进入详情），0 error 0 warning。实机发现遗留缺陷挂新 P3 项 r250-fab-pagination-overlap。",
+      "files": [
+        "src/components/bid-workspace/BidProjectList.tsx",
+        "src/pages/QualCerts/qualsCore.ts",
+        "src/pages/QualCerts/QualCertsPage.tsx",
+        "src/components/bid-workspace/bidProjectListTable.test.ts",
+        "src/pages/QualCerts/qualCertsTable.test.ts"
+      ]
+    },
+    {
+      "id": "r251-fab-pagination-clearance",
+      "title": "R251 修复 r250-fab-pagination-overlap：分页页脚被全站浮窗助手 FAB 遮挡致「下一页」不可点 + 表格视图已归档空态文案口径错（A 类·零 collection/零提示词/零迁移）",
+      "priority": "P3",
+      "status": "closed",
+      "module": "/bid-workspace,/qual-certs",
+      "summary": "选题：上一轮 R250 收口 DataTable 表格化后浏览器实机发现的开放 P3 缺陷，直接命中刚上线的标书项目列表/资质明细分页可用性——分页「下一页」右对齐落在固定右下角的 FloatingAssistant FAB 命中带内、真实点击被 FAB 截走。修法：①dataTableLogic 抽纯函数 shouldReserveFabClearance(rowCount,pageSize)（与 usePaging 同口径单一真源、可单测）；②DataTable 触发分页时给卡片补 mb-16 底部外边距，把页脚抬到 FAB(80px 带)之上，对全站六站表格统一生效；③BidProjectList 已归档空态文案按 displayMode 自适应（表格说「操作列」、卡片说「卡片」），消除视图口径矛盾。+1 测试文件追加 4 用例。四门全绿：tsc0 / vitest 154·1808+2skip(基线1804,+4) / eslint 触及4文件零error / build 3.79s。浏览器实机（窄视口479x622 滚到底）：分页按钮(底509)与FAB(顶542)零重叠，真实点击「下一页」翻页 1→2 生效。",
+      "files": [
+        "src/components/ui/dataTableLogic.ts",
+        "src/components/ui/DataTable.tsx",
+        "src/components/ui/DataTable.test.ts",
+        "src/components/bid-workspace/BidProjectList.tsx"
+      ],
+      "round": 251
+    },
+    {
+      "id": "r252-sol-delivery-check",
+      "title": "方案交付前本地体检（13 项零费用确定性硬核验，规则口径与标书交卷体检同源）",
+      "priority": "P2",
+      "status": "closed",
+      "module": "方案工作室/SolutionStudio",
+      "summary": "巡检发现缺口：标书侧交卷体检有 15+ 项零 AI 本地硬核验，而方案是直接交给医院的交付物，交付前只有 AI 五维自检 + 导出时空章节提示 + sanitizeChapterText 结构清洗，没有任何零费用可复算的硬伤体检。关键设计=单一真源：bidTypes 第 4 行的 Chapter 本就从 solutionTypes 导入，两侧同一类型，故 sol.chapters 可原样喂进 metaLeftoverHits/metricConflictHits/formatCheckReport/findIntraDupPairs——零签名改动、零 cast、6595 行红线文件 bidTypes 一行未改；中文口径复用 FORMAT_RULE_LABEL。覆盖 13 项：复用 9 项（元话语与绝对化承诺/跨章指标口径/超链接/水印词/连续空行/半角标点密度/措辞/装饰残留/跨章重复段）+ 方案侧 4 项（【待填写】占位未填/失败章/标完成却空正文/偏短章 info）。暗标专属禁则（彩色类/加粗/下划线/空白页/identity_leak）明确排除，避免与交付无关的噪音；no_bold/no_underline 亦不纳入（行首 markdown 情形已被 decoration_leftover 覆盖，防一处问题两种口径）。两处刻意防护：① pending 空章不报（未生成属正常进度，避免开局满屏红）② 查重成本护栏 DUP_PARAGRAPH_BUDGET=12（findIntraDupPairs 为 O(段落数²)，每章只取前 12 个达标段落比对，单测锁住第 15 段不报）。UI 走 RequirementCoverageCard 同款自包含卡片范式（默认收起徽标 + 展开按规则分组 + 点章名跳章 + 复制整改清单），chapters/selectChapter 均在既有 props 内 → useSolutionStudio 与页面零改动。维持裁定：只报不拦（不阻断导出）、零 collection/零 pb_hooks/零提示词/零迁移、未 commit。实机走查抓到并修掉一处文案自相矛盾（正文 0 章时恒称「成稿后自动生效」却同卡亮「11 处待复核」），改为三分支并补哨兵用例。A 类。+26 用例/+1 测试文件。四门全绿：tsc0 / vitest 155 files·1834 passed+2skip（基线 154·1808+2skip）/ eslint 触及 4 文件零 error 零 warning / build exit0（6020 modules，3.66s）。浏览器实机（:8000 热更新，方案《【演练】R01-solution-20261004》11 章 0 正文）：徽标「11 处待复核」+「章节生成失败 11」与真实 gen_status=failed 数据一致；展开分组明细 11 条；点「重点应用系统规划」编辑区第1章→第5章、目录同步展开；控制台 0 error/warning；卡内零横向溢出；72 条请求全 GET（无写、无 AI 调用）。另登记 2 条巡检新发现：kb-docs-pagination-loop（P2）、narrow-viewport-toolbar-overflow（P3）。",
+      "files": [
+        "src/pages/SolutionStudio/solDeliveryCheck.ts",
+        "src/pages/SolutionStudio/solDeliveryCheck.test.ts",
+        "src/components/solution-studio/SolutionDeliveryCheckCard.tsx",
+        "src/components/solution-studio/EditorWorkspace.tsx",
+        ".loop/reports/2026-10-10-r252-sol-delivery-check.md",
+        "tests/records/2026-10-10-r252-sol-delivery-check.md"
+      ],
+      "round": 252
+    },
+    {
+      "id": "r253-scoring-structured",
+      "title": "评分项 JSON Schema 结构化存储（易标 R-026 Slice1）——整文 JSON 保留结构、numberScoringItems 结构化优先+文本回退、schema 自检、老数据 needs_reparse",
+      "priority": "P0",
+      "status": "closed",
+      "module": "标书工作台/BidWorkspace",
+      "round": 253,
+      "summary": "R253 落地易标 R-026 数据层：新建 parseSchemas.ts（ScoringBlockJSON/buildScoringStructured/parseDeclaredTotal/scoringItemsFromStructured/selfCheckScoringTotal）。T14 整文通道此前把 tech_score/biz_score JSON 摊平成行式文本、丢弃结构；本轮在保留摊平（下游零改动）的同时把 JSON 原对象写入 ParseSection.structured，经 ParsePayload 贯通批量/重试/自动重跑/单项重解析 4 调用点。numberScoringItems 结构化优先、无则回退 extractScoringFromText（老报告行为零变化）；评分块 schema 自检「合计≠声明总分」并入既有 warnings；ParseReport.needs_reparse + reportNeedsReparse 标记 17 存量项目/检索通道产物，normalizeParseReport 读出即重算。全新增字段可选、bidTypes 不 import parseSchemas（结构类型内联读，规避运行时环依赖）。四门全绿：tsc0 / vitest 156 files·1839 passed+2skip（基线 155/1834，+1 文件 +5 用例均本轮 parseSchemas.test.ts，场景自测端到端复刻步骤 2~6）/ eslint bidTypes+useBidWorkspace 前后 7 errors·13 warnings 计数一致零新增（新 2 文件 0 problem）/ build exit0 3.39s。补丁 scripts/r253_parse_schemas.py 20 锚点 count==1 一次通过。UI 显式提示与建阳区样例端到端回归留 Slice5(R-026③)同批。未 commit。",
+      "files": [
+        "src/pages/BidWorkspace/parseSchemas.ts",
+        "src/pages/BidWorkspace/parseSchemas.test.ts",
+        "src/pages/BidWorkspace/bidTypes.ts",
+        "src/pages/BidWorkspace/useBidWorkspace.ts",
+        ".loop/reports/2026-10-10-r253-scoring-structured.md",
+        "tests/records/2026-10-10-scoring-structured.md"
+      ],
+      "report": ".loop/reports/2026-10-10-r253-scoring-structured.md"
+    },
+    {
+      "id": "r254-void-three-rounds",
+      "title": "废标检查真三轮递进（易标 R-028 Slice2）——定位分类→逐条初检→定稿去误报 + invalidBid/rejectionItem 分类，单轮快照零破坏",
+      "priority": "P0",
+      "status": "closed",
+      "module": "标书工作台/BidWorkspace",
+      "round": 254,
+      "summary": "R254 落地易标 R-028：新建 prompts/voidCheckRounds.ts（VOID_ROUNDS_PROMPT_VERSION=1，三 builders buildVoidScopeMessages/buildVoidInitialCheckMessages/buildVoidFinalizeMessages，不进 promptsSnapshot 注册表，单轮 voidCheck.ts 原文与快照零改动）。bidTypes 新增 VoidKind/VOID_KIND_LABEL/asVoidKind、VoidItem.kind?（可选，老数据 undefined），sanitizeVoidCheck 保留 kind + 补漏条款默认 invalidBid，normalizeVoidCheck 透传 kind。useBidWorkspace runVoidCheckThreeRounds 串三轮（每轮 llmGenerate + withJsonRepair(extractJsonLoose)，定稿 sanitizeVoidCheck），项目正式 runVoidCheck 三轮化、非授权异常降级既有单轮，成本确认文案改「将分三轮…（约 3 次调用）」。条款分类对齐易标 check_engine L1 bid_killer→invalidBid / L2 company_redline→rejectionItem；定稿含 6 条防误报规则（结构性线索豁免/证照归属主体/多客户名称/解析切分噪声/待确认行文/目录线索补注）。四门全绿：tsc0 / vitest 157 files·1844 passed+2skip（基线 156/1839，+1 文件 voidCheckRounds.test.ts +5 用例，含 sanitizeVoidCheck kind 保留与补漏默认断言）/ eslint 新 2 文件 0 problem + bidTypes·useBidWorkspace .bak-r254 前后 7 errors·13 warnings 计数一致零新增 / build exit0 3.15s。补丁 scripts/r254_void_rounds.py 9 锚点 count==1 一次通过（测试 all 助手类型修正 scripts/r254_fix_test.py）。未 commit。真实三轮端到端与建阳区样例回归留 Slice5。",
+      "files": [
+        "src/pages/BidWorkspace/prompts/voidCheckRounds.ts",
+        "src/pages/BidWorkspace/prompts/voidCheckRounds.test.ts",
+        "src/pages/BidWorkspace/bidTypes.ts",
+        "src/pages/BidWorkspace/useBidWorkspace.ts",
+        ".loop/reports/2026-10-10-r254-void-three-rounds.md",
+        "tests/records/2026-10-10-void-three-rounds.md"
+      ],
+      "report": ".loop/reports/2026-10-10-r254-void-three-rounds.md"
+    },
+    {
+      "id": "r255-scan-detection",
+      "title": "扫描件/图片型文档检测 parse_quality（易标 R-029 Slice3）——纯函数质量分级 + 导入阻断 + ParseReport JSON 持久化 + 报告横幅",
+      "priority": "P0",
+      "status": "closed",
+      "module": "标书工作台/BidWorkspace",
+      "round": 255,
+      "summary": "R255 落地易标 R-029：新建 parseQuality.ts（纯函数 assessTenderParseQuality(text,{bytes?})→ok/low/suspect_scanned + reason + hint，判据：空/<30 字或 ≥200KB 文件而字符/字节密度<0.02 → 疑似扫描件；30~200 字 → low；阈值集中可调）。bidTypes 新增 TenderParseQuality（单一真源）+ asTenderQuality + ParseReport.parse_quality?（PocketBase JSON 零迁移）+ normalizeParseReport 保留（沿用 Slice1 withMeta 范式，老数据兼容、ok 不写键）。useBidWorkspace 招标文件 handleTenderFile 与外部投标文件 handleBidExternalFile 的 if(!text) 粗判升级为质量守卫（suspect_scanned 红字阻断不浪费解析费用、low 琥珀警告继续），批量解析 finalReport 落 parse_quality；ParseReportPanel 顶部新增解析质量横幅（红/琥珀，复用 warningBanner 范式，提示 OCR/粘贴文本）。parseQuality 仅 type-only 依赖 bidTypes，运行时零边无环。四门全绿：tsc0 / vitest 158 files·1850 passed+2skip（基线 157/1844，+1 文件 parseQuality.test.ts +6 用例：空/极短/密度/偏少/正常/小文件防误判）/ eslint 新 2 文件 0 problem + bidTypes·useBidWorkspace·ParseReportPanel .bak-r255 前后 8 errors·13 warnings 计数一致零新增 / build exit0 3.16s。补丁 scripts/r255_parse_quality.py 8 锚点 count==1 一次通过。未 commit。重点改造招标+外部投标两通道，其余导入点沿用既有判空（控范围）；真实扫描件密度阈值与 needs_reparse/parse_quality UI 端到端复核留 Slice5。",
+      "files": [
+        "src/pages/BidWorkspace/parseQuality.ts",
+        "src/pages/BidWorkspace/parseQuality.test.ts",
+        "src/pages/BidWorkspace/bidTypes.ts",
+        "src/pages/BidWorkspace/useBidWorkspace.ts",
+        "src/components/bid-workspace/ParseReportPanel.tsx",
+        ".loop/reports/2026-10-10-r255-scan-detection.md",
+        "tests/records/2026-10-10-scan-detection.md"
+      ],
+      "report": ".loop/reports/2026-10-10-r255-scan-detection.md"
+    },
+    {
+      "id": "r256-parse-required-tier",
+      "title": "必选解析项分级 required（易标 R-030 Slice4）——ParseSectionDef.required + parseSectionTier + requiredParseFailures + 报告失败红幅 + 左栏必选/可选徽标",
+      "priority": "P0",
+      "status": "closed",
+      "module": "标书工作台/BidWorkspace",
+      "round": 256,
+      "summary": "R256 落地易标 R-030：bidTypes ParseSectionDef 新增 required?，8 关键项标 required:true（数据驱动既有「必选不可取消」）；parseSectionTier(key)→required/optional/other（other=star_clauses/req_structure 本地产出，optional=void_items/lots 等其他项）；requiredParseFailures(sections) 聚合必选项失败（缺席/空/〔系统降级/failed），「原文未提及」属正常不计失败防误报。useBidWorkspace 批量解析后失败清单并入既有 warnings 通道（持久横幅+toast，零新增 ParseReport 字段、sections 实时派生天然免迁移）；ParseReportPanel 顶部必选失败红幅 + 左栏必选/可选徽标（required 失败=红/正常=primary，optional=secondary，other 不显示）。失败阻断口径与交卷闸门「不拦导航只拦导出」一致=强提示非硬锁。四门全绿：tsc0 / vitest 159 files·1854 passed+2skip（基线 158/1850，+1 文件 parseRequired.test.ts +4 用例：分级/8项required/失败判定/整项缺席）/ eslint 新 1 文件 0 problem + bidTypes·useBidWorkspace·ParseReportPanel .bak-r256 前后 8 errors·13 warnings 计数一致零新增 / build exit0 3.90s。补丁 scripts/r256_parse_required.py（bidTypes 11+ubw 3+panel 4 锚点 count==1 一次通过）+ r256_fix_test.py（修正 lots=optional/req_structure=other）。未 commit。建阳区样例三提示 UI 端到端复核留 Slice5。",
+      "files": [
+        "src/pages/BidWorkspace/parseRequired.test.ts",
+        "src/pages/BidWorkspace/bidTypes.ts",
+        "src/pages/BidWorkspace/useBidWorkspace.ts",
+        "src/components/bid-workspace/ParseReportPanel.tsx",
+        ".loop/reports/2026-10-10-r256-parse-required-tier.md",
+        "tests/records/2026-10-10-parse-required.md"
+      ],
+      "report": ".loop/reports/2026-10-10-r256-parse-required-tier.md"
+    },
+    {
+      "id": "r257-void-clause-floor",
+      "title": "废标条数下限报警 voidClauseFloor（易标 R-026③ Slice5）——纯函数自检 + 并入批量解析 warnings 持久提示，R-026~R-031 伞项收口",
+      "priority": "P0",
+      "status": "closed",
+      "module": "标书工作台/BidWorkspace",
+      "round": 257,
+      "summary": "R257 落地易标 R-026③（收尾伞项 R-026~R-031）：新建 voidClauseFloor.ts（纯函数零模型）——splitVoidClauses 与 runVoidCheck 完全同口径切条款行（split 换行 + 去行首 /^\\d+[.、]\\s*/ + 去空行）；voidClauseFloorWarning(content,floor=3) 解析到 1~2 条(低于下限)→人话报警含条数与下限，0 条/原文未提及/〔系统降级→null 不误报（防误伤废标极少的小项目、不与失败/缺席提示重复）。useBidWorkspace 批量解析后对 void_items 做条数下限自检并入既有 warnings 通道（持久横幅+toast，零新增 ParseReport 字段、内容实时派生免迁移），与 Slice1 selfCheckScoringTotal 对称构成 R-026 结构化解析自检。四门全绿：tsc0 / vitest 160 files·1858 passed+2skip（基线 159/1854，+1 文件 voidClauseFloor.test.ts +4 用例：达下限不报/偏少报警/缺席降级不报/切行同口径）/ eslint 新 2 文件 0 problem + useBidWorkspace .bak-r257 前后 5 errors·13 warnings 计数一致零新增 / build exit0。补丁 scripts/r257_void_floor.py 3 锚点 count==1 + r257_fix_test.py（对齐 runVoidCheck 正则）。未 commit。阈值(下限3/密度0.02)为保守经验值待现场校准；报警取强提示非硬阻断（对齐交卷闸门）。建阳区真实样例文件本会话未落磁盘，端到端以纯函数负控+warnings 通道单测承载。",
+      "files": [
+        "src/pages/BidWorkspace/voidClauseFloor.ts",
+        "src/pages/BidWorkspace/voidClauseFloor.test.ts",
+        "src/pages/BidWorkspace/useBidWorkspace.ts",
+        ".loop/reports/2026-10-10-r257-void-clause-floor.md",
+        "tests/records/2026-10-10-void-clause-floor.md"
+      ],
+      "report": ".loop/reports/2026-10-10-r257-void-clause-floor.md"
+    },
+    {
+      "id": "r258-parse-coverage-gate",
+      "title": "长文档解析覆盖率可见性 + 生成门禁 parseCoverage（全局优化汇总 R-038③ Slice A，废标风险安全网）",
+      "priority": "P0",
+      "status": "closed",
+      "module": "标书工作台/BidWorkspace",
+      "round": 258,
+      "summary": "R258 落地全局优化汇总第一优先 R-038③ Slice A：侦查确认分片解析已存在，真正缺口=长文档超段数上限回落检索后系统对极低覆盖率无感知无拦截（天坛41.7万字仅4.4%，漏废标条款即废标却全程静默）。新建 parseCoverage.ts（纯函数零模型，type-only import 避环依赖）——覆盖率=各解析项正文非空白字符/原文非空白字符（严格对齐汇总文档实测口径）；coverageLevel：<30%且原文非空白≥8000→block、<50%→warn、其余 ok（短原文精简输出不误伤）。useBidWorkspace.runGenerateOutline 生成前硬门禁：block→toast.error+return 阻止生成（对齐汇总「<30%阻止生成」，废标风险不容静默放行，属生成侧硬拦非导航锁）、warn→toast.info 告警放行；ParseReportPanel useMemo 实时派生→顶部红/琥珀横幅+头部着色覆盖率%（面板已有 tenderText prop）。零新增 ParseReport 字段（sections+tenderText 实时派生免迁移）。四门全绿：tsc0（首跑 TS6133 未用导入已去）/ vitest 161 files·1863 passed+2skip（基线160/1858，+1文件+5用例；首跑分级用例占比数学误已修正为2000/4000/6000三档）/ eslint 新2文件0 problem + useBidWorkspace+ParseReportPanel .bak-r258 前后 6 errors·13 warnings 计数一致零新增 / build exit0(3.32s)。补丁 scripts/r258_parse_coverage.py（新建2文件+useBidWorkspace2锚点+ParseReportPanel4锚点全 count==1）+ r258_fix_test.py。未 commit。本轮为「可见+拦截」安全网，未真正拉高覆盖率；Slice B（提高段数上限/跨块汇总涉额外AI成本）与 R-039 另拍板。天坛/建阳真实长文档样例本会话未落磁盘，端到端以纯函数负控+面板派生承载。",
+      "files": [
+        "src/pages/BidWorkspace/parseCoverage.ts",
+        "src/pages/BidWorkspace/parseCoverage.test.ts",
+        "src/pages/BidWorkspace/useBidWorkspace.ts",
+        "src/components/bid-workspace/ParseReportPanel.tsx",
+        ".loop/reports/2026-10-10-r258-parse-coverage-gate.md",
+        "tests/records/2026-10-10-parse-coverage.md"
+      ],
+      "report": ".loop/reports/2026-10-10-r258-parse-coverage-gate.md"
+    },
+    {
+      "id": "r259-mustwrite-selfheal",
+      "title": "mustWrite 读时自愈 + 大纲「必写」标识（全局优化汇总 R-039②④，次高优先，零 AI/零迁移/零 DB 写）",
+      "priority": "P0",
+      "status": "closed",
+      "module": "标书工作台/BidWorkspace",
+      "round": 259,
+      "summary": "R259 落地全局优化汇总次高优先 R-039②④。文档①『mustWrite 根本没落库/17项目全为0』经查=存量项目（其大纲生成于功能之前），非 patch 漏字段也非 schema 缺列——mustWrite 是 OutlineNode 可选字段随 bid_outline PocketBase JSON 列整体落库、无需迁移，生成侧 applyMustWrite(useBidWorkspace:4169→writeStageSnapshot) 已写入。真正缺口=②读时补标记 + ④大纲必写标识。新建 mustWriteSelfHeal.ts（纯函数零模型零DB写）：mustWriteBackfillNeeded 判『应必写但缺标记』；healMustWriteOnRead 仅在需要时按 applyMustWrite 同口径(numberScoringItems tech + readRequiredTechKeywords，与 runGenerateOutline mwCtx 逐字一致)给顶层章补标，无需自愈原样返回入参引用（引用稳定免多余重渲染/落库，幂等）。ComposeStep useMemo 把 proj.bid_outline 传给 OutlineNavTree 前 heal（deps [proj?.bid_outline, proj?.parse_report] 无 react-hooks 警告），章行商务/技术主徽标后加青绿实底「必写」徽标（isChapter && !isDemo && node.mustWrite===true）。存量项目打开即见必写、无需批量重跑（③护栏：生成侧已落标记，重跑不白跑；自愈省去为看标记而跑）。不强制覆写合法 false、不动无强信号章、无报告不臆断。四门全绿：tsc0 / vitest 162 files·1868 passed+2skip（基线161/1863，+1文件+5用例）/ eslint 新2文件0 problem + ComposeStep .bak-r259 前后 0 problems 零新增 / build exit0(3.50s)。补丁 scripts/r259_mustwrite_selfheal.py（新建2文件+ComposeStep5锚点全 count==1）。未 commit。本轮读时派生不强制DB回写（避免浏览即写/写风暴/归档只读冲突），UI与消费侧因每帧重算始终正确；若下游导出闸门需直接读存储字段可后加一次性补标记落库按钮。建阳区真实样例本会话未落磁盘，端到端以纯函数负控+ComposeStep派生承载。",
+      "files": [
+        "src/pages/BidWorkspace/mustWriteSelfHeal.ts",
+        "src/pages/BidWorkspace/mustWriteSelfHeal.test.ts",
+        "src/components/bid-workspace/ComposeStep.tsx",
+        ".loop/reports/2026-10-10-r259-mustwrite-selfheal.md",
+        "tests/records/2026-10-10-mustwrite-selfheal.md"
+      ],
+      "report": ".loop/reports/2026-10-10-r259-mustwrite-selfheal.md"
+    },
+    {
+      "id": "r260-parse-segment-tier",
+      "title": "长文档解析分层段数上限——废标/评分关键项整文全量覆盖+跨块汇总（全局优化汇总最高优先 R-038 Slice B，涉额外 AI 成本已授权）",
+      "priority": "P0",
+      "status": "closed",
+      "module": "标书工作台/BidWorkspace",
+      "round": 260,
+      "summary": "R260 落地全局优化汇总最高优先 R-038 的第二半（Slice B：真正拉高覆盖率，R258 Slice A 已做可见+门禁安全网）。根因：parseSectionViaSegments 里 segments>PARSE_MAX_SEGMENTS(6) 回落检索通道（仅 1 个 14k 关键词窗口），天坛 41.7 万字=10 段>6 回落→覆盖仅约 4%~10%，漏的正是散落第四章的评分表/第五章的技术参数/各章否决废标条款（文档②要求评分/废标跨块汇总）。落地：wholeParse.ts 新增 PARSE_MAX_SEGMENTS_CRITICAL=24（24×45000≈108 万字覆盖已知超长标书，仍超限回落兜底绝不无界放大）+ FULL_COVERAGE_PARSE_KEYS{tech_score,biz_score,void_items,qualification,compliance} + 纯函数 isFullCoverageParseItem/parseSegmentCap；useBidWorkspace.parseSectionViaSegments 判定改 segments.length>parseSegmentCap(key)——关键项 ≤24 段全走「切段→每段并发(限流闸门错峰)→AI 跨段合并取并集(跨块汇总)」整文全量覆盖，其余 15 项沿用通用上限 6 与检索回落（零增量、控成本）。成本：41.7 万字关键 5 项各 10 段+1 合并≈新增约 50 次调用，靠跨项同段提示词缓存(首项全价其余缓存价)+闸门错峰+24 硬顶回落把代价压到有界，用户已授权。短文档(≤6 万字整文直读)与检索回落路径完全不变；合并复用既有 buildSegmentMergeMessages+materializeWholeParseResult+selfCheckScoringTotal，未造第二套。四门全绿：tsc0 / vitest 163 files·1872 passed+2skip（基线162/1868，+1文件 wholeParseTier.test.ts +4用例）/ eslint useBidWorkspace .bak-r260 前后均 18problems(5err/13warn) 零新增 + wholeParse/parseCoverage/新测试 0 problem / build exit0(3.46s)。补丁 scripts/r260_segment_tier.py(wholeParse 1锚+useBidWorkspace 2锚+parseCoverage 1注释锚 全 count==1，改前 .bak-r260)+r260_add_test.py。教训：跨工作区读写必须显式 utf-8（系统默认 GBK 会把含 ↔/→ 的源文件写坏，首跑已踩并修复固化）。未 commit。",
+      "files": [
+        "src/pages/BidWorkspace/prompts/wholeParse.ts",
+        "src/pages/BidWorkspace/prompts/wholeParseTier.test.ts",
+        "src/pages/BidWorkspace/useBidWorkspace.ts",
+        "src/pages/BidWorkspace/parseCoverage.ts",
+        ".loop/reports/2026-10-10-r260-parse-segment-tier.md",
+        "tests/records/2026-10-10-parse-segment-tier.md"
+      ],
+      "report": ".loop/reports/2026-10-10-r260-parse-segment-tier.md"
+    },
+    {
+      "id": "r261-bidcheck-hub",
+      "title": "标书检查中枢 BidCheck 一期：独立页面 /bid-check + L5 暗标引擎 + L1 格式 + 三件套（零 AI·只标不改·普通/暗标严格一开关）",
+      "priority": "P0",
+      "status": "closed",
+      "module": "标书检查/BidCheck",
+      "round": 261,
+      "summary": "R261 落地售前诉求「一个入口聚合检查能力 + 覆盖普通标书与暗标」。四项决策：①独立页面 /bid-check（与 7 步流水线平级、非第 8 步）②三件套（侧边栏清单 + Excel 整改清单 + HTML 体检报告，v1 不生成标注版 docx）③纯规则零 AI（L3/L5-D 语义留后续期）④暗标格式项/页数上限可配置占位、未配置标『标准未配置』不瞎判。红线：只标不改（不改正文/不写库/不回写原文件）+ 暗标是严格模式非独立模块（一开关切换）。新建 src/pages/BidCheck/（17 文件，含 config/engine/rules/report 子目录）：runCheck 编排 + useBidCheck hook + BidCheckPage + 薄壳 index + BidCheckConfigDialog；engine/docxInspect 用 fflate 解包 OOXML 扫节点痕迹、pdfjs-dist 抽正文+getMetadata；rules/anbid L5-A 身份泄露/B 元数据痕迹/C 格式/E 文件形态/F 第一人称（正则命中即证据、词库来自配置）；rules/format L1 复用 BidWorkspace formatCheckReport（剔 identity_leak 交 L5）+ 本地结构判定，未达配置项读配置、未配置标『标准未配置』；config 仿 mustWriteConfig+localStorage。普通模式跑 L1；暗标严格 L1~L5 全开、L1 未达配置升 🔴、必改 🔴→导出门禁 blocked=sealed&&hasBlockingCritical、hardFatal=+sealedViolationIsFatal 硬阻断、否则二次确认可继续（沿 R-009/Q-016）。接线 8 处（App lazy+Route/routePreload/SidebarNav 决胜+ClipboardCheck/Workbench·TopBar·assistantCore 标题/useGlobalSearch/GlobalCommandPalette）。四门全绿：tsc0 / vitest 167 files·1895 passed+2skip（基线163/1872，+4文件+23用例零回归）/ eslint BidCheck 0 problem + 8 patch 文件 git diff 仅预期锚点增行零新增（既有 useGlobalSearch problem 系基线存量）/ build exit0(3.38s) 产出 BidCheck 懒加载 chunk。实机端到端：/bid-check 渲染 + 配置弹窗完整 + 严格模式选『贵港项目』真跑 34项/3必改/3建议/13未配置·无法检测（🔴2🟠1🟡3🔵0），L5-A8 案例泄露🔴/F1 第一人称🔴/F3 荣誉🟠/A1G 疑似公司名🟡/L1 措辞·水印词🟡 五要素齐、B 类因无文件包按设计降级『无法检测』、C/E 未配置标『标准未配置』，Excel 导出触发二次确认（返回整改未下载），控制台零 error/warn。过程修 8 处（anbid 重复 push/Chapter import from solutionTypes/ReactNode/L1-4 status info→skipped/PDF metadata as unknown as/E1 测试对齐 high→fail/删 dead objectUrlRef+微任务首拉/弹窗重置草稿局部 eslint-disable）。补丁 scripts/r261_deploy.py（staged 复制 17 文件 + 8 锚点 count==1 + .bak-r261 + guard 幂等）。未 commit。",
+      "files": [
+        "src/pages/BidCheck/index.tsx",
+        "src/pages/BidCheck/BidCheckPage.tsx",
+        "src/pages/BidCheck/useBidCheck.ts",
+        "src/pages/BidCheck/runCheck.ts",
+        "src/pages/BidCheck/bidCheckTypes.ts",
+        "src/pages/BidCheck/BidCheckConfigDialog.tsx",
+        "src/pages/BidCheck/config/checkConfig.ts",
+        "src/pages/BidCheck/config/anbidCheckConfig.ts",
+        "src/pages/BidCheck/engine/docxInspect.ts",
+        "src/pages/BidCheck/rules/anbid.ts",
+        "src/pages/BidCheck/rules/format.ts",
+        "src/pages/BidCheck/report/toExcel.ts",
+        "src/pages/BidCheck/report/toHtml.ts",
+        "src/pages/BidCheck/engine/docxInspect.test.ts",
+        "src/pages/BidCheck/rules/anbid.test.ts",
+        "src/pages/BidCheck/rules/format.test.ts",
+        "src/pages/BidCheck/report/toExcel.test.ts",
+        ".loop/reports/2026-10-11-r261-bidcheck-hub.md",
+        "tests/records/2026-10-11-bidcheck-hub.md"
+      ],
+      "report": ".loop/reports/2026-10-11-r261-bidcheck-hub.md"
+    },
+    {
+      "id": "r262-bidcheck-reading-view",
+      "title": "标书检查中枢界面改造：三栏阅读视图（章节树/A4正文+位置标记/问题清单）+ 定位解析层 + 规则清单页 + T-1~T-4 提取缺陷修复",
+      "priority": "P1",
+      "status": "closed",
+      "module": "标书检查/BidCheck",
+      "round": 262,
+      "summary": "R262 按交付文档 v2 把 /bid-check 结果区从单页清单改造为三栏阅读界面。决策照办：D-1 中栏纯文字（[图片] 占位）、D-2 检出问题必须显示位置标记、D-3 不做目录气泡（树+滚动联动补偿）。阶段0 提取层（docxInspect）：Paragraph 加 index/inTable/tableIndex/hasImage（T-1/T-2/T-4），collectTableRanges 栈式扫 <w:tbl> 顶层区间（嵌套归最外层），parasToChapters 返回 {chapters,chapterOf}（T-3），新增 paragraphsFromChapters 供 project/PDF 合成。阶段1 定位层：CheckHit 加 7 定位字段；runCheck 新增 resolvePositions 派生后处理（归一化去空白、剥两端省略号、整段→前缀→后缀三候选、章 hint 优先+全局兜底双向包含；paragraphText 复制实际段落令 #17 断言 by-construction 成立；chapterIndex 一律 chapterOf[paragraphIndex] 换算、禁 chapters indexOf 反查）+ assertPositions 开发态自校验（DEV 守卫）；返回补 chapters/paragraphs/chapterOf。阶段2 UI：新建 ReadingView（左 w-64 章节树带问题徽标/↑↓Enter 键盘/滚动联动高亮，中 flex-1 A4 版心 max-w-794（标题层级字号/行高1.8首行缩进2字/表格折叠「▤ 表格（含N段）」/[图片] 占位/四级底色+左3px竖条+角标、多命中合并×N 不叠底色/定位 1 秒闪烁/显示全部|只看有问题 run 级折叠灰条），右 w-80 问题清单（按级别分组/完整章节路径/段落全文/定位+标记已改本机态/手动调整提示），6 联动全做；新建 RulesListPanel（L1 14 条逐条开关复用 formatKeys + 层/严重度/说明含命中示例、identity_leak 标由 L5 处理、L5 21 条目录随 sealedLevels、L2/3/4 规划说明）；BidCheckPage 重写为「检查结果(徽标)/规则清单」Tab、max-w-1400，导出门禁原样保留。实机（建阳区总医院项目 551 段/34 章，2 项建议整改/8 命中）：首轮 6/8 无定位——根因 clip 窗口摘录带前导省略号且跨段拼接，修两端剥省略号+前/后缀候选后 8/8 定位、随机 3 条段落逐字核对一致、console 0 告警（#17 硬性通过）、#16 四导出不受影响；规则开关实机负控：关「措辞检查」重跑徽标 2→1、恢复复跑回 2（#13，配置已还原）。四门全绿：tsc0 / vitest BidCheck 5 files 32 passed（基线 4/28 + runCheck.test 4 回归零破坏）/ eslint 0 / build 0(3.42s)。截图三张（规则清单页/三栏标记页/只看有问题折叠）归档 tests/records/r262_*.png。补丁 scripts/r262_deploy.py（staged 19 文件 copyfile + .bak-r262 + /bid-check 接线守卫）。未 commit。",
+      "files": [
+        "src/pages/BidCheck/engine/docxInspect.ts",
+        "src/pages/BidCheck/bidCheckTypes.ts",
+        "src/pages/BidCheck/runCheck.ts",
+        "src/pages/BidCheck/ReadingView.tsx",
+        "src/pages/BidCheck/RulesListPanel.tsx",
+        "src/pages/BidCheck/BidCheckPage.tsx",
+        "src/pages/BidCheck/rules/format.ts",
+        "src/pages/BidCheck/engine/docxInspect.test.ts",
+        "src/pages/BidCheck/runCheck.test.ts",
+        "src/pages/BidCheck/report/toExcel.test.ts",
+        "src/pages/BidCheck/rules/format.test.ts",
+        "src/pages/BidCheck/rules/anbid.test.ts",
+        ".loop/reports/2026-10-10-r262-bidcheck-reading-view.md",
+        "tests/records/2026-10-10-bidcheck-reading-view.md"
+      ],
+      "report": ".loop/reports/2026-10-10-r262-bidcheck-reading-view.md"
+    },
+    {
+      "id": "r263-kb-pagination-converge",
+      "title": "知识库 listKbDocs 首页预读 totalItems 精确收敛（消除过度预取）",
+      "priority": "P2",
+      "summary": "kb-docs-pagination-loop(P2)：listKbDocs 旧实现在获知服务端 totalItems 前就按满批(KB_LIST_PAGE_BATCH=3)并发发整批页请求——空库/单页库照发 3 页(含 2 越界空页)、末页落批中间仍多发越界空页。改为首页单独串行取→学习 effectivePerPage+totalItems→精确算 lastPage=min(60,ceil(total/epp))→从第 2 页起按批并发取到 lastPage 即停。零 collection/零 pb_hooks 变更；totalItems 缺失时保守降级=旧行为。新增 kbCore.test.ts(+1 文件/+5 用例)覆盖空库/单页/中小库/大库6423/onBatch。四门全绿：tsc 0、vitest 263 169 files/1909 passed+2 skipped、eslint 触及文件 0、vite build ok。注：账本 round 由并发 agent 占至 262(r262-bidcheck-reading-view)，本轮避让顺延为 263。",
+      "files": [
+        "src/lib/kbCore.ts",
+        "src/lib/kbCore.test.ts"
+      ]
+    },
+    {
+      "id": "r264-bidcheck-export-parity",
+      "title": "标书检查整改清单导出与三栏阅读视图对齐（单一真源）：Excel 行序按严重度优先 + 位置列用解析锚点精确呈现",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "巡检选题（交互断链+口径分叉）：R262 三栏阅读视图已按严重度优先排序、正文命中用「章节/小节/第N段」精确锚点，但团队分工主交付物 Excel 整改清单未对齐——仍按检查项原始顺序(L1→L5)、位置列只写粗粒度 hit.location、丢弃 R262 resolvePositions 精算锚点。A 类纯呈现层修复：把两处口径抽成 bidCheckTypes 单一真源(SEVERITY_RANK + formatHitLocation)，ReadingView 第478行内联表达式替换为 formatHitLocation(逐字等价)、toExcel.buildRows 先剔 pass 再按 SEVERITY_RANK 稳定排序、位置列改用 formatHitLocation。零 AI/零 schema/零 pb_hooks/零提示词/未 commit；只标不改与只报不拦裁定不动。四门全绿：tsc 0 / vitest 169 files 1911 passed+2skip(基线1909,+2=toExcel.test.ts 新增排序+位置两条回归)/eslint 触及4文件 exit0 零输出/build 43s。报告 .loop/reports/2026-10-10-r264-bidcheck-export-parity.md，自测 tests/records/2026-10-10-r264-bidcheck-export-parity.md。",
+      "files": [
+        "src/pages/BidCheck/bidCheckTypes.ts",
+        "src/pages/BidCheck/report/toExcel.ts",
+        "src/pages/BidCheck/ReadingView.tsx",
+        "src/pages/BidCheck/report/toExcel.test.ts"
+      ],
+      "round": 264
+    },
+    {
+      "id": "r265-intel-cleanup-backup",
+      "title": "情报「清理不相关」数据安全：删除前先导出本地备份、数量对齐才放行（P0 伞项待续 R-033）",
+      "priority": "P0",
+      "status": "closed",
+      "module": "情报中心/IntelCenter",
+      "round": 265,
+      "summary": "r265-intel-cleanup-backup(P0)：情报中心「清理不相关」由不可恢复物理删除改为「先导出本地备份、数量对齐才删」（全局优化汇总 P0 伞项待续 R-033 数据安全，零 AI/零 collection schema/零提示词/未 commit）。根因：pb_hook POST /api/intel/cleanup-irrelevant 删除分支用 $app.delete 批量物理删除采集条目（命中即不可恢复），与 AGENTS.md §7「禁止物理删除·先移入回收」及标书侧既有「软删+回收站」范式相悖。落地：①新建纯函数模块 intelCleanupBackup.ts（serializeCleanupBackup 无损 JSON round-trip / cleanupBackupFileName / formatBackupStamp 本地日历 / canProceedToDelete 删除前安全闸）；②useIntelCenter.confirmCleanup 重写为四步——取 backup 模式全量命中→安全闸校验(未取得备份/条数漂移/命中0 一律拒绝删除)→triggerBlobDownload 落本地 JSON→才发 confirm 删除；③CleanupIrrelevantDialog 文案与按钮由「删除不可恢复/确认清理」改为「先导出备份再删除/导出备份并清理」；④pb_hook 新增 backup 分支（body.backup===true 序列化返回 bad 全集合，不删除；既有 preview/delete 分支逐字未动）。维持裁定不动：编造嫌疑未清零只报不拦、lint-debt-01 有意保留残余未重构。四门全绿：tsc -b 0；vitest 170 files 1920 passed+2 skipped(基线169/1911,+1文件/+9用例=intelCleanupBackup.test.ts)；eslint 触及4文件零新增 error(useIntelCenter.ts HEAD 副本与改后同为 25 errors/2 warnings，全为存量 react-hooks 债，新文件与 Dialog 0)；vite build 成功(4.74s)。pb_hook Goja 分支本机无实数据端到端复核待有真数据后补（与历轮同口径）。",
+      "files": [
+        "src/pages/IntelCenter/intelCleanupBackup.ts (新增·纯函数)",
+        "src/pages/IntelCenter/intelCleanupBackup.test.ts (新增·9 用例)",
+        "src/pages/IntelCenter/useIntelCenter.ts (imports + confirmCleanup 四步编排)",
+        "src/components/intel-center/CleanupIrrelevantDialog.tsx (文案/按钮口径)",
+        "pocketbase/pb_hooks/intel_center.pb.js (cleanup-irrelevant 新增 backup 分支·加法·原分支未动)"
+      ]
+    },
+    {
+      "id": "r266-bidcheck-l2-response",
+      "title": "标书检查中枢二期 L2 响应层接入（闭合 r261-bidcheck-followons 的 L2 断链）",
+      "priority": "P2",
+      "module": "/bid-check",
+      "round": 266,
+      "summary": "runCheck 一期只跑 L1+L5、checkConfig 默认已含 L2/L3/L4，规则清单页把 L2 显示为占位不参与判定=交互断链。本轮接入 L2 响应层，纯复用 BidWorkspace 三把已单测本地尺子（complianceMatrix.buildComplianceRows + complianceCoverage.auditComplianceCoverage + scoreCoverageCheckup.buildScoreCheckup），零 AI/零费用/零 collection schema/零 pb_hooks/零提示词。新增 rules/response.ts 产出两项：L2-R1 ★实质性条款正文回应核对（pending 条款逐条入清单+未见要点，只报不拦 severity=high/status=warn）、L2-R2 技术评分项落点核对（未落点项带分值与主客观）。诚实降级：上传文件/未解析对应分区/正文未生成 → skipped 并说明，绝不瞎判。runCheck 增 project 形参并 levels 含 L2 时接入；useBidCheck 选项目源透传 record；RulesListPanel 把 L2 从占位改为已接入闭合断链。维持裁定不动：编造未清零禁导出只报不拦、lint-debt-01 残余不重构。",
+      "evidence": "四门全绿：tsc -b exit0（修1处测试隐式any）；vitest 171 files 1926 passed+2 skipped（基线170/1920+2，+1文件/+6用例=response.test.ts）；eslint 触及5文件 exit0 零 error/warn；vite build 成功 4.25s。",
+      "files": [
+        "src/pages/BidCheck/rules/response.ts(新)",
+        "src/pages/BidCheck/rules/response.test.ts(新)",
+        "src/pages/BidCheck/runCheck.ts",
+        "src/pages/BidCheck/useBidCheck.ts",
+        "src/pages/BidCheck/RulesListPanel.tsx"
+      ]
+    },
+    {
+      "id": "r267-bidcheck-l4-dedup",
+      "title": "标书检查中枢三期 L4 查重层接入（续 r261-bidcheck-followons 三期）",
+      "priority": "P2",
+      "module": "/bid-check",
+      "round": 267,
+      "summary": "接续 R266 完成同一伞项三期 L4 查重。checkConfig 默认已含 L4 且预留 dupCrossChapterEnabled/dupMinRun 两旋钮、规则清单页称 L4 已预留，但 runCheck 从不跑 L4=交互断链。本轮纯复用 BidWorkspace 已单测本地跨章互查 findIntraDupPairs（shingles+Jaccard）+ DupTarget + INTRA_DUP_THRESHOLD_DEFAULT，两旋钮真正接线（开关作总闸、dupMinRun 作参与互查段落最小长度滤误报）。新增 rules/dedup.ts 产 L4-D1 跨章节重复段落，只报不拦（severity=medium/status=warn，不触导出门禁）、诚实降级（关闭开关/正文不足两章→skipped）。runCheck 增 L4 接入、RulesListPanel L4 从预留改已接入闭合断链。维持裁定不动：编造未清零禁导出只报不拦、lint-debt-01 残余不重构。",
+      "evidence": "四门全绿：tsc -b exit0（修1处测试 import 路径）；vitest 172 files 1931 passed+2 skipped（R266 基线171/1926+2，+1文件/+5用例=dedup.test.ts）；eslint 触及4文件 exit0 零 error/warn；vite build 成功 4.00s。",
+      "files": [
+        "src/pages/BidCheck/rules/dedup.ts(新)",
+        "src/pages/BidCheck/rules/dedup.test.ts(新)",
+        "src/pages/BidCheck/runCheck.ts",
+        "src/pages/BidCheck/RulesListPanel.tsx"
+      ]
+    },
+    {
+      "id": "r268-bidcheck-l3-content",
+      "title": "标书检查中枢四期 L3 内容层接入（续 r261-bidcheck-followons 四期）",
+      "priority": "P2",
+      "module": "/bid-check",
+      "round": 268,
+      "summary": "接续 R266/R267 完成同一伞项四期 L3 内容层。checkConfig 默认层级已含 L3、预留 thinChapterMinChars 旋钮、规则清单页称 L3 暂未启用为占位，但 runCheck 从不跑 L3=交互断链。本轮零 AI 复用现成确定性信号：新增 rules/content.ts runContentChecks 产 L3-C1 章节正文单薄/空缺（接线预留旋钮 thinChapterMinChars，商务骨架章 part=biz 不参与免误报）+ L3-C2 成稿偏短章节（复用工作台生成时持久化的 Chapter.underlength 标记）。只报不拦（severity=medium/status=warn，不触导出门禁）、诚实降级（未选项目/无章节/仅商务章/阈值=0→skipped）。runCheck 在 L2 与 L4 间增 L3 接入、RulesListPanel L3 从占位改已接入并改述为五级全接入，闭合断链。维持裁定不动：编造未清零禁导出只报不拦、lint-debt-01 残余不重构。",
+      "evidence": "四门全绿：tsc -b exit0；vitest 173 files 1939 passed+2 skipped（R267 基线172/1931+2，+1文件/+8用例=content.test.ts）；eslint 触及4文件 exit0 零 error/warn；vite build 成功 4.09s。",
+      "files": [
+        "src/pages/BidCheck/rules/content.ts(新)",
+        "src/pages/BidCheck/rules/content.test.ts(新)",
+        "src/pages/BidCheck/runCheck.ts",
+        "src/pages/BidCheck/RulesListPanel.tsx"
+      ]
+    },
+    {
+      "id": "r269-bidcheck-size-linespacing-standard",
+      "title": "标书检查 L1 字号/行距达标接入（闭合 bodySize/lineSpacing 零消费断链）",
+      "priority": "P2",
+      "module": "/bid-check",
+      "round": 269,
+      "summary": "巡检 AnbidCheckConfig.formatStandard 八旋钮消费面，坐实 bodySize/lineSpacing 两旋钮已在类型声明、已在 BidCheckConfigDialog 暴露为『要求字号』『要求行距』输入框、已持久化 localStorage，却在 rules/ 全域零消费=空头承诺（对照同组 bodyFont/margins/maxPages 均已接线）。字号判定复用权威表 DOCX_SIZE_HALFPT（中文字号→docx 半点，与 meta.sizesUsed 同源），该表原为 bidFiles.ts 模块私有，本轮抽到无依赖 bidFormatConstants.ts 供 bidFiles.ts 与 format.ts 共用（单一真源，避规则层反向依赖 docx 重库，抽取区 git diff 核实无在途改动）。行距判定需 w:line+w:lineRule 配对区分 N倍/固定X磅，原 meta.lineSpacings 丢了 lineRule，新增 meta.lineSpacingsDetail（{line,rule} 去重配对，按 ECMA-376 缺省 auto 提取，纯增量不动原 variety 判定）。format.ts 增解析器 resolveSizeHalfPt/resolveLineSpacingReq（识别不了→null 不瞎判）与 L1-13 字号达标/L1-14 行距达标（与 L1-11 bodyFont 同构）。只报不拦：命中一律 warn 非 fail（标题字号天然大于正文、各级行距天然可不同，fail 会误伤），未配置/无法识别→unconfigured、无包→skipped。零 collection schema/零 pb_hooks/零提示词/未 commit。维持裁定不动：编造未清零禁导出只报不拦、lint-debt-01 残余不重构。",
+      "evidence": "四门全绿：tsc -b exit0；vitest 173 files 1947 passed+2 skipped（R268 基线173/1939+2，+8用例并入现有 format.test.ts 无新增文件）；eslint 触及6文件 exit0 零 error/warn；vite build 成功 4.44s。",
+      "files": [
+        "src/pages/BidWorkspace/bidFormatConstants.ts(新)",
+        "src/pages/BidWorkspace/bidFiles.ts",
+        "src/pages/BidCheck/bidCheckTypes.ts",
+        "src/pages/BidCheck/engine/docxInspect.ts",
+        "src/pages/BidCheck/rules/format.ts",
+        "src/pages/BidCheck/rules/format.test.ts"
+      ]
+    },
+    {
+      "id": "r270-bidcheck-annotated-docx",
+      "title": "标书检查五期 · 标注版 docx（Word 批注引擎）导出",
+      "priority": "P2",
+      "module": "/bid-check",
+      "round": 270,
+      "summary": "r261 伞项里的五期「标注版 docx（Word 批注引擎）」子项交付：新增 report/toAnnotatedDocx.ts，把 CheckItem.hits 逐条挂成 Word 批注（CommentRangeStart/End+CommentReference，正文重建自 result.paragraphs 三栏中栏同源），批注正文五要素齐全（编号+标题/级别+严重度+状态/原文/依据/建议），无正文定位的元数据/包级命中走尾章清单不丢条。id 全局 0..N-1 递增、fail/warn 每一命中一条，pass/unconfigured/skipped 不入。ReadingView 顶部按钮组加「标注版 Word」（MessageSquareText 图标），BidCheckPage 的 kind 联合从 excel|html 扩至 excel|html|docx，异步 exportAnnotatedDocx 走 void 分支；沿用既有 hardFatal 置灰 / blocked 二次确认，未加任何新硬门禁（维持「只报不拦」裁定）。依赖零新增（docx v9 Comments API 已在标书 Word 生成链路中，本轮复用）。Buffer→Blob 用 new Uint8Array(len)+set(buf) 让 TS 推 Uint8Array<ArrayBuffer> 绕 SharedArrayBuffer。零 collection schema/零 pb_hooks/零提示词/未 commit。r261 伞项剩余：L5-D 语义 AI（破纯规则口径需产品决策）+ PB 集合 anbid_checks + 分工流转（触发数据模型改动），伞项维持 open。",
+      "evidence": "四门全绿：tsc -b exit0；vitest 174 files 1955 passed+2 skipped（R269 基线 173/1947+2，新增 toAnnotatedDocx.test.ts +8 用例覆盖 collectCommentEntries 过滤/编号/边界、buildAnnotatedDocx 三态构造、Blob 头/MIME/零命中兜底）；eslint 触及 4 文件 exit0 零 error/warn；vite build 成功 3.91s。",
+      "files": [
+        "src/pages/BidCheck/report/toAnnotatedDocx.ts(新)",
+        "src/pages/BidCheck/report/toAnnotatedDocx.test.ts(新)",
+        "src/pages/BidCheck/ReadingView.tsx",
+        "src/pages/BidCheck/BidCheckPage.tsx"
+      ]
+    },
+    {
+      "id": "r271-narrow-viewport-toolbar-wrap",
+      "title": "窄屏工具条横向溢出修复（shrink-0 → min-w-0，闭合 narrow-viewport-toolbar-overflow）",
+      "priority": "P3",
+      "module": "/solution-studio, /shell",
+      "round": 271,
+      "summary": "闭合 R252 浏览器走查遗留 P3。根因：三处工具条容器 className 写作 `flex shrink-0 flex-wrap items-center gap-*`，shrink-0 令该容器作为父 flex item 时不可从 max-content（≈单行子项求和 700-800px）缩下去，而 flex-wrap 的 max-content 定义假定不换行，导致父宽不足时工具条既不缩也从不触发自身 wrap → 溢出（scrollWidth 803 > clientWidth 464）。修复：ChapterEditor.tsx L125（章操作条）/ EditorWorkspace.tsx L111（顶部操作条）/ PageHeader.tsx L14（全站页头 actions 区）三处 `shrink-0` 改为 `min-w-0`，恢复 Tailwind 惯用「可缩+折行」响应式工具条模式，父宽不足时容器可缩、flex-wrap 生效、子按钮自然折行；宽屏行为视觉零变化。其余 `flex shrink-0 flex-wrap` 命中点经核位于列向/已限定宽度上下文，shrink-0 只影响交叉轴不引发溢出，本轮不过度收敛。三处锚点均在 git diff 用户 in-flight hunk 之外（ChapterEditor hunk 在 L97/L111/L220、EditorWorkspace hunk 在 L7/L235-241、PageHeader 无 diff），assert count==1 逐一替换。零 collection schema/零 pb_hooks/零提示词/未 commit。维持裁定不动。",
+      "evidence": "四门全绿：tsc -b exit0；vitest 174 files 1955 passed+2 skipped（R270 基线 174/1955+2 零回归；纯 className 修改无逻辑变化未新增单测，工具条折行属浏览器布局计算 jsdom 不可靠测）；eslint 触及 3 文件 exit0 零 error/warn；vite build 成功 4.24s。",
+      "files": [
+        "src/components/solution-studio/ChapterEditor.tsx",
+        "src/components/solution-studio/EditorWorkspace.tsx",
+        "src/components/shell/PageHeader.tsx"
+      ]
+    },
+    {
+      "id": "r272-bidcheck-table-locate",
+      "title": "BidCheck 问题定位跳转表格内段落失效修复（locatePara auto-expand + li ref 注册）",
+      "priority": "P2",
+      "module": "/bid-check ReadingView",
+      "round": 272,
+      "summary": "修复 R262 三栏阅读视图上线以来的交互断链：凡命中段落位于折叠/展开表格内时，右栏问题条目点击后 scrollIntoView 静默失败（表格 li 从未注册 paraEls，且折叠表格子段不渲染）。Fix：(1) locatePara 检测 inTable，若表格折叠则自动展开+双帧 rAF 等 DOM 后滚动；(2) BlockRow 表格展开态 li 注册 paraEls ref + 问题段落加 bg-red-50 红底与正文行为对齐 + flash 高亮动画支持。变更仅 1 文件（ReadingView.tsx），2 对 replace。附带核验关闭 ui-redesign-phase3 两条（P2+P3，子项均✓）。",
+      "evidence": "四门全绿：tsc -b exit0；vitest 174 files 1955 passed+2 skipped（R271 基线零回归）；eslint ReadingView.tsx exit0；vite build 成功。零 collection/pb_hooks/提示词/未 commit。",
+      "files": [
+        "src/pages/BidCheck/ReadingView.tsx"
+      ]
+    },
+    {
+      "id": "r273-bidcheck-l5d-semantic-review",
+      "title": "BidCheck L5-D AI 语义复核（confidence 接入 + 只标不改裁定）",
+      "priority": "P2",
+      "summary": "闭环 R261 五期残余 L5-D：新增 semanticReview 纯函数模块 + 13 单测；useBidCheck 挂 runSemanticReview action 走 chatViaGateway/useCostConfirm/cacheable=true；BidCheckPage 加 AI 复核按钮；ReadingView 加 confidence badge + reasoning tooltip；Batch≤10、只标不改裁定、零 collection/零提示词文件改动。四门全绿 tsc/vitest(175f/1968+2s)/eslint/build。",
+      "files": [
+        "src/pages/BidCheck/semanticReview.ts (new)",
+        "src/pages/BidCheck/semanticReview.test.ts (new)",
+        "src/pages/BidCheck/useBidCheck.ts",
+        "src/pages/BidCheck/BidCheckPage.tsx",
+        "src/pages/BidCheck/ReadingView.tsx"
+      ]
+    },
+    {
+      "id": "r274-basis-standard-version-currency",
+      "title": "编制依据「标准版本时效体检」（易标 R-027 解析项质量补强 · 零 AI）",
+      "priority": "P2",
+      "summary": "闭环标书解析层确定性缺口：parseBasisLines 以整串编号（含年份）对照 MEDICAL_STANDARDS，旧年份版本（如 GB/T 22239-2008 vs 现行 -2019）整串不匹配被当库外条目悄悄注入正文编制依据、用户无感知。新建纯函数 standardCurrency.ts（splitCodeYear/buildCurrentVersionMap/detectStaleVersionRefs/staleRefHint）以规范库为现行版本事实源做确定性比对，只报不拦（库外/无年份/不早于现行一律不报防误伤）；接入 clean 组件 StandardsPickerDialog「版本提示」区块（warning token 主题化），命中前零涟漪。以 MEDICAL_STANDARDS 为只读事实源、不改数据模型/提示词/pb_hooks。四门全绿：tsc exit0 / vitest 176f 1976+2s（+1f/+8t 零回归）/ eslint 触及3文件 exit0 / vite build 4.40s exit0。",
+      "files": [
+        "src/pages/BidWorkspace/standardCurrency.ts (new)",
+        "src/pages/BidWorkspace/standardCurrency.test.ts (new)",
+        "src/components/bid-workspace/StandardsPickerDialog.tsx"
+      ]
+    },
+    {
+      "id": "r275-standard-currency-text-level",
+      "title": "正文级标准版本时效检测 + 交卷体检告警卡（R274 挂账闭环 · 零 AI）",
+      "priority": "P2",
+      "summary": "闭环 R274 挂账：将 standardCurrency 从「编制依据候选」面板复用到「标书正文级」旧版引用扫描。新增纯函数 scanStaleVersionInText（正则提取正文中所有「标准编号+年份」，归一化后与 MEDICAL_STANDARDS 现行版本比对，引用年份 < 现行年份即命中告警），6 条单测覆盖（命中/同版不报/去重/空文本/自定义 curated/跨行扫描）。接入 SubmissionCheckPanel 交卷体检：useMemo 拼接所有章节 content 调用 scanStaleVersionInText，命中时顶栏显示「标准时效 N 处」badge + 独立告警卡列出每条命中章节/编号/建议。只报不拦、零 AI、零 collection。四门全绿：tsc exit0 / vitest 176f 1982+2s（+6t 零回归）/ eslint 触及3文件 exit0 / vite build 5.00s。",
+      "files": [
+        "src/pages/BidWorkspace/standardCurrency.ts",
+        "src/pages/BidWorkspace/standardCurrency.test.ts",
+        "src/components/bid-workspace/SubmissionCheckPanel.tsx"
+      ]
+    },
+    {
+      "id": "r276-solution-selfcheck-overview-bulk",
+      "title": "方案整本「五维自检总览 + 一键批量自检」（自主选题 · 复用既有自检链路 · 零提示词改动 · 零 collection）",
+      "priority": "P2",
+      "summary": "接续 R275（round=275）。用户点名两项均已关闭（quote-history-01 R102、prompt-fabscan-03 R103 残余「按章聚合回注」已由 r103 收口），另择实质项。方案侧此前只有「逐章手动五维自检」，缺整本视角：无法一眼看清全案强弱项、无法批量把已成正文的章节统一打一遍分。本轮补上：①新建纯函数 solSelfCheckOverview.ts（buildSelfCheckOverview/buildSelfCheckBriefText）把各章 ChapterSelfCheck 汇成整本体检——自检覆盖率/均分/结论分布(direct·review·blocked)/各维度均分与短板/待重写清单(按分升序)/高频问题聚合，verdict 一律按 verdictFromTotal 规则重算不信存量 LLM 自报（与单章链路一致），8 条单测覆盖（空/无正文/pending/混合结论/陈旧verdict重算/问题聚合降序/待重写升序/文本导出）。②新建 SolutionSelfCheckOverviewCard.tsx：头部均分+结论 chips+待重写数，「一键批量自检」对全部成正文章节逐章跑五维评分（章间并发 2、进度条、可中断），展开区给出各维度均分条形(标短板)、高频问题、待重写跳章按钮；复用 shadcn token 与交付体检卡同构样式。③useSolutionStudio.ts 新增 runBulkReview/startBulkReview/cancelBulkReview/selfCheckOverview + bulkReviewBusy/reviewProgress/cancelReviewRef，批量复用 runBulkPool 与单章同一 prompt(buildChapterReviewMessages)/解析(parseChapterReview)/重试容错，成本走 runWithCostConfirm；SolutionStudioPage 转发 5 props、EditorWorkspace 挂载新卡。零提示词文本改动（复用既有 messages）、零 collection（selfCheck 随 chapters json 透传）、只报不拦（不挡导出，与既有裁定一致）、不碰 pb_hooks。在途避让：标书/BidCheck 全域为用户当前 live 编辑（最近改动 mtime<2.5h：bidTypes/chapterCompletion/runCheck 等），本轮全部落在方案域（宿主 EditorWorkspace mtime 10-12 03:39、useSolutionStudio 10-07，非 live 区）。另发现并规避换行污染：solutionTypes.ts 行尾被历史 Python 文本写污染成 CRCRLF(781)，本轮补丁统一 read_bytes→\\n 归一→改→按原行尾回写，未新增幽灵差异。四门全绿：tsc -b exit0 / vitest run 181f 2033 passed+2 skipped（新增 1f/+8t，零回归）/ eslint 触及6文件 零新增 error（useSolutionStudio 基线14=改后14，其 12 error 系 React-Compiler/lint-debt-01 既有残余，按裁定有意保留不重构）/ vite build exit0（6051 modules，3.16s）。",
+      "files": [
+        "src/pages/SolutionStudio/solSelfCheckOverview.ts (new)",
+        "src/pages/SolutionStudio/solSelfCheckOverview.test.ts (new)",
+        "src/components/solution-studio/SolutionSelfCheckOverviewCard.tsx (new)",
+        "src/pages/SolutionStudio/useSolutionStudio.ts",
+        "src/components/solution-studio/EditorWorkspace.tsx",
+        "src/pages/SolutionStudio/SolutionStudioPage.tsx"
+      ]
+    },
+    {
+      "id": "r278-deck-placeholder-leftover-lint",
+      "title": "PPT 导出自检新增「模板/占位残留」确定性检测（XX医院/待补充/{{项目名}}/请输入，只报不拦）",
+      "priority": "P2",
+      "summary": "巡检新角度（内容质量）：PPT deck 已有结构自检 deckLint，但缺 AI 批量生成最常见的交付事故——模板桩/提示语残留被原样导出。新增纯函数 findPlaceholderLeftovers（关键词待补充/待填写/待完善/此处填写/请输入/点击输入/占位符/TODO/FIXME/TBD 大小写不敏感 + 连续2+X打码桩 + 双花括号{{变量}}，去重），lintDeck 逐页扫标题+要点+讲稿(notes)，命中产 placeholder_leftover(warn)；占位残留单独收集并在 6 条截断时优先排前，保证不被结构告警挤掉。全程只报不拦、零提示词、零 collection、零新依赖。域=/ppt-quote(优先级3)，避让 bid-workspace(并发 agent .bak_r277)+solution-studio(R276)。四门全绿：tsc -b exit0 / vitest 182f 2060+2s exit0(deckLint.test 22->31,+9 零回归) / eslint 触及2文件 0 error / vite build 5.19s exit0。维护裁定：编造未清零禁导出仍只报不拦；lint-debt-01 未触碰；未 commit。",
+      "files": [
+        "src/pages/PptQuote/deckLint.ts",
+        "src/pages/PptQuote/deckLint.test.ts"
+      ]
+    },
+    {
+      "id": "r279-bid-required-points-as-sections",
+      "title": "问题2 响应度不足：评分 criteria 必答要点（①…②…③…）强制逐点独立成节",
+      "priority": "P1",
+      "summary": "R279 实质优化（用户拍板『要体现单独的小节』）。旧逻辑把整段评分 criteria 当 blob 注入，模型常将『包括但不限于①进度管理②人员职责③项目管理④质量保障』这类枚举概括带过，专家评审看不到对应小节。新增两纯函数：extractRequiredPoints 按带圈序号（\\u2460-\\u2473/\\u3251-\\u325f）切段、清洗去重成简洁要点标题；mergeRequiredSections 将要点并入本章小节列表，语义覆盖（互相包含且≥4字）跳过、最多补 8 条、无新增返回原引用（幂等，重复生成不叠加）。generateChapterContent 里 sections 改走 mergeRequiredSections(ch.sections, extractRequiredPoints(scoring))，length 变化才 updateChapter 落库。零 PocketBase collection 改动（仅会话内 ch.sections 状态）；非提示词口径变更，不动 PROMPT_VERSION。建阳真实①②③④要点回归 7 单测。四门：tsc 0 / vitest 2116 passed 2 skipped（新增 7）/ eslint 触及文件 0 新增 error / build 4.31s。",
+      "files": [
+        "src/pages/BidWorkspace/bidTypes.ts",
+        "src/pages/BidWorkspace/useBidWorkspace.ts",
+        "src/pages/BidWorkspace/scoringPointsSections.test.ts"
+      ]
     }
   ],
   "blocked": [
@@ -3445,5 +4462,6 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "R219（用户授权 AI 演练轮，3 次封顶）：①情报 AI 摘要打标✅（摘要+5 标签高质量）②问知识库⛔受阻——首次冷启动重复拉取 72 页/300MB 语料 5 分钟无响应（A 类挂账 r219-kbqa-coldstart-perf，建议专项轮修缓存复用+slim 生效）③AI 跟进建议✅4 条精准结合杏林医院真实商机上下文。实际调用 2-3 次。演练数据零残留。产品代码无改动。"
+  "lastRoundSummary": "R279 P1 标书生成响应度：评分 criteria『包括但不限于①…②…③…』必答要点强制逐点独立成节（用户拍板『要体现单独的小节』）。bidTypes 新增 extractRequiredPoints（带圈序号切段+清洗去重）与 mergeRequiredSections（并入小节·语义覆盖跳过·最多补8·幂等），generateChapterContent 里 sections 走合并并按 length 变化 updateChapter 落库；零 collection（仅会话内 ch.sections）、非提示词口径不动 PROMPT_VERSION。新建阳真实要点 7 单测。四门全绿：tsc 0 / vitest 2116 passed 2 skipped(+7) / eslint 触及 3 文件 0 新增 error / build 4.31s。",
+  "note": ""
 }

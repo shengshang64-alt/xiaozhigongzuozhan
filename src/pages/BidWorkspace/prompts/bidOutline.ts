@@ -6,7 +6,7 @@ import { buildLotsScopeHint, BID_OUTLINE_REQ_KEY, STAR_CLAUSE_SECTION, clipText,
 import type { BidScope, ComplianceMode, ParseReport, RequirementClause } from "../bidTypes"
 import type { LlmMessage } from "@/lib/llm"
 
-export const PROMPT_VERSION = 3
+export const PROMPT_VERSION = 4
 
 /** 大纲生成：注入评分办法 / 响应要求 / 商务条款 + 招标要求条款清单 + 全局事实表；级数与叶子规模（leafTarget ±20%）作硬约束 */
 export function buildBidOutlineMessages(
@@ -29,6 +29,8 @@ export function buildBidOutlineMessages(
     scope?: BidScope
     /** 05 三模式（§5.4）：合规严格度驱动技术章骨架宽度（缺省/strict=现状零改动；full 允许增设支撑性技术章） */
     complianceMode?: ComplianceMode
+    /** R-017 必备技术内容清单（可配置下限，凡技术/交付/服务即必写）：非空才注入硬约束，缺省=现状字节不变 */
+    requiredTechContents?: string[]
   },
 ): LlmMessage[] {
   const scope: BidScope = opts?.scope ?? (opts?.includeBiz === false ? "tech" : "both")
@@ -65,6 +67,7 @@ export function buildBidOutlineMessages(
   const leafLo = Math.max(1, Math.ceil(leafTarget * 0.8))
   const leafHi = Math.max(leafLo, Math.floor(leafTarget * 1.2))
   const implicitList = opts?.implicitConstraints ?? []
+  const requiredList = (opts?.requiredTechContents ?? []).map((k) => k.trim()).filter(Boolean)
   const depthRule =
     level === 0
       ? "不预设目录级数：由你按招标文件评分办法与章节要求自行决定技术部分合理级数（最多三级），保证评分办法每一档都有章节落点（级数约束只针对技术章，商务骨架章固定为章+一级小节两级）。"
@@ -143,6 +146,11 @@ export function buildBidOutlineMessages(
       "下面【★/▲ 重点条款】为招标文件带标记的实质性响应条款，任何一条未响应都可能直接废标：大纲必须让每条重点条款都有明确章节落点（如资质与证照证明、项目经理资历、售后服务承诺、技术需求逐条应答、原厂授权等对应专门章节或节），禁止只靠通用章节笼统带过；",
     )
   }
+  if (includeTech && requiredList.length) {
+    numbered.push(
+      `必备技术内容清单（R-017，可配置下限：凡技术/交付/服务即必写）：以下主题凡在本项目出现即必须有独立技术章或节承载，禁止并入「其他/概述」式通用章或整体省略：${requiredList.slice(0, 30).join('、')}；`,
+    )
+  }
   if (clauseList.length) {
     numbered.push(
       `下面【招标要求条款清单】共 ${clauseList.length} 条，每条条款必须至少对应一个技术章（part="tech"）下的大纲叶子节点（无子节点的章/节/条），对应叶子节点的标题须包含该条款的核心词，禁止遗漏任何条款；商务骨架章不承担条款覆盖，coverage 的落点一律填技术章的叶子标题；`,
@@ -200,6 +208,12 @@ export function buildBidOutlineMessages(
   // 第十七轮 17A：招标规定的投标文件目录（截断 4000 字，项目级稳定块，缓存序不变）
   if (outlineReqText) {
     stableParts.push(`【招标文件规定的投标文件目录（章结构必须遵循其顺序与层级）】\n${clipText(outlineReqText, 4000)}`)
+  }
+  // R-017 必备技术内容清单（项目级稳定块，缓存序不变；非空才注入）
+  if (includeTech && requiredList.length) {
+    stableParts.push(
+      `【必备技术内容清单（每项必须有独立章节落点，凡技术/交付/服务即必写）】\n${requiredList.map((k, i) => `${i + 1}. ${k}`).join('\n')}`,
+    )
   }
   // 第十七轮 17D：历史范本目录结构（本地抽取标题行，零 AI）——只参考章法与章节粒度，不照抄标题
   const refOutlineLines = (opts?.refTemplateOutline ?? []).slice(0, 80)

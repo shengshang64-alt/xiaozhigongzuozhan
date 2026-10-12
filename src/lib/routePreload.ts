@@ -6,6 +6,7 @@ const LOADERS: Record<string, () => Promise<unknown>> = {
   "/": () => import("@/pages/Home/index.tsx"),
   "/solution-studio": () => import("@/pages/SolutionStudio/index.tsx"),
   "/bid-workspace": () => import("@/pages/BidWorkspace/index.tsx"),
+  "/bid-check": () => import("@/pages/BidCheck/index.tsx"),
   "/ppt-quote": () => import("@/pages/PptQuote/index.tsx"),
   "/model-config": () => import("@/pages/ModelConfig/index.tsx"),
   "/intel-center": () => import("@/pages/IntelCenter/index.tsx"),

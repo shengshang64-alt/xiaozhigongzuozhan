@@ -28,6 +28,7 @@ import {
 
 // D3/R89：AI 内容护栏标签映射（consistencyGuard 模块自源，不经 bidTypes 中转）
 import { CONSISTENCY_RULE_LABEL, CONSISTENCY_SEVERITY_LABEL } from "@/pages/BidWorkspace/prompts/consistencyGuard"
+import { scanStaleVersionInText, staleRefHint } from "@/pages/BidWorkspace/standardCurrency"
 
 type SubmissionCheckPanelProps = Pick<
   UseBidWorkspace,
@@ -737,6 +738,12 @@ export function SubmissionCheckPanel({
   const factConflicts = check?.fact_conflicts ?? null
   // D3/R89：AI 内容护栏结果（null=未跑/失败，[]=跑过无问题；只报不拦，绿态也渲染区卡收口）
   const consistencyIssues = check?.consistency_issues ?? null
+  // R275：正文级编制依据版本时效检查（零 AI，兜底暴露旧版引用；只报不拦）
+  const staleVersionHits = useMemo(() => {
+    const chapters = activeProject?.bid_chapters ?? []
+    const fullText = chapters.map((c) => c.content ?? "").join("\n")
+    return fullText ? scanStaleVersionInText(fullText) : []
+  }, [activeProject?.bid_chapters])
   return (
     <section className="mx-auto max-w-7xl px-4 pb-14">
       <header className="rounded-2xl border border-border bg-gradient-to-br from-background via-secondary to-card px-6 py-6 shadow-md animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -837,6 +844,12 @@ export function SubmissionCheckPanel({
                 >
                   <FileSearch className="h-3.5 w-3.5" />
                   {consistencyIssues.length ? `内容护栏 ${consistencyIssues.length} 处提示` : "内容护栏通过"}
+                </span>
+              )}
+              {staleVersionHits.length > 0 && (
+                <span className="flex items-center gap-1 rounded-full bg-warning/10 px-3 py-1 text-xs font-medium text-warning">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  标准时效 {staleVersionHits.length} 处
                 </span>
               )}
               {gaps.length > 0 && (
@@ -1003,6 +1016,25 @@ export function SubmissionCheckPanel({
                 <p className="mt-2 text-xs text-muted-foreground">
                   命中处请回编制环节修改正文；调整检查范围去「投标文件编制」环节的「格式与暗标设置」面板重新勾选
                 </p>
+              </div>
+            )}
+            {/* R275：编制依据版本时效告警卡（兜底：用户未打开规范库补选时也能看到，零 AI） */}
+            {staleVersionHits.length > 0 && (
+              <div className="rounded-lg border border-warning/40 bg-warning/10 p-4 shadow-md">
+                <h2 className="flex items-center gap-2 text-sm font-semibold text-warning">
+                  <AlertTriangle className="h-4 w-4" />
+                  编制依据版本时效：正文中检出 {staleVersionHits.length} 处疑似引用旧版标准
+                </h2>
+                <p className="mt-1.5 text-xs leading-relaxed text-warning/80">
+                  以规范库（37 条）为事实源，确定性比对正文中的标准编号年份；只报不拦，未命中库内的标准不报（防误伤）。如需更换为现行版本，可回编制环节「规范库补选」核实。
+                </p>
+                <ul className="mt-2 flex flex-col gap-1">
+                  {staleVersionHits.map((r) => (
+                    <li key={`${r.item.code}-${r.citedYear}`} className="text-xs leading-snug text-warning">
+                      {staleRefHint(r)}
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
             {/* 循环 8 A3：第三区卡——事实一致性核对（null=未跑/失败不渲染；[]=跑过无矛盾渲染绿态） */}

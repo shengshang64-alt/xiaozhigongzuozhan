@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react"
 import { useNavigate } from "react-router-dom"
-import { ArrowLeft, Download, Eye, FileText, Images, Pencil, Play, Upload } from "lucide-react"
+import { ArrowLeft, Download, Eye, FileText, Images, Loader2, Pencil, Play, Sparkles, Upload } from "lucide-react"
 import { MaterialPickerDialog } from "./MaterialPickerDialog"
 import { deckTypeLabel, TRANSITION_LABEL, type DeckRecord, type DeckTransition, type RefineKind, type Slide } from "@/pages/PptQuote/pptQuoteTypes"
 import type { ImageSearchProvider } from "@/pages/PptQuote/imageSearch"
@@ -64,6 +64,11 @@ type DeckEditorWorkspaceProps = {
   autoFigureProvider: ImageSearchProvider
   setAutoFigureProvider: (v: ImageSearchProvider) => void
   slideFigureBusy: { index: number; kind: "search" | "ai" | "" }
+  /** R249：占位/空白页「一键补全」——空白页数、进行态、进度文案与触发 */
+  blankSlideCount: number
+  fillingBlank: boolean
+  fillProgress: string
+  onFillBlankSlides: () => void
 }
 
 export function DeckEditorWorkspace({
@@ -107,6 +112,10 @@ export function DeckEditorWorkspace({
   autoFigureProvider,
   setAutoFigureProvider,
   slideFigureBusy,
+  blankSlideCount,
+  fillingBlank,
+  fillProgress,
+  onFillBlankSlides,
 }: DeckEditorWorkspaceProps) {
   // R166：导出前自检接入编辑期（同一套 deckLint 规则，memo 随 slides 重算，非阻断）
   const lintIssues = useMemo(() => lintDeck(deck.slides), [deck.slides])
@@ -295,6 +304,24 @@ export function DeckEditorWorkspace({
 
       {deckTemplateName && deckTemplateProbe ? (
         <TemplateFidelityPanel templateName={deckTemplateName} facts={deckTemplateProbe} slides={deck.slides} />
+      ) : null}
+
+      {blankSlideCount > 0 ? (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2 text-xs text-card-foreground shadow-sm animate-in fade-in duration-300">
+          <span className="flex items-center gap-1.5">
+            <Sparkles className="h-3.5 w-3.5 text-primary" />
+            有 {blankSlideCount} 页仅有标题、正文为空（多为逐页生成时该批未成功），可一键补全或在编辑器逐页「补全此页」。
+          </span>
+          <button
+            type="button"
+            onClick={onFillBlankSlides}
+            disabled={fillingBlank}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-primary/50 bg-card px-2.5 py-1 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-primary/10 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            {fillingBlank ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            {fillingBlank ? fillProgress || "补全中…" : "一键补全空白页"}
+          </button>
+        </div>
       ) : null}
 
       <DeckLintPanel

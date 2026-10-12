@@ -117,12 +117,12 @@ export async function listKbDocs(opts?: ListKbDocsOptions): Promise<KbDocRow[]> 
   // 当前自定义 list 路由按 publicExport 返回全字段、暂未消费 fields 参数（红线：pb_hooks 零变更），
   // 故在解析层兜底瘦身：fields 明确裁掉 content 时强制置空，避免命中仍驻留全文大字符串
   const slimContent = opts?.fields !== undefined && !opts.fields.split(",").includes("content")
-  const fetchKbPage = async (page: number): Promise<{ rows: KbDocRow[]; effectivePerPage: number }> => {
+  const fetchKbPage = async (page: number): Promise<{ rows: KbDocRow[]; effectivePerPage: number; totalItems: number }> => {
     const params = new URLSearchParams({ page: String(page), perPage: String(perPage) })
     if (opts?.q) params.set("q", opts.q)
     if (opts?.fields) params.set("fields", opts.fields)
     if (opts?.slim) params.set("slim", "1")
-    const data = await kbFetch<{ items: KbDocRow[]; perPage?: number }>(
+    const data = await kbFetch<{ items: KbDocRow[]; perPage?: number; totalItems?: number }>(
       `/api/kb_docs?${params.toString()}`,
     )
     const rows = (data.items ?? []).map((r) => ({
@@ -142,33 +142,48 @@ export async function listKbDocs(opts?: ListKbDocsOptions): Promise<KbDocRow[]> 
     // 响应回显钳制后的实际 perPage；返回条数不足一页即最后一页
     const effectivePerPage =
       typeof data.perPage === "number" && data.perPage > 0 ? data.perPage : Math.min(perPage, 200)
-    return { rows, effectivePerPage }
+    // 服务端 list 路由回显真实总数 totalItems；缺失/非法记为 -1，走保守降级（旧语义）
+    const totalItems = typeof data.totalItems === "number" && data.totalItems >= 0 ? data.totalItems : -1
+    return { rows, effectivePerPage, totalItems }
   }
   const all: KbDocRow[] = []
-  let done = false
-  for (let start = 1; start <= MAX_PAGES && !done; start += KB_LIST_PAGE_BATCH) {
-    const size = Math.min(KB_LIST_PAGE_BATCH, MAX_PAGES - start + 1)
-    // 同批并发拉页，任一页失败则整体抛出（与旧串行实现一致）；拼接按页序，结果与串行版逐字等价
-    const batch = await Promise.all(
-      Array.from({ length: size }, (_, i) => fetchKbPage(start + i)),
-    )
-    for (const { rows, effectivePerPage } of batch) {
-      all.push(...rows)
-      if (rows.length < effectivePerPage) {
-        done = true
-        break
+  // 首页单独串行取：一次即可学习 effectivePerPage + totalItems，据此精确算末页，杜绝越界空页预取
+  const first = await fetchKbPage(1)
+  all.push(...first.rows)
+  const epp = first.effectivePerPage
+  // 首页满 epp 且总数尚未取满才继续翻页（totalItems<0 未知时保守继续，靠 lastPage=MAX 收敛）
+  const needMore = first.rows.length >= epp && (first.totalItems < 0 || all.length < first.totalItems)
+  if (opts?.onBatch && all.length > 0) {
+    try {
+      opts.onBatch([...all])
+    } catch {
+      /* 渐进直显属体验增强，静默降级 */
+    }
+  }
+  if (needMore) {
+    // 精确末页：totalItems>0 时按总数收敛；totalItems<0（缺失）时退回安全上限，靠「返回不满一页」收敛
+    const lastPage =
+      first.totalItems >= 0
+        ? Math.min(MAX_PAGES, Math.ceil(first.totalItems / epp))
+        : MAX_PAGES
+    for (let start = 2; start <= lastPage; start += KB_LIST_PAGE_BATCH) {
+      const size = Math.min(KB_LIST_PAGE_BATCH, lastPage - start + 1)
+      // 同批并发拉页，任一页失败则整体抛出（与旧串行实现一致）；拼接按页序，结果与串行版逐字等价
+      const batch = await Promise.all(
+        Array.from({ length: size }, (_, i) => fetchKbPage(start + i)),
+      )
+      for (const { rows } of batch) all.push(...rows)
+      // T9：批间快照回调（副本，防调用方持有后被追加污染）；回调异常不中断拉取主链路
+      if (opts?.onBatch && all.length > 0) {
+        try {
+          opts.onBatch([...all])
+        } catch {
+          /* 渐进直显属体验增强，静默降级 */
+        }
       }
     }
-    // T9：批间快照回调（副本，防调用方持有后被追加污染）；回调异常不中断拉取主链路
-    if (opts?.onBatch && all.length > 0) {
-      try {
-        opts.onBatch([...all])
-      } catch {
-        /* 渐进直显属体验增强，静默降级 */
-      }
-    }
-    // 撞满安全上限且末批最后一页仍满页，才说明仍有文档未返回（旧串行版同条件）
-    if (!done && start + size > MAX_PAGES) {
+    // 撞满安全上限且总数仍大于已取条数，才说明仍有文档未返回
+    if (first.totalItems >= 0 && all.length < first.totalItems && lastPage >= MAX_PAGES) {
       console.warn(
         `[kbCore] listKbDocs 达到翻页安全上限 ${MAX_PAGES} 页（已取 ${all.length} 条），超出部分未返回`,
       )

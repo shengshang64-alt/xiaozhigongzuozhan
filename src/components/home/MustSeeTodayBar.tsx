@@ -96,7 +96,19 @@ export function MustSeeTodayBar({ data, loading, onOpenProject }: MustSeeTodayBa
 
       <div className="px-3 py-3">
         {loading && data.total === 0 ? (
-          <p className="px-1 py-3 text-sm text-muted-foreground">正在汇总今日行动项…</p>
+          <div
+            className="flex flex-col gap-3 lg:flex-row lg:gap-6"
+            role="status"
+          >
+            <span className="sr-only">正在汇总今日行动项…</span>
+            {[0, 1, 2].map((i) => (
+              <div key={i} aria-hidden="true" className="min-w-0 flex-1 space-y-2 px-1">
+                <div className="h-3 w-24 animate-pulse rounded bg-muted" />
+                <div className="h-7 w-full animate-pulse rounded-md bg-muted/70" />
+                <div className="h-7 w-4/5 animate-pulse rounded-md bg-muted/70" />
+              </div>
+            ))}
+          </div>
         ) : data.total === 0 ? (
           <div className="flex items-center gap-2 px-1 py-3 text-sm text-foreground">
             <CheckCircle2 className="h-5 w-5 shrink-0 text-primary" />

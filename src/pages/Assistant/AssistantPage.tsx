@@ -1,4 +1,5 @@
-import { Bot, MessagesSquare } from "lucide-react"
+import { useState } from "react"
+import { Bot, Brain, MessagesSquare, X } from "lucide-react"
 import { PageHeader } from "@/components/shell/PageHeader"
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
 import { ModelSelect } from "@/components/model-config/ModelSelect"
@@ -18,6 +19,12 @@ import { SkillsPanel } from "@/components/assistant/SkillsPanel"
 import { SkillFillDialog } from "@/components/assistant/SkillFillDialog"
 import type { useAssistant } from "./useAssistant"
 
+// docs13-3.8：欢迎卡仅首次（未手动关闭过）在空会话时展示，localStorage 一次性标记，零 schema
+const WELCOME_KEY = "assistant.welcomeDismissed"
+function readWelcomeDismissed(): boolean {
+  try { return window.localStorage.getItem(WELCOME_KEY) === "1" } catch { return false }
+}
+
 const LEFT_TABS = [
   { key: "sessions" as const, label: "会话" },
   { key: "memory" as const, label: "记忆" },
@@ -26,6 +33,12 @@ const LEFT_TABS = [
 
 export function AssistantPage(p: ReturnType<typeof useAssistant>) {
   const activeSession = p.sessions.find((s) => s.id === p.activeSessionId) ?? null
+  const [welcomeDismissed, setWelcomeDismissed] = useState(readWelcomeDismissed)
+  const showWelcome = p.convMessages.length === 0 && !welcomeDismissed
+  const dismissWelcome = () => {
+    setWelcomeDismissed(true)
+    try { window.localStorage.setItem(WELCOME_KEY, "1") } catch { /* ignore */ }
+  }
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 text-foreground duration-500">
@@ -106,6 +119,39 @@ export function AssistantPage(p: ReturnType<typeof useAssistant>) {
               最近 {p.convMessages.length} 条消息
             </span>
           </header>
+
+          {showWelcome && (
+            <div className="mx-4 mt-3 flex shrink-0 items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 animate-in fade-in duration-300">
+              <Brain className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <div className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
+                第一次用？小智会把你的偏好与常用口径长期记在
+                <button
+                  type="button"
+                  onClick={() => p.setLeftTab("memory")}
+                  className="mx-0.5 font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+                >
+                  「记忆」
+                </button>
+                里，也能把重复工作流存成一键调用的
+                <button
+                  type="button"
+                  onClick={() => p.setLeftTab("skills")}
+                  className="mx-0.5 font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+                >
+                  「技能」
+                </button>
+                ——点开左侧标签页就能查看和编辑。
+              </div>
+              <button
+                type="button"
+                onClick={dismissWelcome}
+                aria-label="关闭提示"
+                className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
 
           <ChatStream
             messages={p.convMessages}

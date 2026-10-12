@@ -25,6 +25,33 @@ export const WHOLE_FILE_LIMIT = 60000
 export const PARSE_SEGMENT_CHARS = 45000
 /** 切段通道段数上限：超过说明文件过于超长，回退检索通道（防 单项 × N 段 费用爆炸） */
 export const PARSE_MAX_SEGMENTS = 6
+/**
+ * R-038 Slice B（R260）：废标/评分关键项的切段上限——这些项漏一条即废标/丢分，必须整文全量覆盖。
+ * 放宽段数上限让它们走「切段 + 跨段 AI 合并」（全量覆盖，且评分项/废标项跨块汇总），
+ * 而非回落检索通道（仅 1 个关键词窗口，长文档实测覆盖 4%~10%，漏掉的正是散落各章的评分表/否决条款）。
+ * 24 段 × 45000 字 ≈ 108 万字，覆盖已知超长标书（天坛 41.7 万字 = 10 段）；仍超限才回落检索兜底。
+ * 代价：关键项调用数随段数线性增长（并发经限流闸门错峰、跨项同段吃提示词缓存，成本有界）——已就 R-038 授权。
+ */
+export const PARSE_MAX_SEGMENTS_CRITICAL = 24
+/** R-038② 「评分项/废标项必须跨块汇总」的落点：涉及废标/丢分的解析项需整文全量覆盖 + 跨段合并。 */
+const FULL_COVERAGE_PARSE_KEYS: ReadonlySet<string> = new Set([
+  "tech_score",
+  "biz_score",
+  "void_items",
+  "qualification",
+  "compliance",
+])
+/** 判定解析项是否需要整文全量覆盖（废标/评分关键项）。 */
+export function isFullCoverageParseItem(key: string): boolean {
+  return FULL_COVERAGE_PARSE_KEYS.has(key)
+}
+/**
+ * R-038 Slice B：按解析项返回切段段数上限——废标/评分关键项放宽到 CRITICAL（整文全量覆盖 + 跨块汇总），
+ * 其余项沿用通用上限（超限回落检索，控成本）。超限一律回落检索兜底，绝不无界放大调用数。
+ */
+export function parseSegmentCap(key: string): number {
+  return isFullCoverageParseItem(key) ? PARSE_MAX_SEGMENTS_CRITICAL : PARSE_MAX_SEGMENTS
+}
 /** 缓存预热等待：首项成功后停顿，等提供商登记提示词缓存再并发剩余项（易标同款经验值） */
 export const PARSE_WARMUP_DELAY_MS = 5000
 

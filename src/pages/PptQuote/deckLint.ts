@@ -25,6 +25,29 @@ export interface DeckLintIssue {
 /** 名词标签式标题的常见结尾词（这类标题往往不带结论，建议改写成陈述句） */
 const NOUN_TITLE_SUFFIXES = ["背景", "概述", "简介", "介绍", "方案", "架构", "总结", "目录", "附录", "说明", "现状", "需求", "意义", "目标"]
 
+// R277：模板/占位残留检测——AI 批量生成的幻灯片常漏改模板桩或残留提示语，
+// 这些字符串会被原样导出交付给客户。下列均为确定性规则、只报不拦（非阻断契约不变）。
+const PLACEHOLDER_KEYWORDS = ["待补充", "待填写", "待完善", "此处填写", "此处输入", "请输入", "点击输入", "占位符", "TODO", "FIXME", "TBD"]
+/** 连续 2 个及以上 X/x/Ｘ：典型打码/未替换占位，如 "XX医院""xxx公司" */
+const XXX_RUN_RE = /[XＸ]{2,}/
+/** 双花括号包裹的模板变量残留，如 {{项目名称}} */
+const DOUBLE_BRACE_RE = /\{\{[^{}]{1,40}\}\}/
+
+/** 从一段文本里挑出模板/占位残留片段（去重，找不到返回空数组） */
+export function findPlaceholderLeftovers(text: string): string[] {
+  if (!text) return []
+  const hits: string[] = []
+  const lower = text.toLowerCase()
+  for (const kw of PLACEHOLDER_KEYWORDS) {
+    if (lower.includes(kw.toLowerCase())) hits.push(kw)
+  }
+  const xxx = text.match(XXX_RUN_RE)
+  if (xxx) hits.push(xxx[0])
+  const brace = text.match(DOUBLE_BRACE_RE)
+  if (brace) hits.push(brace[0])
+  return Array.from(new Set(hits))
+}
+
 /** 标题归一化：去首尾空白、统一大小写、剔除内部所有空白，用于跨页重复标题判定 */
 function normalizeTitle(t: string): string {
   return t.trim().toLowerCase().replace(/\s+/g, "")
@@ -48,6 +71,8 @@ export function lintDeck(slides: Slide[]): DeckLintIssue[] {
 
   let visualPages = 0
   let imagePages = 0
+  // R277：模板/占位残留问题单独收集，最终优先展示（导出即漏脸级别，比结构告警更该先看到）
+  const placeholderIssues: DeckLintIssue[] = []
 
   slides.forEach((s, i) => {
     const page = i + 1
@@ -96,6 +121,18 @@ export function lintDeck(slides: Slide[]): DeckLintIssue[] {
     ) {
       issues.push({ level: "info", page, code: "noun_title", msg: `第 ${page} 页标题「${title}」偏名词标签，改成一句结论更有说服力` })
     }
+
+    // 6) R277 模板/占位残留：标题/正文/讲稿里漏改的模板桩（XX医院 / 待补充 / {{项目名}}）会被原样导出
+    const leftoverHaystack = [title, ...bullets, (s.notes ?? "").trim()].filter(Boolean)
+    const leftoverHits = Array.from(new Set(leftoverHaystack.flatMap(findPlaceholderLeftovers)))
+    if (leftoverHits.length) {
+      placeholderIssues.push({
+        level: "warn",
+        page,
+        code: "placeholder_leftover",
+        msg: `第 ${page} 页残留模板/占位文本（${leftoverHits.slice(0, 3).join("、")}），导出前请替换为真实内容`,
+      })
+    }
   })
 
   // 5b) 跨页重复标题：AI 批量生成常见缺陷——多页共用同一标题（忽略分节页与空标题）
@@ -131,7 +168,7 @@ export function lintDeck(slides: Slide[]): DeckLintIssue[] {
   // 去重同类整份问题 + 截断，避免提示刷屏
   const seen = new Set<string>()
   const out: DeckLintIssue[] = []
-  for (const it of issues) {
+  for (const it of placeholderIssues.concat(issues)) {
     const key = it.page ? `${it.code}:${it.page}` : it.code
     if (seen.has(key)) continue
     seen.add(key)

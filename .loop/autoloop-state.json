@@ -2,7 +2,7 @@
   "schema_version": 1,
   "total_rounds_run": 0,
   "consecutive_no_report": 0,
-  "consecutive_env_fail": 0,
+  "consecutive_env_fail": 1,
   "history": [
     {
       "round": 32,
@@ -17,8 +17,22 @@
       "needsUserDecision": [],
       "honestNotes": [],
       "cliMeta": null
+    },
+    {
+      "round": 279,
+      "role": "hospital-it",
+      "status": "env_fail",
+      "reason": "Vite 前端 :8000, PocketBase :7000",
+      "topic": "",
+      "workClass": "",
+      "durationMs": 0,
+      "reportProduced": false,
+      "commitHash": "",
+      "needsUserDecision": [],
+      "honestNotes": [],
+      "cliMeta": null
     }
   ],
-  "last_run_at": "2026-09-24T09:01:01.322Z",
+  "last_run_at": "2026-10-12T09:46:55.808Z",
   "last_stop_reason": "completed_requested_rounds"
 }

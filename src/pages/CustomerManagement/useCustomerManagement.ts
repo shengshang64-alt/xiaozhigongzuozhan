@@ -431,7 +431,7 @@ export function useCustomerManagement() {
   }, [userId, refsLoadingMore, refsHasMore, solsHasMore, bidsHasMore, solsPage, bidsPage])
 
   // ------------------------------ 视图与筛选 ------------------------------
-  const [view, setView] = useState<"list" | "board">("list")
+  const [view, setView] = useState<"list" | "board" | "table">("list")
   const [searchText, setSearchText] = useState("")
   const [typeFilter, setTypeFilter] = useState("")
   const [regionFilter, setRegionFilter] = useState("")

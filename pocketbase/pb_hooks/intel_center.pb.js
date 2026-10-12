@@ -1893,6 +1893,35 @@ routerAdd("POST", "/api/intel/cleanup-irrelevant", (e) => {
       var snip = String(r.get("content_snippet") || "") + " " + String(r.get("summary") || "")
       if (isIrrelevant(String(r.get("title") || ""), snip)) bad.push(r)
     }
+    // R-033 数据安全：备份模式——清理前先取全量命中记录导出本地留存（不删除）。
+    // 口径与下方 delete 完全同一 bad 集合；前端据此「备份成功且数量对齐才发删除」。
+    // 按 Goja 回调自持约定在本块内序列化一份，不跨文件共享 helper。
+    if (body.backup === true) {
+      var out = []
+      for (var bi = 0; bi < bad.length; bi++) {
+        var br = bad[bi]
+        var btg = []
+        try { var brt = br.getString("tags"); if (brt) { var bpt = JSON.parse(brt); if (bpt && typeof bpt.length === "number") btg = bpt } } catch (errT) { btg = [] }
+        out.push({
+          id: br.id,
+          title: String(br.get("title") || ""),
+          url: String(br.get("url") || ""),
+          source_name: String(br.get("source_name") || ""),
+          content_snippet: String(br.get("content_snippet") || ""),
+          summary: String(br.get("summary") || ""),
+          tags: btg,
+          item_type: String(br.get("item_type") || ""),
+          region: String(br.get("region") || ""),
+          added_by: String(br.get("added_by") || ""),
+          owner_id: String(br.get("owner_id") || ""),
+          visibility: String(br.get("visibility") || ""),
+          published_at: String(br.get("published_at") || ""),
+          created: String(br.get("created") || ""),
+          updated: String(br.get("updated") || "")
+        })
+      }
+      return e.json(200, { ok: true, backup: true, count: out.length, items: out })
+    }
     if (!doDelete) {
       var samples = []
       for (var s = 0; s < bad.length && s < 10; s++) samples.push(String(bad[s].get("title") || "").slice(0, 60))

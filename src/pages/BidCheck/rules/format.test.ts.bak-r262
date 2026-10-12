@@ -1,0 +1,95 @@
+import { describe, expect, it } from "vitest"
+import { runFormatChecks } from "./format"
+import { emptyMeta } from "../engine/docxInspect"
+import { DEFAULT_CHECK_CONFIG, type CheckConfig } from "../config/checkConfig"
+import { DEFAULT_ANBID_CONFIG, type AnbidCheckConfig } from "../config/anbidCheckConfig"
+import type { CheckItem, DocContext } from "../bidCheckTypes"
+
+function makeCtx(over: Partial<DocContext> = {}): DocContext {
+  return {
+    sourceName: over.sourceName ?? "投标文件.docx",
+    inputKind: over.inputKind ?? "file",
+    hasPackage: over.hasPackage ?? true,
+    chapters: over.chapters ?? [],
+    fullText: over.fullText ?? "",
+    meta: over.meta ?? emptyMeta(),
+  }
+}
+
+function byCode(items: CheckItem[], code: string): CheckItem | undefined {
+  return items.find((it) => it.code === code)
+}
+function byTitle(items: CheckItem[], title: string): CheckItem | undefined {
+  return items.find((it) => it.title === title)
+}
+
+const cfg: CheckConfig = DEFAULT_CHECK_CONFIG
+
+describe("format L1 · 正文禁则复用", () => {
+  it("装饰残留命中产出一条 L1 文本项（warn）", () => {
+    const ctx = makeCtx({ chapters: [{ title: "第一章", content: "【注意】这里残留了装饰符号" }] })
+    const items = runFormatChecks(ctx, cfg, DEFAULT_ANBID_CONFIG, "normal")
+    const decoration = items.find((it) => it.title.includes("装饰") || it.category === "正文格式")
+    expect(items.some((it) => it.code.startsWith("L1-T"))).toBe(true)
+    expect(decoration).toBeTruthy()
+  })
+
+  it("identity_leak 交由 L5，L1 不产出该项", () => {
+    const ctx = makeCtx({ chapters: [{ title: "第一章", content: "某某科技有限公司简介" }] })
+    const items = runFormatChecks(ctx, cfg, DEFAULT_ANBID_CONFIG, "normal")
+    expect(items.some((it) => it.basis.includes("身份") && it.title.includes("暗标身份"))).toBe(false)
+  })
+})
+
+describe("format L1 · 结构类依赖文件包", () => {
+  it("无 docx 包（项目正文）：结构项标 skipped", () => {
+    const ctx = makeCtx({ inputKind: "project", hasPackage: false, meta: emptyMeta(), chapters: [{ title: "章", content: "正文" }] })
+    const items = runFormatChecks(ctx, cfg, DEFAULT_ANBID_CONFIG, "normal")
+    expect(byCode(items, "L1-1")?.status).toBe("skipped")
+    expect(byCode(items, "L1-2")?.status).toBe("skipped")
+  })
+
+  it("有包且出现 ≥2 种字体：字体一致性 warn", () => {
+    const meta = emptyMeta()
+    meta.available = true
+    meta.fontsUsed = ["宋体", "黑体"]
+    meta.sizesUsed = ["24"]
+    const ctx = makeCtx({ meta })
+    const items = runFormatChecks(ctx, cfg, DEFAULT_ANBID_CONFIG, "normal")
+    expect(byCode(items, "L1-1")?.status).toBe("warn")
+    expect(byCode(items, "L1-2")?.status).toBe("pass")
+  })
+})
+
+describe("format L1 · 未配置不瞎判 + 暗标升级", () => {
+  it("页数上限未配置：L1-12 unconfigured", () => {
+    const meta = emptyMeta()
+    meta.available = true
+    const ctx = makeCtx({ meta })
+    const items = runFormatChecks(ctx, cfg, DEFAULT_ANBID_CONFIG, "sealed")
+    expect(byCode(items, "L1-12")?.status).toBe("unconfigured")
+  })
+
+  it("暗标模式页数超限：L1-12 升 critical 且 fail", () => {
+    const meta = emptyMeta()
+    meta.available = true
+    meta.pageEstimate = 120
+    const anbid: AnbidCheckConfig = { ...DEFAULT_ANBID_CONFIG, formatStandard: { ...DEFAULT_ANBID_CONFIG.formatStandard, maxPages: 80 } }
+    const items = runFormatChecks(makeCtx({ meta }), cfg, anbid, "sealed")
+    const it = byCode(items, "L1-12")
+    expect(it?.status).toBe("fail")
+    expect(it?.severity).toBe("critical")
+  })
+
+  it("页边距配置后偏差即判 fail", () => {
+    const meta = emptyMeta()
+    meta.available = true
+    meta.margins = { top: 2.54, right: 3.17, bottom: 2.54, left: 3.17 }
+    const anbid: AnbidCheckConfig = {
+      ...DEFAULT_ANBID_CONFIG,
+      formatStandard: { ...DEFAULT_ANBID_CONFIG.formatStandard, margins: { top: 3.0, right: 3.0, bottom: 3.0, left: 3.0 } },
+    }
+    const items = runFormatChecks(makeCtx({ meta }), cfg, anbid, "normal")
+    expect(byTitle(items, "页边距不符")?.status).toBe("fail")
+  })
+})

@@ -20,6 +20,7 @@ import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url"
 import { buildFigureSvg, tokenPalette } from "@/components/bid-workspace/BidFigure"
 import { renderMermaidToSvg } from "./mermaidFigure"
 import type { Chapter, FigureSpec } from "@/pages/SolutionStudio/solutionTypes"
+import { DOCX_SIZE_HALFPT } from "./bidFormatConstants"
 import { triggerBlobDownload } from "@/lib/download"
 import { formatDateTimeDisplay } from "@/lib/dateDisplay"
 import {
@@ -33,6 +34,7 @@ import {
   normalizeBidScope,
   normalizeDeviationTable,
   parseFixedLineSpacing,
+  isRealSectionHeading,
   sanitizeChapterText,
   splitContentFont,
   type BidProjectRecord,
@@ -522,21 +524,7 @@ export async function figureToPng(
 /** 中文字体名 → docx 西文字体名（eastAsia 保留中文名，Word 中文字体直接匹配） */
 const DOCX_FONT: Record<string, string> = { 宋体: "SimSun", 黑体: "SimHei", 仿宋: "FangSong", 楷体: "KaiTi" }
 
-/** 中文字号 → 半点值（docx size 单位=半点：四号=14pt=28） */
-const DOCX_SIZE_HALFPT: Record<string, number> = {
-  初号: 84,
-  小初: 72,
-  一号: 52,
-  小一: 48,
-  二号: 44,
-  小二: 36,
-  三号: 32,
-  小三: 30,
-  四号: 28,
-  小四: 24,
-  五号: 21,
-  小五: 18,
-}
+// DOCX_SIZE_HALFPT 抽至 ./bidFormatConstants（R269）：构建层与检查层共用同一份字号半点表
 
 const DOCX_ALIGN: Record<FormatAlign, (typeof AlignmentType)[keyof typeof AlignmentType]> = {
   left: AlignmentType.LEFT,
@@ -758,10 +746,10 @@ async function exportBidDocxDefaults(project: BidProjectRecord): Promise<void> {
         }
         continue
       }
-      const isSubHeading =
-        chapter.sections.some((s) => line.startsWith(s)) || /^\d+[.、]\s*\S/.test(line) || /^\d+\.\d+/.test(line)
-      // 修复 4：（一）（二）… 式小标题用 h3，既有 h2 判定保留并优先
-      const isH3 = /^（[一二三四五六七八九十]+）/.test(line)
+      // 问题3：正文句以小节名/数字开头不再误升标题——改走整行精确匹配真小节标题
+      const isSubHeading = isRealSectionHeading(line, chapter.sections, idx + 1)
+      // （一）（二）… 式小标题用 h3：整行短（≤30 字）且不以句末标点结尾才算
+      const isH3 = /^（[一二三四五六七八九十]+）/.test(line) && line.length <= 30 && !/[。！？；，、]$/.test(line)
       if (!isSubHeading && !isH3 && firstBodyAt === -1) firstBodyAt = paras.length
       paras.push(isSubHeading ? h2(line) : isH3 ? h3(line) : body(line))
     }
@@ -969,9 +957,8 @@ async function exportBidDocxFormatted(project: BidProjectRecord, fmt: FormatSett
           continue
         }
       }
-      const isSubHeading =
-        chapter.sections.some((s) => line.startsWith(s)) || /^\d+[.、]\s*\S/.test(line) || /^\d+\.\d+/.test(line)
-      const isH3 = /^（[一二三四五六七八九十]+）/.test(line)
+      const isSubHeading = isRealSectionHeading(line, chapter.sections, idx + 1)
+      const isH3 = /^（[一二三四五六七八九十]+）/.test(line) && line.length <= 30 && !/[。！？；，、]$/.test(line)
       if (!isSubHeading && !isH3 && firstBodyAt === -1) firstBodyAt = paras.length
       paras.push(isSubHeading ? headingPara(1, line) : isH3 ? headingPara(2, line) : bodyPara(line))
       li++

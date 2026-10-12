@@ -9,6 +9,8 @@ import type { UseBidWorkspace, ToolKind } from "@/pages/BidWorkspace/useBidWorks
 import { TOOL_LABEL } from "@/pages/BidWorkspace/useBidWorkspace"
 import { extractStarClauses, starClauseCount, starClauseSectionFrom, upsertParseSection, type ParseReport } from "@/pages/BidWorkspace/bidTypes"
 import { ParseReportPanel } from "@/components/bid-workspace/ParseReportPanel"
+import { ChallengeLetterPanel } from "@/components/bid-workspace/ChallengeLetterPanel"
+import { ComplaintLetterPanel } from "@/components/bid-workspace/ComplaintLetterPanel"
 import { SkillPickerFor } from "@/components/common/SkillPicker"
 import { DupPairCard } from "@/components/bid-workspace/DupCheckPanel"
 import { VoidItemsList } from "@/components/bid-workspace/VoidCheckPanel"
@@ -47,6 +49,7 @@ type QuickToolsPanelProps = Pick<
   | "factCheckResult"
   | "factPatchBusy"
   | "startFactPatch"
+  | "costConfirm"
 >
 
 const TOOLS: { kind: ToolKind; desc: string; icon: typeof ScanSearch; materialLabel: string; materialPlaceholder: string; needBid: boolean }[] = [
@@ -89,6 +92,8 @@ export function QuickToolsPanel(p: QuickToolsPanelProps) {
   const tool = TOOLS.find((t) => t.kind === p.toolKind) ?? TOOLS[0]
   // 工具结果为本地副本，可直接人工修改；「另存为项目」后进入流水线继续完善
   const [localReport, setLocalReport] = useState<ParseReport | null>(null)
+  const [challengeOpen, setChallengeOpen] = useState(false)
+  const [complaintOpen, setComplaintOpen] = useState(false)
   useEffect(() => {
     setLocalReport(p.toolParseResult)
   }, [p.toolParseResult])
@@ -155,6 +160,52 @@ export function QuickToolsPanel(p: QuickToolsPanelProps) {
           >
             {p.factCheckBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ClipboardCheck className="mr-1.5 h-4 w-4" />}
             {p.factCheckBusy ? "核对中…" : "开始核对"}
+          </Button>
+        </section>
+
+        {/* 第3轮 G4：质疑函六要素生成器（财政部令 94 号第十二条，模板为主 + AI 兜底） */}
+        <section className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-4 shadow-md">
+          <div className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground shadow-sm">
+              <Scale className="h-5 w-5" />
+            </span>
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">质疑函生成</h2>
+              <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-muted-foreground">
+                按《政府采购质疑和投诉办法》第十二条六要素（供应商信息·项目信息·质疑事项与请求·事实依据·法律依据·日期签章）生成正式质疑函，可选 AI 兜底补全事实/法律依据
+              </p>
+            </div>
+          </div>
+          <Button
+            onClick={() => setChallengeOpen(true)}
+            className="shrink-0 border-primary/40 text-primary shadow-sm hover:bg-primary/10"
+            variant="outline"
+          >
+            <Scale className="mr-1.5 h-4 w-4" />
+            打开质疑函生成器
+          </Button>
+        </section>
+
+        {/* 第3轮 G6：投诉书六要素生成器（财政部令 94 号第十八条，模板为主 + AI 兜底） */}
+        <section className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-4 shadow-md">
+          <div className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground shadow-sm">
+              <Scale className="h-5 w-5" />
+            </span>
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">投诉书生成</h2>
+              <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-muted-foreground">
+                按《政府采购质疑和投诉办法》第十八条生成正式投诉书：六要素同构质疑函，额外写明质疑函编号与质疑答复情况（投诉以质疑为前置），逐条附证据材料并标注来源；答复期满后 15 个工作日内提起
+              </p>
+            </div>
+          </div>
+          <Button
+            onClick={() => setComplaintOpen(true)}
+            className="shrink-0 border-primary/40 text-primary shadow-sm hover:bg-primary/10"
+            variant="outline"
+          >
+            <Scale className="mr-1.5 h-4 w-4" />
+            打开投诉书生成器
           </Button>
         </section>
 
@@ -264,6 +315,7 @@ export function QuickToolsPanel(p: QuickToolsPanelProps) {
                       setLocalReport((prev) => (prev ? upsertParseSection(prev, sec) : { scope: "full", sections: [sec] }))
                       toast.success(`重新扫描完成：共 ${starClauseCount(lines)} 条 ★/▲ 重点条款（本地扫描，零费用）`)
                     }}
+                    runWithCostConfirm={p.costConfirm.runWithCostConfirm}
                   />
                 ) : (
                   <EmptyResult hint="运行「招标文件解析」后，这里会显示可编辑的解析报告" />
@@ -306,6 +358,42 @@ export function QuickToolsPanel(p: QuickToolsPanelProps) {
       <footer className="mx-auto max-w-7xl px-4 pb-14 pt-10 text-center text-xs text-muted-foreground">
         查重先本地粗筛再 AI 复判，控制费用；所有 AI 调用前都会先与你确认费用，按实际 token 用量扣费
       </footer>
+
+      <Dialog open={complaintOpen} onOpenChange={setComplaintOpen}>
+        <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto border-border bg-card text-card-foreground">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base text-foreground">
+              <Scale className="h-4 w-4 text-primary" />
+              投诉书六要素生成器
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              填写投诉人信息、项目信息、质疑情况（前置）与投诉事项（逐条附证据）后生成正式投诉书；事实/法律/证据可 AI 兜底补全（先确认费用）。生成文本可复制/下载，落款与公章线下补齐。
+            </DialogDescription>
+          </DialogHeader>
+          <ComplaintLetterPanel
+            tenderText={p.toolMaterial}
+            runWithCostConfirm={p.costConfirm.runWithCostConfirm}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={challengeOpen} onOpenChange={setChallengeOpen}>
+        <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto border-border bg-card text-card-foreground">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base text-foreground">
+              <Scale className="h-4 w-4 text-primary" />
+              质疑函六要素生成器
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              填写六要素后一键生成正式质疑函；法律依据可引用内置模板，事实/法律依据亦可 AI 兜底补全（先确认费用）。生成文本可复制/下载，落款与公章线下补齐。
+            </DialogDescription>
+          </DialogHeader>
+          <ChallengeLetterPanel
+            tenderText={p.toolMaterial}
+            runWithCostConfirm={p.costConfirm.runWithCostConfirm}
+          />
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={p.factCheckOpen} onOpenChange={p.setFactCheckOpen}>
         <DialogContent className="max-h-[80vh] overflow-y-auto border-border bg-card text-card-foreground">

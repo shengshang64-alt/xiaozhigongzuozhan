@@ -380,12 +380,16 @@ export function ComplianceMatrixPanel({
                     {(() => {
                       const cov = coverage.byRow[r.id]
                       if (!cov || coverage.generatedChapters === 0) return null
+                      const verbatimTip = cov.originalHit
+                        ? "原文逐字命中"
+                        : `未见原文逐字响应（命中率 ${Math.round(cov.verbatimRatio * 100)}%，疑改写或概括）`
                       return (
                         <div
-                          title={`本地逐字自动核对（零费用，仅供提示，以左侧人工标注为准）：${cov.missingKeys.length ? "正文未见要点 " + cov.missingKeys.join("、") : "条款要点已在正文逐字出现"}`}
+                          title={`本地逐字自动核对（零费用，仅供提示，以左侧人工标注为准）：${cov.missingKeys.length ? "正文未见要点 " + cov.missingKeys.join("、") : verbatimTip}`}
                           className={`mt-1 inline-block rounded-full px-1.5 py-0.5 text-[10px] font-medium ${COVERAGE_TONE[cov.level]}`}
                         >
                           {COMPLIANCE_COVERAGE_LABEL[cov.level]}
+                          {cov.level === "full" && !cov.originalHit ? "·疑改写" : ""}
                         </div>
                       )
                     })()}

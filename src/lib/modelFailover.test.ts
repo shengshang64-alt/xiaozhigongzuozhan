@@ -9,6 +9,7 @@ import type { LlmCallResult } from "@/lib/llm"
 import {
   BASE_COOL_MS_FOR_TEST,
   MAX_COOL_MS_FOR_TEST,
+  channelCoolingRemainingMs,
   channelCoolingStrikes,
   classifyCallFailure,
   clearChannelCooling,
@@ -17,6 +18,7 @@ import {
   isChannelCooling,
   isFailoverEligible,
   markChannelCooling,
+  onCoolingChange,
   pickFailoverCandidate,
   resetChannelCooling,
   resetFailoverNotice,
@@ -149,6 +151,37 @@ describe("会话通道冷却登记", () => {
     expect(isChannelCooling(k, 10_000)).toBe(true)
     clearChannelCooling(k)
     expect(isChannelCooling(k, 10_000)).toBe(false)
+  })
+
+  it("R233 剩余倒计时：窗内为剩余毫秒、窗外归零、显式清除即返回 0（纯读不剪枝）", () => {
+    const k = "personal:c1:deepseek-chat"
+    expect(channelCoolingRemainingMs(k, 0)).toBe(0)
+    markChannelCooling(k, 1000) // 首击 60s → until = 61000
+    expect(channelCoolingRemainingMs(k, 1000)).toBe(BASE_COOL_MS_FOR_TEST - 0)
+    expect(channelCoolingRemainingMs(k, 31_000)).toBe(30_000)
+    // 纯读不剪枝：窗已过返回 0，但连击计数仍在（区别于 isChannelCooling 会自动清）
+    expect(channelCoolingRemainingMs(k, 100_000)).toBe(0)
+    expect(channelCoolingStrikes(k)).toBe(1)
+    clearChannelCooling(k)
+    expect(channelCoolingRemainingMs(k, 1000)).toBe(0)
+  })
+
+  it("R233 onCoolingChange：打戳 / 清除 / 复位都通知，退订后不再收到", () => {
+    const k = "personal:c9:glm-4.5"
+    resetChannelCooling()
+    let hits = 0
+    const off = onCoolingChange(() => hits++)
+    markChannelCooling(k, 0)
+    expect(hits).toBe(1)
+    clearChannelCooling(k)
+    expect(hits).toBe(2)
+    // 清除不存在的键不应空通知
+    clearChannelCooling(k)
+    expect(hits).toBe(2)
+    off()
+    markChannelCooling(k, 0)
+    expect(hits).toBe(2)
+    resetChannelCooling()
   })
 
   it("配置级键独立于模型级键（同账号换模型同样撞窗）", () => {

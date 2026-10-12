@@ -1,5 +1,6 @@
 // @r211 R-004 标书 Word 分页预览的纯逻辑助手（与组件分离，满足 react-refresh 单导出约束）
 import type { FormatSettings } from "@/pages/BidWorkspace/bidTypes"
+import { isRealSectionHeading } from "@/pages/BidWorkspace/bidTypes"
 import { SIZE_PT } from "@/pages/FormatTool/formatSpec"
 
 const FONT_FAMILY: Record<string, string> = {
@@ -43,11 +44,12 @@ export function chapterNumber(i: number, mode: FormatSettings["titleNumbering"])
 
 export type Kind = "h2" | "h3" | "caption" | "p"
 
-export function classify(line: string, sections: string[]): Kind {
+export function classify(line: string, sections: string[], chapterNo: number): Kind {
   const t = line.trim()
-  if (/^\d+\.\d+\.\d+/.test(t)) return "h3"
-  if (/^\d+\.\d+/.test(t)) return "h2"
-  if (sections.some((s) => s && t.startsWith(s.trim()))) return "h2"
+  // 问题3 对齐导出：真小节标题统一走 isRealSectionHeading（整行精确匹配本章小节 / 编号-章号一致），
+  // 不再用 startsWith 或裸 \d+\.\d+ 把正文句误升为标题,预览与成稿一致
+  if (isRealSectionHeading(t, sections, chapterNo)) return /^\d+\.\d+\.\d+/.test(t) ? "h3" : "h2"
+  if (/^（[一二三四五六七八九十]+）/.test(t) && t.length <= 30 && !/[。！？；，、]$/.test(t)) return "h3"
   if (/^(图|表)\s*[0-9０-９一二三四五六七八九十]/.test(t)) return "caption"
   return "p"
 }

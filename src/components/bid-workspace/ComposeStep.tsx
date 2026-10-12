@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { Link } from "react-router-dom"
-import { ChevronDown, ChevronLeft, ChevronRight, ClipboardPaste, Download, Eye, FileUp, FolderInput, LayoutGrid, Loader2, PenLine, Play, RefreshCw, Sparkles, Square, Table2, Wand2 } from "lucide-react"
+import { Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardPaste, Download, Eye, FileUp, FolderInput, LayoutGrid, Loader2, PenLine, Play, RefreshCw, Sparkles, Square, Table2, Wand2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -20,8 +20,10 @@ import { OutlineCoverage } from "@/components/bid-workspace/OutlineCoverage"
 import { SkillPickerFor } from "@/components/common/SkillPicker"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { PrintChapterFlow, PrintExportButton } from "@/components/common/PrintExport"
+import { useResizableSidebar } from "@/components/common/useResizableSidebar"
 import { BidWordPreview } from "./BidWordPreview"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
+import { healMustWriteOnRead } from "@/pages/BidWorkspace/mustWriteSelfHeal"
 import { BID_OUTLINE_REQ_KEY, bulkQueueClear, bulkQueueLoad, FIGURES_UNLIMITED, sectionText } from "@/pages/BidWorkspace/bidTypes"
 import { isIncompleteSectionChapter } from "@/pages/BidWorkspace/chapterCompletion"
 import type { Chapter, OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
@@ -57,6 +59,8 @@ type ComposeStepProps = Pick<
   | "sectionWords"
   | "setSectionWords"
   | "genOptions"
+  | "setGenerateDemo"
+  | "demoScoreSummary"
   | "setClauseResponse"
   | "setMaterialBoost"
   | "setComplianceMode"
@@ -96,6 +100,7 @@ type ComposeStepProps = Pick<
   | "outlineSetPart"
   | "outlineMove"
   | "confirmOutline"
+  | "generateCommitmentLetter"
   | "importDialogOpen"
   | "setImportDialogOpen"
   | "importCandidates"
@@ -167,6 +172,8 @@ type ComposeStepProps = Pick<
   | "bidOutlineSkills"
   | "bidChapterSkills"
   | "deviationSkills"
+  | "techParamCoverage"
+  | "addUncoveredTechParamsToOutline"
   | "requestStep"
   | "bidSourceMode"
   | "bidExternalText"
@@ -190,410 +197,126 @@ const LEVEL_HINT: Record<0 | 1 | 2 | 3, string> = {
   3: "生成「章—节—条」三级目录，颗粒度最细",
 }
 
-// ------------------------------ 第十一轮改造 6：三级目录树 ------------------------------
-
-/** 节/条是否已生成：标题在章节 sections 清单里，或正文存在以该标题开头的行（兼容编号前缀） */
-function sectionReady(title: string, ch: Chapter | undefined): boolean {
-  if (!ch) return false
-  const needle = title.trim()
-  if (!needle) return false
-  if ((ch.sections ?? []).some((s) => s.trim() === needle)) return true
-  const content = ch.content ?? ""
-  if (!content.trim()) return false
-  return content.split("\n").some((line) => line.trimStart().replace(/^\d+(\.\d+)*\s*/, "").startsWith(needle))
-}
-
-/**
- * 切片A3：正文结构化折叠卡片预览——按小节标题拆分正文，每个小节渲染为可折叠卡片
- */
-function SectionPreviewCards({
-  content,
-  sectionTitles,
-  title,
-  onEditSection,
-}: {
-  content: string
-  sectionTitles: string[]
-  title: string
-  onEditSection: (idx?: number) => void
-}) {
-  const [collapsedSet, setCollapsedSet] = useState<Set<number>>(new Set())
-  const toggle = (idx: number) =>
-    setCollapsedSet((prev) => {
-      const next = new Set(prev)
-      if (next.has(idx)) {
-        next.delete(idx)
-      } else {
-        next.add(idx)
-      }
-      return next
-    })
-
-  // 按 sectionTitles 将正文切分为小节片段
-  const parts: { heading: string; body: string }[] = []
-  if (sectionTitles.length > 0) {
-    let cursor = 0
-    for (let i = 0; i < sectionTitles.length; i++) {
-      const needle = sectionTitles[i].trim()
-      const searchFrom = content.slice(cursor).indexOf(needle)
-      if (searchFrom < 0) {
-        // 标题在正文中找不到，归入前一小节尾
-        if (parts.length > 0) {
-          parts[parts.length - 1].body += "\n" + needle
-        }
-        continue
-      }
-      const absIdx = cursor + searchFrom
-      // 标题之前的残余文本归入上一节
-      if (parts.length > 0 && absIdx > cursor) {
-        parts[parts.length - 1].body += content.slice(cursor, absIdx)
-      }
-      const nextTitle = sectionTitles[i + 1]?.trim()
-      let endIdx = content.length
-      if (nextTitle) {
-        const found = content.indexOf(nextTitle, absIdx + needle.length)
-        if (found > 0) endIdx = found
-      }
-      parts.push({ heading: needle, body: content.slice(absIdx + needle.length, endIdx).trim() })
-      cursor = endIdx
-    }
-    // 残余未分配文本
-    if (cursor < content.length && parts.length > 0) {
-      parts[parts.length - 1].body += content.slice(cursor)
-    }
-  } else {
-    // 无 sectionTitles：按行首数字编号自动切
-    const lines = content.split("\n")
-    let cur: { heading: string; body: string } | null = null
-    for (const line of lines) {
-      if (/^\d+([-.]\d+)*[\s、]/.test(line.trimStart())) {
-        if (cur) parts.push(cur)
-        cur = { heading: line.trim(), body: "" }
-      } else if (cur) {
-        cur.body += line + "\n"
-      } else {
-        // 正文开头无标题
-        if (!parts.length && !cur) cur = { heading: title, body: line + "\n" }
-      }
-    }
-    if (cur) parts.push(cur)
-  }
-
-  // 如果解析不出小节，整个内容作为一张卡片
-  if (parts.length === 0) {
-    parts.push({ heading: title, body: content })
-  }
-
-  return (
-    <div className="mt-1 space-y-1.5">
-      {parts.map((sec, idx) => (
-        <div key={idx} className="rounded-md border border-border/60 bg-muted/30">
-          <div className="flex items-center gap-1 px-3 py-2">
-            <button
-              type="button"
-              className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs font-medium text-foreground"
-              onClick={() => toggle(idx)}
-            >
-              {collapsedSet.has(idx) ? (
-                <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-              ) : (
-                <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
-              )}
-              <span className="truncate">{sec.heading}</span>
-              <span className="shrink-0 text-[10px] text-muted-foreground">({sec.body.length}字)</span>
-            </button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-5 px-1.5 text-[10px] text-primary hover:bg-primary/10"
-              onClick={() => onEditSection(idx)}
-              title="切换到编辑模式"
-            >
-              <PenLine className="mr-0.5 h-3 w-3" />
-              编辑
-            </Button>
-          </div>
-          {!collapsedSet.has(idx) && (
-            <div className="max-h-48 overflow-y-auto border-t border-border/40 px-3 py-2 text-xs leading-relaxed text-card-foreground whitespace-pre-wrap">
-              {sec.body || "（空）"}
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  )
-}
-
 function OutlineNavTree({
-  outline,
   chapters,
-  chapterBudgets,
   activeChapterId,
   supplementState,
   sectionState,
-  chapterBusy,
-  bulkGenerating,
-  locked,
   onSelectChapter,
   onFocusSection,
-  onRegenerateSection,
-  onResizeSection,
   doneChapterCount,
   techChapterTotal,
 }: {
   outline: OutlineNode[]
   chapters: Chapter[]
-  /** 第十五轮改造 3：章预算（chapterWordBudgets 同公式），小节目标字 = 章预算 / 小节数 */
   chapterBudgets: number[]
   activeChapterId: string | null
   supplementState: { nodeId: string; round: number } | null
   sectionState: { nodeId: string; current: number; total: number } | null
-  /** 章节级忙碌键：章生成时为 nodeId，小节重写时为 `${nodeId}#s${idx}`（行级转圈） */
   chapterBusy: string | null
   bulkGenerating: boolean
-  /** 循环 5 A3：归档只读——小节级重写 / 扩写 / 缩写按钮统一禁用 */
   locked: boolean
   onSelectChapter: (nodeId: string) => void
   onFocusSection: (nodeId: string, title: string) => void
   onRegenerateSection: (nodeId: string, sectionIdx: number) => void
-  /** 循环 5 A1：小节级局部扩写 / 缩写 */
   onResizeSection: (nodeId: string, sectionIdx: number, mode: "expand" | "shrink") => void
-  /** R205 切片 0.5：已完成技术章数（进度条分子） */
   doneChapterCount: number
-  /** R205 切片 0.5：技术章总数（进度条分母） */
   techChapterTotal: number
+  generateDemo: boolean
 }) {
-  // 大纲缺失时按章节清单兜底成两级树，导航不留白（第十三轮：兜底节点保留 part 归属）
-  const tree: OutlineNode[] = outline.length
-    ? outline
-    : chapters.map((c) => ({
-        id: c.node_id,
-        title: c.title,
-        children: (c.sections ?? []).map((s, i) => ({ id: `${c.node_id}-s${i}`, title: s, children: [] })),
-        ...(c.part ? { part: c.part } : {}),
-      }))
-  const indentClass = ["pl-2", "pl-6", "pl-10", "pl-14"]
-  // R205 切片 0.5：技术章「第N章」序号映射（与方案编制 ChapterNavTree 视觉对齐；商务章不参与编号）
-  const techIndexById = new Map<string, number>()
-  {
-    let n = 0
-    for (const c of chapters) {
-      if (c.part === "biz") continue
-      n += 1
-      techIndexById.set(c.node_id, n)
-    }
-  }
-  // 切片A1/E2：章级折叠/展开（组件内部管理）；折叠键为一级章 id
-  // E2：默认收起全部、仅展开当前选中章（大文档导航不再一屏铺满）；未选中任何章时保持全展开
-  const branchIds = tree.filter((n) => (n.children?.length ?? 0) > 0).map((n) => n.id)
-  const [collapsed, setCollapsed] = useState<Set<string>>(() =>
-    activeChapterId ? new Set(branchIds.filter((id) => id !== activeChapterId)) : new Set(),
-  )
-  // E2：渲染期派生折叠态——当前选中章恒展开（切换选中时自然展开，无需副作用），其余按 collapsed 集合
-  const isCollapsed = (id: string) => id !== activeChapterId && collapsed.has(id)
-  const allCollapsed = branchIds.length > 0 && branchIds.every((id) => collapsed.has(id))
-  const toggleAll = () => setCollapsed(allCollapsed ? new Set() : new Set(branchIds))
-  const toggleOne = (id: string) =>
-    setCollapsed((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
-      }
-      return next
-    })
+  // 复刻方案编制 ChapterNavTree 形态：扁平章列表 + 仅当前章展开小节 + 右侧状态图标（无徽标 / 无折叠箭头）
+  // 章号/小节号按整本正文编号（商务章占前 12 章，技术章自「第13章」起），与正文标题、Word 预览、导出完全一致，按号即可查询
 
-  function renderNode(node: OutlineNode, depth: number, chapterId: string): ReactNode {
-    const isChapter = depth === 0
-    const chapterIdx = chapters.findIndex((c) => c.node_id === chapterId)
-    const ch = chapterIdx >= 0 ? chapters[chapterIdx] : undefined
-    const isBiz = isChapter && (node.part === "biz" || ch?.part === "biz")
-    // 第十五轮改造 3：小节行——状态点 / 实际目标字 / 重写按钮按 section_stats 驱动
-    const sections = ch?.sections ?? []
-    const sectionIdx = !isChapter && !isBiz ? sections.findIndex((s) => s.trim() === node.title.trim()) : -1
-    const stats = ch?.section_stats?.length ? ch.section_stats : undefined
-    const stat = sectionIdx >= 0 ? stats?.[sectionIdx] : undefined
-    const hasContent = ((ch?.content ?? "").trim().length > 0)
-    const sectionTarget = sectionIdx >= 0 && ch ? Math.max(1, Math.round((chapterBudgets[chapterIdx] ?? 0) / Math.max(1, sections.length))) : 0
-    const ready = isBiz
-      ? true
-      : isChapter
-        ? !!ch && hasContent
-        : stat
-          ? stat.chars > 0
-          : sectionReady(node.title, ch)
-    const isActiveChapter = isChapter && chapterId === activeChapterId
-    const supplementing = isChapter && supplementState?.nodeId === chapterId
-    const sectioning = isChapter && sectionState?.nodeId === chapterId
-    const rowBusyKey = sectionIdx >= 0 ? `${chapterId}#s${sectionIdx}` : ""
-    const rowBusy = !!rowBusyKey && chapterBusy === rowBusyKey
-    const showSectionControls = sectionIdx >= 0 && !isBiz
-    const rewriteDisabled =
-      locked || !stats || !stat || !hasContent || rowBusy || !!chapterBusy || bulkGenerating || chapterIdx < 0
-    const rewriteTitle = locked
-      ? "已归档项目为只读，解除归档后可编辑"
-      : !stats || !stat
-        ? "重新生成本章后可按条重写"
-        : rowBusy
-          ? "本小节重写中…"
-          : chapterBusy || bulkGenerating
-            ? "正文生成进行中，完成后可重写小节"
-            : `仅重写小节「${node.title}」，其余小节不变`
-    return (
-      <li key={node.id}>
-        <div className="flex items-center gap-1">
-          {isChapter && (node.children?.length ?? 0) > 0 && (
-            <button
-              type="button"
-              onClick={() => toggleOne(node.id)}
-              title={isCollapsed(node.id) ? `展开「${node.title}」的小节` : `收起「${node.title}」的小节`}
-              aria-label={isCollapsed(node.id) ? "展开" : "收起"}
-              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            >
-              {isCollapsed(node.id) ? (
-                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-              ) : (
-                <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-              )}
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => (isChapter ? onSelectChapter(node.id) : onFocusSection(chapterId, node.title))}
-            title={isChapter ? `切换到「${node.title}」` : `在右侧编辑器中定位「${node.title}」`}
-            className={`flex min-w-0 flex-1 items-center gap-2 rounded-md py-1.5 pr-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${indentClass[Math.min(depth, 3)]} ${
-              isActiveChapter ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-secondary hover:text-secondary-foreground"
-            }`}
-          >
-            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isBiz ? "bg-muted-foreground/40" : ch?.gen_status === "failed" ? "bg-destructive" : ready ? "bg-primary" : "bg-border"}`} />
-            <span className="min-w-0 flex-1 truncate">
-              {isChapter && !isBiz ? `第${techIndexById.get(chapterId) ?? 1}章 ${node.title}` : node.title}
-            </span>
-            {isChapter && (
-              <span
-                className={`shrink-0 rounded-full px-1.5 py-0.5 text-xs ${
-                  isBiz ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary"
-                }`}
-              >
-                {isBiz ? "商务·线下填写" : "技术"}
-              </span>
-            )}
-            {/* 切片A2：章行字数徽标——成稿即显示 实际/预算 字 */}
-            {isChapter && !isBiz && ch && (ch.content ?? "").trim().length > 0 && (
-              <span
-                className="shrink-0 text-xs tabular-nums text-muted-foreground"
-                title={`本章 ${(ch.content ?? "").length} 字 / 预算 ${chapterBudgets[chapterIdx] ?? 0} 字`}
-              >
-                {(ch.content ?? "").length}/{chapterBudgets[chapterIdx] ?? 0} 字
-              </span>
-            )}
-            {(supplementing || sectioning) && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" />}
-            {supplementing && supplementState && (
-              <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">补足 {supplementState.round}</span>
-            )}
-            {sectioning && sectionState && (
-              <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                小节 {sectionState.current}/{sectionState.total}
-              </span>
-            )}
-          </button>
-          {showSectionControls && (
-            <>
-              {stat && (
-                <span className="shrink-0 text-xs tabular-nums text-muted-foreground" title={`本小节实际 ${stat.chars} 字 / 目标约 ${sectionTarget} 字`}>
-                  {stat.chars}/{sectionTarget} 字
-                </span>
-              )}
-              <button
-                type="button"
-                disabled={rewriteDisabled}
-                onClick={() => onRegenerateSection(chapterId, sectionIdx)}
-                title={rewriteTitle}
-                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                  rowBusy
-                    ? "text-primary"
-                    : rewriteDisabled
-                      ? "cursor-not-allowed text-muted-foreground disabled:opacity-60"
-                      : "text-muted-foreground hover:bg-primary/10 hover:text-primary"
-                }`}
-              >
-                {rowBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <PenLine className="h-3 w-3" />}
-              </button>
-              {/* 循环 5 A1：小节级局部扩写 / 缩写（确定性切片替换，只动本小节） */}
-              <button
-                type="button"
-                disabled={rewriteDisabled}
-                onClick={() => onResizeSection(chapterId, sectionIdx, "expand")}
-                title={locked ? "已归档项目为只读，解除归档后可编辑" : `仅扩写小节「${node.title}」至约 1.5 倍篇幅，事实口径不变，其余小节不变`}
-                className={`h-6 shrink-0 rounded-md px-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                  rewriteDisabled
-                    ? "cursor-not-allowed text-muted-foreground/60"
-                    : "text-muted-foreground hover:bg-primary/10 hover:text-primary"
-                }`}
-              >
-                扩写
-              </button>
-              <button
-                type="button"
-                disabled={rewriteDisabled}
-                onClick={() => onResizeSection(chapterId, sectionIdx, "shrink")}
-                title={locked ? "已归档项目为只读，解除归档后可编辑" : `仅缩写小节「${node.title}」至约 6 成篇幅，保留硬指标与承诺要点，其余小节不变`}
-                className={`h-6 shrink-0 rounded-md px-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                  rewriteDisabled
-                    ? "cursor-not-allowed text-muted-foreground/60"
-                    : "text-muted-foreground hover:bg-primary/10 hover:text-primary"
-                }`}
-              >
-                缩写
-              </button>
-            </>
-          )}
-        </div>
-        {!!node.children?.length && !isCollapsed(node.id) && (
-          <ul className="space-y-0.5">{node.children.map((kid) => renderNode(kid, depth + 1, chapterId))}</ul>
-        )}
-      </li>
-    )
+  const statusDot = (genStatus: Chapter["gen_status"], isActive: boolean): string => {
+    if (genStatus === "done") return "bg-primary"
+    if (genStatus === "generating") return "bg-primary animate-pulse"
+    if (genStatus === "failed") return "bg-destructive"
+    return isActive ? "bg-muted-foreground" : "bg-border"
   }
-
+  const pct = techChapterTotal ? Math.round((doneChapterCount / techChapterTotal) * 100) : 0
   return (
-    <nav className="flex h-full flex-col rounded-lg border border-border bg-card p-3 shadow-md">
-      <div className="flex items-center justify-between px-2 pb-2">
+    <aside className="flex h-full flex-col rounded-lg border border-border bg-card shadow-md">
+      <div className="flex min-h-14 shrink-0 items-center justify-between border-b border-border px-4">
         <p className="text-sm font-semibold text-foreground">大纲目录</p>
         <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
           {doneChapterCount}/{techChapterTotal} 章
         </span>
       </div>
-      <div className="px-2 pb-2">
+      <div className="shrink-0 px-4 pt-3">
         <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-          <div
-            className="h-full rounded-full bg-primary transition-all duration-500"
-            style={{ width: `${techChapterTotal > 0 ? Math.round((doneChapterCount / techChapterTotal) * 100) : 0}%` }}
-          />
+          <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${pct}%` }} />
         </div>
       </div>
-      {branchIds.length > 1 && (
-        <div className="flex justify-end px-2 pb-1">
-          <button
-            type="button"
-            onClick={toggleAll}
-            className="rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            {allCollapsed ? "全部展开" : "全部收起"}
-          </button>
-        </div>
-      )}
-      <ul className="space-y-0.5">{tree.map((n) => renderNode(n, 0, n.id))}</ul>
-      <p className="mt-2 px-2 text-xs leading-relaxed text-muted-foreground">
-        绿点表示已生成；点章切换编辑器，点节 / 条在正文中定位对应行；小节行显示「实际/目标字」，点重写图标可仅重写该小节；「商务·线下填写」章不生成正文
-      </p>
-    </nav>
+      <nav className="mt-2 flex-1 overflow-y-auto p-2">
+        {chapters.map((ch, idx) => {
+          const isActive = ch.node_id === activeChapterId
+          const isBiz = ch.part === "biz"
+          const chNo = idx + 1
+          return (
+            <div key={ch.node_id} className="mb-0.5">
+              <button
+                type="button"
+                onClick={() => onSelectChapter(ch.node_id)}
+                className={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                  isActive
+                    ? "border border-primary/40 bg-primary/10 font-medium text-primary"
+                    : "border border-transparent text-card-foreground hover:bg-secondary"
+                }`}
+              >
+                <span className={`h-2 w-2 shrink-0 rounded-full ${statusDot(ch.gen_status, isActive)}`} />
+                <span className="min-w-0 flex-1 truncate">{isBiz ? ch.title : `第${chNo}章 ${ch.title}`}</span>
+                {sectionState?.nodeId === ch.node_id ? (
+                  <span className="flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    小节 {sectionState.current}/{sectionState.total}
+                  </span>
+                ) : supplementState?.nodeId === ch.node_id ? (
+                  <span className="flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    补足中 第 {supplementState.round} 轮
+                  </span>
+                ) : (
+                  <>
+                    {ch.gen_status === "generating" && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />}
+                    {ch.gen_status === "done" && <Check className="h-3.5 w-3.5 shrink-0 text-primary" />}
+                  </>
+                )}
+              </button>
+              {isActive && (ch.sections ?? []).length > 0 && (
+                <ul className="ml-4 mt-0.5 border-l border-border pl-3">
+                  {(ch.sections ?? []).map((sec, j) => (
+                    <li
+                      key={`${ch.node_id}-sec-${j}`}
+                      title="点击定位到该小节（预览与编辑均可查询）"
+                      onClick={() => onFocusSection(ch.node_id, sec)}
+                      className="cursor-pointer py-1 text-xs text-muted-foreground transition-colors hover:text-primary"
+                    >
+                      {chNo}.{j + 1} {sec}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )
+        })}
+      </nav>
+      <div className="shrink-0 border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
+        待生成 / 生成中 / 已生成 状态实时同步，可离开后回来继续
+      </div>
+    </aside>
   )
 }
 
 export function ComposeStep(p: ComposeStepProps) {
   const proj = p.activeProject
+  // R-039②（R259）mustWrite 读时自愈：存量项目打开时本地按评分办法/必备技术关键词/★▲ 补必写标记
+  // （零 AI、零 DB 写、口径与生成侧 applyMustWrite 一致；无需自愈则原样引用，免多余重渲染）→ 大纲「必写」标识即时可见，不白跑重跑
+  const projBidOutline = proj?.bid_outline
+  const projParseReport = proj?.parse_report
+  const navOutline = useMemo(
+    () => healMustWriteOnRead(projBidOutline ?? [], projParseReport ?? null),
+    [projBidOutline, projParseReport],
+  )
   // 循环 5 A3：归档只读——编辑/生成控件禁用，导出与查看保留
   const locked = p.isArchivedLocked
   // 大纲「重新生成」覆盖前的二次确认（本地 UI 状态）
@@ -602,11 +325,28 @@ export function ComposeStep(p: ComposeStepProps) {
   const [wordPreviewOpen, setWordPreviewOpen] = useState(false)
   // 第十一轮改造 6：编辑器定位——contentFocus 变化时找到标题行并选中滚动
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const previewScrollRef = useRef<HTMLDivElement | null>(null)
   const bidFileInputRef = useRef<HTMLInputElement | null>(null)
   const [focusFlash, setFocusFlash] = useState(false)
   useEffect(() => {
     const focus = p.contentFocus
     if (!focus) return
+    // 预览模式：在 Word 样式连续预览里定位（滚动到标题节点 + 闪烁高亮）；编辑模式仍走 textarea 选中
+    const box = previewScrollRef.current
+    if (box) {
+      const target = [...box.querySelectorAll<HTMLElement>("[data-wp-title]")].find((n) =>
+        (n.dataset.wpTitle ?? "").includes(focus.title),
+      )
+      if (!target) return
+      target.scrollIntoView({ behavior: "smooth", block: "start" })
+      const prevBg = target.style.backgroundColor
+      target.style.transition = "background-color 0.4s"
+      target.style.backgroundColor = "rgba(14, 159, 138, 0.18)"
+      const timer = window.setTimeout(() => {
+        target.style.backgroundColor = prevBg
+      }, 2200)
+      return () => window.clearTimeout(timer)
+    }
     const el = textareaRef.current
     if (!el) return
     const value = el.value ?? ""
@@ -639,6 +379,13 @@ export function ComposeStep(p: ComposeStepProps) {
   const [overviewOpen, setOverviewOpen] = useState(false)
   // 切片A3：正文视图模式——有内容时默认预览（折叠卡片），无内容或手动编辑时切 textarea
   const [viewMode, setViewMode] = useState<"preview" | "edit">("preview")
+  // 大纲侧栏可拖拽宽度（原固定 200px 太窄看不清章名）：拖动右侧分隔条调宽，双击恢复默认，localStorage 持久化
+  const { width: outlineW, onDragStart: outlineDrag, reset: outlineReset } = useResizableSidebar({
+    storageKey: "bidkit.compose.outlineW",
+    initial: 280,
+    min: 200,
+    max: 600,
+  })
   // R204 切片 0：右栏（评分点映射）折叠态——用户反馈正文被挤到 60% 宽，可折叠扩宽；localStorage 持久化
   const [asideCollapsed, setAsideCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") return false
@@ -705,6 +452,16 @@ export function ComposeStep(p: ComposeStepProps) {
           </div>
           {hasChapters && p.bidSourceMode !== "external" && (
             <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={p.generateCommitmentLetter}
+                disabled={locked}
+                title={locked ? "已归档项目为只读" : "按 ★/▲ 实质性条款逐字生成响应承诺函，作为商务章节并入投标正文"}
+                className="border-border bg-card text-card-foreground shadow-sm hover:border-primary hover:text-primary"
+              >
+                <PenLine className="mr-1.5 h-4 w-4" />
+                生成承诺函
+              </Button>
               {p.bulkGenerating ? (
                 <Button variant="outline" onClick={p.cancelBulkGenerate} className="border-destructive/40 text-destructive hover:bg-destructive/10">
                   <Square className="mr-1.5 h-4 w-4" />
@@ -1275,12 +1032,23 @@ export function ComposeStep(p: ComposeStepProps) {
           </div>
           <div
             className={`mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-[2fr_3fr] ${
-              asideCollapsed ? "xl:grid-cols-[200px_minmax(0,1fr)]" : "xl:grid-cols-[200px_minmax(0,1fr)_300px]"
+              asideCollapsed ? "xl:grid-cols-[var(--ow)_minmax(0,1fr)]" : "xl:grid-cols-[var(--ow)_minmax(0,1fr)_300px]"
             }`}
+            style={{ "--ow": `${outlineW}px` } as CSSProperties}
           >
-            <div className="lg:sticky lg:top-20">
+            <div className="relative lg:sticky lg:top-20">
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                title="按住拖动调整大纲宽度，双击恢复默认"
+                onPointerDown={outlineDrag}
+                onDoubleClick={outlineReset}
+                className="group absolute top-0 -right-2 z-10 hidden h-full w-3 cursor-col-resize items-center justify-center xl:flex"
+              >
+                <span className="h-full w-0.5 rounded-full bg-border transition-colors group-hover:bg-primary/60" />
+              </div>
               <OutlineNavTree
-                outline={proj.bid_outline}
+                outline={navOutline}
                 chapters={proj.bid_chapters}
                 chapterBudgets={p.chapterBudgets}
                 activeChapterId={p.activeChapterId}
@@ -1295,6 +1063,7 @@ export function ComposeStep(p: ComposeStepProps) {
                 onResizeSection={p.resizeSection}
                 doneChapterCount={p.doneChapterCount}
                 techChapterTotal={p.techChapterTotal}
+                generateDemo={p.genOptions?.generate_demo === true}
               />
             </div>
             <div>
@@ -1340,17 +1109,22 @@ export function ComposeStep(p: ComposeStepProps) {
                   </Button>
                 </div>
               )}
-              {/* 切片A3：结构化折叠卡片预览 */}
+              {/* Word 样式连续预览：与整本「Word 预览」同一渲染管线（A4 版式 / 字体字号 / 首行缩进 / 小节编号），导航点小节可定位 */}
               {viewMode === "preview" && p.activeChapter && (p.editingContent ?? "").trim().length > 0 && p.activeChapter?.part !== "biz" ? (
-                <SectionPreviewCards
-                  content={p.editingContent ?? ""}
-                  sectionTitles={p.activeChapter.sections ?? []}
-                  title={p.activeChapter.title}
-                  onEditSection={() => {
-                    setViewMode("edit")
-                    // 滚动到对应位置（可选：textareaRef 聚焦）
-                  }}
-                />
+                <div ref={previewScrollRef} className="mt-1 max-h-[72vh] overflow-auto rounded-lg">
+                  <BidWordPreview
+                    docTitle={p.activeProject?.project_name || "投标文件"}
+                    format={p.effectiveFormatSettings}
+                    chapterOffset={Math.max(0, activeChapterIdx)}
+                    chapters={[
+                      {
+                        title: p.activeChapter.title ?? "",
+                        content: p.editingContent ?? "",
+                        sections: p.activeChapter.sections ?? [],
+                      },
+                    ]}
+                  />
+                </div>
               ) : (
               <div className={`rounded-lg transition-colors ${focusFlash ? "bg-primary/15" : ""}`}>
                 <ChapterEditor
@@ -1481,6 +1255,8 @@ export function ComposeStep(p: ComposeStepProps) {
             exportDeviationWord={p.exportDeviationWord}
             exportBusy={p.exportBusy}
             deviationSkills={p.deviationSkills}
+            techParamCoverage={p.techParamCoverage}
+            addUncoveredTechParamsToOutline={p.addUncoveredTechParamsToOutline}
           />
         </>
       )}

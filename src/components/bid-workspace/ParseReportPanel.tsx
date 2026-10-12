@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { copyTextToClipboard } from "@/lib/clipboard"
-import { BookOpenCheck, ClipboardList, Copy, Lock, PencilLine, RefreshCw, ScanSearch, ShieldAlert, Star } from "lucide-react"
+import { BookOpenCheck, ClipboardList, Copy, Loader2, Lock, PencilLine, RefreshCw, ScanSearch, ShieldAlert, Sparkles, Star } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -10,6 +10,8 @@ import {
   extractImplicitConstraints,
   PARSE_KEY_SECTIONS,
   PARSE_STATUS_LABEL,
+  parseSectionTier,
+  requiredParseFailures,
   STAR_CLAUSE_SECTION,
   sectionSnippet,
   sectionStatus,
@@ -21,7 +23,31 @@ import {
   type ParseSectionStatus,
   type StandardItem,
 } from "@/pages/BidWorkspace/bidTypes"
+import { coverageLevel, coveragePercent, parseCoverageRatio } from "@/pages/BidWorkspace/parseCoverage"
 import { countMarkerLossLines, lineHasMarkerLoss } from "@/pages/BidWorkspace/materialIntegrity"
+import { chatViaGateway } from "@/lib/modelGateway"
+import { extractJsonCandidate, parseJsonTolerant } from "@/lib/jsonTolerant"
+import {
+  mergeRiskFindings,
+  parseAiRiskFindings,
+  RISK_CATEGORY_LABEL,
+  RISK_LEVEL_LABEL,
+  scanTenderComplianceRisk,
+  sortRiskFindings,
+  summarizeComplianceRisk,
+  type RiskCategory,
+  type RiskFinding,
+} from "@/pages/BidWorkspace/tenderComplianceRisk"
+import {
+  applyChoices,
+  extractParamCandidates,
+  judgeParam,
+  PARAM_MATCH,
+  PARAM_MATCH_ORDER,
+  summarizeParams,
+  type ParamMatchType,
+  type ParamRow,
+} from "@/pages/BidWorkspace/paramMatchTypes"
 
 type ParseReportPanelProps = {
   report: ParseReport | null
@@ -41,6 +67,10 @@ type ParseReportPanelProps = {
   basisMerged?: StandardItem[]
   /** 第十七轮 17B：「规范库补选」对话框入口；不传则隐藏按钮（快捷工具无项目上下文时不传） */
   onOpenStandardsPicker?: () => void
+  /** 第3轮 G1/G2：AI 深度体检兜底门禁回调（规则扫描之外的语义级倾向性/矛盾判定）；不传则隐藏按钮 */
+  runWithCostConfirm?: (fn: () => void, message: string) => void
+  /** 第3轮 G1/G2：归档只读锁定时禁用 AI 体检 */
+  archived?: boolean
 }
 
 const STATUS_BADGE: Record<ParseSectionStatus, string> = {
@@ -56,6 +86,39 @@ const STAR_LINE_HEAD_RE = /^(\s*(?:\d+[.、)）]\s*)?[★☆▲△]+)/
 // 关键项 key 集合：PARSE_KEY_SECTIONS 为模块级常量，此处一次性求值即可，
 // 无需在组件内用 useMemo（早于任何提前 return，规避条件性 Hook 调用崩溃）
 const PARSE_KEY_SECTION_KEYS = new Set(PARSE_KEY_SECTIONS.map((d) => d.key))
+
+/** 第3轮 G1/G2：AI 深度体检系统指令——输出严格 JSON 数组，专挑规则难以命中的语义级风险 */
+const AI_RISK_SYSTEM = [
+  "你是招标文件合规审查助手，依据《医疗信息化投标全流程规范》：八大禁止情形（差别待遇/歧视）、六类隐形陷阱、七条招标红线。",
+  "请从招标文件原文中找出规则难以命中的语义级风险：隐性倾向特定供应商的参数、前后矛盾的条款、变相排斥潜在投标人、权利义务明显失衡等。",
+  "输出严格 JSON 数组（禁止解释文字与代码围栏），每个元素形如：",
+  '{"ruleId":"短标识","category":"discrimination|trap|redline","level":"red|yellow","title":"风险简称","excerpt":"原文摘录（尽量短）","reason":"为何构成风险","legalBasis":"法规/规范依据","suggestion":"质疑或处置建议"}',
+  "category 取值只能是 discrimination（差别待遇/歧视）、trap（隐形陷阱）、redline（招标红线）之一；没有可报的风险就给空数组 []。",
+].join("\n")
+/** 第3轮 G5：AI 参数匹配兜底系统指令——对每条参数给出四类之一研判建议 */
+const AI_PARAM_SYSTEM = [
+  "你是医疗信息化售前技术评估助手，依据《医疗信息化投标全流程规范》4.1 参数匹配四类。",
+  "四类：full=完全满足；partial=部分不满足（仅非关键细节差异）；alternative=替代方案（功能等效或更优）；none=完全不满足。",
+  "结合【我方产品能力概述】逐条判断每个技术参数最可能的匹配类型；拿不准时给 partial 并在 reason 注明需核实，不得臆造产品能力。",
+  '输出严格 JSON 数组（禁止解释与代码围栏），每元素：{"key":"原行key","type":"full|partial|alternative|none","reason":"一句话依据"}。',
+].join("\n")
+
+/** 第3轮 G1/G2：合规风险展示的分类顺序与红/黄卡片底色 */
+const RISK_CAT_ORDER: RiskCategory[] = ["discrimination", "trap", "redline"]
+function riskLevelTone(level: RiskFinding["level"]): string {
+  return level === "red" ? "border-destructive/30 bg-destructive/5" : "border-amber-400/40 bg-amber-50"
+}
+/** 第3轮 G5：四类研判级别 → 徽标底色 / 文案 */
+const LEVEL_TONE_MAP: Record<"ok" | "caution" | "danger", string> = {
+  ok: "bg-primary/10 text-primary",
+  caution: "bg-amber-500/15 text-amber-700",
+  danger: "bg-destructive/10 text-destructive",
+}
+const LEVEL_LABEL_MAP: Record<"ok" | "caution" | "danger", string> = {
+  ok: "可正常响应",
+  caution: "需论证/补材料",
+  danger: "★红线冲突",
+}
 
 function renderStarLine(line: string): ReactNode {
   const m = line.match(STAR_LINE_HEAD_RE)
@@ -94,7 +157,7 @@ function renderDetailLine(line: string, isStar: boolean): ReactNode {
  * 解析报告主详情布局：左栏项列表（进度 N/M + 进度条 + 每项一句摘要与状态徽标，点选高亮），
  * 右栏选中项详情（状态徽标 + 重新解析此项 + 复制 + 结构化内容 + 人工编辑保存）。
  */
-export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, skillPickerSlot, tenderText, warnings, onRescanStar, basisMerged, onOpenStandardsPicker }: ParseReportPanelProps) {
+export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, skillPickerSlot, tenderText, warnings, onRescanStar, basisMerged, onOpenStandardsPicker, runWithCostConfirm, archived }: ParseReportPanelProps) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   // 用户反馈轮：完整解析报告默认只看关键项（关键项 + 重点条款），可一键展开全部项
@@ -106,6 +169,32 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
   }, [report?.scope])
   // 第七轮改造 3：本地正则抽取的招标隐式硬约束（零 AI，解析完成即显示）
   const implicitList = useMemo(() => extractImplicitConstraints(tenderText ?? ""), [tenderText])
+  // 第3轮 G1/G2：合规风险与红线扫描——规则命中对招标原文实时扫描（零 AI），AI 体检结果落 report.risk_ai_findings
+  const [riskScanning, setRiskScanning] = useState(false)
+  const [riskError, setRiskError] = useState("")
+  const [riskFilter, setRiskFilter] = useState<RiskCategory | "all">("all")
+  const ruleRiskFindings = useMemo(() => scanTenderComplianceRisk(tenderText ?? ""), [tenderText])
+  const aiRiskFindings = useMemo(() => report?.risk_ai_findings ?? [], [report])
+  const mergedRiskFindings = useMemo(
+    () => sortRiskFindings(mergeRiskFindings(ruleRiskFindings, aiRiskFindings)),
+    [ruleRiskFindings, aiRiskFindings],
+  )
+  const riskSummary = useMemo(() => summarizeComplianceRisk(mergedRiskFindings), [mergedRiskFindings])
+  const visibleRisk = useMemo(
+    () => (riskFilter === "all" ? mergedRiskFindings : mergedRiskFindings.filter((f) => f.category === riskFilter)),
+    [mergedRiskFindings, riskFilter],
+  )
+  // 第3轮 G5：参数匹配四类研判（规范 4.1）——本地扫描 ★/▲ 参数行，人工选择落 report.param_match_choices，AI 仅对未研判项兜底建议
+  const [paramBrief, setParamBrief] = useState("")
+  const [paramBusy, setParamBusy] = useState(false)
+  const [paramError, setParamError] = useState("")
+  const paramRows = useMemo<ParamRow[]>(
+    () => applyChoices(extractParamCandidates(tenderText ?? ""), report?.param_match_choices),
+    [tenderText, report],
+  )
+  const paramSummary = useMemo(() => summarizeParams(paramRows), [paramRows])
+  const setParamChoice = (key: string, t: ParamMatchType) =>
+    onChange({ param_match_choices: { ...(report?.param_match_choices ?? {}), [key]: t } })
 
   // 第八轮改造 1 / R46-F3：分段解析失败提示横幅。旧版逐条列「第 X 段解析失败」（红色），与侧栏「N/N 项」同屏读来自相矛盾；
   // 改为聚合一条琥珀色提示，说清“段（文本块）≠ 项（提取结果）”两个口径（仅展示层，不改数据/不碰提示词）
@@ -137,6 +226,60 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
         <p className="text-xs font-semibold leading-relaxed">{warningSummary.headline}</p>
         <p className="mt-1 text-xs leading-relaxed text-amber-700">
           （若某项内容明显缺失，可在该项处「重新解析此项」补齐；降级项的检索原文见对应分区。）
+        </p>
+      </div>
+    ) : null
+  // R-029（R255）：招标文件解析质量横幅——suspect_scanned 红、low 琥珀；ok/无字段不显示
+  const qualityBanner =
+    report?.parse_quality && report.parse_quality !== "ok" ? (
+      <div
+        className={`mb-3 rounded-md border px-4 py-3 shadow-sm ${
+          report.parse_quality === "suspect_scanned"
+            ? "border-destructive/40 bg-destructive/5 text-destructive"
+            : "border-amber-300/60 bg-amber-50 text-amber-800"
+        }`}
+      >
+        <p className="text-xs font-semibold leading-relaxed">
+          {report.parse_quality === "suspect_scanned"
+            ? "疑似扫描版/图片型文档，文字层可能缺失，解析结果或不完整"
+            : "招标文件提取文字偏少，可能存在解析不全（表格/图片/加密部分）"}
+        </p>
+        <p className="mt-1 text-xs leading-relaxed">
+          建议用 OCR 转文字或「粘贴文本」重新导入招标文件后重解析，并对照原件核对关键分区。
+        </p>
+      </div>
+    ) : null
+  // R-030（R256）：必选解析项失败红幅——缺席/空/降级/failed 的必选项驱动大纲/评分/响应，须重新解析
+  // （与交卷闸门「不拦导航只拦导出」口径一致：持久化强提示阻断，而非硬锁步骤流转）
+  const requiredFailures = report ? requiredParseFailures(report.sections) : []
+  const requiredFailuresBanner =
+    requiredFailures.length > 0 ? (
+      <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-destructive">
+        <p className="text-xs font-semibold leading-relaxed">必选项解析失败：{requiredFailures.map((f) => f.title).join("、")}</p>
+        <p className="mt-1 text-xs leading-relaxed">
+          这些项驱动大纲/评分/响应，未解析成功会导致后续不完整；请在右侧逐项「重新解析此项」补齐后再进入需求分析与正文编制。
+        </p>
+      </div>
+    ) : null
+
+  // R-038（R258）：长文档解析覆盖率——产出/原文非空白字符比；<50% 告警、<30%(原文够大) 阻断（与生成门禁同阈值）
+  const coverageRatio = useMemo(() => parseCoverageRatio(report?.sections ?? [], tenderText ?? ""), [report, tenderText])
+  const coveragePct = coveragePercent(coverageRatio)
+  const coverageLvl = coverageLevel(coverageRatio, tenderText ?? "")
+  const coverageBanner =
+    coverageRatio != null && coverageLvl !== "ok" ? (
+      <div
+        className={`mb-3 rounded-md border px-4 py-3 shadow-sm ${
+          coverageLvl === "block"
+            ? "border-destructive/40 bg-destructive/5 text-destructive"
+            : "border-amber-300/60 bg-amber-50 text-amber-800"
+        }`}
+      >
+        <p className="text-xs font-semibold leading-relaxed">解析覆盖率 {coveragePct}%（{coverageLvl === "block" ? "过低，已阻止生成" : "偏低"}）</p>
+        <p className="mt-1 text-xs leading-relaxed">
+          {coverageLvl === "block"
+            ? "长文档大部分原文未进入解析，生成的标书可能漏掉否决/废标条款（废标风险）。请用「完整档」并确保分段解析覆盖全文（扫描件先 OCR 转文字）后重解析。"
+            : "部分章节可能未解析完整，建议核对关键分区；必要时用「完整档」重解析以提升覆盖。"}
         </p>
       </div>
     ) : null
@@ -190,9 +333,94 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
     setEditing(false)
   }
 
+  /** 第3轮 G1/G2：AI 深度体检——单次调用归纳规则外的语义级风险，写回 report.risk_ai_findings（走费用确认门禁） */
+  const runAiRiskCheck = () => {
+    if (!runWithCostConfirm || riskScanning || archived || !tenderText?.trim()) return
+    setRiskError("")
+    runWithCostConfirm(() => {
+      void (async () => {
+        setRiskScanning(true)
+        try {
+          const excerpt = tenderText.slice(0, 12000)
+          const res = await chatViaGateway({
+            modelRef: null,
+            messages: [
+              { role: "system", content: AI_RISK_SYSTEM },
+              { role: "user", content: `【招标文件原文（可能截断）】\n${excerpt}\n\n请输出风险条款 JSON 数组。` },
+            ],
+            page: "bid-workspace",
+            max_tokens: 4096,
+          })
+          if (!res.ok || !res.text) throw new Error(res.error || "AI 体检失败，请重试")
+          const candidate = extractJsonCandidate(res.text)
+          if (!candidate) throw new Error("AI 未返回可解析结果，请重试")
+          const ai = parseAiRiskFindings(parseJsonTolerant(candidate))
+          if (!ai.length) throw new Error("AI 未发现规则之外的语义级风险条款")
+          onChange({ risk_ai_findings: mergeRiskFindings(report?.risk_ai_findings ?? [], ai) })
+        } catch (e) {
+          setRiskError(e instanceof Error ? e.message : "AI 体检失败，请重试")
+        } finally {
+          setRiskScanning(false)
+        }
+      })()
+    }, "将调用 AI 对招标文件做语义级合规风险复核（规则扫描之外的倾向性/前后矛盾判定，结果标注为 AI 提示、须人工确认），按 token 用量计费")
+  }
+  /** 第3轮 G5：AI 兜底研判——依产品能力概述对「未研判」参数行建议匹配类型（仅填空、须人工确认） */
+  const runAiParamAssist = () => {
+    if (!runWithCostConfirm || paramBusy || archived || !paramRows.length) return
+    setParamError("")
+    const pending = paramRows.filter((r) => !r.matchType)
+    if (!pending.length) {
+      setParamError("所有参数行均已研判，无需 AI 兜底")
+      return
+    }
+    const brief = paramBrief.trim() || "（未提供产品能力概述，请仅依据条款常识谨慎给出建议并标注需核实）"
+    runWithCostConfirm(() => {
+      void (async () => {
+        setParamBusy(true)
+        try {
+          const list = pending.map((r) => `${r.key}\t${r.substantive ? "★" : r.keyMark ? "▲" : ""}${r.param}`).join("\n")
+          const res = await chatViaGateway({
+            modelRef: null,
+            messages: [
+              { role: "system", content: AI_PARAM_SYSTEM },
+              { role: "user", content: `【我方产品能力概述】\n${brief}\n\n【待研判参数（每行：key\t原文）】\n${list}\n\n请逐行输出 JSON 数组。` },
+            ],
+            page: "bid-workspace",
+            max_tokens: 2048,
+          })
+          if (!res.ok || !res.text) throw new Error(res.error || "AI 研判失败，请重试")
+          const candidate = extractJsonCandidate(res.text)
+          if (!candidate) throw new Error("AI 未返回可解析结果，请重试")
+          const parsed = parseJsonTolerant(candidate)
+          const arr = Array.isArray(parsed) ? (parsed as Array<{ key?: string; type?: string }>) : []
+          const patchMap: Record<string, string> = { ...(report?.param_match_choices ?? {}) }
+          let n = 0
+          for (const it of arr) {
+            if (!it?.key || !it.type) continue
+            if (PARAM_MATCH_ORDER.indexOf(it.type as ParamMatchType) < 0) continue
+            const target = paramRows.find((rr) => rr.key === it.key)
+            if (!target || target.matchType) continue
+            patchMap[it.key] = it.type
+            n++
+          }
+          if (!n) throw new Error("AI 未给出可用研判建议")
+          onChange({ param_match_choices: patchMap })
+        } catch (e) {
+          setParamError(e instanceof Error ? e.message : "AI 研判失败，请重试")
+        } finally {
+          setParamBusy(false)
+        }
+      })()
+    }, "将调用 AI 依据产品能力概述对未研判参数给出匹配类型建议（结果须人工确认），按 token 用量计费")
+  }
+
   return (
     <>
     {warningBanner}
+    {qualityBanner}
+    {requiredFailuresBanner}
+    {coverageBanner}
     {lotsChips && (
       <div className="mb-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -256,6 +484,16 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
             <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${pct}%` }} />
           </div>
           <p className="mt-1.5 text-xs text-muted-foreground">失败 / 未解析的项可在右侧单独重解析</p>
+          {coveragePct != null && (
+            <p
+              className={`mt-1 text-xs font-medium ${
+                coverageLvl === "block" ? "text-destructive" : coverageLvl === "warn" ? "text-amber-700" : "text-muted-foreground"
+              }`}
+              title="解析覆盖率 = 各解析项正文字数 / 招标文件原文字数（过长回落检索会偏低）"
+            >
+              解析覆盖率 {coveragePct}%{coverageLvl === "block" ? "（过低，已阻止生成）" : coverageLvl === "warn" ? "（偏低）" : ""}
+            </p>
+          )}
           {isFull && keyOnly && keyFiltered.length > 0 && (
             <p className="mt-1 text-xs text-muted-foreground">完整解析报告默认只看关键项与重点条款，跨项重复行已归并；点右上可展开其他项</p>
           )}
@@ -278,6 +516,19 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
                       {s.key === "star_clauses" && (
                         <span className="mr-1 inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 align-middle text-xs font-semibold text-primary">
                           ★
+                        </span>
+                      )}
+                      {parseSectionTier(s.key) !== "other" && (
+                        <span
+                          className={`mr-1 inline-flex items-center rounded-full px-1.5 py-0.5 align-middle text-[11px] font-semibold ${
+                            parseSectionTier(s.key) === "optional"
+                              ? "bg-secondary text-muted-foreground"
+                              : requiredFailures.some((f) => f.key === s.key)
+                                ? "bg-destructive/10 text-destructive"
+                                : "bg-primary/10 text-primary"
+                          }`}
+                        >
+                          {parseSectionTier(s.key) === "required" ? "必选" : "可选"}
                         </span>
                       )}
                       {s.title}
@@ -515,6 +766,249 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
                 {i + 1}. {t}
               </li>
             ))}
+          </ul>
+        </div>
+      </section>
+    )}
+    {tenderText?.trim() && (
+      <section className="mt-4 rounded-lg border border-border bg-card shadow-md">
+        <header className="flex min-h-14 flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <ShieldAlert className="h-4 w-4 shrink-0 text-destructive" />
+            <h2 className="text-sm font-semibold text-card-foreground">合规风险与红线扫描</h2>
+            {riskSummary.total > 0 ? (
+              <>
+                {riskSummary.red > 0 && (
+                  <span className="rounded-full bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive">
+                    红 {riskSummary.red}
+                  </span>
+                )}
+                {riskSummary.yellow > 0 && (
+                  <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+                    黄 {riskSummary.yellow}
+                  </span>
+                )}
+                {riskSummary.aiCount > 0 && (
+                  <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                    AI 提示 {riskSummary.aiCount}
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                未发现确定性风险
+              </span>
+            )}
+          </div>
+          {runWithCostConfirm && (
+            <button
+              type="button"
+              onClick={runAiRiskCheck}
+              disabled={riskScanning || archived}
+              title="调用 AI 复核规则难以命中的语义级倾向性与前后矛盾条款（产生一次调用费用，结果须人工确认）"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-primary/40 bg-background px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-60"
+            >
+              {riskScanning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              {riskScanning ? "AI 体检中…" : "AI 深度体检"}
+            </button>
+          )}
+        </header>
+        <div className="p-4">
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            依据《医疗信息化投标全流程规范》：八大禁止情形（差别待遇/歧视）、六类隐形陷阱、七条量化红线。规则引擎本地扫描招标文件（零 AI、即时），命中项可作为投标决策与质疑依据；「AI 深度体检」补充规则难以命中的语义级风险（标注为 AI 提示，须人工确认）。
+          </p>
+          {riskError && (
+            <p className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{riskError}</p>
+          )}
+          {riskSummary.total > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setRiskFilter("all")}
+                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${riskFilter === "all" ? "border-primary/50 bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-secondary/60"}`}
+              >
+                全部 {riskSummary.total}
+              </button>
+              {RISK_CAT_ORDER.map((c) =>
+                riskSummary.byCategory[c] > 0 ? (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setRiskFilter(riskFilter === c ? "all" : c)}
+                    className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${riskFilter === c ? "border-primary/50 bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-secondary/60"}`}
+                  >
+                    {RISK_CATEGORY_LABEL[c]} {riskSummary.byCategory[c]}
+                  </button>
+                ) : null,
+              )}
+            </div>
+          )}
+          {visibleRisk.length === 0 ? (
+            <p className="mt-3 rounded-md border border-dashed border-border bg-background px-3 py-4 text-center text-xs text-muted-foreground">
+              {riskSummary.hasRisk ? "当前筛选下没有条目，点「全部」查看全部风险。" : "规则扫描未发现确定性风险条款。可点右上「AI 深度体检」做语义级复核。"}
+            </p>
+          ) : (
+            <ul className="mt-3 grid grid-cols-1 gap-2 lg:grid-cols-2">
+              {visibleRisk.map((f, i) => (
+                <li key={`${f.ruleId}-${f.line}-${i}`} className={`rounded-md border px-3 py-2.5 ${riskLevelTone(f.level)}`}>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span
+                      className={`shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold text-white ${f.level === "red" ? "bg-destructive" : "bg-amber-500"}`}
+                    >
+                      {RISK_LEVEL_LABEL[f.level]}
+                    </span>
+                    <span className="shrink-0 rounded-full bg-background/70 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                      {RISK_CATEGORY_LABEL[f.category]}
+                    </span>
+                    {f.origin === "ai" && (
+                      <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">
+                        AI · 待人工确认
+                      </span>
+                    )}
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-card-foreground" title={f.title}>
+                      {f.title}
+                    </span>
+                    {f.line > 0 && <span className="shrink-0 text-[11px] text-muted-foreground">L{f.line}</span>}
+                  </div>
+                  {f.excerpt && (
+                    <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-card-foreground" title={f.excerpt}>
+                      原文：「{f.excerpt}」
+                    </p>
+                  )}
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{f.reason}</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                    <span className="font-medium text-card-foreground">依据：</span>
+                    {f.legalBasis}
+                  </p>
+                  <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                    <span className="font-medium text-card-foreground">建议：</span>
+                    {f.suggestion}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+    )}
+    {tenderText?.trim() && paramRows.length > 0 && (
+      <section className="mt-4 rounded-lg border border-border bg-card shadow-md">
+        <header className="flex min-h-14 flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <ClipboardList className="h-4 w-4 shrink-0 text-primary" />
+            <h2 className="text-sm font-semibold text-card-foreground">参数匹配四类研判</h2>
+            {paramSummary.overall === "reject" ? (
+              <span className="rounded-full bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive">建议放弃投标</span>
+            ) : paramSummary.overall === "caution" ? (
+              <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-700">谨慎投标</span>
+            ) : paramSummary.overall === "pending" ? (
+              <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">待研判</span>
+            ) : (
+              <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">可正常投标</span>
+            )}
+            <span className="text-xs text-muted-foreground">已研判 {paramSummary.typed}/{paramSummary.total}</span>
+          </div>
+          {runWithCostConfirm && (
+            <button
+              type="button"
+              onClick={runAiParamAssist}
+              disabled={paramBusy || archived}
+              title="依产品能力概述对未研判参数给出四类匹配建议（仅填空、结果须人工确认，产生一次调用费用）"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-primary/40 bg-background px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-60"
+            >
+              {paramBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              {paramBusy ? "AI 研判中…" : "AI 兜底研判"}
+            </button>
+          )}
+        </header>
+        <div className="p-4">
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            依据《医疗信息化投标全流程规范》4.1：对每条技术参数标注「01 完全满足 / 02 部分不满足 / 03 替代方案 / 04 完全不满足」，系统按 ★/▲ 标注自动给出应对策略与红线提示，并聚合投/不投决策。★ 完全不满足建议放弃；★ 部分不满足或替代须重点论证完全响应/等效。研判须结合技术实力、成本与风险综合评估，不得凭感觉承诺。
+          </p>
+          <div
+            className={`mt-3 rounded-md border px-3 py-2 text-xs leading-relaxed ${
+              paramSummary.overall === "reject"
+                ? "border-destructive/30 bg-destructive/5 text-destructive"
+                : paramSummary.overall === "caution"
+                  ? "border-amber-400/40 bg-amber-50 text-amber-800"
+                  : "border-border bg-background text-muted-foreground"
+            }`}
+          >
+            {paramSummary.message}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {PARAM_MATCH_ORDER.map((t) => (
+              <span key={t} className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">
+                {PARAM_MATCH[t].code} {PARAM_MATCH[t].label} {paramSummary.byType[t]}
+              </span>
+            ))}
+          </div>
+          {runWithCostConfirm && (
+            <div className="mt-3">
+              <Textarea
+                value={paramBrief}
+                onChange={(e) => setParamBrief(e.target.value)}
+                placeholder="（选填）简述我方产品能力，供 AI 兜底研判参考；留空则 AI 仅依条款常识谨慎建议并标注需核实"
+                className="min-h-14"
+              />
+            </div>
+          )}
+          {paramError && (
+            <p className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{paramError}</p>
+          )}
+          <ul className="mt-3 grid gap-2">
+            {paramRows.map((r) => {
+              const v = judgeParam(r)
+              return (
+                <li key={r.key} className="rounded-md border border-border bg-background px-3 py-2.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {(r.substantive || r.keyMark) && (
+                      <span className="shrink-0 font-semibold text-primary" title={r.substantive ? "★ 实质性条款" : "▲ 重点条款"}>
+                        {r.substantive ? "★" : "▲"}
+                      </span>
+                    )}
+                    <span className="min-w-0 flex-1 text-xs leading-relaxed text-card-foreground">{r.param}</span>
+                    <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-medium ${LEVEL_TONE_MAP[v.level]}`}>
+                      {LEVEL_LABEL_MAP[v.level]}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {PARAM_MATCH_ORDER.map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setParamChoice(r.key, t)}
+                        title={PARAM_MATCH[t].definition}
+                        className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors ${
+                          r.matchType === t
+                            ? "border-primary/50 bg-primary/10 text-primary"
+                            : "border-border text-muted-foreground hover:bg-secondary/60"
+                        }`}
+                      >
+                        {PARAM_MATCH[t].code} {PARAM_MATCH[t].label}
+                      </button>
+                    ))}
+                  </div>
+                  {r.matchType && (
+                    <ul className="mt-2 grid gap-0.5">
+                      {v.guidance.map((g, i) => (
+                        <li key={i} className="text-[11px] leading-relaxed text-muted-foreground">· {g}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {v.conflict && (
+                    <p className={`mt-1.5 rounded-md border px-2.5 py-1.5 text-[11px] leading-relaxed ${
+                      v.level === "danger"
+                        ? "border-destructive/30 bg-destructive/5 text-destructive"
+                        : "border-amber-400/40 bg-amber-50 text-amber-800"
+                    }`}>
+                      {v.level === "danger" ? "★红线：" : "提示："}
+                      {v.conflict}
+                    </p>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         </div>
       </section>

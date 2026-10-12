@@ -89,6 +89,25 @@ export function summarizeQuals(
   return { total: rows.length, buckets, alerts }
 }
 
+// ---------------------------------------------------------------------------
+// R250(r2-r012)：台账表格化的搜索口径。关键词按空白分词，任一词命中任一
+// 展示字段即保留（词间 AND、字段间 OR）；大小写不敏感，全角空格一并作分隔。
+// 空关键词返回全部（新数组，不改入参）。
+// ---------------------------------------------------------------------------
+export function filterQualRows<T extends Pick<QualCertRow, "cert_name" | "category" | "cert_no" | "issuer" | "scope" | "notes">>(
+  rows: readonly T[],
+  keyword: string,
+): T[] {
+  const words = String(keyword ?? "").toLowerCase().split(/[\s\u3000]+/).filter(Boolean)
+  if (words.length === 0) return rows.slice()
+  return rows.filter((r) => {
+    const hay = [r.cert_name, r.category, r.cert_no, r.issuer, r.scope, r.notes]
+      .map((v) => String(v ?? "").toLowerCase())
+      .join("\u0001")
+    return words.every((w) => hay.includes(w))
+  })
+}
+
 /** 人类可读的到期描述：「已过期 12 天」「剩 25 天」「剩 2 个月」 */
 export function qualDueLabel(validTo: string | null | undefined, todayMs: number): string {
   const to = parseDay(validTo)

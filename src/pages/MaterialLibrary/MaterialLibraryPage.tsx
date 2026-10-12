@@ -451,7 +451,7 @@ export function MaterialLibraryPage({ p }: { p: UseMaterialLibrary }) {
                   <Button size="sm" disabled={!!p.savingUrl} onClick={() => void p.saveSelectedHits()}>
                     <CheckCircle2 className="mr-1 h-3.5 w-3.5" />批量入库
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => p.toggleSelectUrl(p.selectedUrls[0])}>
+                  <Button size="sm" variant="ghost" onClick={p.clearSelection}>
                     <X className="mr-1 h-3.5 w-3.5" />取消选择
                   </Button>
                 </div>

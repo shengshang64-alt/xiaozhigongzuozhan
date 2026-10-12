@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { hasPendingSections, isIncompleteSectionChapter, isTrulyDoneChapter, reflowStatsAfterAppend, sectionGenStatus, trackedPrefixLength, withTransientRetry } from "./chapterCompletion"
+import { hasPendingSections, isIncompleteSectionChapter, isTrulyDoneChapter, planSectionResume, reflowStatsAfterAppend, sectionGenStatus, trackedPrefixLength, withTransientRetry } from "./chapterCompletion"
 import { rebuildSectionContent, sliceSectionPieces } from "./bidTypes"
 
 describe("sectionGenStatus（R170 中断不再误标 done）", () => {
@@ -220,5 +220,93 @@ describe("reflowStatsAfterAppend（R179 生产端 section_stats 回写）", () =
   })
   it("正文短到无法容纳既有结构（治理裁剪后）→ null，不误改", () => {
     expect(reflowStatsAfterAppend([{ title: "a", chars: 900 }, { title: "b", chars: 800 }], "short")).toBeNull()
+  })
+})
+
+
+describe("planSectionResume（R276 细粒度断点续跑：保留空洞之后的已产出小节）", () => {
+  const secs = ["A", "B", "C", "D"]
+
+  it("全新/空正文 → 全部小节待补，pieces 全空", () => {
+    const p = planSectionResume("", [], secs)
+    expect(p.pendingIndices).toEqual([0, 1, 2, 3])
+    expect(p.pieces).toEqual(["", "", "", ""])
+    expect(p.stats.map((x) => x.chars)).toEqual([0, 0, 0, 0])
+  })
+
+  it("opts.fresh → 忽略既有正文，全部待补", () => {
+    const stats = [{ title: "A", chars: 5 }, { title: "B", chars: 5 }]
+    const p = planSectionResume("xxxxx\n\nyyyyy", stats, secs, { fresh: true })
+    expect(p.pendingIndices).toEqual([0, 1, 2, 3])
+  })
+
+  it("title 与 stats 错位 → 弃用种子，全部待补", () => {
+    const stats = [{ title: "X", chars: 5 }, { title: "B", chars: 5 }]
+    const p = planSectionResume("xxxxx\n\nyyyyy", stats, secs)
+    expect(p.pendingIndices).toEqual([0, 1, 2, 3])
+  })
+
+  it("连续前缀中断（尾部未覆盖）→ 保留前缀、尾部待补（与旧行为一致）", () => {
+    const stats = [{ title: "A", chars: 5 }, { title: "B", chars: 5 }]
+    const content = "12345\n\nabcde"
+    const p = planSectionResume(content, stats, secs)
+    expect(p.pieces[0]).toBe("12345")
+    expect(p.pieces[1]).toBe("abcde")
+    expect(p.pieces[2]).toBe("")
+    expect(p.pieces[3]).toBe("")
+    expect(p.pendingIndices).toEqual([2, 3])
+    expect(p.stats[0]).toEqual({ title: "A", chars: 5 })
+  })
+
+  it("中间空洞、之后小节已成功 → 保留空洞之后的成品，只补空洞与尾部（本轮修复点）", () => {
+    // A 成功、B 失败(chars:0)、C 成功；D 从未尝试
+    const stats = [
+      { title: "A", chars: 5 },
+      { title: "B", chars: 0 },
+      { title: "C", chars: 5 },
+      { title: "D", chars: 0 },
+    ]
+    // 注：生成时洞（空产出）不追加正文也不占连接符，故 A 与 C 直接相邻（与 sliceSectionPieces 口径一致）
+    const content = "12345\n\nabcde"
+    const p = planSectionResume(content, stats, secs)
+    expect(p.pieces[0]).toBe("12345") // A 保留
+    expect(p.pieces[1]).toBe("") // B 空洞 → 待补
+    expect(p.pieces[2]).toBe("abcde") // C 保留（旧逻辑会被推倒重生成）
+    expect(p.pieces[3]).toBe("") // D 待补
+    expect(p.pendingIndices).toEqual([1, 3])
+    // 已保留小节计入 stats，空洞记 0
+    expect(p.stats.map((x) => x.chars)).toEqual([5, 0, 5, 0])
+  })
+
+  it("全部小节已成功 → 无待补（pendingIndices 为空）", () => {
+    const stats = [
+      { title: "A", chars: 3 },
+      { title: "B", chars: 3 },
+      { title: "C", chars: 3 },
+      { title: "D", chars: 3 },
+    ]
+    const content = "aaa\n\nbbb\n\nccc\n\nddd"
+    const p = planSectionResume(content, stats, secs)
+    expect(p.pendingIndices).toEqual([])
+    expect(p.pieces).toEqual(["aaa", "bbb", "ccc", "ddd"])
+  })
+
+  it("历史整章 blob 追加尾巴（content 远超 Σchars）→ 只裁到已跟踪区间，多余尾巴不进种子（R174 口径）", () => {
+    const stats = [{ title: "A", chars: 5 }]
+    const content = "12345\n\n" + "Z".repeat(100)
+    const p = planSectionResume(content, stats, secs)
+    expect(p.pieces[0]).toBe("12345")
+    expect(p.pieces[0].length).toBeLessThanOrEqual(5)
+    expect(p.pendingIndices).toEqual([1, 2, 3])
+  })
+
+  it("chars>0 但正文短到切不出该节 → 保守判待补，不误留空成品", () => {
+    const stats = [
+      { title: "A", chars: 5 },
+      { title: "B", chars: 5 },
+    ]
+    const content = "123" // 远短于 A 声明的 5 字
+    const p = planSectionResume(content, stats, secs)
+    expect(p.pendingIndices).toContain(1)
   })
 })

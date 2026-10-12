@@ -2,8 +2,8 @@
 // 三级标题编号 / 正文首行缩进 / 图表居中题注，按纸张连续滚动预览。
 // 纯 CSS 仿 Word（解 Q-004：不做真·docx 分页渲染，直接命中 O-008「正文被挤到约 60% 宽」痛点）。
 // 仅 on-screen 预览；打印 / 存 PDF 仍复用既有 PrintExportButton（不动 PrintChapterFlow，守 R-009 红线）。
-import type { CSSProperties } from "react"
-import { DEFAULT_FORMAT_SETTINGS, type FormatSettings } from "@/pages/BidWorkspace/bidTypes"
+import type { CSSProperties, RefObject } from "react"
+import { DEFAULT_FORMAT_SETTINGS, stripAuditAnnotations, type FormatSettings } from "@/pages/BidWorkspace/bidTypes"
 import { chapterNumber, classify, ff, lineHeight, paperDims, pt } from "./bidWordPreviewLogic"
 
 export type WordPreviewChapter = {
@@ -16,10 +16,16 @@ export function BidWordPreview({
   docTitle,
   chapters,
   format,
+  chapterOffset = 0,
+  scrollRef,
 }: {
   docTitle: string
   chapters: WordPreviewChapter[]
   format?: FormatSettings | null
+  /** 单章预览：按整本章节号偏移渲染（默认 0 = 整本从第 1 章连排，行为不变） */
+  chapterOffset?: number
+  /** 滚动容器 ref：外部导航点小节标题时在该容器内定位 */
+  scrollRef?: RefObject<HTMLDivElement | null>
 }) {
   const f = format ?? DEFAULT_FORMAT_SETTINGS
   const { w, h } = paperDims(f.paper)
@@ -42,7 +48,7 @@ export function BidWordPreview({
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-muted/50 px-4 py-6">
+    <div ref={scrollRef} className="h-full overflow-y-auto bg-muted/50 px-4 py-6">
       <div className="mx-auto flex w-fit flex-col items-stretch gap-6">
         {chapters.length === 0 && (
           <p className="w-[21cm] py-16 text-center text-sm text-muted-foreground">
@@ -52,7 +58,8 @@ export function BidWordPreview({
         {chapters.map((ch, i) => {
           const sections = (ch.sections ?? []).filter(Boolean)
           const lines = (ch.content || "").split("\n").filter((l) => l.trim())
-          const chNum = chapterNumber(i, f.titleNumbering)
+          const num = i + chapterOffset
+          const chNum = chapterNumber(num, f.titleNumbering)
           return (
             <article
               key={`${ch.title}-${i}`}
@@ -74,11 +81,13 @@ export function BidWordPreview({
                   {docTitle}
                 </header>
               )}
-              <h1 style={hStyle(0)}>{`${chNum}${ch.title}`}</h1>
-              {lines.map((line, j) => {
-                const kind = classify(line, sections)
-                if (kind === "h3") return <h3 key={j} style={hStyle(2)}>{line.trim()}</h3>
-                if (kind === "h2") return <h2 key={j} style={hStyle(1)}>{line.trim()}</h2>
+              <h1 data-wp-title={`${chNum}${ch.title}`} style={hStyle(0)}>{`${chNum}${ch.title}`}</h1>
+              {lines.map((raw, j) => {
+                // 预览与成稿一致:先剥正文不该出现的分析态批注/内部编号,再判定行类型(与导出同一清洗函数)
+                const disp = stripAuditAnnotations(raw).trim()
+                const kind = classify(disp, sections, num + 1)
+                if (kind === "h3") return <h3 key={j} data-wp-title={disp} style={hStyle(2)}>{disp}</h3>
+                if (kind === "h2") return <h2 key={j} data-wp-title={disp} style={hStyle(1)}>{disp}</h2>
                 if (kind === "caption")
                   return (
                     <p
@@ -86,7 +95,7 @@ export function BidWordPreview({
                       className="my-2 text-center"
                       style={{ fontFamily: ff(body.font), fontSize: `${bodyPt - 1}pt`, fontWeight: 600 }}
                     >
-                      {line.trim()}
+                      {disp}
                     </p>
                   )
                 return (
@@ -101,7 +110,7 @@ export function BidWordPreview({
                       margin: "0 0 4pt",
                     }}
                   >
-                    {line.trim()}
+                    {disp}
                   </p>
                 )
               })}
@@ -110,7 +119,7 @@ export function BidWordPreview({
                   className="absolute inset-x-0 text-center text-[9pt] text-muted-foreground"
                   style={{ bottom: `${Math.max(0.6, m.bottom - 1)}cm` }}
                 >
-                  {f.sealed ? `${i + 1}` : `第 ${i + 1} 页`}
+                  {f.sealed ? `${num + 1}` : `第 ${num + 1} 页`}
                 </footer>
               )}
             </article>

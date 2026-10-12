@@ -3,22 +3,28 @@ import { describe, expect, it } from "vitest"
 import { BidWordPreview } from "./BidWordPreview"
 import { chapterNumber, classify, paperDims } from "./bidWordPreviewLogic"
 
-describe("classify 行类型判定", () => {
-  it("三级标题 1.1.1 → h3", () => {
-    expect(classify("1.1.1 建设现状", [])).toBe("h3")
+describe("classify 行类型判定（问题3 对齐导出 isRealSectionHeading）", () => {
+  it("三级标题 1.1.1 且匹配本章小节 → h3", () => {
+    expect(classify("1.1.1 建设现状", ["建设现状"], 1)).toBe("h3")
   })
-  it("二级标题 1.1 → h2", () => {
-    expect(classify("1.1 项目背景", [])).toBe("h2")
+  it("二级标题 1.1 且匹配本章小节 → h2", () => {
+    expect(classify("1.1 项目背景", ["项目背景"], 1)).toBe("h2")
   })
-  it("sections 命中小节 → h2", () => {
-    expect(classify("项目概述与目标", ["项目概述"])).toBe("h2")
+  it("无名整行精确命中小节 → h2", () => {
+    expect(classify("项目概述与目标", ["项目概述与目标"], 2)).toBe("h2")
   })
   it("图/表题注 → caption", () => {
-    expect(classify("图 3 系统拓扑", [])).toBe("caption")
-    expect(classify("表2 报价一览", [])).toBe("caption")
+    expect(classify("图 3 系统拓扑", [], 1)).toBe("caption")
+    expect(classify("表2 报价一览", [], 1)).toBe("caption")
   })
   it("普通正文 → p", () => {
-    expect(classify("本项目旨在提升信息化水平。", [])).toBe("p")
+    expect(classify("本项目旨在提升信息化水平。", [], 1)).toBe("p")
+  })
+  it("回归:正文句以小节名开头不再误升标题 → p", () => {
+    expect(classify("集成平台架构总体设计的范围覆盖多个子系统", ["集成平台架构总体设计"], 2)).toBe("p")
+  })
+  it("回归:编号与章号不一致的正文句 → p(不越章升标题)", () => {
+    expect(classify("17.1 实施组织架构与职责分工", ["实施组织架构"], 13)).toBe("p")
   })
 })
 

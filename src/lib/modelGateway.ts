@@ -10,6 +10,12 @@ import { llmCacheGet, llmCacheSet } from "@/lib/llmCache"
 import { toast } from "sonner"
 import { isLocalDeployHost } from "@/lib/rhLogin"
 import { isTextGenerationModel } from "@/lib/modelModality"
+// R216 缺陷修复：记住用户实际用过的模型，根治「选 A 调 B」的静默路由错乱
+import {
+  readPreferredModelKey,
+  rememberUsedModel,
+  resolvePreferredRef,
+} from "@/lib/modelPrefs"
 import {
   shouldShowFailoverNotice,
   tryFailoverCall,
@@ -186,7 +192,13 @@ export function buildAvailableModels(configs: GatewayConfig[]): Omit<AvailableMo
 export async function resolveAvailableModels(): Promise<AvailableModels> {
   const res = await listGatewayConfigs()
   if (!res.ok) return { configs: [], models: [], defaultRef: null, platformRef: null }
-  return { configs: res.items, ...buildAvailableModels(res.items) }
+  const built = buildAvailableModels(res.items)
+  // R216 缺陷修复：默认模型不再由「配置声明顺序」决定，而优先取用户实际成功用过的那个。
+  // 原实现只用 buildAvailableModels 的 defaultRef（=唯一声明了 default_model 的那条配置），
+  // 实测导致所有页面默认落到 bailing，用户在顶部选了别的模型也会被静默改回。
+  const userId = decodeRhToken()?.sub ?? null
+  const preferred = resolvePreferredRef(built.models, readPreferredModelKey(userId))
+  return { configs: res.items, ...built, defaultRef: preferred ?? built.defaultRef }
 }
 
 // ---------------------------------------------------------------------------
@@ -282,25 +294,53 @@ export function shouldDegradeRetry(resultOk: boolean, error?: string): boolean {
   return !resultOk && personalTimeoutError(error) !== null
 }
 
-// R215：挑第一个「已配 Key 且有可用模型」的个人网关配置，返回其 ModelRef（平台需登录时的兜底）
+// R216 缺陷修复：原实现取 configs 数组「第一个」可用配置——而接口返回顺序里 bailing 恰好排首位
+//   且是唯一声明了 default_model 的配置，于是任何未显式传 modelRef 的调用都被静默改道到 bailing。
+//   现改为「用户偏好优先，其次声明了默认模型的配置，最后才退到首个可用配置」，
+//   并对同一配置的模型做可用性校验，保证选中的一定是enabled 且真实存在的模型。
 async function pickFirstPersonalModelRef(): Promise<ModelRef | null> {
   try {
     const cfgs = await gwFetch<{ items: GatewayConfig[] }>(`/api/model-gw/configs`)
     if (!cfgs.ok) return null
-    for (const c of cfgs.items || []) {
-      if (c.is_platform) continue
-      if (!c.has_key) continue
-      const enabled = (c.models || []).filter((m) => m.enabled !== false)
+    const personal = (cfgs.items || []).filter((c) => c && !c.is_platform && c.has_key)
+    // 候选排序口径（纯函数，单测锁死）：
+    //   ① 用户偏好命中的配置 —— 用户长期用哪个就优先用哪个
+    //   ② 显式声明了 default_model 的配置 —— 配置者主动指定，语义强于数组顺序
+    //   ③ 其余按接口返回顺序 —— 保持原有兜底行为，不引入额外不确定性
+    const preferredKey = readPreferredModelKey(decodeRhToken()?.sub ?? null)
+    const rank = (c: GatewayConfig): number => {
+      if (preferredKey && preferredKey.startsWith(`personal:${c.id}:`)) return 0
+      return c.default_model ? 1 : 2
+    }
+    const ordered = [...personal].sort((a, b) => rank(a) - rank(b))
+    for (const c of ordered) {
+      const enabled = (c.models || []).filter((m) => m && m.enabled !== false)
       const modelId = c.default_model || (enabled[0] && enabled[0].id) || ""
       if (!modelId) continue
-      const live = enabled.some((m) => m.id === modelId) || !enabled.length
-      if (!live) continue
-      return { source: "personal", configId: c.id, configName: c.config_name || c.id, modelId }
+      // 默认模型已从启用列表中移除时不能硬发（下游会返回 model_disabled），退回该配置首个可用模型
+      const live = enabled.length ? enabled.some((m) => m.id === modelId) : false
+      const useId = live ? modelId : enabled.length ? enabled[0].id : ""
+      if (!useId) continue
+      return { source: "personal", configId: c.id, configName: c.config_name || c.id, modelId: useId }
     }
   } catch {
     /* 配置拉取失败则放弃兜底 */
   }
   return null
+}
+
+/**
+ * R216：响应回显模型与请求模型不一致时的告警文案。
+ * 网关正常会回显实际使用的模型；若不一致说明上游做了模型改道（别名 / 降级 / 网关重写），
+ * 此时必须让用户知道「你选的不是实际出内容的那个」——静默吞掉就是投标事故的源头。
+ * 返回 null 表示一致，无需提示。纯函数便于单测。
+ */
+export function modelMismatchNotice(requested: string, actual: string | undefined | null): string | null {
+  const want = (requested || "").trim()
+  const got = (actual || "").trim()
+  if (!got || !want) return null
+  if (got === want) return null
+  return `注意：本次实际由模型「${got}」生成，与所选的「${want}」不一致。`
 }
 
 async function chatViaGatewayUncached(opts: ChatViaGatewayOptions): Promise<LlmCallResult> {
@@ -378,7 +418,16 @@ async function chatViaGatewayUncached(opts: ChatViaGatewayOptions): Promise<LlmC
       error: (personalTimeoutError(res.message) ?? res.message) || "生成失败，请重试",
     }
   }
-  return { ok: true, status: "success", text: res.text, model: res.model ?? ref.modelId }
+  // R216：成功即记忆本次实际使用的模型，作为下次默认（根治静默改道）；
+  // 同时校验网关回显的模型是否就是所选模型，不一致时明确告知用户而非静默吞掉。
+  rememberUsedModel(decodeRhToken()?.sub ?? null, modelRefKey(ref))
+  const actualModel = res.model ?? ref.modelId
+  const mismatch = modelMismatchNotice(ref.modelId, res.model)
+  if (mismatch) {
+    console.warn("[modelGateway] 模型回显不一致", { requested: ref.modelId, actual: res.model, configId: ref.configId })
+    toast.warning(mismatch)
+  }
+  return { ok: true, status: "success", text: res.text, model: actualModel }
 }
 
 // ---------------------------------------------------------------------------
