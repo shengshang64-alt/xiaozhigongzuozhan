@@ -629,7 +629,10 @@ function runQoderCli(prompt, opts) {
       cwd: PROJECT_ROOT,
       shell: process.platform === 'win32',
       windowsHide: true,
-      env: { ...process.env },
+      // 注入「无人值守」标记：让 .qoder/hooks/guard.mjs 把非禁区命令的 ask 降级为 allow。
+      // 不注入则 headless 下所有 Bash 会停在「等人工确认」，验证门禁永远跑不了（R280 实测）。
+      // 禁区（rm -rf / git push / 读 .env 等）在两种模式下都被 deny 硬拦，安全底线不变。
+      env: { ...process.env, XIAOZHI_AUTOLOOP: '1' },
     });
 
     const hardKillTimer = setTimeout(() => {

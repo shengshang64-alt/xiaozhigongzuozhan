@@ -25,6 +25,13 @@
 
 const MAX_STDIN_BYTES = 4 * 1024 * 1024; // 防御：超长输入不解析，直接放行到正常管道
 
+/**
+ * 是否处于「无人值守自动化」会话。
+ * 由驱动器 scripts/qoder-loop.mjs 在 spawn 时注入 XIAOZHI_AUTOLOOP=1。
+ * 交互式使用（Qoder IDE / 手动终端）不带该变量 → 行为完全不变，仍逐个 ask 弹窗。
+ */
+const AUTOLOOP = process.env.XIAOZHI_AUTOLOOP === '1';
+
 /** Bash 命令禁区。每条都针对本项目真实风险，不是通用套话。 */
 const BASH_DENY_RULES = [
   // ---- 破坏性删除 ----
@@ -44,7 +51,8 @@ const BASH_DENY_RULES = [
 
   // ---- Git 不可逆操作 ----
   { re: /\bgit\s+push\b/i, why: '推送到远端（本项目只做本地迭代，外发需人工）' },
-  { re: /\bgit\s+reset\s+--hard/i, why: '硬重置（丢弃所有改动）' },
+  { re: /\bgit\s+reset\b/i, why: '重置提交/工作区（含 --soft/--mixed/--hard，会丢弃改动）' },
+  { re: /\bgit\s+rebase\b/i, why: '变基（改写历史）' },
   { re: /\bgit\s+clean\s+-[a-z]*[fd]/i, why: '清理未跟踪文件' },
   { re: /\bgit\s+(checkout|restore)\s+--\s+\./i, why: '整体丢弃工作区改动' },
   { re: /\bgit\s+branch\s+-D\b/i, why: '强制删除分支' },
@@ -152,6 +160,12 @@ function decide(payload) {
     if (p && (/(^|\/)\.env($|\.)/.test(p) || /\.(pem|key|pfx|p12)$/.test(p))) {
       return { decision: 'deny', reason: `[guard] 拒绝读取：凭据类文件（${p}）。` };
     }
+    // 受保护目录：与 settings.json 的 Read 禁区对齐（.git / pb_data / .vibex）。
+    // 必要性：AUTOLOOP 下未命中禁区的读取会被降级为 allow，若此处不拦，
+    // hook 的 allow 可能覆盖 settings.json 原 Read 禁区，造成安全回退。
+    if (p && (/(^|\/)\.git\//.test(p) || /(^|\/)pb_data\//.test(p) || /(^|\/)\.vibex\//.test(p))) {
+      return { decision: 'deny', reason: `[guard] 拒绝读取：受保护目录（${p}）。` };
+    }
     return { decision: 'ask' };
   }
 
@@ -160,10 +174,16 @@ function decide(payload) {
 
 /** 输出 Hook 决策到 stdout */
 function emit(result) {
+  // 自动化会话下，未命中禁区的命令由 ask 降级为 allow。
+  // 原因（R280 实测）：headless 无人值守时没有人工点确认，保持 ask 会让所有 Bash
+  // （含 settings.json 已放行的 pnpm test / git status / curl）全部堵死，
+  // 导致第 8 步验证门禁跑不了，AI 只能空转或谎报。
+  // 安全底线不变：命中禁区仍返回 deny，且 deny 分支不参与本降级。
+  const decision = result.decision === 'ask' && AUTOLOOP ? 'allow' : result.decision;
   const out = {
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
-      permissionDecision: result.decision,
+      permissionDecision: decision,
     },
   };
   if (result.decision === 'deny') out.hookSpecificOutput.permissionDecisionReason = result.reason;
