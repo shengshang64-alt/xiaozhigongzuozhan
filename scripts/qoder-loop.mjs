@@ -31,7 +31,7 @@
  *   --agent <子代理>        使用哪个 Qoder 子代理（默认 iter-round）
  *   --permission-mode <m>   accept_edits(默认) / auto / dont_ask / bypass_permissions
  *   --max-turns <n>         单轮最大对话轮次（默认 80）
- *   --timeout <分钟>        单轮墙钟超时（默认 45）
+ *   --timeout <分钟>        单轮墙钟超时（默认 90）
  *   --model <名>            指定模型（默认用 Qoder 当前配置）
  *   --no-commit             不自动 git 提交
  *   --allow-dirty           允许在脏工作区开跑（默认拒绝）
@@ -79,7 +79,9 @@ const DEFAULTS = {
   agent: 'iter-round',
   permissionMode: 'accept_edits',
   maxTurns: 80,
-  timeoutMin: 45,
+  // 90 分钟：实测 R280 耗时 40m41s、R281 耗时 53m43s（做完整四门门禁 + 实机复测），
+  // 原 45 分钟会在真实轮次上误杀进程（R281 即被强杀，虽已写出轮报但驱动侧收尾被打断）。
+  timeoutMin: 90,
   rounds: 1,
   commit: true,
   allowDirty: false,
@@ -1000,7 +1002,7 @@ function printHelp() {
       '  --agent <子代理>        Qoder 子代理（默认 iter-round）',
       '  --permission-mode <m>   accept_edits(默认)/auto/dont_ask/bypass_permissions',
       '  --max-turns <n>         单轮最大轮次（默认 80）',
-      '  --timeout <分钟>        单轮超时（默认 45）',
+      '  --timeout <分钟>        单轮超时（默认 90）',
       '  --model <名>            指定模型',
       '  --no-commit             不自动 git 提交',
       '  --allow-dirty           允许脏工作区开跑',
