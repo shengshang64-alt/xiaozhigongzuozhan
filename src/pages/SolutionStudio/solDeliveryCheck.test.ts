@@ -72,6 +72,15 @@ describe("章完成态硬伤", () => {
     expect(rules(r.hits)).toContain("failed_chapter")
   })
 
+  it("R282：失败摘录带上落库的真实原因，旧记录兜底「旧记录未留存原因」", () => {
+    const withReason = auditSolutionDelivery([
+      ch({ node_id: "f", title: "安全设计", gen_status: "failed", genError: "fetch timeout after 120000ms" }),
+    ])
+    expect(withReason.hits.find((h) => h.rule === "failed_chapter")?.quote).toContain("fetch timeout")
+    const legacy = auditSolutionDelivery([ch({ node_id: "f", title: "安全设计", gen_status: "failed" })])
+    expect(legacy.hits.find((h) => h.rule === "failed_chapter")?.quote).toContain("旧记录未留存原因")
+  })
+
   it("偏短章只算提示级，不抬成硬伤", () => {
     const r = auditSolutionDelivery([ch({ node_id: "u", title: "培训方案", content: CLEAN_A, underlength: true })])
     const hit = r.hits.find((h) => h.rule === "underlength_chapter")
@@ -251,6 +260,13 @@ describe("接线与无障碍哨兵", () => {
     expect(ws).toContain("<SolutionDeliveryCheckCard")
     expect(ws).toContain("chapters={sol.chapters}")
     expect(ws).toContain("onSelectChapter={p.selectChapter}")
+  })
+
+  it("R282：卡片已挂失败归因聚合视图（同因归一组 + 复制失败归因），仍只报不拦", () => {
+    expect(card).toContain("生成失败归因")
+    expect(card).toContain("summarizeGenFailures")
+    expect(card).toContain("复制失败归因")
+    expect(card).toContain("buildGenFailureText")
   })
 
   it("卡片保持只报不拦口径，并具备展开无障碍属性", () => {

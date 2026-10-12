@@ -2168,7 +2168,9 @@ export function useBidWorkspace() {
   // 切换项目 / 字段落库 / 解析报告更新时，把编辑态重置为当前生效事实（编辑中不会被打断：仅依赖项变化才触发）
   useEffect(() => {
     const cur = activeProjectRef.current
-    setFactDraft(effectiveGlobalFactsLines(cur ? { global_facts: cur.global_facts, parse_report: cur.parse_report } : null))
+    // R282：整条记录传入——面板显示的生效事实必须与各注入点（章/节/续写/偏离表…）逐字同源，
+    // 只挑两个字段会让面板少显示「项目名称/招标编号」兜底行，用户据此保存反而会把事实改少
+    setFactDraft(effectiveGlobalFactsLines(cur))
   }, [activeProject?.id, activeProject?.global_facts, activeProject?.parse_report])
 
   /** 保存事实表：空清单存 ""（回退自动抽取），非空一行一条 PATCH global_facts（applySetting 防抖落库） */

@@ -10,6 +10,7 @@ import {
   type FormatCheckKey,
   type FormatCheckRule,
 } from "@/pages/BidWorkspace/bidTypes"
+import { LEGACY_GEN_ERROR_NOTE } from "./genFailureSummary"
 import type { Chapter } from "./solutionTypes"
 
 // ---------------------------------------------------------------------------
@@ -152,7 +153,9 @@ export function auditSolutionDelivery(chapters: Chapter[]): SolDeliveryReport {
     const body = content.trim()
     // ① 章完成态：未生成（pending）空正文属正常进度，不算交付硬伤，避免开局满屏红
     if (c.gen_status === "failed") {
-      push("failed_chapter", title, nodeId, `「${title}」上次生成失败，正文缺失或为旧稿`, "warn")
+      // R282：把 R280 落库的真实原因带进摘录，明细与复制清单都能读到「为什么失败」（旧记录兜底）
+      const why = (c.genError ?? "").trim() || LEGACY_GEN_ERROR_NOTE
+      push("failed_chapter", title, nodeId, `「${title}」上次生成失败（${why}），正文缺失或为旧稿`, "warn")
     } else if (!body && c.gen_status === "done") {
       push("empty_chapter", title, nodeId, "该章已标记完成但正文为空，导出后将是一页空白", "warn")
     } else if (body && c.underlength) {

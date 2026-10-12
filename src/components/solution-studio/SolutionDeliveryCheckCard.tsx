@@ -8,6 +8,11 @@ import {
   buildDeliveryFixText,
   type SolCheckHit,
 } from "@/pages/SolutionStudio/solDeliveryCheck"
+import {
+  LEGACY_GEN_ERROR_NOTE,
+  buildGenFailureText,
+  summarizeGenFailures,
+} from "@/pages/SolutionStudio/genFailureSummary"
 import type { Chapter } from "@/pages/SolutionStudio/solutionTypes"
 
 // ---------------------------------------------------------------------------
@@ -34,6 +39,8 @@ export function SolutionDeliveryCheckCard({ chapters, onSelectChapter }: Solutio
   const [expanded, setExpanded] = useState(false)
   // 依赖直接取数组本体（不在渲染期用 ?? [] 造新数组，否则 useMemo 每轮失稳）
   const report = useMemo(() => auditSolutionDelivery(chapters), [chapters])
+  // R282 失败归因：把各章 genError 按「归类+原因」聚合（哪些章因同一原因失败），零 AI、随正文实时重算
+  const failures = useMemo(() => summarizeGenFailures(chapters), [chapters])
   if (!chapters.length) return null
 
   const clean = report.total === 0
@@ -57,6 +64,11 @@ export function SolutionDeliveryCheckCard({ chapters, onSelectChapter }: Solutio
             {report.infoCount} 处提示
           </span>
         )}
+        {failures.failedCount > 0 && (
+          <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
+            生成失败 {failures.failedCount} 章 · {failures.causes.length} 类原因
+          </span>
+        )}
         {chips.map((g) => (
           <span key={g.rule} className={`rounded-full px-2 py-0.5 text-xs ${TONE[g.level]}`}>
             {g.label.split("（")[0]} {g.count}
@@ -66,6 +78,22 @@ export function SolutionDeliveryCheckCard({ chapters, onSelectChapter }: Solutio
           <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
             +{report.groups.length - MAX_HEADER_CHIPS} 类
           </span>
+        )}
+        {failures.failedCount > 0 && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              void copyTextToClipboard(buildGenFailureText(failures), {
+                successMessage: "已复制失败归因，可按类排查模型通道/超时/额度",
+                errorMessage: "复制失败，请手动选择文本复制",
+              })
+            }}
+            className="shrink-0 border-destructive/40 text-destructive hover:bg-destructive/10"
+          >
+            <Copy className="mr-1.5 h-3.5 w-3.5" />
+            复制失败归因
+          </Button>
         )}
         {!clean && (
           <Button
@@ -112,6 +140,47 @@ export function SolutionDeliveryCheckCard({ chapters, onSelectChapter }: Solutio
             </p>
           ) : (
             <div className="flex max-h-[420px] flex-col gap-3 overflow-y-auto">
+              {failures.failedCount > 0 && (
+                <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">
+                  <h3 className="text-xs font-semibold text-card-foreground">
+                    生成失败归因（同一原因归一组，点击章名跳章重试）
+                  </h3>
+                  <div className="mt-1.5 flex flex-col gap-2">
+                    {failures.causes.map((fg) => (
+                      <div key={`${fg.category}-${fg.detail}`}>
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                          <span className="rounded-full bg-destructive/10 px-2 py-0.5 font-medium text-destructive">
+                            {fg.count} 章
+                          </span>
+                          <span className="font-medium text-card-foreground">{fg.label}</span>
+                          <span className="min-w-0 flex-1 truncate text-muted-foreground" title={fg.detail}>
+                            {fg.detail}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          {fg.chapters.map((fc) => (
+                            <button
+                              key={fc.nodeId || fc.title}
+                              type="button"
+                              onClick={() => fc.nodeId && onSelectChapter(fc.nodeId)}
+                              title={`${fc.title}：${fc.reason || LEGACY_GEN_ERROR_NOTE}`}
+                              className="rounded-full border border-border/60 bg-background px-2 py-0.5 text-xs text-card-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                            >
+                              {fc.title}
+                            </button>
+                          ))}
+                          {fg.truncated && <span className="px-1 text-xs text-muted-foreground">等共 {fg.count} 章</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {failures.allSameCause && (
+                    <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                      全部失败章同属一类，建议先排查该模型通道/网络后再整本重试（零费用本地归因，不拦导出）。
+                    </p>
+                  )}
+                </div>
+              )}
               {report.groups.map((g) => (
                 <div key={g.rule}>
                   <h3 className="flex items-center gap-2 text-xs font-medium text-card-foreground">

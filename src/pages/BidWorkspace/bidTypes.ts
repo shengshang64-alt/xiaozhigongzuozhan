@@ -1813,8 +1813,9 @@ const FACT_KEY_PATTERN =
 const GLOBAL_FACTS_PREAMBLE =
   "【全局事实】以下项目事实以招标文件为准，正文中出现项目名称、招标编号、采购人、预算金额、工期、质保期、地点、时间节点等必须与之一致，禁止编造不同数值："
 
-/** 第十六轮 B1：本地抽取键值事实行（k=v，≤800 字），无报告或无可抽事实时返回空数组 */
-function extractGlobalFactLines(report: ParseReport | null): string[] {
+/** 第十六轮 B1：本地抽取键值事实行（k=v，≤800 字），无报告或无可抽事实时返回空数组；
+ * R282：reserve = 已被字段兜底行占用的字数，保证「字段行 + 抽取行」合计仍 ≤800 字 */
+function extractGlobalFactLines(report: ParseReport | null, reserve = 0): string[] {
   if (!report) return []
   const facts: string[] = []
   const seen = new Set<string>()
@@ -1832,13 +1833,57 @@ function extractGlobalFactLines(report: ParseReport | null): string[] {
       if (!FACT_KEY_PATTERN.test(k)) continue
       if (seen.has(k)) continue
       const entry = `${k}=${v}`
-      if (total + entry.length > 800) continue
+      if (total + entry.length + reserve > 800) continue
       seen.add(k)
       total += entry.length + 1
       facts.push(entry)
     }
   }
   return facts
+}
+
+/** 事实行的口径值（首个 = 之后），用于同值去重 */
+function factValueOf(line: string): string {
+  const i = line.indexOf("=")
+  return i < 0 ? line.trim() : line.slice(i + 1).trim()
+}
+
+/**
+ * R282（bid-fact-refetch-failed · ③系统可回取）：项目结构化字段兜底事实行。
+ * 现象（实测定量）：贵港项目 tender_no=GXKLG202630843 在正文全文 0 次出现，而同源同编号的「13」项目正文出现 3 次
+ * ——差别只在于后者的事实表恰好有「项目编号：…」行。自动事实表只认 parse_report 里写成「键：值」格式的行，
+ * 而 bid_projects 上已确认、且已被封面与 .docx 页眉使用的 project_name/tender_no 从来没进事实表，
+ * 于是「编号注不注入正文」随解析质量抖动 = 注入链路不稳定（评标可直接质疑标书与封面编号不一致）。
+ * 本函数把这两个权威字段补成事实行：零 AI、零 schema、不改提示词文本，只补数据链路缺口。
+ * 字段值长度 >60 视为脏数据不注入（宁缺毋滥，防把整段描述当事实）。
+ */
+function projectFieldFactLines(rec: {
+  project_name?: string | null
+  tender_no?: string | null
+}): string[] {
+  const rows: string[] = []
+  const name = (rec.project_name ?? "").trim()
+  const no = (rec.tender_no ?? "").trim()
+  if (name && name.length <= 60) rows.push(`项目名称=${name}`)
+  if (no && no.length <= 60) rows.push(`招标编号=${no}`)
+  return rows
+}
+
+/** 生效事实行（注入点与事实面板共用的唯一口径）：人工编辑版原样优先；自动版 = 字段兜底行 + 报告抽取行（同值去重） */
+function resolveEffectiveFactLines(rec: {
+  global_facts?: string | null
+  parse_report: ParseReport | null
+  project_name?: string | null
+  tender_no?: string | null
+}): string[] {
+  const manual = (rec.global_facts ?? "").trim()
+  // 人工版是用户逐条编辑过的口径，字段兜底不得静默改写（改了会让已保存的事实表与界面不一致）
+  if (manual) return manual.split(/\n+/).map((l) => l.trim()).filter(Boolean)
+  const fieldRows = projectFieldFactLines(rec)
+  const fieldValues = new Set(fieldRows.map(factValueOf))
+  const reserve = fieldRows.reduce((n, r) => n + r.length + 1, 0)
+  const reportRows = extractGlobalFactLines(rec.parse_report, reserve).filter((r) => !fieldValues.has(factValueOf(r)))
+  return [...fieldRows, ...reportRows]
 }
 
 /** 事实行清单 → 统一前言包装的注入文本块（空清单返回空串） */
@@ -1852,25 +1897,26 @@ export function wrapGlobalFactsBlock(lines: string[]): string {
  * 第十六轮 B1 改造 1.1：全局事实统一取值——global_facts 字段非空（人工编辑版）优先，
  * 包装成与本地抽取完全一致的注入格式；字段为空回退本地抽取。所有既有注入点
  * （大纲/章/节/续写/改写/偏离表/答辩等）经 effectiveGlobalFacts 自动生效。
+ * R282：自动回退路径并入项目字段兜底行（见 projectFieldFactLines）。
  */
 export function effectiveGlobalFacts(rec: {
   global_facts?: string | null
   parse_report: ParseReport | null
+  project_name?: string | null
+  tender_no?: string | null
 }): string {
-  const manual = (rec.global_facts ?? "").trim()
-  if (manual) return wrapGlobalFactsBlock(manual.split(/\n+/))
-  return wrapGlobalFactsBlock(extractGlobalFactLines(rec.parse_report))
+  return wrapGlobalFactsBlock(resolveEffectiveFactLines(rec))
 }
 
-/** 事实面板展示用的当前生效事实行（人工编辑版=字段行，自动版=本地抽取行） */
+/** 事实面板展示用的当前生效事实行（人工编辑版=字段行，自动版=字段兜底行+本地抽取行） */
 export function effectiveGlobalFactsLines(rec: {
   global_facts?: string | null
   parse_report: ParseReport | null
+  project_name?: string | null
+  tender_no?: string | null
 } | null): string[] {
   if (!rec) return []
-  const manual = (rec.global_facts ?? "").trim()
-  if (manual) return manual.split(/\n+/).map((l) => l.trim()).filter(Boolean)
-  return extractGlobalFactLines(rec.parse_report)
+  return resolveEffectiveFactLines(rec)
 }
 
 /**
