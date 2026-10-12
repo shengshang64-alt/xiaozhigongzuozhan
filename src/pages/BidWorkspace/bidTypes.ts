@@ -1813,6 +1813,60 @@ const FACT_KEY_PATTERN =
 const GLOBAL_FACTS_PREAMBLE =
   "【全局事实】以下项目事实以招标文件为准，正文中出现项目名称、招标编号、采购人、预算金额、工期、质保期、地点、时间节点等必须与之一致，禁止编造不同数值："
 
+/** R282：事实键/值清洗（纯确定性，只在抽取时执行，不改数值本身）。
+ * 真实解析报告的三形态污染（贵港/天坛实测取证，见 _qa/r282-realdata-before-after.md）：
+ *   ①「（招标编号：GXKLG202630843）」—— 键带全角括号、值带尾括号，注入后正文可能写出「…30843）」的坏编号；
+ *   ②「项目名称=…（出处：第一章 招标公告）」—— 出处注记混进事实值，白吃 800 字预算，还可能被正文照抄；
+ *   ③「招标编号：XX」—— 招标文件格式模板里的空格被当成事实，正文照抄就是废标级空缺。
+ * 这里只剥括号壳与「（出处：…）」注记；数值一个字符都不动（动数值=编造，触红线）。 */
+const FACT_NOTE_RE = /[（(]\s*(?:出处|来源)\s*[：:][^）)]{0,60}[）)]/g
+/** 空格/占位符形态的值（XX、×××、——、……）不是事实；「待填写/待定」类中文占位同理（照抄=空缺进正文） */
+const FACT_PLACEHOLDER_VALUE_RE = /^(?:[\sxX×*＊·・.。、\-—–_~～〇○…]{2,10}|待填写|待定|某编号|示例|略)$/
+
+/** 括号对（全角/半角都算）；真实招标编号自带中括号（如 [350703]FJXW[GK]2026009），只在「不成对」时剥壳 */
+const FACT_BRACKET_PAIRS: ReadonlyArray<readonly [string, string]> = [
+  ["（", "）"],
+  ["(", ")"],
+  ["【", "】"],
+  ["[", "]"],
+  ["「", "」"],
+  ["“", "”"],
+]
+
+function countChar(s: string, ch: string): number {
+  return s.split(ch).length - 1
+}
+
+/** 剥掉键/值两端「不成对」的括号壳：「（招标编号：GXKLG202630843）」这类整行被括号包住的键值对，
+ * 冒号左会多出「（」、右会多出「）」；成对的括号（编号自带中括号）一律不动，动了就是把编号改坏。 */
+function stripUnbalancedBrackets(raw: string): string {
+  let out = raw.trim()
+  let moved = true
+  while (moved) {
+    moved = false
+    for (const [open, close] of FACT_BRACKET_PAIRS) {
+      const opens = countChar(out, open)
+      const closes = countChar(out, close)
+      if (closes > opens && out.endsWith(close)) {
+        out = out.slice(0, -close.length).trim()
+        moved = true
+      } else if (opens > closes && out.startsWith(open)) {
+        out = out.slice(open.length).trim()
+        moved = true
+      }
+    }
+  }
+  return out
+}
+
+function cleanFactKey(raw: string): string {
+  return stripUnbalancedBrackets(raw)
+}
+
+function cleanFactValue(raw: string): string {
+  return stripUnbalancedBrackets(raw.replace(FACT_NOTE_RE, "")).replace(/\s{2,}/g, " ").trim()
+}
+
 /** 第十六轮 B1：本地抽取键值事实行（k=v，≤800 字），无报告或无可抽事实时返回空数组；
  * R282：reserve = 已被字段兜底行占用的字数，保证「字段行 + 抽取行」合计仍 ≤800 字 */
 function extractGlobalFactLines(report: ParseReport | null, reserve = 0): string[] {
@@ -1827,9 +1881,14 @@ function extractGlobalFactLines(report: ParseReport | null, reserve = 0): string
       const line = stripEnumerator(rawLine.trim())
       const m = line.match(/^([^：:]{2,14})[：:]\s*(.+)$/)
       if (!m) continue
-      const k = m[1].trim()
-      const v = (m[2].trim().split(/[；;]/)[0] ?? "").trim()
+      const k = cleanFactKey(m[1])
+      const rawV = (m[2].trim().split(/[；;]/)[0] ?? "").trim()
+      // R282：值里带「待填写」= 这条还不是事实（招标方没给值），进表只会教模型照抄空缺
+      if (rawV.includes("待填写")) continue
+      const v = cleanFactValue(rawV)
       if (!k || !v || v.length > 60 || v.length < 2) continue
+      // R282：占位形态的值（XX / ×× / 待定）当事实注入＝教模型照抄空缺，直接丢弃
+      if (FACT_PLACEHOLDER_VALUE_RE.test(v)) continue
       if (!FACT_KEY_PATTERN.test(k)) continue
       if (seen.has(k)) continue
       const entry = `${k}=${v}`
@@ -1849,31 +1908,28 @@ function factValueOf(line: string): string {
 }
 
 /**
- * R282（bid-fact-refetch-failed · ③系统可回取）：项目结构化字段兜底事实行。
- * 现象（实测定量）：贵港项目 tender_no=GXKLG202630843 在正文全文 0 次出现，而同源同编号的「13」项目正文出现 3 次
- * ——差别只在于后者的事实表恰好有「项目编号：…」行。自动事实表只认 parse_report 里写成「键：值」格式的行，
- * 而 bid_projects 上已确认、且已被封面与 .docx 页眉使用的 project_name/tender_no 从来没进事实表，
- * 于是「编号注不注入正文」随解析质量抖动 = 注入链路不稳定（评标可直接质疑标书与封面编号不一致）。
- * 本函数把这两个权威字段补成事实行：零 AI、零 schema、不改提示词文本，只补数据链路缺口。
- * 字段值长度 >60 视为脏数据不注入（宁缺毋滥，防把整段描述当事实）。
+ * R282（bid-fact-refetch-failed · 门禁归责③系统可回取）：招标编号的项目字段兜底行。
+ * 现象（实测定量）：贵港项目 tender_no=GXKLG202630843 在已生成正文全文 0 次出现，同源同编号的「13」项目出现 3 次。
+ * 取证拆到两个确定性成因（都跟解析质量有关、与模型无关）：
+ *   ① 报告里那一行写成「（招标编号：GXKLG202630843）」——键被全角括号污染、值带尾括号（正文照抄＝编号错）；
+ *   ② 另一项目报告里编号行是「项目编号：WH…（政府采购任务书编号：JC…）」整行 >60 字被丢弃 → 天坛正文没有编号可抄。
+ * 自动事实表只认 parse_report 里恰好写成「键：值」的行，而 bid_projects.tender_no 是已确认、
+ * 且已被封面与 .docx 页眉使用的权威值，从来没进事实表 → 「编号注不注入」随解析质量抖动。
+ * 这里把字段值补成事实行：零 AI、零 schema、不改提示词文本，只补数据链路缺口。
+ * 口径：只兜底招标编号。project_name 不兜底——字段常是简写（真实项目名以报告行为准），
+ * 兜底会把简写当权威值压掉规范全称，需要单独的「名称权威性」判定，已记 backlog（r282-name-authority）。
  */
-function projectFieldFactLines(rec: {
-  project_name?: string | null
-  tender_no?: string | null
-}): string[] {
-  const rows: string[] = []
-  const name = (rec.project_name ?? "").trim()
-  const no = (rec.tender_no ?? "").trim()
-  if (name && name.length <= 60) rows.push(`项目名称=${name}`)
-  if (no && no.length <= 60) rows.push(`招标编号=${no}`)
-  return rows
+function projectFieldFactLines(rec: { tender_no?: string | null }): string[] {
+  const no = cleanFactValue((rec.tender_no ?? "").trim())
+  if (no.length < 4 || no.length > 60) return []
+  if (FACT_PLACEHOLDER_VALUE_RE.test(no) || no.includes("待填写")) return []
+  return [`招标编号=${no}`]
 }
 
 /** 生效事实行（注入点与事实面板共用的唯一口径）：人工编辑版原样优先；自动版 = 字段兜底行 + 报告抽取行（同值去重） */
 function resolveEffectiveFactLines(rec: {
   global_facts?: string | null
   parse_report: ParseReport | null
-  project_name?: string | null
   tender_no?: string | null
 }): string[] {
   const manual = (rec.global_facts ?? "").trim()
@@ -1902,7 +1958,6 @@ export function wrapGlobalFactsBlock(lines: string[]): string {
 export function effectiveGlobalFacts(rec: {
   global_facts?: string | null
   parse_report: ParseReport | null
-  project_name?: string | null
   tender_no?: string | null
 }): string {
   return wrapGlobalFactsBlock(resolveEffectiveFactLines(rec))
@@ -1912,7 +1967,6 @@ export function effectiveGlobalFacts(rec: {
 export function effectiveGlobalFactsLines(rec: {
   global_facts?: string | null
   parse_report: ParseReport | null
-  project_name?: string | null
   tender_no?: string | null
 } | null): string[] {
   if (!rec) return []

@@ -2169,7 +2169,7 @@ export function useBidWorkspace() {
   useEffect(() => {
     const cur = activeProjectRef.current
     // R282：整条记录传入——面板显示的生效事实必须与各注入点（章/节/续写/偏离表…）逐字同源，
-    // 只挑两个字段会让面板少显示「项目名称/招标编号」兜底行，用户据此保存反而会把事实改少
+    // 只挑两个字段会让面板少显示「招标编号」兜底行，用户据此保存反而会把事实改少
     setFactDraft(effectiveGlobalFactsLines(cur))
   }, [activeProject?.id, activeProject?.global_facts, activeProject?.parse_report])
 
