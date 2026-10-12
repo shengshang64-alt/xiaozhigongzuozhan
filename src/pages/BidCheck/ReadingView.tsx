@@ -29,6 +29,8 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import type { ReviewAnnotatedItem } from "./semanticReview"
+// R216 缺陷修复：命中序号必须进 key（同规则可在同段多次命中），抽到独立模块避免 fast-refresh 报错
+import { hitKey } from "./hitKey"
 import {
   SEVERITY_LABEL,
   formatHitLocation,
@@ -78,16 +80,6 @@ const HEADING_CLS: Record<number, string> = {
   2: "text-base font-semibold mt-3 mb-1.5",
   3: "text-sm font-semibold mt-2.5 mb-1",
   4: "text-sm font-medium mt-2 mb-1",
-}
-
-export function hitKey(code: string, hit: CheckHit, i: number): string {
-  // R216 缺陷修复：命中序号 i 必须进入 key。
-  // 同一规则（code）可在同一段落（paragraphIndex）多次命中——formatCheckReport 对每类规则
-  // 逐条扫描，一条规则命中同段多个疑点即产生多条同 (code, paragraphIndex) 的 hit。
-  // 旧实现 `code#paragraphIndex` 漏掉 i，React 必报 "Encountered two children with the same key"
-  // （实测三明市中西医结合医院 371 页真实招标文件触发 L1-T6#3672，命中项被复制/丢弃）。
-  // 该 key 同时充当 selectedKey / acked 的身份标识，两侧同源同值，改格式不影响选中与确认态。
-  return hit.paragraphIndex != null ? `${code}#${hit.paragraphIndex}#${i}` : `${code}@${i}`
 }
 
 // ---- 组件 -----------------------------------------------------------------
