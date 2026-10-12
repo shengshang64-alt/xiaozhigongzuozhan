@@ -2,7 +2,7 @@
   "schema_version": 1,
   "total_rounds_run": 0,
   "consecutive_no_report": 0,
-  "consecutive_env_fail": 1,
+  "consecutive_env_fail": 0,
   "history": [
     {
       "round": 32,
@@ -31,8 +31,36 @@
       "needsUserDecision": [],
       "honestNotes": [],
       "cliMeta": null
+    },
+    {
+      "round": 280,
+      "role": "bid-evaluator",
+      "status": "dry_run",
+      "reason": "",
+      "topic": "",
+      "workClass": "",
+      "durationMs": 0,
+      "reportProduced": false,
+      "commitHash": "",
+      "needsUserDecision": [],
+      "honestNotes": [],
+      "cliMeta": null
+    },
+    {
+      "round": 280,
+      "role": "bid-evaluator",
+      "status": "dry_run",
+      "reason": "",
+      "topic": "",
+      "workClass": "",
+      "durationMs": 0,
+      "reportProduced": false,
+      "commitHash": "",
+      "needsUserDecision": [],
+      "honestNotes": [],
+      "cliMeta": null
     }
   ],
-  "last_run_at": "2026-10-12T09:46:55.808Z",
+  "last_run_at": "2026-10-12T11:37:08.631Z",
   "last_stop_reason": "completed_requested_rounds"
 }
