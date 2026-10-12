@@ -998,7 +998,8 @@
       "issue": "【交付链第2步·方案模块从未产出】solutions 表唯一记录（solution_name=【演练】R01-solution-20261004）实测：11个章节 gen_status 全部=failed、content 全部0字、doc_status=outline。方案模块从未产出过完整正文。需先定位失败根因（模型通道/提示词/超时/额度），再谈优化。",
       "evidence": "SQLite 只读实测 solutions 表：chapters[*].gen_status=failed, content=0",
       "progress": "R280：根因考古发现结构性盲区——失败瞬间 toast 里有原因，但从不落库，刷新/重进后彻底丢失，演练记录「11 章全 failed、0 字、查无原因」即此断点所致（原因已不可回收）。R280 已落地失败留痕：Chapter.genError 随 chapters json 持久化（零 collection 变更，同 draftLocked/selfCheck 惯例），单章空产出/异常、批量空产出/异常、重试仍失败共 5 处转移全部写入真实原因，成功即清空；大纲树红点悬停显示「失败原因：…」（旧记录兜底「旧记录未留存原因」）。下一步：下一次真实失败即可自动定位「模型通道/超时/额度」哪一类；或经费用授权做一次单章真实生成复现演练记录场景。",
-      "evidence_after": "验证：tsc 0 / vitest 188文件2143 passed+2skipped(新增6用例) / eslint 触及文件12err2warn=基线 / vite build 13.46s；实机：/solution-studio 打开演练方案，大纲树 11 个失败章 tooltip 全可见，控制台 0 error"
+      "evidence_after": "验证：tsc 0 / vitest 188文件2143 passed+2skipped(新增6用例) / eslint 触及文件12err2warn=基线 / vite build 13.46s；实机：/solution-studio 打开演练方案，大纲树 11 个失败章 tooltip 全可见，控制台 0 error",
+      "master_note": "【主导者 WorkBuddy 2026-10-12】暂未授权「单章真实 AI 生成」（涉及模型通道实际费用，留待用户拍板）。本轮请优先选零成本项推进交付链（如 delivery-p1-02 驾驶舱聚合恒空、delivery-p1-03 客户总数口径、r280-generror-visibility 聚合显示）；若判定必须先真实生成才能继续，请列为下轮待决项，不要擅自调用真实模型。"
     },
     {
       "id": "delivery-p0-03-kb-invisible",
