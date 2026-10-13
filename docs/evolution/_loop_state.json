@@ -1,37 +1,79 @@
 {
   "round": 35,
+  "focus": "GitHub 对标（提示词 §3；R034 应做未做，本轮必须补）。先读 .nightrun/PRODUCT_BENCHMARK.md 找出「还没落地」的差距项，再联网核对同类开源项目（AI 标书：run-llama/auto_rfp、guangshu100/BidMaster-Pro、FB208/OpenBidKit_Yibiao；知识库 RAG：infiniflow/RAGFlow、1Panel-dev/MaxKB、labring/FastGPT、langgenius/Dify；AI PPT：pipipi-pikachu/PPTist）。选一项**能小步落地并独立验证**的能力，本轮就落地它（禁止引入整架构）。轮报必须写清：对标项目 / 它能做什么 / 我们缺什么 / 本轮落地哪一小步 / 还差什么。",
   "lastRound": {
-    "id": "R034",
+    "id": "R34",
     "theme": "报价单金额交付正确性：分位精确化（旧浮点舍入 8.3% 行项少 1 分）+ 合计大写单源落地（Word/Excel/编辑器）",
     "verdict": "pass"
   },
   "eslintBaseline": 160,
-  "eslintBaselineNote": "160 为 2026-10-13 实测存量（53 文件，主因 react-hooks/set-state-in-effect 75 条 + any 19 条）。闭环只要求「不高于此数」，不要求清零——清零属独立治理任务。R034 复测仍为 160 error / 20 warning（途中一度 161，全角空格 no-irregular-whitespace，已修）。",
   "gates": {
     "tsc": "pass",
     "build": "pass",
     "vitest": "pass",
-    "eslint": "at-baseline"
-  },
-  "baseline": {
-    "capturedAt": "2026-10-13",
-    "commit": "0e84156",
-    "tsc": "0 error（修复 8 个存量 error 后）",
-    "vitest": "211 files / 2482 passed | 2 skipped",
-    "eslint": "160 error / 20 warning",
-    "r034": "212 files / 2499 passed | 2 skipped；eslint 160 error（+1 测试文件 / +17 用例）"
+    "eslint": "pass"
   },
   "backlog": [
-    { "id": "B1", "title": "R031 遗留 A1-A6：编制层（大纲去重/gen_status/★响应/规定目录/数字一致性/评分落点门禁）", "priority": "high", "source": "round-report" },
-    { "id": "B2", "title": "条款-响应合规矩阵可视化（★/▲/评分项 → 章节 → 响应状态追踪）", "priority": "high", "source": "benchmark" },
-    { "id": "B8", "title": "折扣语义歧义入口：UI min=1 钳位使「0.9（想表达 9 折）」按 1% 计价，整单金额缩到 1%（R034 L1，金额悄悄错同类最高危）", "priority": "high", "source": "self-found" },
-    { "id": "B9", "title": "建设清单 calcTotal 分位精确化（checklistTypes.ts:223 完全不舍入的浮点累加，与 R034 同根；含 checklistExports 6 个出口）", "priority": "high", "source": "self-found" },
-    { "id": "B10", "title": "报价总额 ↔ 标书正文报价数字对账（bidTypes.ts:4147 注明属做法 B；现已有 quoteTotalCents 单源，门槛降低）", "priority": "medium", "source": "round-report" },
-    { "id": "B4", "title": "评分表/表格化条款的结构化解析（RAGFlow 式表格感知抽取）", "priority": "medium", "source": "benchmark" },
-    { "id": "B5", "title": "投标复盘与胜率分析看板（bid_result 已有字段，零 AI 成本）", "priority": "medium", "source": "benchmark" },
-    { "id": "B6", "title": "公司模板中心（标书 Word 样式模板 + PPT 母版）", "priority": "medium", "source": "benchmark" },
-    { "id": "B7", "title": "作战驾驶舱指标与 PB 实际数据对账", "priority": "medium", "source": "round-report" },
-    { "id": "B11", "title": "报价 PPT（deck）导出页的金额版式（R034 只覆盖 Word/Excel/编辑器三出口）", "priority": "low", "source": "self-found" }
+    {
+      "id": "B1",
+      "title": "R031 遗留 A1-A6：编制层（大纲去重/gen_status/★响应/规定目录/数字一致性/评分落点门禁）",
+      "priority": "high",
+      "source": "round-report"
+    },
+    {
+      "id": "B2",
+      "title": "条款-响应合规矩阵可视化（★/▲/评分项 → 章节 → 响应状态追踪）",
+      "priority": "high",
+      "source": "benchmark"
+    },
+    {
+      "id": "B8",
+      "title": "折扣语义歧义入口：UI min=1 钳位使「0.9（想表达 9 折）」按 1% 计价，整单金额缩到 1%（R034 L1，金额悄悄错同类最高危）",
+      "priority": "high",
+      "source": "self-found"
+    },
+    {
+      "id": "B9",
+      "title": "建设清单 calcTotal 分位精确化（checklistTypes.ts:223 完全不舍入的浮点累加，与 R034 同根；含 checklistExports 6 个出口）",
+      "priority": "high",
+      "source": "self-found"
+    },
+    {
+      "id": "B10",
+      "title": "报价总额 ↔ 标书正文报价数字对账（bidTypes.ts:4147 注明属做法 B；现已有 quoteTotalCents 单源，门槛降低）",
+      "priority": "medium",
+      "source": "round-report"
+    },
+    {
+      "id": "B4",
+      "title": "评分表/表格化条款的结构化解析（RAGFlow 式表格感知抽取）",
+      "priority": "medium",
+      "source": "benchmark"
+    },
+    {
+      "id": "B5",
+      "title": "投标复盘与胜率分析看板（bid_result 已有字段，零 AI 成本）",
+      "priority": "medium",
+      "source": "benchmark"
+    },
+    {
+      "id": "B6",
+      "title": "公司模板中心（标书 Word 样式模板 + PPT 母版）",
+      "priority": "medium",
+      "source": "benchmark"
+    },
+    {
+      "id": "B7",
+      "title": "作战驾驶舱指标与 PB 实际数据对账",
+      "priority": "medium",
+      "source": "round-report"
+    },
+    {
+      "id": "B11",
+      "title": "报价 PPT（deck）导出页的金额版式（R034 只覆盖 Word/Excel/编辑器三出口）",
+      "priority": "low",
+      "source": "self-found"
+    }
   ],
   "history": [
     {
@@ -41,9 +83,18 @@
       "at": "2026-10-14"
     }
   ],
+  "eslintBaselineNote": "160 为 2026-10-13 实测存量（53 文件，主因 react-hooks/set-state-in-effect 75 条 + any 19 条）。闭环只要求「不高于此数」，不要求清零——清零属独立治理任务。R034 复测仍为 160 error / 20 warning（途中一度 161，全角空格 no-irregular-whitespace，已修）。",
+  "baseline": {
+    "capturedAt": "2026-10-13",
+    "commit": "0e84156",
+    "tsc": "0 error（修复 8 个存量 error 后）",
+    "vitest": "211 files / 2482 passed | 2 skipped",
+    "eslint": "160 error / 20 warning",
+    "r034": "212 files / 2499 passed | 2 skipped；eslint 160 error（+1 测试文件 / +17 用例）"
+  },
   "notes": [
     "起点 R034；R031/R033 为已存在的进化日志（docs/evolution/）。",
-    "每 3 轮至少做一次 GitHub 对标（提示词 §3）。R034 未做 → 最迟 R036 安排，建议直接打基线 #1（条款-响应合规矩阵 = B2）。",
+    "每 3 轮至少做一次 GitHub 对标（提示词 §3）。R034 未做，已由驱动器把 R035 的 focus 直接钉为「GitHub 对标」，不再顺延。",
     "门禁四门：tsc/build/vitest 必须绝对绿；eslint 用相对基线。",
     "R034 证据脚本随轮报入库：docs/evolution/_r34_amount_drift_audit.mjs（旧写法缺陷复现，200k 用例 16,600 处少 1 分）与 docs/evolution/_r34_new_chain_check.ts（新写法 0 处偏差，`npx vite-node` 运行；vite-node 仅经 npx 临时拉取，未进 package.json）。",
     "R034 实测环境无 headless 浏览器（vitest environment=node，node_modules 无 puppeteer/playwright）→ UI 目视未做，改用真实 .docx 拆 zip + workbook 单元格断言作为交付物证据。",

@@ -152,6 +152,22 @@ function writeState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2) + '\n', 'utf8')
 }
 
+/**
+ * 轮末提交驱动器产物（状态 / 轮报 / 日志），保持工作区干净——否则下一轮开工时
+ * 状态文件恒为「已修改」，既污染 git 又让 Qoder 的「开工先看 git status」失去意义。
+ * 只 add docs/evolution；若仍有其它未提交改动（说明 Qoder 未按 §6 提交完），只告警不代提。
+ */
+async function commitArtifacts(roundId) {
+  await run('git', ['add', 'docs/evolution'], { timeoutMs: 60000 })
+  const staged = await run('git', ['status', '--porcelain'], { timeoutMs: 60000 })
+  if (!staged.stdout.trim()) return { committed: false, leftover: 0 }
+  const c = await run('git', ['commit', '-q', '-m', `chore(loop): ${roundId} 驱动器回写状态与日志`], { timeoutMs: 60000 })
+  const after = await run('git', ['status', '--porcelain'], { timeoutMs: 60000 })
+  const leftover = after.stdout.trim() ? after.stdout.trim().split(/\r?\n/).length : 0
+  if (leftover) log(`⚠ 轮末仍有 ${leftover} 项未提交（非 docs/evolution；Qoder 可能未按 §6 提交，留人工核查）`)
+  return { committed: c.code === 0, leftover }
+}
+
 // ---------------------------------------------------------------- 提示词组装
 function loadPromptTemplate() {
   const raw = fs.readFileSync(PROMPT_FILE, 'utf8')
@@ -191,6 +207,13 @@ async function buildPrompt(state, seq, total) {
     `- eslint 基线：**${state.eslintBaseline}**（本轮结束不得高于此数）`,
     `- 上轮结论：${state.lastRound ? `${state.lastRound.id} · ${state.lastRound.theme} · ${state.lastRound.verdict}` : '（无，可能是首轮）'}`,
     `- backlog 当前项：${backlogText}`,
+    ...(state.focus
+      ? [
+          '',
+          `- **本轮专项（必须做，优先级高于 §2 的 P1/P2）**：${state.focus}`,
+          '  若专项确实做不了（依赖缺失/前提前提不成立），先做 P1 并在轮报里写清为什么专项没做。',
+        ]
+      : []),
     '',
     '**严格要求**：按 §4 跑完四门并把**真实输出**写进轮报；按 §6 做齐三件收尾（轮报 + 状态 + commit）。',
   ].join('\n')
@@ -453,6 +476,10 @@ async function doRun(rounds) {
       verdict: allOk ? 'pass' : 'fail',
     }
     writeState(after)
+
+    // 4b) 提交驱动器产物，保持工作区干净（否则下一轮开工恒为「1 项未提交」）
+    const ci = await commitArtifacts(`R${state.round}`)
+    if (ci.committed) log(`已提交驱动器产物（R${state.round}），工作区剩余未提交：${ci.leftover}`)
 
     // 5) 失败计数与停机
     if (!allOk) {
