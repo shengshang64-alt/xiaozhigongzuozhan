@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 296,
+  "round": 300,
   "backlog": [
     {
       "id": "r219-kbqa-coldstart-perf",
@@ -1239,8 +1239,10 @@
       "id": "r293-drift-autosync-on-confirm",
       "priority": "P2",
       "module": "/bid-workspace",
-      "status": "open",
-      "issue": "P2·源头治理：本轮只做「诊断 + 手动同步」，漂移仍会产生 —— 确认大纲时 chapters 与顶层节点是 1:1 快照，此后任何只改 bid_outline 的入口（含 AI 重新生成大纲、手动增删节点）都会再次漂移。建议把 alignChaptersWithOutline 接到「确认大纲」与「大纲重生成成功」两处落库出口（同样须遵守批量生成中拒写的竞态裁定），让提示条只在历史脏数据上出现；改动前先确认这两处不与 section_stats 下标对齐假设冲突。"
+      "status": "closed",
+      "issue": "P2·源头治理：本轮只做「诊断 + 手动同步」，漂移仍会产生 —— 确认大纲时 chapters 与顶层节点是 1:1 快照，此后任何只改 bid_outline 的入口（含 AI 重新生成大纲、手动增删节点）都会再次漂移。建议把 alignChaptersWithOutline 接到「确认大纲」与「大纲重生成成功」两处落库出口（同样须遵守批量生成中拒写的竞态裁定），让提示条只在历史脏数据上出现；改动前先确认这两处不与 section_stats 下标对齐假设冲突。",
+      "round": 297,
+      "resolution": "R297 源头收口：盘点证伪『两处落库出口』假设——大纲重生成成功只写本地草稿，落库唯一出口即确认大纲；该出口已接碎片过滤（pickChaptersToBuild 同源判据）+ 批量生成整数组覆盖拒写竞态裁定。漂移产生路径就此闭合。"
     },
     {
       "id": "r293-duplicate-titled-top-nodes",
@@ -1300,7 +1302,22 @@
       "priority": "P2",
       "module": "/bid-workspace",
       "status": "open",
-      "issue": "P2·待用户拍板：R295 已让「同步章节清单」自动跳过 74 个条款碎片顶层节点，但碎片仍留在大纲里。批量清理属破坏性操作（删大纲节点），且部分碎片可能有宣传价值（如「质保期」可作售后章节锚点）。如需清理：①先备份 bid_outline；②逐项目人工在 UI 删除，或另开专项做只读预览清单再批量执行。不自动做。"
+      "issue": "P2·待用户拍板：R295 已让「同步章节清单」自动跳过 74 个条款碎片顶层节点，但碎片仍留在大纲里。批量清理属破坏性操作（删大纲节点），且部分碎片可能有宣传价值（如「质保期」可作售后章节锚点）。如需清理：①先备份 bid_outline；②逐项目人工在 UI 删除，或另开专项做只读预览清单再批量执行。不自动做。",
+      "progress": "R297：确认出口也不再把碎片建章（同步+确认两出口闭合）。批量删除仍维持『待用户拍板、不自动做』；另见并发工作流 R299 在途代码正在加碎片逐条人工删除入口（单条、非批量，不触及裁定），以该工作流收尾为准。"
+    },
+    {
+      "id": "r300-disable-sensenova-u1-fast",
+      "priority": "P2",
+      "module": "/model-config",
+      "status": "open",
+      "issue": "P2·建议停用：R300 实测 sensenova-u1-fast 稳定返回 404 NOT_FOUND（模型在上游不存在，非限流），是 7 个启用模型里唯一「永久坏」的。R296 的健康档案已会在调用后标注「已下线」，但它仍处于启用态并参与回退候选。建议在模型配置页停用它（零风险，纯本地配置变更）。未自动执行——属写生产配置。"
+    },
+    {
+      "id": "r300-two-429-configs-decision",
+      "priority": "P2",
+      "module": "/model-config",
+      "status": "open",
+      "issue": "P2·待用户拍板：xiaomi/mimo-v2.6-pro 与 Intern/deepseek-v4-flash-vision 实测均429（限流或余额不足，非模型缺陷，可能随时间恢复）。两者分别是各自配置的唯一启用模型。建议：①先不动，等限流恢复后复测；②若确定是余额不足，则停用这两个配置避免用户选到白等。需用户告知这两个服务是否还有余额/配额。"
     }
   ],
   "closed": [
@@ -4852,7 +4869,7 @@
       "title": "模型 JSON 适配矩阵实测：7 个启用模型 × thinking 开关 × 真实提示词走真实网关",
       "priority": "P1",
       "status": "closed",
-      "summary": "走真实前端网关 /__pb/api/model-gw/chat（页面内 fetch + vibexAuthHeaders，裸 fetch 必得 LOGIN_REQUIRED），真实提示词取安庆二院解析数据，7 模型 × thinking 开关 = 14 组，合格 8/14。结论一：R291 的「Ling-3.1-flash JSON 不适配」假设被推翻——thinking 开/关均稳定产出可解析 JSON（12/13 顶层节点），该失败判为偶发，R291 修复方向仍正确（无 JSON 候选抛可读中文错误才是根因：偶发散文 + 静默空转 = 静默失败）。最快且结构完整：大模型/deepseek-v4-flash 关 thinking 仅 6.6s 产 12 顶层节点（vs Ling 14.4s，推荐设为默认，待用户确认）。结论二：3/7 模型实际不可用——xiaomi/mimo-v2.6-pro 与 Intern/deepseek-v4-flash-vision 均 429（限流或余额不足）、大模型/sensenova-u1-fast 404（模型不存在）。探针自身改进：首次裸跑把 429 直接判成「不适配」是把基础设施拥闪误读为模型缺陷，已加指数退避重试（8s→16s→32s→64s，最多 4 次）后才判生死。全程只读，不写生产数据。",
+      "summary": "走真实前端网关 /__pb/api/model-gw/chat（页面内 fetch + vibexAuthHeaders，裸 fetch 必得 LOGIN_REQUIRED），真实提示词取安庆二院解析数据，7 模型 × thinking 开关 = 14 组，合格 8/14。结论一：R291 的「Ling-3.1-flash JSON 不适配」假设被推翻——thinking 开/关均稳定产出可解析 JSON（12/13 顶层节点），该失败判为偶发，R291 修复方向仍正确（无 JSON 候选抛可读中文错误才是根因：偶发散文 + 静默空转 = 静默失败）。最快且结构完整：大模型/deepseek-v4-flash 关 thinking 仅 6.6s 产 12 顶层节点（vs Ling 14.4s，推荐设为默认，待用户确认）。结论二：3/7 模型实际不可用——xiaomi/mimo-v2.6-pro 与 Intern/deepseek-v4-flash-vision 均 429（限流或余额不足）、大模型/sensenova-u1-fast 404（模型不存在）。探针自身改进：首次裸跑把 429 直接判成「不适配」是把基础设施拥闪误读为模型缺陷，已加指数退避重试（8s→16s→32s→64s，最多 4 次）后才判生死。全程只读，不写生产数据。【R300 纠正】该轮「3/7 模型不可用」的结论有误判：探针向网关传参用了驼峰 configId，而网关读的是下划线 body.config_id → 配置未被识别，落到 model_disabled 分支。R300 用正确参数名复测7 个模型，真实结果为「4 可用 / 1 永久坏 / 2 限流」，详见 r300-model-truth-probe。",
       "files": [
         ".probe/realrun/probe-15-model-matrix.mjs",
         ".probe/realrun/model-json-matrix.json"
@@ -4890,6 +4907,30 @@
         "src/pages/BidWorkspace/clauseOutlineAlignment.test.ts",
         ".loop/reports/2026-10-13-r295-clause-fragment-guard.md"
       ]
+    },
+    {
+      "id": "r297-confirm-outline-fragment-skip",
+      "title": "标书·「确认大纲」落库收口：条款碎片不建章 + 批量生成中整数组覆盖拒写（r293-drift-autosync-on-confirm 源头治理）",
+      "priority": "P2",
+      "summary": "选题：账本指示项 quote-history-01 / prompt-fabscan-03 经核实均已在 R102/R103 closed（账本 status=done 与代码 quoteRecommend.ts 等三处实现存在），按指令转选 backlog 真正 open 的实质项。定题 r293-drift-autosync-on-confirm：盘点证实「大纲重生成成功」只写本地 outlineDraft 不落库，落库唯一出口就是 confirmOutline——但它是手写的 filled.map 1:1 全量建章，绕过了 R295 碎片单一判据：R295 只堵了「同步章节清单」出口，脏数据项目上点一次「确认大纲」就把 74 个「交付地点」式条款碎片固化成 pending 章进入批量生成候选（烧钱+污染交付物）；同时 confirmOutline 是 bid_chapters 整数组覆盖却没接「批量生成中拒写」的既有竞态裁定（在 R293 backlog 里被点名）。落地：①bidTypes 新增 pickChaptersToBuild（判据复用 pickClauseFragmentNodes，同源零第二口径；空标题同滤）；②confirmOutline 建章改走 build 过滤集，碎片节点仍留 bid_outline 不删（维持『破坏性清理不自动做』裁定）；过滤后无可建章则拒写并指引删除/改名（不把整本书打空）；③批量生成中确认一律拒写（同 applyOutlineWithChapters 文案口径）；④确认回执如实报「N 个大纲节点是招标条款原文，未为其建章」，否则用户以为确认漏章反复操作。零 schema/零 collection/零 pb_hooks/零提示词改动（无需 B 类流程）。测试 +9：pickChaptersToBuild 3 例（过滤/同源一致/全碎片拒建）+ confirmOutline 接线守卫 6 例（走过滤器/空集拒写/竞态拒写/回执如实/全量重建语义未变 R294 裁定/bid_outline 仍写整树）。并发避让：本轮期间外部工作流已提交 R298（bidFiles/pdfScan）并在 useBidWorkspace/OutlineCoverage 落未提交的 R299 在途代码（大纲删除落库+碎片逐条删除入口）；其 R299 改文案致 R292/R295 两条守卫字面断言失配，属在途代码对旧断言的正常冲击，本轮只做口径等价修正（精确计数→下限、字面→三代文案正则），已在报告注明，未回退任何在途 hunk。eslint 工作区 4 error 均为 HEAD 既有项（no-control-regex×2 行号 4167/4169→4203/4205 位移，preserve-caught-error 687→690，no-useless-assignment 8415→8447），零新增。四门：tsc exit0；vitest 全量 200 文件/2373 passed/2 skipped（专项 53/53，本轮+9）；eslint 零新增 error；vite build exit0。",
+      "files": [
+        "src/pages/BidWorkspace/bidTypes.ts",
+        "src/pages/BidWorkspace/useBidWorkspace.ts",
+        "src/pages/BidWorkspace/clauseOutlineAlignment.test.ts"
+      ],
+      "round": 297
+    },
+    {
+      "id": "r300-model-truth-probe",
+      "title": "模型可用性真相复测：纠正 R294 的「3/7 不可用」误判（探针传参名错导致）",
+      "priority": "P1",
+      "status": "closed",
+      "summary": "起因：处理两个「唯一启用模型已不可用」的配置。R294 曾判定 xiaomi/mimo-v2.6-pro 与 Intern/deepseek-v4-flash-vision 均 429、sensenova-u1-fast 404，共3/7 不可用。R300 用真实浏览器 + 真实网关逐个复测，发现**探针 bug**：向 /model-gw/chat 传参用了驼峰 configId，而网关读的是 body.config_id（下划线）→ 配置未被findRecordById 命中，但因configId 非空而跳过 else 分支，stored 为空 → 误报 model_disabled。此bug 还导致中途误判为「PB 内存态与 DB 不一致」，并触发过一次不必要的 models 原样重写。修正参数名后实测（真实浏览器 + 真实网关 + 最小真实请求）：✅ 可用 4 个——大模型/deepseek-v4-flash 1612ms、sensenova-6.8-flash-lite 504ms（最快）、bailing/Ling-3.1-flash 1082ms、ange/agnes-3.0-flash 11814ms（明显偏慢）；❌ 不可用 3 个——sensenova-u1-fast 404（模型真不存在，唯一永久坏）、xiaomi/mimo-v2.6-pro 429（限流或余额）、Intern/deepseek-v4-flash-vision 429（同）。**结论反转：不是「两个死配置」，而是 1 个永久坏 + 2 个限流（限流会恢复，不该当永久坏处理）**；R297 设的默认模型 deepseek-v4-flash 实测可用，设置正确。附带发现 sensenova-6.8-flash-lite 504ms 比 deepseek-v4-flash 1612ms 快 3 倍，值得作为备用。教训：探针本身也会有 bug，误判数据比没有数据更危险——「实测不可用」必须用正确参数名复核一遍才能入库。",
+      "files": [
+        ".probe/realrun/probe-30b-final-probe.mjs",
+        ".probe/realrun/r300-final-probe.json",
+        ".loop/ledger.json"
+      ]
     }
   ],
   "blocked": [
@@ -4924,7 +4965,7 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "R296（轮次号 295 让位并发工作流，其三个在途文件已避让未触碰）根治模型通道的「坏得静默」：404 模型不存在此前在 classifyCallFailure 里无类别 → 落 other → 既不自动回退也不冷却，用户只看到一次失败；确定性失效（404 不存在/上游停用/Key 失效）也没有持久落点（会话冷却分钟级、重开即清、按整配置冷却），导致 R294 实测的 3 个不可用模型在 UI 上与好模型完全同形。现在：modelFailover 新增 model_missing（正则逐字对齐 pb.js 真实文案，\\b404\\b 词边界防误伤正文数字，停用优先，配置不存在仍归 config_broken），纳入可回退且只冷却那一个模型；新建 modelHealth.ts 持久健康档案——只挂三类确定性失效、限流超时一律不入档、任一通道成功或测试通过即清账、7 天 TTL + 60 条上限、localStorage 按用户分桶、异常静默降级绝不阻断主流程；UI 三处标注（下拉后缀/模型行徽标/配置头「未设默认模型」）+ 横幅汇总，全程延续「只提示不禁用」裁定。零 collection / 零 pb_hooks / 零提示词。测试 +20 例；四门全绿（tsc 0、vitest exit 0 / 199 文件 / 2353 passed / 2 skipped，开工实测基线 198/2333/2——提示词 630 属早期数字；eslint 触及 10 文件仅 1 个在途既有 error 零新增；build 0），并修正 3 个文件被补丁写成的 CRLF 后复跑。浏览器实机验证（临时验证页 + 真实组件/档案，验证后删除）：404 通道标「已下线」、429 通道不标注、localStorage 实测只存 model_missing 一条、清账后徽标全消；take_screenshot 本轮工具侧超时，改用 Playwright 出图两张（挂账态/清账态）+ 机器可读证据 JSON。残余三项 P3 入 backlog（余额不足型 429、平台通道无稳定键、批量体检需用户拍板）；r294-default-model-hygiene ①已根治、②③仍系写生产数据需用户点「设为默认」，降 P2。",
+  "lastRoundSummary": "R297（账本 round 296→297；git 已有外部 R298 提交、R299 在途，轮次号按账本现值回写并在报告注明）标书·「确认大纲」落库收口：confirmOutline 手写 1:1 全量建章绕过 R295 碎片判据，脏数据项目点一次确认即把条款碎片固化成 pending 章进批量生成候选（同步出口 R295 已堵、确认出口还开着）；且整数组覆盖未接批量生成拒写竞态裁定。修复：bidTypes 新增 pickChaptersToBuild（与 pickClauseFragmentNodes 同源、空标题同滤）；confirmOutline 建章走过滤集、过滤后为空拒写指引清理、批量生成中一律拒写、回执如实报未建章碎片数；碎片节点仍留大纲不删（维持裁定）。零 schema/collection/提示词。测试+9（专项 53/53），全量 200 文件/2373 passed/2 skipped；tsc 0；eslint 4 error 全为 HEAD 既有（行号位移取证），零新增；build 0。并发改正：R299 在途改文案击中的两条旧守卫做口径等价修正，未回退在途 hunk。closed: r293-drift-autosync-on-confirm。指示项 quote-history-01/prompt-fabscan-03 核实已 R102/R103 结，未重复实施。",
   "note": "靶子纠错：上一轮用的 D:\\tmp\\qafiles\\真实招标文件_三明市中西医结合医院.docx 经取证是自编模板稿（编号 XXXX、预算 XXXX万元、代理机构「按实际委托填写」、全文「投标文件目录」0 次），此前把「投标文件目录要求解析为空」算作系统缺陷是错的。新靶子源：D:\\重要文件\\A重要客户情况\\友商公司产品\\招标材料及方案\\ 下 37 份真实招标文件。",
   "masterDirective": {
     "setAt": "2026-10-12T22:28+08:00",
