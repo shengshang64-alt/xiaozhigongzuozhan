@@ -53,3 +53,21 @@
 1. #1+#2 合并为一个专项：「解析 → 合规矩阵」是同一条数据链（表格抽取产出矩阵输入）。
 2. #3 一个修复轮即可出 MVP（纯统计+表单）。
 3. #4 分两步：先标书 Word 样式模板（docx 库已具备能力），再 PPT 模板（pptxgenjs 支持 defineSlideMaster）。
+
+## 五、R35 复核（2026-10-14）· 本基线已部分过期，勿重复发现
+
+联网核对 BidMaster-Pro / auto_rfp / OpenBidKit_Yibiao 后逐条读码复核：**#1/#2/#3/#4/#7 五项已在 R031–R34 及更早轮次落地**，证据：
+`buildScoringCoverageMatrix`（bidTypes.ts:2088）+ 技术偏离表导出 `exportDeviationDocx`（bidFiles.ts:1260）覆盖 #1；
+评分项 JSON 化（parseSchemas.ts:19-34）+ `extractStarClauses`（bidTypes.ts:844）+ `parse_quality:"suspect_scanned"` 覆盖 #2；
+`summarizeBidResults`（BidReviewSummary.tsx:21）+ `buildWinLossReview`（winLossReview.ts:38）覆盖 #3；
+`format_templates` + `doc_templates` 集合 + PPT 母版保真 `buildFidelityDeck`（templateFidelity.ts）覆盖 #4；
+`FollowUpReminderCard.tsx` + 看板红点 + 深链覆盖 #7。
+
+**本轮新发现的真缺口（基线漏列，R35 已落算法层）**：
+
+| # | 能力 | 对标来源 | 复核前现状 | R35 落地 |
+|---|---|---|---|---|
+| 12 | **价格分确定性测算**（比值法/偏差扣分法复算、报价敏感性阶梯、满分临界报价、废标区间守护） | BidMaster-Pro README「评分矩阵」＋「价格合理性：分析报价逻辑和竞争性」 | 公式只被**原文抄录**进评分项 `criteria`（wholeParse.ts:149 明确要求抄录），全库检索无任何计算实现；报价给出后无人能答「这个价拿几分、离满分差几分」。docs/10:291 曾判 hyperformula（GPL）不宜引入、应自研，但自研一直缺位 | 新增 `src/pages/BidWorkspace/priceScoreModel.ts`（414 行，零新依赖）+ 33 例单测 + 真实招标文件证据脚本 `docs/evolution/_r35_real_tender_price_score.ts` |
+
+**#12 还差什么**：① 无 UI 入口（算法层唯一消费者是单测）；② 对手报价无数据源——`competitor_evidence` 存的是**中标金额**而非**投标报价**，不可冒用，须手输；③ 按元扣分/单边费率/档位法/复合标底四类口径刻意返回「不可测算」；④ 偏差法线性扣分假设需在 UI 显式让用户确认。已进 backlog B12（high）。
+
