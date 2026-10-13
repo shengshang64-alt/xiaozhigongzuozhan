@@ -103,10 +103,10 @@
 ## 【驱动器注入 · 本轮动态上下文】
 
 - 轮次：**R35**（本次运行第 1/1 轮）
-- 工作区未提交改动：3 项（开工前按 §1 第 4 条处理：与本轮无关的先提交或回滚）
+- 工作区未提交改动：0 项（干净）
 - eslint 基线：**160**（本轮结束不得高于此数）
 - 上轮结论：R34 · 报价单金额交付正确性：分位精确化（旧浮点舍入 8.3% 行项少 1 分）+ 合计大写单源落地（Word/Excel/编辑器） · pass
-- backlog 当前项：B1:R031 遗留 A1-A6：编制层（大纲去重/gen_status/★响应/规定目录/数字一致性/评分落点门禁）(high) / B2:条款-响应合规矩阵可视化（★/▲/评分项 → 章节 → 响应状态追踪）(high) / B8:折扣语义歧义入口：UI min=1 钳位使「0.9（想表达 9 折）」按 1% 计价，整单金额缩到 1%（R034 L1，金额悄悄错同类最高危）(high) / B9:建设清单 calcTotal 分位精确化（checklistTypes.ts:223 完全不舍入的浮点累加，与 R034 同根；含 checklistExports 6 个出口）(high) / B10:报价总额 ↔ 标书正文报价数字对账（bidTypes.ts:4147 注明属做法 B；现已有 quoteTotalCents 单源，门槛降低）(medium)
+- backlog 当前项：B1:R031 遗留 A1-A6：编制层（大纲去重/gen_status/★响应/规定目录/数字一致性/评分落点门禁）(high) / B2:条款-响应合规矩阵可视化（★/▲/评分项 → 章节 → 响应状态追踪）(high) / B8:折扣语义歧义入口（R034 L1，金额悄悄错最高危）。处置口径已定：**不静默钳位**——折扣 <5 时改弹确认「你要的是 0.9% 还是 90%（9折）？」；R-0285 的「≤0 视为原价」语义保持不变，只加歧义提示(high) / B9:建设清单 calcTotal 分位精确化（checklistTypes.ts:223 完全不舍入的浮点累加，与 R034 同根；含 checklistExports 6 个出口）(high) / B10:报价总额 ↔ 标书正文报价数字对账（bidTypes.ts:4147 注明属做法 B；现已有 quoteTotalCents 单源，门槛降低）(medium)
 
 - **本轮专项（必须做，优先级高于 §2 的 P1/P2）**：GitHub 对标（提示词 §3；R034 应做未做，本轮必须补）。先读 .nightrun/PRODUCT_BENCHMARK.md 找出「还没落地」的差距项，再联网核对同类开源项目（AI 标书：run-llama/auto_rfp、guangshu100/BidMaster-Pro、FB208/OpenBidKit_Yibiao；知识库 RAG：infiniflow/RAGFlow、1Panel-dev/MaxKB、labring/FastGPT、langgenius/Dify；AI PPT：pipipi-pikachu/PPTist）。选一项**能小步落地并独立验证**的能力，本轮就落地它（禁止引入整架构）。轮报必须写清：对标项目 / 它能做什么 / 我们缺什么 / 本轮落地哪一小步 / 还差什么。
   若专项确实做不了（依赖缺失/前提前提不成立），先做 P1 并在轮报里写清为什么专项没做。
