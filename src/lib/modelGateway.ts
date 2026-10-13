@@ -22,6 +22,9 @@ import {
   type FailoverCandidate,
   type FailoverRefLite,
 } from "@/lib/modelFailover"
+// R296（r294-default-model-hygiene）：确定性失效（模型不存在 / 上游停用 / Key 失效）
+// 落长期健康档案，供配置页与模型选择器显式标注；限流 / 超时等瞬时类由会话冷却负责，不入档。
+import { recordCallFailure, recordModelSuccess } from "@/lib/modelHealth"
 
 export const PLATFORM_MODEL_ID = "gpt-5.5"
 
@@ -411,6 +414,8 @@ async function chatViaGatewayUncached(opts: ChatViaGatewayOptions): Promise<LlmC
     if (res.code === "fallback_to_platform") {
       return { ok: false, status: "failed", text: "", error: PERSONAL_CONFIG_UNAVAILABLE_ERR }
     }
+    // R296：拿到上游原始错误串即记账——只挂确定性失效，限流 / 超时自动忽略
+    recordCallFailure(decodeRhToken()?.sub ?? null, modelRefKey(ref), res.message)
     return {
       ok: false,
       status: "failed",
@@ -421,6 +426,8 @@ async function chatViaGatewayUncached(opts: ChatViaGatewayOptions): Promise<LlmC
   // R216：成功即记忆本次实际使用的模型，作为下次默认（根治静默改道）；
   // 同时校验网关回显的模型是否就是所选模型，不一致时明确告知用户而非静默吞掉。
   rememberUsedModel(decodeRhToken()?.sub ?? null, modelRefKey(ref))
+  // R296：本次实调成功 → 清掉该通道此前的「实测不可用」挂账
+  recordModelSuccess(decodeRhToken()?.sub ?? null, modelRefKey(ref))
   const actualModel = res.model ?? ref.modelId
   const mismatch = modelMismatchNotice(ref.modelId, res.model)
   if (mismatch) {
@@ -559,7 +566,10 @@ export async function testGatewayModel(ref: ModelRef): Promise<TestModelResult> 
     return { ok: false, elapsedMs: Date.now() - startedAt, message: "测试请求超时（可能网络波动或服务重启），请重试" }
   }
   if (!res.ok) {
+    // R296：「测试」是用户对不可用通道的处置闭环——失败按类别挂账，成功即清账
+    recordCallFailure(decodeRhToken()?.sub ?? null, modelRefKey(ref), res.message)
     return { ok: false, needLogin: res.needLogin, message: res.message || "测试失败，请稍后重试" }
   }
+  recordModelSuccess(decodeRhToken()?.sub ?? null, modelRefKey(ref))
   return { ok: true, reply: res.reply, elapsedMs: res.elapsed_ms ?? Date.now() - startedAt }
 }

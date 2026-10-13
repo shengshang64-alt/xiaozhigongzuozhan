@@ -17,7 +17,13 @@ export function ModelConfigPage(p: ReturnType<typeof useModelConfig>) {
 
       <main>
         <section className="mb-5 max-w-3xl">
-          <DefaultModelBanner defaultLabel={p.defaultLabel} defaultSource={p.defaultSource} />
+          <DefaultModelBanner
+            defaultLabel={p.defaultLabel}
+            defaultSource={p.defaultSource}
+            declaredDefault={p.declaredDefault}
+            missingDefaultCount={p.missingDefaultCount}
+            unusableCount={p.unusableCount}
+          />
         </section>
 
         <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
@@ -39,6 +45,7 @@ export function ModelConfigPage(p: ReturnType<typeof useModelConfig>) {
               onToggleModel={p.toggleModel}
               onSetDefault={p.setDefaultModel}
               onTest={p.runTest}
+              modelHealth={p.modelHealth}
               deletingConfig={p.deletingConfig}
               deleteBusy={p.deleteBusy}
               onCancelDelete={p.cancelDelete}

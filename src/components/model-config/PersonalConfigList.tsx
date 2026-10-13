@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { healthNotice, healthShortLabel, type ModelHealthEntry } from "@/lib/modelHealth"
 import type { GatewayConfig } from "@/lib/modelGateway"
 
 type PersonalConfigListProps = {
@@ -21,6 +22,8 @@ type PersonalConfigListProps = {
   onToggleModel: (cfg: GatewayConfig, modelId: string, enabled: boolean) => void
   onSetDefault: (cfg: GatewayConfig, modelId: string) => void
   onTest: (cfg: GatewayConfig, modelId: string) => void
+  /** R296：「实测不可用」挂账，key = personal:配置id:模型id。只标注不禁用（沿袭冷却徽标裁定） */
+  modelHealth?: Record<string, ModelHealthEntry>
   deletingConfig: GatewayConfig | null
   deleteBusy: boolean
   onCancelDelete: () => void
@@ -78,6 +81,7 @@ export function PersonalConfigList({
   onToggleModel,
   onSetDefault,
   onTest,
+  modelHealth = {},
   deletingConfig,
   deleteBusy,
   onCancelDelete,
@@ -138,6 +142,15 @@ export function PersonalConfigList({
                     {cfg.last_check_error}
                   </span>
                 )}
+                {!cfg.default_model && enabledCount > 0 && (
+                  <span
+                    className="badge-warning inline-flex items-center gap-1"
+                    title="该配置没有显式声明默认模型，网关会按「启用列表第一个」兜底——配置里模型顺序一变，默认模型就静默改变。请点下方任一文本模型的「设为默认」把它固定下来。"
+                  >
+                    <AlertTriangle className="h-3 w-3" />
+                    未设默认模型
+                  </span>
+                )}
                 <div className="ml-auto flex items-center gap-1.5">
                   <button
                     type="button"
@@ -174,6 +187,8 @@ export function PersonalConfigList({
                 {(cfg.models ?? []).map((m) => {
                   const isDefault = cfg.default_model === m.id
                   const modality = detectModelModality(m.id)
+                  // R296：这一路是否已被实测挂账（404 已下线 / 上游停用 / Key 失效）
+                  const unhealthy = modelHealth[`personal:${cfg.id}:${m.id}`] ?? null
                   return (
                     <li key={m.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
                       <span
@@ -191,6 +206,15 @@ export function PersonalConfigList({
                       {isDefault && (
                         <span className="badge-neutral">
                           系统默认
+                        </span>
+                      )}
+                      {unhealthy && (
+                        <span
+                          className="badge-danger inline-flex items-center gap-1"
+                          title={healthNotice(unhealthy)}
+                        >
+                          <AlertTriangle className="h-3 w-3" />
+                          {healthShortLabel(unhealthy.cls)}
                         </span>
                       )}
                       <EnableToggle

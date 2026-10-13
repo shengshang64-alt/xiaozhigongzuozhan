@@ -11,7 +11,7 @@
 //
 // 口径（刻意的边界，防误伤与防重复计费）：
 //  - 只在明确「未产出」的账号级失败上回退：限流 / 余额不足 / 认证失败 / 服务不可用 /
-//    模型已停用、个人配置不可用。「超时」与「回复内容为空」不回退——二者分别由标书侧 R177/R180 降级阶梯
+//    模型已停用 / 模型不存在（404）、个人配置不可用。「超时」与「回复内容为空」不回退——二者分别由标书侧 R177/R180 降级阶梯
 //    与 F1 关思考重试独占，此处再叠一层会把延迟翻倍并对同一次产出重复计费；
 //  - 用户取消 / 需要登录绝不回退（回退既无意义又会掩盖真实原因）；
 //  - 候选排序：优先别的配置（429 与余额都按账号 TPM 滚动，同账号换模型同样撞窗），
@@ -52,6 +52,7 @@ export type CallFailureClass =
   | "rate_limit"
   | "auth"
   | "model_disabled"
+  | "model_missing"
   | "unavailable"
   | "config_broken"
   | "timeout"
@@ -64,6 +65,12 @@ export type CallFailureClass =
 const RATE_LIMIT_RE = /429|tpm|rate\s*limit|限流|too\s*many\s*requests|余额不足|insufficient[_\s-]*balance/i
 const AUTH_RE = /认证失败|api\s*key|invalid\s+key|unauthoriz|forbidden/i
 const MODEL_DISABLED_RE = /已停用|已下线|model_disabled|not\s+enabled/i
+// R296：模型不存在（上游 404 / 改名下线）。逐字对齐 model_gateway.pb.js：
+//   chatOnce 非 200 且带 detail 时透出 "接口返回异常（HTTP 404）：… does not exist …"，
+//   PATCH 设默认路径的显式 code "model_not_found" / 文案 "不存在这个模型"。
+// \b404\b 只匹配独立状态码，避免误伤正文里的四位数字；配置级 "配置不存在" 不含 404 语义不在此类。
+const MODEL_MISSING_RE =
+  /模型不存在|不存在这个模型|does\s+not\s+exist|no\s+such\s+model|invalid\s+model|unknown\s+model|model[_\s-]*not[_\s-]*found|\b404\b/i
 const TIMEOUT_RE = /超时|限定时间内返回|timeout|timed out|deadline/i
 const UNAVAILABLE_RE =
   /http\s*5\d\d|\b5\d\d\b|服务暂时不可用|服务异常|无法连通|连接被对方关闭|econnreset|connection\s*reset|broken\s*pipe|socket|网络异常|\beof\b/i
@@ -76,6 +83,7 @@ const FAILOVER_ELIGIBLE: ReadonlySet<CallFailureClass> = new Set<CallFailureClas
   "rate_limit",
   "auth",
   "model_disabled",
+  "model_missing",
   "unavailable",
   "config_broken",
 ])
@@ -95,6 +103,7 @@ export function classifyCallFailure(error?: string): CallFailureClass {
   if (EMPTY_REPLY_RE.test(raw)) return "empty_reply"
   if (RATE_LIMIT_RE.test(raw)) return "rate_limit"
   if (MODEL_DISABLED_RE.test(raw)) return "model_disabled"
+  if (MODEL_MISSING_RE.test(raw)) return "model_missing"
   if (AUTH_RE.test(raw)) return "auth"
   if (UNAVAILABLE_RE.test(raw)) return "unavailable"
   return "other"
@@ -202,7 +211,7 @@ export function coolingKeysForFailure(
   failed: FailoverCandidate | null,
 ): string[] {
   if (!failed || !isFailoverEligible(cls)) return []
-  if (cls === "model_disabled") return [failed.key]
+  if (cls === "model_disabled" || cls === "model_missing") return [failed.key]
   return [configCoolingKey(failed.configId), failed.key]
 }
 

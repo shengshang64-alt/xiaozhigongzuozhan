@@ -14,6 +14,15 @@ import {
   type ModelRef,
   type TestModelResult,
 } from "@/lib/modelGateway"
+// R296（r294-default-model-hygiene）：模型通道「实测不可用」长期档案——本 hook 只做
+// 只读订阅与处置后的清账，写入一律发生在真实调用 / 测试现场（见 modelGateway）。
+import {
+  clearConfigHealth,
+  onHealthChange,
+  readModelHealth,
+  recordModelSuccess,
+  type ModelHealthEntry,
+} from "@/lib/modelHealth"
 
 export interface FormValues {
   config_name: string
@@ -27,11 +36,21 @@ export function useModelConfig() {
   const [, setAccountInfo] = useState<RhAccountInfo | null>(null)
   const [needsRhLogin, setNeedsRhLogin] = useState(() => !decodeRhToken()?.sub)
 
+  // ------------------------------ R296 模型健康档案（配置卫生） ------------------------------
+  // 挂账来源：404 已下线 / 上游停用 / Key 失效三类确定性失效（限流与超时归会话冷却，不进这里）。
+  // 首帧由惰性初始化直接读档案；此后只在订阅回调里更新——effect 体内不同步 setState（防级联渲染）。
+  const [modelHealth, setModelHealth] = useState<Record<string, ModelHealthEntry>>(
+    () => readModelHealth(userId),
+  )
+  useEffect(() => onHealthChange(() => setModelHealth(readModelHealth(userId))), [userId])
+
   const handleAccountChange = useCallback((account: RhAccountInfo | null) => {
     setAccountInfo(account)
     const uid = account?.userId ?? decodeRhToken()?.sub ?? null
     setUserId(uid)
     setNeedsRhLogin(!uid)
+    // R296：档案按用户分桶，换账号即换桶——在事件回调里就地重读，不留陈旧徽标
+    setModelHealth(readModelHealth(uid))
   }, [])
 
   // ------------------------------ 配置列表 ------------------------------
@@ -72,6 +91,30 @@ export function useModelConfig() {
       ? "平台内置"
       : available.defaultRef.configName
     : "平台内置"
+
+  // 是否真有配置显式声明了默认模型；false 意味着当前默认只是平台内置兜底，随时会漂
+  const declaredDefault = useMemo(
+    () =>
+      configs.some(
+        (c) => !!c.default_model && (c.models ?? []).some((m) => m.enabled && m.id === c.default_model),
+      ),
+    [configs],
+  )
+  // 有启用模型却没设默认的配置数：网关按「启用列表第一个」兜底 → 顺序一变默认就静默改变
+  const missingDefaultCount = useMemo(
+    () => personalConfigs.filter((c) => !c.default_model && (c.models ?? []).some((m) => m.enabled)).length,
+    [personalConfigs],
+  )
+  // 仍处于启用态、却已被实测判定不可用的模型数（R294 实测 7 个里 3 个，此前全程静默）
+  const unusableCount = useMemo(() => {
+    let n = 0
+    for (const c of personalConfigs) {
+      for (const m of c.models ?? []) {
+        if (m.enabled && modelHealth[`personal:${c.id}:${m.id}`]) n += 1
+      }
+    }
+    return n
+  }, [personalConfigs, modelHealth])
 
   // ------------------------------ 新建 / 编辑表单 ------------------------------
   const [formOpen, setFormOpen] = useState(false)
@@ -121,16 +164,18 @@ export function useModelConfig() {
       }
       closeForm()
       toast.success(editingConfig ? "配置已更新" : "配置已保存，模型列表已拉取")
+      // R296：改过配置（Key / 接口地址）就重新给一次机会，此前挂账一律作废
+      if (editingConfig) clearConfigHealth(userId, editingConfig.id)
       void loadConfigs(true)
     },
-    [editingConfig, closeForm, loadConfigs],
+    [editingConfig, closeForm, loadConfigs, userId],
   )
 
   // ------------------------------ 配置操作 ------------------------------
   const [busyConfigId, setBusyConfigId] = useState<string | null>(null)
 
   const applyPatch = useCallback(
-    async (id: string, patch: Parameters<typeof updateGatewayConfig>[1], okText: string) => {
+    async (id: string, patch: Parameters<typeof updateGatewayConfig>[1], okText: string): Promise<boolean> => {
       setBusyConfigId(id)
       const res = await updateGatewayConfig(id, patch)
       setBusyConfigId(null)
@@ -138,13 +183,14 @@ export function useModelConfig() {
         if (res.needLogin) {
           setNeedsRhLogin(true)
           toast.error("当前无法执行该操作，请稍后重试")
-          return
+          return false
         }
         toast.error(res.message || "操作失败，请重试")
-        return
+        return false
       }
       if (okText) toast.success(okText)
       void loadConfigs(true)
+      return true
     },
     [loadConfigs],
   )
@@ -155,9 +201,12 @@ export function useModelConfig() {
       const patch: Parameters<typeof updateGatewayConfig>[1] = { models: nextModels }
       // 停用的是默认模型时，同时清掉默认（前端回退平台内置）
       if (!enabled && cfg.default_model === modelId) patch.clear_default = true
-      void applyPatch(cfg.id, patch, enabled ? "模型已启用" : "模型已停用")
+      void applyPatch(cfg.id, patch, enabled ? "模型已启用" : "模型已停用").then((ok) => {
+        // R296：用户主动重新启用 → 只清这一路的「实测不可用」挂账，交给下次实调 / 测试重新证明
+        if (ok && enabled) recordModelSuccess(userId, `personal:${cfg.id}:${modelId}`)
+      })
     },
-    [applyPatch],
+    [applyPatch, userId],
   )
 
   const setDefaultModel = useCallback(
@@ -178,9 +227,11 @@ export function useModelConfig() {
         return
       }
       toast.success("模型列表已刷新")
+      // R296：模型列表已重拉，此前的「不可用」判定不再作数（模型可能已改名回来）
+      clearConfigHealth(userId, cfg.id)
       void loadConfigs(true)
     },
-    [loadConfigs],
+    [loadConfigs, userId],
   )
 
   // ------------------------------ 删除（二次确认） ------------------------------
@@ -201,8 +252,10 @@ export function useModelConfig() {
       return
     }
     toast.success("配置已删除")
+    // R296：配置已不存在，其下所有挂账都是孤儿，一并清掉
+    clearConfigHealth(userId, deletingConfig.id)
     void loadConfigs(true)
-  }, [deletingConfig, loadConfigs])
+  }, [deletingConfig, loadConfigs, userId])
 
   // ------------------------------ 测试面板 ------------------------------
   const [testTargetLabel, setTestTargetLabel] = useState("")
@@ -255,6 +308,11 @@ export function useModelConfig() {
     personalConfigs,
     defaultLabel,
     defaultSource,
+    // R296 配置卫生
+    modelHealth,
+    declaredDefault,
+    missingDefaultCount,
+    unusableCount,
     // 表单
     formOpen,
     editingConfig,

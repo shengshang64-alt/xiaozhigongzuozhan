@@ -1,13 +1,20 @@
 import { useEffect, useMemo, useState } from "react"
-import { Clock, Cpu } from "lucide-react"
+import { AlertTriangle, Clock, Cpu } from "lucide-react"
 import { modelRefKey, modelRefLabel, type ModelRef } from "@/lib/modelGateway"
-import { isLocalDeployHost } from "@/lib/rhLogin"
+import { decodeRhToken, isLocalDeployHost } from "@/lib/rhLogin"
 import {
   channelCoolingRemainingMs,
   channelCoolingStrikes,
   configCoolingKey,
   onCoolingChange,
 } from "@/lib/modelFailover"
+import {
+  healthNotice,
+  healthShortLabel,
+  onHealthChange,
+  readModelHealth,
+  type ModelHealthEntry,
+} from "@/lib/modelHealth"
 
 type ModelSelectProps = {
   models: ModelRef[]
@@ -52,12 +59,30 @@ function useCoolingKeys(models: ModelRef[]): Map<string, number> {
   return coolingKeys
 }
 
+// R296（r294-default-model-hygiene）：只读「实测不可用」长期档案——404 已下线 / 上游停用 /
+// Key 失效三类确定性失效才会入档，限流与超时归会话冷却（上面那路），不进这里。
+// 与冷却同理：只提示不禁用——用户仍可选它、仍会先如实尝试（上游随时可能修好），
+// 档案 7 天自动过期、任一通道成功即清账。纯本地读取，零 collection / pb_hooks / 提示词。
+function useModelHealth(): Record<string, ModelHealthEntry> {
+  const [health, setHealth] = useState<Record<string, ModelHealthEntry>>(
+    () => readModelHealth(decodeRhToken()?.sub ?? null),
+  )
+  useEffect(
+    () => onHealthChange(() => setHealth(readModelHealth(decodeRhToken()?.sub ?? null))),
+    [],
+  )
+  return health
+}
+
 export function ModelSelect({ models, valueKey, onChange }: ModelSelectProps) {
   const platformModels = models.filter((m) => m.source === "platform")
   const personalModels = models.filter((m) => m.source === "personal")
   const coolingKeys = useCoolingKeys(models)
+  const health = useModelHealth()
   const selectedModel = models.find((m) => modelRefKey(m) === valueKey) ?? null
   const selectedCoolingMs = coolingKeys.get(valueKey) ?? 0
+  // R296：当前所选通道的「实测不可用」挂账
+  const selectedHealth = health[valueKey] ?? null
   const selectedStrikes = selectedModel
     ? Math.max(
         channelCoolingStrikes(modelRefKey(selectedModel)),
@@ -75,6 +100,14 @@ export function ModelSelect({ models, valueKey, onChange }: ModelSelectProps) {
   //       defaultRef 初始化（个人配置优先），因此不会默认落到被禁用的选项上。
   // 线上域（vibex.cn / runninghub.cn）isLocalDeployHost() 恒为 false，行为完全不变。
   const platformDisabled = isLocalDeployHost() && personalModels.length > 0
+  // 下拉项后缀：冷却（会话内、分钟级）与实测不可用（持久、天级）是两回事，命中哪个说哪个
+  const statusSuffix = (key: string): string => {
+    const parts: string[] = []
+    if (coolingKeys.has(key)) parts.push("冷却中")
+    const h = health[key]
+    if (h) parts.push(healthShortLabel(h.cls))
+    return parts.length ? ` · ${parts.join(" · ")}` : ""
+  }
   return (
     <label className="flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 shadow-sm transition-shadow hover:shadow-md focus-within:ring-2 focus-within:ring-primary">
       <Cpu className="h-3.5 w-3.5 shrink-0 text-primary" />
@@ -95,7 +128,7 @@ export function ModelSelect({ models, valueKey, onChange }: ModelSelectProps) {
                 title={platformDisabled ? "本地部署缺少 RunningHub 登录态，该模型无法调用" : undefined}
               >
                 {modelRefLabel(m)}
-                {coolingKeys.has(modelRefKey(m)) ? " · 冷却中" : ""}
+                {statusSuffix(modelRefKey(m))}
               </option>
             ))}
           </optgroup>
@@ -105,7 +138,7 @@ export function ModelSelect({ models, valueKey, onChange }: ModelSelectProps) {
             {personalModels.map((m) => (
               <option key={modelRefKey(m)} value={modelRefKey(m)}>
                 {modelRefLabel(m)}
-                {coolingKeys.has(modelRefKey(m)) ? " · 冷却中" : ""}
+                {statusSuffix(modelRefKey(m))}
               </option>
             ))}
           </optgroup>
@@ -123,6 +156,17 @@ export function ModelSelect({ models, valueKey, onChange }: ModelSelectProps) {
           <Clock className="h-3 w-3" />
           冷却中 · 约 {Math.ceil(selectedCoolingMs / 1000)}s
           {selectedStrikes > 1 ? ` ×${selectedStrikes}` : ""}
+        </span>
+      )}
+      {selectedHealth && (
+        <span
+          className="badge-danger inline-flex shrink-0 items-center gap-1"
+          role="status"
+          aria-live="polite"
+          title={healthNotice(selectedHealth)}
+        >
+          <AlertTriangle className="h-3 w-3" />
+          {healthShortLabel(selectedHealth.cls)}
         </span>
       )}
     </label>

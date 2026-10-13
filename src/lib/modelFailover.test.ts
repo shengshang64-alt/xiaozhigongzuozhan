@@ -116,9 +116,47 @@ describe("classifyCallFailure —— 逐字对齐网关真实文案", () => {
   })
 })
 
+describe("classifyCallFailure —— R296 模型不存在（404）盲区修复", () => {
+  it("网关 404 真实文案落 model_missing（此前归 other：不回退、不冷却、无标注）", () => {
+    // model_gateway.pb.js chatOnce：非 200 透出 "接口返回异常（HTTP 404）：" + 上游 error.message
+    expect(
+      classifyCallFailure('接口返回异常（HTTP 404）：The model "sensenova-u1-fast" does not exist or you do not have access to it.'),
+    ).toBe("model_missing")
+    expect(classifyCallFailure("接口返回异常（HTTP 404）")).toBe("model_missing")
+    expect(classifyCallFailure("模型不存在：gpt-4o-mini")).toBe("model_missing")
+    // PATCH 设默认路径的显式 code / 文案
+    expect(classifyCallFailure("model_not_found")).toBe("model_missing")
+    expect(classifyCallFailure("该配置下不存在这个模型，请先刷新模型列表")).toBe("model_missing")
+    expect(classifyCallFailure("Invalid model specified")).toBe("model_missing")
+  })
+
+  it("404 与停用 / 限流互不吞：停用仍归 model_disabled，限流仍归 rate_limit", () => {
+    expect(classifyCallFailure("模型「deepseek-chat」已停用，请在模型配置页启用或改用其他模型")).toBe("model_disabled")
+    expect(classifyCallFailure("所配置模型的接口限流或余额不足（HTTP 429），请稍后重试或切换模型")).toBe("rate_limit")
+  })
+
+  it("回归守卫：HTTP 400 参数错误、配置不存在都不是模型不存在（绝不误挂账）", () => {
+    expect(classifyCallFailure("接口返回异常（HTTP 400）：max_tokens 超出上限")).toBe("other")
+    expect(classifyCallFailure("配置不存在或无权访问")).toBe("other")
+    expect(classifyCallFailure("内容审核未通过，请调整措辞后重试")).toBe("other")
+    // 正文里的四位数不得被 \b404\b 之外的泛化命中：这条既无 404 也无模型缺失语义
+    expect(classifyCallFailure("请求已完成，用量 4040 tokens")).toBe("other")
+  })
+
+  it("model_missing 参与自动回退（这一路必然零产出，换一路才有结果）", () => {
+    expect(isFailoverEligible("model_missing")).toBe(true)
+  })
+
+  it("冷却口径：只冷却那一路模型，不冷却整个配置（配置本身没坏，同账号其它模型可用）", () => {
+    const c = mkCand(mkRef({ modelId: "sensenova-u1-fast" }))
+    expect(coolingKeysForFailure("model_missing", c)).toEqual(["personal:c1:sensenova-u1-fast"])
+    expect(coolingKeysForFailure("model_missing", null)).toEqual([])
+  })
+})
+
 describe("isFailoverEligible —— 可回退真值表", () => {
-  it("仅账号级不可用四类为真", () => {
-    for (const cls of ["rate_limit", "auth", "model_disabled", "unavailable"] as const) {
+  it("账号级不可用五类 + 模型不存在为真（R296：404 纳入可回退）", () => {
+    for (const cls of ["rate_limit", "auth", "model_disabled", "model_missing", "unavailable"] as const) {
       expect(isFailoverEligible(cls)).toBe(true)
     }
   })
