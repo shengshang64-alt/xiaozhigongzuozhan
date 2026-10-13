@@ -23,7 +23,7 @@ import {
   type ParseSectionStatus,
   type StandardItem,
 } from "@/pages/BidWorkspace/bidTypes"
-import { coverageLevel, coveragePercent, parseCoverageRatio } from "@/pages/BidWorkspace/parseCoverage"
+import { COVERAGE_WARN, coveragePercent, parseCoverageRatio } from "@/pages/BidWorkspace/parseCoverage"
 import { countMarkerLossLines, lineHasMarkerLoss } from "@/pages/BidWorkspace/materialIntegrity"
 import { chatViaGateway } from "@/lib/modelGateway"
 import { extractJsonCandidate, parseJsonTolerant } from "@/lib/jsonTolerant"
@@ -262,24 +262,20 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
       </div>
     ) : null
 
-  // R-038（R258）：长文档解析覆盖率——产出/原文非空白字符比；<50% 告警、<30%(原文够大) 阻断（与生成门禁同阈值）
+  // R-038（R258）：长文档解析覆盖率——产出/原文非空白字符比。
+  // R288+（2026-10-13 真实场景实测·主导者）：覆盖率降为**纯告警**。
+  // 原因：覆盖率口径 = 要点摘要字数 / 原文字数，对长文档天然偏低（本项目 38.2 万字实测 9%），
+  // 但摘要短≠漏内容。真正的放行判据在 useBidWorkspace：关键解析项缺失才阻断（missingCriticalSections）。
+  // 此处必须与该判据同源，否则会出现「界面说已阻止生成、实际已放行」的假阻断（实测已发生）。
   const coverageRatio = useMemo(() => parseCoverageRatio(report?.sections ?? [], tenderText ?? ""), [report, tenderText])
   const coveragePct = coveragePercent(coverageRatio)
-  const coverageLvl = coverageLevel(coverageRatio, tenderText ?? "")
   const coverageBanner =
-    coverageRatio != null && coverageLvl !== "ok" ? (
-      <div
-        className={`mb-3 rounded-md border px-4 py-3 shadow-sm ${
-          coverageLvl === "block"
-            ? "border-destructive/40 bg-destructive/5 text-destructive"
-            : "border-amber-300/60 bg-amber-50 text-amber-800"
-        }`}
-      >
-        <p className="text-xs font-semibold leading-relaxed">解析覆盖率 {coveragePct}%（{coverageLvl === "block" ? "过低，已阻止生成" : "偏低"}）</p>
+    coverageRatio != null && coveragePct != null && coveragePct < COVERAGE_WARN * 100 ? (
+      <div className="mb-3 rounded-md border border-amber-300/60 bg-amber-50 px-4 py-3 text-amber-800">
+        <p className="text-xs font-semibold leading-relaxed">解析覆盖率 {coveragePct}%（偏低，仅供参考）</p>
         <p className="mt-1 text-xs leading-relaxed">
-          {coverageLvl === "block"
-            ? "长文档大部分原文未进入解析，生成的标书可能漏掉否决/废标条款（废标风险）。请用「完整档」并确保分段解析覆盖全文（扫描件先 OCR 转文字）后重解析。"
-            : "部分章节可能未解析完整，建议核对关键分区；必要时用「完整档」重解析以提升覆盖。"}
+          解析产出为要点摘要，字数天然少于招标原文全文，本比例偏低属常态，<b>不阻断生成</b>。
+          是否可生成以下方「必选项解析失败」红幅为准；若该红幅为空即可继续。
         </p>
       </div>
     ) : null
@@ -484,14 +480,12 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
             <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${pct}%` }} />
           </div>
           <p className="mt-1.5 text-xs text-muted-foreground">失败 / 未解析的项可在右侧单独重解析</p>
-          {coveragePct != null && (
+          {coveragePct != null && coveragePct < COVERAGE_WARN * 100 && (
             <p
-              className={`mt-1 text-xs font-medium ${
-                coverageLvl === "block" ? "text-destructive" : coverageLvl === "warn" ? "text-amber-700" : "text-muted-foreground"
-              }`}
-              title="解析覆盖率 = 各解析项正文字数 / 招标文件原文字数（过长回落检索会偏低）"
+              className="mt-1 text-xs font-medium text-amber-700"
+              title="解析覆盖率 = 各解析项正文字数 / 招标文件原文字数。解析产出为要点摘要，比值偏低属常态，不阻断生成；是否放行以下方「必选项解析失败」为准。"
             >
-              解析覆盖率 {coveragePct}%{coverageLvl === "block" ? "（过低，已阻止生成）" : coverageLvl === "warn" ? "（偏低）" : ""}
+              解析覆盖率 {coveragePct}%（偏低，仅供参考，不阻断生成）
             </p>
           )}
           {isFull && keyOnly && keyFiltered.length > 0 && (
