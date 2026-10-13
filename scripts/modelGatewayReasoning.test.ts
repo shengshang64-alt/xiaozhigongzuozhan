@@ -25,6 +25,10 @@ interface ChatResult {
   retryReasoning?: boolean
   reasoning_tokens?: number
   message?: string
+  /** R301：429 原文分类结果（quota 额度耗尽 / freq 速率限制 / unknown 不可判定） */
+  kind?: string
+  /** R301：上游原始错误文本（供诊断，不直接展示） */
+  detail?: string
 }
 
 type ChatFn = (
@@ -53,10 +57,12 @@ function loadChatHarness(responder: (url: string, callIndex: number) => { status
   // chat 路由的 chatOnce / doChat 两个函数声明（注意 test 路由也有同名 doChat，取靠后的一对）。
   // 锚点用函数声明首行 + chat 路由专属的 maxTokens 解析行，三者皆随钩子结构变化而失效，
   // 失效时本测试立即红，不会静默测错函数。
-  const begin = src.indexOf("var chatOnce = function")
+  // R301：rateReason / rateMessage（429 原文分类）定义在 chatOnce 之前，须一并纳入切片，
+  // 否则 429 分支引用未定义函数 → 整段抛错，用例会看到与真实网关不一致的失败原因。
+  const begin = src.indexOf("var rateReason = function", src.indexOf('routerAdd("POST", "/api/model-gw/chat"'))
   const doChatAt = src.indexOf("var doChat = function", begin)
   const end = src.indexOf("var body = e.requestInfo().body || {}", doChatAt)
-  expect(begin, "未能定位 chatOnce（钩子结构可能已变，请同步本测试）").toBeGreaterThan(-1)
+  expect(begin, "未能定位 chat 路由的 rateReason（钩子结构可能已变，请同步本测试）").toBeGreaterThan(-1)
   expect(doChatAt, "未能定位 chat 路由的 doChat").toBeGreaterThan(begin)
   expect(end, "未能定位 chatOnce/doChat 区段终点").toBeGreaterThan(doChatAt)
 
@@ -236,12 +242,37 @@ describe("R216 网关其他失败路径不得被修复带偏（回归护栏）",
     expect(r.message).toContain("认证失败")
   })
 
-  it("429 → 限流文案不变（不触发升预算重试，避免重复计费）", () => {
+  // R301：429 原文分类上线后，本例的守护点从「文案含限流」改为「不升预算重试 + 只发一次」。
+  // 原断言锁的是旧实现的一句固定文案，而 429 现在按上游原文区分「速率限制 / 额度耗尽」
+  // （实测原文：inference exceeds tpm/rpm limit vs quota exhausted / quota exceeded），
+  // 空原文走 unknown 分支，文案是「限流或余额不足」。真正的不变量是「不重试、不重复计费」。
+  it("429 → 不触发升预算重试（避免重复计费），空原文走 unknown 兜底文案", () => {
     const h = loadChatHarness(() => ({ statusCode: 429, raw: "" }))
     const r = h.doChat(...ARGS, 30, null, 60, false)
     expect(r.ok).toBe(false)
     expect(r.retryReasoning).toBeFalsy()
     expect(r.message).toContain("限流")
+    expect(h.sentPayloads).toHaveLength(1)
+  })
+
+  // R301 回归护栏：原文明确说额度/账户 → 不得回退成「等一会儿就好」
+  it("429 原文 quota exhausted → 判额度耗尽，提示充值（不误判为速率限制）", () => {
+    const h = loadChatHarness(() => ({ statusCode: 429, raw: JSON.stringify({ error: { message: "quota exhausted" } }) }))
+    const r = h.doChat(...ARGS, 30, null, 60, false)
+    expect(r.ok).toBe(false)
+    expect(r.retryReasoning).toBeFalsy()
+    expect(r.kind).toBe("quota")
+    expect(r.message).toContain("额度")
+    expect(h.sentPayloads).toHaveLength(1)
+  })
+
+  // R301 回归护栏：原文是 tpm/rpm 速率限制 → 不得误报「请去充值」（实测该模型退避 25s 即恢复）
+  it("429 原文 exceeds tpm/rpm limit → 判速率限制，提示稍后重试", () => {
+    const h = loadChatHarness(() => ({ statusCode: 429, raw: JSON.stringify({ error: { message: "inference exceeds tpm/rpm limit" } }) }))
+    const r = h.doChat(...ARGS, 30, null, 60, false)
+    expect(r.ok).toBe(false)
+    expect(r.kind).toBe("freq")
+    expect(r.message).not.toContain("充值")
     expect(h.sentPayloads).toHaveLength(1)
   })
 

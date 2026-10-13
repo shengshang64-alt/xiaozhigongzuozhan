@@ -94,6 +94,36 @@ routerAdd("POST", "/api/model-gw/configs", (e) => {
       }
       return out
     }
+    // R301：429 原文分类（与 chat / test / refresh-models 路由同口径，各自自包含以保 Goja 并发安全）
+    var rateReason = function (raw) {
+      var detail = ""
+      var code = ""
+      try {
+        var dj = JSON.parse(typeof raw === "string" ? raw : "")
+        if (dj) {
+          if (dj.error) {
+            if (dj.error.message) detail = String(dj.error.message)
+            if (dj.error.code) code = String(dj.error.code)
+          }
+          if (!detail && dj.message) detail = String(dj.message)
+          if (!code && dj.code) code = String(dj.code)
+        }
+      } catch (e) { detail = "" }
+      if (!detail && typeof raw === "string" && raw) detail = raw.slice(0, 200)
+      var hay = (code + " " + detail).toLowerCase()
+      // R301 口径校准（实测原文坐实）：quota 必须由原文直接说「额度/账户」才能成立。
+      // 原式含 exceed.{0,12}(limit|quota)，把实测的 "inference exceeds tpm/rpm limit"
+      // （纯速率限制，退避 25s 即成功）误判成额度耗尽→误导用户去充值。
+      // 去掉 exceed 泛匹配，改由 freq 族显式承接 tpm/rpm/exceeds 句式。
+      var quota = /insufficient[_\s-]*(balance|quota|credit)|quota[_\s-]*(exhaust|exceed|limit)|exceed[a-z]*[_\s-]*(your[_\s-]*(current[_\s-]*)?)?(quota|billing|balance)|balance[_\s-]*(insufficient|exceed|not[_\s-]*enough)|billing|arrears|account[_\s-]*(expired|deactivated|suspended)|余额不足|额度不足|额度耗尽|配额耗尽|超出额度|欠费|账户已/.test(hay)
+      var freq = /rate.?limit|too\s*many|qps|concurren|requests?\s+per|frequency|tpm|rpm|token[_\s-]*budget|exceed[a-z]*[_\s-]*(your[_\s-]*)?(token|tpm|rpm)|限流|频率|并发|过于?频繁|请求过多/.test(hay)
+      return { kind: quota ? "quota" : (freq ? "freq" : "unknown"), code: code, detail: detail.slice(0, 200) }
+    }
+    var rateMessage = function (r) {
+      if (r.kind === "quota") return "接口额度或余额不足（HTTP 429），请到该模型平台充值或提高配额后重试"
+      if (r.kind === "freq") return "对方接口请求频率超限（HTTP 429），请稍后重试"
+      return "对方接口限流或余额不足（HTTP 429），请稍后重试"
+    }
     var fetchModels = function (baseUrl, apiKey) {
       var b = String(baseUrl).replace(/\/+$/, "")
       var urls = b.slice(-3) === "/v1" ? [b + "/models"] : [b + "/v1/models", b + "/models"]
@@ -108,7 +138,10 @@ routerAdd("POST", "/api/model-gw/configs", (e) => {
           })
           if (res.statusCode === 404) { sawNotFound = true; continue }
           if (res.statusCode === 401 || res.statusCode === 403) return { ok: false, message: "认证失败，请检查 API Key 是否有效" }
-          if (res.statusCode === 429) return { ok: false, message: "对方接口限流（HTTP 429），请稍后重试" }
+          if (res.statusCode === 429) {
+            var rr = rateReason(res.raw)
+            return { ok: false, code: "rate_limit", message: rateMessage(rr) }
+          }
           if (res.statusCode >= 500) return { ok: false, message: "对方服务暂时不可用（HTTP " + res.statusCode + "），请稍后重试" }
           if (res.statusCode !== 200) return { ok: false, message: "接口返回异常（HTTP " + res.statusCode + "）" }
           var data = null
@@ -185,6 +218,36 @@ routerAdd("PATCH", "/api/model-gw/configs/{id}", (e) => {
     var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
     if (!userId) return e.json(401, { ok: false, code: "LOGIN_REQUIRED", message: "请先登录后再管理模型配置" })
     var SECRET = "mgw-app-d61cf9ef4f3a43a9ac231816a7e5d501"
+    // R301：429 原文分类（与 chat / test / refresh-models / POST configs 路由同口径，各自自包含以保 Goja 并发安全）
+    var rateReason = function (raw) {
+      var detail = ""
+      var code = ""
+      try {
+        var dj = JSON.parse(typeof raw === "string" ? raw : "")
+        if (dj) {
+          if (dj.error) {
+            if (dj.error.message) detail = String(dj.error.message)
+            if (dj.error.code) code = String(dj.error.code)
+          }
+          if (!detail && dj.message) detail = String(dj.message)
+          if (!code && dj.code) code = String(dj.code)
+        }
+      } catch (e) { detail = "" }
+      if (!detail && typeof raw === "string" && raw) detail = raw.slice(0, 200)
+      var hay = (code + " " + detail).toLowerCase()
+      // R301 口径校准（实测原文坐实）：quota 必须由原文直接说「额度/账户」才能成立。
+      // 原式含 exceed.{0,12}(limit|quota)，把实测的 "inference exceeds tpm/rpm limit"
+      // （纯速率限制，退避 25s 即成功）误判成额度耗尽→误导用户去充值。
+      // 去掉 exceed 泛匹配，改由 freq 族显式承接 tpm/rpm/exceeds 句式。
+      var quota = /insufficient[_\s-]*(balance|quota|credit)|quota[_\s-]*(exhaust|exceed|limit)|exceed[a-z]*[_\s-]*(your[_\s-]*(current[_\s-]*)?)?(quota|billing|balance)|balance[_\s-]*(insufficient|exceed|not[_\s-]*enough)|billing|arrears|account[_\s-]*(expired|deactivated|suspended)|余额不足|额度不足|额度耗尽|配额耗尽|超出额度|欠费|账户已/.test(hay)
+      var freq = /rate.?limit|too\s*many|qps|concurren|requests?\s+per|frequency|tpm|rpm|token[_\s-]*budget|exceed[a-z]*[_\s-]*(your[_\s-]*)?(token|tpm|rpm)|限流|频率|并发|过于?频繁|请求过多/.test(hay)
+      return { kind: quota ? "quota" : (freq ? "freq" : "unknown"), code: code, detail: detail.slice(0, 200) }
+    }
+    var rateMessage = function (r) {
+      if (r.kind === "quota") return "接口额度或余额不足（HTTP 429），请到该模型平台充值或提高配额后重试"
+      if (r.kind === "freq") return "对方接口请求频率超限（HTTP 429），请稍后重试"
+      return "对方接口限流或余额不足（HTTP 429），请稍后重试"
+    }
     var xorHex = function (s) {
       var out = ""
       for (var i = 0; i < String(s).length; i++) {
@@ -241,7 +304,10 @@ routerAdd("PATCH", "/api/model-gw/configs/{id}", (e) => {
           })
           if (res.statusCode === 404) { sawNotFound = true; continue }
           if (res.statusCode === 401 || res.statusCode === 403) return { ok: false, message: "认证失败，请检查 API Key 是否有效" }
-          if (res.statusCode === 429) return { ok: false, message: "对方接口限流（HTTP 429），请稍后重试" }
+          if (res.statusCode === 429) {
+            var rr = rateReason(res.raw)
+            return { ok: false, code: "rate_limit", message: rateMessage(rr) }
+          }
           if (res.statusCode >= 500) return { ok: false, message: "对方服务暂时不可用（HTTP " + res.statusCode + "），请稍后重试" }
           if (res.statusCode !== 200) return { ok: false, message: "接口返回异常（HTTP " + res.statusCode + "）" }
           var data = null
@@ -435,6 +501,36 @@ routerAdd("POST", "/api/model-gw/configs/{id}/refresh-models", (e) => {
       if (String(plain).length <= 4) return "****"
       return "sk-***" + String(plain).slice(-4)
     }
+    // R301：429 原文分类（与 chat / test 路由同口径，各自自包含以保 Goja 并发安全）
+    var rateReason = function (raw) {
+      var detail = ""
+      var code = ""
+      try {
+        var dj = JSON.parse(typeof raw === "string" ? raw : "")
+        if (dj) {
+          if (dj.error) {
+            if (dj.error.message) detail = String(dj.error.message)
+            if (dj.error.code) code = String(dj.error.code)
+          }
+          if (!detail && dj.message) detail = String(dj.message)
+          if (!code && dj.code) code = String(dj.code)
+        }
+      } catch (e) { detail = "" }
+      if (!detail && typeof raw === "string" && raw) detail = raw.slice(0, 200)
+      var hay = (code + " " + detail).toLowerCase()
+      // R301 口径校准（实测原文坐实）：quota 必须由原文直接说「额度/账户」才能成立。
+      // 原式含 exceed.{0,12}(limit|quota)，把实测的 "inference exceeds tpm/rpm limit"
+      // （纯速率限制，退避 25s 即成功）误判成额度耗尽→误导用户去充值。
+      // 去掉 exceed 泛匹配，改由 freq 族显式承接 tpm/rpm/exceeds 句式。
+      var quota = /insufficient[_\s-]*(balance|quota|credit)|quota[_\s-]*(exhaust|exceed|limit)|exceed[a-z]*[_\s-]*(your[_\s-]*(current[_\s-]*)?)?(quota|billing|balance)|balance[_\s-]*(insufficient|exceed|not[_\s-]*enough)|billing|arrears|account[_\s-]*(expired|deactivated|suspended)|余额不足|额度不足|额度耗尽|配额耗尽|超出额度|欠费|账户已/.test(hay)
+      var freq = /rate.?limit|too\s*many|qps|concurren|requests?\s+per|frequency|tpm|rpm|token[_\s-]*budget|exceed[a-z]*[_\s-]*(your[_\s-]*)?(token|tpm|rpm)|限流|频率|并发|过于?频繁|请求过多/.test(hay)
+      return { kind: quota ? "quota" : (freq ? "freq" : "unknown"), code: code, detail: detail.slice(0, 200) }
+    }
+    var rateMessage = function (r) {
+      if (r.kind === "quota") return "接口额度或余额不足（HTTP 429），请到该模型平台充值或提高配额后重试"
+      if (r.kind === "freq") return "对方接口请求频率超限（HTTP 429），请稍后重试"
+      return "对方接口限流或余额不足（HTTP 429），请稍后重试"
+    }
     var pub = function (rec, models) {
       var plain = rec.get("api_key") ? unxorHex(rec.get("api_key")) : ""
       return {
@@ -488,7 +584,12 @@ routerAdd("POST", "/api/model-gw/configs/{id}/refresh-models", (e) => {
         })
         if (res.statusCode === 404) { sawNotFound = true; continue }
         if (res.statusCode === 401 || res.statusCode === 403) { result = { ok: false, message: "认证失败，请检查 API Key 是否有效" }; break }
-        if (res.statusCode === 429) { result = { ok: false, message: "对方接口限流（HTTP 429），请稍后重试" }; break }
+        if (res.statusCode === 429) {
+          var rr = rateReason(res.raw)
+          try { $app.logger().warn("model-gw refresh-models upstream 429", "config", id, "kind", rr.kind, "code", rr.code, "detail", rr.detail) } catch (lg) {}
+          result = { ok: false, code: "rate_limit", message: rateMessage(rr) }
+          break
+        }
         if (res.statusCode >= 500) { result = { ok: false, message: "对方服务暂时不可用（HTTP " + res.statusCode + "），请稍后重试" }; break }
         if (res.statusCode !== 200) { result = { ok: false, message: "接口返回异常（HTTP " + res.statusCode + "）" }; break }
         var data = null
@@ -568,6 +669,36 @@ routerAdd("POST", "/api/model-gw/test", (e) => {
     var TEST_MIN_RETRY_TOKENS = 1024
     var TEST_RETRY_FACTOR = 4
     var TEST_MAX_TOKENS = 16384
+    // R301：429 原文分类（与 chat 路由同口径，各自自包含以保Goja 并发安全）
+    var rateReason = function (raw) {
+      var detail = ""
+      var code = ""
+      try {
+        var dj = JSON.parse(typeof raw === "string" ? raw : "")
+        if (dj) {
+          if (dj.error) {
+            if (dj.error.message) detail = String(dj.error.message)
+            if (dj.error.code) code = String(dj.error.code)
+          }
+          if (!detail && dj.message) detail = String(dj.message)
+          if (!code && dj.code) code = String(dj.code)
+        }
+      } catch (e) { detail = "" }
+      if (!detail && typeof raw === "string" && raw) detail = raw.slice(0, 200)
+      var hay = (code + " " + detail).toLowerCase()
+      // R301 口径校准（实测原文坐实）：quota 必须由原文直接说「额度/账户」才能成立。
+      // 原式含 exceed.{0,12}(limit|quota)，把实测的 "inference exceeds tpm/rpm limit"
+      // （纯速率限制，退避 25s 即成功）误判成额度耗尽→误导用户去充值。
+      // 去掉 exceed 泛匹配，改由 freq 族显式承接 tpm/rpm/exceeds 句式。
+      var quota = /insufficient[_\s-]*(balance|quota|credit)|quota[_\s-]*(exhaust|exceed|limit)|exceed[a-z]*[_\s-]*(your[_\s-]*(current[_\s-]*)?)?(quota|billing|balance)|balance[_\s-]*(insufficient|exceed|not[_\s-]*enough)|billing|arrears|account[_\s-]*(expired|deactivated|suspended)|余额不足|额度不足|额度耗尽|配额耗尽|超出额度|欠费|账户已/.test(hay)
+      var freq = /rate.?limit|too\s*many|qps|concurren|requests?\s+per|frequency|tpm|rpm|token[_\s-]*budget|exceed[a-z]*[_\s-]*(your[_\s-]*)?(token|tpm|rpm)|限流|频率|并发|过于?频繁|请求过多/.test(hay)
+      return { kind: quota ? "quota" : (freq ? "freq" : "unknown"), code: code, detail: detail.slice(0, 200) }
+    }
+    var rateMessage = function (r) {
+      if (r.kind === "quota") return "接口额度或余额不足（HTTP 429），请到该模型平台充值或提高配额后重试"
+      if (r.kind === "freq") return "对方接口请求频率超限（HTTP 429），请稍后重试"
+      return "对方接口限流或余额不足（HTTP 429），请稍后重试"
+    }
     var testChatOnce = function (baseUrl, apiKey, model, messages, maxTokens, timeoutSec) {
       var b = String(baseUrl).replace(/\/+$/, "")
       var urls = [b + "/chat/completions", b + "/v1/chat/completions"]
@@ -586,7 +717,11 @@ routerAdd("POST", "/api/model-gw/test", (e) => {
           if (res.statusCode === 404 && i === 0) continue
           var elapsed = new Date().getTime() - started
           if (res.statusCode === 401 || res.statusCode === 403) return { ok: false, message: "认证失败，请检查 API Key 是否有效" }
-          if (res.statusCode === 429) return { ok: false, message: "对方接口限流或余额不足（HTTP 429），请稍后重试" }
+          if (res.statusCode === 429) {
+            var rr = rateReason(res.raw)
+            try { $app.logger().warn("model-gw test upstream 429", "model", model, "kind", rr.kind, "code", rr.code, "detail", rr.detail) } catch (lg) {}
+            return { ok: false, code: "rate_limit", message: rateMessage(rr) }
+          }
           if (res.statusCode >= 500) return { ok: false, message: "对方服务暂时不可用（HTTP " + res.statusCode + "），请稍后重试" }
           if (res.statusCode !== 200) {
             var detail = ""
@@ -708,6 +843,46 @@ routerAdd("POST", "/api/model-gw/chat", (e) => {
     var MIN_REASONING_RETRY_TOKENS = 1024
     var REASONING_RETRY_FACTOR = 4
     var MAX_CHAT_TOKENS = 16384
+    // R301 缺陷修复（2026-10-13 实测坐实）：429 分支原先在解析 res.raw **之前**就 return，
+    // 上游那句能区分「限流」与「余额不足」的 error.message 被整段丢弃 → 网关只能回一句
+    // 「限流或余额不足，请稍后重试」。后果实测坐实：xiaomi/mimo-v2.6-pro 与
+    // Intern/deepseek-v4-flash-vision 连续 4 次 429，无法判定是「等一会儿就好」还是
+    // 「必须去充值」，运维与用户都拿不到可行动结论（唯一可判的旁证是同账号
+    // 大模型/deepseek-v4-flash 退避 8s 后成功，证明该网关存在真实拥塞窗口）。
+    // 现补：① 先解析上游原文并分类；② 按分类给出可执行文案；
+    // ③ 原文进服务端日志（不进 UI 返回体，避免把上游内部信息泄给前端）。
+    // 分类只看「额度/余额」族词与「频率/QPS」族词两组，命中顺序即口径：
+    // 额度族优先（额度耗尽时也常同时报 rate limit，不能被误判成「等一会就好」）。
+    var rateReason = function (raw) {
+      var detail = ""
+      var code = ""
+      try {
+        var dj = JSON.parse(typeof raw === "string" ? raw : "")
+        if (dj) {
+          if (dj.error) {
+            if (dj.error.message) detail = String(dj.error.message)
+            if (dj.error.code) code = String(dj.error.code)
+          }
+          if (!detail && dj.message) detail = String(dj.message)
+          if (!code && dj.code) code = String(dj.code)
+        }
+      } catch (e) { detail = "" }
+      if (!detail && typeof raw === "string" && raw) detail = raw.slice(0, 200)
+      var hay = (code + " " + detail).toLowerCase()
+      // R301 口径校准（实测原文坐实）：quota 必须由原文直接说「额度/账户」才能成立。
+      // 原式含 exceed.{0,12}(limit|quota)，把实测的 "inference exceeds tpm/rpm limit"
+      // （纯速率限制，退避 25s 即成功）误判成额度耗尽→误导用户去充值。
+      // 去掉 exceed 泛匹配，改由 freq 族显式承接 tpm/rpm/exceeds 句式。
+      var quota = /insufficient[_\s-]*(balance|quota|credit)|quota[_\s-]*(exhaust|exceed|limit)|exceed[a-z]*[_\s-]*(your[_\s-]*(current[_\s-]*)?)?(quota|billing|balance)|balance[_\s-]*(insufficient|exceed|not[_\s-]*enough)|billing|arrears|account[_\s-]*(expired|deactivated|suspended)|余额不足|额度不足|额度耗尽|配额耗尽|超出额度|欠费|账户已/.test(hay)
+      var freq = /rate.?limit|too\s*many|qps|concurren|requests?\s+per|frequency|tpm|rpm|token[_\s-]*budget|exceed[a-z]*[_\s-]*(your[_\s-]*)?(token|tpm|rpm)|限流|频率|并发|过于?频繁|请求过多/.test(hay)
+      var kind = quota ? "quota" : (freq ? "freq" : "unknown")
+      return { kind: kind, code: code, detail: detail.slice(0, 200) }
+    }
+    var rateMessage = function (r) {
+      if (r.kind === "quota") return "接口额度或余额不足（HTTP 429），请到该模型平台充值或提高配额后重试"
+      if (r.kind === "freq") return "对方接口请求频率超限（HTTP 429），请稍后重试"
+      return "对方接口限流或余额不足（HTTP 429），请稍后重试"
+    }
     // 单次出站：URL 兜底 + 关思考参数兼容 + 响应解析。
     // 「思考耗尽预算」以 retryReasoning 标记返回，交外层 doChat 升预算重试（此处不自行重试，避免与 URL 循环纠缠）。
     var chatOnce = function (baseUrl, apiKey, model, messages, maxTokens, temperature, timeoutSec, disableThinking) {
@@ -743,7 +918,11 @@ routerAdd("POST", "/api/model-gw/chat", (e) => {
           }
           var elapsed = new Date().getTime() - started
           if (res.statusCode === 401 || res.statusCode === 403) return { ok: false, message: "认证失败，请检查所配置模型的 API Key 是否有效" }
-          if (res.statusCode === 429) return { ok: false, message: "所配置模型的接口限流或余额不足（HTTP 429），请稍后重试或切换模型" }
+          if (res.statusCode === 429) {
+            var rr = rateReason(res.raw)
+            try { $app.logger().warn("model-gw upstream 429", "model", model, "kind", rr.kind, "code", rr.code, "detail", rr.detail) } catch (lg) {}
+            return { ok: false, code: "rate_limit", kind: rr.kind, detail: rr.detail, message: rateMessage(rr) }
+          }
           if (res.statusCode >= 500) return { ok: false, message: "所配置模型的服务暂时不可用（HTTP " + res.statusCode + "），请稍后重试" }
           if (res.statusCode !== 200) {
             var detail = ""
@@ -842,7 +1021,7 @@ routerAdd("POST", "/api/model-gw/chat", (e) => {
     var plainKey = rec.get("api_key") ? unxorHex(rec.get("api_key")) : ""
     if (!plainKey) return e.json(200, { ok: false, code: "fallback_to_platform", message: "该配置缺少 API Key，将回退平台内置模型" })
     var r = doChat(String(rec.get("base_url") || ""), plainKey, useModel, messages, maxTokens, temperature, 120, body.disable_thinking === true)
-    if (!r.ok) return e.json(200, { ok: false, code: "upstream_error", message: r.message })
+    if (!r.ok) return e.json(200, { ok: false, code: r.code === "rate_limit" ? "rate_limit" : "upstream_error", kind: r.kind || "", detail: r.detail || "", message: r.message })
     $app.logger().info("model-gw chat ok", "user", userId, "config", rec.id, "model", useModel, "elapsed_ms", r.elapsed_ms)
     return e.json(200, { ok: true, text: r.text, model: useModel, config_name: String(rec.get("config_name") || ""), elapsed_ms: r.elapsed_ms, usage: r.usage })
   } catch (ex) {
