@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 291,
+  "round": 293,
   "backlog": [
     {
       "id": "r219-kbqa-coldstart-perf",
@@ -1224,8 +1224,9 @@
       "id": "r291-outline-coverage-gap",
       "priority": "P1",
       "module": "/bid-workspace",
-      "status": "open",
-      "issue": "P1·交付缺口：安庆二院实测大纲 toast 报「招标条款覆盖 17/60」（43 条未覆盖，页面有「一键补入」入口本轮未点）、「评分点承接 6/8（R7、R8 未承接）」。真实交付前必须补入并人工核对，否则未覆盖条款可能构成偏离。建议下一轮直接点「一键补入」验证该入口是否真能把 43 条落进大纲。"
+      "status": "closed",
+      "issue": "P1·交付缺口：安庆二院实测大纲 toast 报「招标条款覆盖 17/60」（43 条未覆盖，页面有「一键补入」入口本轮未点）、「评分点承接 6/8（R7、R8 未承接）」。真实交付前必须补入并人工核对，否则未覆盖条款可能构成偏离。建议下一轮直接点「一键补入」验证该入口是否真能把 43 条落进大纲。",
+      "resolution": "R293 已闭环：真实点过「一键补入」并修掉其假绿缺陷（只写大纲、不进章节清单）。实测确认补入后章节清单确实落章（14→15→16），并新增漂移诊断 + 「同步章节清单」入口。剩余人工动作：存量真缺章项目（贵港 21 / 7vco 31 / 建阳 22 / 杏林已修）需逐个打开覆盖面板点一次「同步章节清单」，再走正常生成。"
     },
     {
       "id": "r291-staged-outline-chapter-fail",
@@ -1233,6 +1234,20 @@
       "module": "/bid-workspace",
       "status": "open",
       "issue": "P2·机制可靠性：分步大纲生成时 3 个技术章展开失败（大数据量存储数据库能力证明 / 数据迁移与系统对接方案 / 安全保密与运维保障方案），系统按设计「交由结构修复或可手动补充」，但最终这 3 章都有正文（6,765 / 12,346 / 12,405 字），说明被后续流程补齐。该「失败→自动补齐」机制的触发条件与可靠性未专项验证，若某次没补齐就会留空章。"
+    },
+    {
+      "id": "r293-drift-autosync-on-confirm",
+      "priority": "P2",
+      "module": "/bid-workspace",
+      "status": "open",
+      "issue": "P2·源头治理：本轮只做「诊断 + 手动同步」，漂移仍会产生 —— 确认大纲时 chapters 与顶层节点是 1:1 快照，此后任何只改 bid_outline 的入口（含 AI 重新生成大纲、手动增删节点）都会再次漂移。建议把 alignChaptersWithOutline 接到「确认大纲」与「大纲重生成成功」两处落库出口（同样须遵守批量生成中拒写的竞态裁定），让提示条只在历史脏数据上出现；改动前先确认这两处不与 section_stats 下标对齐假设冲突。"
+    },
+    {
+      "id": "r293-duplicate-titled-top-nodes",
+      "priority": "P3",
+      "module": "/bid-workspace",
+      "status": "open",
+      "issue": "P3·口径遗留：杏林项目清单里存在两章同名「服务方案」（本轮修复前的既有数据，node_id 不重复，本轮只增不删故原样保留）。对齐函数按「id 优先 + 标题唯一兜底」认章，同名顶层节点会各成一章；若上游大纲真出现同名节点，需要决定是合并还是显式提示，避免导出时目录出现重复标题。属数据口径问题，非本轮引入。"
     }
   ],
   "closed": [
@@ -4751,6 +4766,21 @@
       "priority": "P0",
       "status": "closed",
       "summary": "全链路跑通：真实定稿招标文件 CG-AQ-2021-5149（168,227 字）→ 解析 21/21 → 大纲 26 章/197 节点/152 叶子（严格遵循招标目录）→ 14 技术章正文 176,474 字 → 交付体检 BLOCKER 3（对比存量 88，零系统缺陷）→ 真实 exportBidDocx 导出 .docx 121,854 字节，解包核对 173,175 字、硬事实与原文一致。交付样本留档 _eval/安庆二院投标文件-真实场景交付样本-2026-10-13.docx。"
+    },
+    {
+      "id": "r293-bid-clause-insert-chapter-sync",
+      "title": "标书主链路·四处「一键补入」的假绿缺陷：补入即同步章节清单（落点归一到节层 + 只增不删对齐 + 漂移诊断/手动同步）",
+      "priority": "P0",
+      "status": "closed",
+      "summary": "缺陷：bid_chapters（章节清单）才是正文生成与导出的唯一真源（顶层节点 1:1 成章、sections 只取直接子层），而条款/评分项/招标目录/技术参数四处「一键补入」只写 bid_outline，insertClauseIntoOutline 还能把节点挂进孙层或追加到树尾；覆盖核验却按大纲全深度叶子统计 —— 补入瞬间转绿、交付物里一个字都没有。真实库摸底 21 个项目：id 级漂移 81，其中标题也不在清单的真缺章 75（贵港分行 21、E2E 遗留空名项目 7vco 31、南平市建阳区总医院 22、厦门杏林 1；本轮后复测 80/74，杏林那条已修），另有安庆 b3h7w7nw9ap6gxs 6 个纯 id 漂移（标题已有章，绝不能重复建章）。修复：①落点归一 —— findTopLevelAncestorId + 重写 insertClauseIntoOutline，新小节只落「章 → 节」的节层、同名去重、无命中则新建顶层技术章插在最后一个技术章之后；②alignChaptersWithOutline —— 大纲与清单对齐，只增不删（清单里大纲已无对应的章原样保留，绝不删已有正文）、缺节一律追加到 sections 尾部（section_stats 按下标对齐，重排会把成品判成待补、重复付费）、id 优先标题兜底防重复建章；③四处补入统一收口 applyOutlineWithChapters，同一次 PATCH 同写 bid_outline + bid_chapters，批量生成中拒写（避开 bid_chapters 整数组与单章 PATCH 的已知竞态）；④diagnoseOutlineChapterDrift + describeOutlineSync + OutlineCoverage「漂移提示条 / 同步章节清单」入口，存量 74 个真缺章可一键修复，回执改为诚实报「新建 N 章待生成 / M 章新增小节可断点续跑」。零 AI 调用、零 collection、零 pb_hooks、零提示词改动。浏览器实测（厦门市杏林医院 69gzo840vy1b7wn）：漂移条显示「章节清单缺 1 个大纲顶层技术章（验收要求）」→ 点同步 → toast「新建 1 个章节（验收要求），已列入待生成清单」→ 章节 14→15、整页刷新后仍为 15（幂等、已持久化）→ 点单条「补入」→ 章节 15→16、待响应 14→13；DB 只读复核：大纲顶层 16 / 清单 16、真缺章 0、node_id 重复 0、唯一成稿章「服务方案」13,194 字正文未被覆盖。四门全绿：tsc -b exit 0；vitest run exit 0、Test Files 198 passed、Tests 2312 passed / 2 skipped（新增 clauseOutlineAlignment.test.ts 18 例，单文件单跑 18/18）；eslint 触及 6 文件与 HEAD 基线副本逐条同数（E8/W13，零新增 error，含 bidTypes 2 条 no-control-regex 属 lint-debt-01 维持裁定项）；vite build exit 0。过程记录：中途一轮全量跑曾出现 3 个失败套件，系并发工作流当时的在途未跟踪文件 scripts/recalc-*-r292.test.ts（顶层无 describe/it → No test suite found），本轮全程未触碰；该三文件随后被其自身移除，收轮前复测 198 文件全绿。",
+      "files": [
+        "src/pages/BidWorkspace/bidTypes.ts",
+        "src/pages/BidWorkspace/useBidWorkspace.ts",
+        "src/components/bid-workspace/OutlineCoverage.tsx",
+        "src/components/bid-workspace/ComposeStep.tsx",
+        "src/pages/BidWorkspace/BidWorkspacePage.tsx",
+        "src/pages/BidWorkspace/clauseOutlineAlignment.test.ts"
+      ]
     }
   ],
   "blocked": [
@@ -4785,7 +4815,7 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "R289–R291 真实场景端到端全链路跑通（安庆二院真实定稿招标文件 CG-AQ-2021-5149 / 168,227 字）。解析 21/21 项全中、0 failed 0 pending；大纲 26 顶层章 / 197 节点 / 152 叶子，且严格遵循招标文件规定目录（投标函→服务报价表→服务内容与质量要求响应表→服务方案→诚信投标承诺书…与原文 bid_outline_req 逐项一致）；14 个技术章全部生成 done、正文 176,474 字；真实 exportBidDocx 导出 .docx 121,854 字节，解包 word/document.xml 可读 173,175 字，硬事实全部与招标原文一致（安庆市第二人民医院 159 次、招标编号 4 次、代理机构 2 次、电子病历 277 次、DIP 108 次、FHIR 67 次）。交付体检：BLOCKER 仅 3（对比存量 19 项目 88），且全部是人工必办项（试迁移轮次待采购人定 ×2、同类业绩项数待公司填 ×1），零系统缺陷。本轮修掉 3 个此前从未暴露的缺陷：①UI 与生成门禁不同源导致假阻断（R289）②关键项判据把 miss（原文未提及）当失败，逐字取证证明真实招标文件根本没有「投标文件目录」专章（该要求由「投标文件格式」章表达），旧判据等于把所有真实项目永久阻断（R290）③大纲生成静默失败：模型返回英文推理散文时被喂给「JSON 语法修复器」空转，白花一次调用并掩盖根因，产出空大纲且界面无任何报错（R291）。另自查纠正一处我自己的操作失误：上轮为查端口强杀 headless chrome，打断逐项 checkpoint 落库销毁 20 分钟解析成果；先按代码竞态排查（persistChain 已串行化、upsertParseSection 只增不删），取证后确认为操作所致而非代码缺陷。",
+  "lastRoundSummary": "R293（轮次号 292 让位并发工作流，其曾以 scripts/recalc-*-r292.test.ts 占该号）修掉标书主链路的「假绿」：四处一键补入只写 bid_outline，而生成与导出的真源是章节清单 bid_chapters。现在补入 = 同一次 PATCH 落大纲 + 章节清单（落点归一到节层、只增不删、缺节追加尾部保 section_stats 下标、id 漂移按标题兜底不重复建章），并给出只读漂移诊断与「同步章节清单」按钮（可修存量 74 处真缺章），回执改为诚实报数。摸底：21 项目 / id 级漂移 81（其中真缺章 75；本轮后复测 80/74，杏林已修）。四门全绿（tsc 0、vitest exit 0 / 198 文件 / 2312 passed / 2 skipped，含新增 18 例；eslint 触及文件与 HEAD 基线逐条同数零新增；build 0）；浏览器实测 14→15→16 章并刷新持久化。零 collection / 零 pb_hooks / 零提示词改动。",
   "note": "靶子纠错：上一轮用的 D:\\tmp\\qafiles\\真实招标文件_三明市中西医结合医院.docx 经取证是自编模板稿（编号 XXXX、预算 XXXX万元、代理机构「按实际委托填写」、全文「投标文件目录」0 次），此前把「投标文件目录要求解析为空」算作系统缺陷是错的。新靶子源：D:\\重要文件\\A重要客户情况\\友商公司产品\\招标材料及方案\\ 下 37 份真实招标文件。",
   "masterDirective": {
     "setAt": "2026-10-12T22:28+08:00",

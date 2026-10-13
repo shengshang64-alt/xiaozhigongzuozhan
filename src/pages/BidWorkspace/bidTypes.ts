@@ -2122,7 +2122,16 @@ export function assignClausesToChapters(clauses: RequirementClause[], chapters: 
 export function clauseToNodeTitle(text: string): string {
   let t = cleanClause(text)
   // 取首句：句读、顿号、斜杠均视为并列边界（顿号常分隔要点，取首项即达意）
-  t = (t.split(/[，。；;：:、（(／/]/)[0] ?? t).trim()
+  const segs = t
+    .split(/[，。；;：:、（(／/]/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  t = segs[0] ?? t
+  // R292：首段不足 4 字时，其与条款原文的公共子串将低于覆盖阈值（clauseMatchesTitle 要求 ≥4），
+  // 补入节点会被自己的判据判「未覆盖」——「质保期：应用软件自验收通过之日起2年」提炼成
+  // 「质保期」后公共子串仅 3 字，补入瞬间即假红。向后拼接次段直到 ≥4 字。
+  let si = 1
+  while (t.length < 4 && si < segs.length) t += segs[si++]
   // 剥句首引导词，避免整句照搬（如「必须针对…」→「针对…」）
   t = t.replace(/^(?:必须|应当|应|须|需|要求|按照|遵照|根据|若|如|保证|确保|承诺)+/, "")
   // 限长 18；超长优先回缩到最近的连接词边界，避免句中悬空截断
@@ -2138,7 +2147,27 @@ export function clauseToNodeTitle(text: string): string {
   return t.trim() || "招标要求响应"
 }
 
-/** 把一条未响应条款补入大纲：按标题相似度挂到最相关技术章下（商务骨架章不承担条款覆盖）；无匹配则新建章节 */
+/** R292：节点所属顶层章 id（顶层节点返回自身），供条款落点归一到「章 → 节」的节层 */
+export function findTopLevelAncestorId(nodes: OutlineNode[], targetId: string): string {
+  const hit = (list: OutlineNode[], rootId: string): string => {
+    for (const n of list) {
+      const rid = rootId || n.id
+      if (n.id === targetId) return rid
+      const deeper = hit(n.children ?? [], rid)
+      if (deeper) return deeper
+    }
+    return ""
+  }
+  return hit(nodes ?? [], "")
+}
+
+/**
+ * 把一条未响应条款补入大纲：按标题相似度归到最相关的**顶层技术章直接子层（节层）**，商务骨架章不承担条款覆盖。
+ * R292 修正两处会造成「假绿」的落点：旧实现①可把新节点挂在孙层及更深处、②无命中时追加到整棵树尾部，
+ * 两者都不在「顶层节点 → 章、直接子层 → 小节」的章节清单口径内，正文生成与导出根本看不到它们，
+ * 而条款覆盖核验按全深度叶子统计，于是补入瞬间转绿、交付物却依旧缺响应。
+ * 无相似命中时新建顶层技术章，插在最后一个技术章之后（不打乱招标目录里商务骨架章的顺序）。
+ */
 export function insertClauseIntoOutline(nodes: OutlineNode[], clause: RequirementClause): OutlineNode[] {
   const child: OutlineNode = { id: makeUid(), title: clauseToNodeTitle(clause.text), children: [] }
   let bestId = ""
@@ -2156,14 +2185,118 @@ export function insertClauseIntoOutline(nodes: OutlineNode[], clause: Requiremen
     }
   }
   walk(nodes, 0)
-  if (!bestId) return [...nodes, child]
+  // 命中任意层级都归一到其所属顶层章，新小节固定落在「章 → 节」的节层（生成与导出的唯一可见层）
+  const chapterId = bestId ? findTopLevelAncestorId(nodes, bestId) : ""
+  if (!chapterId) {
+    const out = [...nodes]
+    let lastTech = -1
+    out.forEach((n, i) => {
+      if (!isBizPart(n)) lastTech = i
+    })
+    out.splice(lastTech < 0 ? out.length : lastTech + 1, 0, { ...child, part: "tech" })
+    return out
+  }
   const addUnder = (list: OutlineNode[]): OutlineNode[] =>
-    list.map((n) =>
-      n.id === bestId
-        ? { ...n, children: [...(n.children ?? []), child] }
-        : { ...n, children: addUnder(n.children ?? []) },
-    )
+    list.map((n) => {
+      if (n.id !== chapterId) return n.children?.length ? { ...n, children: addUnder(n.children) } : n
+      // 同层同名小节去重：重复点「补入」不应把同一条款写两遍（旧实现按 id 命中会无限累加）
+      const kids = n.children ?? []
+      if (kids.some((k) => k.title === child.title)) return n
+      return { ...n, children: [...kids, child] }
+    })
   return addUnder(nodes)
+}
+
+/**
+ * R292：大纲顶层节点 ↔ 章节清单（bid_chapters）对齐——四处「一键补入」与存量漂移修复的单一真源。
+ * 生成（runBulkGenerate 候选）与导出（chaptersToText）的真源都是章节清单，只写 bid_outline 的补入进不了正文。
+ * 严格只增不删、只增小节不删小节：
+ *  - 大纲有、清单同 id 无 → 同标题也无（唯一判定）时新建 pending 章（含 part 归属），否则保持原状不建重复章；
+ *  - 命中已有章时把大纲里有、sections 里没有的小节**追加**到 sections 尾部（不重排既有小节，
+ *    以免 planSectionResume 按下标对齐的 section_stats 失配，把已完成小节判成全部待补而重复付费）；
+ *  - content / gen_status / section_stats / figures 一律不动，已有正文与生成状态零破坏。
+ * 追加后 sections.length > section_stats.length 会被 hasPendingSections 认出「仍有待补小节」，
+ * 「继续生成」/「一键补齐」按既有小节断点续跑通道只写新小节。
+ */
+export function alignChaptersWithOutline(
+  nodes: OutlineNode[],
+  chapters: Chapter[],
+): { chapters: Chapter[]; addedTitles: string[]; refreshedCount: number } {
+  const list = (nodes ?? []).filter((n) => n.title.trim())
+  const old = chapters ?? []
+  const byId = new Map(old.map((c) => [c.node_id, c]))
+  const titleCount = new Map<string, number>()
+  for (const c of old) titleCount.set(c.title, (titleCount.get(c.title) ?? 0) + 1)
+  const seen = new Set<string>()
+  const next: Chapter[] = []
+  const addedTitles: string[] = []
+  let refreshedCount = 0
+  for (const n of list) {
+    const kids = (n.children ?? []).map((k) => k.title).filter((t) => t.trim())
+    // id 优先；id 对不上但标题已有唯一章（大纲重新生成/结构修复后的 id 漂移）时认它为同一章，不新建重复章
+    const found =
+      byId.get(n.id) ??
+      ((titleCount.get(n.title) ?? 0) === 1 ? old.find((c) => c.title === n.title && !seen.has(c.title)) : undefined)
+    if (!found) {
+      seen.add(n.title)
+      next.push({
+        node_id: n.id,
+        title: n.title,
+        sections: kids,
+        content: "",
+        gen_status: "pending",
+        ...(n.part ? { part: n.part } : {}),
+      })
+      addedTitles.push(n.title)
+      continue
+    }
+    seen.add(found.title)
+    const missing = kids.filter((t) => !(found.sections ?? []).includes(t))
+    if (!missing.length) {
+      next.push(found)
+      continue
+    }
+    refreshedCount += 1
+    next.push({ ...found, sections: [...(found.sections ?? []), ...missing] })
+  }
+  // 清单里大纲已无对应的条目原样保留在尾部：宁可多一章，也不删任何已有正文
+  const kept = new Set(next.map((c) => c.node_id))
+  for (const c of old) if (!kept.has(c.node_id)) next.push(c)
+  return { chapters: next, addedTitles, refreshedCount }
+}
+
+/** R292 只读诊断（零改动）：大纲顶层技术章与章节清单的两类不一致，供面板诚实暴露 */
+export type OutlineChapterDrift = {
+  /** 清单里既无同 id 也无同标题 → 正文与导出必然缺这一章（可一键同步补入待生成清单） */
+  missingTitles: string[]
+  /** id 对不上但标题已有章（大纲重新生成/结构修复后的 id 漂移）→ 不新建重复章，仅提示 */
+  relinkTitles: string[]
+}
+
+export function diagnoseOutlineChapterDrift(nodes: OutlineNode[], chapters: Chapter[]): OutlineChapterDrift {
+  const ids = new Set((chapters ?? []).map((c) => c.node_id))
+  const titles = new Set((chapters ?? []).map((c) => c.title))
+  const missingTitles: string[] = []
+  const relinkTitles: string[] = []
+  for (const n of nodes ?? []) {
+    if (isBizPart(n) || !n.title.trim() || ids.has(n.id)) continue
+    if (titles.has(n.title)) relinkTitles.push(n.title)
+    else missingTitles.push(n.title)
+  }
+  return { missingTitles, relinkTitles }
+}
+
+/** R292 补入后的诚实回执：说清新建了几章（待生成）、几章新增了几小节（可断点续跑），不把「进不了正文」包装成已完成 */
+export function describeOutlineSync(
+  headline: string,
+  aligned: { addedTitles: string[]; refreshedCount: number },
+): string {
+  const parts: string[] = []
+  const added = aligned.addedTitles.length
+  if (added) parts.push(`新建 ${added} 个章节（${aligned.addedTitles.slice(0, 3).join("、")}${added > 3 ? " 等" : ""}），已列入待生成清单`)
+  if (aligned.refreshedCount) parts.push(`${aligned.refreshedCount} 个已有章节补入新小节，点「继续生成」只写新小节、不重复付费`)
+  if (!parts.length) parts.push("落点已在章节清单中，无需重新生成")
+  return `${headline}：${parts.join("；")}`
 }
 
 // ------------------------------ 技术偏离表（条款级响应映射） ------------------------------

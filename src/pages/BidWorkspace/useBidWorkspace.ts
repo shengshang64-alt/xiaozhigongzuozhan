@@ -117,9 +117,12 @@ import {
   daysUntil,
   defaultGenOptions,
   defaultParseConfig,
+  alignChaptersWithOutline,
   defenseRefChapterText,
   deriveStage,
+  describeOutlineSync,
   deviationStats,
+  diagnoseOutlineChapterDrift,
   effectiveGlobalFacts,
   effectiveGlobalFactsLines,
   effectiveMaxFigures,
@@ -3918,7 +3921,52 @@ export function useBidWorkspace() {
     [coverageNodes, activeProject?.parse_report],
   )
 
-  /** 把未响应条款补入大纲：按标题相似度挂到最相关章节下，无匹配新建章节；已确认章节时同步小节清单 */
+  /**
+   * R292 四处「一键补入」与存量同步的统一收口：写 bid_outline 的同一次 PATCH 里把章节清单（bid_chapters）
+   * 对齐。生成候选（runBulkGenerate/startBulkGenerate）与导出正文（chaptersToText）的真源都是章节清单，
+   * 只写大纲的补入永远进不了正文，而条款/评分/参数覆盖核验都按大纲叶子统计——补入瞬间转绿即假绿。
+   * 批量生成进行中拒写：bid_chapters 整数组覆盖会踩掉在途的单章 PATCH（沿用既有竞态裁定）。
+   */
+  const applyOutlineWithChapters = useCallback(
+    (nextOutline: OutlineNode[]): ReturnType<typeof alignChaptersWithOutline> | null => {
+      if (bulkGeneratingRef.current) {
+        toast.error("批量生成进行中，请先停止批量或等待其完成，再补入/同步章节清单")
+        return null
+      }
+      const cur = activeProjectRef.current
+      const aligned = alignChaptersWithOutline(nextOutline, cur?.bid_chapters ?? [])
+      updateProject({ bid_outline: nextOutline, bid_chapters: aligned.chapters })
+      return aligned
+    },
+    [updateProject],
+  )
+
+  /** R292 只读诊断（零改动、零 AI）：大纲顶层技术章在章节清单里既无同 id 也无同标题 → 正文与导出必缺这一章 */
+  const outlineChapterDrift = useMemo(
+    () => diagnoseOutlineChapterDrift(coverageNodes, activeProject?.bid_chapters ?? []),
+    [coverageNodes, activeProject?.bid_chapters],
+  )
+
+  /** R292 一键同步章节清单：把大纲里有、清单里缺的章与小节补进 bid_chapters（只增不删，不动任何已有正文） */
+  const syncOutlineChapters = useCallback(() => {
+    if (blockIfArchived()) return
+    const cur = activeProjectRef.current
+    if (!cur) return
+    const base = outlineDraft.length ? outlineDraft : cur.bid_outline ?? []
+    if (!base.length) {
+      toast.error("大纲为空，无可同步的章节")
+      return
+    }
+    const aligned = applyOutlineWithChapters(base)
+    if (!aligned) return
+    if (!aligned.addedTitles.length && !aligned.refreshedCount) {
+      toast.info("章节清单与大纲已一致，无需同步")
+      return
+    }
+    toast.success(describeOutlineSync("章节清单已与大纲同步（新增章待生成、新小节可断点续跑）", aligned))
+  }, [applyOutlineWithChapters, blockIfArchived, outlineDraft])
+
+  /** 把未响应条款补入大纲：落点归一到顶层技术章的节层，并同一次写入对齐章节清单（补入即进正文与导出） */
   const addClausesToOutline = useCallback(
     (clauseIds: string[]) => {
       if (blockIfArchived()) return // 循环 5 A3：归档只读
@@ -3932,22 +3980,11 @@ export function useBidWorkspace() {
       let next = base
       for (const cl of wanted) next = insertClauseIntoOutline(next, cl)
       setOutlineDraft(next)
-      const cur = activeProjectRef.current
-      const patch: Partial<BidProjectRecord> = { bid_outline: next }
-      if (cur?.bid_chapters.length) {
-        patch.bid_chapters = cur.bid_chapters.map((c) => {
-          const node = next.find((n) => n.id === c.node_id)
-          return node ? { ...c, sections: (node.children ?? []).map((k) => k.title) } : c
-        })
-      }
-      updateProject(patch)
-      toast.success(
-        wanted.length > 1
-          ? `已把 ${wanted.length} 条未响应条款补入大纲，重新生成对应章节正文即可落实响应`
-          : "已补入大纲，重新生成对应章节正文即可落实响应",
-      )
+      const aligned = applyOutlineWithChapters(next)
+      if (!aligned) return
+      toast.success(describeOutlineSync(`已把 ${wanted.length} 条未响应条款补入大纲并同步章节清单`, aligned))
     },
-    [activeProject?.bid_outline, blockIfArchived, outlineClauses, outlineDraft, updateProject],
+    [activeProject?.bid_outline, applyOutlineWithChapters, blockIfArchived, outlineClauses, outlineDraft],
   )
 
   const addClauseToOutline = useCallback((clauseId: string) => addClausesToOutline([clauseId]), [addClausesToOutline])
@@ -3980,14 +4017,21 @@ export function useBidWorkspace() {
       title: m.name.trim(),
       children: [],
       part: "tech" as const,
-      description: `响应评分项 ${m.id}（${m.score} 分）`,
+      // R292：description 必须用 collectResponseAnnotations 认可的 [响应:Rx] 方括号标注格式。
+      // 旧文案「响应评分项 R7（2 分）」不含方括号，标注收集正则永远匹配不到，
+      // 补入的拿分章在评分体检里 covered 恒为 false——补了也拿不到分（假红）。
+      description: `[响应:${m.id}] 评分项补入（${m.score} 分）`,
     }))
     const next = [...base, ...add]
     setOutlineDraft(next)
-    updateProject({ bid_outline: next })
+    // R292：新建顶层章同一次写入补进章节清单，否则「拿分章」永远不在生成候选与导出正文里
+    const aligned = applyOutlineWithChapters(next)
+    if (!aligned) return
     const gained = Math.round(toAdd.reduce((a, m) => a + m.score, 0) * 10) / 10
-    toast.success(`已把 ${add.length} 个未落点评分项补为技术章节（涉及 ${gained} 分），重新生成对应章节正文即可拿分`)
-  }, [activeProject?.bid_outline, blockIfArchived, outlineDraft, scoreCheckup, updateProject])
+    toast.success(
+      describeOutlineSync(`已把 ${add.length} 个未落点评分项补为技术章节（涉及 ${gained} 分）并同步章节清单`, aligned),
+    )
+  }, [activeProject?.bid_outline, applyOutlineWithChapters, blockIfArchived, outlineDraft, scoreCheckup])
 
   /** R-023 补入招标目录中缺失的条目为顶层章 */
   const addMissingCatalogToOutline = useCallback(() => {
@@ -4002,9 +4046,11 @@ export function useBidWorkspace() {
     const add: OutlineNode[] = toAdd.map((m) => ({ id: makeUid(), title: m.name.trim(), children: [], origin: 'tender' as const }))
     const next = [...base, ...add]
     setOutlineDraft(next)
-    updateProject({ bid_outline: next })
-    toast.success(`已补入 ${add.length} 个招标目录缺失条目为顶层章，请重新生成对应正文`)
-  }, [activeProject?.bid_outline, blockIfArchived, catalogDiff, outlineDraft, updateProject])
+    // R292：招标目录缺章是废标级风险，补入必须同时进章节清单才会出现在正文与导出里
+    const aligned = applyOutlineWithChapters(next)
+    if (!aligned) return
+    toast.success(describeOutlineSync(`已补入 ${add.length} 个招标目录缺失条目为顶层章并同步章节清单`, aligned))
+  }, [activeProject?.bid_outline, applyOutlineWithChapters, blockIfArchived, catalogDiff, outlineDraft])
 
   // 留空时的体量估算页数（仅作设置条参考小字与预算折算兜底，不再静默顶替用户已保存的页数）
   const estimatedPages = useMemo(
@@ -6738,9 +6784,11 @@ export function useBidWorkspace() {
     let next = base
     for (const r of missing) next = insertClauseIntoOutline(next, { id: r.id, text: r.text, source: r.source })
     setOutlineDraft(next)
-    updateProject({ bid_outline: next })
-    toast.success(`已把 ${missing.length} 条未覆盖技术参数补入大纲，重新生成对应章节正文即可落实响应`)
-  }, [activeProject?.bid_outline, blockIfArchived, outlineDraft, techParamCoverage, updateProject])
+    // R292：同上——落点归一到节层后，参数小节同样要写进章节清单才会被生成
+    const aligned = applyOutlineWithChapters(next)
+    if (!aligned) return
+    toast.success(describeOutlineSync(`已把 ${missing.length} 条未覆盖技术参数补入大纲并同步章节清单`, aligned))
+  }, [activeProject?.bid_outline, applyOutlineWithChapters, blockIfArchived, outlineDraft, techParamCoverage])
 
   const runDeviationTable = useCallback(async () => {
     flushEditingContent()
@@ -8937,6 +8985,9 @@ export function useBidWorkspace() {
     uncoveredClauses,
     addClauseToOutline,
     addAllClausesToOutline,
+    // R292 大纲/章节清单漂移诊断与一键同步（零 AI、只增不删）
+    outlineChapterDrift,
+    syncOutlineChapters,
     // R-025 评分覆盖体检（按分值）
     scoreCheckup,
     addUncoveredScoringToOutline,

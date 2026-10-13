@@ -159,6 +159,8 @@ type ComposeStepProps = Pick<
   | "uncoveredClauses"
   | "addClauseToOutline"
   | "addAllClausesToOutline"
+  | "outlineChapterDrift"
+  | "syncOutlineChapters"
   | "clauseGranularity"
   | "setClauseGranularity"
   | "deviationClauseCount"
@@ -729,6 +731,8 @@ export function ComposeStep(p: ComposeStepProps) {
                 uncoveredClauses={p.uncoveredClauses}
                 addClauseToOutline={p.addClauseToOutline}
                 addAllClausesToOutline={p.addAllClausesToOutline}
+                outlineChapterDrift={p.outlineChapterDrift}
+                syncOutlineChapters={p.syncOutlineChapters}
               />
               <OutlineTreeEditor
                 nodes={p.outlineDraft}
@@ -845,6 +849,8 @@ export function ComposeStep(p: ComposeStepProps) {
                 uncoveredClauses={p.uncoveredClauses}
                 addClauseToOutline={p.addClauseToOutline}
                 addAllClausesToOutline={p.addAllClausesToOutline}
+                outlineChapterDrift={p.outlineChapterDrift}
+                syncOutlineChapters={p.syncOutlineChapters}
               />
             </div>
           </div>

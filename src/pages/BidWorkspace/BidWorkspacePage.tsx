@@ -430,6 +430,8 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               uncoveredClauses={p.uncoveredClauses}
               addClauseToOutline={p.addClauseToOutline}
               addAllClausesToOutline={p.addAllClausesToOutline}
+              outlineChapterDrift={p.outlineChapterDrift}
+              syncOutlineChapters={p.syncOutlineChapters}
               clauseGranularity={p.clauseGranularity}
               setClauseGranularity={p.setClauseGranularity}
               deviationClauseCount={p.deviationClauseCount}
