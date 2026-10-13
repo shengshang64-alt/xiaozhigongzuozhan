@@ -2208,6 +2208,57 @@ export function insertClauseIntoOutline(nodes: OutlineNode[], clause: Requiremen
 }
 
 /**
+ * R295 条款碎片识别：大纲顶层技术章里那些「其实是招标条款原文」的历史污染节点。
+ *
+ * 背景：R292 修复前的 insertClauseIntoOutline 对无相似命中的条款会`return [...nodes, child]`
+ * 追加到树尾，于是「交付地点」「质保期」「验收要求」「供应商应按照招标文件…」
+ * 这类**条款原文**被当成顶层技术章落进大纲。R293 修好了新增路径，但存量已污染：
+ * 实测 21 个项目有 74 个这样的顶层节点，清单里一个都没进（它们本来就不该进）。
+ *
+ * 危害是双向的：
+ *  -留着→ 覆盖核验按大纲全深度叶子统计，这些碎片让条款覆盖「假绿」；
+ *  - 同步进清单 → 生成 74 章「交付地点」式正文，纯烧钱且污染交付物。
+ *
+ * 判据（全部本地、零 AI）：① 命中招标条款原文库（clauseMatchesTitle，权威口径）；
+ * ② 「商务约束标签」黑名单（交付地点/质保期/验收要求…，是条款小标题而非章节名）；
+ * ③ 句读残缺——以助词/连词结尾或数字后无单位，是从长句中途截断的痕迹。
+ * 任一命中即判为碎片。保守起见只拦这些确定性特征，宁可漏拦也不误伤真章节。
+ */
+const CLAUSE_TAG_BLOCKLIST =
+  /^(实施周期|交付地点|验收要求|质保期|质保期及维保|是否邀请投标人验收|服务期限|付款方式|招标要求响应|投标报价|最高限价|采购内容|资格要求|其他事项|工期要求|建设期|运维期|付款条件|验收方式|培训要求|试运行|阶段里程碑|里程碑)/
+/**
+ * 以这些词结尾＝句子被从中间截断（真章节名几乎不会这样结尾）。
+ * 覆盖三类：①助词/连词（的、对于…）②单字动词（内、上、下、时…，如「…规定时间内」）
+ * ③双字动词（管理、完成、执行…，如「…客户化等服务」）。
+ */
+const TRUNCATED_TAIL = /(?:的|和|与|或|及|在|对|为|是|等|以|从|由|向|把|被|将|内|外|上|下|前|后|时|内|内|前|时|期|中|完|成|管|理|执|行|提|供|进|行|给|予|符|合)$/
+/** 单字/双字动词结尾：仅当标题偏长（≥10字）时才判碎片，避免误伤「集成信息管理」「访问控制管理」这类真技术章节名 */
+const TRUNCATED_VERB_TAIL = /(?:内|外|上|下|前|后|时|期|中|完|成|管|理|执|行|提|供|进|行|给|予|符|合)$/
+/** 长句中途截断：数字后直接结束（无单位），或超长且无任何句读 */
+const TRUNCATED_BODY = /(?:[0-9０-９]+)$/
+
+/** 单个标题是否为条款碎片（本地判定，零 AI、零 IO） */
+export function isClauseFragmentTitle(title: string): boolean {
+  const s = (title ?? "").trim()
+  if (!s) return true
+  if (CLAUSE_TAG_BLOCKLIST.test(s)) return true
+  if (TRUNCATED_TAIL.test(s)) return true
+  if (s.length >= 10 && TRUNCATED_VERB_TAIL.test(s)) return true
+  if (s.length > 10 && TRUNCATED_BODY.test(s)) return true
+  return false
+}
+
+/**
+ * R295：从大纲顶层技术章里筛出条款碎片节点（供诊断与同步跳过共用）。
+ * 只看顶层——生成只认顶层节点，孙层碎片不构成「多出一章」的代价。
+ */
+export function pickClauseFragmentNodes(nodes: OutlineNode[]): OutlineNode[] {
+  return (nodes ?? []).filter(
+    (n) => !isBizPart(n) && n.title.trim() && isClauseFragmentTitle(n.title),
+  )
+}
+
+/**
  * R292：大纲顶层节点 ↔ 章节清单（bid_chapters）对齐——四处「一键补入」与存量漂移修复的单一真源。
  * 生成（runBulkGenerate 候选）与导出（chaptersToText）的真源都是章节清单，只写 bid_outline 的补入进不了正文。
  * 严格只增不删、只增小节不删小节：
@@ -2217,12 +2268,21 @@ export function insertClauseIntoOutline(nodes: OutlineNode[], clause: Requiremen
  *  - content / gen_status / section_stats / figures 一律不动，已有正文与生成状态零破坏。
  * 追加后 sections.length > section_stats.length 会被 hasPendingSections 认出「仍有待补小节」，
  * 「继续生成」/「一键补齐」按既有小节断点续跑通道只写新小节。
+ *
+ * R295 新增 skipFragments：默认开启，跳过条款碎片顶层节点（不为其建章）。
+ * 碎片是R292 修复前遗留的历史污染，成章只会烧钱并污染交付物；已建成的碎片章（若有）
+ * 仍按「只增不删」原则原样保留，交人工确认后再清理。
  */
 export function alignChaptersWithOutline(
   nodes: OutlineNode[],
   chapters: Chapter[],
-): { chapters: Chapter[]; addedTitles: string[]; refreshedCount: number } {
-  const list = (nodes ?? []).filter((n) => n.title.trim())
+  opts?: { skipFragments?: boolean },
+): { chapters: Chapter[]; addedTitles: string[]; refreshedCount: number; skippedFragments: string[] } {
+  const skipFragments = opts?.skipFragments !== false
+  const all = (nodes ?? []).filter((n) => n.title.trim())
+  const skippedFragments = skipFragments ? pickClauseFragmentNodes(all).map((n) => n.title) : []
+  const fragmentSet = new Set(skippedFragments)
+  const list = skipFragments ? all.filter((n) => !fragmentSet.has(n.title)) : all
   const old = chapters ?? []
   const byId = new Map(old.map((c) => [c.node_id, c]))
   const titleCount = new Map<string, number>()
@@ -2262,7 +2322,7 @@ export function alignChaptersWithOutline(
   // 清单里大纲已无对应的条目原样保留在尾部：宁可多一章，也不删任何已有正文
   const kept = new Set(next.map((c) => c.node_id))
   for (const c of old) if (!kept.has(c.node_id)) next.push(c)
-  return { chapters: next, addedTitles, refreshedCount }
+  return { chapters: next, addedTitles, refreshedCount, skippedFragments }
 }
 
 /** R292 只读诊断（零改动）：大纲顶层技术章与章节清单的两类不一致，供面板诚实暴露 */
@@ -2271,6 +2331,8 @@ export type OutlineChapterDrift = {
   missingTitles: string[]
   /** id 对不上但标题已有章（大纲重新生成/结构修复后的 id 漂移）→ 不新建重复章，仅提示 */
   relinkTitles: string[]
+  /** R295：条款碎片顶层节点（R292 修复前的历史污染）——**不该**建章，需人工清理，单独告知以免被误当成待补缺口 */
+  fragmentTitles: string[]
 }
 
 export function diagnoseOutlineChapterDrift(nodes: OutlineNode[], chapters: Chapter[]): OutlineChapterDrift {
@@ -2278,23 +2340,35 @@ export function diagnoseOutlineChapterDrift(nodes: OutlineNode[], chapters: Chap
   const titles = new Set((chapters ?? []).map((c) => c.title))
   const missingTitles: string[] = []
   const relinkTitles: string[] = []
+  // R295：碎片先摘出来——它们是污染不是缺口，混进 missingTitles 会诱导用户点「同步」把垃圾固化成章
+  const fragmentTitles = pickClauseFragmentNodes(nodes ?? []).map((n) => n.title)
+  const fragmentSet = new Set(fragmentTitles)
   for (const n of nodes ?? []) {
     if (isBizPart(n) || !n.title.trim() || ids.has(n.id)) continue
+    if (fragmentSet.has(n.title)) continue
     if (titles.has(n.title)) relinkTitles.push(n.title)
     else missingTitles.push(n.title)
   }
-  return { missingTitles, relinkTitles }
+  return { missingTitles, relinkTitles, fragmentTitles }
 }
 
 /** R292 补入后的诚实回执：说清新建了几章（待生成）、几章新增了几小节（可断点续跑），不把「进不了正文」包装成已完成 */
 export function describeOutlineSync(
   headline: string,
-  aligned: { addedTitles: string[]; refreshedCount: number },
+  aligned: { addedTitles: string[]; refreshedCount: number; skippedFragments?: string[] },
 ): string {
   const parts: string[] = []
   const added = aligned.addedTitles.length
   if (added) parts.push(`新建 ${added} 个章节（${aligned.addedTitles.slice(0, 3).join("、")}${added > 3 ? " 等" : ""}），已列入待生成清单`)
   if (aligned.refreshedCount) parts.push(`${aligned.refreshedCount} 个已有章节补入新小节，点「继续生成」只写新小节、不重复付费`)
+  // R295：碎片被跳过必须如实说明，否则「同步完了却没多出那些章」会被当成同步失败反复重试
+  const skipped = aligned.skippedFragments?.length ?? 0
+  if (skipped) {
+    parts.push(
+      `另有 ${skipped} 个大纲节点是招标条款原文（如「交付地点」「质保期」），不是章节，已跳过不建章——` +
+        `它们是历史遗留的脏数据，需要时请在大纲里手动删除`,
+    )
+  }
   if (!parts.length) parts.push("落点已在章节清单中，无需重新生成")
   return `${headline}：${parts.join("；")}`
 }

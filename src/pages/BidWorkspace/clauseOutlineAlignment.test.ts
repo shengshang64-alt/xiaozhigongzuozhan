@@ -15,6 +15,8 @@ import {
   diagnoseOutlineChapterDrift,
   findTopLevelAncestorId,
   insertClauseIntoOutline,
+  isClauseFragmentTitle,
+  pickClauseFragmentNodes,
 } from "./bidTypes"
 import { hasPendingSections } from "./chapterCompletion"
 import type { Chapter, OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
@@ -158,7 +160,11 @@ describe("diagnoseOutlineChapterDrift 两态（真缺章 vs id 漂移）", () =>
       { id: "z1", title: "投标函", children: [], part: "biz" },
       { id: "z2", title: "   ", children: [] },
     ]
-    expect(diagnoseOutlineChapterDrift(nodes, [])).toEqual({ missingTitles: [], relinkTitles: [] })
+    // R295 起诊断返回三态（新增 fragmentTitles），故断言落到前两态上而非整对象深比较
+    const d = diagnoseOutlineChapterDrift(nodes, [])
+    expect(d.missingTitles).toEqual([])
+    expect(d.relinkTitles).toEqual([])
+    expect(d.fragmentTitles).toEqual([])
   })
 })
 
@@ -320,5 +326,153 @@ describe("R294「确认大纲」清空既有正文的二次确认", () => {
     // content: "" + gen_status: "pending" 的重建写法必须仍在（若被改成保留正文，本测试提醒复核口径变更）
     expect(hook).toMatch(/content: ""/)
     expect(hook).toMatch(/gen_status: "pending" as const/)
+  })
+})
+
+// ---------- R295 条款碎片顶层节点：同步章节清单时必须跳过，否则生成 74 章「交付地点」式垃圾 ----------
+
+describe("R295 条款碎片识别（isClauseFragmentTitle）", () => {
+  it("商务约束标签判为碎片：招标条款的小标题，不是章节名", () => {
+    for (const t of ["交付地点", "验收要求", "质保期", "实施周期", "是否邀请投标人验收", "招标要求响应", "试运行"]) {
+      expect(isClauseFragmentTitle(t), t).toBe(true)
+    }
+  })
+
+  it("句读残缺判为碎片：从长句中途截断的痕迹（真章节名不会这样结尾）", () => {
+    for (const t of ["供应商应按照招标文件、合同在规定时间内", "确需更换的", "维护期满后", "驻点人员离职或调离的"]) {
+      expect(isClauseFragmentTitle(t), t).toBe(true)
+    }
+  })
+
+  it("长句数字后无单位判为碎片", () => {
+    expect(isClauseFragmentTitle("供应商收到招标人支付第一阶段款之日起60")).toBe(true)
+  })
+
+  it("真章节名不得被误伤（回归优先：宁可漏拦也不误伤）", () => {
+    const real = [
+      "项目理解与总体建设方案",
+      "医院信息管理系统（HIS）建设方案",
+      "电子病历系统（EMR）建设方案",
+      "临床协同与辅助系统建设方案",
+      "项目实施组织与进度计划",
+      "质量保障与测试验收方案",
+      "培训方案与知识转移",
+      "售后服务与运维保障方案",
+      "应急响应与安全保障方案",
+      "技术需求要点",
+    ]
+    for (const t of real) expect(isClauseFragmentTitle(t), t).toBe(false)
+  })
+
+  it("pickClauseFragmentNodes 只摘顶层技术章里的碎片（商务章与真章节都不误伤）", () => {
+    const picked = pickClauseFragmentNodes([
+      { id: "k", title: "项目理解与总体建设方案", children: [] },
+      { id: "f", title: "交付地点", children: [] },
+      { id: "b", title: "投标函", children: [], part: "biz" },
+      { id: "e", title: "  ", children: [] },
+    ])
+    expect(picked.map((n) => n.title)).toEqual(["交付地点"])
+  })
+
+  it("空标题判为碎片（不可建章）", () => {
+    expect(isClauseFragmentTitle("")).toBe(true)
+    expect(isClauseFragmentTitle("   ")).toBe(true)
+  })
+})
+
+describe("R295 同步章节清单时跳过碎片（防止把脏数据固化成章）", () => {
+  const outline: OutlineNode[] = [
+    { id: "k1", title: "项目理解与总体建设方案", children: [{ id: "s1", title: "建设背景", children: [] }], part: "tech" },
+    { id: "k2", title: "售后运维", children: [] },
+    { id: "f1", title: "交付地点", children: [] },
+    { id: "f2", title: "验收要求", children: [] },
+    { id: "f3", title: "供应商应按照招标文件、合同在规定时间内", children: [{ id: "x", title: "子", children: [] }] },
+    { id: "biz", title: "投标函", children: [], part: "biz" },
+  ]
+
+  it("默认跳过碎片：只为真章节建章，碎片刻意不建（商务骨架章照常成章——R292 设计如此）", () => {
+    const r = alignChaptersWithOutline(outline, [])
+    expect(r.chapters.map((c) => c.title)).toEqual(["项目理解与总体建设方案", "售后运维", "投标函"])
+    expect(r.addedTitles).toEqual(["项目理解与总体建设方案", "售后运维", "投标函"])
+    expect(r.skippedFragments).toEqual(["交付地点", "验收要求", "供应商应按照招标文件、合同在规定时间内"])
+  })
+
+  it("碎片节点即便有子节点也不建章（子节点不会跟着进正文）", () => {
+    const r = alignChaptersWithOutline(outline, [])
+    expect(r.chapters.some((c) => c.title.includes("供应商应按照"))).toBe(false)
+    expect(r.chapters.some((c) => c.title === "子")).toBe(false)
+  })
+
+  it("opt-out 通道存在（宁可漏拦也不误伤：显式关掉即恢复旧行为，便于人工判定的场景）", () => {
+    const r = alignChaptersWithOutline(outline, [], { skipFragments: false })
+    expect(r.chapters.map((c) => c.title)).toContain("交付地点")
+    expect(r.skippedFragments).toEqual([])
+  })
+
+  it("跳过碎片不破坏「只增不删」：清单里的既有章原样保留", () => {
+    const existing: Chapter[] = [
+      { node_id: "keep", title: "历史章（大纲已无对应）", sections: [], content: "已有正文不得丢", gen_status: "done" },
+    ]
+    const r = alignChaptersWithOutline(outline, existing)
+    expect(r.chapters.some((c) => c.content === "已有正文不得丢")).toBe(true)
+  })
+
+  it("幂等：连跑两次结果一致（碎片不会被第一次跑「顺手成章」后第二次又判缺）", () => {
+    const a = alignChaptersWithOutline(outline, [])
+    const b = alignChaptersWithOutline(outline, a.chapters)
+    expect(b.addedTitles).toEqual([])
+    expect(b.chapters).toEqual(a.chapters)
+    expect(b.skippedFragments).toEqual(a.skippedFragments)
+  })
+})
+
+describe("R295 诊断三态分离：碎片不是「清单缺章」（混进去会诱导用户点同步把垃圾固化）", () => {
+  it("碎片进 fragmentTitles，且不出现在 missingTitles", () => {
+    const d = diagnoseOutlineChapterDrift(
+      [
+        { id: "k1", title: "项目理解与总体建设方案", children: [] },
+        { id: "f1", title: "交付地点", children: [] },
+        { id: "f2", title: "质保期", children: [] },
+        { id: "r1", title: "已有章", children: [] },
+      ],
+      [{ node_id: "r1", title: "已有章", sections: [], content: "", gen_status: "pending" }],
+    )
+    expect(d.missingTitles).toEqual(["项目理解与总体建设方案"])
+    expect(d.fragmentTitles).toEqual(["交付地点", "质保期"])
+    expect(d.relinkTitles).toEqual([])
+  })
+})
+
+describe("R295 回执必须如实报出「跳过了碎片」（否则用户以为同步失败会反复重试）", () => {
+  it("skippedFragments 非空时文案点明数量与「跳过不建章」", () => {
+    const msg = describeOutlineSync("已同步", {
+      addedTitles: ["售后运维"],
+      refreshedCount: 0,
+      skippedFragments: ["交付地点", "验收要求"],
+    })
+    expect(msg).toContain("新建 1 个章节")
+    expect(msg).toContain("2 个大纲节点是招标条款原文")
+    expect(msg).toContain("已跳过不建章")
+  })
+
+  it("无碎片时不提碎片（不制造噪音）", () => {
+    const msg = describeOutlineSync("已同步", { addedTitles: ["售后运维"], refreshedCount: 0, skippedFragments: [] })
+    expect(msg).not.toContain("条款原文")
+  })
+})
+
+describe("R295 UI 接线守卫（碎片提示条必须可达，且只提示不代删）", () => {
+  const ui = read("components/bid-workspace/OutlineCoverage.tsx")
+
+  it("props 与渲染条件都纳入 fragmentTitles（否则碎片永不可见）", () => {
+    expect(ui).toContain("fragmentTitles: string[]")
+    expect(ui).toContain("outlineChapterDrift.fragmentTitles ?? []")
+    expect(ui).toContain("!driftFragments.length")
+  })
+
+  it("碎片提示条明示「同步会自动跳过」且指引人工删除（不提供自动删除按钮）", () => {
+    expect(ui).toContain("同步章节清单会")
+    expect(ui).toContain("自动跳过")
+    expect(ui).toContain("手动删除")
   })
 })

@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { AlertTriangle, ChevronDown, ChevronRight, ListChecks, Plus, RefreshCw } from "lucide-react"
+import { AlertTriangle, ChevronDown, ChevronRight, Info, ListChecks, Plus, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { RequirementClause } from "@/pages/BidWorkspace/bidTypes"
 
@@ -15,8 +15,13 @@ type OutlineCoverageProps = {
   uncoveredClauses: RequirementClause[]
   addClauseToOutline: (clauseId: string) => void
   addAllClausesToOutline: () => void
-  /** R292 只读诊断：missingTitles=清单缺章（正文与导出必无），relinkTitles=大纲重生成后的 id 漂移 */
-  outlineChapterDrift: { missingTitles: string[]; relinkTitles: string[] }
+  /**
+   * 只读诊断三态（R292 + R295）：
+   * - missingTitles = 清单缺章（正文与导出必无），可一键同步补入；
+   * - relinkTitles = 大纲重生成后的 id 漂移（标题已有章，同步不会重复建章）；
+   * - fragmentTitles = 条款碎片顶层节点（历史脏数据，不是章节），同步时自动跳过，只提示人工清理。
+   */
+  outlineChapterDrift: { missingTitles: string[]; relinkTitles: string[]; fragmentTitles: string[] }
   /** R292 一键同步：把大纲里有、清单里缺的章与小节补进章节清单（只增不删，不动任何已有正文） */
   syncOutlineChapters: () => void
 }
@@ -33,7 +38,9 @@ export function OutlineCoverage({
   const [listOpen, setListOpen] = useState(false)
   const driftMissing = outlineChapterDrift.missingTitles
   const driftRelink = outlineChapterDrift.relinkTitles
-  if (!outlineClauseTotal && !driftMissing.length) return null
+  // R295：碎片提示条独立渲染，故渲染条件也要把它算进来（否则碎片永远不可见）
+  const driftFragments = outlineChapterDrift.fragmentTitles ?? []
+  if (!outlineClauseTotal && !driftMissing.length && !driftFragments.length) return null
   const allCovered = uncoveredClauses.length === 0
   return (
     <div className="mb-4 rounded-lg border border-border bg-card shadow-md">
@@ -73,6 +80,18 @@ export function OutlineCoverage({
           {allCovered && (
             <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">条款全覆盖</span>
           )}
+        </div>
+      )}
+      {driftFragments.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-t border-border bg-muted/40 px-4 py-2.5">
+          <p className="flex min-w-0 flex-1 items-start gap-1.5 text-xs leading-relaxed text-muted-foreground">
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0">
+              大纲里另有 {driftFragments.length} 个顶层节点其实是招标条款原文（{driftFragments.slice(0, 3).join("、")}
+              {driftFragments.length > 3 ? " 等" : ""}），不是章节名。它们是早期补入留下的脏数据，
+              同步章节清单会**自动跳过**它们（不会生成「交付地点」这类无意义章节）；确认无用后请在大纲里手动删除。
+            </span>
+          </p>
         </div>
       )}
       {driftMissing.length > 0 && (

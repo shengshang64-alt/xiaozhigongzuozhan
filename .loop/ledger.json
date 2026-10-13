@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 294,
+  "round": 296,
   "backlog": [
     {
       "id": "r219-kbqa-coldstart-perf",
@@ -1251,10 +1251,11 @@
     },
     {
       "id": "r294-default-model-hygiene",
-      "priority": "P1",
+      "priority": "P2",
       "module": "/model-gateway",
       "status": "open",
-      "issue": "P1·配置卫生（R294 实测）：21 个 bid_projects 里 12 个已有正文共 106.5 万字，同期模型侧实测 7 个启用模型有 3 个实际不可用 —— xiaomi/mimo-v2.6-pro 与 Intern/deepseek-v4-flash-vision 返回 429（限流或余额不足）、大模型/sensenova-u1-fast 返回 404（模型不存在）。另5 个个人配置中 4 个 default_model 为空字符串，网关靠「第一个 enabled 模型」兜底，配置里模型顺序一变默认模型就静默改变。建议：①停用 3 个不可用模型或在配置页显式标注不可用；②把默认模型显式设为实测最快且结构完整的 deepseek-v4-flash（6.6s vs Ling 14.4s）；③补全各配置 default_model。均为写生产数据，需用户确认后执行。"
+      "issue": "【R296 已修①（closed: r296-model-failover-health）：404/停用/Key 失效三类确定性失效现在会持久挂账，配置页模型行、顶栏下拉、横幅三处显式标注并带处置动作；默认模型漂移现在也有「未设默认模型」徽标 + 横幅提示】剩余（均系写生产数据，需用户确认后执行）：②把默认模型显式设为实测最快且结构完整的 deepseek-v4-flash（6.6s vs Ling 14.4s）；③补全 4 个 default_model 为空串的个人配置（现在页面会逐个点名，点「设为默认」即可）。另：R294 实测 3 个不可用模型中 xiaomi/mimo-v2.6-pro 与 Intern/deepseek-v4-flash-vision 为 429（限流或余额不足），属瞬时类故本轮不入档案，余额不足型需更细口径（见新增 r296-health-balance-429）。",
+      "roundNote": "R296：①已由 r296-model-missing-failover-health 根治，②③仍需用户点「设为默认」，降级 P2"
     },
     {
       "id": "r294-confirm-outline-semantics",
@@ -1269,6 +1270,37 @@
       "module": "/bid-workspace",
       "status": "open",
       "issue": "P2·机制待查：R291 大纲静默失败（模型返回英文推理散文而非 JSON）经R294 矩阵实测证伪为「模型稳定不适配」—— Ling-3.1-flash 在 thinking 开/关均稳定产出可解析 JSON（12/13 顶层节点），故该失败判为偶发。R291 的修复方向正确（无 JSON 候选时抛可读中文错误而非喂修复器空转），但偶发触发条件未定位：怀疑长输入分段下推理溢出或上游混入 thinking 内容。建议下次真实生成时若复现，保留当时的网关原始返回以便定因。"
+    },
+    {
+      "id": "r296-health-balance-429",
+      "priority": "P3",
+      "module": "/model-gateway,/model-config",
+      "status": "open",
+      "issue": "R296 遗留：余额不足型 429（insufficient_balance / 余额不足）语义上属「长期坏」，但其文案与临时限流同源（RATE_LIMIT_RE），本轮刻意保守不入长期档案，避免「被限流一次就标红 7 天」。更细口径待定：仅当命中「余额不足」关键字，或同一通道连续 N 次 rate_limit 才入档（并在档案里区分为新类别 balance_exhausted，处置文案指向「充值/换账号」而非「稍后重试」）。涉及计费与限流误判代价，需实数据支撑后再动。",
+      "foundRound": 296
+    },
+    {
+      "id": "r296-health-platform-channel",
+      "priority": "P3",
+      "module": "/model-config",
+      "status": "open",
+      "issue": "R296 遗留：健康档案键沿用 modelRefKey（personal:配置id:模型id），平台内置通道（PLATFORM_MODEL_ID）没有 configId，因此不参与标注。若平台通道出现 404/停用，目前只有会话冷却一层。待定：为平台通道设计稳定键（如 platform:<modelId>）并同样纳入三类确定性失效挂账——需先确认平台通道失败文案的实际形态，避免拿个人配置的假设套上去。",
+      "foundRound": 296
+    },
+    {
+      "id": "r296-health-batch-checkup",
+      "priority": "P3",
+      "module": "/model-config",
+      "status": "open",
+      "issue": "R296 遗留：挂账证据只来自「用户真调用过/点过测试」的通道，从未被碰过的坏模型仍需一次实调才会显形（维持零 collection/零 pb_hooks 的必然结果）。若要配置页一次性体检全部启用模型，需要「批量测试」入口：纯前端即可实现，但会产生真实 token 花费与限流风险，属需用户拍板项，本轮不做。",
+      "foundRound": 296
+    },
+    {
+      "id": "r295-outline-fragment-cleanup",
+      "priority": "P2",
+      "module": "/bid-workspace",
+      "status": "open",
+      "issue": "P2·待用户拍板：R295 已让「同步章节清单」自动跳过 74 个条款碎片顶层节点，但碎片仍留在大纲里。批量清理属破坏性操作（删大纲节点），且部分碎片可能有宣传价值（如「质保期」可作售后章节锚点）。如需清理：①先备份 bid_outline；②逐项目人工在 UI 删除，或另开专项做只读预览清单再批量执行。不自动做。"
     }
   ],
   "closed": [
@@ -4825,6 +4857,39 @@
         ".probe/realrun/probe-15-model-matrix.mjs",
         ".probe/realrun/model-json-matrix.json"
       ]
+    },
+    {
+      "id": "r296-model-missing-failover-health",
+      "title": "模型通道：404「模型不存在」回退盲区修复 + 「实测不可用」持久健康档案（配置卫生可见化）",
+      "priority": "P1",
+      "status": "closed",
+      "summary": "R294 实测 7 个启用模型有 3 个实际不可用却全程静默，代码侧查出三条叠加的断链：A) classifyCallFailure 没有 404 类别，网关透出的「接口返回异常（HTTP 404）：… does not exist」落 other，既不在 FAILOVER_ELIGIBLE（不自动回退）也不冷却，用户只看到一次失败；B) 确定性失效（404 不存在 / 上游停用 / Key 失效）没有持久落点——会话冷却是分钟级、重开即清、按整条配置冷却，语义是「别急着再选这条」而不是「这条已被证实坏了」，所以配置页与下拉里坏模型和好模型完全同形；C) 5 个个人配置里 4 个 default_model 为空串，靠「enabled 列表第一个」兜底，顺序一变默认就静默改变，页面不说。修复：①modelFailover 新增 model_missing 类（正则逐字对齐 model_gateway.pb.js 真实文案，\\b404\\b 加词边界防误伤正文里的四位数，停用类文案优先，「配置不存在」仍归 config_broken），纳入可回退、且与 model_disabled 同口径只冷却那一个模型不冷却整配置；②新建 src/lib/modelHealth.ts 持久健康档案（215 行，纯前端）：只挂三类确定性失效，限流/超时/5xx 一律忽略（防止被限流一次就永久标红），任一通道实调成功或「测试」通过即清账，7 天 TTL + 上限 60 条丢最旧，localStorage 按用户分桶（与 modelPrefs 同构），SSR/隐私模式/配额满降级为无档案绝不阻断主流程，键复用 modelRefKey 不新造坐标系；③modelGateway 在 chatViaGatewayUncached 与 testGatewayModel 的成功/失败出口挂接（未动 pb_hooks）；④UI 三处标注 + 一处汇总：ModelSelect 下拉后缀 statusSuffix（冷却与实测不可用可并存、命中哪个说哪个）+ 所选通道 danger 徽标、PersonalConfigList 模型行「已下线/已停用/Key 失效」徽标 + 配置头「未设默认模型」warning、DefaultModelBanner 新增 declaredDefault/missingDefaultCount/unusableCount 三个可选入参输出三条卫生提示、useModelConfig 订阅档案并在 handleAccountChange 事件回调里重读（换账号不留陈旧徽标）+ 四处处置后清账、applyPatch 改为返回 Promise<boolean> 以便「启用成功才清账」。全程延续「只提示不禁用」裁定：用户仍可选坏通道、仍会先如实尝试。测试 +20 例（failover +6 净 +5 含 400/配置不存在不得误判的回归守卫与停用/限流互不吞；新建 modelHealth.test.ts 15 例覆盖瞬时类不入档、TTL、修剪、脏值剔除、分桶隔离、订阅、storage 不可用降级）。四门全绿：tsc exit 0；vitest exit 0 / 199 文件 / 2353 passed / 2 skipped（开工实测基线 198/2333/2——提示词给的 630 属早期数字，按纪律以实测申报增量）；eslint 触及 10 文件仅 1 error 且为在途既有项（useModelConfig 的 set-state-in-effect，已用 HEAD 导出探针取证，本轮自增的那处已重构消除，lint-debt-01 裁定不动残余）；vite build exit 0。行尾审计发现 3 个文件被补丁写成 CRLF（索引 i/lf），已还原 LF 后复跑四门。浏览器实机验证（无 PocketBase，用临时验证页 + 真实组件与真实档案，验证后删除）：404 通道下拉后缀「已下线」+ 所选通道与配置行 danger 徽标 + 横幅「1 个已启用模型实测不可用」，429 通道未被标注（口径生效），localStorage 实测只存 model_missing 一条；清账后徽标全消。browser-use 的 take_screenshot 本轮 9 次 15s 超时（工具侧故障，已排除动画因素），改用 Python Playwright 直连同一页面出图两张（挂账态 / 清账态，存 MedPreSales/.qoder/r296_proof_annotated.png 与 r296_proof_cleared.png），并落机器可读证据 r296_playwright_proof.json。避让在途代码：并发工作流的 OutlineCoverage.tsx / bidTypes.ts / clauseOutlineAlignment.test.ts 未触碰。零 collection / 零 pb_hooks / 零提示词改动。",
+      "files": [
+        "src/lib/modelFailover.ts",
+        "src/lib/modelHealth.ts",
+        "src/lib/modelHealth.test.ts",
+        "src/lib/modelGateway.ts",
+        "src/lib/modelFailover.test.ts",
+        "src/components/model-config/ModelSelect.tsx",
+        "src/components/model-config/PersonalConfigList.tsx",
+        "src/components/model-config/DefaultModelBanner.tsx",
+        "src/pages/ModelConfig/useModelConfig.ts",
+        "src/pages/ModelConfig/ModelConfigPage.tsx",
+        ".loop/reports/2026-10-13-r296-model-missing-failover-health.md"
+      ]
+    },
+    {
+      "id": "r295-clause-fragment-guard",
+      "title": "标书·条款碎片顶层节点污染防护：识别 + 同步章节清单时跳过（防止批量同步生成 74 章「交付地点」式垃圾）",
+      "priority": "P0",
+      "status": "closed",
+      "summary": "缺陷：R293 收尾存量扫描量出 74 个「顶层技术章在大纲有、章节清单无」（贵港21/7vco31/建阳22），按直觉该批量点「同步章节清单」补齐。取证三轮后结论反转：74 个无一例外全是招标条款原文碎片（「交付地点」「质保期」「实施周期」「供应商应按照招标文件、合同在规定时间内」…），是 R292 修复前 insertClauseIntoOutline 旧逻辑的污染。判据由「与项目内已有真章节做特征对比」自证（已有章=「项目理解与总体建设方案」「电子病历系统（EMR）建设方案」这类方案名）。若批量同步，会一次性生成 74 章垃圾并按章计费——R293 刚交付的修复在存量脏数据上反成放大器。修复：①新增 isClauseFragmentTitle（商务标签/句读残缺/数字无单位三类，长度护栏防「集成信息管理」类误伤，10 条真章节回归断言）；②alignChaptersWithOutline 新增 skippedFragments 回执 + opts.skipFragments opt-out 通道（默认跳过，有子节点也不建章）；③diagnoseOutlineChapterDrift 两态扩三态，碎片独立成 fragmentTitles（混进 missingTitles 会诱导用户点同步把垃圾固化）；④describeOutlineSync 如实报「已跳过不建章」；⑤OutlineCoverage 新增碎片提示条，明示自动跳过+指引手动删除，不提供自动删除按钮。测试 +16 例（累计 44 例），含真章节零误伤、不破坏只增不删、幂等。74 个存量碎片有意不自动删（删大纲节点是破坏性操作，部分碎片如「质保期」可能有宣传价值），留 UI 指引人工清理。四门：tsc -b exit 0；全量 vitest 199 文件/2353 passed/2 skipped；eslint 3 errors 全为既有项零新增；build exit 0。",
+      "files": [
+        "src/pages/BidWorkspace/bidTypes.ts",
+        "src/components/bid-workspace/OutlineCoverage.tsx",
+        "src/pages/BidWorkspace/clauseOutlineAlignment.test.ts",
+        ".loop/reports/2026-10-13-r295-clause-fragment-guard.md"
+      ]
     }
   ],
   "blocked": [
@@ -4859,7 +4924,7 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "R293（轮次号 292 让位并发工作流，其曾以 scripts/recalc-*-r292.test.ts 占该号）修掉标书主链路的「假绿」：四处一键补入只写 bid_outline，而生成与导出的真源是章节清单 bid_chapters。现在补入 = 同一次 PATCH 落大纲 + 章节清单（落点归一到节层、只增不删、缺节追加尾部保 section_stats 下标、id 漂移按标题兜底不重复建章），并给出只读漂移诊断与「同步章节清单」按钮（可修存量 74 处真缺章），回执改为诚实报数。摸底：21 项目 / id 级漂移 81（其中真缺章 75；本轮后复测 80/74，杏林已修）。四门全绿（tsc 0、vitest exit 0 / 198 文件 / 2312 passed / 2 skipped，含新增 18 例；eslint 触及文件与 HEAD 基线逐条同数零新增；build 0）；浏览器实测 14→15→16 章并刷新持久化。零 collection / 零 pb_hooks / 零提示词改动。",
+  "lastRoundSummary": "R296（轮次号 295 让位并发工作流，其三个在途文件已避让未触碰）根治模型通道的「坏得静默」：404 模型不存在此前在 classifyCallFailure 里无类别 → 落 other → 既不自动回退也不冷却，用户只看到一次失败；确定性失效（404 不存在/上游停用/Key 失效）也没有持久落点（会话冷却分钟级、重开即清、按整配置冷却），导致 R294 实测的 3 个不可用模型在 UI 上与好模型完全同形。现在：modelFailover 新增 model_missing（正则逐字对齐 pb.js 真实文案，\\b404\\b 词边界防误伤正文数字，停用优先，配置不存在仍归 config_broken），纳入可回退且只冷却那一个模型；新建 modelHealth.ts 持久健康档案——只挂三类确定性失效、限流超时一律不入档、任一通道成功或测试通过即清账、7 天 TTL + 60 条上限、localStorage 按用户分桶、异常静默降级绝不阻断主流程；UI 三处标注（下拉后缀/模型行徽标/配置头「未设默认模型」）+ 横幅汇总，全程延续「只提示不禁用」裁定。零 collection / 零 pb_hooks / 零提示词。测试 +20 例；四门全绿（tsc 0、vitest exit 0 / 199 文件 / 2353 passed / 2 skipped，开工实测基线 198/2333/2——提示词 630 属早期数字；eslint 触及 10 文件仅 1 个在途既有 error 零新增；build 0），并修正 3 个文件被补丁写成的 CRLF 后复跑。浏览器实机验证（临时验证页 + 真实组件/档案，验证后删除）：404 通道标「已下线」、429 通道不标注、localStorage 实测只存 model_missing 一条、清账后徽标全消；take_screenshot 本轮工具侧超时，改用 Playwright 出图两张（挂账态/清账态）+ 机器可读证据 JSON。残余三项 P3 入 backlog（余额不足型 429、平台通道无稳定键、批量体检需用户拍板）；r294-default-model-hygiene ①已根治、②③仍系写生产数据需用户点「设为默认」，降 P2。",
   "note": "靶子纠错：上一轮用的 D:\\tmp\\qafiles\\真实招标文件_三明市中西医结合医院.docx 经取证是自编模板稿（编号 XXXX、预算 XXXX万元、代理机构「按实际委托填写」、全文「投标文件目录」0 次），此前把「投标文件目录要求解析为空」算作系统缺陷是错的。新靶子源：D:\\重要文件\\A重要客户情况\\友商公司产品\\招标材料及方案\\ 下 37 份真实招标文件。",
   "masterDirective": {
     "setAt": "2026-10-12T22:28+08:00",
