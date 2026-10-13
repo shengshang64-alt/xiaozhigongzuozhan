@@ -3,10 +3,12 @@ import {
   historyQuotesFor,
   importChecklistLines,
   isCatalogLine,
+  itemSubtotal,
   lineKey,
   makeDefaultGroups,
   mergeItemsIntoGroups,
   normalizeDraftItemsFromCatalog,
+  normalizeDiscount,
   normalizeSlides,
   quoteItemFromChecklistLine,
   quoteItemFromProduct,
@@ -465,5 +467,55 @@ describe("normalizeSlides maxPages 上限", () => {
   })
   it("空返回仍抛错", () => {
     expect(() => normalizeSlides({ slides: [] }, null, 3)).toThrow()
+  })
+})
+
+
+// ---------------------------------------------------------------------------
+// R285（r281-quote-discount-no-entry）：折扣百分比单一口径
+// ---------------------------------------------------------------------------
+describe("normalizeDiscount（R285 折扣单一口径）", () => {
+  it("缺省 / 非法 / ≤0 一律归一为原价 100，杜绝「0 当 0 折」把小计悄悄归零", () => {
+    expect(normalizeDiscount(undefined)).toBe(100)
+    expect(normalizeDiscount(null)).toBe(100)
+    expect(normalizeDiscount(NaN)).toBe(100)
+    expect(normalizeDiscount(0)).toBe(100)
+    expect(normalizeDiscount(-10)).toBe(100)
+  })
+
+  it("90 = 按 90% 计价（打 9 折），与表尾脚注、Excel 公式同口径；>100 按 100 封顶", () => {
+    expect(normalizeDiscount(90)).toBe(90)
+    expect(normalizeDiscount(85.5)).toBe(85.5)
+    expect(normalizeDiscount(100)).toBe(100)
+    expect(normalizeDiscount(120)).toBe(100)
+  })
+
+  it("itemSubtotal：脏值 discount=0 不再把金额清零，按原价计", () => {
+    const it = { id: "i1", item_name: "x", spec: "", unit: "套", qty: 2, price: 1000, discount: 0 }
+    expect(itemSubtotal(it as unknown as QuoteItem)).toBe(2000)
+    expect(itemSubtotal({ ...it, discount: 90 } as unknown as QuoteItem)).toBe(1800)
+  })
+
+  it("sanitizeQuote：落盘脏值 discount=0 重载后归一为 100（不再 ||0 存成 0）", () => {
+    const groups: QuoteRecord["groups"] = [
+      {
+        id: "g1",
+        name: "软件",
+        items: [
+          {
+            id: "i1",
+            item_name: "x",
+            spec: "",
+            unit: "套",
+            qty: 1,
+            price: 1200,
+            discount: 0,
+          } as unknown as QuoteItem,
+        ],
+      },
+    ]
+    const out = sanitizeQuote(fakeQuote(groups))
+    expect(out.groups[0].items[0].discount).toBe(100)
+    expect(itemSubtotal(out.groups[0].items[0])).toBe(1200)
   })
 })

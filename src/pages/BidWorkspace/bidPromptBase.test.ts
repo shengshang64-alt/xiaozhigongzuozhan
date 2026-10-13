@@ -125,6 +125,27 @@ describe("complianceModeRule（合并稿三档写作模式，R30 全量切换）
   })
 })
 
+// r287（bid-l2-verbatim-compare 切片2·预防）：引号照录纪律进生成提示词——引号内只许逐字原文，
+// 转述必须出引号；与体检 quote_rewrite 口径闭环（改写=0 的生成侧根因治理）
+describe("r287 引号照录纪律（B类·生成侧改写抑制）", () => {
+  it("章/小节 system 均含引号照录规则句（逐字照录 + 间接转述两个锚点）", () => {
+    const base = { wordBudget: 800, figures: false }
+    const chapter = buildBidChapterMessages("项目", "医院", null, [], chapters, 0, () => "", { ...base })
+    const section = buildBidSectionMessages("项目", "医院", null, [], chapters, 0, () => "", {
+      ...base,
+      sectionName: "总体架构",
+      sectionNo: "1.1",
+      sectionIndex: 0,
+      sectionCount: 2,
+    })
+    for (const msgs of [chapter, section]) {
+      expect(msgs[0].content).toContain("正文引号只用于逐字照录招标原文")
+      expect(msgs[0].content).toContain("去掉引号改为间接转述")
+      expect(msgs[0].content).toContain("禁止在引号内改写、缩略、概括")
+    }
+  })
+})
+
 describe("解析出处回指（R30）", () => {
   it("解析 system 含出处回指要求", () => {
     const msgs = buildTenderParseMessages("全文", defaultParseConfig())

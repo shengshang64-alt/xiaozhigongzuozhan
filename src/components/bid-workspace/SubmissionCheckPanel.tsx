@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { SubmissionChecklistPanel } from "@/components/bid-workspace/SubmissionChecklistPanel"
+import { DeliveryActionPanel } from "@/components/bid-workspace/DeliveryActionPanel"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import { PARSE_STEP } from "@/components/bid-workspace/pipelineStep"
 import {
@@ -45,6 +46,8 @@ type SubmissionCheckPanelProps = Pick<
   | "supplementFromAudit"
   | "chapterReflowBusy"
   | "reflowChapterFromAudit"
+  | "quoteFixBusy"
+  | "startQuoteRewriteFix"
   | "isArchivedLocked"
   | "startFactPatch"
   | "factPatchBusy"
@@ -705,6 +708,8 @@ export function SubmissionCheckPanel({
   supplementFromAudit,
   chapterReflowBusy,
   reflowChapterFromAudit,
+  quoteFixBusy,
+  startQuoteRewriteFix,
   isArchivedLocked,
   startFactPatch,
   factPatchBusy,
@@ -734,6 +739,8 @@ export function SubmissionCheckPanel({
   // 第十七轮 17C：本地格式规则检查报告（零 AI），随交卷体检一并生成
   const formatReport = check?.format_report ?? null
   const formatHits = formatReport?.hits ?? []
+  // r287（切片2·整改）：引文改写命中数（整改回注按钮可见性；实际定位与封顶以本地重算为准）
+  const quoteRewriteHitCount = formatHits.filter((h) => h.rule === "quote_rewrite").length
   // 循环 8 A3：事实一致性核对结果（null=未跑/失败或老数据，[]=跑过且无矛盾，不渲染区卡）
   const factConflicts = check?.fact_conflicts ?? null
   // D3/R89：AI 内容护栏结果（null=未跑/失败，[]=跑过无问题；只报不拦，绿态也渲染区卡收口）
@@ -985,6 +992,18 @@ export function SubmissionCheckPanel({
                       {formatReport.checked_at ? ` · 检查时间 ${formatDateTimeDisplay(formatReport.checked_at)}` : ""}
                     </p>
                   </div>
+                  {quoteRewriteHitCount > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={startQuoteRewriteFix}
+                      disabled={quoteFixBusy}
+                      className="shrink-0 border-primary/40 text-primary shadow-sm hover:bg-primary/10 focus-visible:shadow-[var(--focus-ring)]"
+                    >
+                      {quoteFixBusy ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Wand2 className="mr-1.5 h-3.5 w-3.5" />}
+                      {quoteFixBusy ? "整改回注中…" : `引文改写整改（${quoteRewriteHitCount} 处）`}
+                    </Button>
+                  )}
                 </div>
                 {formatHits.length === 0 ? (
                   <p className="mt-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-4 text-center text-xs font-medium text-primary">
@@ -1150,6 +1169,15 @@ export function SubmissionCheckPanel({
           report={activeProject?.parse_report ?? null}
           locked={isArchivedLocked}
           onGoParse={!isArchivedLocked ? () => requestStep(PARSE_STEP) : undefined}
+        />
+        {/* R288（bid-placeholder-owner-split · P1）：交付前必办清单——占位按「谁来办」分流并逐项勾销，
+            直接回答「还有几项等我拍板」；判据与 scripts/bid-delivery-gate.mjs 同源，只报不拦 */}
+        <DeliveryActionPanel
+          key={`actions-${activeProject?.id ?? ""}`}
+          projectId={activeProject?.id ?? ""}
+          chapters={activeProject?.bid_chapters ?? []}
+          projectName={activeProject?.project_name ?? ""}
+          locked={isArchivedLocked}
         />
       </div>
 

@@ -2986,6 +2986,7 @@ export type FormatCheckRule =
   | "over_price_ceiling"
   | "amount_case_mismatch"
   | "star_quote_fidelity"
+  | "quote_rewrite"
   | "placeholder_leftover"
   | "markdown_residue"
   | "numbering_sequence"
@@ -3004,6 +3005,7 @@ export const FORMAT_RULE_LABEL: Record<FormatCheckRule, string> = {
   amount_case_mismatch: "金额大小写一致性（大写与小写重述对账，经典废标项）",
   // r277 切片1（评审报告驱动）：★引文保真 / 占位台账 / 形式质量三查（本地零 AI）
   star_quote_fidelity: "★/▲ 条款引文保真（对照招标原文逐字核对，删节即废标风险）",
+  quote_rewrite: "引文改写核对（正文引号片段招标原文逐字未见＝疑改写/概括）",
   placeholder_leftover: "占位符台账（【待填写】/截图占位/填写指令未清除）",
   markdown_residue: "Markdown 排版标记残留（**加粗**/#标题/链接语法未清洗）",
   numbering_sequence: "编号连续性（行首「第N期」类序列重复/倒序）",

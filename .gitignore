@@ -23,6 +23,10 @@ dist-ssr
 *.db-journal
 **/pb_data/
 
+# 本机探测/调试产物与运行时回收站（不入库）
+.probe/
+/data/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

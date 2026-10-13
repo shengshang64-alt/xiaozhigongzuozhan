@@ -173,6 +173,7 @@ export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
             renameGroup={p.renameQuoteGroup}
             addItem={p.addQuoteItem}
             updateItem={p.updateQuoteItem}
+            setGroupDiscount={p.setGroupDiscount}
             deleteItem={p.deleteQuoteItem}
             saveItemToLibrary={p.saveItemToLibrary}
             openPicker={p.openProductPicker}

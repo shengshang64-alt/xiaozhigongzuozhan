@@ -4,6 +4,7 @@ import {
   formatMoney,
   isCatalogLine,
   itemSubtotal,
+  normalizeDiscount,
   quoteTotal,
   type ProductItem,
   type QuoteItem,
@@ -13,6 +14,7 @@ import { targetsLabel } from "@/pages/SolutionStudio/checklistTypes"
 import { fmtAmount } from "@/pages/CustomerManagement/customerTypes"
 import type { Recommendation } from "@/pages/PptQuote/quoteRecommend"
 import { ProductLibraryPanel } from "./ProductLibraryPanel"
+import { toast } from "sonner"
 
 type QuoteEditorProps = {
   quote: QuoteRecord
@@ -30,6 +32,8 @@ type QuoteEditorProps = {
   /** @deprecated 保留兼容；新代码使用 addManualItem */
   addItem?: (groupId: string) => void
   updateItem: (groupId: string, itemId: string, patch: Partial<QuoteItem>) => void
+  /** r281-quote-discount-no-entry（R285）：按组批量改折扣%（整包折让） */
+  setGroupDiscount: (groupId: string, discount: number) => void
   deleteItem: (groupId: string, itemId: string) => void
   saveItemToLibrary: (item: QuoteItem, groupName: string) => void
   /** @deprecated 旧 ProductPicker 入口 */
@@ -149,6 +153,7 @@ export function QuoteEditor({
   deleteGroup,
   renameGroup,
   updateItem,
+  setGroupDiscount,
   deleteItem,
   saveItemToLibrary,
   onAddProduct,
@@ -423,6 +428,33 @@ export function QuoteEditor({
                 />
                 <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{group.items.length} 条</span>
                 <div className="ml-auto flex items-center gap-1.5">
+                  <label className="flex items-center gap-1 text-xs text-muted-foreground" title="批量改折扣：整包折让时一次改全组，逐行仍可单独覆盖（90 = 按 90% 计价）">
+                    整组折扣%
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      step={1}
+                      aria-label="整组折扣百分比"
+                      placeholder="100"
+                      className="h-7 w-14 rounded-md border border-border bg-background px-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      onBlur={(e) => {
+                        const raw = e.target.value.trim()
+                        if (raw === "") return
+                        const n = Number(raw)
+                        if (!Number.isFinite(n) || n <= 0) {
+                          e.target.value = ""
+                          return
+                        }
+                        setGroupDiscount(group.id, n)
+                        e.target.value = ""
+                        toast.success(`已把本组 ${group.items.length} 行折扣设为 ${normalizeDiscount(n)}%`)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") (e.target as HTMLInputElement).blur()
+                      }}
+                    />
+                  </label>
                   <button
                     type="button"
                     onClick={openCheckProductPicker}
@@ -462,7 +494,7 @@ export function QuoteEditor({
                 </p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[1080px] border-collapse text-left">
+                  <table className="w-full min-w-[1160px] border-collapse text-left">
                     <thead>
                       <tr className="border-b border-border bg-muted/40 text-xs text-muted-foreground">
                         <th className="px-2 py-2 font-medium">产品/系统</th>
@@ -471,6 +503,9 @@ export function QuoteEditor({
                         <th className="w-16 px-2 py-2 font-medium">数量</th>
                         <th className="w-16 px-2 py-2 font-medium">单位</th>
                         <th className="w-24 px-2 py-2 font-medium">单价(元)</th>
+                        <th className="w-20 px-2 py-2 font-medium" title="按百分比计价：90 = 打 9 折；100 或不填 = 原价（与表尾「小计 = 数量 × 单价 × 折扣%」及导出 Excel 公式同口径）">
+                          折扣(%)
+                        </th>
                         <th className="w-28 px-2 py-2 text-right font-medium">小计(元)</th>
                         <th className="w-24 px-2 py-2 font-medium">评级关联</th>
                         <th className="px-2 py-2 font-medium">备注</th>
@@ -583,11 +618,22 @@ export function QuoteEditor({
                                 onCommit={(n) => updateItem(group.id, item.id, { price: n })}
                               />
                             </td>
+                            {/* 折扣%（r281-quote-discount-no-entry：补上全链路缺失的录入入口；min=1 + 失焦回落 100，UI 层不可能落 0） */}
+                            <td className="px-1.5 py-1.5">
+                              <NumCell
+                                ariaLabel="折扣（百分比）"
+                                value={normalizeDiscount(item.discount)}
+                                min={1}
+                                max={100}
+                                fallback={100}
+                                onCommit={(n) => updateItem(group.id, item.id, { discount: normalizeDiscount(n) })}
+                              />
+                            </td>
                             {/* 小计 */}
                             <td className="px-2 py-1.5 text-right text-xs font-semibold tabular-nums text-foreground">
                               {formatMoney(sub)}
-                              {item.discount > 0 && item.discount < 100 && (
-                                <span className="ml-1 text-[10px] font-normal text-muted-foreground">({item.discount}%)</span>
+                              {normalizeDiscount(item.discount) < 100 && (
+                                <span className="ml-1 text-[10px] font-normal text-muted-foreground">（{normalizeDiscount(item.discount)}%计价）</span>
                               )}
                             </td>
                             {/* 评级关联 */}
@@ -634,7 +680,7 @@ export function QuoteEditor({
                     </tbody>
                     <tfoot>
                       <tr className="bg-muted/40">
-                        <td colSpan={6} className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">
+                        <td colSpan={7} className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">
                           {group.name}小计
                         </td>
                         <td className="px-2 py-2 text-right text-sm font-bold tabular-nums text-primary">

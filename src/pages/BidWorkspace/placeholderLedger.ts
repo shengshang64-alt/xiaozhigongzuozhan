@@ -8,7 +8,8 @@
 import type { Chapter, } from "@/pages/SolutionStudio/solutionTypes"
 import type { FormatCheckHit, } from "./bidTypes"
 
-const PLACEHOLDER_RES: RegExp[] = [
+/** 占位形态表（R288 起导出，交付前必办清单复用同一把尺子，不再各写一份） */
+export const PLACEHOLDER_RES: RegExp[] = [
   /【[^】]{0,20}(?:待填写|待补充|待确认|待插入|此处插入|插入)[^】]{0,20}】/g,
   /[（(]\s*(?:请)?填写[^）)]{0,14}[）)]/g,
   /\[\s*(?:待填写|待补充|待确认|TBD|TODO)\s*\]/gi,

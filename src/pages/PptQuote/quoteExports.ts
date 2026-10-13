@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx"
 import { AlignmentType, Document, Packer, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } from "docx"
-import { formatMoney, groupSubtotal, itemSubtotal, quoteTotal, type QuoteItem, type QuoteRecord } from "./pptQuoteTypes"
+import { formatMoney, groupSubtotal, itemSubtotal, normalizeDiscount, quoteTotal, type QuoteItem, type QuoteRecord } from "./pptQuoteTypes"
 import { targetsLabel } from "@/pages/SolutionStudio/checklistTypes"
 import { triggerBlobDownload } from "@/lib/download"
 import { buildSafeFileName } from "@/lib/fileName"
@@ -60,7 +60,7 @@ function safeFileName(name: string, ext: string): string {
  * 列锚点：E=数量 G=单价 H=小计（见 QUOTE_EXPORT_HEADERS）。
  */
 export function quoteItemSubtotalFormula(excelRow: number, it: QuoteItem): string {
-  const discount = it.discount == null || !Number.isFinite(it.discount) ? 100 : it.discount
+  const discount = normalizeDiscount(it.discount)
   return `ROUND(E${excelRow}*G${excelRow}*${discount}/100,2)`
 }
 

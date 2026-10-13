@@ -11,7 +11,9 @@ import { baselineLabelFromText, extractBaselineSegment, extractFragmentSegment }
 
 // R167 v3：小节级同步新增「公司优质素材库标准件基线」独立注入槽（无标记时与 v2 逐字一致）
 // R167 v4：2026-10 易标对齐轮——素材融入不提及来源（与 bidChapter 同口径同步），PROMPT_VERSION 3→4
-export const PROMPT_VERSION = 5
+// r287 v6（bid-l2-verbatim-compare 切片2·预防）：新增引号照录纪律规则条（第 6 条，其后规则序号顺移），
+// 源头抑制「照抄途中改写」——L2 摸底引文级改写 34 处均产自生成环节；对比报告 .loop/reports/2026-10-13-r287-*.md
+export const PROMPT_VERSION = 6
 
 export function buildBidSectionMessages(
   projectName: string,
@@ -66,6 +68,10 @@ export function buildBidSectionMessages(
     `5. 本小节字数预算约 ${opts.wordBudget} 字（整章预算按小节均分），在该篇幅内围绕招标参数与评分办法扩展；禁止自造招标未给的具体参数数字，拿不准的用「按招标文件要求响应」等规范表述；`,
   ]
   let ruleNo = 6
+  // r287（bid-l2-verbatim-compare 切片2·预防）：引号照录纪律——引号内只允许逐字原文，
+  // 转述必须出引号（与体检 quote_rewrite 规则同源口径：改写＝引号内非原文）
+  rules.push(`${ruleNo}. 正文引号只用于逐字照录招标原文：引用招标文件条款、评分标准、要求语句时，引号内文字必须与招标原文一字不差（仅允许把「要求/需/应」等要求类字眼改写为投标人自述人称），禁止在引号内改写、缩略、概括或插改字词；无法逐字照录时一律去掉引号改为间接转述；自拟的标题、口号与概念名称不用引号引用；`)
+  ruleNo += 1
   // 合并稿 v1.0（R30 全量切换）：三档写作模式规则块均非空，strict/缺省也注入严格响应块
   const modeRule = complianceModeRule(opts.complianceMode)
   if (modeRule) {

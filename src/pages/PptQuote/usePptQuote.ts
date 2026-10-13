@@ -1906,6 +1906,24 @@ export function usePptQuote() {
     [mutateQuote],
   )
 
+  // r281-quote-discount-no-entry（R285）：按组批量改折扣%。谈判场景「整包九折」常用，
+  // 逐行手改易漏；非法值按 normalizeDiscount 口径兜底（0/缺省 = 原价 100）。
+  const setGroupDiscount = useCallback(
+    (groupId: string, discount: number) => {
+      const d =
+        discount == null || !Number.isFinite(discount) || discount <= 0
+          ? 100
+          : Math.min(100, Math.round(discount * 100) / 100)
+      mutateQuote((q) => ({
+        ...q,
+        groups: q.groups.map((g) =>
+          g.id === groupId ? { ...g, items: (g.items ?? []).map((it) => ({ ...it, discount: d })) } : g,
+        ),
+      }))
+    },
+    [mutateQuote],
+  )
+
   const deleteQuoteItem = useCallback(
     (groupId: string, itemId: string) => {
       const cur = activeQuoteRef.current
@@ -2568,6 +2586,7 @@ export function usePptQuote() {
     renameQuoteGroup,
     addQuoteItem,
     updateQuoteItem,
+    setGroupDiscount,
     deleteQuoteItem,
     quoteAiOpen,
     setQuoteAiOpen,

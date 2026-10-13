@@ -501,6 +501,8 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               supplementFromAudit={p.supplementFromAudit}
               reflowChapterFromAudit={p.reflowChapterFromAudit}
               chapterReflowBusy={p.chapterReflowBusy}
+              quoteFixBusy={p.quoteFixBusy}
+              startQuoteRewriteFix={p.startQuoteRewriteFix}
               isArchivedLocked={p.isArchivedLocked}
               startFactPatch={p.startFactPatch}
               factPatchBusy={p.factPatchBusy}
@@ -543,6 +545,8 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                 supplementFromAudit={p.supplementFromAudit}
                 reflowChapterFromAudit={p.reflowChapterFromAudit}
                 chapterReflowBusy={p.chapterReflowBusy}
+                quoteFixBusy={p.quoteFixBusy}
+                startQuoteRewriteFix={p.startQuoteRewriteFix}
                 isArchivedLocked={p.isArchivedLocked}
                 startFactPatch={p.startFactPatch}
                 factPatchBusy={p.factPatchBusy}

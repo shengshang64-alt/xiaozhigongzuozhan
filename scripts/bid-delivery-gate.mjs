@@ -59,14 +59,14 @@ const PLACEHOLDER_RULES = [
     id: "promise-empty-value",
     label: "承诺数值空缺",
     fatal: true,
-    re: /【待填写】\s*(分钟|小时|天|年|月|%|％|个|人|次|万元|元|台|套|GB|TB|万|倍|份|项)/,
+    re: /【待填写】\s*(?:个)?(工作日|日历天|日历日|分钟|小时|课时|天|元|万元|%|％|台|套|人|次|年|月|倍|个|项|GB|TB|万)/,
     why: "实质性参数未填（如响应时效），投标即废标风险",
   },
   {
     id: "promise-sentence",
     label: "前置承诺句空缺",
     fatal: true,
-    re: /(应|须|必须|承诺|保证|不低于|不超过|不少于|至少|达到)[^。；\n]{0,25}【待填写】/,
+    re: /(应|须|必须|承诺(?!函)|保证|确保|不低于|不超过|不少于|至少|达到)[^。；\n]{0,25}【待填写】/,
     why: "承诺句未闭环，评标时视为未响应",
   },
   {
@@ -80,7 +80,7 @@ const PLACEHOLDER_RULES = [
     id: "todo-marker",
     label: "待办标记",
     fatal: true,
-    re: /[\[【(（]\s*(TODO|TBD|FIXME|待补|待补充|待完善|待定|占位)\s*[\]】)）]/i,
+    re: /[[【(（]\s*(TODO|TBD|FIXME|待补|待补充|待完善|待定|占位)\s*[\]】)）]/i,
     why: "未完成的编辑残留",
   },
   {
@@ -114,10 +114,11 @@ const PLACEHOLDER_RULES = [
 ]
 
 /**
- * 归责分类：同一个【待填写】由不同的人负责，验收动作完全不同。
+ * 归责分流（R288 起改为模式表 OWNER_PATTERNS）：同一个【待填写】由不同的人负责，验收动作完全不同。
  *   不分类的后果（实测）：205 处空缺混在一起，商务决策项淹没在材料项里，
  *   交付前无法回答「还有几项要等我拍板」「还有几项要附材料」。
- * 顺序即优先级：先归商务决策，再归人工材料，最后才是系统可回取。
+ * 判据表与界面「交付前必办清单」（src/pages/BidWorkspace/deliveryActionList.ts）逐字同源，
+ * 由 deliveryActionList.test.ts 的漂移守卫守住，两侧数字必须一致。
  */
 /** 标书正文占位符字面量（与 src/pages/BidWorkspace/bidTypes.ts 同源） */
 const BASIS_PLACEHOLDER = "【待填写】"
@@ -132,36 +133,60 @@ function escapeRe(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
-const OWNER_RULES = [
-  {
-    id: "biz-decision",
-    label: "① 商务决策（须拍板）",
-    action: "由商务/投标负责人拍板具体承诺值，AI 不得代填（代填=承诺风险）",
-    re: /(质保|保修|免费服务|承诺延长|延长)[^。；\n]{0,20}【待填写】|【待填写】\s*年[^。；\n]{0,10}(质保|保修|免费)|优惠|折扣|让利[^。；\n]{0,15}【待填写】/,
-  },
-  {
-    id: "material-attach",
-    label: "② 人工附材料（须附原件）",
-    action: "由投标文件制作者附真实材料（证书/截图/名单/报告），系统无法生成",
-    re: /【待填写】[^。；\n]{0,12}(证明|证书|资质|复印件|授权函|承诺函|截图|白皮书|检测报告|彩页|名单|社保|型号|清单)|(证明|证书|资质|复印件|授权函|截图|白皮书|检测报告|彩页|名单|社保|型号)[^。；\n]{0,20}【待填写】/,
-  },
-  {
-    id: "system-refetch",
-    label: "③ 系统可回取（须查为何没填）",
-    action: "招标原文/项目字段里已有该事实，系统却留空 —— 须查注入链路为何失效",
-    // 窗口从 30 收到 10：原窗口下「采购人」这类自然语句高频词会跨小半句命中，
-    // 实测把 3 条商务/材料项（「提交采购人确认，…考核依据【待填写】」「采购人可选择…费用为【待填写】元/年」
-    // 「采购人报备并完成工作交接，交接期不少于【待填写】个工作日」）误报成系统漏填。
-    // 收到 10 字后「采购人为【待填写】」这类字段式短语仍能命中，不损真阳性。
-    re: /(项目依据|编制依据|依据文件|项目编号|招标编号|采购编号|项目名称|采购人|预算金额|最高限价)[^。；\n]{0,10}【待填写】|【待填写】[^。；\n]{0,10}(项目依据|依据文件|项目编号|招标编号|采购编号)/,
-  },
-  {
-    id: "unclassified",
-    label: "④ 待人工判定",
-    action: "未能自动归责，须逐条人工确认责任方",
-    re: /【待填写】/,
-  },
+/**
+ * 归责标签与办结口径（**与 src/pages/BidWorkspace/deliveryActionList.ts 的
+ * DELIVERY_OWNER_LABEL / DELIVERY_OWNER_ACTION 逐字同源**）。
+ */
+const OWNER_LABEL = {
+  "biz-decision": "① 商务决策（须拍板）",
+  "material-attach": "② 人工附材料（须附原件）",
+  "system-refetch": "③ 系统可回取（须查为何没填）",
+  unclassified: "④ 待人工判定",
+}
+
+const OWNER_ACTION = {
+  "biz-decision": "由商务/投标负责人拍板具体承诺值与收费口径，AI 不得代填（代填=承诺风险）",
+  "material-attach": "由投标文件制作者附真实材料或补录（证书/截图/名单/记录表），系统无法生成",
+  "system-refetch": "招标原文或项目字段里已有该事实，正文却留空——须回查注入链路为何失效",
+  unclassified: "未能自动归责，须逐条人工确认责任方",
+}
+
+/**
+ * 归责模式表：**顺序即优先级**（①→③→②），全部命中不上才落 ④。
+ * ① 先判——承诺值/价格是评标打分项，漏一项直接丢分，不允许被材料类关键词抢走。
+ * ③ 次判——「系统该填没填」属链路缺陷，判据窗口最窄（10 字）故先跑：既防误报，
+ *   也避免「项目编号【待填写】及佐证材料」这类真链路缺陷被放宽后的 ② 抢走（R288 实测纠偏）。
+ * ② 后判——人工附材料/补录，词表较宽（前置窗口 40 字，跨小半句仍属同一责任方）。
+ *
+ * 本表与 src/pages/BidWorkspace/deliveryActionList.ts#DELIVERY_OWNER_PATTERNS 逐字同源，
+ * 由 src/pages/BidWorkspace/deliveryActionList.test.ts 的漂移守卫逐条比对模式原文——
+ * 界面「交付前必办清单」与本门禁报告必须给出同一份归责数字。
+ * R288 扩充依据 2026-10-13 实测「④ 待人工判定 41 处致命 / 117 处警告」的逐条人工核对结论
+ * （r283-gate-owner-rules-overbroad）：承诺数值/收费类归 ①，记录/台账/模板/名单/材料/填写指令类归 ②，
+ * 招标原文与采购文件已规定的（编号/依据/份数）归 ③，其余诚实留 ④ 交人工。
+ */
+const OWNER_PATTERNS = [
+  { owner: "biz-decision", re: /(质保|保修|免费服务|承诺延长|延长)[^。；\n]{0,20}【待填写】|【待填写】\s*年[^。；\n]{0,10}(质保|保修|免费)|优惠|折扣|让利[^。；\n]{0,15}【待填写】/, why: "质保/延长/优惠类承诺须商务拍板" },
+  { owner: "biz-decision", re: /【待填写】\s*(?:个)?(工作日|日历天|日历日|分钟|小时|课时|天|元|万元|%|％|台|套|人|次|年|月|倍|个|项|GB|TB|万)/, why: "承诺数值空缺（时限/人数/金额/数量）" },
+  { owner: "biz-decision", re: /(费用|人工费|维护费|报价|单价|价格|收费|计费)[^。；\n]{0,15}【待填写】/, why: "收费与价格口径须商务拍板" },
+  { owner: "biz-decision", re: /(承诺(?!函)|保证|确保)[^。；\n]{0,15}【待填写】/, why: "承诺句里的数值/期限须商务拍板" },
+  { owner: "system-refetch", re: /(项目依据|编制依据|依据文件|项目编号|招标编号|采购编号|项目名称|采购人|预算金额|最高限价)[^。；\n]{0,10}【待填写】|【待填写】[^。；\n]{0,10}(项目依据|依据文件|项目编号|招标编号|采购编号)/, why: "招标原文/项目字段已有该事实" },
+  { owner: "system-refetch", re: /(份数|正本|副本)[^。；\n]{0,10}【待填写】|【待填写】[^。；\n]{0,10}(份数)/, why: "装订份数由采购文件规定，可回取" },
+  { owner: "material-attach", re: /【待填写】[^。；\n]{0,12}(证明|证书|资质|复印件|授权函|承诺函|截图|白皮书|检测报告|彩页|名单|社保|型号|清单)|(证明|证书|资质|复印件|授权函|截图|白皮书|检测报告|彩页|名单|社保|型号)[^。；\n]{0,20}【待填写】/, why: "证明材料类，人工附原件" },
+  { owner: "material-attach", re: /(佐证材料|证明材料|申报材料|记录单|记录表|实施记录|盘点记录|值守记录|台账|模板|人员信息|对应关系|排班表|留存策略|业绩案例|案例)[^。；\n]{0,40}【待填写】/, why: "记录/台账/模板类，人工补录或附件" },
+  { owner: "material-attach", re: /【待填写】[^。；\n]{0,12}(佐证材料|证明材料|记录|台账|模板|名单|业绩|案例|附件)/, why: "材料/记录类占位" },
+  { owner: "material-attach", re: /【待填写】[^。；\n]{0,16}(按实补充|人工补充|按实填写|占位处理|人工填写)/, why: "正文自述由投标人按实补录" },
+  { owner: "material-attach", re: /【[^】]{0,20}(?:此处插入|插入)[^】]{0,20}】/, why: "插图/附证占位，人工补件" },
+  { owner: "material-attach", re: /[（(]\s*(?:请)?填写[^）)]{0,14}[）)]/, why: "正文残留填写指令，人工补录" },
 ]
+
+const UNCLASSIFIED_WHY = "未能自动归责，须逐条人工确认责任方"
+
+/**
+ * 项目级事实缺陷的规则直判：这两类命中本身就在说「源数据里已有该事实却未回取」，
+ * 无需再过关键词表（此前落到 ④ 待判定，等于把链路缺陷混进人工待办里）。
+ */
+const FACT_SYSTEM_REFETCH_RULES = new Set(["tender-no-missing", "basis-refetch-failed"])
 
 const USAGE = [
   "用法：node scripts/bid-delivery-gate.mjs [选项]",
@@ -378,18 +403,31 @@ function checkChapter(ch, minChars) {
 }
 
 /**
- * 为单条占位项归责。找不到匹配时兜底为「待人工判定」，绝不返回空导致统计漏项。
- * @param {{snippet:string}} item
- * @returns {{owner:string, ownerLabel:string, action:string}}
+ * 为单条占位项归责（判据表 OWNER_PATTERNS 与界面清单同源）。
+ * 优先级：① 规则直判（项目级事实缺陷=③ 系统可回取）→ ② 模式表顺序命中 → ③ 兜底 ④ 待人工判定，
+ * 绝不返回空导致统计漏项。
+ * @param {{snippet:string, rule?:string, owner?:string}} item
+ * @returns {{owner:string, ownerLabel:string, action:string, why:string}}
  */
 function classifyOwner(item) {
-  const text = item.snippet || ""
-  for (const rule of OWNER_RULES) {
-    if (rule.re.test(text)) return { owner: rule.id, ownerLabel: rule.label, action: rule.action }
+  if (item.owner) return item
+  if (item.rule && FACT_SYSTEM_REFETCH_RULES.has(item.rule)) {
+    return {
+      owner: "system-refetch",
+      ownerLabel: OWNER_LABEL["system-refetch"],
+      action: OWNER_ACTION["system-refetch"],
+      why: "事实缺陷规则直判（源数据已有该事实）",
+    }
   }
-  const fallback = OWNER_RULES[OWNER_RULES.length - 1]
-  return { owner: fallback.id, ownerLabel: fallback.label, action: fallback.action }
+  const text = item.snippet || ""
+  for (const p of OWNER_PATTERNS) {
+    if (p.re.test(text)) {
+      return { owner: p.owner, ownerLabel: OWNER_LABEL[p.owner], action: OWNER_ACTION[p.owner], why: p.why }
+    }
+  }
+  return { owner: "unclassified", ownerLabel: OWNER_LABEL.unclassified, action: OWNER_ACTION.unclassified, why: UNCLASSIFIED_WHY }
 }
+
 
 /**
  * 依据表「编号」列的无编号占位规整 —— **与 src/pages/BidWorkspace/bidTypes.ts#normalizeBasisPlaceholders 同源**。

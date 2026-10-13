@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 283,
+  "round": 288,
   "backlog": [
     {
       "id": "r219-kbqa-coldstart-perf",
@@ -1076,11 +1076,13 @@
       "id": "r281-quote-discount-no-entry",
       "priority": "P2",
       "module": "/ppt-quote",
-      "status": "open",
+      "status": "closed",
       "source": "R281 商务/财务视角审计",
       "issue": "折扣是「半个功能」：数据模型有 discount 字段、itemSubtotal 按折扣算小计、Excel 公式带折扣、界面还会显示「(90%)」标记——但全链路没有任何录入入口：QuoteEditor 行内只有数量/单位/单价/备注可编辑，新建行与 AI 初稿一律写死 discount:100，且报价提示词明令 AI 不得输出 price/discount（pptQuoteTypes.ts L919）。后果：谈判期最常见的「原价+折扣」报价方式在系统里做不出来，只能人工把折后价心算进单价，改一次单价原价就丢失，也无法做 A/B 折扣版本对比。",
       "evidence": "grep 全仓 discount 赋值点：usePptQuote.ts L1877/L2136/L2180/L2404 与 pptQuoteTypes.ts L266/L291 全部为 100；QuoteEditor.tsx 仅 L589 只读展示；SQLite 只读实测存量 3 条报价 discount 亦全为 100",
-      "suggested_fix": "单价列旁增加折扣输入（复用 NumCell，按百分比），小计/组小计/总计与 Excel 公式无需改动（R281 已把两侧口径锁同源）。零后端、零 schema、零 AI 成本。"
+      "suggested_fix": "单价列旁增加折扣输入（复用 NumCell，按百分比），小计/组小计/总计与 Excel 公式无需改动（R281 已把两侧口径锁同源）。零后端、零 schema、零 AI 成本。",
+      "round": 285,
+      "resolution": "R285 落地：normalizeDiscount 单一口径 + QuoteEditor 行内折扣%列 + 整组批量 setGroupDiscount + 导出同口径，四处读面闭合"
     },
     {
       "id": "r281-active-work-per-entity-cap",
@@ -1116,10 +1118,12 @@
       "id": "bid-placeholder-owner-split",
       "priority": "P1",
       "module": "/bid-workspace",
-      "status": "open",
+      "status": "closed",
       "source": "WorkBuddy 主导体检 2026-10-12 · 标书零折扣",
       "issue": "【标书·交付风险】205 处待填写占位不分责任方，导致商务决策项淹没在人工材料项里。实测建阳·售后服务章同一节内：承诺整个采购包所有产品提供占位年免费质保期、在 3 年基础上延长占位年，属商务评分项（该评分项每延 1 年得 1 分，满分 2 分），必须商务拍板；而同章的「人员证书编号占位」属人工附材料。两者用同一标记，交付前无法回答「还有几项等我拍板」，极易漏掉导致丢分。需分流为①商务决策 ②人工附材料 ③系统可回取 三类显式标记 + 生成「交付前必办清单」。",
-      "evidence": "交付门禁归责统计：①商务决策 10 项致命 / ②人工附材料 37 致命+52 警告 / ③系统可回取 14 致命+5 警告 / ④待判定 42 致命+120 警告"
+      "evidence": "交付门禁归责统计：①商务决策 10 项致命 / ②人工附材料 37 致命+52 警告 / ③系统可回取 14 致命+5 警告 / ④待判定 42 致命+120 警告",
+      "resolution": "R288 closed：见 closed r288-delivery-action-owner-split 与 .loop/reports/2026-10-13-r288-delivery-action-owner-split.md",
+      "closedRound": 288
     },
     {
       "id": "bid-l2-verbatim-compare",
@@ -1128,7 +1132,8 @@
       "status": "open",
       "source": "WorkBuddy 主导体检 2026-10-12 · 标书零折扣",
       "issue": "【标书·零折扣铁律 2/3/4】对已生成的 917,692 字真实正文跑 L2 逐字比对，三类硬指标必须为 0：改写（引文与招标原文不一致）、编造（招标原文与素材库都不存在的数字/名称/承诺）、漏答（招标要求条款未响应）。现有交付门禁不校验这三项，属明确声明的未覆盖范围。用户已授权真实模型，可执行。",
-      "evidence": "docs/18 第二节铁律 2/3/4；交付门禁「未覆盖范围」第①②条"
+      "evidence": "docs/18 第二节铁律 2/3/4；交付门禁「未覆盖范围」第①②条",
+      "progress": "R286 切片1 closed(r286-bid-l2-quote-rewrite)：引文级改写核对落地+全库摸底出数（改写·引文级 34/条款级 0/漏答 76/编造存量仅贵港 1，其余未复核）。剩余切片：①生成侧改写抑制（体检命中回注重写）②漏答清零推进③编造 AI 复核轨全量铺开。 R287 切片2 closed(r287-bid-l2-quote-reflow)：生成侧改写抑制双通道落地——提示词引号照录纪律（B类升位）+ 体检命中一键整改回注（定位/封顶/最小改动指令/串行重写）。剩余切片：①漏答清零推进（76 条，依赖补生成）②编造 AI 复核轨全量铺开（真实模型费用）。"
     },
     {
       "id": "bid-e2e-real-project",
@@ -1152,7 +1157,7 @@
       "id": "r283-table-empty-cell-placeholder",
       "priority": "P2",
       "module": "/bid-workspace",
-      "status": "open",
+      "status": "closed",
       "issue": "A类·交付物：本轮只修了「编制依据表」一类表格空列占位；其他表格（参数响应表/材料清单/人员配置表/培训计划表）里「空列被填【待填写】」的同类形态未普查。建议做成全库扫描器：把全库正文里「行内含类型词/表头词但中间列为占位」的行全部列出，按表格类型归类，判断哪些可批量消除、哪些本就该人工填。方法与本轮同源（纯本地、零 AI）。"
     },
     {
@@ -1166,8 +1171,18 @@
       "id": "r283-gate-owner-rules-overbroad",
       "priority": "P3",
       "module": "/bid-workspace",
+      "status": "closed",
+      "issue": "C类·判据精度：门禁「④ 待人工判定」仍有 41 处致命，人工核对发现相当部分其实是「材料/记录/清单类」（应归②人工附材料）。归责规则关键词覆盖面可再扩（如「配置参数与实施记录」「盘点记录」「留存策略」），让「还要人等什么」分得更清、更可执行。",
+      "resolution": "R288 closed：见 closed r288-delivery-action-owner-split 与 .loop/reports/2026-10-13-r288-delivery-action-owner-split.md",
+      "closedRound": 288
+    },
+    {
+      "id": "r288-back-to-top-overlaps-badge",
+      "priority": "P3",
+      "module": "/bid-workspace",
       "status": "open",
-      "issue": "C类·判据精度：门禁「④ 待人工判定」仍有 41 处致命，人工核对发现相当部分其实是「材料/记录/清单类」（应归②人工附材料）。归责规则关键词覆盖面可再扩（如「配置参数与实施记录」「盘点记录」「留存策略」），让「还要人等什么」分得更清、更可执行。"
+      "source": "R288 实机验证（浏览器 694px 视口）",
+      "issue": "C类·版式避让：窄视口（<=700px）下废标项检查页右下角「回到顶部」浮动圆钮会压住交付前必办清单分组徽标行尾部字符（「· 致命待办 N」尾部被遮）。截图时靠滚动位置避让取到了完整图，非阻塞。修法建议：徽标行右侧预留 padding（pr-14）或窄屏隐藏浮钮，与既有 R249 回到顶部组件一并核。"
     }
   ],
   "closed": [
@@ -4577,6 +4592,81 @@
       "priority": "P2",
       "status": "closed",
       "summary": "R283 closed（判据侧）：scripts/bid-delivery-gate.mjs 已与交付物口径对齐（判定前对依据表编号列做同源规整，避免把导出后本就不存在的占位报成致命），并把 system-refetch 归责窗口从 30 字收到 10 字（原窗口下「采购人」跨小半句误命中 3 条商务/材料项）。已完成真实项目端到端导出实证：真实库记录 → exportBidDocx → 真实 .docx → Python 解包核对。剩余（解析→大纲→逐章生成→体检→导出的生成段）见 bid-e2e-real-project。"
+    },
+    {
+      "id": "r283-table-empty-cell-placeholder",
+      "title": "标书·全库表格空列占位普查：其它表格『列位被填【待填写】』的同类形态未普查",
+      "priority": "P2",
+      "status": "closed",
+      "summary": "R284 closed（普查完成 + 结论确定）：新增只读全库扫描器 scripts/bid-table-placeholder-scan.mjs（node:sqlite 只读，判定前先做与 bidTypes/gate 同源的 normalizeBasisPlaceholders，R283 已修簇不重复计入）。真实全库：标书 19 项目 / 方案 1 / 章节 161 / 含占位行 158；结构性空列（S1/S3）命中=0 —— 除 R283 已修的依据表编号列外，全库不存在第二处可安全批量消除的结构性空列簇；剩余 158 处全为信息位空缺（人员姓名/证书编号/质保年限/响应时限/元每次/套数…），须人工/商务填，绝不自动消除。据此裁定：不扩 normalizeBasisPlaceholders 消除范围（外扩=掩盖真问题，违背 R283『宁可不改也不掩盖』）。顺带修两处实跑暴露缺陷：① solutions 列名 bug（真实列 solution_name，首跑方案域 0 覆盖 → 修后 161 章全覆盖）；② 表格族优先级（basis 前置，否则 S1 类型词『…标准』被参数表族抢走致分桶失真）。零 AI/零 schema/零 src 改动。四门：tsc exit0 / vitest 192文件2200 passed+2 skipped（新增1文件17用例）/ eslint 两文件 exit0 / build exit0。扫描器留存为常备只读回归探针。",
+      "files": [
+        "scripts/bid-table-placeholder-scan.mjs",
+        "scripts/bid-table-placeholder-scan.test.ts"
+      ]
+    },
+    {
+      "id": "r285-quote-discount-entry",
+      "title": "报价·折扣录入入口补齐（闭合 r281-quote-discount-no-entry）：行内折扣%列+整组批量+0值口径护栏",
+      "priority": "P2",
+      "summary": "R285 选题来源：backlog 中 r281-quote-discount-no-entry（P2）——discount 字段贯穿数据模型/itemSubtotal/Excel 公式/小计徽标全链路，但唯一缺失是没有任何录入入口（QuoteEditor 只有数量/单位/单价/备注可编辑，AI 初稿与手工新建一律写死 discount:100），导致「改了也白改」，无法做原价+折扣报价、无法 A/B 折扣版本对比。本次补全四处：1) pptQuoteTypes.normalizeDiscount 单一口径——缺省/非法/≤0 一律归一为原价 100（>100 封顶），杜绝开放录入后把 0 当 0 折让整单金额悄悄归零（旧 sanitizeQuote `||0` 有此隐患），itemSubtotal/sanitizeQuote 同源；2) quoteExports.quoteItemSubtotalFormula 改调 normalizeDiscount，Excel 单元格公式与 Word itemSubtotal 保持 R281「落到分」同口径；3) QuoteEditor 行表新增「折扣(%)」列（NumCell min=1 max=100 失焦回落 100，UI 层不可能落 0）+ 分组头「整组折扣%」批量入口（整包折让一次改全组，走新增 usePptQuote.setGroupDiscount，函数式 mutateQuote 无整数组竞态），小计徽标口径同步为「N%计价」，表尾 colSpan 6→7/尾列保持 3（新增列在单价与小计之间）；4) PptQuotePage 接线 setGroupDiscount。零 schema/零 collection/零提示词改动（纯会话内 state + 本地表达式）。测试增量+9：pptQuoteTypes.test 4 例（normalizeDiscount 边界、itemSubtotal 脏 0 不清零、sanitizeQuote 重载归一）+ 新建 quoteDiscount.test.ts 5 例源码扫描（UI 列/批量入口/页面接线/算子暴露/导出同口径四处锚点，任一被拆即报警，无 jsdom 沿用 disclosureA11y 范式）。四门全绿：tsc exit0 / vitest 全量 2209 passed+2 skipped（+9）/ QuoteEditor eslint exit0（usePptQuote 4 处 set-state-in-effect error 与 HEAD 逐行一致，非本轮新增）/ vite build exit0。",
+      "files": [
+        "src/pages/PptQuote/pptQuoteTypes.ts",
+        "src/pages/PptQuote/quoteExports.ts",
+        "src/pages/PptQuote/usePptQuote.ts",
+        "src/components/ppt-quote/QuoteEditor.tsx",
+        "src/pages/PptQuote/PptQuotePage.tsx",
+        "src/pages/PptQuote/pptQuoteTypes.test.ts",
+        "src/pages/PptQuote/quoteDiscount.test.ts"
+      ],
+      "round": 285,
+      "closes": "r281-quote-discount-no-entry"
+    },
+    {
+      "id": "r286-bid-l2-quote-rewrite",
+      "title": "标书·L2 逐字审计第一刀：引文级改写核对（quote_rewrite，bid-l2-verbatim-compare P0 切片1）+ 全库三类硬指标摸底",
+      "priority": "P0-slice1",
+      "summary": "选题：指派候选 quote-history-01/prompt-fabscan-03 经账本核验已 R102/R103 closed；遵用户总指令（重点标书）转 P0 bid-l2-verbatim-compare。盘点：漏答有 complianceCoverage(R195)、条款级保真有 starQuoteFidelityHits(R277)、编造有 consistencyGuard AI 轨，唯独「正文其它位置直接引语 vs 招标原文」的引文级改写是空白。落地：①新模块 quoteFidelity.ts quoteRewriteHits——只核「有引述意图」的引号（前 24 字提示词或 ★▲ 起头、归一≥14 字），normalizeFidelity 与 R277 同尺（空白/半角标点/括号差异不算改写），招标原文逐字未见→warn 并带「原文该处」定位；跨章去重、封顶 16 条、tender 缺失无基准静默跳过；②bidTypes 注册 quote_rewrite（类型联合+标签白名单，不进 GATE_FATAL_RULES——引号内未必真是原文，维持「只报告不拦截」裁定）；③useBidWorkspace.buildFormatReportFor 接线，随交卷体检白拿、面板与战情室徽标自动呈现。另交付 scripts/bid-l2-verbatim-scan.mjs（只读 node:sqlite，口径与 TS 侧同源复刻）对全库 19 项目摸底三类硬指标：有正文 11 项目合计 改写·引文级 34 / 条款级存量 0 / 漏答 76 条 / 编造仅贵港 1 条（其余未复核）——距「三类=0」仍有实差，伞项保持 open，后续切片已在 backlog progress 挂账（生成侧改写抑制、漏答清零、编造复核轨铺开）。零 schema/零 collection/零提示词。测试增量+10（quoteFidelity.test.ts 10 例：照录/改写/归一等价/★起头免提示词/无提示词不核/占位不核/跨章去重/无基准不判/封顶16/空正文）。在途避让：ppt-quote 六文件 R285 未提交改动全程未触碰。四门全绿：tsc exit0 / vitest 2219 passed+2 skipped（+10）/ eslint 触及文件与 HEAD 基线逐条同数（7 error 全为既有裁定项，零新增）/ vite build exit0。",
+      "files": [
+        "src/pages/BidWorkspace/quoteFidelity.ts (new)",
+        "src/pages/BidWorkspace/quoteFidelity.test.ts (new, 10 cases)",
+        "src/pages/BidWorkspace/bidTypes.ts",
+        "src/pages/BidWorkspace/useBidWorkspace.ts",
+        "scripts/bid-l2-verbatim-scan.mjs (new)"
+      ],
+      "round": 286,
+      "partOf": "bid-l2-verbatim-compare"
+    },
+    {
+      "id": "r287-bid-l2-quote-reflow",
+      "title": "标书·L2 逐字审计第二刀：生成侧改写抑制（bid-l2-verbatim-compare P0 切片2）——提示词引号照录纪律（B类 bidSection 5→6 / bidChapter 4→5）+ 体检命中一键整改回注（本地定位→小节重写通道）",
+      "priority": "P0",
+      "summary": "预防：bidSection/bidChapter 第 6 条新增无条件「正文引号只用于逐字照录招标原文；转述必须出引号」规则句（与 quote_rewrite 判据同尺），快照 -u 2 条、锈死单测+1、版本断言随升位。整改：quoteFidelity 抽口 iterRewriteQuotes 单一真源（报告/回注共用、行为等价），新增 quoteRewriteFixTargets（section_stats 确定性切片全片段定位、无统计章跳过、单节 8 条/单轮 12 节封顶）+ buildQuoteFixDirective（最小改动指令：照录或去引号转述）；useBidWorkspace startQuoteRewriteFix 走 runRegenerateSection 串行回注、一次费用确认、完成后体检自动刷新；SubmissionCheckPanel 格式卡新增「引文改写整改」按钮。零 collection、只报不拦维持。测试增量 +8（2227+2）。四门全绿：tsc 0 / vitest 全绿 / eslint 触及文件零新增（useBidWorkspace 18=基线同数）/ build 0。",
+      "files": [
+        "src/pages/BidWorkspace/quoteFidelity.ts",
+        "src/pages/BidWorkspace/quoteFidelity.test.ts",
+        "src/pages/BidWorkspace/prompts/bidSection.ts",
+        "src/pages/BidWorkspace/prompts/bidChapter.ts",
+        "src/pages/BidWorkspace/bidPromptBase.test.ts",
+        "src/pages/BidWorkspace/materialLibrary.test.ts",
+        "src/pages/BidWorkspace/useBidWorkspace.ts",
+        "src/components/bid-workspace/SubmissionCheckPanel.tsx",
+        "src/pages/BidWorkspace/BidWorkspacePage.tsx",
+        ".loop/reports/2026-10-13-r287-quote-verbatim-suppress.md"
+      ]
+    },
+    {
+      "id": "r288-delivery-action-owner-split",
+      "title": "标书·交付前必办清单（按责任方）落地 + 归责/致命判据与门禁脚本同源（bid-placeholder-owner-split P1 + r283-gate-owner-rules-overbroad P3）",
+      "priority": "P1",
+      "summary": "巡检结论：归责判据只活在 CLI 脚本 scripts/bid-delivery-gate.mjs 里，应用内一份都没有，所以 205/258 处占位混在一起、交付前答不出「还有几项等我拍板」。数据驱动：先跑门禁取真实基线（19 项目/150 章/917,612 字/BLOCKER 88/WARN 170；①10+0 ②37+52 ③0+1 ④41+117），再把 41 条 ④ 致命逐条人工核对，据核对结论反推关键词。新增 src/pages/BidWorkspace/deliveryActionList.ts（判据单一真源：DELIVERY_OWNER_PATTERNS 12 条，顺序即优先级 ①→③→②——③ 窗口最窄先跑防被放宽后的 ② 抢走，R288 实测纠偏；上下文前 40 后 30 与门禁同尺子；同形态跨章合并 + occurrences 累计；MAX_ACTION_ITEMS=120 超限披露；进度 bid_actions_<projectId> 沿用 submissionChecklist 范式）+ DeliveryActionPanel.tsx（挂交卷体检第5/6步「交卷前合规清单」之后，头部「还有 N 项等你拍板」+致命待办徽标+复制/下载走 @/lib 单一入口，key 重挂载 + useState 惰性读进度规避 react-hooks/set-state-in-effect）。门禁脚本 OWNER_RULES(4 条粗规则)→OWNER_PATTERNS(12 条，与 src 逐字一致)，classifyOwner 三段式：规则直判③→模式表→④兜底；PLACEHOLDER_RULES 两条致命字面量对齐 src（promise-empty-value 补 工作日/日历天/日历日/课时+(?:个) 并移出 份→改由③承接；promise-sentence 承诺→承诺(?!函) 并加 确保，承诺函归②）。复用：placeholderLedger.PLACEHOLDER_RES 改 export 共用同一把尺子；入口先跑 normalizeBasisPlaceholders 与导出链路对齐。数字：④ 致命 41→1（收敛 97.6%），① 10→39、② 37→46、③ 0→2，BLOCKER/WARN 总量 88/170 一字未动（只重新归责，不放宽不收紧）。测试增量 +42（新增 deliveryActionList.test.ts：真实摘录驱动 + 漂移守卫；漂移守卫首跑即抓到两处真问题——断言漏 / 定界符、以及门禁致命表与界面确实不同源）。零 AI 调用、零 collection、零 pb_hooks，「只报告不拦截」与 lint-debt-01 维持不推翻。四门全绿：tsc -b 0 / vitest 195 files 2269 passed+2 skipped（基线 194/2227+2）/ eslint 触及 5 文件 0 error / vite build 8.02s。实机原生复现（vibex-local 配置 :8000 + /__pb 代理，无垫片）：贵港项目 ①6+②5、建阳 ②5+③1+④4，勾销五处数字同步且可精确还原，localStorage 无残留，控制台 0 error；据实机反馈另修分组徽标口径（致命总数→fatalPending）。",
+      "files": [
+        "src/pages/BidWorkspace/deliveryActionList.ts",
+        "src/pages/BidWorkspace/deliveryActionList.test.ts",
+        "src/components/bid-workspace/DeliveryActionPanel.tsx",
+        "src/components/bid-workspace/SubmissionCheckPanel.tsx",
+        "src/pages/BidWorkspace/placeholderLedger.ts",
+        "scripts/bid-delivery-gate.mjs"
+      ]
     }
   ],
   "blocked": [
@@ -4611,7 +4701,7 @@
     }
   ],
   "noProgressStreak": 0,
-  "lastRoundSummary": "R282（Qoder 自主轮·评标专家视角，改完被中断）+ R283（主导者收口与推进）：标书「编制依据表」编号列占位污染根因修复——那些本就没有编号的依据（项目初设文件、原则性政策表述）被模型按「四列必须都有值」硬填【待填写】，评委读作「没填完」。三层修复：①bidTypes.basisStyleRule 三条规则句补「无编号填 ／、禁写【待填写】」（防未来）②新增纯函数 normalizeBasisPlaceholders，导出前对存量正文就地规整（修现在，零 AI）③门禁判定前做同源规整 + system-refetch 匹配窗口 30→10 字，使 BLOCKER 与导出物一致。真实数据双向核对：建阳2项目14章178,013字，替换20处全部命中依据表编号列、零误伤、疑似漏网0。端到端实证：真实库记录 → exportBidDocx → 真实 .docx 80,512字节 → Python 解包 word/document.xml，／13处、依据表行零残留。门禁 BLOCKER 103→88、「③系统可回取」14→0。容错说明：BLOCKER 降幅含真修约12处 + 判据修正3处（后者经人工核对确认为误报）。R282 另交付：projectFieldFactLines 修「招标编号正文0次出现」注入抖动、genFailureSummary 聚合逐章失败归因。",
+  "lastRoundSummary": "R288（Qoder 自主轮）标书·交付前必办清单（按责任方）落地：判据单一真源 src/pages/BidWorkspace/deliveryActionList.ts（12 条归责模式，顺序 ①→③→②，同形态跨章合并，本机勾销进度 bid_actions_）+ DeliveryActionPanel 挂交卷体检；门禁脚本归责升级为同一模式表并把两条致命字面量对齐（工作日/日历天/课时补齐、承诺函豁免归②、份数归③）。真实库数字：④ 待判定致命 41→1（收敛 97.6%），① 10→39、② 37→46、③ 0→2，BLOCKER/WARN 总量 88/170 不变。测试 +42（含 src↔scripts 漂移守卫，首跑即抓到两处真漂移）；四门全绿 tsc 0 / vitest 195 files 2269 passed+2 skipped / eslint 触及 5 文件 0 error / build 8.02s；实机原生复现贵港+建阳两项目并据反馈修分组徽标 fatalPending 口径。零 AI、零 collection、只报不拦维持；新登记 P3 一项（回到顶部浮钮窄屏遮徽标）。",
   "note": "用户 2026-10-13 指令：「报价先不管，先把业务跑通，特别是标书，重点中的重点，一定要做好」。本轮据此转向：报价类待决项（Excel 千分位格式等）暂缓，全部资源投标书链路。 现状判断：标书「招标原文 → 可交付 .docx」系统侧已跑通，「③系统可回取（系统该填没填）」缺陷已归零；剩余 88 处致命全部是人工必办项（②37 附材料 + ①10 商务拍板）与 ④41 待细分归责。",
   "masterDirective": {
     "setAt": "2026-10-12T22:28+08:00",

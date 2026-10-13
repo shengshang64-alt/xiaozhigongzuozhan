@@ -10,7 +10,8 @@ import type { LlmMessage } from "@/lib/llm"
 import { baselineLabelFromText, extractBaselineSegment, extractFragmentSegment } from "../materialLibrary"
 
 // R167 v4：2026-10 易标对齐轮——素材融入不提及来源（kbMaterial/directedKnowledge/refMaterials 规则句与注入段头同步改写），PROMPT_VERSION 3→4
-export const PROMPT_VERSION = 4
+// r287 v5（bid-l2-verbatim-compare 切片2·预防）：新增引号照录纪律规则条（第 6 条，其后规则序号顺移），与 bidSection v6 同口径
+export const PROMPT_VERSION = 5
 
 export type BidChapterPromptOpts = {
   wordBudget: number
@@ -113,6 +114,10 @@ export function buildBidChapterMessages(
   ]
   const clauseList = opts.clauses ?? []
   let ruleNo = 6
+  // r287（bid-l2-verbatim-compare 切片2·预防）：引号照录纪律——引号内只允许逐字原文，
+  // 转述必须出引号（与体检 quote_rewrite 规则同源口径：改写＝引号内非原文）
+  rules.push(`${ruleNo}. 正文引号只用于逐字照录招标原文：引用招标文件条款、评分标准、要求语句时，引号内文字必须与招标原文一字不差（仅允许把「要求/需/应」等要求类字眼改写为投标人自述人称），禁止在引号内改写、缩略、概括或插改字词；无法逐字照录时一律去掉引号改为间接转述；自拟的标题、口号与概念名称不用引号引用；`)
+  ruleNo += 1
   // 合并稿 v1.0（R30 全量切换）：三档写作模式规则块均非空，strict/缺省也注入严格响应块
   const modeRule = complianceModeRule(opts.complianceMode)
   if (modeRule) {

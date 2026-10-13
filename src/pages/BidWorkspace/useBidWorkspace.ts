@@ -339,6 +339,9 @@ import {
 } from "./commitmentLetter"
 // r277 切片1（评审报告驱动）：★引文保真 / 占位台账 / 形式质量三查（本地零 AI）
 import { clauseResponsePromptBlock, upgradeClausesWithTender, starQuoteFidelityHits } from "./starClauseFidelity"
+// r286（bid-l2-verbatim-compare 切片1）：引文级改写核对（本地零 AI，只报不拦）
+// r287（切片2·整改回注）：同文件加命中定位与整改指令拼装，回注走小节重写通道
+import { buildQuoteFixDirective, quoteRewriteFixTargets, quoteRewriteHits } from "./quoteFidelity"
 import { placeholderLedgerHits } from "./placeholderLedger"
 import {
   markdownResidueHits,
@@ -2077,6 +2080,9 @@ export function useBidWorkspace() {
     // 全部本地零 AI、随体检白拿、只报不拦（warn），交卷体检与战情室徽标自动呈现
     const starBaseline = (cur.tender_text ?? "").trim() || sectionText(cur.parse_report, STAR_CLAUSE_SECTION.key)
     report.hits.push(...starQuoteFidelityHits(starBaseline, cur.bid_chapters, cur.response_map))
+    // r286：引文级改写核对——正文直接引语（提示词引导/★▲起头）对照招标原文逐字，未见即 warn；
+    // tender_text 缺失时无基准自动跳过（不进质量闸黑名单：引号内未必真是原文，只报不拦）
+    report.hits.push(...quoteRewriteHits(cur.tender_text ?? "", cur.bid_chapters))
     report.hits.push(...placeholderLedgerHits(cur.bid_chapters))
     report.hits.push(...markdownResidueHits(cur.bid_chapters), ...numberingSequenceHits(cur.bid_chapters))
     // r277 切片2：工期时序（承诺最短工期 × 最长里程碑对账，评审 A2「180天承诺 vs 240天终验」根修）
@@ -6910,6 +6916,59 @@ export function useBidWorkspace() {
     [blockIfArchived, chapterBusy, chapterReflowBusy, costConfirm, coverageAudit, requireLogin, runChapterReflow],
   )
 
+
+  /**
+   * r287（bid-l2-verbatim-compare 切片2·整改）：引文改写一键整改回注——把体检 quote_rewrite
+   * 命中定位到（章, 小节）（quoteRewriteFixTargets 本地重算零 AI），串行注入整改指令走小节
+   * 重写通道（复用 runRegenerateSection，一次费用确认），重写完成由既有 refreshFormatReport
+   * 自动刷新体检；缺小节统计的章无法小节回注，提示回③整章处理。零 collection、零提示词文本
+   * 改动（指令属运行时附加写作要求，同 R103 回注口径）。
+   */
+  const [quoteFixBusy, setQuoteFixBusy] = useState(false)
+
+  const runQuoteRewriteFix = useCallback(async () => {
+    const cur = activeProjectRef.current
+    if (!cur) return
+    const groups = quoteRewriteFixTargets(cur.tender_text ?? "", cur.bid_chapters)
+    const jobs = groups.flatMap((g) => g.items.map((it) => ({ nodeId: g.chapterId, sectionIdx: it.sectionIdx, directive: buildQuoteFixDirective(it.quotes) })))
+    if (!jobs.length) return
+    setQuoteFixBusy(true)
+    let done = 0
+    try {
+      for (const j of jobs) {
+        if (!activeProjectRef.current) break
+        await runRegenerateSection(j.nodeId, j.sectionIdx, j.directive)
+        done += 1
+      }
+      if (done) toast.success(`引文改写整改完成：${done} 个小节已按招标原文重写引语（体检刷新后可复核余量）`)
+    } finally {
+      setQuoteFixBusy(false)
+    }
+  }, [runRegenerateSection])
+
+  const startQuoteRewriteFix = useCallback(() => {
+    if (!requireLogin()) return
+    if (blockIfArchived()) return // 归档只读（整改回注写正文）
+    if (chapterBusy || chapterReflowBusy || quoteFixBusy) {
+      toast.error("正文生成或整改回注进行中，请等待完成后再操作")
+      return
+    }
+    const cur = activeProjectRef.current
+    if (!cur) return
+    const groups = quoteRewriteFixTargets(cur.tender_text ?? "", cur.bid_chapters)
+    const sections = groups.reduce((n, g) => n + g.items.length, 0)
+    if (!sections) {
+      toast.info("没有可在小节级整改的引文改写命中（章缺少小节统计时请回「③ 投标文件编制」整章处理）")
+      return
+    }
+    costConfirm.runWithCostConfirm(
+      () => {
+        void runQuoteRewriteFix()
+      },
+      `将把体检发现的引文改写命中逐条回注整改：共 ${sections} 个小节（只最小修正疑改写引语及其所在句，其余内容保持不变；缺小节统计的章不包含，单轮封顶 12 小节），费用按 ${sections} 次生成合计计，${costText()}${skillCostSuffix("bid-chapter")}`,
+    )
+  }, [blockIfArchived, chapterBusy, chapterReflowBusy, costConfirm, quoteFixBusy, requireLogin, runQuoteRewriteFix])
+
   // ------------------------------ ④ 标书查重 ------------------------------
   const [dupLoading, setDupLoading] = useState(false)
 
@@ -8870,6 +8929,9 @@ export function useBidWorkspace() {
     // R103：按章聚合回注（章级改进建议 → 串行重写问题小节，一次费用确认）
     chapterReflowBusy,
     reflowChapterFromAudit,
+    // r287：引文改写一键整改回注（bid-l2-verbatim 切片2·整改）
+    quoteFixBusy,
+    startQuoteRewriteFix,
     // 循环 5 A3：归档只读硬锁（顶部横幅 + 编辑控件禁用 + 解除归档）
     isArchivedLocked,
     unarchiveActiveProject,

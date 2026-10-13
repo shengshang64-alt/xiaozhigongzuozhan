@@ -97,6 +97,7 @@ export type QuoteItem = {
   unit: string
   qty: number
   price: number
+  /** 折扣百分比：90 表示按 9 折计价；缺省/非法/0 一律归一为 100（原价），见 normalizeDiscount（R285） */
   discount: number
   // —— 与系统清单对齐的扩展字段（可选，老记录缺失） ——
   category?: string
@@ -191,8 +192,18 @@ export function suggestPageCount(durationMin: number): number {
 // (R113); this re-export keeps every existing import path working.
 export { formatMoney } from "@/lib/money"
 
+/**
+ * R285：折扣百分比的唯一口径。缺省/非法/≤0 一律视为原价（100），超 100 按 100 计。
+ * discount 此前全链路常量 100、无录入入口；开放录入后「0」既可能是没填也可能是
+ * 误清空，按 0 折计会让整单金额悄悄归零（金额悄悄错），故统一按原价兜底。
+ */
+export function normalizeDiscount(d: number | undefined | null): number {
+  if (d == null || !Number.isFinite(d) || d <= 0) return 100
+  return Math.min(100, d)
+}
+
 export function itemSubtotal(it: QuoteItem): number {
-  const discount = it.discount == null || !Number.isFinite(it.discount) ? 100 : it.discount
+  const discount = normalizeDiscount(it.discount)
   const raw = (it.qty || 0) * (it.price || 0) * (discount / 100)
   return Math.round(raw * 100) / 100
 }
@@ -561,7 +572,8 @@ export function sanitizeQuote(rec: QuoteRecord): QuoteRecord {
           qty: Number(it.qty) || 0,
           // 价格后录：允许 0（不再兜底为默认参考价），保持数值语义
           price: Number(it.price) || 0,
-          discount: it.discount == null ? 100 : Number(it.discount) || 0,
+          // R285：0/非法一律归一为原价，杜绝重载后小计悄悄归零（旧口径 ||0 有此隐患）
+          discount: normalizeDiscount(it.discount == null ? undefined : Number(it.discount)),
           category: it.category != null ? String(it.category) : undefined,
           product_line: it.product_line != null ? String(it.product_line) : undefined,
           product_name: it.product_name != null ? String(it.product_name) : undefined,
