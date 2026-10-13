@@ -7,15 +7,16 @@
       "Read",
       "Grep",
       "Glob",
+      "WebFetch",
+      "WebSearch",
       "Edit(/src/**)",
       "Edit(/pocketbase/pb_hooks/**)",
       "Edit(/pocketbase/pb_migrations/**)",
       "Edit(/scripts/**)",
       "Edit(/docs/**)",
-      "Edit(/.loop/**)",
+      "Edit(/tests/**)",
       "Edit(/.qoder/**)",
       "Edit(/public/**)",
-      "Edit(/AI-ITERATION.md)",
       "Edit(/package.json)",
       "Edit(/vite.config.ts)",
       "Edit(/tailwind.config.js)",
@@ -27,11 +28,14 @@
       "Bash(pnpm lint:*)",
       "Bash(pnpm test)",
       "Bash(pnpm test:*)",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm install:*)",
       "Bash(npx tsc:*)",
       "Bash(npx vite:*)",
       "Bash(npx eslint:*)",
       "Bash(npx vitest:*)",
       "Bash(node:*)",
+      "Bash(python:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
@@ -40,15 +44,18 @@
       "Bash(git commit:*)",
       "Bash(git stash:*)",
       "Bash(git restore:*)",
+      "Bash(git revert:*)",
+      "Bash(git checkout:*)",
       "Bash(curl http://127.0.0.1:*)",
       "Bash(curl http://localhost:*)",
+      "Bash(curl https://api.github.com:*)",
+      "Bash(curl https://raw.githubusercontent.com:*)",
+      "Bash(curl https://github.com:*)",
+      "Bash(gh:*)",
       "Bash(*start-local.cmd*)",
       "Bash(*stop-local.cmd*)"
     ],
-    "ask": [
-      "WebFetch",
-      "WebSearch"
-    ],
+    "ask": [],
     "deny": [
       "Read(/.env)",
       "Read(/.env.*)",
@@ -57,6 +64,8 @@
       "Read(*.pem)",
       "Read(*.key)",
       "Read(*.pfx)",
+      "Edit(/.qoder/settings.json)",
+      "Edit(/.qoder/hooks/**)",
       "Bash(rm:*)",
       "Bash(rmdir:*)",
       "Bash(del:*)",
@@ -92,6 +101,15 @@
       },
       {
         "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .qoder/hooks/guard.mjs"
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
         "hooks": [
           {
             "type": "command",

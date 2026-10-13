@@ -25,11 +25,16 @@ const TTL_MS = 7 * 24 * 60 * 60 * 1000
 const MAX_ENTRIES = 60
 const REASON_MAX = 120
 
-/** 会被长期挂账的确定性失效类别；其余（限流 / 超时 / 不可用）只走会话冷却 */
+/** 会被长期挂账的确定性失效类别；瞬时类（限流 / 超时 / 不可用）只走会话冷却 */
 const PERSIST_CLASSES: ReadonlySet<CallFailureClass> = new Set<CallFailureClass>([
   "model_missing",
   "model_disabled",
   "auth",
+  // R301：额度耗尽同样挂账。它不是「永久坏」，但也不是「等一会就好」——
+  // 实测 xiaomi/mimo-v2.6-pro（quota exhausted）与 Intern/deepseek-v4-flash-vision
+  // （quota exceeded）退避 3 次全败，不充值就必然继续失败。不挂账的后果实测成立：
+  // 重开页面仍显示为可用，用户选它 → 立刻失败 → 白跑一次生成。
+  "quota_exhausted",
 ])
 
 export interface ModelHealthEntry {
@@ -195,6 +200,7 @@ export function healthShortLabel(cls: CallFailureClass): string {
   if (cls === "model_missing") return "已下线"
   if (cls === "model_disabled") return "已停用"
   if (cls === "auth") return "Key 失效"
+  if (cls === "quota_exhausted") return "额度耗尽"
   return ""
 }
 
@@ -209,6 +215,9 @@ export function healthNotice(entry: ModelHealthEntry | null): string {
   }
   if (entry.cls === "auth") {
     return "该配置 API Key 校验失败（认证被拒）。请点「编辑」更新 Key，或改用其他配置。"
+  }
+  if (entry.cls === "quota_exhausted") {
+    return "该模型所属账号额度或余额已耗尽（接口返回 429，提示 quota exhausted / exceeded）。退避重试无用，请到该模型平台充值或提升配额后再用。"
   }
   return ""
 }

@@ -26,11 +26,24 @@ export function parsedContentChars(sections: ParseSection[]): number {
   return (sections ?? []).reduce((a, s) => a + nonWs(s.content), 0)
 }
 
-/** 解析覆盖率：产出/原文非空白字符比，0~1；原文为空返回 null（无从判定） */
+/** 解析覆盖率：产出/原文非空白字符比，0~1；原文为空返回 null（无从判定）。
+ * R-031 P6 口径显式化：分子 = 各解析项正文非空白字符合计，分母 = 招标文件原文非空白字符；
+ * 降级分区（content 以「〔系统降级」开头）、内容薄分区（<50 非空白字）、
+ * 命中 requiredParseFailures 的分区 → 不计入有效分子（视为未完成）。
+ */
 export function parseCoverageRatio(sections: ParseSection[], sourceText: string): number | null {
   const src = nonWs(sourceText)
   if (!src) return null
-  return Math.min(1, parsedContentChars(sections) / src)
+  // R-031 P6：仅计"有效"分区产出——排除降级/薄区/失败区
+  const effectiveChars = (sections ?? []).reduce((a, s) => {
+    const t = (s.content ?? "").trim()
+    if (t.startsWith("〔系统降级")) return a // 降级不计
+    if (s.status === "failed" || s.status === "pending") return a // 未完成不计
+    const n = nonWs(t)
+    if (n < 50) return a // 薄区不计
+    return a + n
+  }, 0)
+  return Math.min(1, effectiveChars / src)
 }
 
 export type CoverageLevel = "ok" | "warn" | "block"
@@ -108,4 +121,21 @@ export function missingCriticalSections(
     const text = String(s.content ?? "").trim()
     return !text || EMPTY_SECTION_RE.test(text)
   })
+}
+
+/**
+ * R-031 P6（安中医 2026BFAFZ50845 实测）：返回「未完成」分区清单（供 UI 覆盖率数字旁展示）。
+ * 判据：status 为 failed/pending、content 以降级前缀开头、或正文 <50 非空白字符。
+ */
+export function incompleteSections(sections: ParseSection[]): { key: string; title: string; reason: string }[] {
+  const out: { key: string; title: string; reason: string }[] = []
+  for (const s of sections ?? []) {
+    const t = (s.content ?? "").trim()
+    if (s.status === "failed") { out.push({ key: s.key, title: s.title, reason: "解析失败" }); continue }
+    if (s.status === "pending") { out.push({ key: s.key, title: s.title, reason: "未解析" }); continue }
+    if (t.startsWith("〔系统降级")) { out.push({ key: s.key, title: s.title, reason: "AI 降级为原文检索" }); continue }
+    if (nonWs(t) < 50 && t.length > 0) { out.push({ key: s.key, title: s.title, reason: `内容过薄（${nonWs(t)} 字）` }); continue }
+    if (!t) { out.push({ key: s.key, title: s.title, reason: "无内容" }); continue }
+  }
+  return out
 }

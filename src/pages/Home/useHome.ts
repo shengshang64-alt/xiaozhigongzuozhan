@@ -294,7 +294,15 @@ export function useHome() {
   // ------------------------------ 活动流（B-3 跨实体聚合，零后端） ------------------------------
   const { activityEvents, activityLoading } = useActivityFeed(userId)
   // ------------------------------ 工作台进行中事项（R196 §3.2 跨工作台聚合，只读零后端） ------------------------------
-  const { activeWork, activeWorkTotal, activeWorkByKind, activeWorkLoading } = useActiveWork(userId)
+  const {
+    activeWork,
+    activeWorkTotal,
+    activeWorkByKind,
+    activeWorkTruncated,
+    activeWorkExact,
+    activeWorkCaveat,
+    activeWorkLoading,
+  } = useActiveWork(userId)
 
   // ------------------------------ 待办 ------------------------------
   const [todos, setTodos] = useState<TodoItem[]>([])
@@ -942,10 +950,13 @@ export function useHome() {
     // 活动流
     activityEvents,
     activityLoading,
-    // 工作台进行中事项（R196 聚合卡 / R197 顶部数字与明细）
+    // 工作台进行中事项（R196 聚合卡 / R197 顶部数字与明细 / R302 计数下限口径）
     activeWork,
     activeWorkTotal,
     activeWorkByKind,
+    activeWorkTruncated,
+    activeWorkExact,
+    activeWorkCaveat,
     activeWorkLoading,
     // 派生
     mustSee,

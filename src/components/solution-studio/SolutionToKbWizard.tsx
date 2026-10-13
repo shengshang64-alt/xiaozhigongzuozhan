@@ -11,7 +11,8 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { createKbDoc, extractKbIndex, listKbDocs } from "@/lib/kbCore"
+import { createKbDoc, extractKbIndex } from "@/lib/kbCore"
+import { getCachedVisibleDocs } from "@/lib/kbAssemble"
 import { KB_CATEGORIES } from "@/lib/kbPolicy"
 import { decodeRhToken } from "@/lib/rhLogin"
 import { deriveSection, deriveTrack } from "@/lib/kbTaxonomy"
@@ -80,7 +81,10 @@ export function SolutionToKbWizard({ solution, userId, open, onOpenChange, onImp
     const folder = folderPath.trim() || `方案素材/${solution.solution_name}`
     setImporting(true)
     try {
-      const existingDocs = await listKbDocs()
+      // R304(r303-kb-cache-bypass-sites)：去重读取走共享缓存——从方案页打开本向导时 R303 已预热缓存，
+      // 不再额外全库下载一遍。去重口径同时收敛为「团队库 + 本人个人文档」：旧的全库口径会因他人同名
+      // 个人文档把我方章节判成「已存在」而静默跳过导入，而本向导写的正是本人可见的文档。
+      const existingDocs = await getCachedVisibleDocs(userId)
       const existingKeys = new Set(existingDocs.map((d) => `${d.folder_path}||${d.title}`))
       const uploaderName = decodeRhToken()?.nickName ?? ""
       let created = 0

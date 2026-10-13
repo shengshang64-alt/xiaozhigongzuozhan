@@ -102,10 +102,34 @@ describe("classifyCallFailure —— 逐字对齐网关真实文案", () => {
   })
 
   it("平台通道与前端兜底文案", () => {
-    expect(classifyCallFailure("insufficient_balance")).toBe("rate_limit")
+    // R301：insufficient_balance 归 quota_exhausted 而非 rate_limit——
+    // 全项目（llmError / aigc / modelGateway）对它的定义都是「余额不足，请充值」，
+    // 归rate_limit 会把一个必须充值的问题当成等一会就好。
+    expect(classifyCallFailure("insufficient_balance")).toBe("quota_exhausted")
     expect(classifyCallFailure("Upstream rate limit exceeded (TPM)")).toBe("rate_limit")
     expect(classifyCallFailure("网络异常，请稍后重试")).toBe("unavailable")
     expect(classifyCallFailure("服务异常（HTTP 500），请稍后重试")).toBe("unavailable")
+  })
+
+  // R301：额度耗尽与速率限制同为 429，但处置相反，必须分开
+  it("R301 额度耗尽与速率限制严格分开（实测原文逐字）", () => {
+    // 实测原文：退避 25s 即成功 → 速率限制
+    expect(classifyCallFailure("对方接口请求频率超限（HTTP 429），请稍后重试")).toBe("rate_limit")
+    expect(classifyCallFailure("inference exceeds tpm/rpm limit")).toBe("rate_limit")
+    // 实测原文：退避 3 次全败 → 额度耗尽
+    expect(classifyCallFailure("接口额度或余额不足（HTTP 429），请到该模型平台充值或提高配额后重试")).toBe("quota_exhausted")
+    expect(classifyCallFailure("quota exhausted")).toBe("quota_exhausted")
+    expect(classifyCallFailure("quota exceeded")).toBe("quota_exhausted")
+    // 旧版网关的二选一句式不是真判定，归回rate_limit，绝不误挂「需充值」
+    expect(classifyCallFailure("所配置模型的接口限流或余额不足（HTTP 429），请稍后重试或切换模型")).toBe("rate_limit")
+    expect(classifyCallFailure("对方接口限流或余额不足（HTTP 429），请稍后重试")).toBe("rate_limit")
+  })
+
+  // R301：额度耗尽是账号级（换模型无用），冷却整配置 + 该模型；且参与自动回退
+  it("R301 额度耗尽按账号级冷却并参与回退", () => {
+    expect(isFailoverEligible("quota_exhausted")).toBe(true)
+    const cand = { key: "personal:c1:m1", ref: { source: "personal" as const, configId: "c1", configName: "c", modelId: "m1" }, configId: "c1", isConfigDefault: true }
+    expect(coolingKeysForFailure("quota_exhausted", cand).sort()).toEqual([cand.key, configCoolingKey("c1")].sort())
   })
 
   it("内容审核 / 参数错误等明确失败判 other（不盲目换通道，也不打冷却）", () => {

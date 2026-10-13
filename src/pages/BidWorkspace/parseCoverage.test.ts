@@ -20,7 +20,7 @@ const src = (n: number): string => "字".repeat(n) // n 个非空白字符的原
 describe("R-038③ 解析覆盖率度量与门禁（R258）", () => {
   it("覆盖率=产出/原文非空白；空白不计", () => {
     expect(parsedContentChars([sec("  abcdef  ")])).toBe(6)
-    expect(parseCoverageRatio([sec("abcd")], src(10))).toBeCloseTo(0.4)
+    expect(parseCoverageRatio([sec("a".repeat(50))], src(125))).toBeCloseTo(0.4)
   })
 
   it("原文为空返回 null；超 1 截断到 1", () => {

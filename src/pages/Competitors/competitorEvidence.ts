@@ -8,8 +8,9 @@
 // - 单段防溢出：软著≤20 / 客户≤15 / KB≤8 / intel≤20；超出走计数摘要。
 // - 任何一类源失败静默回退空数组，不阻断分析（模型至少能拿到"该维度无新事实"的诚实信号）。
 import { getPocketBaseUrl } from "@/lib/pb"
-import { vibexAuthHeaders } from "@/lib/rhLogin"
-import { listKbDocs, searchKbDocs, type KbDocRow, type KbSearchHit } from "@/lib/kbCore"
+import { decodeRhToken, vibexAuthHeaders } from "@/lib/rhLogin"
+import { searchKbDocs, type KbDocRow, type KbSearchHit } from "@/lib/kbCore"
+import { getCachedVisibleDocs } from "@/lib/kbAssemble"
 import { effectivePolicy } from "@/lib/kbPolicy"
 import { redactPii } from "@/lib/piiRedact"
 import { loadCopyrights, type CopyrightRow } from "./copyrightCore"
@@ -297,14 +298,14 @@ export async function buildCustomerShare(aliases: string[]): Promise<CustomerSha
 // 3. 知识库命中
 // ---------------------------------------------------------------------------
 
-let kbCache: { ts: number; rows: KbDocRow[] } | null = null
-const KB_CACHE_TTL_MS = 5 * 60 * 1000
-
+// R304(r303-kb-cache-bypass-sites)：这里曾自建一份模块级缓存（全库直拉 + 独立 5 分钟 TTL），与
+// kbAssemble 的可见文档共享缓存并存有两个问题：① 同一批含正文的全库语料在内存里存两份、冷启动
+// 各下载一遍；② 两份缓存互不感知——知识库增删改经 onKbMutation 只失效共享缓存，本缓存还会把旧语料
+// 喂进 AI 最长 5 分钟。收敛到共享缓存后，并发去重/TTL/变更失效只留一处真源。
+// 顺带纠正可见性口径：kb_docs list 路由不按 rh_user_id 过滤（个人隔离本应在前端做），旧实现把「他人
+// 个人笔记」也喂进了 AI 原文；现与方案/标书/问答通道一致，只取「团队库 + 本人个人文档」。
 async function getKbDocsCached(): Promise<KbDocRow[]> {
-  if (kbCache && Date.now() - kbCache.ts < KB_CACHE_TTL_MS) return kbCache.rows
-  const rows = await listKbDocs({ perPage: 200 })
-  kbCache = { ts: Date.now(), rows }
-  return rows
+  return getCachedVisibleDocs(decodeRhToken()?.sub ?? null)
 }
 
 /** 只保留允许进 AI 原文的文档（排除合同商务/资质证书等脱敏/禁止类） */

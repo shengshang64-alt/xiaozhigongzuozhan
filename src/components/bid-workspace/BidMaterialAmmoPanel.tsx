@@ -4,7 +4,8 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { decodeRhToken } from "@/lib/rhLogin"
-import { listKbDocs, type KbDocRow } from "@/lib/kbCore"
+import { type KbDocRow } from "@/lib/kbCore"
+import { getCachedVisibleDocs } from "@/lib/kbAssemble"
 import { listKbQaPairs, type KbQaPairRow } from "@/lib/kbQa"
 import {
   buildBidRecos,
@@ -119,13 +120,16 @@ export function BidMaterialAmmoPanel(p: Props) {
     return () => window.clearTimeout(timer)
   }, [queryInput])
 
-  // 面板挂载即拉取知识库/弹药库两源（会话内，仅一次；失败可重试）
+  // 面板挂载即拉取知识库/弹药库两源（会话内，仅一次；失败可重试）——知识库源走 kbAssemble 共享缓存
   useEffect(() => {
     if (loadedRef.current) return
     loadedRef.current = true
     let alive = true
     setLoading(true)
-    Promise.all([listKbDocs(), listKbQaPairs()])
+    // R304(r303-kb-cache-bypass-sites)：标书侧 openProject 已 prewarmKbCache，面板打开时缓存通常已热，
+    // 不再把全库语料重复下载一遍。身份在 effect 内现取（与本面板其它调用同源），避免把这个「仅一次」
+    // 的 effect 拖上 uid 依赖。下游 pickKbHits 仍按可见性过滤，语义不变。
+    Promise.all([getCachedVisibleDocs(decodeRhToken()?.sub ?? null), listKbQaPairs()])
       .then(([d, q]) => {
         if (!alive) return
         setDocs(d)

@@ -31,7 +31,7 @@ export function HomePage(p: ReturnType<typeof useHome>) {
         greeting={p.greeting}
         displayName={displayName}
         summaryLines={[
-          p.activeWorkTotal > 0 ? `各工作台共 ${p.activeWorkTotal} 项工作在制` : "",
+          p.activeWorkTotal > 0 ? `各工作台共 ${p.activeWorkTotal}${p.activeWorkExact ? "" : "+"} 项工作在制` : "",
           p.overdueTodoCount > 0 ? `${p.overdueTodoCount} 条待办已逾期` : "",
           p.intelPendingCount > 0 ? `${p.intelPendingCount} 条情报待确认` : "",
           p.qualRisk.total > 0 ? `资质${p.qualRisk.line}（投标核验）` : "",
@@ -49,6 +49,8 @@ export function HomePage(p: ReturnType<typeof useHome>) {
       <StatsRow
         activeWorkCount={p.activeWorkTotal}
         activeWorkByKind={p.activeWorkByKind}
+        activeWorkTruncated={p.activeWorkTruncated}
+        activeWorkCaveat={p.activeWorkCaveat}
         pendingTodoCount={p.pendingTodoCount}
         doneTodoCount={p.doneTodoCount}
         overdueTodoCount={p.overdueTodoCount}
@@ -92,7 +94,7 @@ export function HomePage(p: ReturnType<typeof useHome>) {
 
       <IntelSection intelItems={p.intelItems} intelLoading={p.intelLoading} />
 
-      <ActiveWorkSection items={p.activeWork} loading={p.activeWorkLoading} />
+      <ActiveWorkSection items={p.activeWork} loading={p.activeWorkLoading} total={p.activeWorkTotal} />
 
       <ProjectsSection
         projects={p.projects}

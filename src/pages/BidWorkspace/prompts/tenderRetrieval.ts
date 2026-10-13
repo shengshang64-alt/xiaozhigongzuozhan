@@ -259,7 +259,7 @@ const DEGRADED_FRAGMENT_CHARS = 800
 export function buildDegradedSectionContent(key: string, source: RetrievalSource, reason: string): string {
   const title = parseSectionTitle(key)
   const header = [
-    `〔系统降级 · 关键词检索原文〕「${title}」AI 解析未完成（${reason.slice(0, 80)}）。`,
+    `〔系统降级 · 关键词检索原文〕「${title}」AI 解析未完成（${reason.slice(0, 200)}）。`,
     `以下为系统按关键词检索出的相关原文片段（节选，供人工核对）；修复模型后可「重新解析此项」由 AI 提炼要点。`,
     "",
   ]

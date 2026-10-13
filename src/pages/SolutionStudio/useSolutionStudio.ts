@@ -8,14 +8,13 @@ import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, vibexAuthHeaders, type RhAccountInfo } from "@/lib/rhLogin"
 import { modelRefKey, resolveAvailableModels, type ModelRef } from "@/lib/modelGateway"
 import {
-  listKbDocs,
   searchKbDocs,
   tokenizeText,
   visibleKbDocs,
   type KbDocRow,
   type KbSearchHit,
 } from "@/lib/kbCore"
-import { getCachedVisibleDocs, assembleKbContext } from "@/lib/kbAssemble"
+import { assembleKbContext, getCachedVisibleDocs, invalidateKbCache, prewarmKbCache } from "@/lib/kbAssemble"
 import { deriveSection, deriveTrack } from "@/lib/kbTaxonomy"
 import { contextSnippetOf } from "@/lib/kbPolicy"
 import { listKbQaPairs, matchQaPair, visibleQaPairs, type KbQaPairRow } from "@/lib/kbQa"
@@ -820,13 +819,19 @@ export function useSolutionStudio() {
         if (notice) toast.info(notice)
       }
       applySolutionState(target)
+      // R303：进方案即后台预热 KB 共享缓存。方案正文生成的关键路径是「先把全库语料拉进内存
+      // （实测 33 页 ×500 条）再发模型请求」，标书侧（openProject · r89-guard-kb-cold-01）与知识库
+      // 问答侧（R229）都早已利用用户操作的窗口期预热，唯独方案侧漏了——用户读大纲、挑章节、点确认
+      // 运行的那几十秒全被浪费，代价直接落在首章「生成正文」的静默等待上。fire-and-forget：
+      // 失败静默（共享缓存内部不留坏缓存），已热时 prewarmKbCache 自身 O(1) 跳过。
+      void prewarmKbCache(userId)
       setActiveChapterId(target.chapters[0]?.node_id ?? null)
       const content = target.chapters[0]?.content ?? ""
       editingContentRef.current = content
       setEditingContentState(content)
       setMode("editor")
     },
-    [applySolutionState, persistSolution],
+    [applySolutionState, persistSolution, userId],
   )
 
   const backToList = useCallback(() => {
@@ -1311,7 +1316,13 @@ export function useSolutionStudio() {
     materialLoadedRef.current = true
     setMaterialLoading(true)
     try {
-      const [docs, pairs] = await Promise.all([listKbDocs(), listKbQaPairs()])
+      // R303（与 R229 处置 QA 语料通道同构）：素材面板改走 kbAssemble 共享全量缓存，不再各拉各的
+      // 全库。此前进入方案会同时跑起两条互不知情的全量下载（本面板 + 正文生成的检索语料），
+      // 实机网络日志实测同一批 33 页 ×500 条语料被拉了两遍。共享缓存自带并发去重
+      // （同一在飞 promise）、5 分钟 TTL 与经 onKbMutation 的变更失效。
+      // getCachedVisibleDocs 已按 userId 过滤可见子集，下游 visibleKbDocs 再过滤一次为幂等，展示结果不变。
+      if (force) invalidateKbCache() // 入库向导回填等「强制刷新」语义原样保留：显式失效后重取全量
+      const [docs, pairs] = await Promise.all([getCachedVisibleDocs(userId), listKbQaPairs()])
       setMaterialKbDocs(docs)
       setMaterialQaPairs(pairs)
     } catch {
@@ -1320,7 +1331,7 @@ export function useSolutionStudio() {
     } finally {
       setMaterialLoading(false)
     }
-  }, [])
+  }, [userId])
 
   // 进入编辑工作台才拉取素材来源（列表视图不产生请求）
   useEffect(() => {

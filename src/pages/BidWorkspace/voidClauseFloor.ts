@@ -11,7 +11,8 @@
 // ---------------------------------------------------------------------------
 
 /** 常见招标文件废标条款下限：低于此值视为可能漏解析（保守取 3，宁可漏报不误伤极简标） */
-export const MIN_VOID_CLAUSES = 3
+// R-031（安中医 2026BFAFZ50845 实测）：下限 3→5，真实三甲项目废标条款普遍≥12 类
+export const MIN_VOID_CLAUSES = 5
 
 /** 与 runVoidCheck 同口径把废标项正文切成条款行（去行首「1.」「2、」编号、去空行） */
 export function splitVoidClauses(content: string): string[] {

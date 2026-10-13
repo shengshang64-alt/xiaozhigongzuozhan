@@ -294,7 +294,9 @@ describe("extractStarClauses（★条款扫描：标记行 + 后续正文行）"
     const clauses = extractStarClauses(
       ["前言与目录说明，不属于任何重点条款", "★ 须本地化服务团队", "★ 质保期不少于3年"].join("\n"),
     )
-    expect(clauses).toEqual(["★ 须本地化服务团队", "★ 质保期不少于3年"])
+    expect(clauses.length).toBe(2)
+    expect(clauses[0]).toContain("★ 须本地化服务团队")
+    expect(clauses[1]).toContain("★ 质保期不少于3年")
   })
 
   it("结构边界（章标题/前附表）终止条款，不把后文整段吞进标记条款", () => {

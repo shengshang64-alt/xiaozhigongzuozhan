@@ -46,6 +46,34 @@ onBootstrap(function (e) {
       addField({ name: 'kb_section', type: 'text', max: 40 })
       addField({ name: "created", type: "autodate", onCreate: true })
       addField({ name: "updated", type: "autodate", onCreate: true, onUpdate: true })
+      // P1-3 性能修复（2026-10-13）：列表路由默认 sort=-updated，无索引时 SQLite 对
+      // 6998 篇、正文最大 500KB 的大表全表扫描排序——实测单页 1.3s（无排序仅 1ms），
+      // 前端全量翻页（35 页×200）冷加载 15s+，是计数修复后仅剩的瓶颈。
+      // 建 updated 单列索引后走索引顺序扫描、只回表当页 50/200 行。
+      // 幂等：schema 已含同名索引则跳过；DB 侧由 $app.save 迁移执行 CREATE INDEX。
+      var IDX_KB_DOCS_UPDATED = "idx_kb_docs_updated"
+      var IDX_KB_DOCS_UPDATED_SQL = "CREATE INDEX " + IDX_KB_DOCS_UPDATED + " ON kb_docs (updated)"
+      var idxAlready = false
+      try {
+        var curIdx = existing.indexes || []
+        for (var ii = 0; ii < curIdx.length; ii++) {
+          if (String(curIdx[ii]).indexOf(IDX_KB_DOCS_UPDATED) >= 0) { idxAlready = true; break }
+        }
+      } catch (_) {}
+      if (!idxAlready) {
+        try {
+          var mergedIdx = []
+          try {
+            var srcIdx = existing.indexes || []
+            for (var jj = 0; jj < srcIdx.length; jj++) mergedIdx.push(String(srcIdx[jj]))
+          } catch (_) {}
+          mergedIdx.push(IDX_KB_DOCS_UPDATED_SQL)
+          existing.indexes = mergedIdx
+          changed = true
+        } catch (__eIdx) {
+          try { $app.logger().warn("kb_docs index add skipped: " + String(__eIdx && __eIdx.message || __eIdx)) } catch (_) {}
+        }
+      }
       if (changed) {
         $app.save(existing)
         try { $app.logger().info("kb_docs collection upgraded") } catch (_) {}
@@ -75,6 +103,10 @@ onBootstrap(function (e) {
           { name: 'kb_section', type: 'text', max: 40 },
           { name: "created", type: "autodate", onCreate: true },
           { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
+        ],
+        // P1-3：updated 单列索引，避免列表 sort=-updated 全表扫描（见上方 existing 分支注释）
+        indexes: [
+          "CREATE INDEX idx_kb_docs_updated ON kb_docs (updated)",
         ],
       })
       $app.save(col)
@@ -114,6 +146,9 @@ routerAdd("GET", "/api/kb_docs", function (e) {
         { name: "created", type: "autodate", onCreate: true },
         { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
       ],
+      indexes: [
+        "CREATE INDEX idx_kb_docs_updated ON kb_docs (updated)",
+      ],
     })
     $app.save(col)
     return $app.findCollectionByNameOrId("kb_docs")
@@ -129,42 +164,35 @@ routerAdd("GET", "/api/kb_docs", function (e) {
     var perPage = parseInt(String(query.perPage || "50"), 10) || 50
     if (perPage > 200) perPage = 200
     var sort = String(query.sort || "-updated")
+    // __KB_PARAMS_BEGIN__（测试提取锚点：scripts/kbDocsCount.test.ts 提取本标记至计数段
+    // 结束标记之间的代码执行，依赖作用域变量 query/sort；增改请同步该测试）
+    // P1-3：过滤条件单一数据源——eqs（[{field,value}] 精确匹配）+ qKw（标题/文件名模糊搜索）。
+    // 由此同源派生两条消费路径，杜绝两处逻辑漂移：
+    //   ① filter 字符串（下方分页拉取 findRecordsByFilter 用，字段顺序与历史实现完全一致）；
+    //   ② dbx 表达式（计数 countRecords 用，SQL count 不加载记录）。
+    var eqs = []
+    var qKw = ""
+    if (query.rh_user_id !== undefined && query.rh_user_id !== "") eqs.push({ field: "rh_user_id", value: String(query.rh_user_id) })
+    if (query.visibility !== undefined && query.visibility !== "") eqs.push({ field: "visibility", value: String(query.visibility) })
+    if (query.folder_path !== undefined && query.folder_path !== "") eqs.push({ field: "folder_path", value: String(query.folder_path) })
+    if (query.doc_format !== undefined && query.doc_format !== "") eqs.push({ field: "doc_format", value: String(query.doc_format) })
+    if (query.kb_track !== undefined && query.kb_track !== "") eqs.push({ field: "kb_track", value: String(query.kb_track) })
+    if (query.kb_bucket !== undefined && query.kb_bucket !== "") eqs.push({ field: "kb_bucket", value: String(query.kb_bucket) })
+    if (query.kb_section !== undefined && query.kb_section !== "") eqs.push({ field: "kb_section", value: String(query.kb_section) })
+    if (query.q !== undefined && String(query.q) !== "") qKw = String(query.q)
     var filterParts = []
     var params = {}
-    if (query.rh_user_id !== undefined && query.rh_user_id !== "") {
-      filterParts.push("rh_user_id = {:rh_user_id}")
-      params.rh_user_id = String(query.rh_user_id)
+    for (var fi = 0; fi < eqs.length; fi++) {
+      filterParts.push(eqs[fi].field + " = {:" + eqs[fi].field + "}")
+      params[eqs[fi].field] = eqs[fi].value
     }
-    if (query.visibility !== undefined && query.visibility !== "") {
-      filterParts.push("visibility = {:visibility}")
-      params.visibility = String(query.visibility)
-    }
-    if (query.folder_path !== undefined && query.folder_path !== "") {
-      filterParts.push("folder_path = {:folder_path}")
-      params.folder_path = String(query.folder_path)
-    }
-    if (query.doc_format !== undefined && query.doc_format !== "") {
-      filterParts.push("doc_format = {:doc_format}")
-      params.doc_format = String(query.doc_format)
-    }
-    if (query.kb_track !== undefined && query.kb_track !== "") {
-      filterParts.push("kb_track = {:kb_track}")
-      params.kb_track = String(query.kb_track)
-    }
-    if (query.kb_bucket !== undefined && query.kb_bucket !== "") {
-      filterParts.push("kb_bucket = {:kb_bucket}")
-      params.kb_bucket = String(query.kb_bucket)
-    }
-    if (query.kb_section !== undefined && query.kb_section !== "") {
-      filterParts.push("kb_section = {:kb_section}")
-      params.kb_section = String(query.kb_section)
-    }
-    if (query.q !== undefined && String(query.q) !== "") {
+    if (qKw) {
       filterParts.push("(title ~ {:q_kw} || source_file_name ~ {:q_kw2})")
-      params.q_kw = "%" + String(query.q) + "%"
-      params.q_kw2 = "%" + String(query.q) + "%"
+      params.q_kw = "%" + qKw + "%"
+      params.q_kw2 = "%" + qKw + "%"
     }
     var filter = filterParts.length > 0 ? filterParts.join(" && ") : ""
+    // __KB_PARAMS_END__
     var records = filter
       ? $app.findRecordsByFilter("kb_docs", filter, sort, perPage, (page - 1) * perPage, params)
       : $app.findRecordsByFilter("kb_docs", "", sort, perPage, (page - 1) * perPage)
@@ -178,12 +206,79 @@ routerAdd("GET", "/api/kb_docs", function (e) {
       items.push(item)
     }
     var totalItems = items.length
+    // P1-3 性能修复（2026-10-13）：原实现每次列表请求都 findRecordsByFilter(..., 100000, 0)
+    // 把全部记录（含最大 500KB 的 content 正文）加载进内存只为了数个数——实测单请求 5.48s，
+    // 6998 篇文档翻 35 页累计 25s+，是知识库首屏慢的真凶（与前端并发度无关：35 并发只会把 PB 打超时）。
+    // 修复分两步（均已实测验证）：
+    //   第一步 计数：无过滤热路径走 $app.countRecords("kb_docs")（<1ms）；纯精确过滤走
+    //   $app.countRecords + $dbx.hashExp/and 表达式（~190ms，SQL count 不加载记录）；
+    //   q 搜索保持 load-and-count（原因见下方 __exprOk 处注释，正确性优先）。
+    //   第二步 索引：onBootstrap 给 kb_docs 建 idx_kb_docs_updated 单列索引，消除列表默认
+    //   sort=-updated 的全表扫描——实测单页拉取 1.3s → 15-45ms，前端全量冷加载 15-25s → 1.3s。
+    // 任何一步异常都回落原实现，绝不退化成"只有一页"而丢数据。
+    // 实现约束（2026-10-13 踩坑记录，改此段前必读）：
+    //   ① Goja 跨 routerAdd 不共享顶层函数/变量（见 bid_projects.pb.js:408），逻辑必须内联在本路由内；
+    //   ② $app.db().newQuery() 的 one/all 需 Go 指针类型会 panic，勿用；
+    //   ③ countRecords 只接受 dbx.Expression、不收过滤字符串；$dbx 全局在本版本 JSVM 可用（探针实测）。
+    // __KB_COUNT_BEGIN__（测试提取锚点：scripts/kbDocsCount.test.ts 提取本标记间的代码执行，
+    // 依赖作用域变量 eqs/qKw/filter/params/sort/totalItems；增改此段请同步该测试）
     try {
-      var countRecords = filter
-        ? $app.findRecordsByFilter("kb_docs", filter, sort, 100000, 0, params)
-        : $app.findRecordsByFilter("kb_docs", "", sort, 100000, 0)
-      totalItems = countRecords.length
-    } catch (err2) {}
+      var __hasFilter = eqs.length > 0 || !!qKw
+      var __cntExpr = null
+      // __exprOk：仅「无过滤」与「纯精确过滤（无 q）」走 SQL count 快速路径。
+      // q 搜索刻意不走——本构建 JSVM 的 dbx 表达式能力受限（2026-10-13 探针实证）：
+      //   ① $dbx.exp(raw, params) 无论带参还是手工字面量都静默返回 0（命名参数未绑定 → LIKE NULL）；
+      //   ② LikeExp 的 Escape(false) 方法未绑定到 JSVM（Object has no member 'Escape'）；
+      //   ③ 唯一可用的 or+like 默认转义，又与分页 filter 的裸 %q% 通配语义不一致
+      //      （搜 "100%" 会计数 0 但列表实出 22 条，自相矛盾）。
+      // q 为交互式搜索而非冷加载热路径，load-and-count 在 updated 索引下约 200-350ms 可接受，
+      // 且与分页用同一 filter 字符串，totalItems 与实际可见条目永远一致。
+      var __exprOk = eqs.length > 0 && !qKw
+      try {
+        if (__exprOk) {
+          var __exprs = []
+          for (var ei = 0; ei < eqs.length; ei++) {
+            var __pair = {}
+            __pair[eqs[ei].field] = eqs[ei].value
+            __exprs.push($dbx.hashExp(__pair))
+          }
+          __cntExpr = __exprs[0]
+          for (var ci = 1; ci < __exprs.length; ci++) {
+            __cntExpr = $dbx.and(__cntExpr, __exprs[ci])
+          }
+        }
+      } catch (__eExpr) { __exprOk = false; __cntExpr = null }
+      try {
+        if (__exprOk && __cntExpr !== null) {
+          var __cnt = $app.countRecords("kb_docs", __cntExpr)
+          if (typeof __cnt === "number" && __cnt >= 0) {
+            totalItems = __cnt
+          } else {
+            throw new Error("count_not_number")
+          }
+        } else if (!__hasFilter) {
+          var __cntAll = $app.countRecords("kb_docs")
+          if (typeof __cntAll === "number" && __cntAll >= 0) {
+            totalItems = __cntAll
+          } else {
+            throw new Error("count_all_not_number")
+          }
+        } else {
+          throw new Error("use_fallback_count")
+        }
+      } catch (__eCnt) {
+        // 计数快速路径不可用（q 搜索 / 表达式构建失败 / countRecords 异常 / 返回值非法）：
+        // 回落原实现（全量加载计数，慢但正确；带过滤时用同一 filter 字符串，语义不变）
+        totalItems = filter
+          ? $app.findRecordsByFilter("kb_docs", filter, sort, 100000, 0, params).length
+          : $app.findRecordsByFilter("kb_docs", "", sort, 100000, 0).length
+      }
+    } catch (err2) {
+      // 兜底计数（load-and-count）也失败：与原版语义一致——异常向上抛，由路由外层 catch
+      // 返回 500，绝不静默返回"只有一页"的错误总数（静默 200 + 错总数比 500 更误导）。
+      throw err2
+    }
+    // __KB_COUNT_END__
     return e.json(200, { items: items, page: page, perPage: perPage, totalItems: totalItems })
   } catch (err) {
     var msg = String(err && err.message || err)
@@ -366,6 +461,9 @@ routerAdd("POST", "/api/kb_docs", function (e) {
           { name: 'kb_section', type: 'text', max: 40 },
         { name: "created", type: "autodate", onCreate: true },
         { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
+      ],
+      indexes: [
+        "CREATE INDEX idx_kb_docs_updated ON kb_docs (updated)",
       ],
     })
     $app.save(col)

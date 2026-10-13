@@ -781,7 +781,7 @@ routerAdd("POST", "/api/model-gw/test", (e) => {
     var plainKey = rec.get("api_key") ? unxorHex(rec.get("api_key")) : ""
     if (!plainKey) return e.json(200, { ok: false, code: "no_key", message: "该配置缺少 API Key，请先编辑补填" })
     var r = doChat(String(rec.get("base_url") || ""), plainKey, model, [{ role: "user", content: "请用一句话介绍你自己" }], TEST_MIN_RETRY_TOKENS, 60)
-    if (!r.ok) return e.json(200, { ok: false, code: "upstream_error", message: r.message })
+    if (!r.ok) return e.json(200, { ok: false, code: r.code === "rate_limit" ? "rate_limit" : "upstream_error", kind: r.kind || "", detail: r.detail || "", message: r.message })
     return e.json(200, { ok: true, reply: r.text, elapsed_ms: r.elapsed_ms, usage: r.usage })
   } catch (ex) {
     $app.logger().error("model-gw test failed", "err", String(ex))

@@ -50,6 +50,7 @@ export interface FailoverCandidate {
 
 export type CallFailureClass =
   | "rate_limit"
+  | "quota_exhausted"
   | "auth"
   | "model_disabled"
   | "model_missing"
@@ -63,6 +64,23 @@ export type CallFailureClass =
 
 // 分类正则覆盖 model_gateway.pb.js（红线区，文案即稳定契约）与 llm.ts 的两代错误串。
 const RATE_LIMIT_RE = /429|tpm|rate\s*limit|限流|too\s*many\s*requests|余额不足|insufficient[_\s-]*balance/i
+// R301：额度耗尽（原文直说 quota exhausted / quota exceeded / insufficient balance）。
+// 必须与「速率限制」严格分开——上游两者的 HTTP 状态码都是 429、耗时都是百毫秒级，
+// 外观完全一样，但处置相反：前者退避无用、必须充值或提配额；后者等一会儿就恢复。
+// 实测（2026-10-13）：大模型/deepseek-v4-flash 原文 "inference exceeds tpm/rpm limit"
+// 退避 25s 即成功（速率）；xiaomi/mimo-v2.6-pro "quota exhausted"、Intern/deepseek-v4-flash-vision
+// "quota exceeded" 均 3 次全败（额度）。归错类会让用户对没问题的账号去充值。
+// 判据：文案里「额度 / 余额 / 配额耗尽 / 充值」这类指向账户的字样优先于泛化的「429」。
+const QUOTA_EXHAUSTED_RE =
+  /额度(不足|耗尽|不够)|配额(不足|耗尽)|余额不足|欠费|超出额度|quota[_\s-]*(exhaust|exceed|limit)|insufficient[_\s-]*(balance|quota|credit)|exceed[a-z]*[_\s-]*(your[_\s-]*(current[_\s-]*)?)?(quota|billing|balance)|billing|arrears|account[_\s-]*(expired|deactivated|suspended)|账户已/i
+// R301 兼容护栏：R301 之前网关对 429 的文案是「限流**或**余额不足」——一句同时提到
+// 两类，正是本次要消灭的模糊表述。它可能只是限流，不能被上面的额度正则吞成
+// quota_exhausted（那会让一次普通限流被永久标红「需充值」）。这类「或」句式一律
+// 归回 rate_limit：宁可少挂一次账，也不能把瞬时限流误报成要充值。
+// 锚点必须含「限流」二字——不能只匹配「或余额不足」，否则 R301 新文案
+// 「接口额度或余额不足（HTTP 429），请到该模型平台充值或提高配额后重试」
+// 会被自己判成模糊、退回 rate_limit，把真判定也丢掉。
+const AMBIGUOUS_RATE_TEXT_RE = /限流\s*(或|\/)\s*(余额不足|额度)|余额不足\s*(或|\/)\s*限流|or\s+(balance|quota)/i
 const AUTH_RE = /认证失败|api\s*key|invalid\s+key|unauthoriz|forbidden/i
 const MODEL_DISABLED_RE = /已停用|已下线|model_disabled|not\s+enabled/i
 // R296：模型不存在（上游 404 / 改名下线）。逐字对齐 model_gateway.pb.js：
@@ -81,6 +99,7 @@ const CONFIG_BROKEN_RE = /personal_config_unavailable|fallback_to_platform/i
 /** 允许自动换通道的失败类别：全部是「这一路根本没产出」的账号级不可用 */
 const FAILOVER_ELIGIBLE: ReadonlySet<CallFailureClass> = new Set<CallFailureClass>([
   "rate_limit",
+  "quota_exhausted",
   "auth",
   "model_disabled",
   "model_missing",
@@ -101,6 +120,10 @@ export function classifyCallFailure(error?: string): CallFailureClass {
   if (CONFIG_BROKEN_RE.test(raw)) return "config_broken"
   if (TIMEOUT_RE.test(raw)) return "timeout"
   if (EMPTY_REPLY_RE.test(raw)) return "empty_reply"
+  // R301：额度耗尽必须在 rate_limit **之前**判——两者同为 429，
+  // 但额度耗尽退避无用（实测 3 次全败），必须挂账等用户充值。
+  // 例外：旧版网关「限流或余额不足」这类二选一句式不是真判定，归回 rate_limit。
+  if (QUOTA_EXHAUSTED_RE.test(raw) && !AMBIGUOUS_RATE_TEXT_RE.test(raw)) return "quota_exhausted"
   if (RATE_LIMIT_RE.test(raw)) return "rate_limit"
   if (MODEL_DISABLED_RE.test(raw)) return "model_disabled"
   if (MODEL_MISSING_RE.test(raw)) return "model_missing"
@@ -212,6 +235,8 @@ export function coolingKeysForFailure(
 ): string[] {
   if (!failed || !isFailoverEligible(cls)) return []
   if (cls === "model_disabled" || cls === "model_missing") return [failed.key]
+  // rate_limit / quota_exhausted / auth / unavailable 一律账号级：冷却整个配置。
+  // 额度耗尽尤其如此——同账号下换任何模型都会撞同一份额度。
   return [configCoolingKey(failed.configId), failed.key]
 }
 

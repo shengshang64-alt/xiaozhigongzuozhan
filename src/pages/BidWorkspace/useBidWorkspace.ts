@@ -58,6 +58,8 @@ import {
   type OutlineNode,
   type SolutionRecord,
 } from "@/pages/SolutionStudio/solutionTypes"
+// R301：标书章节生成失败原因落库（复用 SolutionStudio R280/R282 归因助手，零 schema/零 AI）
+import { BLANK_OUTPUT_REASON, describeGenFailure } from "@/pages/SolutionStudio/genFailureNote"
 import {
   aggregateAuditByChapter,
   assignClausesToChapters,
@@ -642,7 +644,9 @@ import { splitTenderText } from "./prompts/tenderSplit"
 import { buildScoringStructured, selfCheckScoringTotal, type ScoringBlockJSON } from "./parseSchemas"
 import { buildVoidScopeMessages, buildVoidInitialCheckMessages, buildVoidFinalizeMessages } from "./prompts/voidCheckRounds"
 import { voidClauseFloorWarning } from "./voidClauseFloor"
+import { extractVoidClauses, voidClauseSectionFrom, validateScoringSections } from "./bidTypes"
 import { coverageLevel, coveragePercent, missingCriticalSections, parseCoverageRatio } from "./parseCoverage"
+import { runComposeGates } from "./composeGates"
 import { assessTenderParseQuality } from "./parseQuality"
 
 const MAX_TOKENS_OUTLINE = 4096
@@ -3043,7 +3047,7 @@ export function useBidWorkspace() {
       if (rec.bid_chapters.some((c) => c.gen_status === "generating")) {
         void patchProjectFields(
           rec,
-          { bid_chapters: rec.bid_chapters.map((c) => (c.gen_status === "generating" ? { ...c, gen_status: "failed" as const } : c)) },
+          { bid_chapters: rec.bid_chapters.map((c) => (c.gen_status === "generating" ? { ...c, gen_status: "failed" as const, genError: "生成中断（进入项目时状态复位），可继续生成" } : c)) },
           "中断章节状态已复位",
           "中断章节状态复位失败",
         )
@@ -3497,28 +3501,38 @@ export function useBidWorkspace() {
           } catch (e) {
             if (e instanceof AuthRequiredError) throw e
             let msg = e instanceof Error ? e.message : String(e)
-            // T12b：单次 429 先退避 20s 重试一次（网关 TPM 窗口随时间恢复，直接熔断会让大批项置空）；
-            // 重试后仍失败才置熔断停止剩余项
-            if (isRateLimitError(msg)) {
-              await new Promise((r) => setTimeout(r, 20000))
-              if (parseRunSeqRef.current !== mySeq) return
-              if (source === "project" && (activeProjectRef.current?.id ?? null) !== startProjectId) return
-              try {
-                const retried = await parseSectionItem(text, key, channel)
-                slots[i] = { key, title, content: retried.text, ...(retried.structured ? { structured: retried.structured } : {}) }
-                if (retried.structured) {
-                  const scw = selfCheckScoringTotal(retried.structured)
-                  if (scw) scoringSelfCheck.push(`${title}：${scw}`)
+            // R-031 P3（安中医 2026BFAFZ50845 实测）：重试 1→3 次指数退避 2s/8s/20s，
+            // 仅 429/5xx/网络异常重试，4xx 不重试直接降级（T12b 原逻辑兼容保留为第一轮）
+            const retryable = isRateLimitError(msg) || /\b5\d{2}\b|timeout|network|ECONNRESET|ECONNREFUSED|socket hang up/i.test(msg)
+            const nonRetryable4xx = /\b4\d{2}\b(?!\s*9)/.test(msg) && !isRateLimitError(msg)
+            if (retryable && !nonRetryable4xx) {
+              const backoffs = [2000, 8000, 20000] // R-031 三次退避
+              for (let rIdx = 0; rIdx < backoffs.length; rIdx++) {
+                await new Promise((r) => setTimeout(r, backoffs[rIdx]))
+                if (parseRunSeqRef.current !== mySeq) return
+                if (source === "project" && (activeProjectRef.current?.id ?? null) !== startProjectId) return
+                try {
+                  const retried = await parseSectionItem(text, key, channel)
+                  slots[i] = { key, title, content: retried.text, ...(retried.structured ? { structured: retried.structured } : {}) }
+                  if (retried.structured) {
+                    const scw = selfCheckScoringTotal(retried.structured)
+                    if (scw) scoringSelfCheck.push(`${title}：${scw}`)
+                  }
+                  msg = ""
+                  break
+                } catch (e2) {
+                  if (e2 instanceof AuthRequiredError) throw e2
+                  msg = e2 instanceof Error ? e2.message : String(e2)
+                  // 若变为 4xx 非限流，不再继续重试
+                  if (/\b4\d{2}\b(?!\s*9)/.test(msg) && !isRateLimitError(msg)) break
+                  if (rIdx === backoffs.length - 1 && isRateLimitError(msg)) stopRef.reason = msg
                 }
-                msg = ""
-              } catch (e2) {
-                if (e2 instanceof AuthRequiredError) throw e2
-                msg = e2 instanceof Error ? e2.message : String(e2)
               }
             }
             if (msg) {
               if (isRateLimitError(msg)) stopRef.reason = msg
               // 单项失败不留空白：写入本项关键词检索出的原文片段作降级交付（易标「兜底不破坏结果可用性」口径）
+              // R-031 P3：降级 snippet 保留完整错误（状态码+消息前 200 字），不再截断至 80
               const degraded = buildDegradedSectionContent(key, selectRelevantChunks(text, key), msg)
               slots[i] = { key, title, content: degraded }
               if (degraded) degradedTitles.push(title)
@@ -3576,6 +3590,12 @@ export function useBidWorkspace() {
         // T13（2026-09-28 用户反馈轮「解析内容重复」）：逐项解析路径此前从未过跨项去重——
         // sanitizeParseSections/mergeChunkReports（旧链路）都调 dedupeAcrossSections，本路径落库前补上同款
         const report: ParseReport = dedupeAcrossSections({ scope: cfg.scope, sections })
+        // R-031 P4（安中医 2026BFAFZ50845 实测）：解析后评分分区结构化校验——跨分区去重 + 合计覆写
+        const scoringValidate = validateScoringSections(report)
+        const scoringDedupWarn = scoringValidate.deduped.length
+          ? [`评分项跨分区去重：${scoringValidate.deduped.map((d) => `「${d.title}」从${d.removedFrom === "tech_score" ? "技术" : "商务"}分区移除`).join("；")}`]
+          : []
+        const scoringMismatchWarn = scoringValidate.mismatchWarnings
         const okCount = report.sections.filter((s) => s.content.trim() && !isMissingSectionResult(s.content)).length
         if (!okCount) {
           throw new Error("没有从招标文件中提取到有效要点，请确认文本完整后重试")
@@ -3588,6 +3608,24 @@ export function useBidWorkspace() {
         // R-026③（R257）：废标条款条数下限自检——抽到但少于下限（疑漏解析/假阴）则并入 warnings 持久提示（0 条不误报）
         const voidFloorMsg = voidClauseFloorWarning(sectionText(report, "void_items"))
         const voidFloorWarn = voidFloorMsg ? [voidFloorMsg] : []
+        // R-031 P2（安中医 2026BFAFZ50845 实测）：本地扫描废标条款合并——AI 结果与本地扫描合并去重（本地为准）
+        const localVoidLines = extractVoidClauses(text)
+        if (localVoidLines.length) {
+          const voidSec = report.sections.find((s) => s.key === "void_items")
+          if (voidSec) {
+            const existNorm = new Set((voidSec.content ?? "").split(/\n+/).map((l) => l.replace(/\s+/g, "").slice(0, 60)).filter(Boolean))
+            const extraLines = localVoidLines.filter((l) => !existNorm.has(l.replace(/\s+/g, "").slice(0, 60)))
+            if (extraLines.length) {
+              voidSec.content = [voidSec.content, ...extraLines].filter(Boolean).join("\n")
+              voidSec.snippet = `共 ${(voidSec.content.match(/\n/g) || []).length + 1} 条（含本地扫描补录 ${extraLines.length} 条）`
+            }
+          } else {
+            // 无 void_items 分区：以本地扫描结果新建
+            const newSec = voidClauseSectionFrom(localVoidLines)
+            if (newSec) report.sections.push(newSec)
+          }
+        }
+        const scoringWarnAll = [...scoringDedupWarn, ...scoringMismatchWarn]
         const warnings = [
           ...(degradedTitles.length
             ? [`${degradedTitles.length} 项 AI 解析未完成，已降级为关键词检索原文（${degradedTitles.slice(0, 3).join("、")}${degradedTitles.length > 3 ? " 等" : ""}），请人工核对，模型恢复后可逐项重新解析`]
@@ -3596,6 +3634,7 @@ export function useBidWorkspace() {
             ? [`${failedTitles.length} 项解析失败${stopRef.reason ? "（检测到服务商限流，已停止后续项）" : ""}，可在报告中对单项重新解析`]
             : []),
           ...scoringSelfCheck,
+          ...scoringWarnAll,
           ...requiredWarn,
           ...voidFloorWarn,
         ]
@@ -5932,21 +5971,21 @@ export function useBidWorkspace() {
       const prevContent = cur.bid_chapters[idx]?.content ?? ""
       const prevGenStatus = cur.bid_chapters[idx]?.gen_status
       setChapterBusy(nodeId)
-      updateChapter(nodeId, { gen_status: "generating" }, { persist: false })
+      updateChapter(nodeId, { gen_status: "generating", genError: "" }, { persist: false })
       try {
         // 循环 6 A2：opts.fresh 透传——「重新生成本章」强制全新覆盖，失败重试/批量路径默认断点续跑
         const out = await generateChapterContent(nodeId, idx, opts)
         // 循环 7 A1 + 循环 8 A2 保底：产出为空串一律不标 done——prevContent 为空的全新生成同样置 failed，
         // 杜绝「已完成空章」被批量/一键补齐按 done 永久跳过；content 不覆盖
         if (!out.content.trim()) {
-          updateChapter(nodeId, { gen_status: prevGenStatus && prevGenStatus !== "generating" ? prevGenStatus : "failed" })
+          updateChapter(nodeId, { gen_status: prevGenStatus && prevGenStatus !== "generating" ? prevGenStatus : "failed", genError: prevGenStatus && prevGenStatus !== "generating" ? "" : BLANK_OUTPUT_REASON })
           toast.error(prevContent.trim() ? "本次生成未产出内容，已保留原有正文，请稍后重试" : "本次生成未产出内容，请重试")
           return
         }
         // R170：小节级串行生成被中断（停止批量/返回列表/生成中刷新触发 cancelBulkRef）时，只产出了部分小节的章
         // 不得按 done 落库——改标 failed，保留已生成小节并让「继续生成」按断点续跑补足剩余小节。
         if (out.cancelledMid) {
-          updateChapter(nodeId, { content: out.content, gen_status: "failed", figures: out.figures, section_stats: out.sectionStats ?? [] })
+          updateChapter(nodeId, { content: out.content, gen_status: "failed", genError: "生成已中断，可继续生成", figures: out.figures, section_stats: out.sectionStats ?? [] })
           if (activeChapterId === nodeId) {
             editingContentRef.current = out.content
             setEditingContentState(out.content)
@@ -6035,7 +6074,7 @@ export function useBidWorkspace() {
         }
       } catch (e) {
         setSectionGenState(null)
-        updateChapter(nodeId, { gen_status: "failed" })
+        updateChapter(nodeId, { gen_status: "failed", genError: describeGenFailure(e, "正文生成失败，请重试") })
         handleLlmError(e, "正文生成失败，请重试")
       } finally {
         setChapterBusy(null)
@@ -6425,7 +6464,7 @@ export function useBidWorkspace() {
       }
       const hadContent = true
       setChapterBusy(nodeId)
-      updateChapter(nodeId, { gen_status: "generating" }, { persist: false })
+      updateChapter(nodeId, { gen_status: "generating", genError: "" }, { persist: false })
       try {
         const budgets = chapterWordBudgets(cur.bid_chapters, effectiveTargetPages(cur), formatCharsPerPage(cur.format_settings), cur.gen_options?.generate_demo === true)
         const budget = budgets[idx] ?? 1500
@@ -6506,7 +6545,7 @@ export function useBidWorkspace() {
           }${repaired ? `，已自动修正 ${repaired} 处格式问题` : ""}`,
         )
       } catch (e) {
-        updateChapter(nodeId, { gen_status: hadContent ? "done" : "failed" })
+        updateChapter(nodeId, { gen_status: hadContent ? "done" : "failed", genError: hadContent ? "" : describeGenFailure(e, "续写失败，请重试") })
         handleLlmError(e, "续写失败，请重试")
       } finally {
         setChapterBusy(null)
@@ -6580,7 +6619,7 @@ export function useBidWorkspace() {
         }
         cursor.done += 1
         setGenProgress({ current: cursor.done, total })
-        updateChapter(ch.node_id, { gen_status: "generating" }, { persist: false })
+        updateChapter(ch.node_id, { gen_status: "generating", genError: "" }, { persist: false })
         try {
           // 第八轮改造 2/3：批量与单章共用生成器（小节级分叉 + 招标原文片段注入在 generateChapterContent 内）
           const out = await generateChapterContent(ch.node_id, i)
@@ -6588,13 +6627,13 @@ export function useBidWorkspace() {
         // prevContent 为空的全新生成同样置 failed，杜绝空章被后续批量/补齐按 done 永久跳过
         if (!out.content.trim()) {
           failedCount += 1
-          updateChapter(ch.node_id, { gen_status: "failed" })
+          updateChapter(ch.node_id, { gen_status: "failed", genError: "模型空产出" })
           failedNodes.push({ nodeId: ch.node_id, idx: i, title: ch.title, reason: "模型空产出" })
           continue
         }
         if (out.cancelledMid) {
           failedCount += 1
-          updateChapter(ch.node_id, { content: out.content, gen_status: "failed", figures: out.figures, section_stats: out.sectionStats ?? [] })
+          updateChapter(ch.node_id, { content: out.content, gen_status: "failed", genError: "已中断，可断点续跑", figures: out.figures, section_stats: out.sectionStats ?? [] })
           failedNodes.push({ nodeId: ch.node_id, idx: i, title: ch.title, reason: "已中断（可断点续跑）" })
           continue
         }
@@ -6622,7 +6661,7 @@ export function useBidWorkspace() {
         } catch (e) {
           setSectionGenState(null)
           failedCount += 1
-          updateChapter(ch.node_id, { gen_status: "failed" })
+          updateChapter(ch.node_id, { gen_status: "failed", genError: (e instanceof Error ? e.message : String(e)).slice(0, 60) || "生成异常" })
           failedNodes.push({ nodeId: ch.node_id, idx: i, title: ch.title, reason: (e instanceof Error ? e.message : String(e)).slice(0, 60) || "生成异常" })
         }
       }
@@ -6636,15 +6675,16 @@ export function useBidWorkspace() {
         if (cancelBulkRef.current) break
         const rc = activeProjectRef.current?.bid_chapters[rt.idx]
         if (!rc || isBizPart(rc)) continue
-        updateChapter(rt.nodeId, { gen_status: "generating" }, { persist: false })
+        updateChapter(rt.nodeId, { gen_status: "generating", genError: "" }, { persist: false })
         try {
           const rout = await generateChapterContent(rt.nodeId, rt.idx)
           if (!rout.content.trim()) {
+            updateChapter(rt.nodeId, { gen_status: "failed", genError: BLANK_OUTPUT_REASON })
             failedNodes.push({ nodeId: rt.nodeId, idx: rt.idx, title: rt.title, reason: "重试后仍空产出" })
             continue
           }
           if (rout.cancelledMid) {
-            updateChapter(rt.nodeId, { content: rout.content, gen_status: "failed", figures: rout.figures, section_stats: rout.sectionStats ?? [] })
+            updateChapter(rt.nodeId, { content: rout.content, gen_status: "failed", genError: "重试中被中断，可断点续跑", figures: rout.figures, section_stats: rout.sectionStats ?? [] })
             failedNodes.push({ nodeId: rt.nodeId, idx: rt.idx, title: rt.title, reason: "重试中被中断（可断点续跑）" })
             continue
           }
@@ -6654,6 +6694,7 @@ export function useBidWorkspace() {
           if (!cancelBulkRef.current) applyBudgetGovernance(rt.nodeId, rout.budget)
           touchedNodes.push(rt.nodeId)
         } catch (e) {
+          updateChapter(rt.nodeId, { gen_status: "failed", genError: describeGenFailure(e, "重试异常") })
           failedNodes.push({ nodeId: rt.nodeId, idx: rt.idx, title: rt.title, reason: (e instanceof Error ? e.message : String(e)).slice(0, 60) || "重试异常" })
         }
       }
@@ -6704,6 +6745,33 @@ export function useBidWorkspace() {
       if (bulkAuditFixed) toast.warning(`批量一致性核对：已自动修复 ${bulkAuditFixed} 处与全局事实口径不一致的表述，建议到「事实一致性核对」复检`)
       if (warnN)
         toast.warning(`本地体检（零费用）共发现 ${warnN} 处提示（数值/指标口径等需人工判断项），可到「交卷体检」查看明细，不影响当前成果`)
+      // R-032 编制门禁：批量生成完成后自动跑 A1-A6 检查（纯函数、零 AI）
+      {
+        const _cur = activeProjectRef.current
+        if (_cur) {
+          const gateResult = runComposeGates(
+            _cur.bid_outline ?? [],
+            _cur.bid_chapters ?? [],
+            _cur.parse_report ?? null,
+          )
+          if (gateResult.A1_duplicateChapters.length)
+            toast.warning(`A1 大纲重复章：检出 ${gateResult.A1_duplicateChapters.length} 组同主题章并存（${gateResult.A1_duplicateChapters.map((g) => g.label).slice(0, 2).join("、")}），建议删除裸章仅保留融合章`)
+          if (gateResult.A2_genStatusViolations.length)
+            toast.warning(`A2 生成状态失真：${gateResult.A2_genStatusViolations.length} 章违规（空章标 done 或失败无 genError），请逐章修复`)
+          if (gateResult.A3_starFidelityGaps.length)
+            toast.warning(`A3 ★响应缺失：${gateResult.A3_starFidelityGaps.reduce((a, g) => a + g.missingClauses.length, 0)} 条★条款在正文中无引用（实质性响应名存实亡）`)
+          const catalogMiss = gateResult.A4_catalogGaps.filter((g) => !g.found).length
+          if (catalogMiss)
+            toast.warning(`A4 规定目录缺落点：${catalogMiss} 项在大纲中无对应章节，导出前须补入`)
+          if (gateResult.A5_numberConflicts.length)
+            toast.warning(`A5 数字一致性冲突：${gateResult.A5_numberConflicts.length} 个指标存在多值（${gateResult.A5_numberConflicts.slice(0, 2).map((c) => c.topic + ":" + c.values.join("/")).join("；")}）`)
+          const scoringMiss = gateResult.A6_scoringLandingGaps.filter((g) => !g.hasLanding).length
+          if (scoringMiss)
+            toast.warning(`A6 评分落点缺覆盖：${scoringMiss} 个评分项无正文落点章`)
+          if (gateResult.blockingCount > 0)
+            toast.error(`编制门禁：共 ${gateResult.blockingCount} 项阻断级问题，导出/交卷前须解决`)
+        }
+      }
     }
     bulkGeneratingRef.current = false
     setBulkGenerating(false)

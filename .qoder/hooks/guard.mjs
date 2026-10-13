@@ -27,7 +27,7 @@ const MAX_STDIN_BYTES = 4 * 1024 * 1024; // 防御：超长输入不解析，直
 
 /**
  * 是否处于「无人值守自动化」会话。
- * 由驱动器 scripts/qoder-loop.mjs 在 spawn 时注入 XIAOZHI_AUTOLOOP=1。
+ * 由驱动器 scripts/autoloop.mjs 在 spawn 时注入 XIAOZHI_AUTOLOOP=1。
  * 交互式使用（Qoder IDE / 手动终端）不带该变量 → 行为完全不变，仍逐个 ask 弹窗。
  */
 const AUTOLOOP = process.env.XIAOZHI_AUTOLOOP === '1';
@@ -97,6 +97,12 @@ const WRITE_DENY_RULES = [
   { test: (p) => /(^|\/)vibex-local\/bin\//.test(p), why: 'VibeX 打包的本地运行时（含自带 pb_data）' },
   { test: (p) => /(^|\/)\.vibex\//.test(p), why: 'VibeX 平台往返契约目录（平台提供，不得改写）' },
   { test: (p) => /\.(pem|key|pfx|p12)$/i.test(p), why: '私钥/证书文件' },
+
+  // ---- 防自我提权（2026-10-13 新增）----
+  // 必要性：无人值守会话下，未命中禁区的写操作会被降级为 allow；
+  // 若允许改写权限配置或守卫本体，自动化会话即可自我提权 / 关闭防护。
+  { test: (p) => /(^|\/)\.qoder\/settings\.json$/.test(p), why: 'Qoder 权限配置（防自我提权）' },
+  { test: (p) => /(^|\/)\.qoder\/hooks\//.test(p), why: '权限守卫本体（防关闭防护）' },
 ];
 
 /** 从任意来源稳健提取字符串字段 */

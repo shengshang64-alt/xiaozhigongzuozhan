@@ -24,9 +24,11 @@ const KIND_ICONS: Record<ActiveWorkKind, LucideIcon> = {
 type ActiveWorkSectionProps = {
   items: ActiveWorkItem[]
   loading: boolean
+  /** R302：四个工作台的在制计数（可能是下限），用于诚实说明「只列了最近 12 项」 */
+  total?: number
 }
 
-export function ActiveWorkSection({ items, loading }: ActiveWorkSectionProps) {
+export function ActiveWorkSection({ items, loading, total }: ActiveWorkSectionProps) {
   const navigate = useNavigate()
   return (
     <section className="mb-5 rounded-xl border border-border bg-card shadow-md">
@@ -36,7 +38,11 @@ export function ActiveWorkSection({ items, loading }: ActiveWorkSectionProps) {
         </div>
         <div className="min-w-0 flex-1">
           <h2 className="text-lg font-semibold text-foreground">工作台进行中事项</h2>
-          <p className="truncate text-xs text-muted-foreground">来自标书 / 方案 / PPT / 报价的在制项目，点击查看</p>
+          <p className="truncate text-xs text-muted-foreground">
+            {total !== undefined && total > items.length
+              ? `共 ${total} 项在制，总览只列最近 ${items.length} 项`
+              : "来自标书 / 方案 / PPT / 报价的在制项目，点击查看"}
+          </p>
         </div>
       </header>
 

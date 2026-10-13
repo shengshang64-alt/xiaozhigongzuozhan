@@ -4,7 +4,7 @@ import { MIN_VOID_CLAUSES, splitVoidClauses, voidClauseFloorWarning } from "./vo
 
 describe("R-026③ 废标条数下限报警（R257）", () => {
   it("达下限（≥3 条）不报", () => {
-    const ok = "未按要求密封\n未按规定盖章\n投标报价超过预算\n资格审查不通过"
+    const ok = "未按要求密封\n未按规定盖章\n投标报价超过预算\n资格审查不通过\n投标文件存在雷同"
     expect(voidClauseFloorWarning(ok)).toBeNull()
   })
 

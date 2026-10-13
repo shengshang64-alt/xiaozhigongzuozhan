@@ -4,6 +4,10 @@ import { formatActiveWorkBreakdown, type ActiveWorkKind } from "@/pages/Home/act
 type StatsRowProps = {
   activeWorkCount: number
   activeWorkByKind: Record<ActiveWorkKind, number>
+  /** R302：分工作台「样本未覆盖全库」标记，命中项计数只是下限 */
+  activeWorkTruncated?: Partial<Record<ActiveWorkKind, boolean>>
+  /** R302：取样口径中文说明（悬停可见），精确时为空串 */
+  activeWorkCaveat?: string
   pendingTodoCount: number
   doneTodoCount: number
   overdueTodoCount: number
@@ -46,14 +50,32 @@ function StatItem({
   )
 }
 
-export function StatsRow({ activeWorkCount, activeWorkByKind, pendingTodoCount, doneTodoCount, overdueTodoCount }: StatsRowProps) {
+export function StatsRow({
+  activeWorkCount,
+  activeWorkByKind,
+  activeWorkTruncated,
+  activeWorkCaveat,
+  pendingTodoCount,
+  doneTodoCount,
+  overdueTodoCount,
+}: StatsRowProps) {
+  // R302（close r281-active-work-per-entity-cap）：计数可能是取样下限，补「+」并在悬停里说清口径
+  const workLowerBound = !!activeWorkTruncated && Object.values(activeWorkTruncated).some(Boolean)
+  const workTitle =
+    [
+      activeWorkCount > 0 ? formatActiveWorkBreakdown(activeWorkByKind, activeWorkTruncated) : "",
+      activeWorkCaveat ?? "",
+    ]
+      .filter(Boolean)
+      .join("；") || undefined
   return (
     <section className="mb-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       <StatItem
         icon={<FolderKanban className="h-5 w-5" />}
         value={activeWorkCount}
         label="工作台进行中事项"
-        valueTitle={activeWorkCount > 0 ? formatActiveWorkBreakdown(activeWorkByKind) : undefined}
+        valueSuffix={workLowerBound ? "+" : undefined}
+        valueTitle={workTitle}
       />
       <StatItem
         icon={<ListTodo className="h-5 w-5" />}

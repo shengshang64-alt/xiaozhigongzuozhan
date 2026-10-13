@@ -26,6 +26,7 @@ import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import { healMustWriteOnRead } from "@/pages/BidWorkspace/mustWriteSelfHeal"
 import { BID_OUTLINE_REQ_KEY, bulkQueueClear, bulkQueueLoad, FIGURES_UNLIMITED, sectionText } from "@/pages/BidWorkspace/bidTypes"
 import { isIncompleteSectionChapter } from "@/pages/BidWorkspace/chapterCompletion"
+import { summarizeBidGenFailures } from "@/pages/BidWorkspace/bidGenFailure"
 import type { Chapter, OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
 import { typeLabel } from "@/pages/SolutionStudio/solutionTypes"
 import { formatCount } from "@/lib/money"
@@ -259,6 +260,7 @@ function OutlineNavTree({
               <button
                 type="button"
                 onClick={() => onSelectChapter(ch.node_id)}
+                title={ch.gen_status === "failed" ? (ch.genError ? `失败原因：${ch.genError}` : "生成失败，可重试（旧记录未留存原因）") : undefined}
                 className={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                   isActive
                     ? "border border-primary/40 bg-primary/10 font-medium text-primary"
@@ -430,6 +432,8 @@ export function ComposeStep(p: ComposeStepProps) {
   const hasChapters = proj.bid_chapters.length > 0
   // 切片A4：failedCount（hooks 在上方已声明）
   const failedCount = proj.bid_chapters.filter((c) => !c.part?.startsWith("biz") && c.gen_status === "failed").length
+  // R301：技术章生成失败归因（复用 SolutionStudio 纯函数），供「生成总览」列出「哪些章因同一原因失败」
+  const genFail = failedCount > 0 ? summarizeBidGenFailures(proj.bid_chapters) : null
   // R175：done 但小节未补齐的残缺章数（总览单列「待补小节」，与「完成」口径互斥）
   const pendingSectionCount = proj.bid_chapters.filter((c) => !c.part?.startsWith("biz") && isIncompleteSectionChapter(c)).length
   const bulkPct = p.genProgress.total ? Math.round((p.genProgress.current / p.genProgress.total) * 100) : 0
@@ -974,6 +978,23 @@ export function ComposeStep(p: ComposeStepProps) {
               </button>
               {overviewOpen && (
                 <div className="max-h-64 overflow-y-auto border-t border-border px-4 py-2">
+                  {genFail && (
+                    <div className="mb-2 rounded-md border border-destructive/30 bg-destructive/5 px-2 py-2 text-xs">
+                      <p className="font-medium text-destructive">失败归因（本地判定·零费用）：共 {genFail.failedCount} 章失败</p>
+                      <ul className="mt-1 space-y-1">
+                        {genFail.causes.map((g) => (
+                          <li key={`${g.category}-${g.detail}`} className="text-muted-foreground">
+                            <span className="font-medium text-foreground">【{g.label}】</span>
+                            {g.count} 章 · {g.detail}
+                            <span className="ml-1">（{g.chapters.map((c) => c.title).join("、")}{g.truncated ? ` 等共 ${g.count} 章` : ""}）</span>
+                          </li>
+                        ))}
+                      </ul>
+                      {genFail.allSameCause && genFail.causes[0] && (
+                        <p className="mt-1 text-muted-foreground">全部失败章同属「{genFail.causes[0].label}」，建议先排查该通道再整本重试。</p>
+                      )}
+                    </div>
+                  )}
                   {proj.bid_chapters
                     .map((ch, idx) => ({ ch, idx }))
                     .filter(({ ch }) => !ch.part?.startsWith("biz"))
@@ -1003,7 +1024,7 @@ export function ComposeStep(p: ComposeStepProps) {
                             type="button"
                             className="min-w-0 flex-1 truncate text-left text-foreground hover:text-primary hover:underline"
                             onClick={() => p.selectChapter(ch.node_id)}
-                            title={ch.title}
+                            title={ch.gen_status === "failed" && ch.genError ? `${ch.title}｜失败原因：${ch.genError}` : ch.title}
                           >
                             {ch.title}
                           </button>

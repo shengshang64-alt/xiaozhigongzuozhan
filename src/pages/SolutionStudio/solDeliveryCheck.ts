@@ -32,6 +32,7 @@ export type SolCheckRule =
   | "empty_chapter"
   | "underlength_chapter"
   | "intra_dup"
+  | "fact_ungrounded"
 
 /** 中文口径：复用侧直接取标书侧 FORMAT_RULE_LABEL（单一真源），只补方案侧新词条 */
 export const SOL_CHECK_LABEL: Record<SolCheckRule, string> = {
@@ -41,6 +42,7 @@ export const SOL_CHECK_LABEL: Record<SolCheckRule, string> = {
   empty_chapter: "标记已完成但正文为空",
   underlength_chapter: "正文明显偏短",
   intra_dup: "跨章重复段落",
+  fact_ungrounded: "正文数值无法溯源到素材（疑似幻觉）",
 }
 
 /**

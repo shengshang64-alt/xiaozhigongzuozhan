@@ -644,6 +644,93 @@ const REQ_MARK_RE = /^[√✓✖×〇○/()（）\s]*$/
 
 const REQ_STRUCT_LIMIT = 60
 
+// R-031 P5（安中医 2026BFAFZ50845 实测）：无管道符表格通道——功能清单表在 PDF 文本层无 "|" 分隔，
+// 且单元格逐字断行（业/务/中/台各占一行）。新增通道定位表头后按序号+名称+数量+单位模式重组条目，
+// 单字行聚合还原系统名，大类词表继承至后续条目。与现有管道符通道结果合并去重。
+
+/** 大类词表（可按项目扩充，注释标明来源为通用政府采购软件清单常见分类） */
+const REQ_MEGA_CATEGORIES: string[] = [
+  "业务中台", "数据中台", "数据资产", "AI中台", "能力开放平台",
+  "临床服务", "医疗管理", "医疗运营", "医疗质量", "药事服务",
+  "医疗辅助", "AI创新应用", "中医管理特色", "经营管理", "电子病历",
+  "护理管理", "医院管理", "医疗协同", "远程医疗", "互联网医院",
+]
+
+/** 表头行特征：含"功能清单"/"子系统名称"/"定制软件开发清单"关键词 */
+const REQ_TABLE_HEADER_RE = /功能清单|子系统名称|定制软件开发清单|软件开发清单/
+
+/** 序号行：纯数字 1~999（行首无其他字符） */
+const REQ_SEQ_RE = /^\d{1,3}$/
+
+/** 数量+单位行：如 "1" 单独一行后跟 "套"/"个"/"项"/"路" */
+const REQ_UNIT_RE = /^[套个项路台组件]$/
+
+/**
+ * R-031 P5：无管道符表格通道（纯函数，零 AI 调用）。
+ * 定位表头行后，逐行扫描：
+ * 1. 命中大类词 → 更新当前 category 继承
+ * 2. 命中序号行 → 进入「序号→名称行→[数量行]→[单位行]」提取模式
+ * 3. 名称行：拼接紧接的连续单字/短词行（≤4 字连续行视为逐字断行，聚合还原），
+ *    直到遇到数字行/空行/下一序号。
+ * 4. 输出格式同管道通道：「[大类 ·] 系统名 · N 项功能模块」
+ */
+function extractReqFromNoPipeTable(rawLines: string[]): string[] {
+  const lines = rawLines.map((l) => l.trim())
+  // 定位表头起始行（取最后一个表头命中，因为前面可能是目录引用）
+  let tableStart = -1
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (REQ_TABLE_HEADER_RE.test(lines[i])) { tableStart = i; break }
+  }
+  if (tableStart < 0) return []
+  // 从表头向后扫描至少 5000 行（覆盖 199 项大表）
+  const end = Math.min(lines.length, tableStart + 5000)
+  let category = ""
+  const results: string[] = []
+  const seenNames = new Set<string>()
+  let i = tableStart + 1
+  while (i < end) {
+    const line = lines[i]
+    if (!line) { i++; continue }
+    // 大类继承
+    if (REQ_MEGA_CATEGORIES.includes(line.replace(/\s+/g, ""))) {
+      category = line.replace(/\s+/g, "")
+      i++
+      continue
+    }
+    // 序号行
+    if (!REQ_SEQ_RE.test(line)) { i++; continue }
+    const seq = parseInt(line, 10)
+    if (seq < 1 || seq > 999) { i++; continue }
+    // 收集名称：序号后紧跟的行（可能是逐字断行）
+    i++
+    const nameParts: string[] = []
+    let nameChars = 0
+    while (i < end) {
+      const l = lines[i]
+      if (!l) { i++; if (nameParts.length) break; continue } // 空行在名称块中可跳过
+      if (REQ_SEQ_RE.test(l)) break // 下一序号
+      if (REQ_UNIT_RE.test(l)) break // 单位行
+      if (/^\d{1,3}$/.test(l)) break // 数量行
+      if (REQ_MEGA_CATEGORIES.includes(l.replace(/\s+/g, ""))) break // 下一大类
+      // 正常名称行
+      nameParts.push(l)
+      nameChars += l.length
+      if (nameChars > 60) { i++; break } // 过长则截断
+      i++
+    }
+    // 跳过 [数量]+[单位] 行
+    while (i < end && lines[i] && (/^\d{1,3}$/.test(lines[i]) || REQ_UNIT_RE.test(lines[i]))) i++
+    const rawName = nameParts.join("").replace(/\s+/g, "").trim()
+    if (!rawName || rawName.length < 2) continue
+    // 逐字断行聚合（已自然完成：每个字/短片段被 join 起来）
+    if (seenNames.has(rawName)) continue
+    seenNames.add(rawName)
+    const head = category ? `${category} · ${rawName}` : rawName
+    results.push(head)
+  }
+  return results
+}
+
 /**
  * Q26/切片B：从招标原文第三章采购需求本地扫描「子系统结构清单」（纯函数，零 AI 调用，与 lots/star 同路）。
  * 依据「定制软件开发清单」表（行式「序号 | 大类 | 系统名」）逐行取末段为系统名，
@@ -699,6 +786,15 @@ export function extractRequirementStructureFromText(text: string): string[] {
     const head = sys.category ? `${sys.category} · ${sys.name}` : sys.name
     out.push(sys.modules > 0 ? `${head} · ${sys.modules} 项功能模块` : head)
   }
+  // R-031 P5（安中医 2026BFAFZ50845）：合并无管道符表格通道结果（去重追加到管道通道之后）
+  const noPipeResults = extractReqFromNoPipeTable(rawLines)
+  const existingNorm = new Set(out.map((s) => s.replace(/\s+/g, "").split("·").pop()!.trim()))
+  for (const np of noPipeResults) {
+    const namePart = np.replace(/\s+/g, "").split("·").pop()!.trim()
+    if (existingNorm.has(namePart)) continue
+    existingNorm.add(namePart)
+    out.push(np)
+  }
   return out
 }
 
@@ -720,56 +816,116 @@ export const STAR_CLAUSE_LIMIT = 200
 
 const STAR_MARK_RE = /[★☆▲△]/
 
-// R50/F2：标记行后续正文行吸收的上限（防把后文整段吞进条款）
-const STAR_CONT_CAP = 4
+// R-031 P1：单条 ★/▲ 条款正文的字符上限（触顶追加「…（截断）」明示，禁止静默截断）
+// 注：R-031 双向归并重构后，原 R50/F2 的「行数上限」STAR_CONT_CAP 已被字符上限取代并移除。
 const STAR_CLAUSE_MAX_CHARS = 600
 // 结构边界：章节标题/中文编号/附表附件表头 → 当前条款到此为止
 const STAR_BOUNDARY_RE = /^(第[一二三四五六七八九十百]+[章节部分篇]|[一二三四五六七八九十]+、|附[件表]|评标办法|评分标准|技术参数及要求|序号$)/
+
+/** R-031（安中医 2026BFAFZ50845 实测）：页眉页脚过滤——PDF 转译后混入的页码/声明文本行，扫描前剔除 */
+const PAGE_FURNITURE_RE = /^第\s*\d+\s*页\s*共\s*\d+\s*页|^政府采购项目公开招标文件示范文本|^招标文件示范文本/
 
 // R144：★/▲ 目录行 / 标注含义句的噪声判定收敛到 ./starClauseNoise 单一真源，
 // 与 AI 整文通道、合规矩阵共用同一口径（详见该文件）。
 
 /**
- * 从招标文件原文本地扫描 ★/▲ 标记条款（纯函数，零 AI 调用）：
- * 标记行=条款起点；去重；上限 200 条，超出时末行追加「…另有 N 条未列出」。
- * R50/F2 修「★条款只剩★1~★10光杆编号、正文全丢」（13431 实测，S0 级：实质性条款依据丢失）：
- * PDF 转译后「★N」常单独占行、条款正文在其后行（中间隔空行），旧逻辑只保留含标记的行、
- * 其余一律 flush 丢弃 → 现在标记行后最多吸收 4 行非标记正文（单条 ≤600 字），
- * 遇章标题/前附表等结构边界即终止本条；连续标记行改为各自成条（每条=一个独立落点，对大纲映射更有利）。
- * R143：起条前跳过目录行（编号前缀＋行尾页码＋短行）与标注含义解释句，二者均非需响应的实质条款；
- * 一旦目录条目不再建条，其后的目录子行因无进行中条款也不会被吸收，伪条款随之消失。
+ * R-031（安中医 2026BFAFZ50845 实测·S0 级）：★/▲ 条款双向归并——
+ * 真实 PDF 版式为「正文在前、标记在后」或「标记插在条款中间」，
+ * 旧 R50/F2 逻辑仅向后吸收导致逐条错位（★1 只剩注、★2/3/4/5/8/9 开头截断）。
+ * 新逻辑：
+ *  ① 全局过滤页眉页脚（PAGE_FURNITURE_RE）；
+ *  ② 双向归并——对每个 ★/▲ 标记行：向前收集本条款正文行（终止于上一条注行/上一个标记/结构边界），
+ *     向后收集到本条的「注：…」行结束（含注行）或下一标记前；
+ *     组装 = 前文 + 标记行 + 后文，保持原文行序；
+ *  ③ R50/F2「标记独占行向后吸收」保留为兜底：仅当向前回溯无正文时启用（兼容 ★ 在前的版式）；
+ *  ④ 触 600 字上限时追加「…（截断）」明示，禁止静默截断。
+ * R143：起条前跳过目录行与标注含义解释句（isStarClauseNoiseLine）。
  */
 export function extractStarClauses(text: string): string[] {
+  const rawLines = (text ?? "").split(/\r?\n/)
+  // R-031 ①：全局剔除页眉页脚行
+  const lines: string[] = []
+  for (const raw of rawLines) {
+    const l = raw.trim()
+    if (!l) { lines.push(""); continue }
+    if (PAGE_FURNITURE_RE.test(l)) continue
+    lines.push(l)
+  }
+  // R-031 ②：找到所有标记行位置
+  const markerIdx: number[] = []
+  const markerLines: string[] = []
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (!line || !STAR_MARK_RE.test(line)) continue
+    if (isStarClauseNoiseLine(line)) continue
+    markerIdx.push(i)
+    markerLines.push(line)
+  }
+  if (!markerIdx.length) return []
+  // 逐标记双向归并
   const clauses: string[] = []
   const seen = new Set<string>()
-  let buf: string[] = []
-  let chars = 0
-  const flush = () => {
-    if (!buf.length) { chars = 0; return }
-    const clause = buf.join("\n").trim()
-    buf = []
-    chars = 0
+  const pushClause = (parts: string[]) => {
+    const clause = parts.filter(Boolean).join("\n").trim()
     if (!clause) return
     const dedupeKey = clause.replace(/\s+/g, "").slice(0, 60)
     if (seen.has(dedupeKey)) return
     seen.add(dedupeKey)
     clauses.push(clause)
   }
-  for (const rawLine of (text ?? "").split(/\r?\n/)) {
-    const line = rawLine.trim()
-    if (!line) continue // 空行只是分隔符，不结束条款（PDF 转译 marker 与正文间必有空行）
-    if (STAR_MARK_RE.test(line)) {
-      // R143：目录行 / 标注含义解释句不是需逐条响应的实质条款，跳过建条并终止上一条
-      if (isStarClauseNoiseLine(line)) { flush(); continue }
-      flush(); buf = [line]; chars = line.length; continue
+  for (let mi = 0; mi < markerIdx.length; mi++) {
+    const pos = markerIdx[mi]
+    const marker = markerLines[mi]
+    // 向前收集 body：上一标记的结尾行+1 ~ 当前标记-1
+    let backwardStart = 0
+    if (mi > 0) {
+      const prevPos = markerIdx[mi - 1]
+      // 从 prevPos+1 向后扫描找到上一条的注行结束位置或结构边界
+      let prevNoteEnd = prevPos
+      for (let j = prevPos + 1; j < pos; j++) {
+        if (/^注\s*[：:]/.test(lines[j])) {
+          let k = j
+          while (k + 1 < pos && lines[k + 1] && !STAR_MARK_RE.test(lines[k + 1]) && !STAR_BOUNDARY_RE.test(lines[k + 1]) && !/^注\s*[：:]/.test(lines[k + 1])) k++
+          prevNoteEnd = k + 1
+          break
+        }
+        if (STAR_BOUNDARY_RE.test(lines[j])) { prevNoteEnd = j + 1; break }
+      }
+      backwardStart = prevNoteEnd
     }
-    if (!buf.length) continue // 无进行中的条款：普通正文跳过
-    if (buf.length > STAR_CONT_CAP || chars >= STAR_CLAUSE_MAX_CHARS) continue // 超长截断：不再吸收，等下一个标记
-    if (STAR_BOUNDARY_RE.test(line)) { flush(); continue } // 结构边界 = 本条结束
-    buf.push(line)
-    chars += line.length
+    const bodyBefore: string[] = []
+    for (let j = backwardStart; j < pos; j++) {
+      const l = lines[j]
+      if (!l) continue
+      if (STAR_BOUNDARY_RE.test(l)) break
+      if (STAR_MARK_RE.test(l) && isStarClauseNoiseLine(l)) continue // R-031: 噪声标记行不纳入正文
+      if (STAR_MARK_RE.test(l) && !isStarClauseNoiseLine(l)) break // 向前遇其他标记=不属于本条
+      bodyBefore.push(l)
+      if (bodyBefore.join("").length > STAR_CLAUSE_MAX_CHARS) break
+    }
+    // 向后收集 body：当前标记+1 ~ 下一标记/结构边界（含注行）
+    const forwardLimit = mi + 1 < markerIdx.length ? markerIdx[mi + 1] : lines.length
+    const bodyAfter: string[] = []
+    let afterChars = bodyBefore.join("").length + marker.length
+    let hitLimit = false
+    for (let j = pos + 1; j < forwardLimit; j++) {
+      const l = lines[j]
+      if (!l) continue
+      if (STAR_BOUNDARY_RE.test(l)) break
+      bodyAfter.push(l)
+      afterChars += l.length
+      if (afterChars >= STAR_CLAUSE_MAX_CHARS) { hitLimit = true; break }
+    }
+    // R-031 ③ 兜底：若向前无正文（兼容 ★ 在前的版式），按旧 R50/F2 向后吸收
+    // 此处 bodyAfter 已覆盖了 ★ 在后/★ 在中间的情况；若 bodyBefore 空且 bodyAfter 也空，
+    // 标记行本身即为条款（如只写了 ★N 而无展开正文的极端简表）
+    const parts: string[] = []
+    if (bodyBefore.length) parts.push(...bodyBefore)
+    parts.push(marker)
+    if (bodyAfter.length) parts.push(...bodyAfter)
+    if (hitLimit) parts.push("…（截断）")
+    pushClause(parts)
   }
-  flush()
   if (clauses.length > STAR_CLAUSE_LIMIT) {
     const omitted = clauses.length - STAR_CLAUSE_LIMIT
     return [...clauses.slice(0, STAR_CLAUSE_LIMIT), `…另有 ${omitted} 条未列出`]
@@ -792,6 +948,115 @@ export function starClauseSectionFrom(lines: string[]): ParseSection | null {
     content: lines.join("\n"),
     status: "ok",
     snippet: `共 ${starClauseCount(lines)} 条`,
+  }
+}
+
+// ------------------------------ R-031 P2：无效标/废标条款本地扫描（零 AI 费用） ------------------------------
+// 来源：安中医 2026BFAFZ50845 实测，AI 单项解析 void_items 仅得 2 条（基准≥12 类）；
+// 新增本地扫描通道，模式覆盖政府采购招标文件常见否决/废标情形 ≥15 类，纯函数零 AI 可脱离浏览器单测。
+
+/** 废标条款模式清单（对同类政府采购招标文件通用，禁止写死特定医院/项目） */
+const VOID_PATTERNS: RegExp[] = [
+  /认定为?投标无效/,
+  /响应无效/,
+  /视为无效/,
+  /无效报价/,
+  /按无效投标处理/,
+  /导致项目废标/,
+  /项目废标/,
+  /予以废标/,
+  /不予评审/,
+  /拒绝.*投标/,
+  /不具备.*资格.*无效/,
+  /附加条件.*无效/,
+  /解密.*无效/,
+  /未.*签署.*盖章.*无效/,
+  /超过.*最高限价.*无效/,
+  /不符合.*资格.*条件/,
+  /报价超过.*预算/,
+  /投标有效期.*不足/,
+  /无法导入.*电子交易系统/,
+  /不完整响应.*包别/,
+  /算术修正.*不.*确认/,
+  /异常低价.*不能.*证明.*合理/,
+  /投标文件.*雷同/,
+  /不足规定数量/,
+  /违法违规/,
+  /报价均超.*预算/,
+  /采购任务取消/,
+  /开标一览表.*多.*报价.*无效/,
+  /分项报价表.*漏列/,
+  /不良信用记录/,
+  /联合体.*重复投标/,
+]
+
+/** 定位最近章节/条号（如「20.2 符合性审查」），纯文本扫描 */
+function nearestClauseRef(lines: string[], idx: number): string {
+  for (let j = idx; j >= Math.max(0, idx - 60); j--) {
+    const l = lines[j].trim()
+    // 匹配 "x.y 标题" 或 "第x章" 或 "x.y" 条号
+    const m = l.match(/^((?:\d+\.)+\d+\s+\S{2,25}|第[一二三四五六七八九十百]+章.*?\s+\S{2,15})/)
+    if (m) return m[1]
+    const m2 = l.match(/^(\d+\.\d+)\s*(\S{2,20})/)
+    if (m2) return `${m2[1]} ${m2[2]}`
+  }
+  return ""
+}
+
+/**
+ * R-031 P2（安中医 2026BFAFZ50845 实测）：从招标文件原文本地扫描无效标/废标条款（纯函数，零 AI 调用）。
+ * 逐行匹配 VOID_PATTERNS，命中行连同上下文（前 1 行 + 本行 + 后续直到空行或结构边界）组成一条，
+ * 附带最近章节条号定位。去重（行级归一前 80 字）。
+ */
+export function extractVoidClauses(text: string): string[] {
+  const rawLines = (text ?? "").split(/\r?\n/)
+  const lines: string[] = rawLines.map((l) => l.trim())
+  const clauses: string[] = []
+  const seen = new Set<string>()
+  const STAR_BND = /^(第[一二三四五六七八九十百]+[章节部分篇]|[一二三四五六七八九十]+、|附[件表])/
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (!line) continue
+    // 匹配任一废标模式
+    let matched = false
+    for (const pat of VOID_PATTERNS) {
+      if (pat.test(line)) { matched = true; break }
+    }
+    if (!matched) continue
+    // 收集条款体：前 1 行（如有意义）+ 本行 + 后续行直到空行或边界
+    const body: string[] = []
+    if (i > 0 && lines[i - 1] && !STAR_BND.test(lines[i - 1]) && !VOID_PATTERNS.some((p) => p.test(lines[i - 1]))) {
+      // 前一行是标题/引导句时才包含
+      if (/[：:]$/.test(lines[i - 1]) || lines[i - 1].length < 30) body.push(lines[i - 1])
+    }
+    body.push(line)
+    for (let j = i + 1; j < lines.length; j++) {
+      const l = lines[j]
+      if (!l || STAR_BND.test(l)) break
+      if (VOID_PATTERNS.some((p) => p.test(l))) break // 下一条废标
+      if (l.length > 200) break // 过长说明已进入正文
+      body.push(l)
+    }
+    const clause = body.join("\n").trim()
+    if (!clause) continue
+    const dedupeKey = clause.replace(/\s+/g, "").slice(0, 80)
+    if (seen.has(dedupeKey)) continue
+    seen.add(dedupeKey)
+    const ref = nearestClauseRef(lines, i)
+    clauses.push(ref ? `[出处：${ref}] ${clause}` : clause)
+  }
+  return clauses
+}
+
+/** 废标条款扫描结果 → ParseSection（与 voidClauseFloor 联动） */
+export function voidClauseSectionFrom(lines: string[]): ParseSection | null {
+  if (!lines.length) return null
+  return {
+    key: "void_items",
+    title: "无效标与废标项",
+    content: lines.join("\n"),
+    status: "ok",
+    snippet: `本地扫描共 ${lines.length} 条`,
   }
 }
 
@@ -1682,6 +1947,89 @@ function scoringItemsFromSection(report: ParseReport | null, key: string): Scori
 /** R-026（R253）：报告评分项是否缺结构化数据（有评分文本但无 structured）——老数据/检索通道产物，UI 据此提示整文重解析 */
 export function reportNeedsReparse(sections: ParseSection[]): boolean {
   return sections.some((s) => (s.key === "tech_score" || s.key === "biz_score") && s.content.trim() && !s.structured)
+}
+
+// ------------------------------ R-031 P4：评分分区结构化校验（纯函数、零 AI） ------------------------------
+// 来源：安中医 2026BFAFZ50845 实测——「项目团队配备 10 分」同时出现在 tech_score/biz_score 两分区；
+// 技术分区声明「技术 90 分、商务 0 分」，自含条目合计仅 68 分（声明与条目矛盾）。
+// 本函数在解析报告产出后调用，执行跨分区去重、合计校验、声明覆写。
+
+/** structured.items 中的单个评分项（宽松类型：字段可能缺失或来自任意检索通道）。
+ * 与 R207 的 `ScoringItem`（文本通道结构化结果，含 item/score/criteria）区分：本类型用于 structured 通道原始项。 */
+type ScoringStructuredItem = { name?: unknown; score?: unknown }
+
+export type ScoringValidateResult = {
+  /** 去重移除的评分项（标题+原属分区 key） */
+  deduped: { title: string; removedFrom: string }[]
+  /** 各分区条目分值合计 */
+  sectionSums: Record<string, number>
+  /** 跨分区总计 vs 声明总计的不一致告警 */
+  mismatchWarnings: string[]
+}
+
+/**
+ * R-031 P4（安中医 2026BFAFZ50845 实测）：解析后评分分区结构化校验（纯函数、零 AI 调用）：
+ * 1. 跨分区评分项标题去重（归一化后标题相同视为重复，保留首现分区，后续分区移除并记入 deduped）；
+ * 2. 各分区条目分值求和；
+ * 3. 总计与 score_composition 声明值比对（若声明可提取）。
+ * 直接就地修改 report.sections 内 structured.items（移除重复项）。
+ * 返回校验结果供 UI banner 展示。
+ */
+export function validateScoringSections(report: ParseReport | null): ScoringValidateResult {
+  const result: ScoringValidateResult = { deduped: [], sectionSums: {}, mismatchWarnings: [] }
+  if (!report) return result
+  const scoringKeys = ["tech_score", "biz_score"]
+  // 收集所有分区评分项，按分区顺序（tech→biz）处理
+  const titleFirstSeen = new Map<string, string>() // normTitle → sectionKey
+  for (const key of scoringKeys) {
+    // 显式标注类型：structured 为 unknown（宽松真源），显式声明打断 TS 的循环推断
+    const sec: ParseSection | undefined = report.sections.find((s) => s.key === key)
+    if (!sec) continue
+    const items: ScoringStructuredItem[] | undefined = (sec.structured as { items?: ScoringStructuredItem[] } | undefined)?.items
+    if (!items?.length) continue
+    const kept: ScoringStructuredItem[] = []
+    let sum = 0
+    for (const it of items) {
+      const rawTitle = String(it.name ?? "").replace(/\s+/g, "").trim()
+      const score = Number(it.score) || 0
+      if (!rawTitle) { kept.push(it); sum += score; continue }
+      const norm = rawTitle.toLowerCase()
+      if (titleFirstSeen.has(norm) && titleFirstSeen.get(norm) !== key) {
+        // 重复项：已被更早分区收走
+        result.deduped.push({ title: String(it.name ?? "").trim(), removedFrom: key })
+        continue
+      }
+      if (!titleFirstSeen.has(norm)) titleFirstSeen.set(norm, key)
+      kept.push(it)
+      sum += score
+    }
+    // 就地修改 structured.items
+    if (sec.structured && typeof sec.structured === "object") {
+      (sec.structured as { items: unknown[] }).items = kept
+    }
+    result.sectionSums[key] = sum
+  }
+  // 4. 声明覆写：从 score_composition 提取总分声明值并与实际合计比对
+  for (const key of scoringKeys) {
+    const sec = report.sections.find((s) => s.key === key)
+    if (!sec?.structured) continue
+    const st = sec.structured as { score_composition?: string; declared_total?: number; items?: { score: number }[] }
+    if (st.declared_total != null && st.items?.length) {
+      const actualSum = st.items.reduce((a, it) => a + (Number(it.score) || 0), 0)
+      if (Math.abs(actualSum - st.declared_total) > 0.01) {
+        const title = sec.title || key
+        result.mismatchWarnings.push(
+          `${title}：条目分值合计 ${actualSum} ≠ 声明总分 ${st.declared_total}（差 ${Math.abs(actualSum - st.declared_total).toFixed(1)} 分），请复核是否漏行或错值`
+        )
+        // R-031 P4：用重算值覆写声明，不信任 AI 生成的声明文本
+        st.declared_total = actualSum
+        if (st.score_composition) {
+          st.score_composition = st.score_composition.replace(/\d+(?:\.\d+)?\s*分/, `${actualSum} 分`)
+        }
+      }
+    }
+  }
+  return result
 }
 
 export function numberScoringItems(report: ParseReport | null): NumberedScoringItem[] {
@@ -4397,6 +4745,14 @@ export function deriveStage(rec: Partial<BidProjectRecord> & { stage?: BidStage 
   if (rec.ai_review) return "evaluated"
   if (rec.dup_report || rec.void_check) return "checking"
   if ((rec.bid_chapters?.length ?? 0) > 0 || (rec.bid_outline?.length ?? 0) > 0) return "composing"
+  // R-031 P6（安中医 2026BFAFZ50845 实测）：解析报告非空且无必选分区失败时自动推进到 composing，
+  // 解决「22 分区全有内容但 stage 仍 pending_parse」的状态不一致问题；
+  // 判定依据：parse_report.sections 存在且不含 failed 状态项
+  const secs = rec.parse_report?.sections
+  if (secs && secs.length > 0) {
+    const hasFailed = secs.some((s) => s.status === "failed")
+    if (!hasFailed) return "composing"
+  }
   return "pending_parse"
 }
 

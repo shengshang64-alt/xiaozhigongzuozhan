@@ -3,7 +3,8 @@
 
 import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/rhLogin"
-import { formatKbHitsForAssistant, listKbDocs, searchKbDocs, visibleKbDocs } from "@/lib/kbCore"
+import { formatKbHitsForAssistant, searchKbDocs } from "@/lib/kbCore"
+import { getCachedVisibleDocs } from "@/lib/kbAssemble"
 import { KB_QA_DIRECT_PREFIX, listKbQaPairs, matchQaPair, visibleQaPairs } from "@/lib/kbQa"
 import { localizeLlmError } from "@/lib/llmError"
 
@@ -315,8 +316,12 @@ export async function fetchSiteData(key: string, userId: string, question?: stri
       } catch {
         /* 弹药库读取失败静默降级，照常走文档检索 */
       }
-      const rows = await listKbDocs()
-      const visible = visibleKbDocs(rows, userId)
+      // R304(r303-kb-cache-bypass-sites)：全库语料只经 kbAssemble 共享缓存取，与方案/标书/问答同口径。
+      // 旧写法每轮提问都裸调 listKbDocs()（实测 ~7000 篇含正文 = 35 页下载），而同一份语料其它通道早已
+      // 缓存过。共享缓存自带并发去重 + 5 分钟 TTL + 经 onKbMutation 的变更即时失效；kbCore 的 df/IDF 语料
+      // 统计以数组引用为 WeakMap 键，各通道复用同一引用即复用同一次统计。
+      // getCachedVisibleDocs 已按 userId 过滤可见子集，与原 visibleKbDocs(rows, userId) 结果等价。
+      const visible = await getCachedVisibleDocs(userId)
       if (visible.length === 0 && !standardAnswer) {
         return "用户的知识库目前是空的（还没有上传任何文档）。请如实告知，并建议用户上传相关文档，不要编造知识库内容。"
       }
