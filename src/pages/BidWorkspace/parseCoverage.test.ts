@@ -4,8 +4,10 @@ import {
   COVERAGE_BLOCK,
   COVERAGE_MIN_BLOCK_SOURCE_CHARS,
   COVERAGE_WARN,
+  CRITICAL_SECTION_KEYS,
   coverageLevel,
   coveragePercent,
+  missingCriticalSections,
   parseCoverageRatio,
   parsedContentChars,
 } from "./parseCoverage"
@@ -41,5 +43,55 @@ describe("R-038③ 解析覆盖率度量与门禁（R258）", () => {
     expect(coveragePercent(0.437)).toBe(44)
     expect(coveragePercent(null)).toBeNull()
     expect(COVERAGE_BLOCK).toBeLessThan(COVERAGE_WARN)
+  })
+})
+
+// 2026-10-13 真实场景实测：38.2 万字标书解析出约 3 万字（覆盖率 8%）触发阻断，
+// 但真正的病灶是「响应文件要求」「投标文件目录要求」解析为空（大纲硬依赖）。
+// 门禁阻断判据改为「关键项缺失」，覆盖率降级告警，故补关键项判据测试。
+describe("R288+ 生成前门禁：关键解析项缺失判据（真实场景实测）", () => {
+  const mk = (key: string, content: string, status?: ParseSection["status"]): ParseSection =>
+    ({ key, title: key, content, ...(status ? { status } : {}) }) as ParseSection
+
+  it("关键项全部有内容且 status=ok → 无缺失", () => {
+    const sections = CRITICAL_SECTION_KEYS.map((k) => mk(k, "有内容", "ok"))
+    expect(missingCriticalSections(sections)).toEqual([])
+  })
+
+  it("缺 key → 命中该 key", () => {
+    const sections = CRITICAL_SECTION_KEYS.filter((k) => k !== "response_req").map((k) => mk(k, "有内容", "ok"))
+    expect(missingCriticalSections(sections)).toEqual(["response_req"])
+  })
+
+  it("status 非 ok（pending/failed/miss）→ 命中，即便 content 有壳", () => {
+    expect(missingCriticalSections([mk("tech_score", "暂无内容", "pending")])).toContain("tech_score")
+    expect(missingCriticalSections([mk("void_items", "有内容", "failed")])).toContain("void_items")
+    expect(missingCriticalSections([mk("biz_score", "有内容", "miss")])).toContain("biz_score")
+  })
+
+  it("content 为空或仅空态占位文本 → 命中（防「有壳无肉」）", () => {
+    expect(missingCriticalSections([mk("response_req", "   ", "ok")])).toContain("response_req")
+    expect(missingCriticalSections([mk("bid_outline_req", "未解析", "ok")])).toContain("bid_outline_req")
+    expect(missingCriticalSections([mk("tech_score", "原文未提及", "ok")])).toContain("tech_score")
+  })
+
+  it("旧数据无 status 字段时按「有内容=ok」兼容（不误伤存量报告）", () => {
+    const sections = CRITICAL_SECTION_KEYS.map((k) => mk(k, "有内容")) // 不带 status
+    expect(missingCriticalSections(sections)).toEqual([])
+  })
+
+  it("真实场景形态：9 段长文档仅 2 项未解析 → 精确命中这 2 项，其余不误报", () => {
+    const sections = [
+      mk("tech_score", "评分项…", "ok"),
+      mk("response_req", "暂无内容", "pending"), // 实测未解析
+      mk("biz_score", "总分100分…", "ok"),
+      mk("void_items", "未密封/未盖章", "ok"),
+      mk("bid_outline_req", "", "pending"), // 实测未解析
+    ]
+    expect(missingCriticalSections(sections).sort()).toEqual(["bid_outline_req", "response_req"])
+  })
+
+  it("返回顺序与 CRITICAL_SECTION_KEYS 一致（便于提示语稳定）", () => {
+    expect(missingCriticalSections([])).toEqual([...CRITICAL_SECTION_KEYS])
   })
 })

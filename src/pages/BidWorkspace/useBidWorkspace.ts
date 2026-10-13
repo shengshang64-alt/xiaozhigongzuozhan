@@ -636,7 +636,7 @@ import { splitTenderText } from "./prompts/tenderSplit"
 import { buildScoringStructured, selfCheckScoringTotal, type ScoringBlockJSON } from "./parseSchemas"
 import { buildVoidScopeMessages, buildVoidInitialCheckMessages, buildVoidFinalizeMessages } from "./prompts/voidCheckRounds"
 import { voidClauseFloorWarning } from "./voidClauseFloor"
-import { coverageLevel, coveragePercent, parseCoverageRatio } from "./parseCoverage"
+import { coverageLevel, coveragePercent, missingCriticalSections, parseCoverageRatio } from "./parseCoverage"
 import { assessTenderParseQuality } from "./parseQuality"
 
 const MAX_TOKENS_OUTLINE = 4096
@@ -4010,20 +4010,28 @@ export function useBidWorkspace() {
       )
       return
     }
-    // R-038（R258）：长文档解析覆盖率生成前门禁——覆盖率过低意味着大量原文未进入解析，
-    // 生成的标书可能漏掉否决/废标条款（废标风险）。<30%（且原文够大）阻止生成并指引重解析；<50% 告警但放行。
+    // R-038（R258）解析覆盖率可见性 + R288+ 阻断判据切换。
+    // R288+（2026-10-13 真实场景实测）：**阻断判据由「覆盖率」改为「关键项是否解析成功」**——
+    // 覆盖率口径 = 解析产出字数 / 原文非空白字数，而产出是要点摘要（非全文），长文档天然偏低
+    // （实测 38.2 万字真实标书 → 8%；R258 注释亦记 41.7 万字 → 4.4%）。原「<30% 一律阻断」
+    // 使**所有大标书都无法生成**；而实测真正的病灶是「响应文件要求/投标文件目录要求解析为空」，
+    // 二者恰是大纲硬依赖（OUTLINE_DEPEND_KEYS）。故此处：关键项缺失 → 阻断（真漏内容风险）；
+    // 覆盖率偏低 → 仅告警（保留可见性与人工核对提示）。
     {
       const covRatio = parseCoverageRatio(cur.parse_report.sections, cur.tender_text)
       const covLvl = coverageLevel(covRatio, cur.tender_text)
       const covPct = coveragePercent(covRatio)
-      if (covLvl === "block") {
+      const criticalMissing = missingCriticalSections(cur.parse_report.sections)
+      if (criticalMissing.length) {
         toast.error(
-          `解析覆盖率仅 ${covPct}%（长文档大部分原文未进入解析，生成的标书可能漏掉废标条款）：请用「完整档」解析、确保分段解析覆盖全文（扫描件先 OCR 转文字），再回来生成大纲`,
+          `关键解析项缺失：${missingSectionTitles(cur.parse_report, criticalMissing).join(" / ")}（驱动大纲编排、评分响应与废标规避），请回「AI 解析报告」逐项补齐后再生成大纲`,
         )
         return
       }
-      if (covLvl === "warn" && covPct != null) {
-        toast.info(`解析覆盖率 ${covPct}% 偏低（<50%），部分章节可能未解析完整，建议核对关键分区或用「完整档」重解析`)
+      if (covLvl !== "ok" && covPct != null) {
+        toast.info(
+          `解析覆盖率 ${covPct}%（长文档要点式解析的常态区间；关键项均已解析成功）：已放行生成，建议对照招标原件抽查废标与评分条款是否完整`,
+        )
       }
     }
     // R207 切片 2（R-003）：无底稿兜底——缺「响应文件组成」时诚实告警但不阻断（可继续按评分办法+常规骨架兜底编排）

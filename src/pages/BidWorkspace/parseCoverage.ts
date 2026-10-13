@@ -47,3 +47,46 @@ export function coverageLevel(ratio: number | null, sourceText: string): Coverag
 export function coveragePercent(ratio: number | null): number | null {
   return ratio == null ? null : Math.round(ratio * 100)
 }
+
+// ---------------------------------------------------------------------------
+// R288+（2026-10-13 真实场景实测·主导者）：生成前门禁的「关键解析项」判据
+//
+// 为什么改判据：原门禁用「覆盖率 < 30%」一刀切阻断生成，但覆盖率口径 = 解析产出字数 / 原文非空白字数，
+// 而解析产出是**要点摘要**（非全文）——长文档天然偏低（本文件上方注释即记录天坛 41.7 万字→4.4%）；
+// 2026-10-13 对 38.2 万字真实招标文件实测：22 项解析产出约 3 万字、覆盖率 8%，直接阻断生成。
+// 实测同时暴露真正的病灶：「响应文件要求」「投标文件目录要求」解析为空，而这两项正是大纲硬依赖
+// （OUTLINE_DEPEND_KEYS）——真风险是「关键项没解析出来」，不是「摘要比全文短」。
+// 故：阻断改由本判据（关键项缺失即阻断），覆盖率降级为告警（保留可见性）。
+// ---------------------------------------------------------------------------
+
+/** 生成前门禁的关键解析项：覆盖大纲依赖、评分、废标与目录编排，漏任一项即影响响应完整性 */
+export const CRITICAL_SECTION_KEYS: readonly string[] = [
+  "tech_score", // 技术评分要求（大纲硬依赖）
+  "response_req", // 响应文件要求（大纲硬依赖）
+  "biz_score", // 商务评分要求（大纲硬依赖）
+  "void_items", // 无效标与废标项（漏一条即废标）
+  "bid_outline_req", // 投标文件目录要求（大纲/正文编排依赖）
+]
+
+/** 解析「空态」文本：模型未取到内容时的占位表述，等同缺失 */
+const EMPTY_SECTION_RE = /^(原文未提及|暂无内容|未解析|未提取到|无)$/
+
+/**
+ * 返回「缺失」的关键解析项 key 列表（顺序同 keys）。
+ * 缺失判据（三者任一即缺失，防「有壳无肉」）：① 该 key 不存在；② status 存在且非 "ok"；
+ * ③ content 为空或仅空态占位文本。
+ */
+export function missingCriticalSections(
+  sections: ParseSection[],
+  keys: readonly string[] = CRITICAL_SECTION_KEYS,
+): string[] {
+  const byKey = new Map<string, ParseSection>()
+  for (const s of sections ?? []) byKey.set(s.key, s)
+  return keys.filter((k) => {
+    const s = byKey.get(k)
+    if (!s) return true
+    if (s.status && s.status !== "ok") return true
+    const text = String(s.content ?? "").trim()
+    return !text || EMPTY_SECTION_RE.test(text)
+  })
+}
