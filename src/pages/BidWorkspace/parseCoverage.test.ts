@@ -7,6 +7,7 @@ import {
   CRITICAL_SECTION_KEYS,
   coverageLevel,
   coveragePercent,
+  isBlockingMissingStatus,
   missingCriticalSections,
   parseCoverageRatio,
   parsedContentChars,
@@ -63,16 +64,31 @@ describe("R288+ 生成前门禁：关键解析项缺失判据（真实场景实�
     expect(missingCriticalSections(sections)).toEqual(["response_req"])
   })
 
-  it("status 非 ok（pending/failed/miss）→ 命中，即便 content 有壳", () => {
+  const withOnly = (k: string, content: string, status?: ParseSection["status"]): ParseSection[] =>
+    CRITICAL_SECTION_KEYS.filter((x) => x !== k).map((x) => mk(x, "有内容", "ok")).concat(mk(k, content, status))
+
+  it("status=failed/pending → 命中，即便 content 有壳", () => {
     expect(missingCriticalSections([mk("tech_score", "暂无内容", "pending")])).toContain("tech_score")
     expect(missingCriticalSections([mk("void_items", "有内容", "failed")])).toContain("void_items")
-    expect(missingCriticalSections([mk("biz_score", "有内容", "miss")])).toContain("biz_score")
   })
 
-  it("content 为空或仅空态占位文本 → 命中（防「有壳无肉」）", () => {
-    expect(missingCriticalSections([mk("response_req", "   ", "ok")])).toContain("response_req")
-    expect(missingCriticalSections([mk("bid_outline_req", "未解析", "ok")])).toContain("bid_outline_req")
-    expect(missingCriticalSections([mk("tech_score", "原文未提及", "ok")])).toContain("tech_score")
+  it("R289：status=miss 不阻断（原文本确实没有该项，是正确完整的解析结果）", () => {
+    // 取证：真实招标文件（安庆二院 CG-AQ-2021-5149 / 三明 38.2 万字稿）全文「投标文件目录」0 次，
+    // 该要求通过「投标文件格式」章表达。如实答「原文未提及」= 正确，不是失败。
+    expect(missingCriticalSections(withOnly("biz_score", "原文未提及", "miss"))).toEqual([])
+    expect(isBlockingMissingStatus("miss")).toBe(false)
+    expect(isBlockingMissingStatus("failed")).toBe(true)
+    expect(isBlockingMissingStatus("pending")).toBe(true)
+    expect(isBlockingMissingStatus("ok")).toBe(false)
+    expect(isBlockingMissingStatus(undefined)).toBe(false)
+  })
+
+  it("content 为空或仅空态占位文本 → 命中（防「有壳无肉」）；但 status=miss 时以 status 为准", () => {
+    expect(missingCriticalSections(withOnly("response_req", "   ", "ok"))).toContain("response_req")
+    expect(missingCriticalSections(withOnly("bid_outline_req", "未解析", "ok"))).toContain("bid_outline_req")
+    expect(missingCriticalSections(withOnly("tech_score", "原文未提及", "ok"))).toContain("tech_score")
+    // status=miss 优先：不因内容是空态文本而误判为缺失
+    expect(missingCriticalSections(withOnly("tech_score", "原文未提及", "miss"))).toEqual([])
   })
 
   it("旧数据无 status 字段时按「有内容=ok」兼容（不误伤存量报告）", () => {
@@ -80,15 +96,15 @@ describe("R288+ 生成前门禁：关键解析项缺失判据（真实场景实�
     expect(missingCriticalSections(sections)).toEqual([])
   })
 
-  it("真实场景形态：9 段长文档仅 2 项未解析 → 精确命中这 2 项，其余不误报", () => {
+  it("真实场景形态：pending 才阻断，miss 放行", () => {
     const sections = [
       mk("tech_score", "评分项…", "ok"),
-      mk("response_req", "暂无内容", "pending"), // 实测未解析
+      mk("response_req", "暂无内容", "pending"), // 真未产出 → 阻断
       mk("biz_score", "总分100分…", "ok"),
       mk("void_items", "未密封/未盖章", "ok"),
-      mk("bid_outline_req", "", "pending"), // 实测未解析
+      mk("bid_outline_req", "原文未提及", "miss"), // 原文无此专章 → 放行
     ]
-    expect(missingCriticalSections(sections).sort()).toEqual(["bid_outline_req", "response_req"])
+    expect(missingCriticalSections(sections)).toEqual(["response_req"])
   })
 
   it("返回顺序与 CRITICAL_SECTION_KEYS 一致（便于提示语稳定）", () => {

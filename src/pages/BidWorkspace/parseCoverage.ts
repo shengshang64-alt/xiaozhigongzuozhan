@@ -72,9 +72,26 @@ export const CRITICAL_SECTION_KEYS: readonly string[] = [
 const EMPTY_SECTION_RE = /^(原文未提及|暂无内容|未解析|未提取到|无)$/
 
 /**
+ * 「缺失」是否应当阻断生成。
+ *
+ * R289（2026-10-13 真实场景实测·主导者）：**miss 不阻断**。
+ * 取证：真实招标文件（安庆二院 CG-AQ-2021-5149 / 三明 38.2 万字稿）里并不存在
+ * 「投标文件目录」这一专章 —— 该要求是通过「投标文件格式」章节表达的
+ * （原文：「投标文件应该按照"投标文件格式"规定的内容和顺序进行编写」，全文「投标文件目录」0 次）。
+ * 故模型如实回答「原文未提及」（status=miss）是**正确且完整**的解析结果，不是失败。
+ * R288 曾把「status 非 ok」一律判为缺失，实测会把所有真实项目永久挡在生成之外 —— 假阻断。
+ * 仅 failed（技术性失败）与 pending/真空（未产出）才是真缺失，才阻断。
+ */
+export function isBlockingMissingStatus(status: ParseSection["status"] | undefined): boolean {
+  // status 缺失（旧数据/历史批次）时不据其阻断，交由内容空判据兜底，避免臆断
+  if (!status) return false
+  return status !== "ok" && status !== "miss"
+}
+
+/**
  * 返回「缺失」的关键解析项 key 列表（顺序同 keys）。
- * 缺失判据（三者任一即缺失，防「有壳无肉」）：① 该 key 不存在；② status 存在且非 "ok"；
- * ③ content 为空或仅空态占位文本。
+ * 缺失判据（三者任一即缺失，防「有壳无肉」）：① 该 key 不存在；② status 为真缺失
+ * （failed/pending，见 isBlockingMissingStatus）；③ content 为空或仅空态占位文本。
  */
 export function missingCriticalSections(
   sections: ParseSection[],
@@ -85,7 +102,9 @@ export function missingCriticalSections(
   return keys.filter((k) => {
     const s = byKey.get(k)
     if (!s) return true
-    if (s.status && s.status !== "ok") return true
+    // miss = 原文本就没有这一项，是正确完整的解析结果 → 不算缺失（见 isBlockingMissingStatus 注释）
+    if (s.status === "miss") return false
+    if (isBlockingMissingStatus(s.status)) return true
     const text = String(s.content ?? "").trim()
     return !text || EMPTY_SECTION_RE.test(text)
   })
