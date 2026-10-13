@@ -21,9 +21,17 @@ type OutlineCoverageProps = {
    * - relinkTitles = 大纲重生成后的 id 漂移（标题已有章，同步不会重复建章）；
    * - fragmentTitles = 条款碎片顶层节点（历史脏数据，不是章节），同步时自动跳过，只提示人工清理。
    */
-  outlineChapterDrift: { missingTitles: string[]; relinkTitles: string[]; fragmentTitles: string[] }
+  outlineChapterDrift: {
+    missingTitles: string[]
+    relinkTitles: string[]
+    fragmentTitles: string[]
+    /** R299：碎片可操作视图（带 id），供逐条人工删除 */
+    fragmentNodes?: Array<{ id: string; title: string; childCount: number }>
+  }
   /** R292 一键同步：把大纲里有、清单里缺的章与小节补进章节清单（只增不删，不动任何已有正文） */
   syncOutlineChapters: () => void
+  /** R299：删除单个大纲节点（按 id）。删除会落库，且已有正文的章节不受影响 */
+  removeOutlineNode?: (id: string) => void
 }
 
 export function OutlineCoverage({
@@ -34,12 +42,16 @@ export function OutlineCoverage({
   addAllClausesToOutline,
   outlineChapterDrift,
   syncOutlineChapters,
+  removeOutlineNode,
 }: OutlineCoverageProps) {
   const [listOpen, setListOpen] = useState(false)
+  // R299：碎片清理区默认收起——74 个节点一次性铺开会把覆盖条撑爆
+  const [fragOpen, setFragOpen] = useState(false)
   const driftMissing = outlineChapterDrift.missingTitles
   const driftRelink = outlineChapterDrift.relinkTitles
   // R295：碎片提示条独立渲染，故渲染条件也要把它算进来（否则碎片永远不可见）
   const driftFragments = outlineChapterDrift.fragmentTitles ?? []
+  const fragNodes = outlineChapterDrift.fragmentNodes ?? []
   if (!outlineClauseTotal && !driftMissing.length && !driftFragments.length) return null
   const allCovered = uncoveredClauses.length === 0
   return (
@@ -83,15 +95,60 @@ export function OutlineCoverage({
         </div>
       )}
       {driftFragments.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 border-t border-border bg-muted/40 px-4 py-2.5">
-          <p className="flex min-w-0 flex-1 items-start gap-1.5 text-xs leading-relaxed text-muted-foreground">
-            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span className="min-w-0">
-              大纲里另有 {driftFragments.length} 个顶层节点其实是招标条款原文（{driftFragments.slice(0, 3).join("、")}
-              {driftFragments.length > 3 ? " 等" : ""}），不是章节名。它们是早期补入留下的脏数据，
-              同步章节清单会**自动跳过**它们（不会生成「交付地点」这类无意义章节）；确认无用后请在大纲里手动删除。
-            </span>
-          </p>
+        <div className="border-t border-border bg-muted/40 px-4 py-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="flex min-w-0 flex-1 items-start gap-1.5 text-xs leading-relaxed text-muted-foreground">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0">
+                大纲里另有 {driftFragments.length} 个顶层节点其实是招标条款原文（{driftFragments.slice(0, 3).join("、")}
+                {driftFragments.length > 3 ? " 等" : ""}），不是章节名。它们是早期补入留下的脏数据，
+                同步章节清单会**自动跳过**它们（不会生成「交付地点」这类无意义章节）。
+              </span>
+            </p>
+            {/* R299：逐条人工删除入口。批量清空属破坏性操作且无法逐条复核，故只给单条删除 */}
+            {fragNodes.length > 0 && removeOutlineNode && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setFragOpen((v) => !v)}
+                className="shrink-0 border-border text-muted-foreground hover:bg-muted"
+              >
+                {fragOpen ? <ChevronDown className="mr-1 h-3.5 w-3.5" /> : <ChevronRight className="mr-1 h-3.5 w-3.5" />}
+                {fragOpen ? "收起" : `逐条清理（${fragNodes.length}）`}
+              </Button>
+            )}
+          </div>
+          {fragOpen && fragNodes.length > 0 && (
+            <div className="mt-2 rounded border border-border/70 bg-background/60">
+              <p className="border-b border-border/60 px-2.5 py-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                逐条确认后删除，每删一条立即保存。删除只动大纲节点，**已生成的正文不受影响**；
+                同名的节点各自独立（不会一次删掉多条）。
+              </p>
+              <ul className="max-h-64 overflow-y-auto">
+                {fragNodes.map((f, i) => (
+                  <li
+                    key={`${f.id}-${i}`}
+                    className="flex items-center justify-between gap-3 border-b border-border/50 px-2.5 py-1.5 last:border-0"
+                  >
+                    <p className="min-w-0 flex-1 truncate text-xs text-foreground" title={f.title}>
+                      {f.title}
+                      {f.childCount > 0 && (
+                        <span className="ml-1.5 text-[11px] text-muted-foreground">含{f.childCount} 个子节点</span>
+                      )}
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => removeOutlineNode?.(f.id)}
+                      className="h-7 shrink-0 px-2 text-xs text-destructive hover:bg-destructive/10"
+                    >
+                      删除
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
       {driftMissing.length > 0 && (

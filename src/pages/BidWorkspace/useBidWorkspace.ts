@@ -118,6 +118,7 @@ import {
   defaultGenOptions,
   defaultParseConfig,
   alignChaptersWithOutline,
+  pickChaptersToBuild,
   defenseRefChapterText,
   deriveStage,
   describeOutlineSync,
@@ -332,6 +333,7 @@ import {
   type VoidStatus,
 
   STAR_CLAUSE_SECTION,
+  findNodeTitle,
   bulkQueueSave, bulkQueueLoad, bulkQueueClear, reportNeedsReparse, requiredParseFailures} from "./bidTypes"
 import { scanPdfForSeal, type SealScanSummary } from "./sealDetect"
 import {
@@ -4357,10 +4359,22 @@ export function useBidWorkspace() {
     if (blockIfArchived(true)) return
     setOutlineDraft((prev) => renameNodeInTree(prev, id, title))
   }, [blockIfArchived])
-  const outlineRemove = useCallback((id: string) => {
-    if (blockIfArchived(true)) return
-    setOutlineDraft((prev) => removeNodeFromTree(prev, id))
-  }, [blockIfArchived])
+  const outlineRemove = useCallback(
+    (id: string) => {
+      if (blockIfArchived(true)) return
+      const base = outlineDraft.length ? outlineDraft : (activeProjectRef.current?.bid_outline ?? [])
+      const title = findNodeTitle(base, id)
+      const next = removeNodeFromTree(base, id)
+      // R299：大纲删除必须落库。原实现只改内存 outlineDraft，关掉页面即丢——
+      // 这正是 74 个条款碎片一直躺在库里、反复提示却删不掉的原因。
+      // 走applyOutlineWithChapters：同一次 PATCH 同写 bid_outline 与 bid_chapters（正文/导出的真源），
+      // 且 alignChaptersWithOutline 只增不删，已生成正文的章绝不被动。
+      if (!applyOutlineWithChapters(next)) return
+      setOutlineDraft(next)
+      toast.success(title ? `已从大纲删除「${title}」并保存` : "已从大纲删除并保存")
+    },
+    [applyOutlineWithChapters, blockIfArchived, outlineDraft],
+  )
   const outlineAddChild = useCallback((parentId: string, depth: number) => {
     if (blockIfArchived(true)) return
     if (depth >= 3) return
@@ -4383,6 +4397,11 @@ export function useBidWorkspace() {
 
   const confirmOutline = useCallback(() => {
     if (blockIfArchived()) return // 循环 5 A3：归档只读
+    // R297：确认大纲=bid_chapters 整数组覆盖，批量生成中确认会踩掉在途单章 PATCH（沿用 applyOutlineWithChapters 的竞态裁定）
+    if (bulkGeneratingRef.current) {
+      toast.error("批量生成进行中，请先停止批量或等待其完成，再确认大纲")
+      return
+    }
     if (!outlineDraft.length) {
       toast.error("大纲为空，请先生成或添加章节")
       return
@@ -4394,7 +4413,15 @@ export function useBidWorkspace() {
     const filled = backfillResponseTags(outlineDraft, chapterTitles, numbered)
     if (filled !== outlineDraft) setOutlineDraft(filled)
     // 第十三轮改造 4：商务章照常构建（gen_status 固定 pending，永不参与正文生成），part 随章持久化
-    const chapters: Chapter[] = filled.map((n) => ({
+    // R297：建章先经 pickChaptersToBuild 摘掉条款碎片与空标题——全量重建 1:1 会把「交付地点」式
+    // 碎片固化成 pending 章进入批量生成候选（R295 只堵了同步出口，本处堵确认出口）。
+    // 碎片节点仍留在 bid_outline：删除大纲节点是破坏性操作，既有裁定不自动清理，UI 提示条指引人工删除。
+    const { build, fragmentTitles } = pickChaptersToBuild(filled)
+    if (!build.length) {
+      toast.error("过滤条款碎片与空标题后没有可建的章节，请在大纲中删除或改名相关节点后再确认")
+      return
+    }
+    const chapters: Chapter[] = build.map((n) => ({
       node_id: n.id,
       title: n.title,
       sections: (n.children ?? []).map((c) => c.title),
@@ -4408,9 +4435,13 @@ export function useBidWorkspace() {
     setEditingContent("")
     const bizCount = chapters.filter((c) => isBizPart(c)).length
     toast.success(
-      bizCount
+      (bizCount
         ? `大纲已确认（含 ${bizCount} 个商务骨架章，线下填写），可开始逐章生成技术部分正文`
-        : "大纲已确认，可开始逐章生成正文",
+        : "大纲已确认，可开始逐章生成正文") +
+        // R297：回执如实报未建章的碎片，否则用户以为确认漏了章而反复确认/重新生成
+        (fragmentTitles.length
+          ? `；${fragmentTitles.length} 个大纲节点是招标条款原文（如「${fragmentTitles[0]}」），不是章节，未为其建章——请在大纲中手动删除或改名`
+          : ""),
     )
     // 第十七轮 17A：招标规定目录生效时本地核验匹配率（零 AI），<60% 仅提醒不阻断
     const outlineReqText = sectionText(activeProjectRef.current?.parse_report ?? null, BID_OUTLINE_REQ_KEY).trim()

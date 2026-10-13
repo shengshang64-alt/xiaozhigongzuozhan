@@ -737,6 +737,7 @@ export function ComposeStep(p: ComposeStepProps) {
                 addAllClausesToOutline={p.addAllClausesToOutline}
                 outlineChapterDrift={p.outlineChapterDrift}
                 syncOutlineChapters={p.syncOutlineChapters}
+                removeOutlineNode={p.outlineRemove}
               />
               <OutlineTreeEditor
                 nodes={p.outlineDraft}
@@ -866,6 +867,7 @@ export function ComposeStep(p: ComposeStepProps) {
                 addAllClausesToOutline={p.addAllClausesToOutline}
                 outlineChapterDrift={p.outlineChapterDrift}
                 syncOutlineChapters={p.syncOutlineChapters}
+                removeOutlineNode={p.outlineRemove}
               />
             </div>
           </div>

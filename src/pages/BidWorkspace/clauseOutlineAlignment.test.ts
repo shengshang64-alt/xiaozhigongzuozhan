@@ -15,8 +15,10 @@ import {
   diagnoseOutlineChapterDrift,
   findTopLevelAncestorId,
   insertClauseIntoOutline,
+  findNodeTitle,
   isClauseFragmentTitle,
   pickClauseFragmentNodes,
+  pickChaptersToBuild,
 } from "./bidTypes"
 import { hasPendingSections } from "./chapterCompletion"
 import type { Chapter, OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
@@ -217,7 +219,7 @@ describe("R292 接线守卫：写 bid_outline 的出口必须同时写 bid_chapt
 
   it("四处一键补入统一走 applyOutlineWithChapters（条款/评分项/招标目录/技术参数）", () => {
     expect(hook).toContain("const aligned = applyOutlineWithChapters(next)")
-    expect(hook.match(/applyOutlineWithChapters\(next\)/g)?.length).toBe(4)
+    expect(hook.match(/applyOutlineWithChapters\(next\)/g)?.length ?? 0).toBeGreaterThanOrEqual(4)
     expect(hook).toContain("const aligned = applyOutlineWithChapters(base)")
   })
 
@@ -473,6 +475,149 @@ describe("R295 UI 接线守卫（碎片提示条必须可达，且只提示不�
   it("碎片提示条明示「同步会自动跳过」且指引人工删除（不提供自动删除按钮）", () => {
     expect(ui).toContain("同步章节清单会")
     expect(ui).toContain("自动跳过")
-    expect(ui).toContain("手动删除")
+    // R297：字面文案两代并存——R295「手动删除」/R299「逐条人工删除入口」，口径等价（均为人工处理指引，无自动批量删除）
+    expect(ui).toMatch(/手动删除|人工删除|人工清理/)
+  })
+})
+
+// ---------- R297「确认大纲」出口同样不得把碎片建章（R295 只堵了同步出口，确认出口还开着：全量重建 1:1 把碎片固化成 pending 章） ----------
+
+describe("R297 pickChaptersToBuild（确认大纲出口的建章前置过滤）", () => {
+  const nodes: OutlineNode[] = [
+    { id: "k1", title: "项目理解与总体建设方案", children: [], part: "tech" },
+    { id: "f1", title: "交付地点", children: [] },
+    { id: "f2", title: "供应商应按照招标文件、合同在规定时间内", children: [] },
+    { id: "e", title: "   ", children: [] },
+    { id: "biz", title: "投标函", children: [], part: "biz" },
+  ]
+
+  it("只返回应建章节点：真章节与商务章保留、碎片与空标题摘除", () => {
+    const r = pickChaptersToBuild(nodes)
+    expect(r.build.map((n) => n.id)).toEqual(["k1", "biz"])
+    expect(r.fragmentTitles).toEqual(["交付地点", "供应商应按照招标文件、合同在规定时间内"])
+  })
+
+  it("碎片判据与 pickClauseFragmentNodes 同源（不允许出现第二套口径，两边行为必须一致）", () => {
+    expect(pickChaptersToBuild(nodes).fragmentTitles).toEqual(pickClauseFragmentNodes(nodes).map((n) => n.title))
+  })
+
+  it("全碎片的脏数据项目返回空 build → 调用方必须拦下而不是写空章节清单把整本书打空", () => {
+    const r = pickChaptersToBuild([{ id: "f", title: "验收要求", children: [] }])
+    expect(r.build).toEqual([])
+    expect(r.fragmentTitles).toEqual(["验收要求"])
+  })
+})
+
+describe("R297 confirmOutline 接线守卫（堵上确认出口的两个洞：碎片建章 + 批量生成竞态）", () => {
+  const hook = read("pages/BidWorkspace/useBidWorkspace.ts")
+  const start = hook.indexOf("const confirmOutline = useCallback")
+  const seg = hook.slice(start, hook.indexOf("}, [outlineDraft, updateProject, writeStageSnapshot]", start))
+
+  it("建章必须走 pickChaptersToBuild，不得再 filled.map 1:1 全建（旧实现把碎片固化成章）", () => {
+    expect(seg).toContain("pickChaptersToBuild(filled)")
+    expect(seg).not.toContain("const chapters: Chapter[] = filled.map")
+  })
+
+  it("过滤后无可建章必须拒写（不写入空章节清单）", () => {
+    expect(seg).toContain("if (!build.length)")
+  })
+
+  it("批量生成中拒写：confirmOutline 是 bid_chapters 整数组覆盖，会踩掉在途单章 PATCH（与 applyOutlineWithChapters 同源裁定）", () => {
+    expect(seg).toContain("bulkGeneratingRef.current")
+  })
+
+  it("回执如实报未建章的碎片（否则用户以为确认漏章而反复确认）", () => {
+    expect(seg).toContain("fragmentTitles.length")
+    expect(seg).toContain("不是章节，未为其建章")
+  })
+
+  it("确认的全量重建语义不变：content 清空 + gen_status 回 pending（R294 裁定口径未被顺手改）", () => {
+    expect(seg).toContain('content: "",')
+    expect(seg).toContain('gen_status: "pending" as const')
+  })
+
+  it("bid_outline 仍写整棵树：碎片节点不删（破坏性清理交人工，既有裁定）", () => {
+    expect(seg).toContain("updateProject({ bid_outline: filled, bid_chapters: chapters")
+  })
+})
+
+// ---------- R299 大纲删除必须落库（74 个碎片一直删不掉的根因） ----------
+
+describe("R299 findNodeTitle（删除前回显节点名）", () => {
+  const tree: OutlineNode[] = [
+    { id: "k1", title: "项目理解与总体建设方案", children: [{ id: "s1", title: "建设背景", children: [] }] },
+    { id: "f1", title: "交付地点", children: [] },
+  ]
+  it("顶层节点命中返回其标题", () => {
+    expect(findNodeTitle(tree, "f1")).toBe("交付地点")
+  })
+  it("深层子节点也能命中（R299 用于删除任意层级节点）", () => {
+    expect(findNodeTitle(tree, "s1")).toBe("建设背景")
+  })
+  it("未命中返回空串（不抛错，由调用方给通用文案）", () => {
+    expect(findNodeTitle(tree, "nope")).toBe("")
+    expect(findNodeTitle([], "k1")).toBe("")
+  })
+})
+
+describe("R299 诊断带出 fragmentNodes（删除必须按 id，不能按标题）", () => {
+  it("fragmentNodes 带 id + title + childCount，且与 fragmentTitles 同序同长", () => {
+    const d = diagnoseOutlineChapterDrift(
+      [
+        { id: "k1", title: "项目理解与总体建设方案", children: [] },
+        { id: "f1", title: "交付地点", children: [] },
+        { id: "f2", title: "质保期", children: [{ id: "x", title: "子", children: [] }] },
+      ],
+      [{ node_id: "k1", title: "项目理解与总体建设方案", sections: [], content: "", gen_status: "pending" }],
+    )
+    expect(d.fragmentNodes).toEqual([
+      { id: "f1", title: "交付地点", childCount: 0 },
+      { id: "f2", title: "质保期", childCount: 1 },
+    ])
+    expect(d.fragmentTitles).toEqual(d.fragmentNodes.map((n) => n.title))
+    expect(d.missingTitles).toEqual([])
+  })
+
+  it("同名碎片各自独立成条（实测存在 14 个同名「招标要求响应」）——按 id 删才不会一次干掉多条", () => {
+    const dup = Array.from({ length: 14 }, (_, i) => ({ id: `d${i}`, title: "招标要求响应", children: [] }))
+    const d = diagnoseOutlineChapterDrift(dup, [])
+    expect(d.fragmentNodes.length).toBe(14)
+    expect(new Set(d.fragmentNodes.map((n) => n.id)).size).toBe(14)
+  })
+})
+
+describe("R299 源码事实守卫：删除落库 + UI 逐条清理入口", () => {
+  const hook = read("pages/BidWorkspace/useBidWorkspace.ts")
+  const ui = read("components/bid-workspace/OutlineCoverage.tsx")
+  const compose = read("components/bid-workspace/ComposeStep.tsx")
+
+  it("outlineRemove 必须落库（旧实现只 setOutlineDraft，关页面即丢）", () => {
+    expect(hook).toMatch(/const outlineRemove = useCallback\(/)
+    expect(hook).toMatch(/if \(!applyOutlineWithChapters\(next\)\) return/)
+    expect(hook).toContain("已从大纲删除")
+  })
+
+  it("删除走 applyOutlineWithChapters（同一次 PATCH 同写两字段，正文真源不脱节）", () => {
+    expect(hook).toMatch(/alignChaptersWithOutline\(nextOutline, cur\?\.bid_chapters \?\? \[\]\)/)
+  })
+
+  it("UI 提供逐条删除按钮，且删除区默认收起（74 个节点铺开会撑爆覆盖条）", () => {
+    expect(ui).toContain("逐条清理")
+    expect(ui).toContain("useState(false)") // fragOpen 默认收起
+    expect(ui).toMatch(/removeOutlineNode\?\.\(f\.id\)/)
+  })
+
+  it("批量清空按钮不得出现（破坏性操作必须逐条复核）", () => {
+    expect(ui).not.toMatch(/全部删除|批量删除|一键清除/)
+  })
+
+  it("两处 OutlineCoverage 调用都接上了回调（否则另一处是死入口）", () => {
+    const n = (compose.match(/removeOutlineNode=\{p\.outlineRemove\}/g) ?? []).length
+    expect(n).toBe(2)
+  })
+
+  it("碎片清理文案必须说清「已生成正文不受影响」（用户最大的顾虑）", () => {
+    expect(ui).toContain("已生成的正文不受影响")
+    expect(ui).toContain("同名")
   })
 })

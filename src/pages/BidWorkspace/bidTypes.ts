@@ -2147,6 +2147,16 @@ export function clauseToNodeTitle(text: string): string {
   return t.trim() || "招标要求响应"
 }
 
+/** R299：按 id 在大纲树里找节点标题（找不到返回空串）。用于删除前回显节点名，避免用户点了删除却不知道删了什么 */
+export function findNodeTitle(nodes: OutlineNode[], targetId: string): string {
+  for (const n of nodes ?? []) {
+    if (n.id === targetId) return n.title ?? ""
+    const deeper = findNodeTitle(n.children ?? [], targetId)
+    if (deeper) return deeper
+  }
+  return ""
+}
+
 /** R292：节点所属顶层章 id（顶层节点返回自身），供条款落点归一到「章 → 节」的节层 */
 export function findTopLevelAncestorId(nodes: OutlineNode[], targetId: string): string {
   const hit = (list: OutlineNode[], rootId: string): string => {
@@ -2325,6 +2335,20 @@ export function alignChaptersWithOutline(
   return { chapters: next, addedTitles, refreshedCount, skippedFragments }
 }
 
+/**
+ * R297：「确认大纲」出口建章前的过滤——摘掉条款碎片（历史污染，判据与 pickClauseFragmentNodes 同源）
+ * 与空标题，返回应建章的顶层节点。confirmOutline 的全量重建此前对 filled 1:1 无差别建章，
+ * R295 只堵了「同步章节清单」出口、这个口子还开着：点一次「确认大纲」就把「交付地点」式碎片
+ * 固化成 pending 章进入批量生成候选（烧钱 + 污染交付物）。只影响建章，不删大纲节点
+ * （删除是破坏性操作，既有裁定不自动清理，UI 提示条指引人工处理）。
+ */
+export function pickChaptersToBuild(nodes: OutlineNode[]): { build: OutlineNode[]; fragmentTitles: string[] } {
+  const fragmentTitles = pickClauseFragmentNodes(nodes).map((n) => n.title)
+  const fragSet = new Set(fragmentTitles)
+  const build = (nodes ?? []).filter((n) => n.title.trim() && !fragSet.has(n.title))
+  return { build, fragmentTitles }
+}
+
 /** R292 只读诊断（零改动）：大纲顶层技术章与章节清单的两类不一致，供面板诚实暴露 */
 export type OutlineChapterDrift = {
   /** 清单里既无同 id 也无同标题 → 正文与导出必然缺这一章（可一键同步补入待生成清单） */
@@ -2333,6 +2357,11 @@ export type OutlineChapterDrift = {
   relinkTitles: string[]
   /** R295：条款碎片顶层节点（R292 修复前的历史污染）——**不该**建章，需人工清理，单独告知以免被误当成待补缺口 */
   fragmentTitles: string[]
+  /**
+   * R299：碎片的可操作视图（带 id 与子节点数），供 UI「逐条人工删除」。
+   * 必须按 id 删而不是按标题删——实测存在 14 个同名「招标要求响应」的节点，按标题删会一次干掉多章。
+   */
+  fragmentNodes: Array<{ id: string; title: string; childCount: number }>
 }
 
 export function diagnoseOutlineChapterDrift(nodes: OutlineNode[], chapters: Chapter[]): OutlineChapterDrift {
@@ -2341,7 +2370,14 @@ export function diagnoseOutlineChapterDrift(nodes: OutlineNode[], chapters: Chap
   const missingTitles: string[] = []
   const relinkTitles: string[] = []
   // R295：碎片先摘出来——它们是污染不是缺口，混进 missingTitles 会诱导用户点「同步」把垃圾固化成章
-  const fragmentTitles = pickClauseFragmentNodes(nodes ?? []).map((n) => n.title)
+  // R299：fragmentNodes 额外带出 id 与子节点数，UI 才能「逐条人工删除」（删除必须按 id，不能按标题：
+  // 实测存在 14 个同名「招标要求响应」的节点，按标题删会一次干掉多章）
+  const fragmentNodes = pickClauseFragmentNodes(nodes ?? []).map((n) => ({
+    id: n.id,
+    title: n.title,
+    childCount: (n.children ?? []).length,
+  }))
+  const fragmentTitles = fragmentNodes.map((n) => n.title)
   const fragmentSet = new Set(fragmentTitles)
   for (const n of nodes ?? []) {
     if (isBizPart(n) || !n.title.trim() || ids.has(n.id)) continue
@@ -2349,7 +2385,7 @@ export function diagnoseOutlineChapterDrift(nodes: OutlineNode[], chapters: Chap
     if (titles.has(n.title)) relinkTitles.push(n.title)
     else missingTitles.push(n.title)
   }
-  return { missingTitles, relinkTitles, fragmentTitles }
+  return { missingTitles, relinkTitles, fragmentTitles, fragmentNodes }
 }
 
 /** R292 补入后的诚实回执：说清新建了几章（待生成）、几章新增了几小节（可断点续跑），不把「进不了正文」包装成已完成 */
