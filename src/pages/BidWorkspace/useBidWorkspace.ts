@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import { decodeRhToken, type RhAccountInfo } from "@/lib/rhLogin"
 import { pbJsonRequest } from "@/lib/pbJson"
+import { extractJsonCandidate } from "@/lib/jsonTolerant"
 import { formatDateTimeDisplay } from "@/lib/dateDisplay"
 import type { LlmMessage } from "@/lib/llm"
 import {
@@ -659,12 +660,32 @@ const MAX_TOKENS_HARD_CAP = 16384
  * 「只修语法不改内容、截断补全」的修复（buildJsonRepairMessages），再走同一解析函数；
  * 修复调用失败或二次解析仍失败时抛原错误（不掩盖原始失败原因）。
  * 费用含在各入口原有的费用确认内，不单独弹确认。
+ *
+ * R290（2026-10-13 真实场景实测·主导者）新增「散文输出」处置分支：
+ * 实测安庆二院真实招标文件（CG-AQ-2021-5149）生成大纲时，模型 bailing/Ling-3.1-flash 首次
+ * 返回的是英文推理散文（"Let me analyze the requirements carefully: …"，3000+ 字符、无任何 JSON），
+ * 随后把这段散文喂给 buildJsonRepairMessages 做「JSON 语法修复」——但散文里根本没有 JSON 可修，
+ * 修复调用只回 28 token 的一句话「原始输出为纯散文式分析文本，不含任何 JSON 结构，无法在不编造
+ * 内容的前提下修复为合法 JSON」，二次解析仍失败，最终大纲为空。
+ * 症状极坏：链路上没有任何报错透出，用户只看到「大纲为空」，既不知道失败也不知道原因，
+ * 而这里恰恰是最该报错的地方（大纲是后续正文的唯一输入源）。
+ * 处置：识别「输出中不存在任何 JSON 候选」这一根因后，**不再做无意义的语法修复**，
+ * 改为抛出带根因与处置建议的可读错误，由调用方透出——宁可明确失败，不可静默产出空大纲。
  */
 async function withJsonRepair<T>(raw: string, parseFn: (text: string) => T): Promise<T> {
   try {
     return parseFn(raw)
   } catch (origErr) {
     if (origErr instanceof AuthRequiredError) throw origErr
+    // 根因判定：模型压根没给 JSON（返回了散文/推理过程/空回复）。
+    // 此时「只修语法」在原理上必然失败，白花一次调用且掩盖真实原因 → 直接抛可读错误。
+    if (!extractJsonCandidate(raw)) {
+      const head = String(raw ?? "").trim().slice(0, 60)
+      throw new Error(
+        `模型未按 JSON 格式返回（本次返回的是${raw ? `非结构化文本，如「${head}…」` : "空内容"}），` +
+          `已中止而非生成空结果。请重试；若反复出现，请在「模型配置」切换其他模型，或减少本次生成的输入规模。`,
+      )
+    }
     let repaired: string
     try {
       repaired = await llmGenerate(buildJsonRepairMessages(raw), MAX_TOKENS_LONGFORM, undefined, 0)
@@ -4138,7 +4159,10 @@ export function useBidWorkspace() {
       }
       // 用户反馈轮项 3 防御：关闭商务标时过滤模型违例/存量缓存产出的商务节点（开启时不过滤）
       if (outlineScope !== "both") nodes = nodes.filter((n) => (outlineScope === "biz" ? isBizPart(n) : !isBizPart(n) || judgeMustWrite(n, mwCtx).mustWrite))
-      if (!nodes.length) throw new Error("大纲格式解析失败，请重试")
+      // R290：大纲为空属生成失败，绝不能落到「大纲为空，点右上角「添加章」手动搭建」的文案上 ——
+      // 那会让用户以为是正常使用状态，而实际是大纲生成失败（且失败原因已由 withJsonRepair 抛出）。
+      // 此处兜底仍需抛出，且文案要能被 handleLlmError 直接透出（含中文即不被降级）。
+      if (!nodes.length) throw new Error("大纲生成结果为空，未产出任何章节，请重试；若反复出现请切换模型或减少输入规模")
       // 第五轮改造 2：本地结构校验，级数或叶子规模不符时自动一次结构修复（费用含在同一次确认内）；
       // OpenBidKit 借鉴（评审→修复闭环）：R31 评分承接缺口并入同一次修复调用的问题清单，不新增调用次数
       const issues = validateOutlineShape(nodes, outlineLevel, leafGoal)
