@@ -203,18 +203,41 @@ export function rebuildPdfLines(items: Array<Record<string, unknown>>): string {
   return lines.join("\n")
 }
 
-export async function extractPdfText(file: File, opts?: PageTagOptions): Promise<string> {
+export type PdfTextExtraction = {
+  text: string
+  /** 无文字层的页码（1 起）—— 扫描版页面 */
+  imageOnlyPages: number[]
+  totalPages: number
+}
+
+/** 单页「有文字层」的下限：低于此值视为该页只有页码/页眉/水印等零星字符，不算有效文字层 */
+const PAGE_TEXT_MIN_CHARS = 20
+
+/**
+ * R298：PDF 文本抽取，顺带**如实报告哪些页没有文字层**。
+ *
+ * 背景（55 份真实招标文件实测）：9 份是 100% 扫描件、0 份混合、46 份有文字层。
+ * 原实现对扫描件走的是**成功路径**——`rebuildPdfLines` 返回空串，`lines.join("\n").trim()` 得到 `""`，
+ * 不抛错。因此「文件解析失败（…）扫描版 PDF 无法提取文字」那条提示挂在 catch 里**永远不会被扫描件触发**，
+ * 用户看到的是「上传成功 → 解析 0 项」，完全不知道是扫描件。
+ * 而 R298 审计还发现：真正需要 OCR 的只有 1 份是招标正文，其余 8 份是承诺函/报价表/合同等附属材料
+ * （这些本来就常是盖章扫描件）。→ **先做到「如实告知」比上 OCR 收益大得多、风险小得多。**
+ */
+export async function extractPdfTextWithLayers(file: File, opts?: PageTagOptions): Promise<PdfTextExtraction> {
   const pdfjsLib = await import("pdfjs-dist")
   pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
   const buf = await file.arrayBuffer()
   const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buf) })
   const doc = await loadingTask.promise
   const lines: string[] = []
+  const imageOnlyPages: number[] = []
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i)
     const content = await page.getTextContent()
     // T-PDF：几何重建行（保留段落/表格行/页码边界），不再整页粘成一坨
     const pageText = rebuildPdfLines(content.items as unknown as Array<Record<string, unknown>>)
+    // 无文字层判定按「有效字符数」而非行数：只有页码/页眉的水印页仍会产出一两行
+    if (pageText.replace(/\s+/g, "").length < PAGE_TEXT_MIN_CHARS) imageOnlyPages.push(i)
     if (opts?.pageTag) {
       // Q28 切片A：外部标书审查通道逐行加页码锚点，AI 可回写「〔P12〕」定位
       lines.push(
@@ -228,7 +251,28 @@ export async function extractPdfText(file: File, opts?: PageTagOptions): Promise
     }
   }
   await loadingTask.destroy()
-  return lines.join("\n").trim()
+  return { text: lines.join("\n").trim(), imageOnlyPages, totalPages: doc.numPages }
+}
+
+/**
+ * 抽不出任何文字时的报错文案（R298）。三个真实场景各有处置方式，不能只丢一句「解析失败」：
+ * - 全扫描件 → 需 OCR 或改用「粘贴文本」
+ * - 部分扫描页 → 可继续（拿得到的页照样解析），但必须告知丢了哪些页
+ */
+export function buildNoTextLayerMessage(imageOnlyPages: number[], totalPages: number, fileName = "该 PDF"): string {
+  if (totalPages > 0 && imageOnlyPages.length === totalPages) {
+    return `${fileName} 是扫描件（${totalPages} 页均无文字层），无法提取文字。请改用「粘贴文本」方式导入，或先用 OCR 工具转成可复制文字的 PDF。`
+  }
+  const shown = imageOnlyPages.slice(0, 20)
+  const suffix = imageOnlyPages.length > 20 ? ` 等 ${imageOnlyPages.length} 页` : ""
+  return `${fileName} 有 ${imageOnlyPages.length} 页是扫描件（无文字层，第 ${shown.join("、")}${suffix} 页），这部分内容无法读取。其余 ${totalPages - imageOnlyPages.length} 页照常解析；如需完整内容，请把这几页单独 OCR 后补入。`
+}
+
+export async function extractPdfText(file: File, opts?: PageTagOptions): Promise<string> {
+  const { text, imageOnlyPages, totalPages } = await extractPdfTextWithLayers(file, opts)
+  // 全扫描件：显式抛错而不是静默返回空串——否则上传后表现为「解析 0 项」，用户毫无线索
+  if (totalPages > 0 && !text) throw new Error(buildNoTextLayerMessage(imageOnlyPages, totalPages, file.name))
+  return text
 }
 
 /** 按扩展名分发解析招标文件；失败抛中文错误并引导改用粘贴文本 */
@@ -241,7 +285,9 @@ export async function extractTenderFileText(file: File, opts?: PageTagOptions): 
     throw new Error("暂不支持该格式")
   } catch (e) {
     const detail = e instanceof Error ? e.message : "未知原因"
-    throw new Error(`文件解析失败（${detail}）。支持 .docx / .pdf / .txt；扫描版 PDF 无法提取文字，请改用「粘贴文本」方式导入招标文件内容`, { cause: e })
+    // R298：扫描件提示已上移到 extractPdfText（走成功路径才会命中），此处只保留格式层面的引导，
+    // 避免把「文件坏了」和「这是扫描件」两种不同原因混成一句话。
+    throw new Error(`文件解析失败（${detail}）。支持 .docx / .pdf / .txt`, { cause: e })
   }
 }
 
