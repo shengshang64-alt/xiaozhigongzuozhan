@@ -191,6 +191,8 @@ export function suggestPageCount(durationMin: number): number {
 // Money display now has a single app-wide implementation in @/lib/money
 // (R113); this re-export keeps every existing import path working.
 export { formatMoney } from "@/lib/money"
+import { centsToYuan, productCents } from "@/lib/money"
+import { cnyToUpper } from "@/lib/currencyCn"
 
 /**
  * R285：折扣百分比的唯一口径。缺省/非法/≤0 一律视为原价（100），超 100 按 100 计。
@@ -202,20 +204,47 @@ export function normalizeDiscount(d: number | undefined | null): number {
   return Math.min(100, d)
 }
 
+/**
+ * 行项小计的整数分。R34 起全链路以「分」为唯一累加单位：
+ * 旧写法 `Math.round(qty*price*(disc/100)*100)/100` 在真值恰好半分处（如
+ * 15 × 599,729.21 × 90% = 8,096,344.335 元）会被二进制浮点少算 1 分，
+ * 与 Excel ROUND / 客户复核差一分——报价单出现两套数字属被质疑级风险。
+ * 口径与产品语义不变，只把舍入换成精确十进制定点（见 @/lib/money productCents）。
+ */
+export function itemSubtotalCents(it: QuoteItem): number {
+  return productCents([
+    Number(it.qty) || 0,
+    Number(it.price) || 0,
+    normalizeDiscount(it.discount) / 100,
+  ])
+}
+
 export function itemSubtotal(it: QuoteItem): number {
-  const discount = normalizeDiscount(it.discount)
-  const raw = (it.qty || 0) * (it.price || 0) * (discount / 100)
-  return Math.round(raw * 100) / 100
+  return centsToYuan(itemSubtotalCents(it))
+}
+
+export function groupSubtotalCents(g: QuoteGroup): number {
+  return (g.items ?? []).reduce((s, it) => s + itemSubtotalCents(it), 0)
 }
 
 export function groupSubtotal(g: QuoteGroup): number {
-  const raw = (g.items ?? []).reduce((s, it) => s + itemSubtotal(it), 0)
-  return Math.round(raw * 100) / 100
+  return centsToYuan(groupSubtotalCents(g))
+}
+
+export function quoteTotalCents(groups: QuoteGroup[]): number {
+  return (groups ?? []).reduce((s, g) => s + groupSubtotalCents(g), 0)
 }
 
 export function quoteTotal(groups: QuoteGroup[]): number {
-  const raw = (groups ?? []).reduce((s, g) => s + groupSubtotal(g), 0)
-  return Math.round(raw * 100) / 100
+  return centsToYuan(quoteTotalCents(groups))
+}
+
+/**
+ * 报价总额中文大写（单源派生）。交付物里的「合计（大写）」必须由 quoteTotal 生成，
+ * 手填大写是经典不一致点：改了数量/单价后小写重算、大写仍停在旧值。
+ */
+export function quoteTotalUpper(groups: QuoteGroup[]): string {
+  return cnyToUpper(quoteTotalCents(groups) / 100, { prefixRmb: true })
 }
 
 export function bumpVersion(version: string): string {

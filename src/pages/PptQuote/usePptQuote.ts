@@ -57,6 +57,7 @@ import {
   normalizeSlides,
   parseJsonLoose,
   quoteItemFromProduct,
+  quoteTotal,
   REFINE_LABEL,
   sanitizeDeck,
   sanitizeQuote,
@@ -1482,7 +1483,7 @@ export function usePptQuote() {
       // 轮次 F 轨 2：勾选「保存时同步金额到商机」则把报价总额回写商机 expected_amount
       if (syncOppAmountRef.current && rec.opportunity_id) {
         try {
-          const total = Math.round((rec.groups ?? []).reduce((s, g) => s + groupSubtotal(g), 0) * 100) / 100
+          const total = quoteTotal(rec.groups ?? [])
           await apiFetch(`/api/opportunities/${encodeURIComponent(rec.opportunity_id)}`, {
             method: "PATCH",
             body: JSON.stringify({ expected_amount: total }),
@@ -1792,13 +1793,9 @@ export function usePptQuote() {
   // ------------------------------ 报价编辑 ------------------------------
   const quoteTotals = useMemo(() => {
     const byGroup: Record<string, number> = {}
-    let total = 0
-    for (const g of activeQuote?.groups ?? []) {
-      const sub = groupSubtotal(g)
-      byGroup[g.id] = sub
-      total += sub
-    }
-    return { byGroup, total: Math.round(total * 100) / 100 }
+    const groups = activeQuote?.groups ?? []
+    for (const g of groups) byGroup[g.id] = groupSubtotal(g)
+    return { byGroup, total: quoteTotal(groups) }
   }, [activeQuote])
 
   // 轮次 F 轨 2：勾选瞬间先立即同步一次给出反馈（开关 state 声明已上移，见 resetSyncOppAmount 处）
@@ -1807,7 +1804,7 @@ export function usePptQuote() {
     syncOppAmountRef.current = checked
     const rec = activeQuoteRef.current
     if (!checked || !rec?.opportunity_id) return
-    const total = Math.round((rec.groups ?? []).reduce((s, g) => s + groupSubtotal(g), 0) * 100) / 100
+    const total = quoteTotal(rec.groups ?? [])
     void apiFetch(`/api/opportunities/${encodeURIComponent(rec.opportunity_id)}`, {
       method: "PATCH",
       body: JSON.stringify({ expected_amount: total }),

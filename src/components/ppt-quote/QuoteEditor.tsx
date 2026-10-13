@@ -6,6 +6,7 @@ import {
   itemSubtotal,
   normalizeDiscount,
   quoteTotal,
+  quoteTotalUpper,
   type ProductItem,
   type QuoteItem,
   type QuoteRecord,
@@ -719,6 +720,10 @@ export function QuoteEditor({
               <div className="text-right">
                 <p className="text-xs text-muted-foreground">报价总计</p>
                 <p className="mt-1 text-2xl font-bold tabular-nums text-primary">¥ {formatMoney(totals.total)}</p>
+                {/* R34：大写金额单源派生（导出同源），改数量后不会出现小写重算、大写停在旧值的不一致 */}
+                {totals.total > 0 && (
+                  <p className="mt-0.5 text-xs font-medium text-foreground">{quoteTotalUpper(quote.groups ?? [])}</p>
+                )}
                 {/* 循环 10 小改 4：万元口径旁注 */}
                 {totals.total > 0 && (
                   <p className="mt-0.5 text-xs text-muted-foreground">≈ {fmtAmount(totals.total)}</p>

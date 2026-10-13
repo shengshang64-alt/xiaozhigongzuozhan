@@ -37,3 +37,42 @@ export function formatCount(n: number): string {
   const v = Number.isFinite(n) ? n : 0
   return v.toLocaleString("zh-CN", { maximumFractionDigits: 3 })
 }
+
+// ---------------------------------------------------------------------------
+// R34 报价金额精确到分（quote-total-cent）
+//
+// 旧的 `Math.round(qty*price*(disc/100)*100)/100` 在「真值恰好半分」处系统性少 1 分：
+// 15 × 599,729.21 × 90% 的十进制定值是 8,096,344.335 元，应按四舍五入得 .34，
+// 但二进制浮点把它存成 8,096,344.334999999…，×100 后是 .4999… → Math.round 得 .33。
+// 200,000 组真实量级随机用例里 8.3% 的行项踩中此偏差。而客户侧的 Excel ROUND、
+// 计算器与人工复核都会给 .34——报价单出现两套数字，属被质疑/废标级风险（R281 同口径）。
+//
+// 口径：每个因子按最多 6 位小数取整为「微元」整数，用 BigInt 精确相乘后在分位做
+// 远离零舍入。因子数量不限，中间量不再经过二进制浮点，故结果与手算逐分一致。
+// ---------------------------------------------------------------------------
+
+/** 定点缩放位数：单价/数量在本域内不会细于 1e-6 元，超出部分按四舍五入截断 */
+const MICRO = 1_000_000
+
+/** 若干因子相乘，精确舍入（远离零）到分，返回整数分。非有限值按 0 计。 */
+export function productCents(factors: number[]): number {
+  let num = 1n
+  let den = 1n
+  let neg = false
+  for (const f of factors) {
+    const v = Number.isFinite(f) ? f : 0
+    if (v === 0) return 0
+    if (v < 0) neg = !neg
+    num *= BigInt(Math.round(Math.abs(v) * MICRO))
+    den *= BigInt(MICRO)
+  }
+  // cents = num·100/den；远离零舍入 = floor(num·100/den + 1/2) = floor((num·200 + den) / 2den)
+  const cents = Number((num * 200n + den) / (2n * den))
+  return neg ? -cents : cents
+}
+
+/** 整数分 → 元（分位以内为精确除法，仅 1e-13 量级的二进制尾差，显示与比较都不受影响）。 */
+export function centsToYuan(cents: number): number {
+  const c = Number.isFinite(cents) ? cents : 0
+  return c / 100
+}

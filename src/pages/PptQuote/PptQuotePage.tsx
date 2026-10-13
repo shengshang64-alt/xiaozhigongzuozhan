@@ -13,7 +13,8 @@ import { QuoteListPanel } from "@/components/ppt-quote/QuoteListPanel"
 import { QuoteToolbar } from "@/components/ppt-quote/QuoteToolbar"
 import { SkillPickerFor } from "@/components/common/SkillPicker"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
-import { formatMoney, quoteTotal } from "./pptQuoteTypes"
+import { centsToYuan } from "@/lib/money"
+import { formatMoney, quoteTotalCents } from "./pptQuoteTypes"
 import type { usePptQuote } from "./usePptQuote"
 
 export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
@@ -29,8 +30,8 @@ export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
     const deckCount = p.deckList.length
     const deckDone = p.deckList.filter((d) => d.doc_status === "done").length
     const quoteCount = p.quoteList.length
-    const sum = p.quoteList.reduce((s, q) => s + quoteTotal(q.groups ?? []), 0)
-    return { deckCount, deckDone, quoteCount, totalAmount: formatMoney(sum) }
+    const sum = p.quoteList.reduce((s, q) => s + quoteTotalCents(q.groups ?? []), 0)
+    return { deckCount, deckDone, quoteCount, totalAmount: formatMoney(centsToYuan(sum)) }
   }, [p.deckList, p.quoteList])
   return (
     <div className="animate-in fade-in duration-500 text-foreground">

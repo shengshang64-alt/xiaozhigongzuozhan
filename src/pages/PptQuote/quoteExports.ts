@@ -1,6 +1,15 @@
 import * as XLSX from "xlsx-js-style"
 import { AlignmentType, Document, Packer, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } from "docx"
-import { formatMoney, groupSubtotal, itemSubtotal, normalizeDiscount, quoteTotal, type QuoteItem, type QuoteRecord } from "./pptQuoteTypes"
+import {
+  formatMoney,
+  groupSubtotal,
+  itemSubtotal,
+  normalizeDiscount,
+  quoteTotal,
+  quoteTotalUpper,
+  type QuoteItem,
+  type QuoteRecord,
+} from "./pptQuoteTypes"
 import { targetsLabel } from "@/pages/SolutionStudio/checklistTypes"
 import { triggerBlobDownload } from "@/lib/download"
 import { buildSafeFileName } from "@/lib/fileName"
@@ -144,6 +153,10 @@ export async function exportQuoteXlsx(quote: QuoteRecord): Promise<void> {
       subtotalRows.length ? subtotalRows.map((x) => `H${x + 1}`).join("+") : "0",
     ),
   )
+  r += 1
+  // R34：合计大写紧跟总计，值由 quoteTotal 单源派生（杜绝手填大写与小写重算后不一致）
+  str(r, 3, "总计（大写）", true)
+  str(r, 4, quoteTotalUpper(groups))
   r += 1
   if (quote.tax_note?.trim()) {
     str(r, 0, `税率与含税说明：${quote.tax_note.trim()}`)
@@ -325,12 +338,33 @@ export async function exportQuoteDocx(quote: QuoteRecord): Promise<void> {
   const finalDoc = new Document({
     sections: [
       {
-        children: [...children, table, ...tailParagraphs(quote)],
+        children: [...children, table, totalInWordsParagraph(quote), ...tailParagraphs(quote)],
       },
     ],
   })
   const blob = await Packer.toBlob(finalDoc)
   triggerBlobDownload(blob, safeFileName(`${quote.quote_name}${quote.version ? `-${quote.version}` : ""}`, "docx"))
+}
+
+/**
+ * R34：表下的「合计金额（大写）」行。报价单/开标一览表的硬性组成项，
+ * 且必须由 quoteTotal 单源派生——手填大写在改数量后不会跟着重算，
+ * 大小写不一致是被质疑/废标级的经典失分点。
+ */
+function totalInWordsParagraph(quote: QuoteRecord): Paragraph {
+  const groups = quote.groups ?? []
+  return new Paragraph({
+    spacing: { before: 160, after: 120 },
+    children: [
+      new TextRun({ text: "合计金额（大写）：", bold: true, size: 22 }),
+      new TextRun({ text: quoteTotalUpper(groups), bold: true, size: 22 }),
+      new TextRun({
+        text: "　（小写：¥" + formatMoney(quoteTotal(groups)) + "）",
+        size: 20,
+        color: "444444",
+      }),
+    ],
+  })
 }
 
 function tailParagraphs(quote: QuoteRecord): Paragraph[] {
