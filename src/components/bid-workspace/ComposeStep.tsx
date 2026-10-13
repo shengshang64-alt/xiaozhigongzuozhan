@@ -323,6 +323,10 @@ export function ComposeStep(p: ComposeStepProps) {
   const locked = p.isArchivedLocked
   // 大纲「重新生成」覆盖前的二次确认（本地 UI 状态）
   const [regenConfirmOpen, setRegenConfirmOpen] = useState(false)
+  // R294「确认大纲」清空既有正文前的二次确认：confirmOutline 是全量重建 bid_chapters
+  // （content:"" + gen_status:"pending"），已生成正文的项目误点一次即清零（实测 21 个项目里
+  // 12 个有正文、共 92 章 106.5 万字）。此处按「有正文才拦」的口径提示，不影响新项目一键确认。
+  const [confirmOutlineGuard, setConfirmOutlineGuard] = useState<null | { chapters: number; words: number }>(null)
   // @r211 R-004 标书 Word 式分页预览开关
   const [wordPreviewOpen, setWordPreviewOpen] = useState(false)
   // 第十一轮改造 6：编辑器定位——contentFocus 变化时找到标题行并选中滚动
@@ -747,7 +751,18 @@ export function ComposeStep(p: ComposeStepProps) {
             {p.outlineDraft.length > 0 && (
               <div className="mt-4 flex gap-2">
                 <Button
-                  onClick={p.confirmOutline}
+                  onClick={() => {
+                    // R294：已有正文时拦一道二次确认（confirmOutline 全量重建章节清单，会清空既有正文）
+                    const done = (proj?.bid_chapters ?? []).filter((c) => (c.content ?? "").trim().length > 0)
+                    if (done.length > 0) {
+                      setConfirmOutlineGuard({
+                        chapters: done.length,
+                        words: done.reduce((a, c) => a + (c.content ?? "").length, 0),
+                      })
+                      return
+                    }
+                    p.confirmOutline()
+                  }}
                   disabled={locked}
                   title={locked ? "已归档项目为只读" : undefined}
                   className="flex-1 bg-primary text-primary-foreground shadow-md hover:bg-primary/90 focus-visible:shadow-[var(--focus-ring)]"
@@ -1338,6 +1353,37 @@ export function ComposeStep(p: ComposeStepProps) {
               className="bg-primary text-primary-foreground shadow-md hover:bg-primary/90 focus-visible:shadow-[var(--focus-ring)]"
             >
               确认覆盖
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {/* R294 确认大纲覆盖既有正文的二次确认：如实报出将清空的章数与字数，避免误点清零 106 万字级资产 */}
+      <Dialog open={!!confirmOutlineGuard} onOpenChange={(o) => !o && setConfirmOutlineGuard(null)}>
+        <DialogContent className="max-w-sm rounded-2xl border-border bg-card shadow-lg">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">确认大纲会清空已生成正文</DialogTitle>
+            <DialogDescription>
+              「确认大纲」会按当前大纲重建章节清单，已成稿的 {confirmOutlineGuard?.chapters ?? 0} 章正文（
+              约 {(confirmOutlineGuard?.words ?? 0).toLocaleString()} 字）将被清空且需重新付费生成。
+              若只是调整了大纲想补几章，请关闭本弹窗，改用覆盖面板里的「一键补入 / 同步章节清单」——它们只增不删、保留既有正文。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setConfirmOutlineGuard(null)}
+              className="border-border text-muted-foreground shadow-sm hover:text-foreground"
+            >
+              取消（改用补入）
+            </Button>
+            <Button
+              onClick={() => {
+                setConfirmOutlineGuard(null)
+                p.confirmOutline()
+              }}
+              className="bg-destructive text-destructive-foreground shadow-md hover:bg-destructive/90 focus-visible:shadow-[var(--focus-ring)]"
+            >
+              清空并重建
             </Button>
           </div>
         </DialogContent>

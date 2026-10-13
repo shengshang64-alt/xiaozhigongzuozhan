@@ -284,3 +284,41 @@ describe("评分项补入章节的 description 标注格式（collectResponseAnn
     expect(hook).toContain("[响应:${m.id}]")
   })
 })
+
+// ---------- R294 确认大纲的破坏性覆盖必须有二次确认（误点一次=清空全部正文） ----------
+
+describe("R294「确认大纲」清空既有正文的二次确认", () => {
+  const compose = read("components/bid-workspace/ComposeStep.tsx")
+
+  it("按钮不得直接调confirmOutline（必须先过二次确认闸）", () => {
+    expect(compose).not.toMatch(/onClick=\{p\.confirmOutline\}/)
+  })
+
+  it("闸门口径：按 content 非空统计已成稿章节（无正文的新项目仍一键确认，零打扰）", () => {
+    expect(compose).toContain("confirmOutlineGuard")
+    expect(compose).toMatch(/\(c\.content \?\? ""\)\.trim\(\)\.length > 0/)
+    expect(compose).toContain("setConfirmOutlineGuard({")
+  })
+
+  it("弹窗必须如实报出将清空的章数与字数，并给出替代路径（补入/同步不删正文）", () => {
+    expect(compose).toContain("确认大纲会清空已生成正文")
+    expect(compose).toContain("confirmOutlineGuard?.chapters")
+    expect(compose).toContain("confirmOutlineGuard?.words")
+    expect(compose).toContain("一键补入 / 同步章节清单")
+  })
+
+  it("确认路径：弹窗二次按钮才真正调 confirmOutline（取消路径不调）", () => {
+    // 两处显式调用：一处是无正文直通、一处是弹窗内「清空并重建」
+    const calls = compose.match(/p\.confirmOutline\(\)/g) ?? []
+    expect(calls.length).toBe(2)
+    expect(compose).toContain("清空并重建")
+    expect(compose).toContain("取消（改用补入）")
+  })
+
+  it("源码事实守卫：confirmOutline 仍是全量重建（本次只加确认闸，未偷改重建语义）", () => {
+    const hook = read("pages/BidWorkspace/useBidWorkspace.ts")
+    // content: "" + gen_status: "pending" 的重建写法必须仍在（若被改成保留正文，本测试提醒复核口径变更）
+    expect(hook).toMatch(/content: ""/)
+    expect(hook).toMatch(/gen_status: "pending" as const/)
+  })
+})

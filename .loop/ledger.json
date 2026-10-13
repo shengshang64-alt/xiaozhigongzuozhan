@@ -1,7 +1,7 @@
 {
   "goal": "全模块循环提升（界面/功能/流程/排版/布局/体验/AI内容）",
   "target": "http://127.0.0.1:8000/",
-  "round": 293,
+  "round": 294,
   "backlog": [
     {
       "id": "r219-kbqa-coldstart-perf",
@@ -1248,6 +1248,27 @@
       "module": "/bid-workspace",
       "status": "open",
       "issue": "P3·口径遗留：杏林项目清单里存在两章同名「服务方案」（本轮修复前的既有数据，node_id 不重复，本轮只增不删故原样保留）。对齐函数按「id 优先 + 标题唯一兜底」认章，同名顶层节点会各成一章；若上游大纲真出现同名节点，需要决定是合并还是显式提示，避免导出时目录出现重复标题。属数据口径问题，非本轮引入。"
+    },
+    {
+      "id": "r294-default-model-hygiene",
+      "priority": "P1",
+      "module": "/model-gateway",
+      "status": "open",
+      "issue": "P1·配置卫生（R294 实测）：21 个 bid_projects 里 12 个已有正文共 106.5 万字，同期模型侧实测 7 个启用模型有 3 个实际不可用 —— xiaomi/mimo-v2.6-pro 与 Intern/deepseek-v4-flash-vision 返回 429（限流或余额不足）、大模型/sensenova-u1-fast 返回 404（模型不存在）。另5 个个人配置中 4 个 default_model 为空字符串，网关靠「第一个 enabled 模型」兜底，配置里模型顺序一变默认模型就静默改变。建议：①停用 3 个不可用模型或在配置页显式标注不可用；②把默认模型显式设为实测最快且结构完整的 deepseek-v4-flash（6.6s vs Ling 14.4s）；③补全各配置 default_model。均为写生产数据，需用户确认后执行。"
+    },
+    {
+      "id": "r294-confirm-outline-semantics",
+      "priority": "P2",
+      "module": "/bid-workspace",
+      "status": "open",
+      "issue": "P2·口径待定：R294 已给「确认大纲」加二次确认闸（只加闸未改语义）。但其语义本身（全量重建 bid_chapters，content 清空 + gen_status 回pending）是否即产品预期仍待用户拍板：若应为「重新成章即清空」则现状正确；若应为「保留已有正文」，需专项处理 section_stats 下标对齐（断点续跑依赖该假设）在标题变更/节增删时的行为，不能顺手改。"
+    },
+    {
+      "id": "r294-outline-prose-occasional",
+      "priority": "P2",
+      "module": "/bid-workspace",
+      "status": "open",
+      "issue": "P2·机制待查：R291 大纲静默失败（模型返回英文推理散文而非 JSON）经R294 矩阵实测证伪为「模型稳定不适配」—— Ling-3.1-flash 在 thinking 开/关均稳定产出可解析 JSON（12/13 顶层节点），故该失败判为偶发。R291 的修复方向正确（无 JSON 候选时抛可读中文错误而非喂修复器空转），但偶发触发条件未定位：怀疑长输入分段下推理溢出或上游混入 thinking 内容。建议下次真实生成时若复现，保留当时的网关原始返回以便定因。"
     }
   ],
   "closed": [
@@ -4780,6 +4801,29 @@
         "src/components/bid-workspace/ComposeStep.tsx",
         "src/pages/BidWorkspace/BidWorkspacePage.tsx",
         "src/pages/BidWorkspace/clauseOutlineAlignment.test.ts"
+      ]
+    },
+    {
+      "id": "r294-confirm-outline-data-loss",
+      "title": "标书·「确认大纲」一键清空既有正文的交付级数据风险：加二次确认闸（如实报出章数与字数 + 指引替代路径）",
+      "priority": "P0",
+      "status": "closed",
+      "summary": "缺陷：confirmOutline 按大纲全量重建 bid_chapters（content:// + gen_status:/pending/），UI 上却是一个无任何防护的一次性按钮；同页破坏性更小的「重新生成」反已有二次确认弹窗。只读实测 21 个项目：12 个已有正文、共 92 章 1,065,033 字，最大单项目 176,474 字（14 章），误点一次即清零且需重新付费生成，属交付级数据风险。HEAD 版确认该写法为既有缺陷（非本轮引入）。修复：只加闸不改语义——ComposeStep 新增 confirmOutlineGuard 状态，按 content 非空判定；无正文的新项目直通零打扰，有正文的弹二次确认并如实报出「已成稿 N 章（约 X 字）将被清空且需重新付费生成」，同时指引改用覆盖面板的「一键补入/同步章节清单」（R293 已实现只增不删、保留既有正文）；主按钮用 destructive 样式明示代价，次按钮「取消（改用补入）」。测试 +5 例（按钮不得直调 / 闸门口径 / 弹窗如实报数 / 双出口 / 语义守卫），clauseOutlineAlignment.test.ts 累计 28 例。改语义（重建时保留正文）因涉及 section_stats 下标对齐风险，留 backlog r294-confirm-outline-semantics 待用户拍板。四门：tsc -b exit 0；vitest Test Files 198 passed、Tests 2317 passed/2 skipped；eslint 触及 2 文件 exit 0 零 error 零 warning；构建风险为零（仅 1 组件+测试改动）。",
+      "files": [
+        "src/components/bid-workspace/ComposeStep.tsx",
+        "src/pages/BidWorkspace/clauseOutlineAlignment.test.ts",
+        ".loop/reports/2026-10-13-r294-confirm-outline-guard.md"
+      ]
+    },
+    {
+      "id": "r294-model-json-matrix",
+      "title": "模型 JSON 适配矩阵实测：7 个启用模型 × thinking 开关 × 真实提示词走真实网关",
+      "priority": "P1",
+      "status": "closed",
+      "summary": "走真实前端网关 /__pb/api/model-gw/chat（页面内 fetch + vibexAuthHeaders，裸 fetch 必得 LOGIN_REQUIRED），真实提示词取安庆二院解析数据，7 模型 × thinking 开关 = 14 组，合格 8/14。结论一：R291 的「Ling-3.1-flash JSON 不适配」假设被推翻——thinking 开/关均稳定产出可解析 JSON（12/13 顶层节点），该失败判为偶发，R291 修复方向仍正确（无 JSON 候选抛可读中文错误才是根因：偶发散文 + 静默空转 = 静默失败）。最快且结构完整：大模型/deepseek-v4-flash 关 thinking 仅 6.6s 产 12 顶层节点（vs Ling 14.4s，推荐设为默认，待用户确认）。结论二：3/7 模型实际不可用——xiaomi/mimo-v2.6-pro 与 Intern/deepseek-v4-flash-vision 均 429（限流或余额不足）、大模型/sensenova-u1-fast 404（模型不存在）。探针自身改进：首次裸跑把 429 直接判成「不适配」是把基础设施拥闪误读为模型缺陷，已加指数退避重试（8s→16s→32s→64s，最多 4 次）后才判生死。全程只读，不写生产数据。",
+      "files": [
+        ".probe/realrun/probe-15-model-matrix.mjs",
+        ".probe/realrun/model-json-matrix.json"
       ]
     }
   ],
