@@ -2074,7 +2074,7 @@ export function usePptQuote() {
     try {
       const { exportQuoteXlsx } = await import("./quoteExports")
       await exportQuoteXlsx(quote)
-      toast.success("Excel 报价表已导出（含分组小计与总计公式）")
+      toast.success("Excel 报价表已导出（含分组小计与总计公式、千分位金额格式）")
     } catch {
       toast.error("导出失败，请重试")
     }

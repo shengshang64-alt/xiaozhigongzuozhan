@@ -1,4 +1,4 @@
-import * as XLSX from "xlsx"
+import * as XLSX from "xlsx-js-style"
 import { AlignmentType, Document, Packer, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } from "docx"
 import { formatMoney, groupSubtotal, itemSubtotal, normalizeDiscount, quoteTotal, type QuoteItem, type QuoteRecord } from "./pptQuoteTypes"
 import { targetsLabel } from "@/pages/SolutionStudio/checklistTypes"
@@ -49,6 +49,21 @@ export const QUOTE_EXPORT_HEADERS = [
 
 function safeFileName(name: string, ext: string): string {
   return buildSafeFileName(name, ext, "报价单")
+}
+
+// R289 r281-excel-money-column-no-numfmt：金额列的 Excel 数字格式。
+// 界面/Word 版一贯是 formatMoney 的「8,799.99」（zh-CN 千分位 + 固定两位），
+// 而 CE 版 xlsx 写侧根本不支持样式（cell.s 被静默忽略、产物无 numFmt），同一份
+// 报价单在 Excel 里显示 8799.99——两套观感。现改用 xlsx-js-style（Apache-2.0，
+// CE 0.18.5 的功能超集），金额单元格统一走 moneyNumFmtCell 带上本格式。
+// "#,##0.00" 恰好是 OOXML 内置格式 ID 4，无需自定义 numFmts 表。
+export const MONEY_XLSX_NUM_FMT = "#,##0.00"
+
+/** 金额数值单元格：值 + 可选活公式 + 千分位两位小数显示格式（与 formatMoney 同口径） */
+export function moneyNumFmtCell(v: number, f?: string): XLSX.CellObject {
+  const cell: XLSX.CellObject = { t: "n", v, s: { numFmt: MONEY_XLSX_NUM_FMT } }
+  if (f) cell.f = f
+  return cell
 }
 
 /**
@@ -104,28 +119,31 @@ export async function exportQuoteXlsx(quote: QuoteRecord): Promise<void> {
       str(r, 3, String(row[3] ?? ""))
       put(r, 4, { t: "n", v: Number(row[4]) || 0 })
       str(r, 5, String(row[5] ?? ""))
-      put(r, 6, { t: "n", v: Number(row[6]) || 0 })
-      put(r, 7, { t: "n", v: itemSubtotal(it), f: quoteItemSubtotalFormula(r + 1, it) })
+      put(r, 6, moneyNumFmtCell(Number(row[6]) || 0))
+      put(r, 7, moneyNumFmtCell(itemSubtotal(it), quoteItemSubtotalFormula(r + 1, it)))
       str(r, 8, String(row[8] ?? ""))
       str(r, 9, String(row[9] ?? ""))
       r += 1
     })
     str(r, 3, `${g.name}小计`, true)
     if (items.length) {
-      put(r, 7, { t: "n", v: groupSubtotal(g), f: `SUM(H${start + 1}:H${r})` })
+      put(r, 7, moneyNumFmtCell(groupSubtotal(g), `SUM(H${start + 1}:H${r})`))
     } else {
-      put(r, 7, { t: "n", v: 0 })
+      put(r, 7, moneyNumFmtCell(0))
     }
     subtotalRows.push(r)
     r += 1
   })
 
   str(r, 3, "总计", true)
-  put(r, 7, {
-    t: "n",
-    v: quoteTotal(groups),
-    f: subtotalRows.length ? subtotalRows.map((x) => `H${x + 1}`).join("+") : "0",
-  })
+  put(
+    r,
+    7,
+    moneyNumFmtCell(
+      quoteTotal(groups),
+      subtotalRows.length ? subtotalRows.map((x) => `H${x + 1}`).join("+") : "0",
+    ),
+  )
   r += 1
   if (quote.tax_note?.trim()) {
     str(r, 0, `税率与含税说明：${quote.tax_note.trim()}`)
