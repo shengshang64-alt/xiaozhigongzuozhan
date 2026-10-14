@@ -2,32 +2,36 @@
 
 ## 执行历史
 
-### 2026-09-22 01:08 · 第 10 轮 — 完成（有实质产出）
+### 2026-10-14 10:05 · 第 11 轮 — 完成（有实质产出）
 
-- **选题**：客户管理「客户总数」显示已加载条数(20) 而非真实总数(161) → 定级 **S0 / A 类（修）**，自动执行。
-- **来源**：`docs/测试报告-售前工作台全面检查.md` 的 B-03 + B-04（并入候选池后实测坐实）。
-- **根因（两层）**：① `/api/customers` 的 `totalItems` 恒等于本页条数 → 前端拿不到真总数；② 前端在总数未知时退而显示已加载条数，且统计卡未传 `capped`，无「+」提示 → "未知的 20" 被显示成"精确的 20"。
-- **改动**：4 个文件 —— `pocketbase/pb_hooks/customers.pb.js`（照 `solutions.pb.js` 的 D-9 同款改为返回真总数）、`useCustomerManagement.ts`（采信真总数 + 暴露 `customerCountCapped` + 翻页同步）、`CustomerManagementPage.tsx`（传参）、`CrmStatsRow.tsx`（加 `capped` + 修正悬浮提示文案）。
-- **验证**：接口 20→161、翻页恒定、筛选口径正确、401 门禁未破坏；实机 161 且翻页后仍 161；构建 exit 0、eslint 逐文件与基线一致（新增 0）、控制台 0 error；接口耗时 5–12ms。
-- **副作用（需知悉）**：为让 pb_hooks 生效**重启了 PocketBase**（PID 10008→19800，参数与 `start-local.cmd` 一致）。**结论：pb_hooks 改动必须重启 PB 才生效，v0.40 无热重载**。
-- **诚实项**：未留存修复前界面截图（改动前未开浏览器），修复前表现由接口实测+代码路径+docs 报告三处互证；构建曾 1 次不可复现的打包器偶发失败，重跑 3 次全绿。
+- **选题**：**B9 建设清单金额分位精确化** → 定级 **S1（金额级正确性）/ A 类（修）**，自动执行。
+- **来源**：`docs/evolution/_loop_state.json` 的 `focus` + R36 报告 §5「下一轮建议」首位。
+- **根因**：不是算法错，是**口径分裂**。项目 R034 已为报价域立了单一真源 `src/lib/money.ts`（`productCents` 微元整数精确相乘 + 分位远离零舍入），但建设清单域从未接入，五条算路（`calcTotal` / `subtotalOfLines` / 分类小计 / Excel 逐行小计与分类小计 / UI 行小计）全部用裸浮点 `qty * unit_price`，且各自独立累加。
+- **改动**：6 个文件 —— `checklistTypes.ts`（新增 `lineSubtotalYuan`/`sumLinesYuan`，`calcTotal` 重写）、`checklistSummary.ts`（两处同口径）、`checklistExports.ts`（Excel 两处）、`ChecklistDetailPanel.tsx`（UI 行小计）、新增 `checklistMoney.test.ts`（6 例）、新增 `docs/evolution/_r37_checklist_cent_audit.mts`（证据脚本）。未加依赖、未改语义。
+- **验证**：20 万组对拍 旧 140,477 组分位偏差 → 新 **0**；导出「逐行小计相加 ≠ 合计」18,083 → **0**；四门全过；实机 10 个分类小计之和 = 合计 = **4,960,000**、控制台 0 error。提交 `224061e`。
+- **诚实项**：① 全量 eslint 160→**161** 的 +1 来自工作区**既有未提交**的 `src/components/model-config/ModelMetaDialog.tsx`，非本轮；② 缺陷在真实数据上**潜伏**（PB 现有 2 份清单 93 行、单价全为整数），实机**无法现场复现偏差**，实机只能证明"未回归 + 小计之和 = 合计"。
 
 ## 经验沉淀（下轮直接用）
 
-1. **并发写入警告**：本项目 `.loop/ledger.json` 可能被**并发进程**同时推进（本轮开工时 round=8，中途被另一进程改成 9 并关闭 ux-02）。开工读账本后、写账本前必须**重新 Read 一次**，用精确 old_string 做增量 Edit，**不要整体覆盖写 JSON**，否则会吞掉并发进程的结论。
-2. **本轮已用过的手段**：`_qa/ab.sh` 的 `ab_login` / `ab_go` / `ab_report`；agent-browser 的 ref **不跨 bash 调用保持**，必须**同一次调用内** `snapshot` 取 ref 再 `click`（本轮用 `snapshot | grep | cut` 动态取 ref 成功）。
-3. **验证命令**：`npx tsc -b && npx vite build`（pnpm build 等价回退）；`npx eslint src -f json -o <file>` 存基线再 diff，才能证明"新增 0"（默认 stylish 输出不适合机器比对；`-f compact` 在 ESLint 9 已移除）。
-4. **重启 PocketBase 的命令**（本轮实测可用）：`Stop-Process -Id <pid> -Force` 后用 `Start-Process` 以 `serve --http=127.0.0.1:7000 --dir=…\pocketbase\pb_data --hooksDir=…\pocketbase\pb_hooks --migrationsDir=…\pocketbase\pb_migrations` 拉起；用 `/api/health` 轮询确认。
-5. **后台调用一律要带 `X-Rh-User-Id: local-user`**，否则 401 `login_required`。
+1. **本项目没有 `AI-ITERATION.md`，也没有 `.loop/`**。作业手册点名的这些路径**不存在**（项目 `Qoder自主迭代提示词-v2.md` 里明确写着 `AI-ITERATION.md` 已删除、旧提示词因此失效）。**真实体系**是：手册 `Qoder自主迭代提示词-v2.md`、状态 `docs/evolution/_loop_state.json`、轮报 `docs/evolution/R{轮次}_{YYYYMMDD}.md`、驱动器 `scripts/autoloop.mjs`。本轮按作业要求**建了 `.loop/`**（ledger/reports/MORNING），同时在 `docs/evolution/` 也落了正式记录，两边同源。
+2. **并发写入警告**：`.loop/ledger.json` 与本项目 `docs/evolution/_loop_state.json` 都可能被并发进程推进。开工读、写前**重新 Read**，用精确 `old_string` 做增量 Edit，**不要整体覆盖写 JSON**。本轮开工实测 `_loop_state.json` mtime 未变（autoloop 已于 01:24 结束），可安全编辑。
+3. **门禁命令（本轮实测）**：`pnpm build` **现在可用**（pnpm 11.21.0，`CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD=100000 pnpm build` → 6.42s）；`npx tsc -b`；`npx vitest run`；`npx eslint .`（本轮 216 files / 2555 passed）。
+4. **eslint 要证明"新增 0"**：`npx eslint . -f json -o <file>` 存 JSON，再用 node 按文件统计 error 数并对比文件数（基线 160 error / 53 文件）。只看总数会被工作区里别人的未提交文件带偏。
+5. **环境事实**：`:8000` 是 **Vite dev server**（响应含 `/@react-refresh`），改 `src` 即 HMR 生效、无需重启；`:7000` 是 PocketBase。浏览器验证 `source _qa/ab.sh`（`ab_login`/`ab_go`），**agent-browser 的会话与 ref 都不跨 bash 调用保持**，必须**同一次调用内** snapshot 取 ref 再 `agent-browser click @ref`（不要用 eval 的 `.click()`）。取 ref 的稳妥写法：`grep 'button "X"' | grep -oE 'ref=e[0-9]+' | sed 's/ref=//'`。
+6. **PB 接口**：后台/脚本调用一律带 `X-Rh-User-Id: local-user`，否则 401 `login_required`。
 
 ## 下一轮建议
 
-**首选 `kb-cap-01`（= docs 的 B-01/B-02）**：知识库 `src/lib/kbCore.ts` 的 `MAX_PAGES=30 × perPage 200 = 6000` 硬上限，导致 6423 篇里 **423 篇静默不可见** + 首屏 40–61 秒。A 类（修），S0/S3 混合，严重度与频次都高于剩余界面类待办。
-次选 `ux-03`（新建投标必填无校验，S2）或 `home-01/02/03`（工作台首屏，S2/B 类）。
+1. **先处置工作区卫生**：`src/components/model-config/{PersonalConfigList,ModelMetaDialog}.tsx`、`src/pages/ModelConfig/{ModelConfigPage.tsx,useModelConfig.ts}`、`src/lib/{modelMetaLocal,modelProfiles}.ts` + 2 个 `.test.ts` 是**与本轮无关的未提交改动**，本轮刻意未碰。它们让全量 eslint 停在 161、vitest 多 2 文件。需用户拍板 提交/继续/回滚。
+2. **首选 `B12` 价格分测算接 UI**：R35 交付算法层、R36 修对闭式解，至今 **0 个用户入口**（`fullScoreTargetPrice` 在 `src/` 只被模型与测试引用）。做时注意：对手报价**必须手输**（`competitor_evidence` 存的是中标金额，不可冒用）；面板要显式写出「基准价口径 + 临界价含下浮」；认不出公式显示 `ok:false`，不许猜数。
+3. 次选 `B8` 折扣语义歧义（high）；再次 `B1` R031 遗留 A1–A6 编制层（high）。
+4. 建议正式**关闭 E-1 阻塞**（pnpm build 卡死）—— 本机 pnpm 已是 11.21.0，实测通过。
 
 ## 待用户拍板（阻塞项，勿自行推进）
 
+- **工作区那批未提交的 model-config 改动**怎么处置（提交/继续/回滚）—— 影响每轮门禁比对。
 - `D-12` 导出 Word 空章节：A 方案（导出前提示）vs B 方案（写"（待补充）"）—— 我推荐 A。
 - `E-2` 是否造常备最小测试数据集（打 `[NIGHTTEST]` 标记）—— 我推荐造。
-- `B-10` 自定义接口身份仅凭客户端请求头可伪造 —— **触碰"身份认证"红线，只能出方案**。
+- `B10` 自定义接口身份仅凭客户端请求头可伪造 —— **触碰"身份认证"红线，只能出方案**。
 - `docs/06` 九项新能力全部属 **C 类**（新增能力），需用户点头；我推荐先做第 3 项「招标文件倾向性/排他性参数识别」（几乎零成本、决策级价值）。
+- 是否提供一份含「评标基准价＝有效报价平均值下浮 X%」的**真实招标文件**（R36/R37 遗留，价格分链路闭环点验用）。

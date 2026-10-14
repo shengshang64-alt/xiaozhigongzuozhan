@@ -5,22 +5,189 @@
   "canonical_state": "docs/evolution/_loop_state.json",
   "canonical_reports": "docs/evolution/R{round}_{YYYYMMDD}.md",
   "note": "本文件是 2026-10-14 自动化作业按手册要求建立的账本。本项目既有的、被 autoloop 驱动器读取的权威账本仍是 docs/evolution/_loop_state.json —— 两者已同步，若冲突以 docs/evolution/_loop_state.json 为准。作业手册点名的 AI-ITERATION.md 在本仓库不存在（项目已注明其被删除），实际执行依据为 Qoder自主迭代提示词-v2.md。",
-  "round": 37,
+  "round": 40,
   "lastRoundSummary": {
-    "id": "R37",
-    "at": "2026-10-14T10:05+08:00",
-    "theme": "修 B9：建设清单金额分位精确化 —— calcTotal / subtotalOfLines / 分类小计 / Excel 逐行小计 / UI 行小计五条算路统一到 money.ts 口径（逐行精确到分 → 整数分累加 → 一次性转元）",
-    "class": "A（修）",
-    "severity": "S1（金额级正确性）",
+    "id": "R40",
+    "at": "2026-10-14T13:11+08:00",
+    "theme": "修 B8：报价「折扣(%)」与习惯写法「几折」的两种量纲歧义不再静默钳位——判定收敛为单一真源纯函数，行内与整组两个入口都改为「先确认再落金额」，已落库脏值只盘点不改写（横幅逐行确认 + 交付体检 warn 只报不拦）",
+    "class": "A（修 + 接线）",
+    "severity": "S1（金额悄悄错 10~100 倍且零报警，账本记为最高危）",
     "verdict": "pass",
     "gates": {
-      "tsc": "pass",
-      "build": "pass（pnpm build 6.42s，E-1 阻塞已消失）",
-      "vitest": "pass（216 files / 2555 passed / 2 skipped）",
-      "eslint": "pass（本轮 5 文件 0 error；全量 161，+1 非本轮引入）"
+      "tsc": "本轮 7 文件 0 error；全仓 exit 2 的 5 error 仍在在途文件（model-config×3 + bidDocxFormatExtract×2），与 R38/R39 收轮时同一集合未变",
+      "vitest": "pass（219 files / 2617 passed / 2 skipped；基线 R39 为 218 / 2597 / 2，本轮 +1 文件 +20 用例，其中交付体检补 2 例行为级断言）",
+      "eslint": "pass（本轮触及 7 文件 npx eslint exit 0，0 error 0 warning；全仓 src 152 error / 19 warning 全为存量，低于账本 160 基线）",
+      "build": "pass（npx vite build exit 0，4.28s；「折扣写法有歧义」等本轮文案落在 dist/assets/PptQuote-*.js 路由 chunk，主包不含）"
     }
   },
   "closed": [
+    {
+      "id": "B8",
+      "title": "折扣语义歧义入口（不静默钳位；折扣 <5 弹确认 0.9% vs 90%）",
+      "priority": "high",
+      "closed_at_round": "R40",
+      "summary": "旧实现把歧义值静默钳进金额：行内 NumCell min=1 使填 0.9（想表达 9 折）被改成 1，整行只剩原价的 1%；填 3（想表达 3 折）原样按 3% 落库。本轮新增 src/lib/discountIntent.ts 作为歧义判定单一真源（阈值 DISCOUNT_AMBIGUOUS_BELOW=5），行内改走 DiscountCell（只在 blur/Enter 落值，歧义值不写库、交回 DiscountIntentDialog 让用户点读法，弹窗把两种读法各换算成真实金额），整组批量同口径先判歧义再落值；已落库数据只盘点不改写（顶部横幅「逐行确认」队列 + 报价交付体检 warn）。normalizeDiscount 的 R285 口径（≤0 视为原价、>100 封顶）一字未动，并由 2 例回归守卫钉住。",
+      "files": [
+        "src/lib/discountIntent.ts",
+        "src/components/ppt-quote/DiscountIntentDialog.tsx",
+        "src/components/ppt-quote/QuoteEditor.tsx",
+        "src/pages/PptQuote/pptQuoteTypes.ts",
+        "src/lib/deliverability.ts",
+        "src/pages/PptQuote/quoteDiscountAmbiguity.test.ts",
+        "src/lib/deliverability.test.ts",
+        "docs/evolution/R40_20261014.md",
+        ".loop/reports/2026-10-14-1311-r40-discount-ambiguity.md",
+        ".loop/ledger.json",
+        "docs/evolution/_loop_state.json"
+      ],
+      "evidence": {
+        "defect_source": "src/components/ppt-quote/QuoteEditor.tsx:627-629（改前）NumCell min=1/max=100/fallback=100，NumCell.clamp = Math.max(min, ...) 且 onChange 与 onBlur 各钳一次；pptQuoteTypes.normalizeDiscount(0.9) 原样返回 0.9 → itemSubtotal 按 0.9% 计",
+        "money_impact": "单价 990,000 元 × 1 套：填 0.9 → 旧 UI 落 1% = 9,900 元（本轮实测该行为 8,910 元口径下的两种读法：按 0.9% 计价 8,910 元 vs 按 90% 计价 891,000 元，相差 100 倍）",
+        "unit": "新增 src/pages/PptQuote/quoteDiscountAmbiguity.test.ts 18 例（歧义判定 6 + R285 不变量 2 + 金额换算 3 + 已落库盘点 2 + 入口接线源码哨兵 5）；src/lib/deliverability.test.ts +2 例（歧义行出 warn 不出 blocker 且 sendable 仍 true / 正常折扣零新增条目）",
+        "browser": "Playwright chromium 独立视口 1440x1000，:8000 Vite dev 动态 import 真实 QuoteEditor 注入渲染（updateItem/setGroupDiscount 换 spy 回调并本地重渲染，等价线上的函数式 mutateQuote，零写库）：23 项断言全过、0 pageerror、0 console error。S1 填 0.9 不写值且弹窗给出 8,910.00 / 891,000.00 两种金额，选 9 折读法只落 {discount:90}；S2 填 0 不弹窗、落 100 并出行内说明；S3 填 120 归一 100；S4 整组填 3 弹组级确认（本组 2 行，36,900.00 vs 369,000.00），选 30% 后组内两行同时落 30 且组小计 369,000；S5 点「都不是」后调用记录 0 增长；S6 存量 discount=1/0.9 触发横幅「有 2 行的折扣小于 5%」，逐行确认连走两笔（1→10、0.9→90）后横幅自动消失",
+        "screenshots": [
+          {
+            "file": "docs/evolution/_r40_S1_dialog_row.png",
+            "what": "行内填 0.9 失焦后的确认弹窗：两种读法各带本行小计（¥8,910.00 / ¥891,000.00，原价 ¥990,000.00）与「不选就什么都不改」"
+          },
+          {
+            "file": "docs/evolution/_r40_S4_dialog_group.png",
+            "what": "整组折扣% 填 3 的组级确认：本组 2 行合计 ¥36,900.00（按 3%）vs ¥369,000.00（按 30%＝3 折）"
+          },
+          {
+            "file": "docs/evolution/_r40_S6_banner.png",
+            "what": "已落库歧义行（discount=1 与 0.9）触发的顶部横幅 + 「逐行确认」入口"
+          }
+        ],
+        "real_corpus_audit": "只读盘点 /api/quotes（X-Rh-User-Id: local-user，200 OK）：该身份下 0 条报价记录 → 无法现场举证存量脏值；缺陷属「入口必现 + 存量潜伏」型，已落库分支以注入实机取证 + 单测为证",
+        "chunk_probe": "dist/assets/PptQuote-*.js 命中「折扣写法有歧义」「逐行确认」「不是有效数字，已回到原值」「几折」各 1 处；主包 0 处",
+        "browser_live_session": {
+          "channel": "browser-use MCP 连本机 Chrome 真实会话（:8000 Vite dev，登录态=系统管理员，主题/CSS/Toaster 均为线上壳）",
+          "steps": [
+            "GET /src/lib/discountIntent.ts + pptQuoteTypes.ts + deliverability.ts 实调：阈值 5；0.9 → 0.9% vs 90%（9 折）倍数 100；3 → 3% vs 30%（3 折）倍数 10；90/0 判 null；normalizeDiscount(0/-5/120)=100 而 (0.9)=0.9 不钳位；990,000 行按 0.9% = 8,910、按 90% = 891,000；scanAmbiguousDiscounts 命中 0.9 与 1；交付体检只出 verbatim_fidelity:warn 且 buildVerdict.sendable 仍 true；干净记录 0 条目",
+            "在真实页面内挂载线上 QuoteEditor（spy 回调，零写库）：行内输入 0.9 失焦 -> 写入次数 0、行 discount 仍 100、弹窗打开并给出两种读法的真实金额",
+            "点「按 90% 计价（9 折）」-> 仅一次 updateItem({discount:90})，行小计 891,000.00 并出现「90%计价」标注，**线上 sonner toast 实际弹出「本行已按 90% 计价」**",
+            "整组折扣% 输入 3 失焦 -> 组级弹窗（本组 2 行 ¥36,900.00 vs ¥369,000.00，原价 ¥1,230,000.00），写入次数仍为 1；点「都不是」后无新增写入",
+            "验证完毕卸载注入节点并移除容器（injectedRemoved=true），浏览器会话回到 /ppt-quote 原状"
+          ],
+          "environment_notes": [
+            "该 Chrome 窗口处于最小化：document.visibilityState=hidden、hasFocus()=false，因此 el.blur() 不产生 focusout（第一次尝试 onBlur 未触发，但 onChange 行内提示「这个数可能是「折」，失焦后先让你确认」已生效）；改为显式派发一次 FocusEvent('focusout') 后行为完全一致。",
+            "同一原因导致选完后 Radix 弹窗节点未立即从 DOM 消失（动画在隐藏页被节流），实测 data-state 已变 closed，逻辑上确已关闭；可见视口下的 Playwright 取证里同一断言为节点移除。",
+            "browser-use take_screenshot 在本机仍 15s 超时无产物（与 R38/R39 结论一致：视口 0x0 时 CDP 取不到合成帧），图像证据沿用 Playwright chromium 独立视口三张图。"
+          ]
+        },
+        "gates_reverified": "收轮后复跑四门：npx tsc -b 仍为同样 5 条在途 error（本轮文件 0 error）；npx vitest run 219 files / 2617 passed / 2 skipped；npx eslint 触及 7 文件 exit 0；npx vite build exit 0（3.99s）"
+      },
+      "diff_summary": {
+        "files": [
+          "src/lib/discountIntent.ts（新增 77 行：歧义判定单一真源，纯函数零依赖）",
+          "src/components/ppt-quote/DiscountIntentDialog.tsx（新增 116 行：确认弹窗，两种读法各换算成真实金额）",
+          "src/pages/PptQuote/pptQuoteTypes.ts（转出判定 + itemSubtotalAtDiscount / groupSubtotalAtDiscount / scanAmbiguousDiscounts + 字段口径注释）",
+          "src/components/ppt-quote/QuoteEditor.tsx（DiscountCell + 歧义确认队列 + 存量横幅 + 整组入口先判后落 + 列头口径文案）",
+          "src/lib/deliverability.ts（报价交付体检补 verbatim_fidelity warn，只报不拦）",
+          "src/pages/PptQuote/quoteDiscountAmbiguity.test.ts（新增 18 例）",
+          "src/lib/deliverability.test.ts（+2 例行为级断言）",
+          "docs/evolution/R40_20261014.md + .loop/reports/2026-10-14-1311-r40-discount-ambiguity.md（轮报）",
+          "scripts/r40_install.py / r40_ui_proof.py / r40_ui_proof2.py / r40_fix1.py / r40_audit_discounts.py（补丁与取证，位于 MedPreSales 工作区）"
+        ],
+        "new_dependencies": 0,
+        "new_collections": 0,
+        "pb_hooks_changed": 0,
+        "prompts_changed": 0,
+        "semantics_changed": false
+      },
+      "honest_notes": [
+        "维持既有裁定：normalizeDiscount 的 R285 语义（≤0 视为原价、>100 封顶）未动，只把「静默钳位」换成「弹确认」；本轮为 A 类，未改任何提示词，故无 B 类新旧口径逐字对比与 PROMPT_VERSION 变更。",
+        "已落库脏值一律不改写：横幅只做盘点，用户逐行确认才落值，不做「一键按折换算」（一键换算等于替用户猜意图，正是本轮要消除的行为）。",
+        "阈值 5 是业务判断（三甲医院项目不会按原价 5% 以内成交）。真需要 <5% 的场景（如象征性计价）弹窗里就有「按 x% 计价」这一项，不会被拦死。",
+        "报价侧 toast 在无 Toaster 的注入壳层里不可见（v1/v2 均采不到 toast 节点），属取证环境限制，非产品缺陷。",
+        "取证环境副作用：本轮按 start-local.cmd 同参启动 :8000 Vite dev server（清空 NODE_OPTIONS + vibex-local/vite.local.config.ts --host 0.0.0.0 --port 8000）；项目 hook 禁止智能体结束进程，故验证后仍在监听，需用户自行关闭（stop-local.cmd 会连 :7000 PocketBase 一起停，本轮未调用）。",
+        "v1 取证脚本自身缺陷记录：同时派发合成 focusout 与真实 blur() 会让 React onBlur 触发两次，一次输入产生两条确认请求，导致整组路径没采到证据；v2 只调 el.blur() 后 23 项断言全过。"
+      ]
+    },
+    {
+      "id": "B14",
+      "title": "解析失败真因被吞 + OpenCode GO 会话头缺失（用户实测「重新解析一直失败」）",
+      "priority": "high",
+      "closed_at_round": "R39",
+      "summary": "定位并修复「标书 AI 解析一直失败但界面只说请重试」：网关对 OpenCode GO 端点补 x-opencode-session 与应用 UA（仅该域名生效），解析链路分段全灭时透出上游真实首条错误 + 可执行引导（复用 R282 归因单源）。",
+      "evidence": {
+        "root_cause": "浏览器内直调网关三通道实测：opecode/deepseek-v4.1-flash → 933~1153ms HTTP 400「Request is missing x-opencode-session and cannot be routed efficiently」；大模型/deepseek-v4-flash → HTTP 429 频率超限；平台/gpt-5.5 → ok 返回「可用」。用户所选 opecode 配置 base_url=https://opencode.ai/zen/go/v1（OpenCode GO 端点），网关只带 Authorization/Content-Type，故每次调用被秒拒 → 22 段全灭 → 整本降级关键词检索（截图「覆盖率 2%」）。",
+        "why_invisible": "两个叠加：① useBidWorkspace.parseSectionViaSegments 的 catch 把每段真实错误丢成空串，全灭时只抛「分段解析全部失败，请重试」；② 配置页健康徽标来自 /models 连通性检查（该端点 200），而真正会 400 的是 /chat/completions —— 所以模型配置一直显示 ok。",
+        "fix_b_live_proof": "dev server 实时取模块调用：parseSegmentsFailedMessage([真实 400 原文]) → 「分段解析全部失败：接口返回异常（HTTP 400）：Request is missing x-opencode-session。该模型通道不接受本次请求（多为上游接口契约变更或参数不支持）——先在顶部模型选择器换一路模型，再逐项重新解析」",
+        "unit": "bidGenFailure.test.ts 5 → 9 例（+4：真实 400 原文透出 / 429·504·401 分类引导 / 无原因不编造 / 超长截断 140 字）",
+        "no_regression": "genFailureSummary.test.ts 14 例、modelFailover.test.ts 37 例全绿——含其「HTTP 400 参数错误归 other 不误冷通道」回归守卫，本轮未改该分类器"
+      },
+      "diff_summary": {
+        "files": [
+          "src/pages/BidWorkspace/bidGenFailure.ts（+parseSegmentsFailedMessage 与分类引导；复用 R282 classifyGenFailure/normalizeGenError 单源）",
+          "src/pages/BidWorkspace/useBidWorkspace.ts（分段 catch 留住真实原因 + 全灭时改用新文案 + import）",
+          "src/pages/BidWorkspace/bidGenFailure.test.ts（+4 例）",
+          "pocketbase/pb_hooks/model_gateway.pb.js（chatOnce 与 testChatOnce：仅对 opencode.ai 补 x-opencode-session 稳定会话头与应用 User-Agent）",
+          "docs/evolution/R39_20261014.md（新增轮报）"
+        ],
+        "new_dependencies": 0,
+        "new_collections": 0,
+        "pb_hooks_changed": 1,
+        "prompts_changed": 0,
+        "semantics_changed": false
+      },
+      "honest_notes": [
+        "pb_hooks 改动**尚未生效**：PocketBase 在 bootstrap 注册 hooks，改文件需重启服务；项目 hook 明令禁止智能体结束进程，故未自行重启 :7000。已实测确认（重启前 opecode 仍 400）。",
+        "前端透出改动经 Vite dev 实时生效，无需重启，用户下一次遇到任何通道故障都能直接看到上游真因。",
+        "未替用户重跑解析：一是会改写其 parse_report 内容，二是标书工作台 LLM 重写按既有裁定须过「确认运行」二次弹窗，脚本点击会成 no-op。已给出两条自助路径（换模型 / 重启 PB）。",
+        "本轮不改 modelFailover 的「400 不冷通道」裁定；只在归因文案层加窄口径，两者目的不同（前者防误挂账，后者给用户下一步动作）。"
+      ]
+    },
+    {
+      "id": "B12",
+      "title": "价格分测算接 UI（R35 算法层 + R36 临界价闭式解，此前用户入口为 0）",
+      "closed_at_round": "R38",
+      "evidence": {
+        "unit": "npx vitest run priceScoreBrief.test.ts priceScoreWiring.test.ts priceScoreModel.test.ts => 3 files / 72 passed（本轮新增 38：视图模型 27 + 接线哨兵 11）",
+        "full_suite": "npx vitest run => 218 files / 2593 passed / 2 skipped（基线 R37：216 / 2555 / 2）",
+        "real_corpus_audit": "浏览器内动态 import 真实模块跑全库：23 个投标项目里 18 个有评分办法；价格分口径可机械复算 8 个（7 ratio/lowest + 1 deviation/average）、明确拒算 6 个、无价格分项 4 个",
+        "browser_mount": "厦门市杏林医院项目第 6 步：面板真实挂载，无评分办法时降级为「先完成 AI 解析报告环节」+ 前往解析环节按钮；控制台 0 error / 0 warn",
+        "browser_real_data": "注入式渲染同一组件喂真实记录 0feqc18hkk3j07e（安庆二院，原文「投标人报价得分＝（评标基准价/投标报价）×30％×100；评标基准价为…最低投标报价」）：我方 600 万 / 对手 550、620 万 → 基准价 5,500,000.00 元、得分 27.5、距满分 2.5、偏差率 —（比值法不适用）、临界价 550.00 万元（较现价低 8.33%）、阶梯 8 档全「有效」且现价档标记",
+        "browser_void_guard": "同项目改报 2000 万（事实表预算 680 万）→ 阶梯 8 档逐档标「超过最高限价 6800000.00 元，按无效投标处理」，临界价卡红字「不能为拿价格分把标做废」",
+        "chunk_probe": "dist/assets/BidWorkspace-NdOcmqq3.js（708KB 路由级 chunk）含「价格分测算」2 处 + 「评标基准价」「必手填」；主包不含",
+        "screenshots": [
+          {
+            "file": "docs/evolution/_r38_panel_mount.png",
+            "what": "真实点击进入第 6 步「模拟评标」：价格分测算卡片挂在模拟评标与交卷体检之间，无评分办法时降级为「先完成 AI 解析报告环节」+「前往解析环节」按钮"
+          },
+          {
+            "file": "docs/evolution/_r38_panel_computed.png",
+            "what": "注入渲染同一组件、喂真实记录 0feqc18hkk3j07e（安庆二院，原文「投标人报价得分＝（评标基准价/投标报价）×30％×100」）：我方 600 万 / 对手 550、620 万 → 基准价 550.00 万元、得分 27.5、距满分 2.5、偏差率 —（比值法不适用）、临界价「报 550.00 万元及以内（较现价低 8.33%）」、8 行敏感性阶梯"
+          }
+        ],
+        "screenshot_channel": "browser-use take_screenshot 因 Chrome 窗口最小化（视口 0x0）恒超时；改用 Playwright chromium 独立视口 + 注入 xiaozhi-team-token 补拍（脚本 d:/KFDXCX/MedPreSales/scripts/r39_shot_proof2.py，临时 token 文件用完即删）"
+      },
+      "diff_summary": {
+        "files": [
+          "src/pages/BidWorkspace/priceScoreBrief.ts（新增，确定性视图模型：parseMoneyInput / parsePriceListInput / buildPriceScoreView / fmtPriceText / fmtScore）",
+          "src/components/bid-workspace/PriceScorePanel.tsx（新增，第 6 步面板：口径卡 + 四路输入 + 结果四卡 + 临界价守护 + 敏感性阶梯）",
+          "src/pages/BidWorkspace/priceScoreModel.ts（+listPriceScoringCandidates，认不出也逐项说明；findPriceScoringItem 行为不动）",
+          "src/pages/BidWorkspace/useBidWorkspace.ts（报价单快照并置 state 并导出；setState 全部移入异步回包）",
+          "src/pages/BidWorkspace/BidWorkspacePage.tsx（第 6 步挂载 PriceScorePanel，key 按项目重挂载）",
+          "src/pages/BidWorkspace/priceScoreBrief.test.ts（新增 27 例）",
+          "src/pages/BidWorkspace/priceScoreWiring.test.ts（新增 11 例源码扫描哨兵）",
+          "docs/evolution/R38_20261014.md（新增轮报）"
+        ],
+        "new_dependencies": 0,
+        "new_collections": 0,
+        "pb_hooks_changed": 0,
+        "prompts_changed": 0,
+        "semantics_changed": false
+      },
+      "honest_notes": [
+        "本轮为 A 类接线，未改任何提示词，故无 B 类新旧口径逐字对比与 PROMPT_VERSION 变更。",
+        "全仓 tsc 门禁当前为假阳性：5 error 全在在途文件（R37 F37-1 的 model-config 批次 + 本轮期间并发新增的 bidDocxFormatExtract.ts）。按 R37 起红线刻意不碰、不代修。",
+        "vite build 首轮曾被并发在途的 DraftMergePanel.tsx 半编辑语法错误阻断（非本轮文件），该文件随后由编辑者自行修好，复跑 exit 0。",
+        "第 6 步准入是 dup_report || void_check：现库 23 个项目仅 1 个满足，且该项目无评分办法 → 面板「出数态」在真实库上暂无法正常点击进入，本轮以注入式渲染 + 27 例单测取证，未为此写任何数据。",
+        "实机截图工具本轮持续 15s 超时且无产物，证据以 DOM 文本、路由 chunk 探测与控制台计数留档（下轮若需图像证据应换取证通道）。"
+      ]
+    },
     {
       "id": "B9",
       "title": "建设清单 calcTotal 分位精确化（与 R034 报价域金额漂移同根；含 checklistExports 出口）",
@@ -60,19 +227,134 @@
     }
   ],
   "backlog": [
-    { "id": "B12", "title": "价格分测算接 UI（R35 算法层 + R36 正确性已就绪，用户入口为 0）", "priority": "high", "source": "benchmark" },
-    { "id": "B8", "title": "折扣语义歧义入口（不静默钳位；折扣 <5 弹确认 0.9% vs 90%）", "priority": "high", "source": "self-found" },
-    { "id": "B1", "title": "R031 遗留 A1-A6：编制层（大纲去重/gen_status/★响应/规定目录/数字一致性/评分落点门禁）", "priority": "high", "source": "round-report" },
-    { "id": "B2", "title": "条款-响应合规矩阵可视化（数据链与偏离表导出已落地，降级为产品判断）", "priority": "medium", "source": "benchmark" },
-    { "id": "B10", "title": "报价总额 ↔ 标书正文报价数字对账", "priority": "medium", "source": "round-report" },
-    { "id": "B4", "title": "评分表/表格化条款的结构化解析（剩余为扫描件表格保真）", "priority": "medium", "source": "benchmark" },
-    { "id": "B5", "title": "投标复盘看板二期：胜率趋势 / 报价命中率", "priority": "medium", "source": "benchmark" },
-    { "id": "B6", "title": "公司模板中心二期：标书 Word OOXML 母版级保真", "priority": "medium", "source": "benchmark" },
-    { "id": "B7", "title": "作战驾驶舱指标与 PB 实际数据对账", "priority": "medium", "source": "round-report" },
-    { "id": "B13", "title": "价格分口径扩充：按元计扣分 / 单边费率 / 档位法 / 复合标底（需真实语料驱动）", "priority": "low", "source": "round-report" },
-    { "id": "B11", "title": "报价 PPT（deck）导出页的金额版式", "priority": "low", "source": "self-found" }
+    {
+      "id": "B15",
+      "title": "pb_hooks 网关补丁待重启生效：重启 :7000 后复测 opecode 通道是否恢复；并评估把「模型配置健康徽标」从 /models 连通改为真跑一次 chat（本次假绿根因）",
+      "priority": "high",
+      "source": "self-found"
+    },
+    {
+      "id": "B1",
+      "title": "R031 遗留 A1-A6：编制层（大纲去重/gen_status/★响应/规定目录/数字一致性/评分落点门禁）",
+      "priority": "high",
+      "source": "round-report"
+    },
+    {
+      "id": "B2",
+      "title": "条款-响应合规矩阵可视化（数据链与偏离表导出已落地，降级为产品判断）",
+      "priority": "medium",
+      "source": "benchmark"
+    },
+    {
+      "id": "B10",
+      "title": "报价总额 ↔ 标书正文报价数字对账",
+      "priority": "medium",
+      "source": "round-report"
+    },
+    {
+      "id": "B4",
+      "title": "评分表/表格化条款的结构化解析（剩余为扫描件表格保真）",
+      "priority": "medium",
+      "source": "benchmark"
+    },
+    {
+      "id": "B5",
+      "title": "投标复盘看板二期：胜率趋势 / 报价命中率",
+      "priority": "medium",
+      "source": "benchmark"
+    },
+    {
+      "id": "B6",
+      "title": "公司模板中心二期：标书 Word OOXML 母版级保真",
+      "priority": "medium",
+      "source": "benchmark"
+    },
+    {
+      "id": "B7",
+      "title": "作战驾驶舱指标与 PB 实际数据对账",
+      "priority": "medium",
+      "source": "round-report"
+    },
+    {
+      "id": "B13",
+      "title": "价格分口径扩充：按元计扣分 / 单边费率 / 档位法 / 复合标底（需真实语料驱动）",
+      "priority": "low",
+      "source": "round-report"
+    },
+    {
+      "id": "B11",
+      "title": "报价 PPT（deck）导出页的金额版式",
+      "priority": "low",
+      "source": "self-found"
+    },
+    {
+      "id": "B16",
+      "title": "其他百分比型字段的两种量纲歧义复查（价格分下浮率 / 评分办法费率 / 清单数量倍数）：是否复用 src/lib/discountIntent 的「判定单一真源 + 入口弹确认 + 存量只盘点」范式",
+      "priority": "low",
+      "source": "self-found(R40 F40-4)"
+    }
   ],
   "newFindings": [
+    {
+      "id": "F40-1",
+      "title": "「同一个数字两种量纲」的字段（折扣、费率、比例）只要用 min/max 静默钳位，就必然把金额悄悄错 10~100 倍：填 0.9 被钳成 1 时用户只看到小计变小、零报警。此类字段一律「判定纯函数单一真源 + 入口弹确认 + 存量只盘点不改写」",
+      "level": "P1",
+      "action": "已落地（B8，阈值 DISCOUNT_AMBIGUOUS_BELOW=5 单一真源）；以后新增百分比型字段按此范式，禁止再写 min=1 式兜底"
+    },
+    {
+      "id": "F40-2",
+      "title": "浏览器取证 harness 陷阱：对 React 受控 input 同时 dispatchEvent(FocusEvent('focusout')) 与调用 el.blur() 会触发两次 onBlur 回调，一次输入被记成两次提交（v1 因此把一条歧义变成两条确认，整组路径采不到证据）",
+      "level": "P2",
+      "action": "模拟失焦只调 el.blur()；写注入式取证脚本时先确认回调幂等性或只触发一次"
+    },
+    {
+      "id": "F40-3",
+      "title": "本地自用域的数据身份固定为 local-user，custom 路由 /api/quotes 按 X-Rh-User-Id 过滤；现库该身份下 0 条报价记录 —— 报价侧「真实语料审计」必须以用户实际登录身份为准，否则会把「查不到」误读成「没有缺陷」",
+      "level": "info",
+      "action": "以后做报价域盘点前先确认身份与记录数；本轮已在报告中注明无法现场举证存量脏值"
+    },
+    {
+      "id": "F40-4",
+      "title": "同类歧义面尚未复查：价格分面板的下浮率、评分办法里的费率/扣分比例、建设清单的数量倍数等字段同样存在「0.3 vs 30%」两种量纲读法",
+      "level": "P3",
+      "action": "已开单 B16（low），需按域逐个判定后再决定是否复用 discountIntent 的确认范式"
+    },
+    {
+      "id": "F39-1",
+      "title": "OpenCode GO 端点（opencode.ai/zen/go/v1 与 /inference/go/v1）对非官方客户端强制要求 x-opencode-session 会话头，缺省直接 HTTP 400；而 /models 检查仍返回 200 —— 「通道健康」与「能不能对话」是两件事",
+      "level": "P1",
+      "action": "网关已补头（待重启生效）；健康徽标改真测 chat 挂在 B15"
+    },
+    {
+      "id": "F39-2",
+      "title": "PocketBase JSVM hooks 不热加载：改 pb_hooks/*.pb.js 必须重启服务才生效（本轮实测重启前 opecode 仍 400）；而项目 hook 禁止智能体结束进程",
+      "level": "P2",
+      "action": "涉及 pb_hooks 的轮次一律在报告里标注「需用户重启」，不要假定改动已生效"
+    },
+    {
+      "id": "F39-3",
+      "title": "解析链路曾把每段真实错误 catch 成空串，全灭时只报「请重试」；同类吞错在生成链路已由 R280/R301 修过（genError 落库 + 归因聚合），解析链路是漏网之鱼",
+      "level": "P2",
+      "action": "已修（B14）；后续新增 AI 链路一律「留住首条真实原因 + 分类引导」，不许只说重试"
+    },
+    {
+      "id": "F38-1",
+      "title": "并发在途扩大：除 R37 已登记的 model-config 批次外，本轮期间 BidWorkspace 域又出现 DraftMergePanel.tsx（+40，中途语法错误）、FormatSyncDialog.tsx（新）、bidDocxFormatExtract.ts（新，2 处类型 error）",
+      "level": "P1（阻塞 tsc/build 门禁判读）",
+      "action": "本轮未碰这些文件；仍需用户拍板各批次 提交/继续/回滚，否则全仓 tsc 门禁持续假阳性"
+    },
+    {
+      "id": "F38-2",
+      "title": "真实语料全库审计：23 个投标项目中价格分口径可机械复算 8 个、被明确拒算 6 个、无价格分项 4 个；拒算原因主要是「不属于比值法/偏差扣分法」与「未标明评标基准价如何确定」",
+      "level": "info（正面证据）",
+      "action": "R35「认不出就不算」在真实库上无一例误算；若要把拒算的 6 例纳入测算，属 B13 口径扩充，需真实条款驱动"
+    },
+    {
+      "id": "F38-3",
+      "title": "第 6 步准入门槛（dup_report || void_check）使真实库仅 1 个项目可进入模拟评标，且该项目无评分办法 → 新面板的出数态无法走正常点击进入做人工点验",
+      "level": "P2",
+      "action": "留待产品判断：是给演示项目补本地查重/废标报告，还是放宽准入；本轮不擅自改门禁"
+    },
     {
       "id": "F37-1",
       "title": "工作区存在与本轮无关的未提交改动（model-config 一批 6 源文件 + 2 测试文件），导致全量 eslint 161 / vitest 多 2 文件",
@@ -93,14 +375,21 @@
     }
   ],
   "blocked": [
-    { "id": "D-12", "title": "导出 Word 空章节处理", "needs": "用户在 A（导出前警告）/ B（写占位）之间拍板" },
-    { "id": "B10-auth", "title": "自定义接口身份仅凭客户端请求头可伪造", "needs": "触碰身份认证红线，只能出方案" }
+    {
+      "id": "D-12",
+      "title": "导出 Word 空章节处理",
+      "needs": "用户在 A（导出前警告）/ B（写占位）之间拍板"
+    },
+    {
+      "id": "B10-auth",
+      "title": "自定义接口身份仅凭客户端请求头可伪造",
+      "needs": "触碰身份认证红线，只能出方案"
+    }
   ],
   "noProgressStreak": 0,
   "lastRoundFiles": [
-    ".loop/reports/2026-10-14-1005.md",
-    "docs/evolution/R37_20261014.md",
-    "docs/evolution/_loop_state.json",
-    "docs/evolution/_r37_checklist_cent_audit.mts"
+    ".loop/reports/2026-10-14-1311-r40-discount-ambiguity.md",
+    "docs/evolution/R40_20261014.md",
+    "docs/evolution/_loop_state.json"
   ]
 }

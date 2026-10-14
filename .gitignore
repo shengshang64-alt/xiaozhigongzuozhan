@@ -49,6 +49,9 @@ pocketbase/logs/
 .nightrun/evidence/*.tmp
 .nightrun/seed/*.tmp
 
+# 轮间备份快照（与 .nightrun/backup 同口径：不入库）
+.loop/backups/
+
 # 诊断与 QA 产物（体积大、可再生，不入库）
 .diag/
 _qa/
