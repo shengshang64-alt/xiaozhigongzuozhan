@@ -2,6 +2,8 @@ import * as XLSX from "xlsx"
 import {
   calcTotal,
   fmtMoney,
+  lineSubtotalYuan,
+  sumLinesYuan,
   targetsLabel,
   type CheckProduct,
   type ChecklistLine,
@@ -200,12 +202,12 @@ export function exportChecklistXlsx(rec: ChecklistRecord) {
         l.qty,
         l.unit,
         l.unit_price,
-        l.qty * l.unit_price,
+        lineSubtotalYuan(l),
         targetsLabel(l.rating_hits),
         l.remark,
       ])
     }
-    const subtotal = groupLines.reduce((s, l) => s + l.qty * l.unit_price, 0)
+    const subtotal = sumLinesYuan(groupLines)
     aoa.push(["", "", "", "小计", "", "", "", subtotal, "", ""])
   }
   aoa.push([])

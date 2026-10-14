@@ -1,9 +1,8 @@
 {
-  "round": 37,
-  "focus": "B9 建设清单 calcTotal 分位精确化（checklistTypes.ts:223 完全不舍入的浮点累加，与 R034 金额漂移同根；含 checklistExports 6 个出口）。纯逻辑、风险最低。R036 已把价格分临界价的「均价+比值+下浮」闭式解修对（B13 关闭），B12 接 UI 的算法前提现已成立，可作为 B9 之后的下一项。若做 B12：对手报价必须手输，competitor_evidence 里是中标金额不是投标报价，不可冒用；面板要显式展示「基准价口径 + 临界价含下浮」供人工确认；本仓无 headless 浏览器，UI 只能人工点验。",
+  "round": 38,
   "lastRound": {
-    "id": "R036",
-    "theme": "修复监工复验抓出的价格分闭式解缺陷 B13：fullScoreTargetPrice 比值法分支 price=sum/n 漏乘下浮率，与偏差法分支合并为同一自洽不动点 p=(1-fl)·S/(n+fl)（fl=0 自然退化，旧行为不变）；补 1 例单测；两份监工复验脚本由 ✗ 转 ✓",
+    "id": "R37",
+    "theme": "修 B9：建设清单金额统一到 money.ts 分位口径 —— calcTotal / subtotalOfLines / 分类小计 / Excel 逐行小计 / UI 行小计五条算路全部改为「逐行精确到分 → 整数分累加 → 一次性转元」，消除「逐行小计之和 ≠ 合计」；+6 例单测 + 20 万组审计脚本",
     "verdict": "pass"
   },
   "eslintBaseline": 160,
@@ -29,12 +28,6 @@
     {
       "id": "B8",
       "title": "折扣语义歧义入口（R034 L1，金额悄悄错最高危）。处置口径已定：**不静默钳位**——折扣 <5 时改弹确认「你要的是 0.9% 还是 90%（9折）？」；R-0285 的「≤0 视为原价」语义保持不变，只加歧义提示",
-      "priority": "high",
-      "source": "self-found"
-    },
-    {
-      "id": "B9",
-      "title": "建设清单 calcTotal 分位精确化（checklistTypes.ts:223 完全不舍入的浮点累加，与 R034 同根；含 checklistExports 6 个出口）",
       "priority": "high",
       "source": "self-found"
     },
@@ -89,6 +82,12 @@
   ],
   "history": [
     {
+      "id": "R037",
+      "theme": "修 B9 建设清单金额分位：checklistTypes.ts 新增 lineSubtotalYuan/sumLinesYuan、calcTotal 改「逐行精确到分 → 整数分累加」；checklistSummary 小计同口径；checklistExports 逐行小计与分类小计改走同一真源；ChecklistDetailPanel 行小计同口径。20 万组审计：旧实现 140,477 组分位偏差 → 新 0；导出「逐行之和 ≠ 合计」18,084 → 0；实机 10 分类小计之和 = 合计 = 4,960,000",
+      "verdict": "pass",
+      "at": "2026-10-14"
+    },
+    {
       "id": "R036",
       "theme": "修 B13 价格分临界价闭式解（比值法分支漏乘下浮率）：均价口径下比值法与偏差法统一到自洽不动点 p=(1-fl)·S/(n+fl)，priceScoreModel.ts:380-390，+1 例单测；监工复验脚本由「✗ 缺陷确认：代码 20000000 vs 真值 19207920.79；自洽失败 9.7」转为「✓ 全部通过」",
       "verdict": "pass",
@@ -107,7 +106,8 @@
       "at": "2026-10-14"
     }
   ],
-  "eslintBaselineNote": "160 为 2026-10-13 实测存量（53 文件，主因 react-hooks/set-state-in-effect 75 条 + any 19 条）。闭环只要求「不高于此数」，不要求清零——清零属独立治理任务。R034 复测仍为 160 error / 20 warning；R035 复测仍为 160 error / 20 warning（新增两文件单独 lint exit 0）；R036 复测仍为 160 error / 20 warning（180 problems，未新增文件）。",
+  "focus": "先处理工作区卫生：工作区有与本轮无关的未提交 model-config 改动（见 notes「R037 工作区卫生」），它让全量 eslint 停在 161（基线 160）——开工第一步先请用户拍板提交/继续/回滚，或先把它单独提交掉，再谈本轮主题。主题首选 **B12 价格分测算接 UI**（R35 交付算法层、R36 修对闭式解，现已有 0 个用户入口；`fullScoreTargetPrice` 在 src 里只被模型与测试引用）。若做 B12：**对手报价必须手输**（competitor_evidence 存的是中标金额不是投标报价，不可冒用）；面板要显式写出「基准价口径 + 临界价含下浮」这句人话；认不出公式就显示 ok:false，不许猜数。次选 **B8 折扣语义歧义入口**（high，金额悄悄错最高危，处置口径已定：不静默钳位，折扣 <5 时弹确认「0.9% 还是 90%」）。再次 **B1 R031 遗留 A1-A6 编制层**。UI 改动只能人工点验（:8000 是 Vite dev server，改 src 即 HMR 生效）。",
+  "eslintBaselineNote": "160 为 2026-10-13 实测存量（53 文件，主因 react-hooks/set-state-in-effect 75 条 + any 19 条）。闭环只要求「不高于此数」，不要求清零——清零属独立治理任务。R034 复测仍为 160 error / 20 warning；R035 复测仍为 160 error / 20 warning（新增两文件单独 lint exit 0）；R036 复测仍为 160 error / 20 warning（180 problems，未新增文件）。R037 复测为 **161 error / 20 warning（181 problems，54 文件）** —— 多出的 1 条**不是本轮引入**：本轮 5 个文件单独 lint 全部 exit 0；+1 来自工作区既有的未提交新文件 `src/components/model-config/ModelMetaDialog.tsx`（见 notes「R037 工作区卫生」）。**eslintBaseline 仍按 160 记**，待用户处置那批未提交改动后应回到 160。",
   "baseline": {
     "capturedAt": "2026-10-13",
     "commit": "0e84156",
@@ -116,7 +116,8 @@
     "eslint": "160 error / 20 warning",
     "r034": "212 files / 2499 passed | 2 skipped；eslint 160 error（+1 测试文件 / +17 用例）",
     "r035": "213 files / 2532 passed | 2 skipped；eslint 160 error；vite build 11.88s（+1 测试文件 / +33 用例）",
-    "r036": "213 files / 2533 passed | 2 skipped（+1 用例，0 新文件）；eslint 160 error / 20 warning（持平）；tsc -b exit 0；vite build ✓ 10.09s"
+    "r036": "213 files / 2533 passed | 2 skipped（+1 用例，0 新文件）；eslint 160 error / 20 warning（持平）；tsc -b exit 0；vite build ✓ 10.09s",
+    "r037": "216 files / 2555 passed | 2 skipped —— 其中本轮新增 1 文件 / 6 用例（checklistMoney.test.ts），另 +2 文件 +16 用例来自工作区**既有未提交的 model-config 改动**（非本轮）；eslint 161 error / 20 warning —— +1 来自既有未提交新文件 src/components/model-config/ModelMetaDialog.tsx，本轮 5 个文件单独 lint 全部 0 error；tsc -b exit 0；**pnpm build 恢复可用 ✓ 6.42s**（见 notes E-1）"
   },
   "notes": [
     "起点 R034；R031/R033 为已存在的进化日志（docs/evolution/）。",
@@ -132,6 +133,12 @@
     "R036 数学教训（写死以免再犯）：均价类口径下**我方报价自身进样本池**，报高会拖动基准价，所以「报多少拿满分」必须解自洽不动点 p=(1-fl)·S/(n+fl)，比值法（min(1,base/p)=1）与偏差法（dev=0）在这一式上等价；fl=0 时才退化成 S/n。R035 把下浮率误当成偏差法专属，比值法分支留了 sum/n 特例 → 监工复验抓出。以后新增价格分口径，先问「p 进不进样本池」，不能解就返回 null 让阶梯试算兜底，禁止给近似闭式解。",
     "R036 真实语料缺口：.diag 三份招标语料 grep「下浮」「算术平均」命中均为 0（r48b 与 r50 md5 相同 8f951842…，是同一份文件的副本，勿当两份用），故「均价+下浮」这一类**没有真实标书验证过**，当前正确性只靠推导 + 两份监工复验脚本 + 单测。补真实条款后即闭环。",
     "R036 状态文件卫生：本文件此前有两个 \"focus\" 键（后者静默覆盖前者），已去重为单一键。改状态文件时先 grep 键名防重复。",
-    "R036 观察（非缺陷）：vite build 的 minify 阶段实测显示 vite:terser，R035 记录为 vite:esbuild；构建结果正常，未追。"
+    "R036 观察（非缺陷）：vite build 的 minify 阶段实测显示 vite:terser，R035 记录为 vite:esbuild；构建结果正常，未追。",
+    "R037 B9 教训（写死以免再犯）：**同一笔钱只要有一条算路走裸浮点，整套数字就会自相矛盾**。R034 只修了报价域（pptQuoteTypes/quoteExports），建设清单域（checklistTypes/checklistSummary/checklistExports/ChecklistDetailPanel）当时被 R034 轮报标为 L2「单开一轮更稳」，本轮补齐。以后新增任何金额字段/出口，先 grep `qty * ` 与 `unit_price * `，确认没有裸浮点乘法。",
+    "R037 审计脚本入库：docs/evolution/_r37_checklist_cent_audit.mts（`npx vite-node` 运行；20 万组随机对拍 + 定点案例，含冻结的修复前实现作对照）。修复前输出 `badOldTotal=140477 / badExportMismatchOld=32272`（冻结对照口径下为 18084），修复后 `badNewTotal=0 / badExportMismatchNew=0`。",
+    "R037 **E-1 阻塞已消失（重要）**：本机 pnpm 现为 **11.21.0**（原记录为 v10），`pnpm build` 不再被 verify-deps-before-run 预检卡死，实测 `CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD=100000 pnpm build` ✓ 6.42s exit 0。.nightrun/state.json 里 E-1 那条阻塞可视为已解除；`npx tsc -b && npx vite build` 仍是等价的回退路径。",
+    "R037 环境事实（下轮直接用）：本机 **:8000 是 Vite dev server**（响应含 /@react-refresh，不是 dist 静态站），改了 src 会 HMR 自动生效，不需要重启；:7000 是 PocketBase。浏览器验证走 `source _qa/ab.sh` 的 ab_login/ab_go，**agent-browser 会话与 ref 都不跨 bash 调用保持**，必须同一次调用内 snapshot 取 ref 再 click（用 `agent-browser click @ref`，不要用 eval 的 .click()）。",
+    "R037 工作区卫生（下轮开工先处理）：工作区存在**与本轮无关的未提交改动** —— `src/components/model-config/PersonalConfigList.tsx`、`src/components/model-config/ModelMetaDialog.tsx`（新）、`src/pages/ModelConfig/ModelConfigPage.tsx`、`src/pages/ModelConfig/useModelConfig.ts`、`src/lib/modelMetaLocal.ts`(新)、`src/lib/modelProfiles.ts`(新) 及对应 2 个 .test.ts。本轮**刻意未碰**（红线：不做与本轮主题无关的改动）。副作用：全量 eslint 因此从 160 升到 161（多出的 1 条在 ModelMetaDialog.tsx），全量 vitest 多 2 文件 / 16 用例。**请用户决定：提交、继续做、还是回滚这批 model-config 改动**，否则下轮门禁的「≤160」会持续处于假阳性。",
+    "R037 数据事实：PB 现有 2 份建设清单（93 行，其中 20 行有单价），**单价全部为整数，没有任何 3 位以上小数** —— 即本缺陷在当前真实数据上是**潜伏**的，触发条件是单价带 3 位以上小数（Excel 导入 / AI 生成清单 / 手工输入均可产生）。实机复测因此只能证明「未回归 + 小计之和 = 合计」，无法现场复现偏差。"
   ]
 }

@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "project": "xiaozhigongzuozhan",
+  "project_root": "D:\\重要文件\\工作的小程序\\xiaozhigongzuozhan",
+  "canonical_state": "docs/evolution/_loop_state.json",
+  "canonical_reports": "docs/evolution/R{round}_{YYYYMMDD}.md",
+  "note": "本文件是 2026-10-14 自动化作业按手册要求建立的账本。本项目既有的、被 autoloop 驱动器读取的权威账本仍是 docs/evolution/_loop_state.json —— 两者已同步，若冲突以 docs/evolution/_loop_state.json 为准。作业手册点名的 AI-ITERATION.md 在本仓库不存在（项目已注明其被删除），实际执行依据为 Qoder自主迭代提示词-v2.md。",
+  "round": 37,
+  "lastRoundSummary": {
+    "id": "R37",
+    "at": "2026-10-14T10:05+08:00",
+    "theme": "修 B9：建设清单金额分位精确化 —— calcTotal / subtotalOfLines / 分类小计 / Excel 逐行小计 / UI 行小计五条算路统一到 money.ts 口径（逐行精确到分 → 整数分累加 → 一次性转元）",
+    "class": "A（修）",
+    "severity": "S1（金额级正确性）",
+    "verdict": "pass",
+    "gates": {
+      "tsc": "pass",
+      "build": "pass（pnpm build 6.42s，E-1 阻塞已消失）",
+      "vitest": "pass（216 files / 2555 passed / 2 skipped）",
+      "eslint": "pass（本轮 5 文件 0 error；全量 161，+1 非本轮引入）"
+    }
+  },
+  "closed": [
+    {
+      "id": "B9",
+      "title": "建设清单 calcTotal 分位精确化（与 R034 报价域金额漂移同根；含 checklistExports 出口）",
+      "closed_at_round": "R37",
+      "evidence": {
+        "script": "docs/evolution/_r37_checklist_cent_audit.mts",
+        "command": "npx vite-node docs/evolution/_r37_checklist_cent_audit.mts",
+        "before": {
+          "badOldTotal": 140477,
+          "trials": 200000,
+          "badExportLineSumOld": 18083,
+          "badExportCatSumOld": 556
+        },
+        "after": {
+          "badNewTotal": 0,
+          "badExportMismatchNew": 0
+        },
+        "manual_case": "7 × 12345.678 精确 86419.75（旧浮点 86419.746）；合计 163580.43 → 163580.44",
+        "browser": "建设清单详情面板：{categories:10, sumOfSubtotals:4960000, total:4960000, equal:true}，控制台 0 error"
+      },
+      "diff_summary": {
+        "files": [
+          "src/pages/SolutionStudio/checklistTypes.ts（新增 lineSubtotalYuan / sumLinesYuan；calcTotal 重写）",
+          "src/pages/SolutionStudio/checklistSummary.ts（subtotalOfLines / summarizeChecklistCategories 同口径）",
+          "src/pages/SolutionStudio/checklistExports.ts（Excel 逐行小计 / 分类小计）",
+          "src/components/solution-studio/checklist/ChecklistDetailPanel.tsx（UI 行小计）",
+          "src/pages/SolutionStudio/checklistMoney.test.ts（新增，6 例）",
+          "docs/evolution/_r37_checklist_cent_audit.mts（新增，证据脚本）"
+        ],
+        "new_dependencies": 0,
+        "semantics_changed": false
+      },
+      "honest_notes": [
+        "缺陷在当前真实数据上是潜伏的：PB 现有 2 份清单 93 行，单价全为整数，无 3 位以上小数 → 实机无法现场复现偏差。",
+        "全量 eslint 160→161 的 +1 来自工作区既有未提交文件 src/components/model-config/ModelMetaDialog.tsx，非本轮引入。"
+      ]
+    }
+  ],
+  "backlog": [
+    { "id": "B12", "title": "价格分测算接 UI（R35 算法层 + R36 正确性已就绪，用户入口为 0）", "priority": "high", "source": "benchmark" },
+    { "id": "B8", "title": "折扣语义歧义入口（不静默钳位；折扣 <5 弹确认 0.9% vs 90%）", "priority": "high", "source": "self-found" },
+    { "id": "B1", "title": "R031 遗留 A1-A6：编制层（大纲去重/gen_status/★响应/规定目录/数字一致性/评分落点门禁）", "priority": "high", "source": "round-report" },
+    { "id": "B2", "title": "条款-响应合规矩阵可视化（数据链与偏离表导出已落地，降级为产品判断）", "priority": "medium", "source": "benchmark" },
+    { "id": "B10", "title": "报价总额 ↔ 标书正文报价数字对账", "priority": "medium", "source": "round-report" },
+    { "id": "B4", "title": "评分表/表格化条款的结构化解析（剩余为扫描件表格保真）", "priority": "medium", "source": "benchmark" },
+    { "id": "B5", "title": "投标复盘看板二期：胜率趋势 / 报价命中率", "priority": "medium", "source": "benchmark" },
+    { "id": "B6", "title": "公司模板中心二期：标书 Word OOXML 母版级保真", "priority": "medium", "source": "benchmark" },
+    { "id": "B7", "title": "作战驾驶舱指标与 PB 实际数据对账", "priority": "medium", "source": "round-report" },
+    { "id": "B13", "title": "价格分口径扩充：按元计扣分 / 单边费率 / 档位法 / 复合标底（需真实语料驱动）", "priority": "low", "source": "round-report" },
+    { "id": "B11", "title": "报价 PPT（deck）导出页的金额版式", "priority": "low", "source": "self-found" }
+  ],
+  "newFindings": [
+    {
+      "id": "F37-1",
+      "title": "工作区存在与本轮无关的未提交改动（model-config 一批 6 源文件 + 2 测试文件），导致全量 eslint 161 / vitest 多 2 文件",
+      "level": "P2",
+      "action": "本轮刻意未碰；需用户拍板 提交 / 继续 / 回滚"
+    },
+    {
+      "id": "F37-2",
+      "title": "E-1 阻塞已消失：本机 pnpm 升至 11.21.0，pnpm build 不再卡死（实测 6.42s exit 0）",
+      "level": "info",
+      "action": "建议正式关闭 .nightrun/state.json 里的 E-1"
+    },
+    {
+      "id": "F37-3",
+      "title": "环境事实：:8000 是 Vite dev server（非 dist 静态站），改 src 即 HMR 生效",
+      "level": "info",
+      "action": "已写入 docs/evolution/_loop_state.json 的 notes"
+    }
+  ],
+  "blocked": [
+    { "id": "D-12", "title": "导出 Word 空章节处理", "needs": "用户在 A（导出前警告）/ B（写占位）之间拍板" },
+    { "id": "B10-auth", "title": "自定义接口身份仅凭客户端请求头可伪造", "needs": "触碰身份认证红线，只能出方案" }
+  ],
+  "noProgressStreak": 0,
+  "lastRoundFiles": [
+    ".loop/reports/2026-10-14-1005.md",
+    "docs/evolution/R37_20261014.md",
+    "docs/evolution/_loop_state.json",
+    "docs/evolution/_r37_checklist_cent_audit.mts"
+  ]
+}

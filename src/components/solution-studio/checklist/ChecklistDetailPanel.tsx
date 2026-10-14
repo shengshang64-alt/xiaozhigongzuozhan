@@ -3,7 +3,7 @@ import { ArrowLeft, FileSpreadsheet, FileText, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { calcTotal, fmtMoney, targetLabel, type ChecklistLine } from "@/pages/SolutionStudio/checklistTypes"
+import { calcTotal, fmtMoney, lineSubtotalYuan, targetLabel, type ChecklistLine } from "@/pages/SolutionStudio/checklistTypes"
 import { buildChecklistTotals, subtotalOfLines } from "@/pages/SolutionStudio/checklistSummary"
 import type { UseChecklist } from "@/pages/SolutionStudio/checklistLogic"
 import { RatingHitsBadges, SourceBadge } from "./ChecklistBadges"
@@ -145,7 +145,7 @@ export function ChecklistDetailPanel({
                         onChange={(e) => ck.updateActiveLine(l.line_id, { unit_price: Number(e.target.value) || 0 })}
                       />
                     </td>
-                    <td className="px-3 py-2 text-foreground">{fmtMoney(l.qty * l.unit_price)}</td>
+                    <td className="px-3 py-2 text-foreground">{fmtMoney(lineSubtotalYuan(l))}</td>
                     <td className="px-3 py-2">
                       <RatingHitsBadges hits={l.rating_hits} />
                     </td>

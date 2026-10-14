@@ -1,4 +1,4 @@
-import { formatMoney } from "@/lib/money"
+import { centsToYuan, formatMoney, productCents } from "@/lib/money"
 import type { ChecklistSnapshot } from "./solutionTypes"
 
 // ---------------------------------------------------------------------------
@@ -220,10 +220,34 @@ export function lineSimilarity(a: string, b: string): number {
   return 1 - prev[n] / Math.max(m, n)
 }
 
+// ---------------------------------------------------------------------------
+// B9 建设清单金额精确到分（checklist-cent）
+//
+// 旧写法 `qty * unit_price` 直接走二进制浮点：单价带 3 位以上小数时（Excel 导入、
+// AI 生成清单、手工输入都会出现），真值在半分处会被浮点存成 …49999…，Math 显示层
+// 四舍五入后比手算少 1 分；更麻烦的是 Excel 导出里「逐行小计」「分类小计」「合计」
+// 三条算路各自独立累加，会互相打架（逐行加起来 ≠ 合计），属被质疑/废标级风险。
+// 口径统一到报价域 R034 的 money.ts：逐行精确到整数分，再以整数分累加，最后一次性转元。
+// ---------------------------------------------------------------------------
+
+/** 单行小计（元）：qty × unit_price，精确到分，与报价域同一口径 */
+export function lineSubtotalYuan(l: ChecklistLine): number {
+  return centsToYuan(productCents([Number(l.qty) || 0, Number(l.unit_price) || 0]))
+}
+
+/** 任意一组行的小计（元）：逐行精确到分后以整数分累加，避免二次浮点漂移 */
+export function sumLinesYuan(lines: ChecklistLine[]): number {
+  return centsToYuan(
+    (lines ?? []).reduce(
+      (cents, l) => cents + productCents([Number(l.qty) || 0, Number(l.unit_price) || 0]),
+      0,
+    ),
+  )
+}
+
+/** 勾选行合计（元）：剔除未勾选行后按 sumLinesYuan 口径累加 */
 export function calcTotal(lines: ChecklistLine[]): number {
-  return (lines ?? [])
-    .filter((l) => l.checked !== false)
-    .reduce((sum, l) => sum + (Number(l.qty) || 0) * (Number(l.unit_price) || 0), 0)
+  return sumLinesYuan((lines ?? []).filter((l) => l.checked !== false))
 }
 
 // Single money convention lives in @/lib/money (R113); the "¥ " prefix and
