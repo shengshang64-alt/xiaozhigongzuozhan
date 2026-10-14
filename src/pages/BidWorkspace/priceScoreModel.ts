@@ -400,6 +400,20 @@ export function fullScoreTargetPrice(
 
 const PRICE_ITEM_RE = /价格分|价格评分|报价得分|投标报价得分|价格权重|报价分/
 
+/**
+ * 列出所有价格分候选评分项及其识别结果（R38 接 UI 用）。
+ * findPriceScoringItem 只回「能算的那一项」，而面板在认不出时要说清是哪一项、为什么不算，
+ * 两者共用同一 PRICE_ITEM_RE 与 parsePriceFormula，不另立第二套口径。
+ */
+export function listPriceScoringCandidates(items: ScoringItem[]): {
+  item: ScoringItem
+  parse: PriceFormulaParse
+}[] {
+  return (items ?? [])
+    .filter((it) => PRICE_ITEM_RE.test(`${it.item}${it.criteria}`))
+    .map((it) => ({ item: it, parse: parsePriceFormula(it.criteria, it.score) }))
+}
+
 /** 从评分项里挑出价格分项并识别口径；跳过识别不出的项，便于 UI 只展示能算的 */
 export function findPriceScoringItem(items: ScoringItem[]): {
   item: ScoringItem

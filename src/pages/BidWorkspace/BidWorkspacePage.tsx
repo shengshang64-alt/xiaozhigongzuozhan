@@ -16,6 +16,7 @@ import { DefensePanel } from "@/components/bid-workspace/DefensePanel"
 import { MockEvalPanel } from "@/components/bid-workspace/MockEvalPanel"
 import { OpportunityLinkBar } from "@/components/bid-workspace/OpportunityLinkBar"
 import { ParseConfigDialog } from "@/components/bid-workspace/ParseConfigDialog"
+import { PriceScorePanel } from "@/components/bid-workspace/PriceScorePanel"
 import { ParseReportPanel } from "@/components/bid-workspace/ParseReportPanel"
 import { PipelineStepper } from "@/components/bid-workspace/PipelineStepper"
 import { ScoreCrossCheckPanel } from "@/components/bid-workspace/ScoreCrossCheckPanel"
@@ -532,6 +533,13 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                 evalPathFailed={p.evalPathFailed}
                 startEvalPathRerun={p.startEvalPathRerun}
                 isArchivedLocked={p.isArchivedLocked}
+              />
+              {/* R38（B12）：价格分测算——R35 算法层 + R36 临界价闭式解接进第 6 步（本地零 AI、零新集合） */}
+              <PriceScorePanel
+                key={p.activeProject?.id ?? "none"}
+                activeProject={p.activeProject}
+                quoteRefs={p.quoteRefs}
+                goParseStep={p.goParseStep}
               />
               <SubmissionCheckPanel
                 activeProject={p.activeProject}

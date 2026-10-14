@@ -704,12 +704,19 @@ routerAdd("POST", "/api/model-gw/test", (e) => {
       var urls = [b + "/chat/completions", b + "/v1/chat/completions"]
       var started = new Date().getTime()
       var lastStatus = 0
+      // R39：与 chatOnce 同口径——「测试连通性」也要真测一次对话，
+      // 否则 opencode.ai 这类「/models 通、chat 400」的通道会被标成健康可用（本次事故根因之一）。
+      var hdrs = { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" }
+      if (/opencode\.ai/i.test(b)) {
+        hdrs["x-opencode-session"] = "xiaozhi-bid-" + String(model || "go").replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 40)
+        hdrs["User-Agent"] = "xiaozhi-presales-desk/1.0"
+      }
       for (var i = 0; i < urls.length; i++) {
         try {
           var res = $http.send({
             url: urls[i],
             method: "POST",
-            headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+            headers: hdrs,
             body: JSON.stringify({ model: model, messages: messages, stream: false, max_tokens: maxTokens }),
             timeout: timeoutSec
           })
@@ -897,12 +904,22 @@ routerAdd("POST", "/api/model-gw/chat", (e) => {
       var tryPayload = payload
       var started = new Date().getTime()
       var lastStatus = 0
+      // R39（实测坐实）：OpenCode 的 GO 端点对非官方客户端强制要求会话标识头，缺省直接 400
+      // 「Request is missing x-opencode-session and cannot be routed efficiently」——
+      // 标书整本 22 段全灭、解析覆盖率掉到 2% 就是这么来的（而 /models 连通性检查返回 200，
+      // 配置页一直显示「ok」，真因被彻底埋掉）。按其文档补两件事：① 同一模型给稳定 session 头
+      // （便于上游路由与提示缓存）；② 自称应用 UA 而非通用 SDK 名。仅 opencode.ai 生效，其它通道零变化。
+      var hdrs = { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" }
+      if (/opencode\.ai/i.test(b)) {
+        hdrs["x-opencode-session"] = "xiaozhi-bid-" + String(model || "go").replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 40)
+        hdrs["User-Agent"] = "xiaozhi-presales-desk/1.0"
+      }
       for (var i = 0; i < urls.length; i++) {
         try {
           var res = $http.send({
             url: urls[i],
             method: "POST",
-            headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+            headers: hdrs,
             body: JSON.stringify(tryPayload),
             timeout: timeoutSec
           })

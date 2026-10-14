@@ -374,6 +374,7 @@ import { deriveSection, deriveTrack } from "@/lib/kbTaxonomy"
 import type { OpportunityRow } from "@/pages/CustomerManagement/customerTypes"
 // numeric-consistency-02（做法 B）：只复用 PptQuote 的类型与纯函数 quoteTotal（无副作用依赖，不拉重模块进标书 chunk）
 import { quoteTotal, type QuoteRecord } from "@/pages/PptQuote/pptQuoteTypes"
+import { parseSegmentsFailedMessage } from "./bidGenFailure"
 
 // ---------------------------------------------------------------------------
 // 数据请求（走 __pb 代理自定义路由）
@@ -866,6 +867,8 @@ async function parseSectionViaSegments(text: string, key: string): Promise<Parse
   if (segments.length > parseSegmentCap(key)) return parseSectionViaRetrieval(text, key)
   if (segments.length <= 1) return parseSectionViaWholeFile(segments[0] ?? "", key)
   const total = segments.length
+  // R39：留住每段的真实失败原因（此前被 catch 吞成空串，全灭时用户只看到「请重试」）
+  const segFailures: string[] = []
   const results = await Promise.all(
     segments.map(async (seg, i) => {
       try {
@@ -879,12 +882,14 @@ async function parseSectionViaSegments(text: string, key: string): Promise<Parse
         return { index: i + 1, total, content }
       } catch (e) {
         if (e instanceof AuthRequiredError) throw e
+        const msg = String((e as Error)?.message ?? e).trim()
+        if (msg && !segFailures.includes(msg)) segFailures.push(msg)
         return { index: i + 1, total, content: "" }
       }
     }),
   )
   const ok = results.filter((r) => r.content.trim())
-  if (!ok.length) throw new Error("分段解析全部失败，请重试")
+  if (!ok.length) throw new Error(parseSegmentsFailedMessage(segFailures))
   const merged = await llmGenerate(
     buildSegmentMergeMessages(key, ok, isJsonParseItem(key) ? "json" : "markdown"),
     MAX_TOKENS_LONGFORM,
@@ -1369,25 +1374,33 @@ export function useBidWorkspace() {
   // numeric-consistency-02（做法 B）：报价单快照（/ppt-quote 模块的记录）。随页面加载拉一次，
   // 失败静默置空＝交卷体检跳过报价单面不报错（与商机选项同款降级）；存 ref 供同步体检函数读取。
   const quoteRefsRef = useRef<QuoteTotalRef[]>([])
+  // R38（B12）：同一份快照并置 state —— ref 只服务于同步体检函数，React 渲染层读不到它，
+  // 而第 6 步「价格分测算」面板要把关联商机的报价单总额作为我方报价的单源带入。
+  const [quoteRefs, setQuoteRefs] = useState<QuoteTotalRef[]>([])
   useEffect(() => {
-    if (!userId) {
-      quoteRefsRef.current = []
-      return
-    }
+    // setState 一律放在异步回包里（effect 体内同步 setState 会级联渲染）；
+    // 未登录与拉取失败走同一分支归零，切换账号后不得残留上一账号的报价金额。
     void (async () => {
-      try {
-        const data = await apiFetch<ListResponse<QuoteRecord>>(
-          `/api/quotes?rh_user_id=${encodeURIComponent(userId)}&page=1&perPage=200`,
-        )
-        quoteRefsRef.current = (data.items ?? []).map((q) => ({
-          name: q.quote_name ?? "",
-          totalYuan: quoteTotal(q.groups),
-          updated: q.updated ?? "",
-          opportunityId: q.opportunity_id ?? "",
-        }))
-      } catch {
-        quoteRefsRef.current = []
+      let next: QuoteTotalRef[]
+      if (!userId) {
+        next = []
+      } else {
+        try {
+          const data = await apiFetch<ListResponse<QuoteRecord>>(
+            `/api/quotes?rh_user_id=${encodeURIComponent(userId)}&page=1&perPage=200`,
+          )
+          next = (data.items ?? []).map((q) => ({
+            name: q.quote_name ?? "",
+            totalYuan: quoteTotal(q.groups),
+            updated: q.updated ?? "",
+            opportunityId: q.opportunity_id ?? "",
+          }))
+        } catch {
+          next = []
+        }
       }
+      quoteRefsRef.current = next
+      setQuoteRefs(next)
     })()
   }, [userId])
 
@@ -9191,6 +9204,8 @@ export function useBidWorkspace() {
     // ⑦ 关联商机 + 结果登记回流（第四轮改造）
     oppOptions,
     oppOptionsCapped,
+    // R38（B12）：报价单快照（我方报价单源）暴露给渲染层，供第 6 步价格分测算面板取数
+    quoteRefs,
     dialogOppOptions,
     activeOppOptions,
     formOpportunityId,
