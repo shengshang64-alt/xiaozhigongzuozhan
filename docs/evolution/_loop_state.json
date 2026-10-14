@@ -27,9 +27,9 @@
     },
     {
       "id": "B0c-ui-regression",
-      "title": "UI 回归网（R42 已落地三张：DiscountCell 10 例 / NumCell 11 例 / DiscountIntentDialog 11 例，均 jsdom + testing-library，per-file @vitest-environment 覆盖不动全局 node 环境；三张都做过「删实现即变红」验证）。继续补高风险交互：GateChecklist 交卷闸门卡（未满足→强制放行需填备注、已确认→重置二次确认）——每次只补一层，改前先补测试",
-      "priority": "high",
-      "source": "self-found(R42 x3)"
+      "title": "UI 回归网（R42 已落地四张：DiscountCell 10 例 / NumCell 11 例 / DiscountIntentDialog 11 例 / GateChecklist 14 例 = 46 例，均 jsdom + testing-library，per-file @vitest-environment 覆盖不动全局 node 环境；四张都做过「删实现即变红」验证）。剩余可补：报价行编辑→小计/总额往返、导出前门禁拦截。此后新增 UI 高风险交互按「改前先补测试」继续",
+      "priority": "medium",
+      "source": "self-found(R42 x4)"
     },
     {
       "id": "B15",
