@@ -1,6 +1,6 @@
 {
   "round": 36,
-  "focus": "报价域连续落地：B12 价格分测算接 UI（R35 已交付算法层 priceScoreModel.ts，缺用户入口）或 B9 建设清单 calcTotal 分位精确化（纯逻辑、风险最低）。若做 B12：对手报价必须手输，competitor_evidence 里是中标金额不是投标报价，不可冒用。",
+  "focus": "修 B13（监工独立复验发现的价格分闭式解缺陷）：src/pages/BidWorkspace/priceScoreModel.ts 的 fullScoreTargetPrice 在「比值法 + 均价 + 下浮率」组合下漏乘下浮率，代码给 price=sum/n，真值应为 (1-fl)*S/(n+fl)。同文件偏差法分支本就是正确公式，只比值法分支漏。改完必须：① 补该组合的单测（现有 33 例未覆盖）；② 跑通 npx vite-node docs/evolution/_r35_foreman_recheck.mts 与 docs/evolution/_r35_price_score_recheck.mts 两个监工复验脚本（应全部通过）。",
   "lastRound": {
     "id": "R35",
     "theme": "GitHub 对标（BidMaster-Pro 评分矩阵/价格合理性）：价格分公式从「只抄不算」落地为确定性测算引擎 priceScoreModel.ts（414 行 + 33 例单测，零新依赖，含废标区间守护）",
@@ -14,6 +14,12 @@
     "eslint": "pass"
   },
   "backlog": [
+    {
+      "id": "B13",
+      "title": "【监工复验发现·必修】priceScoreModel.ts fullScoreTargetPrice 在「比值法 + 均价 + 下浮率」组合下闭式解漏乘下浮率：代码给 price=sum/n，真值应为 (1-fl)*S/(n+fl)。实例：均价口径 + 下浮3% + 对手 1000/2000/3000 万 → 代码临界价 2000 万（按它报回去只得 9.7 分，非满分），真值 1920.79 万（报回去 10 分）。同文件偏差法分支已是正确公式，仅比值法分支漏。修法：比值法分支改用 ((1-fl)*sum)/(n+fl)，并补该组合单测（现有 33 例未覆盖）。复验：npx vite-node docs/evolution/_r35_foreman_recheck.mts 与 docs/evolution/_r35_price_score_recheck.mts",
+      "priority": "high",
+      "source": "self-found"
+    },
     {
       "id": "B1",
       "title": "R031 遗留 A1-A6：编制层（大纲去重/gen_status/★响应/规定目录/数字一致性/评分落点门禁）",
@@ -101,6 +107,7 @@
       "at": "2026-10-14"
     }
   ],
+  "focus": "报价域连续落地：B12 价格分测算接 UI（R35 已交付算法层 priceScoreModel.ts，缺用户入口）或 B9 建设清单 calcTotal 分位精确化（纯逻辑、风险最低）。若做 B12：对手报价必须手输，competitor_evidence 里是中标金额不是投标报价，不可冒用。",
   "eslintBaselineNote": "160 为 2026-10-13 实测存量（53 文件，主因 react-hooks/set-state-in-effect 75 条 + any 19 条）。闭环只要求「不高于此数」，不要求清零——清零属独立治理任务。R034 复测仍为 160 error / 20 warning；R035 复测仍为 160 error / 20 warning（新增两文件单独 lint exit 0）。",
   "baseline": {
     "capturedAt": "2026-10-13",
