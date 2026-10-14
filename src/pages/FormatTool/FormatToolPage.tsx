@@ -82,6 +82,8 @@ export function FormatToolPage(vm: UseFormatTool) {
   const recognizeRef = useRef<HTMLInputElement>(null)
   // 附三用户需求：导出时可选删除文档中未应用的样式定义
   const [removeUnused, setRemoveUnused] = useState(false)
+  // R46：是否同步覆盖文字级/段落级直接格式（默认开——否则「格式写死在文字上」的文档刷了等于没刷）
+  const [overrideDirect, setOverrideDirect] = useState(true)
   // fmt6 向导本地 UI 态：刷新范围勾选（参与第 3 步比对）+ 刚保存标记（第 4 步完成态）
   const [scopes, setScopes] = useState<FormatScope[]>(["font", "heading", "spacing", "page"])
   const [justSaved, setJustSaved] = useState(false)
@@ -283,6 +285,18 @@ export function FormatToolPage(vm: UseFormatTool) {
                 <Save className="mr-1.5 h-4 w-4" />
                 {vm.busy ? "保存中…" : vm.editingId ? "更新模板" : "保存为模板"}
               </Button>
+              <label
+                className="flex cursor-pointer select-none items-center gap-1.5 text-xs text-muted-foreground"
+                title="按范围同步改写段落/文字上的直接格式（字体字号写死在 run 上、行距写在段落上时，只改样式表不会生效）。表格内文字与封面/自定义样式段落会跳过并如实提示"
+              >
+                <input
+                  type="checkbox"
+                  className="h-3.5 w-3.5 accent-[hsl(var(--primary))]"
+                  checked={overrideDirect}
+                  onChange={(e) => setOverrideDirect(e.target.checked)}
+                />
+                覆盖文字级直接格式
+              </label>
               <label className="flex cursor-pointer select-none items-center gap-1.5 text-xs text-muted-foreground" title="导出时删除文档中定义了但没有任何段落/文字引用的样式，精简样式表（默认样式与被引用样式保留）">
                 <input
                   type="checkbox"
@@ -295,7 +309,7 @@ export function FormatToolPage(vm: UseFormatTool) {
               {/* R-009 三段式：一键应用（改写+复检）→ 校验报告 → 导出（有 ✗ 二次确认） */}
               <Button
                 size="sm"
-                onClick={() => void vm.applyFormat(scopes, { removeUnusedStyles: removeUnused })}
+                onClick={() => void vm.applyFormat(scopes, { removeUnusedStyles: removeUnused, overrideDirectFormat: overrideDirect })}
                 disabled={!vm.sourceFile || vm.applying}
                 title={vm.sourceFile ? "按当前模板配置改写样式并自动复检四项范围，生成校验报告" : "先在第 1 步上传要刷新的 .docx 文档"}
                 className="bg-primary text-primary-foreground shadow-md hover:bg-primary/90"
@@ -319,7 +333,7 @@ export function FormatToolPage(vm: UseFormatTool) {
               <ApplyReportPanel report={vm.applyResult.report} notes={vm.applyResult.notes} />
             )}
             <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-              流程：先「一键应用格式」按当前模板配置改写上传文档并自动复检（正文字体、各级标题、行距、页边距四项，报告见下方），确认结果后点「导出刷新后文档」下载——下载的就是应用时的同一份产物，不会重复改写。存在 ✗ 未生效项时导出会再次提醒，可自行判断是否继续；正文文字始终 0 改动。勾选「删除未应用的样式」在应用时一并移除文档中无引用的冗余样式定义。保存后在标书工作台「格式与暗标设置」或方案导出设置中也可选该模板套用。{vm.editingId ? "正在编辑已选模板，改完点「更新模板」保存。" : ""}
+              流程：先「一键应用格式」按当前模板配置改写上传文档并自动复检（正文字体、各级标题、行距、页边距四项，报告见下方），确认结果后点「导出刷新后文档」下载——下载的就是应用时的同一份产物，不会重复改写。存在 ✗ 未生效项时导出会再次提醒，可自行判断是否继续；正文文字始终 0 改动。勾选「删除未应用的样式」在应用时一并移除文档中无引用的冗余样式定义；勾选「覆盖文字级直接格式」（默认开）会同步改写写在文字/段落上的字体字号与行距——很多成稿（含本项目导出的 docx）把格式写死在 run 与段落上，不开这项只改样式表会「看起来没变」。保存后在标书工作台「格式与暗标设置」或方案导出设置中也可选该模板套用。{vm.editingId ? "正在编辑已选模板，改完点「更新模板」保存。" : ""}
             </p>
           </div>
 
@@ -617,6 +631,16 @@ function ApplyReportPanel({ report, notes }: { report: FormatApplyReport; notes:
           </div>
         ))}
       </div>
+      {report.direct.bodyRuns + report.direct.headingRuns + report.direct.spacingParas + report.direct.indentParas > 0 && (
+        <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 pt-2 text-[11px] text-muted-foreground">
+          <span className="font-medium text-foreground">直接格式改写</span>
+          <span>文字级 · 正文 {report.direct.bodyRuns} 处 / 标题 {report.direct.headingRuns} 处</span>
+          <span>段落级 · 行距 {report.direct.spacingParas} 段 / 缩进 {report.direct.indentParas} 段</span>
+          {report.direct.protectedParas > 0 && (
+            <span className="text-warning">跳过 {report.direct.protectedParas} 段（表格内文字 / 封面与自定义样式）</span>
+          )}
+        </p>
+      )}
       {notes.length > 0 && (
         <details className="mt-2">
           <summary className="cursor-pointer select-none text-[11px] text-muted-foreground transition-colors hover:text-primary">

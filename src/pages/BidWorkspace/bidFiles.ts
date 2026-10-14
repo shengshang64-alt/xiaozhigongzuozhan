@@ -383,11 +383,21 @@ export async function downloadDocx(
   triggerBlobDownload(blob, fileName)
 }
 
+/**
+ * 现状默认导出（存量项目 format_settings=null 走此路径）用的默认字体。
+ * 必须显式写入：不写字体时 docx 里不会有任何 <w:rFonts>，Word 会落到主题默认字体，
+ * 导致「导出的标书字体不是仿宋/黑体」且格式识别/暗标检查读不到字体（R46 实测根因）。
+ */
+const DEFAULT_RUN_FONT: Record<"heading" | "body", { ascii: string; hAnsi: string; eastAsia: string }> = {
+  heading: { ascii: "SimHei", hAnsi: "SimHei", eastAsia: "黑体" },
+  body: { ascii: "FangSong", hAnsi: "FangSong", eastAsia: "仿宋" },
+}
+
 function titlePara(text: string): Paragraph {
   return new Paragraph({
     heading: HeadingLevel.TITLE,
     alignment: AlignmentType.CENTER,
-    children: [new TextRun({ text, bold: true, size: 40 })],
+    children: [new TextRun({ text, bold: true, size: 40, font: DEFAULT_RUN_FONT.heading })],
   })
 }
 
@@ -395,7 +405,7 @@ function h1(text: string): Paragraph {
   return new Paragraph({
     heading: HeadingLevel.HEADING_1,
     spacing: { before: 320, after: 200 },
-    children: [new TextRun({ text, bold: true, size: 30 })],
+    children: [new TextRun({ text, bold: true, size: 30, font: DEFAULT_RUN_FONT.heading })],
   })
 }
 
@@ -403,7 +413,7 @@ function h2(text: string): Paragraph {
   return new Paragraph({
     heading: HeadingLevel.HEADING_2,
     spacing: { before: 200, after: 120 },
-    children: [new TextRun({ text, bold: true, size: 26 })],
+    children: [new TextRun({ text, bold: true, size: 26, font: DEFAULT_RUN_FONT.heading })],
   })
 }
 
@@ -412,7 +422,7 @@ function h3(text: string): Paragraph {
   return new Paragraph({
     heading: HeadingLevel.HEADING_3,
     spacing: { before: 120, after: 80 },
-    children: [new TextRun({ text, bold: true, size: 24 })],
+    children: [new TextRun({ text, bold: true, size: 24, font: DEFAULT_RUN_FONT.heading })],
   })
 }
 
@@ -422,7 +432,7 @@ function body(text: string): Paragraph {
     alignment: AlignmentType.JUSTIFIED,
     indent: { firstLine: 480 },
     spacing: { after: 120, line: 360, lineRule: "auto" },
-    children: [new TextRun({ text, size: 24 })],
+    children: [new TextRun({ text, size: 24, font: DEFAULT_RUN_FONT.body })],
   })
 }
 
@@ -736,6 +746,7 @@ async function exportBidDocxDefaults(project: BidProjectRecord): Promise<void> {
         new TextRun({
           text: [project.hospital, project.tender_no].filter((x) => x).join(" · "),
           size: 24,
+          font: DEFAULT_RUN_FONT.body,
         }),
       ],
     }),
@@ -791,7 +802,7 @@ async function exportBidDocxDefaults(project: BidProjectRecord): Promise<void> {
             new Paragraph({
               alignment: AlignmentType.CENTER,
               spacing: { after: figCaption ? 40 : 160 },
-              children: [new TextRun({ text: spec.title, italics: true, size: 20 })],
+              children: [new TextRun({ text: spec.title, italics: true, size: 20, font: DEFAULT_RUN_FONT.body })],
             }),
           )
           if (figCaption) {
@@ -799,7 +810,7 @@ async function exportBidDocxDefaults(project: BidProjectRecord): Promise<void> {
               new Paragraph({
                 alignment: AlignmentType.CENTER,
                 spacing: { after: 160 },
-                children: [new TextRun({ text: figCaption, size: 18 })],
+                children: [new TextRun({ text: figCaption, size: 18, font: DEFAULT_RUN_FONT.body })],
               }),
             )
           }
@@ -837,7 +848,7 @@ async function exportBidDocxDefaults(project: BidProjectRecord): Promise<void> {
           new Paragraph({
             alignment: AlignmentType.CENTER,
             spacing: { after: figCaption ? 40 : 160 },
-            children: [new TextRun({ text: spec.title, italics: true, size: 20 })],
+            children: [new TextRun({ text: spec.title, italics: true, size: 20, font: DEFAULT_RUN_FONT.body })],
           }),
         )
         if (figCaption) {
@@ -845,7 +856,7 @@ async function exportBidDocxDefaults(project: BidProjectRecord): Promise<void> {
             new Paragraph({
               alignment: AlignmentType.CENTER,
               spacing: { after: 160 },
-              children: [new TextRun({ text: figCaption, size: 18 })],
+              children: [new TextRun({ text: figCaption, size: 18, font: DEFAULT_RUN_FONT.body })],
             }),
           )
         }

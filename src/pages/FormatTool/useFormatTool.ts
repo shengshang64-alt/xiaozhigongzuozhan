@@ -142,7 +142,7 @@ export function useFormatTool() {
 
   // ---- R-009：一键应用格式（应用 + 产出后复检，不直接下载）----
   const applyFormat = useCallback(
-    async (scopes: FormatScope[], opts?: { removeUnusedStyles?: boolean }) => {
+    async (scopes: FormatScope[], opts?: { removeUnusedStyles?: boolean; overrideDirectFormat?: boolean }) => {
       if (!sourceFile) {
         toast.error("请先在第 1 步上传要刷新的 .docx 文档")
         return
@@ -193,7 +193,7 @@ export function useFormatTool() {
   }, [applyResult, sourceFile])
 
   // ---- R58：按当前模板配置改写原文档并下载（文字 0 改动）----
-  const exportRefreshed = useCallback(async (scopes: FormatScope[], opts?: { removeUnusedStyles?: boolean }) => {
+  const exportRefreshed = useCallback(async (scopes: FormatScope[], opts?: { removeUnusedStyles?: boolean; overrideDirectFormat?: boolean }) => {
     if (!sourceFile) {
       toast.error("请先在第 1 步上传要刷新的 .docx 文档")
       return

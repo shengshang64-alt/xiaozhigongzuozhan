@@ -66,6 +66,12 @@ export type FormatSpec = {
   paragraphStyleCount: number
   /** 未被任何标题/正文命中的段落样式数（清理预览用） */
   styleSample: { styleId: string; name: string }[]
+  /** R46：正文格式来源——style（样式表）/ sampled（文字级抽样推定）/ default（均无，落系统默认） */
+  bodySource?: "style" | "sampled" | "default"
+  /** R46：抽样参与统计的正文字符数（0 = 未抽样） */
+  sampledChars?: number
+  /** R46：抽样中出现多种取值（正文混排多档字号/字体），已取字符数最多的一档 */
+  sampleAmbiguous?: boolean
 }
 
 // ---- XML 小工具：兼容带命名空间前缀与不带两种属性写法 --------------------
@@ -203,6 +209,141 @@ function guessPaper(w: number, h: number): FormatPaper {
   return best
 }
 
+// ---------------------------------------------------------------------------
+// R46：直接格式抽样（样式层为空时的兜底识别）
+//
+// 背景（实测）：本项目自己导出的成稿、以及商务在 Word 里手改过的稿子，常把字体字号写死在
+// 每个 run 的 <w:rPr> 上、把行距写在段落的 <w:pPr> 里，styles.xml 里既没有 Normal、也常
+// 没有 docDefaults。只读样式表会得到「正文: 字体 ? / 0pt / 行距 未设」的空识别结果——
+// 套用时只能落到系统默认值，用户以为识别成功、其实模板格式一点没读到。
+//
+// 这里补一层文字级抽样：按正文 / 各级标题段落，用「字符数加权的众数」推定字体、字号、
+// 行距、对齐、首行缩进，并在 FormatSpec 上标注来源（sampled），不把推定值伪装成样式事实。
+// ---------------------------------------------------------------------------
+
+function paraTextLen(el: Element): number {
+  const ts = el.getElementsByTagNameNS(WNS, "t")
+  let n = 0
+  for (let i = 0; i < ts.length; i++) n += (ts[i].textContent ?? "").length
+  return n
+}
+
+/** 是否位于表格内（表格格式属另一范围，不参与正文抽样） */
+function insideTable(el: Element): boolean {
+  let cur: Element | null = el.parentElement
+  while (cur) {
+    if (cur.localName === "tbl") return true
+    cur = cur.parentElement
+  }
+  return false
+}
+
+/** 字符数加权的众数；同时给出占比，用于判断是否「多值混排」 */
+function weightedMode(counts: Map<string, number>): { value: string; share: number } | null {
+  let best = ""
+  let bestW = 0
+  let total = 0
+  for (const [k, w] of counts) {
+    total += w
+    if (w > bestW) { bestW = w; best = k }
+  }
+  if (!best || total <= 0) return null
+  return { value: best, share: bestW / total }
+}
+
+function tallyOf(map: Map<string, number>, key: string, weight: number): void {
+  if (!key) return
+  map.set(key, (map.get(key) ?? 0) + weight)
+}
+
+type DirectBucket = {
+  font: Map<string, number>
+  ascii: Map<string, number>
+  size: Map<string, number>
+  line: Map<string, number>
+  align: Map<string, number>
+  indent: Map<string, number>
+  chars: number
+}
+
+function newBucket(): DirectBucket {
+  return { font: new Map(), ascii: new Map(), size: new Map(), line: new Map(), align: new Map(), indent: new Map(), chars: 0 }
+}
+
+type DirectSample = {
+  body: Partial<RawPara>
+  headings: Map<number, Partial<RawPara>>
+  bodyChars: number
+  ambiguous: boolean
+}
+
+function bucketPatch(b: DirectBucket): { patch: Partial<RawPara>; ambiguous: boolean } {
+  const patch: Partial<RawPara> = {}
+  let ambiguous = false
+  const f = weightedMode(b.font)
+  if (f) { patch.fontEastAsia = f.value; if (f.share < 0.9) ambiguous = true }
+  const a = weightedMode(b.ascii)
+  if (a) patch.fontAscii = a.value
+  const sz = weightedMode(b.size)
+  if (sz) { patch.sizePt = Number(sz.value); if (sz.share < 0.9) ambiguous = true }
+  const ln = weightedMode(b.line)
+  if (ln) patch.lineSpacing = ln.value
+  const al = weightedMode(b.align)
+  if (al) patch.align = al.value as FormatAlign
+  const ind = weightedMode(b.indent)
+  if (ind) patch.firstLineChars = Number(ind.value)
+  return { patch, ambiguous }
+}
+
+/** 按段落抽样文字级 / 段落级直接格式（字符数加权众数） */
+function sampleDirectFormat(docXml: Document, levelByStyleId: Map<string, number>): DirectSample {
+  const paras = docXml.getElementsByTagNameNS(WNS, "p")
+  const body = newBucket()
+  const heads = new Map<number, DirectBucket>()
+  for (let i = 0; i < paras.length; i++) {
+    const para = paras[i]
+    if (insideTable(para)) continue
+    const w = paraTextLen(para)
+    if (w <= 0) continue
+    const pPr = directChild(para, "pPr")
+    const pStyle = attr(directChild(pPr, "pStyle"), "val")
+    let bucket = body
+    if (pStyle) {
+      const lvl = levelByStyleId.get(pStyle) ?? 0
+      if (lvl >= 1) {
+        let b = heads.get(lvl)
+        if (!b) { b = newBucket(); heads.set(lvl, b) }
+        bucket = b
+      } else if (!/^(normal|正文|默认)/i.test(pStyle)) {
+        continue // 封面 / 自定义样式段落不参与抽样
+      }
+    }
+    bucket.chars += w
+    const pp = readParaProps(pPr)
+    if (pp.align) tallyOf(bucket.align, pp.align, w)
+    if (pp.lineSpacing) tallyOf(bucket.line, pp.lineSpacing, w)
+    if (pp.firstLineChars) tallyOf(bucket.indent, String(pp.firstLineChars), w)
+    const runs = para.getElementsByTagNameNS(WNS, "r")
+    for (let j = 0; j < runs.length; j++) {
+      const r = runs[j]
+      const rw = Math.max(1, paraTextLen(r))
+      const rp = readRunProps(directChild(r, "rPr"))
+      tallyOf(bucket.font, rp.fontEastAsia ?? "", rw)
+      tallyOf(bucket.ascii, rp.fontAscii ?? "", rw)
+      if (rp.sizePt) tallyOf(bucket.size, String(rp.sizePt), rw)
+    }
+  }
+  let ambiguous = false
+  const headsOut = new Map<number, Partial<RawPara>>()
+  for (const [lvl, b] of heads) {
+    const p = bucketPatch(b)
+    headsOut.set(lvl, p.patch)
+    if (p.ambiguous) ambiguous = true
+  }
+  const bp = bucketPatch(body)
+  return { body: bp.patch, headings: headsOut, bodyChars: body.chars, ambiguous: ambiguous || bp.ambiguous }
+}
+
 /**
  * 从 .docx 二进制识别格式规范。只读 styles.xml / document.xml，不落库、不上传。
  * 抛错交由上层捕获并提示（例如非 zip / 加密 / 缺部件）。
@@ -314,6 +455,36 @@ export async function extractFormatSpecFromFile(file: File): Promise<FormatSpec>
 
   const headings = Array.from(resolvedHeadings.values()).sort((a, b) => a.level - b.level)
 
+  // ---- R46 兜底：样式层为空时按文字级抽样推定（并如实标注来源）----
+  let bodySource: "style" | "sampled" | "default" = bodySpec.fontEastAsia || bodySpec.sizePt ? "style" : "default"
+  let sampledChars = 0
+  let sampleAmbiguous = false
+  if (docXml && (!bodySpec.fontEastAsia || !bodySpec.sizePt || headings.some((h) => !h.fontEastAsia || !h.sizePt))) {
+    const levelByStyleId = new Map<string, number>()
+    for (const h of headings) levelByStyleId.set(h.styleId, h.level)
+    const smp = sampleDirectFormat(docXml, levelByStyleId)
+    sampledChars = smp.bodyChars
+    sampleAmbiguous = smp.ambiguous
+    const b = smp.body
+    const filled = {
+      fontEastAsia: bodySpec.fontEastAsia || b.fontEastAsia || "",
+      fontAscii: bodySpec.fontAscii || b.fontAscii || "",
+      sizePt: bodySpec.sizePt || b.sizePt || 0,
+      lineSpacing: bodySpec.lineSpacing || b.lineSpacing || "",
+      align: (bodySpec.align || b.align || "") as FormatAlign | "",
+      firstLineChars: bodySpec.firstLineChars || b.firstLineChars || 0,
+    }
+    bodySpec = { ...bodySpec, ...filled }
+    if (bodySource === "default" && (filled.fontEastAsia || filled.sizePt)) bodySource = "sampled"
+    for (const h of headings) {
+      const hp = smp.headings.get(h.level)
+      if (!hp) continue
+      if (!h.fontEastAsia && hp.fontEastAsia) h.fontEastAsia = hp.fontEastAsia
+      if (!h.sizePt && hp.sizePt) h.sizePt = hp.sizePt
+      if (!h.align && hp.align) h.align = hp.align
+    }
+  }
+
   return {
     sourceFileName: file.name,
     page,
@@ -321,6 +492,9 @@ export async function extractFormatSpecFromFile(file: File): Promise<FormatSpec>
     headings,
     paragraphStyleCount,
     styleSample: sample,
+    bodySource,
+    sampledChars,
+    sampleAmbiguous,
   }
 }
 
@@ -391,6 +565,27 @@ export function specToFormatSettings(spec: FormatSpec): { settings: FormatSettin
     align: (spec.body.align || "justify") as FormatAlign,
     lineSpacing: spec.body.lineSpacing || "1.5倍",
   }
+  const fontRecovered = !!spec.body.fontEastAsia
+  const sizeRecovered = !!spec.body.sizePt
+  if (spec.bodySource === "sampled") {
+    const got: string[] = []
+    if (fontRecovered) got.push("字体")
+    if (sizeRecovered) got.push("字号")
+    if (spec.body.lineSpacing) got.push("行距")
+    if (got.length) {
+      notesSet.add(`该文档没有正文样式定义（格式写在文字上），${got.join(" / ")}按文字级抽样推定（参与 ${spec.sampledChars ?? 0} 字）`)
+    }
+    if (!fontRecovered) {
+      notesSet.add("原文档没有写入字体信息（既无正文样式，文字上也没有标字体），正文 / 标题字体按系统默认套用，如需指定字体请手动选择")
+    }
+    if (!sizeRecovered) notesSet.add("原文档没有写入字号信息，字号按系统默认套用")
+  } else if (spec.bodySource === "default") {
+    notesSet.add("该文档既无正文样式、也没有可抽样的文字级格式，正文格式按系统默认（仿宋 / 四号 / 1.5 倍）套用")
+  }
+  if (spec.headings.length && spec.headings.every((h) => !h.fontEastAsia)) {
+    notesSet.add("标题字体未被原文档写入，标题字体按系统默认黑体套用")
+  }
+  if (spec.sampleAmbiguous) notesSet.add("抽样中正文存在多种字体 / 字号，已取字符数最多的那一档")
   if (spec.body.sizePt && Math.abs(spec.body.sizePt - SIZE_PT[body.size]) > 0.6) {
     notesSet.add(`正文字号 ${spec.body.sizePt}pt 就近映射为 ${body.size}`)
   }
