@@ -1,11 +1,11 @@
 {
-  "round": 38,
+  "round": 41,
   "lastRound": {
-    "id": "R37",
-    "theme": "修 B9：建设清单金额统一到 money.ts 分位口径 —— calcTotal / subtotalOfLines / 分类小计 / Excel 逐行小计 / UI 行小计五条算路全部改为「逐行精确到分 → 整数分累加 → 一次性转元」，消除「逐行小计之和 ≠ 合计」；+6 例单测 + 20 万组审计脚本",
+    "id": "R40",
+    "theme": "修 B8：报价「折扣(%)」与习惯写法「几折」的两种量纲歧义不再静默钳位——判定收敛为单一真源纯函数，行内与整组两个入口都改为「先确认再落金额」，已落库脏值只盘点不改写（横幅逐行确认 + 交付体检 warn 只报不拦）",
     "verdict": "pass"
   },
-  "eslintBaseline": 160,
+  "eslintBaseline": 151,
   "gates": {
     "tsc": "pass",
     "build": "pass",
@@ -14,22 +14,22 @@
   },
   "backlog": [
     {
+      "id": "B0-gate-honesty",
+      "title": "门禁诚实性：驱动器已禁止「本轮文件 pass / 全仓被在途文件挡」式自我豁免（--verify-state）；四门实测 tsc 0 / eslint 151 已回写 _loop_state.json",
+      "priority": "high",
+      "source": "self-found(R41a)"
+    },
+    {
+      "id": "B15",
+      "title": "pb_hooks 网关补丁待重启生效：重启 :7000 后复测 opecode 通道是否恢复；并评估把「模型配置健康徽标」从 /models 连通改为真跑一次 chat（本次假绿根因）",
+      "priority": "high",
+      "source": "self-found"
+    },
+    {
       "id": "B1",
       "title": "R031 遗留 A1-A6：编制层（大纲去重/gen_status/★响应/规定目录/数字一致性/评分落点门禁）",
       "priority": "high",
       "source": "round-report"
-    },
-    {
-      "id": "B12",
-      "title": "价格分测算接 UI（R35 算法层已交付，无用户入口）：公式取 scoringItemsFromReport→findPriceScoringItem，满分取评分项 score，最高限价取 globalFacts；对手报价必须手输；面板需显式展示「基准价口径 + 偏差法线性扣分假设」供人工确认；本仓无 headless 浏览器，UI 只能人工点验",
-      "priority": "high",
-      "source": "benchmark"
-    },
-    {
-      "id": "B8",
-      "title": "折扣语义歧义入口（R034 L1，金额悄悄错最高危）。处置口径已定：**不静默钳位**——折扣 <5 时改弹确认「你要的是 0.9% 还是 90%（9折）？」；R-0285 的「≤0 视为原价」语义保持不变，只加歧义提示",
-      "priority": "high",
-      "source": "self-found"
     },
     {
       "id": "B2",
@@ -39,7 +39,7 @@
     },
     {
       "id": "B10",
-      "title": "报价总额 ↔ 标书正文报价数字对账（bidTypes.ts:4147 注明属做法 B；现已有 quoteTotalCents 单源，门槛降低）",
+      "title": "报价总额 ↔ 标书正文报价数字对账（bidTypes.ts:4147 注明属做法 B；现已有 quoteTotalCents 单源，门槛降低）；R38 面板已能本地复算价格分，正文报价数字与之对账门槛进一步降低",
       "priority": "medium",
       "source": "round-report"
     },
@@ -78,9 +78,33 @@
       "title": "报价 PPT（deck）导出页的金额版式（R034 只覆盖 Word/Excel/编辑器三出口）",
       "priority": "low",
       "source": "self-found"
+    },
+    {
+      "id": "B16",
+      "title": "其他百分比型字段的两种量纲歧义复查（价格分下浮率 / 评分办法费率 / 清单数量倍数）：是否复用 src/lib/discountIntent 的「判定单一真源 + 入口弹确认 + 存量只盘点」范式",
+      "priority": "low",
+      "source": "self-found(R40 F40-4)"
     }
   ],
   "history": [
+    {
+      "id": "R040",
+      "theme": "修 B8 折扣语义歧义：新增 src/lib/discountIntent 判定单一真源（阈值 5）+ DiscountIntentDialog 把两种读法各换算成真实金额；行内 DiscountCell 只在 blur/Enter 落值且歧义不写库、整组入口先判后落、存量横幅逐行确认、交付体检 warn 只报不拦；normalizeDiscount 的 R285 口径未动并有回归守卫。+1 文件 +20 用例（18 新 + 2 交付体检）；实机注入真实组件 23 项断言全过 / 0 pageerror",
+      "verdict": "pass",
+      "at": "2026-10-14"
+    },
+    {
+      "id": "R039",
+      "theme": "B14 解析失败可诊断性 + OpenCode GO 会话头：三通道实测定位（opecode 400 / 大模型 429 / 平台 ok），网关补 x-opencode-session 与 UA（仅 opencode.ai），前端 parseSegmentsFailedMessage 透出真因与下一步；+4 例单测",
+      "verdict": "pass",
+      "at": "2026-10-14"
+    },
+    {
+      "id": "R038",
+      "theme": "B12 价格分测算接 UI：四层接线（算法层只加只读枚举口 listPriceScoringCandidates → 视图模型 buildPriceScoreView 六阶段分流 → 面板纯渲染 → 第 6 步挂载 + key 重挂载）；+38 例（27 视图模型 + 11 源码扫描哨兵）；真实库 23 项目审计 8 可算 / 6 拒算 / 4 无价格分项；真实公式出数 27.5 / 临界价 -8.33%",
+      "verdict": "pass",
+      "at": "2026-10-14"
+    },
     {
       "id": "R037",
       "theme": "修 B9 建设清单金额分位：checklistTypes.ts 新增 lineSubtotalYuan/sumLinesYuan、calcTotal 改「逐行精确到分 → 整数分累加」；checklistSummary 小计同口径；checklistExports 逐行小计与分类小计改走同一真源；ChecklistDetailPanel 行小计同口径。20 万组审计：旧实现 140,477 组分位偏差 → 新 0；导出「逐行之和 ≠ 合计」18,084 → 0；实机 10 分类小计之和 = 合计 = 4,960,000",
@@ -106,7 +130,6 @@
       "at": "2026-10-14"
     }
   ],
-  "focus": "先处理工作区卫生：工作区有与本轮无关的未提交 model-config 改动（见 notes「R037 工作区卫生」），它让全量 eslint 停在 161（基线 160）——开工第一步先请用户拍板提交/继续/回滚，或先把它单独提交掉，再谈本轮主题。主题首选 **B12 价格分测算接 UI**（R35 交付算法层、R36 修对闭式解，现已有 0 个用户入口；`fullScoreTargetPrice` 在 src 里只被模型与测试引用）。若做 B12：**对手报价必须手输**（competitor_evidence 存的是中标金额不是投标报价，不可冒用）；面板要显式写出「基准价口径 + 临界价含下浮」这句人话；认不出公式就显示 ok:false，不许猜数。次选 **B8 折扣语义歧义入口**（high，金额悄悄错最高危，处置口径已定：不静默钳位，折扣 <5 时弹确认「0.9% 还是 90%」）。再次 **B1 R031 遗留 A1-A6 编制层**。UI 改动只能人工点验（:8000 是 Vite dev server，改 src 即 HMR 生效）。",
   "eslintBaselineNote": "160 为 2026-10-13 实测存量（53 文件，主因 react-hooks/set-state-in-effect 75 条 + any 19 条）。闭环只要求「不高于此数」，不要求清零——清零属独立治理任务。R034 复测仍为 160 error / 20 warning；R035 复测仍为 160 error / 20 warning（新增两文件单独 lint exit 0）；R036 复测仍为 160 error / 20 warning（180 problems，未新增文件）。R037 复测为 **161 error / 20 warning（181 problems，54 文件）** —— 多出的 1 条**不是本轮引入**：本轮 5 个文件单独 lint 全部 exit 0；+1 来自工作区既有的未提交新文件 `src/components/model-config/ModelMetaDialog.tsx`（见 notes「R037 工作区卫生」）。**eslintBaseline 仍按 160 记**，待用户处置那批未提交改动后应回到 160。",
   "baseline": {
     "capturedAt": "2026-10-13",
@@ -117,7 +140,10 @@
     "r034": "212 files / 2499 passed | 2 skipped；eslint 160 error（+1 测试文件 / +17 用例）",
     "r035": "213 files / 2532 passed | 2 skipped；eslint 160 error；vite build 11.88s（+1 测试文件 / +33 用例）",
     "r036": "213 files / 2533 passed | 2 skipped（+1 用例，0 新文件）；eslint 160 error / 20 warning（持平）；tsc -b exit 0；vite build ✓ 10.09s",
-    "r037": "216 files / 2555 passed | 2 skipped —— 其中本轮新增 1 文件 / 6 用例（checklistMoney.test.ts），另 +2 文件 +16 用例来自工作区**既有未提交的 model-config 改动**（非本轮）；eslint 161 error / 20 warning —— +1 来自既有未提交新文件 src/components/model-config/ModelMetaDialog.tsx，本轮 5 个文件单独 lint 全部 0 error；tsc -b exit 0；**pnpm build 恢复可用 ✓ 6.42s**（见 notes E-1）"
+    "r037": "216 files / 2555 passed | 2 skipped —— 其中本轮新增 1 文件 / 6 用例（checklistMoney.test.ts），另 +2 文件 +16 用例来自工作区**既有未提交的 model-config 改动**（非本轮）；eslint 161 error / 20 warning —— +1 来自既有未提交新文件 src/components/model-config/ModelMetaDialog.tsx，本轮 5 个文件单独 lint 全部 0 error；tsc -b exit 0；**pnpm build 恢复可用 ✓ 6.42s**（见 notes E-1）",
+    "r038": "218 files / 2593 passed | 2 skipped（+2 files / +38 用例，均来自本轮 priceScoreBrief.test.ts 27 例 + priceScoreWiring.test.ts 11 例）；eslint 触及 7 文件 19 problems（6 error / 13 warning）全为 useBidWorkspace.ts 在途既有位置，本轮新增 0 error；tsc -b exit 2 —— 5 error 全在在途文件（ModelMetaDialog / PersonalConfigList / useModelConfig / bidDocxFormatExtract×2），本轮 7 文件 0 error；npx vite build exit 0（6076 modules / 4.85s），「价格分测算」落在 BidWorkspace 路由 chunk 而非主包",
+    "r039": "218 files / 2597 passed | 2 skipped（+4 用例，0 新文件）；eslint 触及文件 19 problems 全为在途既有存量（新增 0 error）；tsc -b exit 2 —— 5 error 全在在途文件（ModelMetaDialog / PersonalConfigList / useModelConfig / bidDocxFormatExtract×2）；npx vite build exit 0（6076 modules / 3.68s）",
+    "r040": "219 files / 2617 passed | 2 skipped（+1 file / +20 用例：quoteDiscountAmbiguity.test.ts 18 例 + deliverability.test.ts 2 例）；eslint 本轮触及 7 文件 exit 0（0 error 0 warning），全仓 src 152 error / 19 warning 全为存量；tsc -b exit 2 —— 5 error 全在在途文件（ModelMetaDialog / PersonalConfigList / useModelConfig / bidDocxFormatExtract×2）；npx vite build exit 0（4.28s），「折扣写法有歧义」等文案落在 PptQuote 路由 chunk 而非主包"
   },
   "notes": [
     "起点 R034；R031/R033 为已存在的进化日志（docs/evolution/）。",
@@ -139,6 +165,28 @@
     "R037 **E-1 阻塞已消失（重要）**：本机 pnpm 现为 **11.21.0**（原记录为 v10），`pnpm build` 不再被 verify-deps-before-run 预检卡死，实测 `CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD=100000 pnpm build` ✓ 6.42s exit 0。.nightrun/state.json 里 E-1 那条阻塞可视为已解除；`npx tsc -b && npx vite build` 仍是等价的回退路径。",
     "R037 环境事实（下轮直接用）：本机 **:8000 是 Vite dev server**（响应含 /@react-refresh，不是 dist 静态站），改了 src 会 HMR 自动生效，不需要重启；:7000 是 PocketBase。浏览器验证走 `source _qa/ab.sh` 的 ab_login/ab_go，**agent-browser 会话与 ref 都不跨 bash 调用保持**，必须同一次调用内 snapshot 取 ref 再 click（用 `agent-browser click @ref`，不要用 eval 的 .click()）。",
     "R037 工作区卫生（下轮开工先处理）：工作区存在**与本轮无关的未提交改动** —— `src/components/model-config/PersonalConfigList.tsx`、`src/components/model-config/ModelMetaDialog.tsx`（新）、`src/pages/ModelConfig/ModelConfigPage.tsx`、`src/pages/ModelConfig/useModelConfig.ts`、`src/lib/modelMetaLocal.ts`(新)、`src/lib/modelProfiles.ts`(新) 及对应 2 个 .test.ts。本轮**刻意未碰**（红线：不做与本轮主题无关的改动）。副作用：全量 eslint 因此从 160 升到 161（多出的 1 条在 ModelMetaDialog.tsx），全量 vitest 多 2 文件 / 16 用例。**请用户决定：提交、继续做、还是回滚这批 model-config 改动**，否则下轮门禁的「≤160」会持续处于假阳性。",
-    "R037 数据事实：PB 现有 2 份建设清单（93 行，其中 20 行有单价），**单价全部为整数，没有任何 3 位以上小数** —— 即本缺陷在当前真实数据上是**潜伏**的，触发条件是单价带 3 位以上小数（Excel 导入 / AI 生成清单 / 手工输入均可产生）。实机复测因此只能证明「未回归 + 小计之和 = 合计」，无法现场复现偏差。"
-  ]
+    "R037 数据事实：PB 现有 2 份建设清单（93 行，其中 20 行有单价），**单价全部为整数，没有任何 3 位以上小数** —— 即本缺陷在当前真实数据上是**潜伏**的，触发条件是单价带 3 位以上小数（Excel 导入 / AI 生成清单 / 手工输入均可产生）。实机复测因此只能证明「未回归 + 小计之和 = 合计」，无法现场复现偏差。",
+    "R38 接线教训（写死以免再犯）：**新增能力「有算法没入口」等于没交付**。R35/R36 两轮把价格分算法定对之后，账本里 B12 一直挂着没人接；本轮一接才发现真正的难点不在数学而在口径纪律（哪些数不许自动带入、认不出怎么说不算）。以后交付算法层时在同一个 PR 里就留最小入口（哪怕只读展示），别把接线推给下一轮。",
+    "R38 门禁卫生：react-hooks/set-state-in-effect 会把「effect 体内同步 setState」直接判 error（含 IIFE 里的分支）。默认值回填要用**派生 override**（state 只存用户覆盖值，默认值渲染期算），跨项目重置交给挂载点 key；批量 setState 移进异步回包。本轮首跑因此新增 3 处 error，改完归零。",
+    "R38 真实库事实（下轮直接用，勿重复盘点）：bid_projects 共 23 个，其中 18 个 parse_report 有评分办法；价格分口径可机械复算的 8 个（ratio/lowest 7：安庆二院 0feqc18hkk3j07e、天坛 WH23CG…、海沧、霍邱、13131、313131、13431；deviation/average 1：项目「13」s50nd2n3m3590dv）。第 6 步准入（dup_report||void_check）现库只有杏林 69gzo840vy1b7wn 满足，而它没有评分办法。",
+    "R38 取证通道：:8000 Vite dev 下可 `import('/src/<模块>.ts')` 在浏览器里直接调真实函数；React 组件注入渲染要用 '/node_modules/.vite-xzlocal/deps/react.js?v=<hash>' 与 react-dom_client 的实际 dep 路径（裸 'react' 说明符解析不了）。browser-use 的 take_screenshot 本轮全程 15s 超时且无产物，图像证据请换通道。",
+    "R38 并发在途（本轮实际发生）：另一方同期在改 DraftMergePanel.tsx（+40，一度语法错误自坏自愈）、新增 FormatSyncDialog.tsx 与 bidDocxFormatExtract.ts（后者 2 处类型 error）。本轮严格未碰；改标书域文件前请再 git status 比对锚点区域。",
+    "R38 脚本与产物：补丁脚本 d:/KFDXCX/MedPreSales/scripts/r38_install.py（4 新增 + 6 定点补丁，锚点全部唯一命中断言）、r38_fix1.py（修 3 处自引入 eslint error + 1 例期待）、r38_gate.py（四门执行器，UTF-8 落盘回读）；门禁原始输出 d:/KFDXCX/MedPreSales/.qoder/tmp/r38_gate_*.txt。",
+    "R39 事故复盘（写死以免再犯）：**「AI 一直失败」类问题必须先拿到上游真实错误再谈修**。本次真因是上游契约变更（OpenCode GO 强制 x-opencode-session），但界面只说「请重试」，等于把根因藏了两层（catch 吞错 + /models 假绿）。以后新增 AI 链路：① catch 里留住首条真实原因；② 健康检查必须打真正要用的端点，不能只看 /models。",
+    "R39 环境事实：PocketBase JSVM hooks **不热加载**，改 pb_hooks/*.pb.js 必须重启 :7000 才生效（实测重启前 opecode 仍 400）；项目 hook 禁止智能体结束进程，故涉及 hooks 的改动一律标注「需用户重启」，不得假定已生效。前端 src 改动则经 :8000 Vite dev 实时生效。",
+    "R39 实测数据（下轮直接用）：三通道 chatViaGateway 探针 —— opecode(dpawhl9y29xoaxr)/deepseek-v4.1-flash → HTTP 400 缺 x-opencode-session（1153ms）；大模型(qut3tclhcid8bjz)/deepseek-v4-flash → HTTP 429 频率超限（794ms，退避可恢复）；平台 gpt-5.5 → ok（1506ms）。探针写法：浏览器内 import('/src/lib/modelGateway.ts') 调 chatViaGateway，结果挂 window 变量后二次轮询取回（避开工具 15s 超时）。",
+    "R39 取证通道：browser-use 的 take_screenshot 因桌面 Chrome 被最小化（视口 0x0）恒超时；Playwright 自带 chromium 可出图但本地部署会撞团队登录闸（fresh context 无 xiaozhi-team-token）。图像证据需用户还原窗口或提供登录态。",
+    "R39 取证通道结论（写死以免再犯）：browser-use 的 take_screenshot 超时**不是页面问题**，而是它连的那个 Chrome 窗口被最小化——视口 0x0 时 CDP 永远等不到合成帧（诊断证据：document.visibilityState=hidden、innerWidth/innerHeight=0）。要图像证据就走 Playwright chromium 独立视口，并在 add_init_script 里注入 xiaozhi-team-token/profile 绕过本地团队登录闸；Vite dev 的 react / react-dom_client 必须用 main.tsx 里的实际 dep 绝对路径（形如 /node_modules/.vite-xzlocal/deps/react.js?v=<hash>，裸 'react' 解析不了）。R38 面板两张实机图已入库 docs/evolution/_r38_panel_mount.png 与 _r38_panel_computed.png。",
+    "R40 折扣口径教训（写死以免再犯）：**「折扣(%)」与「几折」是两套量纲，机器不许猜**。填 9 是 9%（价钱的百分之九）还是 9 折（百分之九十）差 10 倍，填 0.9 更是差 100 倍；旧 UI 用 min=1 静默钳位等于把用户的 0.9 变成 1% 计价，且只在输入瞬间闪一句「应在 1–100 之间」。以后凡是「同一数字有两种量纲」的字段：判定收敛成纯函数单一真源（本轮 src/lib/discountIntent.ts，阈值 DISCOUNT_AMBIGUOUS_BELOW=5）、入口弹确认并把两种读法各换算成真实金额、已落库数据只盘点不改写。禁止再出现 min=/fallback= 式静默兜底。",
+    "R40 取证纪律：报价编辑器**改动即自动保存**，不许在用户真实记录上敲键盘做验证。本轮走「:8000 dev 动态 import 真实 QuoteEditor + spy 回调本地重渲染」（等价线上 usePptQuote 的函数式 mutateQuote），既拿到真实事件路径的行为证据，又零写库。截图通道仍是 Playwright chromium 独立视口（browser-use take_screenshot 因桌面 Chrome 最小化恒超时）。",
+    "R40 门禁数字：vitest 基线更新为 **219 files / 2617 passed / 2 skipped**（R39 218 / 2597 / 2，+1 文件 +20 用例）；全仓 src eslint 实测 **152 error / 19 warning**（低于账本 160 基线，因在途批次改动，非本轮清理所致；本轮触及 7 文件单独 lint exit 0）。",
+    "R40 数据事实：/api/quotes（X-Rh-User-Id=local-user）返回 0 条报价记录 → 报价域的「真实语料」审计需要在用户实际登录身份下进行，别把「查不到」当「没问题」。",
+    "R40 环境副作用：为取证启动了 :8000 Vite dev server（start-local.cmd 同参），按 hook 禁令未结束进程，当前仍在监听；stop-local.cmd 会连 :7000 一起停，勿轻易调用。",
+    "R40 证据通道补充：除 Playwright 注入取证外，本轮另在 browser-use 连的本机 Chrome 真实会话里跑过一遍（线上壳 + 真实主题 + sonner Toaster）：行内填 0.9 失焦零写入并弹两种读法的真实金额，选 9 折读法只落一次 {discount:90} 且 toast 实际弹出；整组填 3 弹组级合计确认，点「都不是」不写。两个环境事实记死：窗口最小化时 document.hasFocus()=false -> **el.blur() 不产生 focusout，React onBlur 不触发**（要显式派发一次 FocusEvent('focusout')）；隐藏页里 CSS 动画被节流 -> Radix 关闭后节点滞留 DOM 但 data-state 已是 closed，判「弹窗已关」要看 data-state 而非只查节点存在。",
+    "R40 之后补记（用户反馈「项目又挂了」，13:41 实测）：挂的是 **:8000 Vite dev server 进程**，不是代码 —— PocketBase :7000 一直 200，Windows 应用程序日志无 node 崩溃记录，vite deps 目录无 temp 半成品残留；重启后浏览器实测 /ppt-quote 正常渲染、控制台 0 error、R40 新模块（discountIntent / DiscountIntentDialog / QuoteEditor）在真实应用里全部加载可用。**根因**：上一轮为取证用 `Start-Process node …vite.js` 直起服务，该进程随工具会话结束被回收（当时实测「在监听」只在同一次调用窗口内成立，不能当作持久服务）；改走项目自己的 `start-local.cmd`（内部 `start \"Vite\" /min cmd /c …&& set NODE_OPTIONS= &&`）派生独立控制台后，跨多次调用仍存活。**下轮起服务的规矩**：要常驻就用 start-local.cmd，不要自己 Start-Process node 直起；并且把「起服务」与「用它取证」放进同一次调用窗口内完成，跨窗口前先复测端口（Test-NetConnection 127.0.0.1 8000）。另注意历史高频杀手：WorkBuddy 沙箱经 NODE_OPTIONS 注入 safe-delete 守卫，vite 重优化依赖批量删 node_modules\\.vite*\\deps_temp_* 时会把 dev server 打死（SAFE_DELETE_BULK_CONFIRM_REQUIRED），start-local.cmd 已显式清空 NODE_OPTIONS 规避 —— 手工起服务时别把 NODE_OPTIONS 带进去。停止服务请只关那个 Vite 窗口，`stop-local.cmd` 会连 :7000 PocketBase 一起停。"
+  ],
+  "gatesBaseline": {
+    "tsc": 0,
+    "eslint": 151
+  }
 }

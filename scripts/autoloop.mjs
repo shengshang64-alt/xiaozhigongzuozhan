@@ -12,6 +12,7 @@
  *   node scripts/autoloop.mjs --dry-run              只组装提示词并落盘，不调用 AI
  *   node scripts/autoloop.mjs --rounds 5             连续跑 5 轮（默认 1 轮）
  *   node scripts/autoloop.mjs --gate-only            只跑门禁复验（零费用）
+ *   node scripts/autoloop.mjs --verify-state         只校验状态文件口径（零费用，不跑门禁）
  *
  * 产物：
  *   docs/evolution/_loop_state.json   状态（轮次/基线/backlog/history）
@@ -38,7 +39,16 @@ const STATE_FILE = path.join(EVOLUTION_DIR, '_loop_state.json')
 const STOP_FILE = path.join(EVOLUTION_DIR, '_STOP.md')
 const RUN_LOG = path.join(EVOLUTION_DIR, '_autoloop.log')
 
-const ESLINT_BASELINE_FALLBACK = 160
+/**
+ * 门禁基线（口径约定，2026-10-14 起）——唯一真源是**仓库根命令的实测输出**：
+ *   tsc  ：`npx tsc -b` 的 error 数，恒为 0（绝对；不接受「本轮文件 pass / 全仓被在途文件挡」这类豁免口径）
+ *   eslint：`npx eslint .`（仓库根，不是 src/ 子集）的 error 数
+ * 改基线流程：改 eslint.config.js 忽略项或修代码 → 重跑命令 → 把实测数字写回此处与
+ * _loop_state.json.gatesBaseline，两处必须相等（verifyStateIntegrity 会校验）。
+ * 实测：2026-10-14 `npx eslint .` → 151 error / 19 warning；`npx tsc -b` → 0 error。
+ */
+const ESLINT_BASELINE_FALLBACK = 151
+const TSC_BASELINE = 0
 const START_ROUND = 34
 
 /** 注入给 Qoder 及其所有子进程的环境（见文件头「沙箱约束」） */
@@ -132,6 +142,7 @@ function defaultState() {
     round: START_ROUND,
     lastRound: null,
     eslintBaseline: ESLINT_BASELINE_FALLBACK,
+    gatesBaseline: { tsc: TSC_BASELINE, eslint: ESLINT_BASELINE_FALLBACK },
     gates: {},
     backlog: [],
     history: [],
@@ -139,12 +150,47 @@ function defaultState() {
 }
 
 function readState() {
+  let parsed
   try {
-    const parsed = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'))
-    return { ...defaultState(), ...parsed }
+    parsed = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'))
   } catch {
     return defaultState()
   }
+  const state = { ...defaultState(), ...parsed }
+  // 兼容老状态：只有 eslintBaseline、没有 gatesBaseline 时以 eslintBaseline 为准
+  const gb = { ...defaultState().gatesBaseline, ...(parsed.gatesBaseline || {}) }
+  if (!parsed.gatesBaseline && typeof parsed.eslintBaseline === 'number') gb.eslint = parsed.eslintBaseline
+  state.gatesBaseline = gb
+  return state
+}
+
+/**
+ * 状态文件口径自检（零费用）。核心目的：**禁止「自我豁免」**。
+ * 历史教训（R38~R40）：_loop_state.json 里 lastRound.verdict 写 pass，同时 gates.tsc 却写
+ * 「本轮文件 pass / 全仓被在途文件挡」——用一个自定义分母把红门说成绿门，驱动器照常判绿。
+ * 规则：verdict=pass 时 gates 每一项必须**严格等于字符串 pass**，且四门齐全。
+ */
+function verifyStateIntegrity(state) {
+  const problems = []
+  const gb = state.gatesBaseline || {}
+  if (typeof gb.tsc !== 'number') problems.push('gatesBaseline.tsc 缺失或非数字')
+  if (typeof gb.eslint !== 'number') problems.push('gatesBaseline.eslint 缺失或非数字')
+  if (typeof state.eslintBaseline === 'number' && typeof gb.eslint === 'number' && state.eslintBaseline !== gb.eslint) {
+    problems.push(`eslintBaseline(${state.eslintBaseline}) 与 gatesBaseline.eslint(${gb.eslint}) 不一致——两处数字必须同源`)
+  }
+  const verdict = state.lastRound && state.lastRound.verdict
+  const gates = state.gates || {}
+  const keys = Object.keys(gates)
+  if (verdict === 'pass') {
+    if (!keys.length) problems.push('lastRound.verdict=pass 但 gates 为空——没有门禁记录就不许判 pass')
+    for (const k of keys) {
+      if (gates[k] !== 'pass') problems.push(`自我豁免：verdict=pass 但 gates.${k}=${JSON.stringify(gates[k])}`)
+    }
+    for (const need of ['tsc', 'build', 'vitest', 'eslint']) {
+      if (!(need in gates)) problems.push(`自我豁免：verdict=pass 但 gates 缺 ${need} 项`)
+    }
+  }
+  return problems
 }
 
 function writeState(state) {
@@ -155,17 +201,21 @@ function writeState(state) {
 /**
  * 轮末提交驱动器产物（状态 / 轮报 / 日志），保持工作区干净——否则下一轮开工时
  * 状态文件恒为「已修改」，既污染 git 又让 Qoder 的「开工先看 git status」失去意义。
- * 只 add docs/evolution；若仍有其它未提交改动（说明 Qoder 未按 §6 提交完），只告警不代提。
+ * add docs/evolution 与 .loop；若仍有其它未提交改动（说明 Qoder 未按 §6 提交完），只告警不代提，并把路径写回 state.leftover。
  */
 async function commitArtifacts(roundId) {
   await run('git', ['add', 'docs/evolution'], { timeoutMs: 60000 })
+  await run('git', ['add', '.loop'], { timeoutMs: 60000 })
   const staged = await run('git', ['status', '--porcelain'], { timeoutMs: 60000 })
-  if (!staged.stdout.trim()) return { committed: false, leftover: 0 }
+  if (!staged.stdout.trim()) return { committed: false, leftover: 0, leftoverPaths: [] }
   const c = await run('git', ['commit', '-q', '-m', `chore(loop): ${roundId} 驱动器回写状态与日志`], { timeoutMs: 60000 })
   const after = await run('git', ['status', '--porcelain'], { timeoutMs: 60000 })
-  const leftover = after.stdout.trim() ? after.stdout.trim().split(/\r?\n/).length : 0
-  if (leftover) log(`⚠ 轮末仍有 ${leftover} 项未提交（非 docs/evolution；Qoder 可能未按 §6 提交，留人工核查）`)
-  return { committed: c.code === 0, leftover }
+  const leftoverPaths = after.stdout.trim() ? after.stdout.trim().split(/\r?\n/) : []
+  if (leftoverPaths.length) {
+    log(`⚠ 轮末仍有 ${leftoverPaths.length} 项未提交（非驱动器产物；Qoder 可能未按 §6 提交，留人工核查）：`)
+    leftoverPaths.slice(0, 10).forEach((l) => log(`    ${l}`))
+  }
+  return { committed: c.code === 0, leftover: leftoverPaths.length, leftoverPaths }
 }
 
 // ---------------------------------------------------------------- 提示词组装
@@ -204,7 +254,8 @@ async function buildPrompt(state, seq, total) {
     '',
     `- 轮次：**R${state.round}**（本次运行第 ${seq}/${total} 轮）`,
     `- 工作区未提交改动：${dirtyCount} 项${dirtyCount ? '（开工前按 §1 第 4 条处理：与本轮无关的先提交或回滚）' : '（干净）'}`,
-    `- eslint 基线：**${state.eslintBaseline}**（本轮结束不得高于此数）`,
+    `- 门禁基线（全仓口径）：tsc **≤${state.gatesBaseline.tsc} error**（绝对）/ eslint **≤${state.gatesBaseline.eslint} error**`,
+    '- 判绿规则：verdict 写 pass 时 gates 每一项必须严格等于 pass（字符串）；写「本轮文件 pass / 全仓被在途文件挡」这类豁免口径会被 --verify-state 判为自我豁免并停机',
     `- 上轮结论：${state.lastRound ? `${state.lastRound.id} · ${state.lastRound.theme} · ${state.lastRound.verdict}` : '（无，可能是首轮）'}`,
     `- backlog 当前项：${backlogText}`,
     ...(state.focus
@@ -247,7 +298,7 @@ async function gateTsc() {
   const r = await run('npx', ['tsc', '-b'], { timeoutMs: MAX_GATE_MS })
   const out = (r.stdout + r.stderr).trim()
   const errors = (out.match(/error TS\d+/g) || []).length
-  return { name: 'tsc', ok: r.code === 0 && errors === 0, detail: errors ? `${errors} 个 error：${lastLines(out, 2)}` : '0 error' }
+  return { name: 'tsc', ok: r.code === 0 && errors === 0, detail: errors ? `${errors} 个 error：${lastLines(out, 2)}` : `0 error / 基线 ${TSC_BASELINE}` }
 }
 
 async function gateBuild() {
@@ -383,7 +434,8 @@ async function doCheck() {
   log('=== 环境预检（零费用） ===')
   const problems = await preflight()
   const state = readState()
-  log(`状态文件：轮次 R${state.round}，eslint 基线 ${state.eslintBaseline}，backlog ${state.backlog.length} 项`)
+  log(`状态文件：轮次 R${state.round}，门禁基线 tsc≤${state.gatesBaseline.tsc} / eslint≤${state.gatesBaseline.eslint}，backlog ${state.backlog.length} 项`)
+  verifyStateIntegrity(state).forEach((p) => problems.push(`[状态口径] ${p}`))
   const dirty = await gitStatusPorcelain()
   const dirtyCount = dirty ? dirty.split(/\r?\n/).length : 0
   log(`工作区未提交改动：${dirtyCount} 项`)
@@ -411,9 +463,26 @@ async function doDryRun(rounds) {
 async function doGateOnly() {
   const state = readState()
   log('=== 只跑门禁复验（零费用） ===')
-  const gates = await runAllGates(state.eslintBaseline)
+  const gates = await runAllGates(state.gatesBaseline.eslint)
   gates.forEach((g) => log(`  门禁 ${g.name}: ${g.ok ? 'PASS' : 'FAIL'} — ${g.detail}`))
   return gates.every((g) => g.ok) ? 0 : 1
+}
+
+// ---------------------------------------------------------------- 模式：--verify-state
+async function doVerifyState() {
+  log('=== 状态文件口径自检（零费用，不跑门禁） ===')
+  const state = readState()
+  log(`轮次 R${state.round}；lastRound=${state.lastRound ? `${state.lastRound.id}/${state.lastRound.verdict}` : '（无）'}`)
+  log(`门禁记录：${JSON.stringify(state.gates || {})}`)
+  log(`门禁基线：tsc≤${state.gatesBaseline.tsc} / eslint≤${state.gatesBaseline.eslint}`)
+  const problems = verifyStateIntegrity(state)
+  if (problems.length) {
+    problems.forEach((p) => log(`✗ ${p}`))
+    log('状态口径不合法——请按门禁实测数字修正 _loop_state.json 后再启动迭代。')
+    return 1
+  }
+  log('✓ 状态口径合法（无自我豁免、基线同源）。')
+  return 0
 }
 
 // ---------------------------------------------------------------- 主流程：多轮迭代
@@ -429,6 +498,14 @@ async function doRun(rounds) {
   for (let seq = 1; seq <= rounds; seq++) {
     const state = readState()
     log(`═══════════ 第 ${seq}/${rounds} 轮 · R${state.round} ═══════════`)
+
+    // 0) 状态口径自检：上一轮若以豁免口径判绿，立即停机——不带着假绿继续跑
+    const stateProblems = verifyStateIntegrity(state)
+    if (stateProblems.length) {
+      stateProblems.forEach((p) => log(`✗ [状态口径] ${p}`))
+      writeStop('状态文件口径不合法（疑似自我豁免）', stateProblems.map((p) => `- ${p}`).join('\n'))
+      return 1
+    }
 
     // 1) 组装并留档提示词
     const prompt = await buildPrompt(state, seq, rounds)
@@ -451,7 +528,7 @@ async function doRun(rounds) {
 
     // 3) 独立复验（不采信自述）
     log('独立复验四门…')
-    const gates = await runAllGates(state.eslintBaseline)
+    const gates = await runAllGates(state.gatesBaseline.eslint)
     gates.forEach((g) => log(`  门禁 ${g.name}: ${g.ok ? 'PASS' : 'FAIL'} — ${g.detail}`))
     const report = findReport(state.round)
     log(`轮报：${report || '未找到（异常）'}`)
@@ -462,6 +539,9 @@ async function doRun(rounds) {
     // 4) 回写状态（Qoder 未推进轮次时由驱动器兜底推进）
     const after = readState()
     after.gates = Object.fromEntries(gates.map((g) => [g.name, g.ok ? 'pass' : 'fail']))
+    // 门禁基线与门禁结果同批回写，保证「数字」与「结论」出自同一次实测
+    after.gatesBaseline = { tsc: TSC_BASELINE, eslint: state.gatesBaseline.eslint }
+    after.eslintBaseline = state.gatesBaseline.eslint
     if (after.round <= state.round) {
       log(`注意：Qoder 未推进轮次（仍为 ${after.round}），驱动器代为 +1`)
       after.round = state.round + 1
@@ -479,6 +559,11 @@ async function doRun(rounds) {
 
     // 4b) 提交驱动器产物，保持工作区干净（否则下一轮开工恒为「1 项未提交」）
     const ci = await commitArtifacts(`R${state.round}`)
+    if (ci.leftover) {
+      const st = readState()
+      st.leftover = { at: nowIso(), count: ci.leftover, paths: ci.leftoverPaths.slice(0, 20) }
+      writeState(st)
+    }
     if (ci.committed) log(`已提交驱动器产物（R${state.round}），工作区剩余未提交：${ci.leftover}`)
 
     // 5) 失败计数与停机
@@ -502,13 +587,14 @@ async function doRun(rounds) {
 
 // ---------------------------------------------------------------- 入口
 function parseArgs(argv) {
-  const out = { rounds: 1, check: false, dryRun: false, gateOnly: false, help: false }
+  const out = { rounds: 1, check: false, dryRun: false, gateOnly: false, verifyState: false, help: false }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--rounds' || a === '-r') out.rounds = Math.max(1, Number(argv[++i]) || 1)
     else if (a === '--check') out.check = true
     else if (a === '--dry-run') out.dryRun = true
     else if (a === '--gate-only') out.gateOnly = true
+    else if (a === '--verify-state') out.verifyState = true
     else if (a === '--help' || a === '-h') out.help = true
   }
   return out
@@ -521,6 +607,7 @@ function printHelp() {
     '  node scripts/autoloop.mjs --check              环境预检（零费用）',
     '  node scripts/autoloop.mjs --dry-run            组装提示词落盘，不调用 AI',
     '  node scripts/autoloop.mjs --gate-only          只跑四门门禁复验（零费用）',
+    '  node scripts/autoloop.mjs --verify-state       只校验状态文件口径（零费用）',
     '  node scripts/autoloop.mjs --rounds 5           连续跑 5 轮',
     '',
     `  提示词：${PROMPT_FILE}`,
@@ -534,6 +621,7 @@ async function main() {
   if (args.help) { printHelp(); return 0 }
   if (args.check) return doCheck()
   if (args.gateOnly) return doGateOnly()
+  if (args.verifyState) return doVerifyState()
   if (args.dryRun) return doDryRun(args.rounds)
   return doRun(args.rounds)
 }
