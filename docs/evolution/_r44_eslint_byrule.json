@@ -1,0 +1,44 @@
+{
+  "_note": "eslint 存量债按规则分档快照。与门禁同口径：仓库根 `eslint . -f json`。totals 必须与 eslint-budget.json / _loop_state.json 同源。",
+  "capturedAt": "2026-10-14",
+  "round": "R44",
+  "command": "npx eslint . -f json",
+  "filesLinted": 780,
+  "errors": 119,
+  "warnings": 13,
+  "errorsByRule": {
+    "react-hooks/set-state-in-effect": 73,
+    "react-hooks/preserve-manual-memoization": 25,
+    "react-hooks/immutability": 10,
+    "react-refresh/only-export-components": 7,
+    "react-hooks/refs": 4
+  },
+  "warningsByRule": {
+    "react-hooks/exhaustive-deps": 13
+  },
+  "priorSnapshot": {
+    "source": ".probe/eslint_r41.json（R41 实测存档）",
+    "filesLinted": 822,
+    "errors": 163,
+    "warnings": 20,
+    "errorsByRule": {
+      "react-hooks/set-state-in-effect": 77,
+      "react-hooks/preserve-manual-memoization": 25,
+      "@typescript-eslint/no-explicit-any": 19,
+      "react-hooks/immutability": 10,
+      "react-refresh/only-export-components": 7,
+      "no-useless-assignment": 5,
+      "no-useless-escape": 5,
+      "react-hooks/refs": 4,
+      "@typescript-eslint/no-unused-vars": 3,
+      "no-control-regex": 3,
+      "prefer-const": 3,
+      "no-irregular-whitespace": 1,
+      "preserve-caught-error": 1
+    },
+    "warningsByRule": {
+      "react-hooks/exhaustive-deps": 14,
+      "(no-rule：僵尸 eslint-disable / 其他)": 6
+    }
+  }
+}
