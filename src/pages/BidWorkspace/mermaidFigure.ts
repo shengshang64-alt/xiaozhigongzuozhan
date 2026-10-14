@@ -185,7 +185,7 @@ export async function repairMermaidCode(input: {
   code: string
   regenerate: (badCode: string, error: string) => Promise<string>
 }): Promise<string> {
-  let code = sanitizeMermaidCode(input.code)
+  const code = sanitizeMermaidCode(input.code)
   if (!code) return ""
   let error = await validateMermaidCode(code)
   if (!error) return code

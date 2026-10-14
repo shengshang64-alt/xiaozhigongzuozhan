@@ -70,7 +70,6 @@ function loadMiddleware(): (e: FakeEvent) => unknown {
   const snippet = lines.slice(start + 1, end).join("\n")
   const captured: Array<(e: FakeEvent) => unknown> = []
   const routerUse = (fn: (e: FakeEvent) => unknown): void => { captured.push(fn) }
-  // eslint-disable-next-line no-new-func, @typescript-eslint/no-implied-eval
   new Function("routerUse", snippet)(routerUse)
   expect(captured, "中间件标记区间内未调用 routerUse（标记位置可能已错）").toHaveLength(1)
   return captured[0]!

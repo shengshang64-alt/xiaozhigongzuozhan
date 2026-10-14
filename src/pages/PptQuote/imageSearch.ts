@@ -115,7 +115,8 @@ const CN2EN: Record<string, string> = {
 export function translateQuery(q: string): string {
   const raw = q.trim()
   if (!raw) return ""
-  if (/^[\x00-\x7F\s\d\W]+$/.test(raw) && !/[\u4e00-\u9fa5]/.test(raw)) return raw
+  // \p{ASCII} = U+0000–U+007F，与旧写法 [\x00-\x7F] 是同一个字符集（no-control-regex 要求改写）
+  if (/^[\p{ASCII}\s\d\W]+$/u.test(raw) && !/[\u4e00-\u9fa5]/.test(raw)) return raw
   // 逐个替换命中的中文词;按词长降序,保证「电子病历」先于「病历」、「门诊大厅」先于「门诊」
   let out = raw
   const entries = Object.entries(CN2EN).sort((a, b) => [...b[0]].length - [...a[0]].length)

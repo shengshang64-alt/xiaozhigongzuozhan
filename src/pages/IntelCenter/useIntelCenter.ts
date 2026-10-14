@@ -492,7 +492,6 @@ export function useIntelCenter() {
     void triggerTickRef.current()
     const timer = window.setInterval(() => void triggerTickRef.current(), 15 * 60 * 1000)
     return () => window.clearInterval(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // ------------------------------ 信息源 ------------------------------

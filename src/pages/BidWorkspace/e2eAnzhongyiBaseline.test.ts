@@ -1,20 +1,27 @@
 /** R-037 安中医真实夹具验收测试（零 AI，纯本地扫描）*/
 import { describe, expect, it } from "vitest"
 import { extractStarClauses, extractVoidClauses, extractRequirementStructureFromText, deriveStage } from "./bidTypes"
+
 const PB_BASE = process.env.PB_BASE || "http://192.168.1.3:8000"
 const PROJECT_ID = "mfl6howomsw5i0l"
+
+/** 真实记录字段远多于此，这里只声明断言真正用到的字段（替代 as any） */
+type ScoringItemLite = { name?: string }
+type ParseSectionLite = { key?: string; status?: string; structured?: { items?: ScoringItemLite[] } }
+type BidProjectLite = { tender_text?: string; parse_report?: { sections?: ParseSectionLite[] } }
+
 async function fetchTender(): Promise<string | null> {
   try {
     const res = await fetch(PB_BASE + "/api/collections/bid_projects/records/" + PROJECT_ID, { headers: { "X-Rh-User-Id": "e2e-bot" }, signal: AbortSignal.timeout(8000) })
     if (!res.ok) return null
-    return ((await res.json()) as any).tender_text ?? null
+    return ((await res.json()) as BidProjectLite).tender_text ?? null
   } catch { return null }
 }
-async function fetchRecord(): Promise<any | null> {
+async function fetchRecord(): Promise<BidProjectLite | null> {
   try {
     const res = await fetch(PB_BASE + "/api/collections/bid_projects/records/" + PROJECT_ID, { headers: { "X-Rh-User-Id": "e2e-bot" }, signal: AbortSignal.timeout(8000) })
     if (!res.ok) return null
-    return await res.json()
+    return (await res.json()) as BidProjectLite
   } catch { return null }
 }
 
@@ -42,23 +49,24 @@ describe("R-037 安中医真实夹具A(零AI)", () => {
     const t = await fetchTender(); if (!t) return
     const rec = await fetchRecord(); if (!rec?.parse_report) return
     // 团队配备不应在两分区都出现
-    const tech = rec.parse_report.sections?.find((s: any) => s.key === "tech_score")
-    const biz = rec.parse_report.sections?.find((s: any) => s.key === "biz_score")
+    const sections = rec.parse_report.sections ?? []
+    const tech = sections.find((s) => s.key === "tech_score")
+    const biz = sections.find((s) => s.key === "biz_score")
     if (tech?.structured?.items && biz?.structured?.items) {
-      const techTitles = new Set((tech.structured.items as any[]).map((i: any) => (i.name ?? "").replace(/\s+/g, "")))
-      const bizDup = (biz.structured.items as any[]).filter((i: any) => techTitles.has((i.name ?? "").replace(/\s+/g, "")))
+      const techTitles = new Set(tech.structured.items.map((i) => (i.name ?? "").replace(/\s+/g, "")))
+      const bizDup = biz.structured.items.filter((i) => techTitles.has((i.name ?? "").replace(/\s+/g, "")))
       // 未跑 validateScoringSections 前可能重复，跑后必须为空；
       // 去重断言由 composeGates.test.ts 单测覆盖，此处仅记录重复项数供人工核对
       void bizDup
-      expect(rec.parse_report.sections.length).toBeGreaterThan(0)
+      expect(sections.length).toBeGreaterThan(0)
     }
   }, 20000)
 
   it("P6 deriveStage 真实数据 stage=composing（解析后不再 pending_parse）", async () => {
     const rec = await fetchRecord(); if (!rec) return
     // 22 分区已解析完成（历史数据），deriveStage 应推进
-    if (rec.parse_report?.sections?.length && rec.parse_report.sections.every((s: any) => s.status !== "failed")) {
-      const stage = deriveStage(rec as any)
+    if (rec.parse_report?.sections?.length && rec.parse_report.sections.every((s) => s.status !== "failed")) {
+      const stage = deriveStage(rec as unknown as Parameters<typeof deriveStage>[0])
       expect(stage).not.toBe("pending_parse")
     }
   }, 20000)

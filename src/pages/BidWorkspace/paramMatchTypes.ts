@@ -105,7 +105,7 @@ export function judgeParam(row: ParamRow): ParamVerdict {
   const meta = PARAM_MATCH[t]
   const guidance = meta.strategies.slice()
   let conflict: string | null = null
-  let level: ParamVerdict["level"] = "ok"
+  let level: ParamVerdict["level"]
   if (t === "full") {
     level = "ok"
   } else if (t === "partial") {

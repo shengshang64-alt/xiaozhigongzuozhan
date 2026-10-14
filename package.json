@@ -9,7 +9,9 @@
     "lint": "eslint .",
     "test": "vitest run",
     "preview": "vite preview",
-    "verify:migrations": "node scripts/health/verify-pb-migrations.mjs"
+    "verify:migrations": "node scripts/health/verify-pb-migrations.mjs",
+    "verify:eslint-budget": "node scripts/health/verify-eslint-budget.mjs",
+    "health:manual": "node scripts/health/manual-checks.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

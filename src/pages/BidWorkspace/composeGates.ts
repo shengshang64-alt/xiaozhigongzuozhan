@@ -85,7 +85,7 @@ export function detectGenStatusViolations(chapters: Chapter[]): GenStatusViolati
     if (ch.gen_status === "done" && !body) {
       out.push({ nodeId: ch.node_id, title: ch.title, gen_status: "done", reason: "正文为空但标记 done" })
     }
-    if (ch.gen_status === "failed" && !(ch as any).genError) {
+    if (ch.gen_status === "failed" && !(ch as Chapter & { genError?: unknown }).genError) {
       out.push({ nodeId: ch.node_id, title: ch.title, gen_status: "failed", reason: "失败未写 genError" })
     }
   }
@@ -330,7 +330,7 @@ export function detectResidualFragments(outline: OutlineNode[]): { title: string
       out.push({ title: t, reason: `标题过短（${t.length} 字），疑似残句` })
     } else if (/[,，、；;]$/.test(t)) {
       out.push({ title: t.slice(-20), reason: "标题以标点结尾，疑似截断残句" })
-    } else if (/\（[^\）]*$|\([^\)]*$/.test(t)) {
+    } else if (/(（[^）]*$)|\([^)]*$/.test(t)) {
       out.push({ title: t.slice(-30), reason: "含未闭合括号" })
     }
   }

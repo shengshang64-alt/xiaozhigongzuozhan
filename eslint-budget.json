@@ -1,0 +1,16 @@
+{
+  "_note": "eslint 债务预算（对标 OHIF .react-compiler-lint-budget.json：把存量债写成显式、可审计、可下降的数字，而不是假装为零）。规则：只许下降；要上调必须先在当轮轮报里写明理由。totals.errors 必须与 docs/evolution/_loop_state.json 的 eslintBaseline / gatesBaseline.eslint 同源（verify:eslint-budget 会校验）。",
+  "capturedAt": "2026-10-14",
+  "round": "R44",
+  "totals": { "errors": 119, "warnings": 13 },
+  "errorsByRule": {
+    "react-hooks/set-state-in-effect": 73,
+    "react-hooks/preserve-manual-memoization": 25,
+    "react-hooks/immutability": 10,
+    "react-refresh/only-export-components": 7,
+    "react-hooks/refs": 4
+  },
+  "warningsByRule": {
+    "react-hooks/exhaustive-deps": 13
+  }
+}

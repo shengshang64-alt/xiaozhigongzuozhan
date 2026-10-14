@@ -694,6 +694,7 @@ async function withJsonRepair<T>(raw: string, parseFn: (text: string) => T): Pro
       throw new Error(
         `模型未按 JSON 格式返回（本次返回的是${raw ? `非结构化文本，如「${head}…」` : "空内容"}），` +
           `已中止而非生成空结果。请重试；若反复出现，请在「模型配置」切换其他模型，或减少本次生成的输入规模。`,
+        { cause: origErr },
       )
     }
     let repaired: string
@@ -1520,7 +1521,6 @@ export function useBidWorkspace() {
         toast.error(failMsg)
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   )
 
@@ -1763,7 +1763,6 @@ export function useBidWorkspace() {
         flushSettingsPatch()
       }, 300)
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [blockIfArchived, flushSettingsPatch],
   )
 
@@ -4584,7 +4583,6 @@ export function useBidWorkspace() {
       setEditingContent("")
       setImportDialogOpen(false)
       toast.success(`已引入方案「${sol.solution_name}」作底稿，可按招标要求继续调整`)
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     },
     [updateProject],
   )
@@ -8494,7 +8492,6 @@ export function useBidWorkspace() {
       if (oppId) toast.success("已关联商机，登记中标/失单结果后将自动同步到客户管理")
       else toast.success("已取消商机关联")
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [blockIfArchived, updateProject],
   )
 
@@ -8524,7 +8521,7 @@ export function useBidWorkspace() {
     async (rec: BidProjectRecord, skipFollowIfSynced: boolean): Promise<boolean> => {
       const result = rec.bid_result
       if (!rec.opportunity_id || (result !== "won" && result !== "lost")) return true
-      let updatedOpp: OpportunityRow | null = null
+      let updatedOpp: OpportunityRow | null
       try {
         const patch: Record<string, unknown> = { stage: result }
         if (result === "lost") patch.lost_reason = rec.lost_reason || ""
@@ -8633,7 +8630,6 @@ export function useBidWorkspace() {
       toast.success("投标结果已登记，关联商机后登记结果将自动同步到客户管理")
     }
     setResultSaving(false)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bidAmountDraft, blockIfArchived, resultDraft, resultLostReasonDraft, syncResultToOpportunity])
 
   /** 重新同步商机：以 result_synced_at 是否已写入判断是否跳过跟进记录，避免重复写 */

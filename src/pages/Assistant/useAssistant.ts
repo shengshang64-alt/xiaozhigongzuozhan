@@ -633,8 +633,8 @@ export function useAssistant(options?: UseAssistantOptions) {
         .slice(-20)
         .map((m) => ({ role: m.role, content: m.content }))
       let fetchCount = 0
-      let finalDisplay = ""
-      let finalMemories: { group: MemoryGroup; content: string }[] = []
+      let finalDisplay: string
+      let finalMemories: { group: MemoryGroup; content: string }[]
       try {
         for (;;) {
           if (ctrl.signal.aborted) throw new Error("user_cancelled")

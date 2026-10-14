@@ -101,8 +101,8 @@ function scanLines(src: string): ScanLine[] {
   const lines: ScanLine[] = []
   let offset = 0
   while (offset < src.length) {
-    let nl = src.indexOf("\n", offset)
-    let end = nl < 0 ? src.length : nl
+    const nl = src.indexOf("\n", offset)
+    const end = nl < 0 ? src.length : nl
     let text = src.slice(offset, end)
     if (text.endsWith("\r")) text = text.slice(0, -1)
     lines.push({ text, start: offset })

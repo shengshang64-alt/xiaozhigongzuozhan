@@ -13,7 +13,7 @@ export const MEMORY_FACT_RULES = `fact 准入检验（必须通过「时间无�
 - 绝对时间事件：今天/明天/下周几要做什么（那应记入待办，不是长期记忆）
 - 元话术：用户问了什么、你回答了什么
 正例：fact|用户主营电子病历与互联互通方向的三甲医院项目
-反例：fact|用户正在编辑第3章方案正文 ✘　fact|今天上传了一份招标文件 ✘`
+反例：fact|用户正在编辑第3章方案正文 ✘\u3000fact|今天上传了一份招标文件 ✘`
 
 /** 判断一条 fact 是否为明确的一次性/元话术表述（只拦无争议信号，宁缺勿滥） */
 export function isOneOffFact(content: string): boolean {

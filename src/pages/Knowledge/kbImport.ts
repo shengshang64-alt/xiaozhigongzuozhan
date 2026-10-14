@@ -26,7 +26,7 @@ function isSkippedFile(name: string): boolean {
   )
 }
 
-async function walk(dir: any, rel: string, out: PickedFile[]): Promise<void> {
+async function walk(dir: FileSystemDirectoryHandle, rel: string, out: PickedFile[]): Promise<void> {
   for await (const [name, handle] of dir.entries()) {
     if (handle.kind === "directory") {
       if (name.startsWith(".") || SKIP_DIR_RE.test(name)) continue
@@ -34,7 +34,7 @@ async function walk(dir: any, rel: string, out: PickedFile[]): Promise<void> {
     } else {
       if (!SUPPORTED_EXT_RE.test(name) || isSkippedFile(name)) continue
       try {
-        const file: File = await handle.getFile()
+        const file: File = await (handle as FileSystemFileHandle).getFile()
         if (file.size === 0 || file.size > MAX_FILE_BYTES) continue
         out.push({ file, relFolder: rel })
       } catch {
@@ -46,9 +46,9 @@ async function walk(dir: any, rel: string, out: PickedFile[]): Promise<void> {
 
 /** 打开目录选择器并遍历；用户取消返回 null */
 export async function pickAndWalkFolder(): Promise<{ rootName: string; files: PickedFile[] } | null> {
-  const w = window as unknown as { showDirectoryPicker?: (o?: unknown) => Promise<any> }
+  const w = window as unknown as { showDirectoryPicker?: (o?: unknown) => Promise<FileSystemDirectoryHandle> }
   if (typeof w.showDirectoryPicker !== "function") return null
-  let root: any
+  let root: FileSystemDirectoryHandle
   try {
     root = await w.showDirectoryPicker({ id: "kb-folder-import", mode: "read" })
   } catch {

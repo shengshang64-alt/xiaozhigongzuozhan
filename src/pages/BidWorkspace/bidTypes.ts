@@ -4546,12 +4546,9 @@ export function autoRepairChapter(
         s = s.replace(/^(\s*)(?:#{1,6}\s+|[-*+]\s+|>\s+)/, "$1")
         s = s.replace(glyphG, "")
       }
-      if (s !== before) {
-        decorLines += 1
-        line = s.replace(/\u0000(\d+)\u0000/g, (_, i) => slots[Number(i)] ?? "")
-      } else {
-        line = s.replace(/\u0000(\d+)\u0000/g, (_, i) => slots[Number(i)] ?? "")
-      }
+      if (s !== before) decorLines += 1
+      // eslint-disable-next-line no-control-regex -- 占位哨兵：槽位先写成 NUL+N+NUL 再由本行还原（清洗/占位正当场景，口径同 src/lib/fileName.ts）
+      line = s.replace(/\u0000(\d+)\u0000/g, (_, i) => slots[Number(i)] ?? "")
     }
 
     // ③ 元话语规范化（先保护【待填写】避免二次包裹）
