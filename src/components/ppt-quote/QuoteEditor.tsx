@@ -1,12 +1,14 @@
-import { useState } from "react"
-import { ArrowLeft, ChevronDown, FileSpreadsheet, FileText, FolderPlus, History, Import, Library, Plus, Sparkles, Trash2 } from "lucide-react"
+import { useMemo, useState } from "react"
+import { AlertTriangle, ArrowLeft, ChevronDown, FileSpreadsheet, FileText, FolderPlus, History, Import, Library, Plus, Sparkles, Trash2 } from "lucide-react"
 import {
+  discountAmbiguity,
   formatMoney,
   isCatalogLine,
   itemSubtotal,
   normalizeDiscount,
   quoteTotal,
   quoteTotalUpper,
+  scanAmbiguousDiscounts,
   type ProductItem,
   type QuoteItem,
   type QuoteRecord,
@@ -14,6 +16,7 @@ import {
 import { targetsLabel } from "@/pages/SolutionStudio/checklistTypes"
 import { fmtAmount } from "@/pages/CustomerManagement/customerTypes"
 import type { Recommendation } from "@/pages/PptQuote/quoteRecommend"
+import { DiscountIntentDialog, type DiscountAsk } from "./DiscountIntentDialog"
 import { ProductLibraryPanel } from "./ProductLibraryPanel"
 import { toast } from "sonner"
 
@@ -141,6 +144,87 @@ function NumCell({
   )
 }
 
+// B8（R40）：折扣单元格。与 NumCell 的分工差别就一条：**不许静默钳位**。
+//  - 0 < 值 < 5（可能想写「几折」）：失焦/回车时不写值，交回 DiscountIntentDialog 确认读法；
+//  - ≤0 / 空：沿用 R285 口径按原价 100 计并行内说明（旧实现 min=1 会把 0.9 悄悄钳成 1，
+//    整行金额只剩原价的 1%，且只在输入瞬间闪一句「应在 1–100 之间」）；
+//  - >100：归一到 100 并行内说明（与 normalizeDiscount 同口径）；
+//  - 只在 blur/Enter 落值：逐键提交会把「输入 90 途中经过 9」误判成歧义。
+function DiscountCell({
+  value,
+  ariaLabel,
+  onAsk,
+  onCommit,
+}: {
+  value: number
+  ariaLabel: string
+  onAsk: (raw: number) => void
+  onCommit: (n: number) => void
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const [hint, setHint] = useState("")
+  const shown = draft ?? String(value)
+
+  const commit = (raw: string) => {
+    const t = raw.trim()
+    if (t === "") {
+      onCommit(100)
+      setDraft(null)
+      setHint("")
+      return
+    }
+    const n = Number(t)
+    if (!Number.isFinite(n)) {
+      setDraft(null)
+      setHint("不是有效数字，已回到原值")
+      return
+    }
+    if (discountAmbiguity(n)) {
+      // 不写值、不钳位：把两种读法换算成钱，交回用户确认
+      setDraft(null)
+      setHint("")
+      onAsk(n)
+      return
+    }
+    const next = normalizeDiscount(n)
+    setDraft(null)
+    setHint(
+      next === n ? "" : n <= 0 ? "不填或 ≤0 按原价 100% 计（不会当成 0 折）" : "超过 100 按原价 100% 计",
+    )
+    onCommit(next)
+  }
+
+  return (
+    <div>
+      <input
+        type="number"
+        min={0}
+        max={100}
+        step="any"
+        aria-label={ariaLabel}
+        aria-invalid={Boolean(hint)}
+        title="按百分比计价：90 = 打 9 折；100 或不填 = 原价。想表达 9 折请填 90，不要填 9 或 0.9"
+        value={shown}
+        onChange={(e) => {
+          const raw = e.target.value
+          setDraft(raw)
+          setHint(discountAmbiguity(Number(raw)) ? "这个数可能是「折」，失焦后先让你确认" : "")
+        }}
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            const el = e.target as HTMLInputElement
+            commit(el.value)
+            el.blur()
+          }
+        }}
+        className={`${cellInput} text-right${hint ? " border-amber-500 focus-visible:ring-amber-500" : ""}`}
+      />
+      {hint && <p className="mt-0.5 text-xs leading-tight text-amber-600">{hint}</p>}
+    </div>
+  )
+}
+
 export function QuoteEditor({
   quote,
   totals,
@@ -186,6 +270,47 @@ export function QuoteEditor({
   const histQuotes = historyQuotes ?? []
   // quote-history-01 二期：成交参考区间面板默认展开
   const [recOpen, setRecOpen] = useState(true)
+
+  // B8（R40）：折扣歧义确认队列。填了个有歧义的数不再悄悄改金额，先让用户点清读法。
+  const [askQueue, setAskQueue] = useState<DiscountAsk[]>([])
+  const discountAsk = askQueue[0] ?? null
+  // 已落库数据里的歧义行（老记录里可能有被旧 min=1 钳位改成的 1%）：只盘点、不改写
+  const ambiguousRows = useMemo(() => scanAmbiguousDiscounts(quote.groups ?? []), [quote.groups])
+
+  const askDiscount = (a: DiscountAsk) => setAskQueue((q) => [...q, a])
+
+  const pickDiscount = (pct: number) => {
+    const cur = askQueue[0]
+    if (!cur) return
+    const d = normalizeDiscount(pct)
+    if (cur.scope === "row" && cur.itemId) updateItem(cur.groupId, cur.itemId, { discount: d })
+    else setGroupDiscount(cur.groupId, d)
+    setAskQueue((q) => q.slice(1))
+    toast.success(
+      cur.scope === "group"
+        ? `已把本组 ${cur.items.length} 行按 ${d}% 计价`
+        : `本行已按 ${d}% 计价`,
+    )
+  }
+
+  // 横幅「逐行确认」：把盘出来的歧义行按原样入队，逐笔点，绝不一键换算
+  const queueAmbiguousRows = () =>
+    setAskQueue(
+      ambiguousRows.map(
+        (l): DiscountAsk => {
+          const g = (quote.groups ?? []).find((x) => x.id === l.groupId)
+          const it = (g?.items ?? []).find((x) => x.id === l.itemId)
+          return {
+            scope: "row",
+            groupId: l.groupId,
+            itemId: l.itemId,
+            label: l.itemName,
+            raw: l.raw,
+            items: it ? [it] : [],
+          }
+        },
+      ),
+    )
 
   return (
     <section className="py-6 pb-16">
@@ -416,6 +541,25 @@ export function QuoteEditor({
         </div>
       ) : null}
 
+      {ambiguousRows.length > 0 && (
+        <div
+          role="status"
+          className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-600"
+        >
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          <span className="min-w-0 flex-1 leading-relaxed">
+            {`有 ${ambiguousRows.length} 行的折扣小于 5%（例：「${ambiguousRows[0].itemName}」填了 ${ambiguousRows[0].raw}），可能是按「几折」而不是按「百分之几」填的 —— 现在这些行按原价的百分之几计入合计，金额会悄悄错。`}
+          </span>
+          <button
+            type="button"
+            onClick={queueAmbiguousRows}
+            className="rounded-md border border-amber-500/60 bg-background px-2.5 py-1 text-xs font-medium text-amber-600 transition-colors hover:bg-amber-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            逐行确认
+          </button>
+        </div>
+      )}
+
       <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_300px]">
         <div className="space-y-5">
           {quote.groups.map((group) => (
@@ -445,6 +589,18 @@ export function QuoteEditor({
                         const n = Number(raw)
                         if (!Number.isFinite(n) || n <= 0) {
                           e.target.value = ""
+                          return
+                        }
+                        // B8（R40）：整组批量一次改 N 行，写错就是 N 倍金额同时错，歧义必须先确认
+                        if (discountAmbiguity(n)) {
+                          e.target.value = ""
+                          askDiscount({
+                            scope: "group",
+                            groupId: group.id,
+                            label: group.name || "未命名分组",
+                            raw: n,
+                            items: group.items ?? [],
+                          })
                           return
                         }
                         setGroupDiscount(group.id, n)
@@ -504,7 +660,7 @@ export function QuoteEditor({
                         <th className="w-16 px-2 py-2 font-medium">数量</th>
                         <th className="w-16 px-2 py-2 font-medium">单位</th>
                         <th className="w-24 px-2 py-2 font-medium">单价(元)</th>
-                        <th className="w-20 px-2 py-2 font-medium" title="按百分比计价：90 = 打 9 折；100 或不填 = 原价（与表尾「小计 = 数量 × 单价 × 折扣%」及导出 Excel 公式同口径）">
+                        <th className="w-20 px-2 py-2 font-medium" title="按百分比计价：90 = 打 9 折；100 或不填 = 原价（与表尾「小计 = 数量 × 单价 × 折扣%」及导出 Excel 公式同口径）。想表达 9 折填 90，不要填 9 或 0.9 —— 小于 5 的数会先弹确认，不再静默改金额">
                           折扣(%)
                         </th>
                         <th className="w-28 px-2 py-2 text-right font-medium">小计(元)</th>
@@ -619,15 +775,22 @@ export function QuoteEditor({
                                 onCommit={(n) => updateItem(group.id, item.id, { price: n })}
                               />
                             </td>
-                            {/* 折扣%（r281-quote-discount-no-entry：补上全链路缺失的录入入口；min=1 + 失焦回落 100，UI 层不可能落 0） */}
+                            {/* 折扣%（R285 补上入口；R40/B8 改为歧义确认：不再静默钳位，≤0 仍按原价） */}
                             <td className="px-1.5 py-1.5">
-                              <NumCell
+                              <DiscountCell
                                 ariaLabel="折扣（百分比）"
                                 value={normalizeDiscount(item.discount)}
-                                min={1}
-                                max={100}
-                                fallback={100}
                                 onCommit={(n) => updateItem(group.id, item.id, { discount: normalizeDiscount(n) })}
+                                onAsk={(raw) =>
+                                  askDiscount({
+                                    scope: "row",
+                                    groupId: group.id,
+                                    itemId: item.id,
+                                    label: item.item_name || "未命名行",
+                                    raw,
+                                    items: [item],
+                                  })
+                                }
                               />
                             </td>
                             {/* 小计 */}
@@ -775,6 +938,12 @@ export function QuoteEditor({
           </aside>
         )}
       </div>
+      <DiscountIntentDialog
+        ask={discountAsk}
+        queued={askQueue.length - 1}
+        onPick={pickDiscount}
+        onCancel={() => setAskQueue([])}
+      />
     </section>
   )
 }

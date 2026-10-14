@@ -114,6 +114,29 @@ describe("quoteIssuesFromRecord", () => {
     const issues = quoteIssuesFromRecord({ quote_name: "人民医院信息化报价", groups: [{ items: [{ item_name: "HIS 授权", qty: 1, price: 800000 }] }] }, 800000)
     expect(issues).toEqual([])
   })
+
+  it("R40（B8）：折扣写成「几折」的行出提醒不出阻断（维持只报不拦）", () => {
+    const issues = quoteIssuesFromRecord(
+      { quote_name: "人民医院报价", groups: [{ items: [{ item_name: "HIS 授权", qty: 1, price: 990000, discount: 0.9 }] }] },
+      891,
+    )
+    const v = issues.find((x) => x.criterion === "verbatim_fidelity")
+    expect(v?.severity).toBe("warn")
+    expect(v?.count).toBe(1)
+    expect(v?.detail).toContain("疑似按「几折」")
+    expect(buildVerdict("quote", issues).sendable).toBe(true)
+  })
+
+  it("R40（B8）：正常折扣与缺省 discount 不新增任何条目", () => {
+    const issues = quoteIssuesFromRecord(
+      {
+        quote_name: "人民医院报价",
+        groups: [{ items: [{ item_name: "HIS 授权", qty: 1, price: 800000, discount: 90 }, { item_name: "LIS", qty: 1, price: 100000 }] }],
+      },
+      820000,
+    )
+    expect(issues).toEqual([])
+  })
 })
 
 describe("buildVerdict", () => {

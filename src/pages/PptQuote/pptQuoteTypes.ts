@@ -97,7 +97,8 @@ export type QuoteItem = {
   unit: string
   qty: number
   price: number
-  /** 折扣百分比：90 表示按 9 折计价；缺省/非法/0 一律归一为 100（原价），见 normalizeDiscount（R285） */
+  /** 折扣百分比：90 表示按 9 折计价；缺省/非法/0 一律归一为 100（原价），见 normalizeDiscount（R285）；
+   *  小于 5 的数属写法歧义（可能想写「几折」），判定走 discountAmbiguity，录入时先确认（R40/B8） */
   discount: number
   // —— 与系统清单对齐的扩展字段（可选，老记录缺失） ——
   category?: string
@@ -202,6 +203,68 @@ import { cnyToUpper } from "@/lib/currencyCn"
 export function normalizeDiscount(d: number | undefined | null): number {
   if (d == null || !Number.isFinite(d) || d <= 0) return 100
   return Math.min(100, d)
+}
+
+// ---------------------------------------------------------------------------
+// R40（backlog B8）：折扣写法歧义。0 < d < 5 的填写值既可能是「按 d% 计价」，也可能是
+// 习惯写法「d 折 / 零点几折」，两者相差 10~100 倍且直接乘进金额。normalizeDiscount 的口径
+// 一字未动（R285 裁定：≤0 视为原价、>100 封顶，不做静默钳位），本段只补两件只读工具：
+//   1) 把判定阈值与两种读法从 @/lib/discountIntent 转出（组件层不许各写一份阈值）；
+//   2) 把两种读法换算成真实金额 + 盘点已落库的歧义行，供确认弹窗与交付体检共用。
+// ---------------------------------------------------------------------------
+
+import { discountAmbiguity } from "@/lib/discountIntent"
+
+export {
+  DISCOUNT_AMBIGUOUS_BELOW,
+  discountAmbiguity,
+  isAmbiguousDiscount,
+  type DiscountAmbiguity,
+  type DiscountReading,
+} from "@/lib/discountIntent"
+
+/** 某行按指定折扣计价的小计（元）。与 itemSubtotal 同一「精确到分」口径，只用于确认时把钱说清。 */
+export function itemSubtotalAtDiscount(it: QuoteItem, pct: number): number {
+  return centsToYuan(productCents([Number(it.qty) || 0, Number(it.price) || 0, normalizeDiscount(pct) / 100]))
+}
+
+/** 一组行统一按 pct 计价的小计合计（元）；pct=100 即原价合计。整数分累加，同 R34 口径。 */
+export function groupSubtotalAtDiscount(items: QuoteItem[], pct: number): number {
+  const factor = normalizeDiscount(pct) / 100
+  const cents = (items ?? []).reduce(
+    (s, it) => s + productCents([Number(it.qty) || 0, Number(it.price) || 0, factor]),
+    0,
+  )
+  return centsToYuan(cents)
+}
+
+/** 已落库数据里的歧义折扣行（只盘点、绝不改写）：编辑器横幅与报价交付体检共用同一判据。 */
+export type AmbiguousDiscountLine = {
+  groupId: string
+  groupName: string
+  itemId: string
+  itemName: string
+  raw: number
+}
+
+export function scanAmbiguousDiscounts(groups: QuoteGroup[]): AmbiguousDiscountLine[] {
+  const out: AmbiguousDiscountLine[] = []
+  for (const g of groups ?? []) {
+    for (const it of g.items ?? []) {
+      const amb = discountAmbiguity(it.discount)
+      if (amb) {
+        const nm = (it.item_name ?? "").trim()
+        out.push({
+          groupId: g.id,
+          groupName: g.name,
+          itemId: it.id,
+          itemName: nm || "未命名行",
+          raw: amb.raw,
+        })
+      }
+    }
+  }
+  return out
 }
 
 /**

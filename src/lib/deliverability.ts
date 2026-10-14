@@ -1,4 +1,5 @@
 import { findPlaceholderLeftovers } from "@/pages/PptQuote/deckLint"
+import { isAmbiguousDiscount } from "@/lib/discountIntent"
 
 // ---------------------------------------------------------------------------
 // R280 delivery-p2-01：跨模块「能不能发给客户」统一端到端验收判据（零 AI、零费用、零新数据模型）
@@ -189,6 +190,7 @@ export type QuoteLike = { quote_name?: string; tax_note?: string; groups?: Quote
  * 报价交付检查（此前报价侧无任何交付前硬伤检查，本函数补齐确定性一条）：
  *  - 无有效合计（total<=0）或无任何明细行 -> 交付不完整（blocker）
  *  - 明细行存在但个别 item_name 为空 -> 半成品提醒（warn，避免误拦老记录）
+ *  - 明细行折扣 <5%（可能把「几折」当百分比填）-> 数值口径提醒（warn，只报不拦）
  *  - 报价名/税率备注/明细名残留模板占位（复用 deckLint 的 findPlaceholderLeftovers）-> 占位残留（blocker）
  * @param total 由调用方传入 quoteTotal(groups)（单一真源，本模块不重复实现金额汇总）
  */
@@ -213,6 +215,21 @@ export function quoteIssuesFromRecord(record: QuoteLike, total: number): Deliver
       title: CRITERION_LABEL.incomplete_artifact,
       detail: `${unnamed} 条明细缺名称`,
       count: unnamed,
+    })
+  }
+  // R40（B8）：折扣 <5% 的行既可能是真按百分之几计价，也可能是把「几折」当百分比填了
+  // （填 3 想表达 3 折 = 按 30% 计），金额差 10~100 倍且不会报错，属最高危的「悄悄错」。
+  // 级别钉在 warn：维持「只报告不拦截」裁定，不把老记录挡在发送之外。
+  const oddDiscount = items.filter((it) => isAmbiguousDiscount(it.discount))
+  if (oddDiscount.length > 0) {
+    const firstName = (oddDiscount[0]?.item_name ?? "").trim() || "未命名行"
+    const firstVal = oddDiscount[0]?.discount
+    issues.push({
+      criterion: "verbatim_fidelity",
+      severity: "warn",
+      title: CRITERION_LABEL.verbatim_fidelity,
+      detail: `${oddDiscount.length} 行折扣小于 5%（如「${firstName}」填了 ${firstVal}），疑似按「几折」填写，现已按原价的百分之几计入合计`,
+      count: oddDiscount.length,
     })
   }
   const hay = [record?.quote_name ?? "", record?.tax_note ?? "", ...items.map((it) => it?.item_name ?? "")].join("\n")
