@@ -10,6 +10,8 @@
 
 import type { CheckHit, CheckItem, DocContext, Severity } from "../bidCheckTypes"
 import type { AnbidCheckConfig } from "../config/anbidCheckConfig"
+import { isSameFont } from "../engine/fontResolve"
+import { formatLabel } from "../engine/numberingResolve"
 
 const MAX_HITS_PER_ITEM = 6
 
@@ -395,6 +397,26 @@ export function runAnbidChecks(ctx: DocContext, cfg: AnbidCheckConfig, sealedMod
     items.push(mkItem("L5-C6", "格式合规", "禁止页码", "medium", "C6 暗标要求不得编页码", "按裸页码口径核对（当前仅提示）", m.hasPageNumber ? [{ location: "页脚/域", text: "检测到页码域/页码设置", rule: "pagenum", basis: "" }] : []))
   }
 
+  // C10 编号形式：暗标常见「不得使用项目符号，须用 1. 2. 3. 数字编号」
+  // （格式镖师 §8.5/§11 把「项目符号 → 数字编号」列为一等修复项；本项只判定、只标不改）
+  if (fs.allowBulletNumbering === false) {
+    if (!m.available) {
+      items.push(skipped("L5-C10", "格式合规", "编号形式（禁用项目符号）", "high", "C10 需读 word/numbering.xml，非 .docx 包无法判定", "上传 .docx 文件后自动检查"))
+    } else {
+      const dist = m.numberingFormats.length
+        ? m.numberingFormats.map((f) => `${formatLabel(f.format)}×${f.count}处`).join("、")
+        : "无自动编号"
+      const hits: CheckHit[] = m.bulletParagraphs
+        ? [{ location: "document.xml", text: `项目符号段落 ${m.bulletParagraphs} 处（本文档自动编号段落共 ${m.numberedParagraphs} 处）`, rule: "bullet_numbering", basis: "" }]
+        : []
+      items.push(
+        mkItem("L5-C10", "格式合规", "编号形式（禁用项目符号）", "high", `C10 暗标要求用数字编号；自动编号形式分布：${dist}`, "改回 1. 2. 3. 数字编号（由人工在 Word 处理）", hits),
+      )
+    }
+  } else if (fs.allowBulletNumbering === null) {
+    items.push(unconfigured("L5-C10", "格式合规", "编号形式（是否禁用项目符号）", "medium", "C10 招标文件对编号形式的规定（招标文件条款）", "请在暗标配置声明编号形式要求"))
+  }
+
   // ============ E 类 · 文件与交付形态 ============
   const nameLeaks = [...cfg.identityWords, ...cfg.brandProductWords].filter((w) => w && ctx.sourceName.includes(w))
   items.push(
@@ -453,9 +475,41 @@ function checkColor(ctx: DocContext): CheckHit[] {
 }
 
 function compareFont(stdFont: string, meta: DocContext["meta"]): CheckItem {
+  // 优先用「生效字体」分布（R45，继承链解析）：run 自身不写字体时也能拿到真实字体，
+  // 且别名归一（宋体 ↔ SimSun 不再互判为不同字体）；解析不到时回退 fontsUsed 旧口径。
+  const eff = meta.fontsEffective ?? []
+  if (eff.length) {
+    const dist = eff.map((u) => `${u.font}×${u.count}处`).join("、")
+    const basis =
+      `C1 暗标要求字体「${stdFont}」；生效字体分布：${dist}` +
+      (meta.fontsUnresolvedRuns ? `；另有 ${meta.fontsUnresolvedRuns} 处含中文 run 未能解析到字体` : "")
+    const off = eff.filter((u) => !isSameFont(u.font, stdFont))
+    if (!off.length && !meta.fontsUnresolvedRuns) {
+      return mkItem("L5-C1", "格式合规", "正文字体合规", "critical", basis, "字体与要求一致，无需处理", [])
+    }
+    if (!off.length) {
+      // 分布与要求一致，但有段落取不到字体：既不判 pass 也不判废标，降级 warn 交人工核对
+      // （medium + 有命中 → mkItem 判 warn；无命中会被判 pass，故这里必须给一条命中）
+      const undetermined: CheckHit[] = [{
+        location: "正文",
+        text: `${meta.fontsUnresolvedRuns} 处含中文 run 未能解析到字体`,
+        rule: "font",
+        basis: "",
+      }]
+      return mkItem("L5-C1", "格式合规", "正文字体合规", "medium", basis, `请人工核对未能解析到字体的段落是否确为「${stdFont}」`, undetermined)
+    }
+    const hits: CheckHit[] = off.map((u) => ({
+      location: "正文",
+      text: `非要求字体「${u.font}」×${u.count} 处，例：${u.sample}`,
+      rule: "font",
+      basis: "",
+    }))
+    return mkItem("L5-C1", "格式合规", "正文字体合规", "critical", basis, `统一为「${stdFont}」（由人工在 Word 处理）`, hits)
+  }
+  // 回退（无 styles.xml / 无 rFonts 数据，如手工拼接的 XML）：仅罗列 run 自身声明的东亚字体
   const used = meta.fontsUsed
   if (!used.length) return unconfigured("L5-C1", "格式合规", "正文字体合规", "high", `C1 要求字体「${stdFont}」，但未解析到字体信息`, "确认文件为 docx 且含字体定义")
-  const off = used.filter((f) => !f.includes(stdFont) && !stdFont.includes(f))
+  const off = used.filter((f) => !isSameFont(f, stdFont))
   return mkItem("L5-C1", "格式合规", "正文字体合规", "critical", `C1 暗标要求字体「${stdFont}」，实际出现：${used.join("、")}`, "统一为要求字体（由人工在 Word 处理）", off.length ? [{ location: "document.xml", text: `非要求字体：${off.join("、")}`, rule: "font", basis: "" }] : [])
 }
 

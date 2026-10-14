@@ -40,6 +40,7 @@ import {
   splitContentFont,
   type BidProjectRecord,
   type DeviationRow,
+  type BidScope,
   type FormatAlign,
   type FormatSettings,
   type HeadingFormat,
@@ -47,9 +48,20 @@ import {
 
 /** R206 切片 1（R-002）：按内容范围三模式决定导出分册收录哪些章——
  *  biz 仅商务章 / tech 仅技术章 / both 全部（商务骨架章保留占位供线下填写） */
+export function pickExportChapters(chapters: Chapter[], scope: BidScope): Chapter[] {
+  return (chapters ?? []).filter((c) => {
+    // 2026-10-14 交付物治理：**已有正文的章一律导出**，内容范围只用于筛掉空骨架章。
+    // 旧口径按 part 一刀切：scope=tech（含 include_biz=false）时把 part=biz 的
+    // 「实质性条款响应承诺函」整章丢弃——而该章是零 AI 自动生成（commitmentLetter.ts）、
+    // 设计上「随全套文档导出」、且是 ★ 条款逐字响应与盖章的法定载体，写了却拿不到。
+    if ((c.content ?? "").trim()) return true
+    return scope === "biz" ? isBizPart(c) : scope === "tech" ? !isBizPart(c) : true
+  })
+}
+
+/** 导出/预览共用的章清单（纯函数 pickExportChapters 的取数包装） */
 function bidExportChapters(project: BidProjectRecord): Chapter[] {
-  const scope = normalizeBidScope(project.gen_options)
-  return project.bid_chapters.filter((c) => (scope === "biz" ? isBizPart(c) : scope === "tech" ? !isBizPart(c) : true))
+  return pickExportChapters(project.bid_chapters, normalizeBidScope(project.gen_options))
 }
 
 /** R206 切片 1：分册标题随内容范围切换 */

@@ -31,6 +31,8 @@ export type AnbidFormatStandard = {
   requireSeparateBooklet: boolean | null
   /** 页数上限（null=未配置） */
   maxPages: number | null
+  /** 是否允许项目符号编号（bullet）：false=要求用 1. 2. 3. 数字编号 / true=允许 / null 未配置 */
+  allowBulletNumbering: boolean | null
 }
 
 /** 暗标检查完整配置 */
@@ -80,6 +82,7 @@ export const DEFAULT_ANBID_CONFIG: AnbidCheckConfig = {
     allowColor: null,
     requireSeparateBooklet: null,
     maxPages: null,
+    allowBulletNumbering: null,
   },
   sealedViolationIsFatal: false,
 }
@@ -133,6 +136,7 @@ function normStandard(raw: unknown): AnbidFormatStandard {
     allowColor: tri(r.allowColor),
     requireSeparateBooklet: tri(r.requireSeparateBooklet),
     maxPages: Number.isFinite(maxPagesRaw) && maxPagesRaw > 0 && maxPagesRaw < 100000 ? Math.floor(maxPagesRaw) : null,
+    allowBulletNumbering: tri(r.allowBulletNumbering),
   }
 }
 

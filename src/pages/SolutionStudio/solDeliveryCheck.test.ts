@@ -165,9 +165,16 @@ describe("跨章指标口径与本地禁则", () => {
   })
 
   it("装饰符号残留走标书侧同一规则，不自建第二套", () => {
-    const r = auditSolutionDelivery([ch({ node_id: "a", title: "亮点", content: "★ 一体化设计，全流程闭环。" })])
+    const r = auditSolutionDelivery([ch({ node_id: "a", title: "亮点", content: "■ 一体化设计，全流程闭环。" })])
     const hit = r.hits.find((h) => h.rule === "decoration_leftover")
     expect(hit?.quote).toContain("一体化设计")
+  })
+
+  // 2026-10-14 交付物治理：★/▲ 是招标实质性条款标记（废标判据），标书侧已从装饰符黑名单移出；
+  // 方案侧复用同一规则 → 同样不得报残留（本条测试的本意就是两侧口径一致，正反两个方向都要锁）。
+  it("★/▲ 实质性条款标记方案侧同样不报装饰残留", () => {
+    const r = auditSolutionDelivery([ch({ node_id: "b", title: "亮点", content: "★ 一体化设计，▲ 全流程闭环。" })])
+    expect(rules(r.hits)).not.toContain("decoration_leftover")
   })
 })
 

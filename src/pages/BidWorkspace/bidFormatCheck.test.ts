@@ -26,8 +26,17 @@ const scan = (content: string) =>
 
 describe("decoration_leftover（装饰符号 / Markdown 残留扫描）", () => {
   it("命中方括号装饰与图形符号（warn/glyph）", () => {
-    expect(scan("本方案具备★领先优势").length).toBeGreaterThan(0)
+    expect(scan("本方案具备■领先优势").length).toBeGreaterThan(0)
     expect(scan("此处为【原文事实】式标注").length).toBeGreaterThan(0)
+  })
+
+  // 2026-10-14 交付物治理：★/▲ 是招标实质性条款标记（废标判据），
+  // 与「逐条照录原文响应」硬约束配套，不得再被当装饰符扫掉，否则两条硬要求互相打架。
+  it("★/▲ 实质性条款标记不算装饰残留（自相矛盾修复）", () => {
+    expect(scan("响应未涉及的加“★”的指标")).toHaveLength(0)
+    expect(scan("9.1 ★项技术参数实质性响应")).toHaveLength(0)
+    expect(scan("▲ 供应商须提供原厂授权")).toHaveLength(0)
+    expect(scan("★1 注：投标文件中须提供承诺函并盖公章")).toHaveLength(0)
   })
 
   it("合法占位【待填写】【请补充素材】不触发（防误报）", () => {
@@ -91,11 +100,18 @@ const hasRule = (applied: { rule: string }[], rule: string) => applied.some((a) 
 
 describe("autoRepairChapter（确定性自动修复）", () => {
   it("清理装饰符号/Markdown 方括号，但保留合法占位【待填写】", () => {
-    const r = repair("本方案具备★领先优势【原文事实】，项目经理：【待填写】")
+    const r = repair("本方案具备■领先优势【原文事实】，项目经理：【待填写】")
     expect(hasRule(r.applied, "decoration_leftover")).toBe(true)
-    expect(r.content).not.toContain("★")
+    expect(r.content).not.toContain("■")
     expect(r.content).not.toContain("【原文事实】")
     expect(r.content).toContain("【待填写】")
+  })
+
+  // 2026-10-14 交付物治理：自动清洗不得再剥掉 ★/▲（照录招标原文的实质性条款标记）
+  it("★/▲ 实质性条款标记不被自动清洗剥除", () => {
+    const r = repair("未涉及的加“★”的指标，▲ 项须逐条响应", [], ["decoration_leftover"])
+    expect(r.content).toContain("★")
+    expect(r.content).toContain("▲")
   })
 
   it("填值槽位元话语规范化为【待填写】，过程性元话语删除", () => {

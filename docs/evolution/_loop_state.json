@@ -1,8 +1,8 @@
 {
-  "round": 44,
+  "round": 45,
   "lastRound": {
-    "id": "R44",
-    "theme": "工程卫生 / lint 债务「具名预算化」（对标 OHIF .react-compiler-lint-budget.json）：新增 eslint-budget.json（error 119 / warning 13，按规则分档，唯一规则＝只许下降）+ scripts/health/verify-eslint-budget.mjs（跑 eslint . -f json 逐规则对照预算，并强制「预算总额＝账本 eslintBaseline＝gatesBaseline.eslint」三处同源，终结本仓 151/160/163 三数字并存）+ scripts/health/manual-checks.mjs / pnpm health:manual（把 pb_migrations 空目录重建与该预算并成一条人工检查命令，落地 B0b 剩余项）；lint 存量债 151→119 error / 20→13 warning（−32 / −7），删 7 条僵尸 eslint-disable；13 个在途文件类型收口（as any 4 处、no-control-regex 2 处改写 + 2 处带理由豁免、死分支折叠 1 处），正则/字面量改写用 112.7 万例对拍证明 0 差异",
+    "id": "R45",
+    "theme": "交付物治理（安中医实跑复盘）：① DECORATION_GLYPH_RE 不再把 ★☆▲△ 当装饰符清洗——它们是招标实质性条款标记（废标判据），与「★/▲ 逐条照录原文响应」硬约束配套；同口径改到自动修复、标书格式扫描、方案侧 solDeliveryCheck、两份评审/改写提示词与快照。② bidExportChapters 抽成纯函数 pickExportChapters：已有正文的章一律导出，内容范围只筛空骨架章（修前 scope=tech 把 part=biz 的「实质性条款响应承诺函」整章丢弃，而它是零 AI 自动生成、★ 条款逐字响应与盖章的法定载体）。③ isRealSectionHeading 对 sections=[] 的技术评分章兜底（编号首段=本章号即判真，长度≤40 与句末标点两道闸不变；修前 9~17 章小节标题全部降级为正文、目录光秃）。④ 同轮落地 docs/21 暗标复用：fontResolve 字体继承链+别名归一（修「宋体/SimSun」误报）、numberingResolve 编号形式解析 + 新规则 L5-C10、anbidRegionPresets 内蒙古/河北/四川三套预置 + 配置弹窗一键套用（修「格式标准默认全空导致 L1-10/12/13/14、L5-C1/C6/C7/C9 长期空转」）。新增 6 个测试文件 / 26 例，每条修复都带正反双向断言。",
     "verdict": "pass",
     "at": "2026-10-14"
   },
@@ -113,6 +113,12 @@
   ],
   "history": [
     {
+      "id": "R045",
+      "theme": "交付物治理三处硬伤：★/▲ 实质性条款标记不再被当装饰符清洗（废标级）+ 导出保留已写正文章节（pickExportChapters）+ 技术评分章小节标题兜底（sections=[]）；同轮落地暗标检查复用（fontResolve 继承链 / numberingResolve + L5-C10 / 三地区预置）；231 files / 2747 passed / 2 skipped；eslint 119 error / 13 warning 持平预算",
+      "verdict": "pass",
+      "at": "2026-10-14"
+    },
+    {
       "id": "R044",
       "theme": "工程卫生：lint 债务具名预算化 + 人工检查清单可机检（eslint-budget.json / verify:eslint-budget / health:manual）；151→119 error、20→13 warning（−32 / −7）；删 7 条僵尸 eslint-disable；13 在途文件类型收口；0 行为变更（112.7 万例对拍 0 差异）",
       "verdict": "pass",
@@ -182,7 +188,8 @@
     "r039": "218 files / 2597 passed | 2 skipped（+4 用例，0 新文件）；eslint 触及文件 19 problems 全为在途既有存量（新增 0 error）；tsc -b exit 2 —— 5 error 全在在途文件（ModelMetaDialog / PersonalConfigList / useModelConfig / bidDocxFormatExtract×2）；npx vite build exit 0（6076 modules / 3.68s）",
     "r040": "219 files / 2617 passed | 2 skipped（+1 file / +20 用例：quoteDiscountAmbiguity.test.ts 18 例 + deliverability.test.ts 2 例）；eslint 本轮触及 7 文件 exit 0（0 error 0 warning），全仓 src 152 error / 19 warning 全为存量；tsc -b exit 2 —— 5 error 全在在途文件（ModelMetaDialog / PersonalConfigList / useModelConfig / bidDocxFormatExtract×2）；npx vite build exit 0（4.28s），「折扣写法有歧义」等文案落在 PptQuote 路由 chunk 而非主包",
     "r043": "225 files / 2682 passed | 2 skipped（+1 文件 / +200 用例：scripts/pbHooksIdentity.test.ts 9 例 + 工作区既有在途批次）；eslint 151 error / 20 warning（= 账本基线 151，持平）；tsc -b exit 0；vite build ✓ 8.35s",
-    "r044": "225 files / 2682 passed | 2 skipped（+0 文件 / +0 用例：与 R043 同批；本轮只改实现与工具，未加减用例）；eslint 实测 **119 error / 13 warning**（R043 基线 151 → 119，−32；20 → 13，−7；连测两次一致）；tsc -b exit 0；vite build ✓ 7.83s（6078 modules）。新增 eslint-budget.json + 两条 health 脚本（.mjs/.cjs 也在 eslint 覆盖面内，实测 0 error）"
+    "r044": "225 files / 2682 passed | 2 skipped（+0 文件 / +0 用例：与 R043 同批；本轮只改实现与工具，未加减用例）；eslint 实测 **119 error / 13 warning**（R043 基线 151 → 119，−32；20 → 13，−7；连测两次一致）；tsc -b exit 0；vite build ✓ 7.83s（6078 modules）。新增 eslint-budget.json + 两条 health 脚本（.mjs/.cjs 也在 eslint 覆盖面内，实测 0 error）",
+    "r045": "231 files / 2747 passed | 2 skipped（本轮新增 6 文件 / 26 例：fontResolve / numberingResolve / anbidRegionPresets / BidCheckConfigDialog(首个组件测试) / bidExportChapters / 三处既有测试扩例）；eslint 119 error / 13 warning（= R44 基线，零新增）；tsc -b exit 0；vite build ✓ 4.65s"
   },
   "notes": [
     "起点 R034；R031/R033 为已存在的进化日志（docs/evolution/）。",

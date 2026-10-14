@@ -63,6 +63,45 @@ describe("format L1 · 结构类依赖文件包", () => {
   })
 })
 
+describe("format L1 · 生效字体（R45 继承链 + 别名归一）", () => {
+  it("同一种字体的中英文别名不再被算成多种字体（SimSun / 宋体 / Songti SC → 1 种）", () => {
+    const meta = emptyMeta()
+    meta.available = true
+    meta.fontsUsed = ["SimSun", "宋体", "Songti SC"] // 旧口径：3 种 → 误报 L1-1 warn
+    meta.fontsEffective = [
+      { font: "宋体", count: 30, sample: "正文" },
+      { font: "宋体", count: 2, sample: "标题下正文" },
+    ]
+    meta.sizesUsed = ["24"]
+    const items = runFormatChecks(makeCtx({ meta }), cfg, DEFAULT_ANBID_CONFIG, "normal")
+    expect(byCode(items, "L1-1")?.status).toBe("pass")
+  })
+
+  it("run 不写字体、字体继承自样式时，L1-1 仍能统计到（旧口径会判 0 种）", () => {
+    const meta = emptyMeta()
+    meta.available = true
+    meta.fontsUsed = []
+    meta.fontsEffective = [
+      { font: "宋体", count: 10, sample: "正文" },
+      { font: "黑体", count: 3, sample: "第一章" },
+    ]
+    meta.sizesUsed = ["24"]
+    const items = runFormatChecks(makeCtx({ meta }), cfg, DEFAULT_ANBID_CONFIG, "normal")
+    const l1 = byCode(items, "L1-1")
+    expect(l1?.status).toBe("warn")
+    expect(l1?.hits[0]?.text).toContain("宋体")
+  })
+
+  it("生效字体为空时回退声明字体集合（保持旧行为）", () => {
+    const meta = emptyMeta()
+    meta.available = true
+    meta.fontsUsed = ["宋体", "黑体"]
+    meta.sizesUsed = ["24"]
+    const items = runFormatChecks(makeCtx({ meta }), cfg, DEFAULT_ANBID_CONFIG, "normal")
+    expect(byCode(items, "L1-1")?.status).toBe("warn")
+  })
+})
+
 describe("format L1 · 字号/行距达标（R269 接入预留配置项 bodySize/lineSpacing）", () => {
   function anbidWith(std: Partial<typeof DEFAULT_ANBID_CONFIG.formatStandard>): AnbidCheckConfig {
     return { ...DEFAULT_ANBID_CONFIG, formatStandard: { ...DEFAULT_ANBID_CONFIG.formatStandard, ...std } }

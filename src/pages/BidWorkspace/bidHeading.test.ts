@@ -10,6 +10,24 @@ describe("isRealSectionHeading（问题3 标题判定）", () => {
     expect(isRealSectionHeading("2.2 集成平台架构总体设计", sections, 2)).toBe(true)
     expect(isRealSectionHeading("2.3 接口对接与协同保障方案", sections, 2)).toBe(true)
   })
+
+  // 2026-10-14 交付物治理（安中医实跑）：技术评分章 sections=[] —— 小节标题只写在正文里，
+  // 旧逻辑要求「N.M 命中的剩余文本与第 M 个小节标题精确相等」，清单为空必然比对失败，
+  // 第 9-17 章的「9.1 ★项技术参数实质性响应」等标题全部降级为正文、目录光秃。
+  describe("空小节清单兜底（技术评分章）", () => {
+    it("编号首段=本章号即认定为小节标题", () => {
+      expect(isRealSectionHeading("9.1 ★项技术参数实质性响应", [], 9)).toBe(true)
+      expect(isRealSectionHeading("11.5 质保期外运维服务边界与长效支撑承诺", [], 11)).toBe(true)
+      expect(isRealSectionHeading("17.12 应急物资储备与后勤保障", [], 17)).toBe(true)
+    })
+    it("编号首段非本章号仍当正文（不因兜底而放宽）", () => {
+      expect(isRealSectionHeading("6.4 全生命周期预防性巡检与容量规划机制", [], 15)).toBe(false)
+    })
+    it("长度与句末标点两道闸仍生效（长正文句不升级）", () => {
+      expect(isRealSectionHeading("9.2 " + "集".repeat(45), [], 9)).toBe(false)
+      expect(isRealSectionHeading("9.3 本节内容详见后续说明，", [], 9)).toBe(false)
+    })
+  })
   it("全角空格分隔仍识别", () => {
     expect(isRealSectionHeading("2.2　集成平台架构总体设计", sections, 2)).toBe(true)
   })

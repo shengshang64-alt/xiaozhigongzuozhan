@@ -17,6 +17,7 @@ import type { Chapter } from "@/pages/SolutionStudio/solutionTypes"
 import type { CheckHit, CheckItem, DocContext, Severity } from "../bidCheckTypes"
 import type { CheckConfig } from "../config/checkConfig"
 import type { AnbidCheckConfig } from "../config/anbidCheckConfig"
+import { isSameFont } from "../engine/fontResolve"
 
 const MAX_HITS = 6
 
@@ -118,7 +119,11 @@ export function runFormatChecks(ctx: DocContext, cfg: CheckConfig, anbid: AnbidC
 
   // ---- 结构类：字体 / 字号 / 行距（需 docx 包）----
   if (ctx.meta.available) {
-    const fonts = ctx.meta.fontsUsed
+    // 字体种类优先取「生效字体」（继承链解析 + 别名归一，R45）：run 自身不写字体时也能统计到，
+    // 且「宋体 / SimSun / Songti SC」不再被当成 3 种字体误报；解析不到时回退声明字体集合。
+    const fonts = ctx.meta.fontsEffective?.length
+      ? [...new Set(ctx.meta.fontsEffective.map((u) => u.font))]
+      : ctx.meta.fontsUsed
     items.push(
       fonts.length > 1
         ? structItem("L1-1", "正文字体不一致", sealed ? "high" : "medium", "warn", "L1-1 同一层级出现 ≥2 种中文字体", "统一字体（由人工/格式刷新处理）", [{ location: "document.xml", text: `出现字体：${fonts.join("、")}`, rule: "font_variety", basis: "" }])
@@ -159,7 +164,10 @@ export function runFormatChecks(ctx: DocContext, cfg: CheckConfig, anbid: AnbidC
     // L1-11 字体/字号达标（依赖配置 bodyFont）
     if (anbid.formatStandard.bodyFont) {
       const wantFont = anbid.formatStandard.bodyFont
-      const off = ctx.meta.fontsUsed.filter((f) => !f.includes(wantFont) && !wantFont.includes(f))
+      const seen = ctx.meta.fontsEffective?.length
+        ? [...new Set(ctx.meta.fontsEffective.map((u) => u.font))]
+        : ctx.meta.fontsUsed
+      const off = seen.filter((f) => !isSameFont(f, wantFont))
       items.push(structItem("L1-11", "字体/字号不符要求", sealed ? "critical" : "high", off.length ? "fail" : "pass", `L1-11 要求字体「${wantFont}」`, "统一为要求字体", off.length ? [{ location: "document.xml", text: `非要求字体：${off.join("、")}`, rule: "font_std", basis: "" }] : []))
     } else {
       items.push(structItem("L1-11", "字体/字号达标", "high", "unconfigured", "L1-11 招标规定字体字号（招标文件条款）", "请在配置填入要求字体", []))

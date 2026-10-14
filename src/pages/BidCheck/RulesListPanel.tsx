@@ -36,7 +36,7 @@ const L1_NOTE: Record<string, string> = {
   no_blank_page: "残留空白页标记。",
   identity_leak: "公司名/人名/品牌等身份词泄露——统一交由 L5 暗标层处理，此处勾选不重复。",
   wording_scan: "连续重复句 / 叠字 / 括号混用 / 中英之间空格。",
-  decoration_leftover: "残留装饰符（【】★☆◆■●✓→）或行首 # - * > 列表符。",
+  decoration_leftover: "残留装饰符（【】◆■●✓→）或行首 # - * > 列表符；★/▲ 为招标实质性条款标记，引用照录不算残留。",
 }
 
 /** L5 暗标规则目录（展示用；实际判定在 rules/anbid.ts，词库/标准来自配置弹窗） */
@@ -57,6 +57,7 @@ const L5_CATALOG: { code: string; title: string; severity: Severity; note: strin
   { code: "L5-B8", title: "页眉页脚泄露", severity: "critical", note: "页眉/页脚含公司名或联系方式（暗标通常仅裸页码）。" },
   { code: "L5-B9", title: "图片 EXIF（人工抽检）", severity: "info", note: "内嵌图片 EXIF/XMP 未逐项解析，列数量供人工抽检。⚠️ 未自动检测。" },
   { code: "L5-C1", title: "正文字体合规", severity: "high", note: "与暗标配置要求字体比对；未配置标准则标「未配置」不瞎判。" },
+  { code: "L5-C10", title: "编号形式（禁用项目符号）", severity: "high", note: "读 word/numbering.xml 判定自动编号形式（bullet/decimal/中文数字…）；要求数字编号时，项目符号判失败。未配置不判。" },
   { code: "L5-C9", title: "页数超限", severity: "critical", note: "字数粗估页数 vs 配置页数上限；未配置则不判。" },
   { code: "L5-C7", title: "禁止彩色（全黑白）", severity: "high", note: "要求全黑白时提示图片彩色需人工核。⚠️ 依赖渲染。" },
   { code: "L5-E1", title: "文件名含公司/项目标识", severity: "high", note: "文件名命中身份/品牌词。示例：「XX公司投标书.docx」。" },

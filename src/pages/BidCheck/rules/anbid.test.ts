@@ -102,3 +102,117 @@ describe("anbid L5-E1 · 文件名", () => {
     expect(byCode(items, "L5-E1")?.status).toBe("fail")
   })
 })
+
+describe("anbid L5-C1 · 正文字体（生效字体继承链，R45）", () => {
+  const cfg: AnbidCheckConfig = {
+    ...DEFAULT_ANBID_CONFIG,
+    formatStandard: { ...DEFAULT_ANBID_CONFIG.formatStandard, bodyFont: "宋体" },
+  }
+
+  it("run 自身不写字体、字体来自样式/文档默认时也能判 pass（旧口径会漏检）", () => {
+    const meta = emptyMeta()
+    meta.available = true
+    meta.fontsUsed = [] // 旧口径：document.xml 内没有任何 w:rFonts/@eastAsia
+    meta.fontsEffective = [{ font: "宋体", count: 12, sample: "投标人须具备独立法人资格" }]
+    meta.fontsUnresolvedRuns = 0
+    const c1 = byCode(runAnbidChecks(makeCtx({ meta }), cfg, true), "L5-C1")
+    expect(c1?.status).toBe("pass")
+    expect(c1?.basis).toContain("宋体×12处")
+  })
+
+  it("别名互认：SimSun 与「宋体」不再互判为不同字体", () => {
+    const meta = emptyMeta()
+    meta.available = true
+    meta.fontsEffective = [{ font: "SimSun", count: 3, sample: "第一章 项目概述" }]
+    const c1 = byCode(runAnbidChecks(makeCtx({ meta }), cfg, true), "L5-C1")
+    expect(c1?.status).toBe("pass")
+  })
+
+  it("确混入其它字体：命中并给出分布与样本", () => {
+    const meta = emptyMeta()
+    meta.available = true
+    meta.fontsEffective = [
+      { font: "宋体", count: 40, sample: "正文" },
+      { font: "黑体", count: 2, sample: "擅自改动" },
+    ]
+    const c1 = byCode(runAnbidChecks(makeCtx({ meta }), cfg, true), "L5-C1")
+    expect(c1?.status).toBe("fail")
+    expect(c1?.hits[0]?.text).toContain("黑体")
+    expect(c1?.basis).toContain("宋体×40处")
+  })
+
+  it("有段落取不到字体：既不判 pass 也不判废标，降级 warn 交人工核对", () => {
+    const meta = emptyMeta()
+    meta.available = true
+    meta.fontsEffective = [{ font: "宋体", count: 5, sample: "正文" }]
+    meta.fontsUnresolvedRuns = 2
+    const c1 = byCode(runAnbidChecks(makeCtx({ meta }), cfg, true), "L5-C1")
+    expect(c1?.status).toBe("warn")
+    expect(c1?.basis).toContain("2 处")
+  })
+
+  it("生效字体为空：回退 fontsUsed 旧口径（如实标注出现过的字体）", () => {
+    const meta = emptyMeta()
+    meta.available = true
+    meta.fontsUsed = ["楷体"]
+    const c1 = byCode(runAnbidChecks(makeCtx({ meta }), cfg, true), "L5-C1")
+    expect(c1?.status).toBe("fail")
+    expect(c1?.hits[0]?.text).toContain("楷体")
+  })
+})
+
+describe("anbid L5-C10 · 编号形式（禁用项目符号，R45）", () => {
+  const base: AnbidCheckConfig = {
+    ...DEFAULT_ANBID_CONFIG,
+    formatStandard: { ...DEFAULT_ANBID_CONFIG.formatStandard, allowBulletNumbering: false },
+  }
+
+  it("要求数字编号而出现项目符号：判失败，并给出形式分布", () => {
+    const meta = emptyMeta()
+    meta.available = true
+    meta.numberedParagraphs = 5
+    meta.bulletParagraphs = 3
+    meta.numberingFormats = [
+      { format: "bullet", count: 3 },
+      { format: "decimal", count: 2 },
+    ]
+    const c10 = byCode(runAnbidChecks(makeCtx({ meta }), base, true), "L5-C10")
+    expect(c10?.status).toBe("fail")
+    expect(c10?.hits[0]?.text).toContain("3 处")
+    expect(c10?.basis).toContain("项目符号×3处")
+    expect(c10?.basis).toContain("阿拉伯数字×2处")
+  })
+
+  it("全是数字编号：判通过", () => {
+    const meta = emptyMeta()
+    meta.available = true
+    meta.numberedParagraphs = 4
+    meta.bulletParagraphs = 0
+    meta.numberingFormats = [{ format: "decimal", count: 4 }]
+    const c10 = byCode(runAnbidChecks(makeCtx({ meta }), base, true), "L5-C10")
+    expect(c10?.status).toBe("pass")
+  })
+
+  it("无自动编号（手工敲的 1. 2. 3.）：判通过，不误报", () => {
+    const meta = emptyMeta()
+    meta.available = true
+    const c10 = byCode(runAnbidChecks(makeCtx({ meta }), base, true), "L5-C10")
+    expect(c10?.status).toBe("pass")
+  })
+
+  it("未配置编号形式要求：标「标准未配置」，不瞎判", () => {
+    const meta = emptyMeta()
+    meta.available = true
+    meta.bulletParagraphs = 9
+    const c10 = byCode(runAnbidChecks(makeCtx({ meta }), DEFAULT_ANBID_CONFIG, true), "L5-C10")
+    expect(c10?.status).toBe("unconfigured")
+  })
+
+  it("非 docx 包（项目正文）：标 skipped 而非通过", () => {
+    const meta = emptyMeta()
+    meta.available = false
+    const ctx = makeCtx({ meta, inputKind: "project", hasPackage: false })
+    const c10 = byCode(runAnbidChecks(ctx, base, true), "L5-C10")
+    expect(c10?.status).toBe("skipped")
+  })
+})

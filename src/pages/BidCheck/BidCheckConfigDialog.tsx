@@ -22,6 +22,7 @@ import { FORMAT_CHECK_KEYS, FORMAT_CHECK_LABEL, type FormatCheckKey } from "@/pa
 import type { CheckConfig } from "./config/checkConfig"
 import type { AnbidCheckConfig } from "./config/anbidCheckConfig"
 import { parseWordList, wordListToText } from "./config/anbidCheckConfig"
+import { ANBID_REGION_PRESETS, getAnbidRegionPreset } from "./config/anbidRegionPresets"
 
 type TriState = "true" | "false" | "null"
 const toTri = (v: boolean | null): TriState => (v === true ? "true" : v === false ? "false" : "null")
@@ -63,6 +64,9 @@ export function BidCheckConfigDialog({ open, onClose, anbid, checkCfg, onSaveAnb
   const [allowPage, setAllowPage] = useState<TriState>("null")
   const [allowColor, setAllowColor] = useState<TriState>("null")
   const [separate, setSeparate] = useState<TriState>("null")
+  const [allowBullet, setAllowBullet] = useState<TriState>("null")
+  const [presetId, setPresetId] = useState("")
+  const [presetNote, setPresetNote] = useState("")
   const [fatal, setFatal] = useState(false)
   const [keys, setKeys] = useState<Set<string>>(new Set())
 
@@ -87,6 +91,9 @@ export function BidCheckConfigDialog({ open, onClose, anbid, checkCfg, onSaveAnb
     setAllowPage(toTri(fs.allowPageNumber))
     setAllowColor(toTri(fs.allowColor))
     setSeparate(toTri(fs.requireSeparateBooklet))
+    setAllowBullet(toTri(fs.allowBulletNumbering))
+    setPresetId("")
+    setPresetNote("")
     setFatal(anbid.sealedViolationIsFatal)
     setKeys(new Set(checkCfg.formatKeys))
   }, [open, anbid, checkCfg])
@@ -99,6 +106,31 @@ export function BidCheckConfigDialog({ open, onClose, anbid, checkCfg, onSaveAnb
       else next.add(k)
       return next
     })
+  }
+
+  // 地区预置：只覆盖该地区条款「原文写到」的项，未写到的保持用户当前值
+  // （预置是起点而非替招标文件立规；note 保留原文摘录供人工比对）
+  const applyPreset = (id: string) => {
+    setPresetId(id)
+    const p = getAnbidRegionPreset(id)
+    if (!p) {
+      setPresetNote("")
+      return
+    }
+    const s = p.standard
+    if (s.bodyFont) setBodyFont(s.bodyFont)
+    if (s.bodySize) setBodySize(s.bodySize)
+    if (s.lineSpacing) setLineSpacing(s.lineSpacing)
+    if (s.margins) {
+      setMt(String(s.margins.top))
+      setMr(String(s.margins.right))
+      setMb(String(s.margins.bottom))
+      setMl(String(s.margins.left))
+    }
+    if (s.allowPageNumber !== null) setAllowPage(toTri(s.allowPageNumber))
+    if (s.allowColor !== null) setAllowColor(toTri(s.allowColor))
+    if (s.allowBulletNumbering !== null) setAllowBullet(toTri(s.allowBulletNumbering))
+    setPresetNote(p.note)
   }
 
   const save = () => {
@@ -119,6 +151,7 @@ export function BidCheckConfigDialog({ open, onClose, anbid, checkCfg, onSaveAnb
         allowColor: fromTri(allowColor),
         requireSeparateBooklet: fromTri(separate),
         maxPages: maxPages.trim() && Number.isFinite(Number(maxPages)) && Number(maxPages) > 0 ? Math.floor(Number(maxPages)) : null,
+        allowBulletNumbering: fromTri(allowBullet),
       },
     })
     onSaveCheck({ formatKeys: [...keys] })
@@ -156,6 +189,18 @@ export function BidCheckConfigDialog({ open, onClose, anbid, checkCfg, onSaveAnb
 
           <section className="space-y-3">
             <h3 className="text-sm font-semibold">暗标格式标准（未填=不判定）</h3>
+            <Field label="地区预置标准（一键填入，可再改）" hint={presetNote || "预置只是起点：具体项目以该项目招标文件暗标条款为准"}>
+              <select
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                value={presetId}
+                onChange={(e) => applyPreset(e.target.value)}
+              >
+                <option value="">不使用预置</option>
+                {ANBID_REGION_PRESETS.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="要求正文字体"><Input value={bodyFont} onChange={(e) => setBodyFont(e.target.value)} placeholder="宋体 / 留空" /></Field>
               <Field label="要求字号"><Input value={bodySize} onChange={(e) => setBodySize(e.target.value)} placeholder="小四 / 留空" /></Field>
@@ -170,7 +215,7 @@ export function BidCheckConfigDialog({ open, onClose, anbid, checkCfg, onSaveAnb
                 <Input value={ml} onChange={(e) => setMl(e.target.value)} inputMode="decimal" placeholder="左" />
               </div>
             </Field>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <Field label="是否允许页码">
                 <select className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" value={allowPage} onChange={(e) => setAllowPage(e.target.value as TriState)}>
                   <option value="null">未配置</option>
@@ -183,6 +228,13 @@ export function BidCheckConfigDialog({ open, onClose, anbid, checkCfg, onSaveAnb
                   <option value="null">未配置</option>
                   <option value="true">允许彩色</option>
                   <option value="false">要求全黑白</option>
+                </select>
+              </Field>
+              <Field label="编号形式（暗标常用：禁用项目符号）">
+                <select className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" value={allowBullet} onChange={(e) => setAllowBullet(e.target.value as TriState)}>
+                  <option value="null">未配置</option>
+                  <option value="false">禁用项目符号（须用数字编号）</option>
+                  <option value="true">允许项目符号</option>
                 </select>
               </Field>
               <Field label="是否单独成册">

@@ -11,6 +11,8 @@
 import { unzipSync, strFromU8 } from "fflate"
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url"
 import type { CheckChapter, DocContext, DocMeta, PageMargins, Paragraph } from "../bidCheckTypes"
+import { resolveEffectiveFonts } from "./fontResolve"
+import { resolveParagraphNumbering } from "./numberingResolve"
 
 // ---- 通用文本 / 标签工具 ------------------------------------------------
 
@@ -215,6 +217,11 @@ export function emptyMeta(): DocMeta {
     hasWatermark: false,
     hasCustomXml: false,
     fontsUsed: [],
+    fontsEffective: [],
+    fontsUnresolvedRuns: 0,
+    numberingFormats: [],
+    numberedParagraphs: 0,
+    bulletParagraphs: 0,
     sizesUsed: [],
     lineSpacings: [],
     lineSpacingsDetail: [],
@@ -275,6 +282,22 @@ export function buildDocContextFromParts(
   meta.hasCustomXml = paths.some((p) => p.startsWith("customXml/")) || /<w:dataBinding\b/.test(documentXml)
 
   meta.fontsUsed = distinctMatches(documentXml, /<w:rFonts\b[^>]*w:eastAsia="([^"]+)"/, 1)
+
+  // 字体「生效值」（R45）：按继承链解析 run → 字符样式 → 段落样式 → docDefaults，并归一别名
+  // （宋体 ↔ SimSun）；只统计含中文的 run。usages 为空=未解析到，规则层回退 fontsUsed 旧口径。
+  {
+    const eff = resolveEffectiveFonts(parts)
+    meta.fontsEffective = eff.usages
+    meta.fontsUnresolvedRuns = eff.unresolvedRuns
+  }
+
+  // 编号形式（R45）：解析 word/numbering.xml，支撑「不得使用项目符号」类暗标条款的只读判定
+  {
+    const num = resolveParagraphNumbering(parts)
+    meta.numberingFormats = num.formats
+    meta.numberedParagraphs = num.numberedParagraphs
+    meta.bulletParagraphs = num.bulletParagraphs
+  }
   meta.sizesUsed = distinctMatches(documentXml, /<w:sz\b[^>]*w:val="([^"]+)"/, 1)
   meta.lineSpacings = distinctMatches(
     documentXml,
@@ -335,6 +358,8 @@ export async function inspectDocxFile(file: File): Promise<DocContext> {
   const paths = Object.keys(zip)
   const wanted = [
     "word/document.xml",
+    "word/styles.xml",
+    "word/numbering.xml",
     "word/settings.xml",
     "word/comments.xml",
     "docProps/core.xml",

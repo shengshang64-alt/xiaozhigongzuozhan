@@ -7,6 +7,9 @@
 //  ⚠️ 判定权归人：工具只发现与定位，不替人决定改法是否落地。
 // ---------------------------------------------------------------------------
 
+import type { EffectiveFontUsage } from "./engine/fontResolve"
+import type { NumberingFormatUsage } from "./engine/numberingResolve"
+
 /** 检查模式：普通标书 / 暗标严格模式（同一套引擎加严阈值 + 追加暗标专属项，一个开关切换） */
 export type BidCheckMode = "normal" | "sealed"
 
@@ -163,6 +166,19 @@ export type DocMeta = {
   hasWatermark: boolean
   /** 自定义 XML 部件 customXml/ 或 w:dataBinding */
   hasCustomXml: boolean
+  /**
+   * 含中文 run 的「生效字体」分布（继承链解析，R45）：run 自身 rFonts → run 字符样式
+   * → 段落样式（沿 basedOn 上溯）→ docDefaults。空数组=未解析到，规则层应回退 fontsUsed。
+   */
+  fontsEffective: EffectiveFontUsage[]
+  /** 继承链走完仍未取到字体的含中文 run 数（宁可上报计数，不瞎填一个字体） */
+  fontsUnresolvedRuns: number
+  /** 编号形式分布（numbering.xml 的 w:numFmt 解析；bullet=项目符号） */
+  numberingFormats: NumberingFormatUsage[]
+  /** 带自动编号（w:numPr 有 numId）的段落数 */
+  numberedParagraphs: number
+  /** 其中编号形式为项目符号（bullet）的段落数 */
+  bulletParagraphs: number
   /** 正文去重后的中文字体集合（w:rFonts w:eastAsia） */
   fontsUsed: string[]
   /** 正文去重后的字号集合（w:sz val，半点单位原样保留） */
