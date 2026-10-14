@@ -20,6 +20,12 @@
       "source": "self-found(R41a)"
     },
     {
+      "id": "B0b-schema-as-code",
+      "title": "schema-as-code 已落地：pocketbase/pb_migrations/1791964662_collections_snapshot.js 已导出并双向验证（空目录 migrate up 可重建 40 集合；对现有库应用非破坏，见 docs/20 §9）。下一步：把「空目录 migrate up 必须能起 40 集合」固化成脚本/门禁（对标 dify 的 db-migration-test.yml）",
+      "priority": "high",
+      "source": "self-found(R41b)"
+    },
+    {
       "id": "B15",
       "title": "pb_hooks 网关补丁待重启生效：重启 :7000 后复测 opecode 通道是否恢复；并评估把「模型配置健康徽标」从 /models 连通改为真跑一次 chat（本次假绿根因）",
       "priority": "high",
