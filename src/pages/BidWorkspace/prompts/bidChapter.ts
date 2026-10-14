@@ -11,7 +11,8 @@ import { baselineLabelFromText, extractBaselineSegment, extractFragmentSegment }
 
 // R167 v4：2026-10 易标对齐轮——素材融入不提及来源（kbMaterial/directedKnowledge/refMaterials 规则句与注入段头同步改写），PROMPT_VERSION 3→4
 // r287 v5（bid-l2-verbatim-compare 切片2·预防）：新增引号照录纪律规则条（第 6 条，其后规则序号顺移），与 bidSection v6 同口径
-export const PROMPT_VERSION = 5
+// R47（B20）v5→v6：新增「商务模板要求」注入槽与规则条（templateRequirements 空数组时输出与 v5 逐字一致）
+export const PROMPT_VERSION = 6
 
 export type BidChapterPromptOpts = {
   wordBudget: number
@@ -62,6 +63,8 @@ export type BidChapterPromptOpts = {
   directedFacts?: string
   /** 05 三模式：合规严格度（缺省/strict=逐字最小风险，与现状一致；moderate/full 放宽表达充分度但不新增可验收承诺） */
   complianceMode?: ComplianceMode
+  /** R47（B20）：商务模板里明写的要求行（空数组/缺省=未上传模板，prompt 与现状逐字一致） */
+  templateRequirements?: string[]
 }
 
 export function buildBidChapterMessages(
@@ -113,6 +116,7 @@ export function buildBidChapterMessages(
     `5. 本章字数预算约 ${opts.wordBudget} 字（整份目标页数按章节权重折算），在该篇幅内围绕招标参数与评分办法扩展；禁止自造招标未给的具体参数数字，拿不准的用「按招标文件要求响应」等规范表述；`,
   ]
   const clauseList = opts.clauses ?? []
+  const templateReqs = (opts.templateRequirements ?? []).map((t) => (t ?? "").trim()).filter(Boolean).slice(0, 20)
   let ruleNo = 6
   // r287（bid-l2-verbatim-compare 切片2·预防）：引号照录纪律——引号内只允许逐字原文，
   // 转述必须出引号（与体检 quote_rewrite 规则同源口径：改写＝引号内非原文）
@@ -139,6 +143,13 @@ export function buildBidChapterMessages(
   if (clauseList.length) {
     rules.push(
       `${ruleNo}. 下面【本章须响应的招标要求条款清单】共 ${clauseList.length} 条，本章正文必须逐条实质性响应：每条条款至少有一段对应内容并给出量化承诺或落地措施，小节标题行可在标题后标注所响应的条款序号（如「${chapterNo}.2 性能保障方案（响应 c3、c7）」），方便评标专家逐条查询；禁止遗漏任何条款、禁止泛泛带过；`,
+    )
+    ruleNo += 1
+  }
+  // R47（B20）：商务模板明写要求——非空才注入规则条，缺省时 prompt 与现状字节一致
+  if (templateReqs.length) {
+    rules.push(
+      `${ruleNo}. 下面【商务模板要求】共 ${templateReqs.length} 条，是商务同事提供的投标模板里明写的要求，本章内容涉及到的必须逐条满足（结构与内容口径以模板为准；排版类要求已写入导出排版设置，正文不必说明）；`,
     )
     ruleNo += 1
   }
@@ -292,6 +303,10 @@ export function buildBidChapterMessages(
     overviewBlock ? `【项目背景与概况（写作前先理解，正文须结合本项目实际情况组织内容）】\n${overviewBlock}` : "",
     `【技术需求与交货服务要求】\n${techText || "（未解析）"}`,
     opts.starBlock ?? "",
+    // R47（B20）：商务模板要求行（项目级稳定块，跨章 identical 不破前缀缓存；未上传模板时为空串被滤掉）
+    templateReqs.length
+      ? `【商务模板要求（商务同事提供模板里明写的要求，涉及即须满足）】\n${templateReqs.map((t, i) => `${i + 1}. ${t}`).join("\n")}`
+      : "",
     // 循环 2 批 2-1：定向事实启用时全量全局事实不再进稳定块（定向块属章差异内容，进 taskUser 保前缀缓存）
     directedOn ? "" : (opts.globalFacts ?? ""),
     `【全文大纲（仅供保持上下文一致，不要复述）】\n${outlineToText(outline ?? [])}`,

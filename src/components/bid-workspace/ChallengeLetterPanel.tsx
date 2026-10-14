@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
-import { chatViaGateway } from "@/lib/modelGateway"
+import { chatViaGateway, type ModelRef } from "@/lib/modelGateway"
+import type { ModelRole } from "@/lib/modelRouting"
 import {
   buildChallengeLetter,
   validateChallengeFields,
@@ -25,9 +26,11 @@ interface Props {
   tenderText?: string
   archived?: boolean
   runWithCostConfirm?: (fn: () => void, message: string) => void
+  /** R47（B19）：按环节取模型（自动档=该环节选型；手选档=用户选的模型）；不传则维持平台内置口径 */
+  modelRefForRole?: (role: ModelRole) => ModelRef | null
 }
 
-export function ChallengeLetterPanel({ tenderText, archived, runWithCostConfirm }: Props) {
+export function ChallengeLetterPanel({ tenderText, archived, runWithCostConfirm, modelRefForRole }: Props) {
   const [supplier, setSupplier] = useState<ChallengeSupplier>({ name: "", address: "", postalCode: "", contactName: "", contactPhone: "" })
   const [project, setProject] = useState<ChallengeProject>({ projectName: "", projectNumber: "", purchaserName: "" })
   const [items, setItems] = useState<ChallengeItem[]>([{ topic: "", request: "", facts: "", legalBasis: "" }])
@@ -67,7 +70,8 @@ export function ChallengeLetterPanel({ tenderText, archived, runWithCostConfirm 
           const context = (tenderText ?? "").slice(0, 8000)
           const topicDesc = validItems.map((it, i) => `事项${i + 1}：${it.topic}`).join("\n")
           const res = await chatViaGateway({
-            modelRef: null,
+            // R47（B19）：质疑函要素补全 = 中文文书，走中文文书档（此前硬编码 null = 平台内置）
+            modelRef: modelRefForRole?.("chat") ?? null,
             messages: [
               { role: "system", content: [
                 `你是政府采购维权助手。依据以下招标文件片段和质疑事项，为每项补充「事实依据」和「法律依据」。`,

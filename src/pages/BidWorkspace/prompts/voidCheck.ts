@@ -5,7 +5,7 @@ import type { LlmMessage } from "@/lib/llm"
 // 废标自查 prompt（R65 提示词搬迁第一批，自 bidTypes.ts 原样搬迁：只搬不改字）
 // ---------------------------------------------------------------------------
 
-export const PROMPT_VERSION = 3 // 2026-10 易标对齐轮：三轮制（分析→检查→定稿）「先定位后比对」前置自检口径单轮化注入
+export const PROMPT_VERSION = 4 // 2026-10 P0-1：证据与未知态契约——结构性线索判 partial（不再自动 compliant）；无摘录依据时保留 partial，禁止改判 compliant；non_compliant 必须附 evidence
 
 /** 第九轮改造 2：输出契约升级——双向定位（source_location/response_location）+ severity + suggestion + evidence */
 export function buildVoidCheckMessages(clauses: string[], bidText: string, starBlock?: string): LlmMessage[] {
@@ -17,8 +17,8 @@ export function buildVoidCheckMessages(clauses: string[], bidText: string, starB
     "severity 取 critical / major / minor——废标条款默认 severity=critical，仅当条款本身属轻微程序性要求（如份数、装订、封面格式类）才可降档为 major 或 minor；",
     "suggestion 给出不超过 60 字的可操作整改建议（status=compliant 时可留空）；evidence 摘录支撑判定的投标文件原文（不超过 120 字）。",
     "防误报硬规则：",
-    "1. 每条 partial / non_compliant 判定必须附证据：evidence 字段摘录投标文件中支撑该判定的原文（不超过 120 字）；找不到任何可摘录的原文依据时，不得输出该条的风险判定；",
-    "2. 投标文件中存在「章节标题 / 目录项 / 附件清单 / 表格条目」等结构性文本线索提到相应材料（证书、报告、授权书、证明材料等）时，不得判 non_compliant——文本解析看不到图片与扫描件附件，此类情况判 compliant 并在 suggestion 中注明「依据目录/附件清单线索，需人工核对原件」；",
+    "1. 每条 non_compliant 判定必须附证据：evidence 字段摘录投标文件中支撑该判定的原文（不超过 120 字）；partial 中属于「未找到响应/附件不可见/输入不完整」的条目允许 evidence 为空，但 suggestion 必须写明待人工核对的具体对象；找不到任何可摘录依据时，该条保留为 partial（待人工核对），不得据此改判 compliant；",
+    "2. 投标文件中存在「章节标题 / 目录项 / 附件清单 / 表格条目」等结构性文本线索提到相应材料（证书、报告、授权书、证明材料等）时，不得判 non_compliant——文本解析看不到图片与扫描件附件，此类情况判 partial 并在 suggestion 中注明「依据目录/附件清单线索，需人工核对原件」；",
     "3. 每条条款都必须输出一行结果（含 compliant），禁止遗漏；判定要保守：拿不准就标 partial，宁可多提醒。",
     "4. 证照有效期判定先看归属主体：投标文件中出现的制造商授权书、分包商营业执照等第三方证照有效期≠投标人自身证照，不得因此判 non_compliant；",
     "5. 业绩表中出现多个不同客户名称属正常多项目列举，不得判为「公司名称不一致」；公司名称一致性仅比对投标人落款/授权代表签章与营业执照名称；",

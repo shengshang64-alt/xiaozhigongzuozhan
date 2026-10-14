@@ -175,9 +175,9 @@ function chapterText(refMaterials: string): string {
 }
 
 describe("buildBidChapterMessages 素材库基线注入（B类 R167 v3）", () => {
-  it("PROMPT_VERSION 已升到 5（r287 引号照录纪律注入，B类升位；前值 4=2026-10 易标对齐素材融入口径）", async () => {
+  it("PROMPT_VERSION 已升到 6（R47 B20 商务模板要求注入槽；前值 5=r287 引号照录纪律）", async () => {
     const mod = await import("./prompts/bidChapter")
-    expect(mod.PROMPT_VERSION).toBe(5)
+    expect(mod.PROMPT_VERSION).toBe(6)
   })
   it("普通资料（无标记）-> 只出【团队写作资料】，不出现【公司优质素材库】（非回流）", () => {
     const t = chapterText("自有人员与案例资料一段")
@@ -200,9 +200,9 @@ describe("buildBidChapterMessages 素材库基线注入（B类 R167 v3）", () =
 })
 
 describe("buildBidSectionMessages 小节级同口径注入", () => {
-  it("小节 PROMPT_VERSION 升到 6（r287 引号照录纪律注入），带标记时出现标准件槽", async () => {
+  it("小节 PROMPT_VERSION 升到 7（R47 B20 商务模板要求注入槽），带标记时出现标准件槽", async () => {
     const mod = await import("./prompts/bidSection")
-    expect(mod.PROMPT_VERSION).toBe(6)
+    expect(mod.PROMPT_VERSION).toBe(7)
     const composed = composeRefMaterials(baselineMarkForKind("testing"), "用例追溯矩阵基线", "")
     const msgs = buildBidSectionMessages("项目", "医院", null, [], chapters, 0, () => "", {
       ...baseOpts,

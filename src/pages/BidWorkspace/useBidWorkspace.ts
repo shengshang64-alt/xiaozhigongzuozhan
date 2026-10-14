@@ -17,6 +17,21 @@ import {
   TIMEOUT_RETRY_MIN_TOKENS,
   type ModelRef,
 } from "@/lib/modelGateway"
+// R47（B19）：按环节自动选模型（纯函数路由，口径与依据见 lib/modelRouting 模块头）。
+// 顶部选「自动 · 按环节智能选择」时，每次调用按自己的环节（role）取模型；选具体模型即整体关闭自动。
+import {
+  AUTO_MODEL_KEY,
+  buildRolePickMap,
+  isAutoModelKey,
+  MODEL_ROLE_ORDER,
+  resolveRoleModelRef,
+  roleForStep,
+  rolePickHint,
+  type ModelRole,
+} from "@/lib/modelRouting"
+import { onModelMetaChange, readModelMeta } from "@/lib/modelMetaLocal"
+import { configCoolingKey, isChannelCooling, onCoolingChange } from "@/lib/modelFailover"
+import { getModelHealth, onHealthChange } from "@/lib/modelHealth"
 // R180：按模型实测延迟自适应首轮预算（r177-followup 残项落地，会话内存零持久化零 collection）
 import { noteKnownGoodBudget, noteThinkingEmptyReply, observeModelCall, suggestInitialBudget } from "@/lib/latencyBudget"
 // Q28 切片F：上游 429 限流的会话内冷却闸门（并发 worker 取号错峰，见模块头注释）
@@ -30,6 +45,8 @@ import { useScopeSkills } from "@/hooks/useScopeSkills"
 import { injectSkillBlock, skillBlockFor, skillCostSuffix, type SkillScope } from "@/lib/skillCore"
 // R159：招标文本标注符号丢失检测（素材完整性·零费用纯函数）
 import { detectMarkerSymbolLoss, markerLossNotice } from "./materialIntegrity"
+// R47（B20）：商务模板画像消费侧 —— 模板明写的「须包含 / 应列明」要求注入大纲与正文提示词
+import { templateProfileOf, templateRequirementLines } from "./templateProfile"
 // R167：标书优质素材库（五类标准件）——分类基线取用与素材库读写（纯本地，零 AI）
 import {
   COMPANY_DEFAULTS,
@@ -416,6 +433,42 @@ class AuthRequiredError extends Error {}
 // 当前页面选用的模型（由 hook 内的模型选择器同步；null = 平台内置默认）
 let activeModelRef: ModelRef | null = null
 
+// R47（B19）：自动档开关 + 各环节选型结果（由 hook 内的 useMemo/effect 同步到这两个模块级变量）。
+// 为什么用模块级：llmGenerate 是文件内的普通函数（不是 hook 闭包），解析链与并发 worker 都直接调它，
+// 而取值时机都在用户点击之后、与 activeModelRef 同源；改成参数传递要动 54 个调用点，收益为零。
+let activeAutoMode = true
+let activeRoleMap: Record<ModelRole, ModelRef | null> = {
+  longform: null,
+  outline: null,
+  extract: null,
+  judge: null,
+  vision: null,
+  chat: null,
+}
+
+/**
+ * 调用点未显式指定 role 时，按技能 scope 推导本次调用的环节。
+ * 口径：解析链=抽取、大纲链=规划、正文链=长文、答辩讲标链=中文文书、偏离表=逐条判定。
+ * 新增调用点请优先显式标 role（一处一判断），本函数只作兜底。
+ */
+function roleForScope(scope?: SkillScope): ModelRole {
+  switch (scope) {
+    case "bid-parse":
+      return "extract"
+    case "bid-outline":
+      return "outline"
+    case "bid-chapter":
+      return "longform"
+    case "bid-defense":
+      return "chat"
+    case "bid-deviation":
+      return "judge"
+    default:
+      // 未分类调用按「宁慢不错」处理（判定档），避免用快档做逐条比对而漏判
+      return "judge"
+  }
+}
+
 function llmErrorText(r: { error?: string; text?: string }): string {
   const e = (r.error ?? "").trim()
   if (!e) return "生成失败，请稍后重试"
@@ -428,13 +481,17 @@ async function llmGenerate(
   maxTokens: number,
   scope?: SkillScope,
   temperature?: number,
-  opts?: { disableThinking?: boolean },
+  opts?: { disableThinking?: boolean; role?: ModelRole },
 ): Promise<string> {
   // R180（r177-followup 残项落地）：把 120s 红线从「首调税」变成自适应起点——同模型
   // 会话内已证实超时/贴红线偏慢时，首调直接从已验证可用档起步（无验证档按折半）并同步
   // 关闭思考；无证据模型（首调或快模型）原样放行，行为与 R177 后完全一致。成功后回写
   // 验证档（只升不降），后续同请求免交重复超时。纯会话内存，见 lib/latencyBudget.ts。
-  const latencyKey = activeModelRef ? modelRefKey(activeModelRef) : "platform"
+  // R47（B19）：本次调用用哪个模型 = 显式 role（或按 scope 推导）＋ 顶部自动/手选档；
+  // 自动档下该环节无可用候选时回落到手选/默认，见 resolveRoleModelRef（唯一收口）
+  const role = opts?.role ?? roleForScope(scope)
+  const ref = resolveRoleModelRef(role, activeAutoMode, activeModelRef, activeRoleMap)
+  const latencyKey = ref ? modelRefKey(ref) : "platform"
   const bidMessages = injectSkillBlock(messages, skillBlockFor(scope))
   const suggest = suggestInitialBudget(latencyKey, maxTokens)
   const effTokens = suggest.tokens
@@ -442,7 +499,7 @@ async function llmGenerate(
   // Q28 切片F：并发 worker 共用限流闸门取号错峰——上游 TPM 按分钟滚动，同秒并发必撞 429
   await waitCallSlot()
   const gwReq = {
-    modelRef: activeModelRef,
+    modelRef: ref,
     messages: bidMessages,
     page: "bid-workspace",
     max_tokens: effTokens,
@@ -488,7 +545,7 @@ async function llmGenerate(
     // 后续所有首调都直接关思考，杜绝每个小节/每个精调候选都白烧一次 85s 级空回复（并发下会连锁 429）
     noteThinkingEmptyReply(latencyKey)
     const retry = await chatViaGateway({
-      modelRef: activeModelRef,
+      modelRef: ref,
       messages: bidMessages,
       page: "bid-workspace",
       max_tokens: effTokens,
@@ -515,7 +572,7 @@ async function llmGenerate(
       budget = nextDegradedBudget(budget)
       const dT0 = Date.now()
       const degraded = await chatViaGateway({
-        modelRef: activeModelRef,
+        modelRef: ref,
         messages: bidMessages,
         page: "bid-workspace",
         max_tokens: budget,
@@ -701,7 +758,7 @@ async function withJsonRepair<T>(raw: string, parseFn: (text: string) => T): Pro
     }
     let repaired: string
     try {
-      repaired = await llmGenerate(buildJsonRepairMessages(raw), MAX_TOKENS_LONGFORM, undefined, 0)
+      repaired = await llmGenerate(buildJsonRepairMessages(raw), MAX_TOKENS_LONGFORM, undefined, 0, { role: "extract" })
     } catch (repairErr) {
       if (repairErr instanceof AuthRequiredError) throw repairErr
       throw origErr
@@ -716,11 +773,11 @@ async function withJsonRepair<T>(raw: string, parseFn: (text: string) => T): Pro
 
 /** R-028（R254）废标检查真三轮递进（定位→初检→定稿，易标方式恢复）：三轮任一异常由调用方降级单轮；用户授权 3 次模型调用 */
 async function runVoidCheckThreeRounds(clauses: string[], bidText: string, starBlock: string): Promise<VoidCheck> {
-  const scopeRaw = await llmGenerate(buildVoidScopeMessages(clauses, bidText, starBlock), MAX_TOKENS_LONGFORM)
+  const scopeRaw = await llmGenerate(buildVoidScopeMessages(clauses, bidText, starBlock), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
   const scope = await withJsonRepair(scopeRaw, extractJsonLoose)
-  const initRaw = await llmGenerate(buildVoidInitialCheckMessages(scope, bidText), MAX_TOKENS_LONGFORM)
+  const initRaw = await llmGenerate(buildVoidInitialCheckMessages(scope, bidText), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
   const initial = await withJsonRepair(initRaw, extractJsonLoose)
-  const finalRaw = await llmGenerate(buildVoidFinalizeMessages(initial, bidText), MAX_TOKENS_LONGFORM)
+  const finalRaw = await llmGenerate(buildVoidFinalizeMessages(initial, bidText), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
   return sanitizeVoidCheck(await withJsonRepair(finalRaw, extractJsonLoose), clauses)
 }
 
@@ -941,6 +998,7 @@ async function repairMermaidFigures(figs: FigureSpec[]): Promise<FigureSpec[]> {
       code: f.code,
       regenerate: (badCode, error) =>
         llmGenerate(buildMermaidRepairMessages(f.title, badCode, error), MAX_TOKENS_LONGFORM, "bid-chapter", 0, {
+          role: "extract",
           disableThinking: true,
         }),
     })
@@ -980,6 +1038,9 @@ async function runEvalTechCall(cur: BidProjectRecord): Promise<AiReview> {
       outlineText: outlineToText(cur.bid_outline),
     }),
     MAX_TOKENS_LONGFORM,
+    undefined,
+    undefined,
+    { role: "judge" },
   )
   return sanitizeAiReview(extractJsonLoose(raw), scoring)
 }
@@ -992,6 +1053,9 @@ async function runEvalFormatCall(cur: BidProjectRecord): Promise<FormatIssue[]> 
       implicitConstraints: extractImplicitConstraints(cur.tender_text),
     }),
     MAX_TOKENS_LONGFORM,
+    undefined,
+    undefined,
+    { role: "judge" },
   )
   return sanitizeFormatIssues(extractJsonLoose(raw))
 }
@@ -1005,6 +1069,9 @@ async function runEvalCommercialCall(cur: BidProjectRecord): Promise<CommercialC
       collectCommercialParagraphs(bidChaptersFor(cur)),
     ),
     MAX_TOKENS_LONGFORM,
+    undefined,
+    undefined,
+    { role: "judge" },
   )
   return sanitizeCommercialChecks(extractJsonLoose(raw))
 }
@@ -1103,8 +1170,18 @@ function refMaterialsFor(cur: BidProjectRecord, query: Parameters<typeof retriev
 // 大纲生成依赖的解析项（任一存在即可生成，全缺则提示回解析环节）
 const OUTLINE_DEPEND_KEYS = ["tech_score", "response_req", "biz_score"]
 
+/**
+ * 费用提示文案（各处「先确认费用」对话框共用）。
+ * R47（B19）：自动档下各环节可能落在不同模型上，故按「全个人 / 全平台 / 混合」三种口径分别给文案，
+ * 不再一律按平台计费口径说（本地部署下与实际不符）。
+ */
 function costText(): string {
-  return costTextForModel(activeModelRef)
+  if (!activeAutoMode) return costTextForModel(activeModelRef)
+  const refs = MODEL_ROLE_ORDER.map((r) => activeRoleMap[r])
+  const personal = refs.filter((r) => r?.source === "personal")
+  if (personal.length === refs.length) return costTextForModel(personal[0] ?? null)
+  if (!personal.length) return costTextForModel(null)
+  return "按各环节实际所选模型计费：个人接口账户承担该模型费用，平台内置按 token 用量扣费"
 }
 
 function normalizeRecord(rec: BidProjectRecord): BidProjectRecord {
@@ -1224,13 +1301,15 @@ export function useBidWorkspace() {
 
   // ------------------------------ 模型选择（统一网关） ------------------------------
   const [modelOptions, setModelOptions] = useState<ModelRef[]>([])
-  const [selectedModelKey, setSelectedModelKey] = useState("")
+  // R47（B19）：默认「自动 · 按环节智能选择」（此前默认平台内置，本地部署下平台通道必然 412）
+  const [selectedModelKey, setSelectedModelKey] = useState(AUTO_MODEL_KEY)
 
   const loadModelOptions = useCallback(async () => {
     const av = await resolveAvailableModels()
     setModelOptions(av.models)
     setSelectedModelKey((prev) =>
-      prev && av.models.some((m) => modelRefKey(m) === prev)
+      // R47（B19）：自动档哨兵值不是模型 key，不能被「匹配不到模型」的回落逻辑刷掉
+      prev === AUTO_MODEL_KEY || av.models.some((m) => modelRefKey(m) === prev)
         ? prev
         : av.defaultRef
           ? modelRefKey(av.defaultRef)
@@ -1242,9 +1321,58 @@ export function useBidWorkspace() {
     if (userId) void loadModelOptions()
   }, [userId, loadModelOptions])
 
+  const manualModelRef = useMemo(
+    () => modelOptions.find((m) => modelRefKey(m) === selectedModelKey) ?? null,
+    [modelOptions, selectedModelKey],
+  )
+
   useEffect(() => {
-    activeModelRef = modelOptions.find((m) => modelRefKey(m) === selectedModelKey) ?? null
-  }, [modelOptions, selectedModelKey])
+    activeModelRef = manualModelRef
+    activeAutoMode = isAutoModelKey(selectedModelKey)
+  }, [manualModelRef, selectedModelKey])
+
+  // R47（B19）：本地画像 / 会话冷却 / 长期不可用档案任一变化都重算选型（三个来源都是本地同步读，无网络）
+  const [rolePickTick, setRolePickTick] = useState(0)
+  useEffect(() => {
+    const bump = () => setRolePickTick((n) => n + 1)
+    const offs = [onModelMetaChange(bump), onCoolingChange(bump), onHealthChange(bump)]
+    return () => offs.forEach((off) => off())
+  }, [])
+
+  const rolePicks = useMemo(
+    () => {
+      // rolePickTick 不是数据输入，而是本地画像 / 冷却 / 健康变化的强触发票
+      void rolePickTick
+      return buildRolePickMap(modelOptions, {
+        userMetaOf: (ref) => readModelMeta(userId, ref.configId, ref.modelId),
+        coolingOf: (ref) => isChannelCooling(configCoolingKey(ref.configId)) || isChannelCooling(modelRefKey(ref)),
+        unavailableOf: (ref) => !!getModelHealth(userId, modelRefKey(ref)),
+      })
+    },
+    [modelOptions, userId, rolePickTick],
+  )
+
+  /** 各环节选型结果（去依据，仅取 item）；手选档下只用于提示文案 */
+  const roleModelMap = useMemo(() => {
+    const out = {} as Record<ModelRole, ModelRef | null>
+    for (const r of MODEL_ROLE_ORDER) out[r] = rolePicks[r]?.item ?? null
+    return out
+  }, [rolePicks])
+
+  useEffect(() => {
+    activeRoleMap = roleModelMap
+  }, [roleModelMap])
+
+  /**
+   * 子面板取模型：手选档 = 用户选的那个；自动档 = 该环节选型。
+   * 解析报告 / 合规矩阵 / 质疑函 / 投诉书此前把 modelRef 硬编码为 null（= 平台内置），本地部署下必然落
+   * 不可用通道——这里统一收口到本函数。
+   */
+  const modelRefForRole = useCallback(
+    (role: ModelRole): ModelRef | null =>
+      resolveRoleModelRef(role, isAutoModelKey(selectedModelKey), manualModelRef, roleModelMap),
+    [selectedModelKey, manualModelRef, roleModelMap],
+  )
 
   const handleSelectModel = useCallback((key: string) => setSelectedModelKey(key), [])
 
@@ -2269,12 +2397,12 @@ export function useBidWorkspace() {
       : source0
     setFactAiBusy(true)
     try {
-      const raw = await llmGenerate(buildFactSettingsMessages(source), MAX_TOKENS_LONGFORM, undefined, 0)
+      const raw = await llmGenerate(buildFactSettingsMessages(source), MAX_TOKENS_LONGFORM, undefined, 0, { role: "extract" })
       let lines = factLinesFromText(raw)
       // 循环 2 批 1-2：解析为空（疑似格式异常）时自动做一次语法修复重试，不单独弹费用确认
       if (!lines.length) {
         try {
-          const repaired = await llmGenerate(buildJsonRepairMessages(raw), MAX_TOKENS_LONGFORM, undefined, 0)
+          const repaired = await llmGenerate(buildJsonRepairMessages(raw), MAX_TOKENS_LONGFORM, undefined, 0, { role: "extract" })
           lines = factLinesFromText(repaired)
         } catch {
           // 修复调用失败：按原口径走下方空结果提示
@@ -2328,7 +2456,7 @@ export function useBidWorkspace() {
     const evidence = collectFactEvidence(lines, cur.bid_chapters)
     setFactCheckBusy(true)
     try {
-      const raw = await llmGenerate(buildFactCheckMessages(wrapGlobalFactsBlock(lines), evidence), MAX_TOKENS_LONGFORM)
+      const raw = await llmGenerate(buildFactCheckMessages(wrapGlobalFactsBlock(lines), evidence), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
       // 循环 2 批 1-2：矛盾清单 JSON 解析失败时自动做一次语法修复重试（费用含在本入口确认内）
       setFactCheckResult(await withJsonRepair(raw, sanitizeFactConflicts))
       setFactCheckOpen(true)
@@ -2377,7 +2505,7 @@ export function useBidWorkspace() {
     }
     setFactPatchBusy(true)
     try {
-      const raw = await llmGenerate(buildFactPatchMessages(conflicts, cur.bid_chapters), MAX_TOKENS_LONGFORM)
+      const raw = await llmGenerate(buildFactPatchMessages(conflicts, cur.bid_chapters), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
       const patches = await withJsonRepair(raw, sanitizeFactPatches)
       if (!patches.length) {
         toast.error("未能生成可用的修复补丁，请稍后重试或手动修改正文")
@@ -2503,7 +2631,7 @@ export function useBidWorkspace() {
                 jobs.push(
                   (async () => {
                     try {
-                      const raw = await llmGenerate(buildTypoCheckMessages(chapterRefs), MAX_TOKENS_LONGFORM, undefined, 0, { disableThinking: true })
+                      const raw = await llmGenerate(buildTypoCheckMessages(chapterRefs), MAX_TOKENS_LONGFORM, undefined, 0, { role: "extract", disableThinking: true })
                       // 段内检查：以段文本为校验语料，命中位置为段内偏移，随后还原为全文偏移并重建摘录/行号
                       const found = sanitizeTypoFindings(raw, { ...doc, content: segmented ? seg.text : doc.content })
                       for (const t of found) {
@@ -2526,7 +2654,7 @@ export function useBidWorkspace() {
                 jobs.push(
                   (async () => {
                     try {
-                      const raw = await llmGenerate(buildLogicCheckMessages(chapterRefs), MAX_TOKENS_LONGFORM)
+                      const raw = await llmGenerate(buildLogicCheckMessages(chapterRefs), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
                       logic.push(...sanitizeLogicFindings(raw, doc))
                       failedDocs.delete(`${doc.id}#logic`)
                     } catch (e) {
@@ -2692,6 +2820,9 @@ export function useBidWorkspace() {
                 figureCap: cap,
               }),
               MAX_TOKENS_LONGFORM,
+              undefined,
+              undefined,
+              { role: "extract" },
             )
             // 循环 2 批 1-2：单批 JSON 解析失败时自动做一次语法修复重试（费用含在本入口确认内）
             const idSet = new Set(batches[b].map((l) => l.nodeId))
@@ -2962,7 +3093,7 @@ export function useBidWorkspace() {
                 FIGURE_BACKFILL_MAX_TOKENS,
                 "bid-chapter",
                 0,
-                { disableThinking: true },
+                { role: "extract", disableThinking: true },
               )
               const spec = parseFigureBackfill(raw, t.plan)
               if (!spec) {
@@ -4263,6 +4394,8 @@ export function useBidWorkspace() {
             complianceMode: cur.gen_options?.compliance_mode,
             // R-017 必备技术内容清单注入大纲 prompt（可配置下限，非空才生效）
             requiredTechContents: readRequiredTechKeywords(),
+            // R47（B20）：商务模板明写的写作要求（本地识别，零 AI；未识别到导模板时为空数组，builder 静默不注入）
+            templateRequirements: templateRequirementLines(templateProfileOf(cur.format_settings)),
           }),
           MAX_TOKENS_OUTLINE,
           "bid-outline",
@@ -4296,6 +4429,9 @@ export function useBidWorkspace() {
           const fixRaw = await llmGenerate(
             buildOutlineFixMessages(nodes, outlineLevel, leafGoal, sectionWords, issues),
             MAX_TOKENS_OUTLINE_FIX,
+            undefined,
+            undefined,
+            { role: "outline" },
           )
           const fixedParsed = await withJsonRepair(fixRaw, (t) => normalizeOutline(parseOutlineJson(t)))
           const fixed = outlineLevel > 0 ? trimOutlineDepth(fixedParsed, outlineLevel) : fixedParsed
@@ -4334,6 +4470,9 @@ export function useBidWorkspace() {
           const gateFixRaw = await llmGenerate(
             buildOutlineFixMessages(nodes, outlineLevel, leafGoal, sectionWords, review.issues, { lockTopLevel: true }),
             MAX_TOKENS_OUTLINE_FIX,
+            undefined,
+            undefined,
+            { role: "outline" },
           )
           const gateParsed = await withJsonRepair(gateFixRaw, (t) => normalizeOutline(parseOutlineJson(t)))
           const gateFixed = outlineLevel > 0 ? trimOutlineDepth(gateParsed, outlineLevel) : gateParsed
@@ -5159,7 +5298,7 @@ export function useBidWorkspace() {
       if (!lines.length || !ch || !(ch.content ?? "").trim()) return { conflicts: 0, fixed: 0, skipped: 0 }
       try {
         const evidence = collectFactEvidence(lines, [ch])
-        const raw = await llmGenerate(buildFactCheckMessages(wrapGlobalFactsBlock(lines), evidence), MAX_TOKENS_LONGFORM)
+        const raw = await llmGenerate(buildFactCheckMessages(wrapGlobalFactsBlock(lines), evidence), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
         const conflicts = await withJsonRepair(raw, sanitizeFactConflicts)
         if (!conflicts.length) return { conflicts: 0, fixed: 0, skipped: 0 }
         // T19：修复循环带提交校验退回机制（易标 createSubmissionTracker 移植）——
@@ -5170,7 +5309,7 @@ export function useBidWorkspace() {
         let fixed = 0
         let skipped = 0
         for (;;) {
-          const patchRaw = await llmGenerate(buildFactPatchMessages(remaining, [ch]), MAX_TOKENS_LONGFORM)
+          const patchRaw = await llmGenerate(buildFactPatchMessages(remaining, [ch]), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
           const patches = await withJsonRepair(patchRaw, sanitizeFactPatches)
           const applied = applyFactPatchItems(patches, [ch])
           fixed += applied.fixed
@@ -5192,7 +5331,7 @@ export function useBidWorkspace() {
           const evidenceNow = collectFactEvidence(lines, [chNow])
           let recheckRaw: string
           try {
-            recheckRaw = await llmGenerate(buildFactCheckMessages(wrapGlobalFactsBlock(lines), evidenceNow), MAX_TOKENS_LONGFORM)
+            recheckRaw = await llmGenerate(buildFactCheckMessages(wrapGlobalFactsBlock(lines), evidenceNow), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
           } catch (e) {
             if (e instanceof AuthRequiredError) throw e
             break // 复审失败：保留已修复成果，不再退回
@@ -5753,6 +5892,8 @@ export function useBidWorkspace() {
         complianceMode: cur.gen_options?.compliance_mode,
         // T16：编排期定向挑选的知识库素材段（非空时章级替代检索式注入；节级视图覆盖见下方小节循环）
         directedKnowledge: chapterOrchOpt?.knowledge?.length ? chapterOrchOpt.knowledge : undefined,
+        // R47（B20）：商务模板写作要求（章级 baseOpts 一次取，小节级循环继承同一判断）
+        templateRequirements: templateRequirementLines(templateProfileOf(cur.format_settings)),
       }
       if (budget > SECTION_GEN_MIN_BUDGET && sections.length >= 2) {
         // 小节级串行生成
@@ -6430,6 +6571,9 @@ export function useBidWorkspace() {
             }),
           }),
           MAX_TOKENS_LONGFORM,
+          undefined,
+          undefined,
+          { role: "longform" },
         )
         // 第十轮修复 1/3：改写/扩写/精简输出同样净化；扩写成功后清除「偏短」标记
         const clean = sanitizeChapterText(text)
@@ -7001,7 +7145,7 @@ export function useBidWorkspace() {
     }
     setCoverageAuditBusy(true)
     try {
-      const raw = await llmGenerate(buildCoverageAuditMessages(inputs), MAX_TOKENS_LONGFORM)
+      const raw = await llmGenerate(buildCoverageAuditMessages(inputs), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
       const entries = await withJsonRepair(raw, (t) => sanitizeCoverageAudit(t, inputs))
       if (!entries.length) throw new Error("覆盖审计没有解析出有效结果，请重试")
       setCoverageAudit(entries)
@@ -7191,7 +7335,7 @@ export function useBidWorkspace() {
       try {
         let judged = pairs
         if (pairs.length) {
-          const raw = await llmGenerate(buildDupJudgeMessages(pairs), MAX_TOKENS_OUTLINE)
+          const raw = await llmGenerate(buildDupJudgeMessages(pairs), MAX_TOKENS_OUTLINE, undefined, undefined, { role: "judge" })
           const rec = extractJsonLoose(raw) as Record<string, unknown>
           const results = Array.isArray(rec?.results) ? (rec.results as Record<string, unknown>[]) : []
           judged = pairs.map((pair, i) => {
@@ -7405,7 +7549,7 @@ export function useBidWorkspace() {
         check = await runVoidCheckThreeRounds(clauses, bidText, starBlock)
       } catch (roundErr) {
         if (roundErr instanceof AuthRequiredError) throw roundErr
-        const raw = await llmGenerate(buildVoidCheckMessages(clauses, bidText, starBlock), MAX_TOKENS_LONGFORM)
+        const raw = await llmGenerate(buildVoidCheckMessages(clauses, bidText, starBlock), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
         check = sanitizeVoidCheck(extractJsonLoose(raw), clauses)
       }
       updateProject({ void_check: check })
@@ -7688,6 +7832,9 @@ export function useBidWorkspace() {
         const rawFact = await llmGenerate(
           buildFactCheckMessages(wrapGlobalFactsBlock(factLines), evidence),
           MAX_TOKENS_LONGFORM,
+          undefined,
+          undefined,
+          { role: "judge" },
         )
         return await withJsonRepair(rawFact, sanitizeFactConflicts)
       } catch {
@@ -7737,6 +7884,9 @@ export function useBidWorkspace() {
               kbContext,
             }),
             MAX_TOKENS_LONGFORM,
+            undefined,
+            undefined,
+            { role: "judge" },
           )
           recordAiCall()
           out.push(...sanitizeConsistencyIssues(extractJsonLoose(rawGuard)))
@@ -7783,7 +7933,7 @@ export function useBidWorkspace() {
       const starBlock = starClausesPromptBlock(cur.parse_report)
       // 循环 8 A3：审计路与事实路并行；事实路自吞异常（返回 null），Promise.all 的 reject 只可能来自审计路
       const [raw, factConflicts, consistencyIssues] = await Promise.all([
-        llmGenerate(buildSubmissionCheckMessages(scoring, voidClauses, digest, starBlock), MAX_TOKENS_LONGFORM),
+        llmGenerate(buildSubmissionCheckMessages(scoring, voidClauses, digest, starBlock), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" }),
         runFactPath(),
         // D3/R89：护栏路自吞整体异常（返回 null=未跑），reject 仍只可能来自审计路
         runConsistencyGuardPath().catch(() => null),
@@ -8729,7 +8879,7 @@ export function useBidWorkspace() {
     )
     let judged = pairs
     if (pairs.length) {
-      const raw = await llmGenerate(buildDupJudgeMessages(pairs), MAX_TOKENS_OUTLINE)
+      const raw = await llmGenerate(buildDupJudgeMessages(pairs), MAX_TOKENS_OUTLINE, undefined, undefined, { role: "judge" })
       const rec = extractJsonLoose(raw) as Record<string, unknown>
       const results = Array.isArray(rec?.results) ? (rec.results as Record<string, unknown>[]) : []
       judged = pairs.map((pair, i) => {
@@ -8750,7 +8900,7 @@ export function useBidWorkspace() {
       .slice(0, 30)
     if (!clauses.length) throw new Error("请先在「废标条款」框里粘贴条款，每行一条")
     if (!toolBidText.trim()) throw new Error("请先粘贴或上传投标文件正文")
-    const raw = await llmGenerate(buildVoidCheckMessages(clauses, chaptersToTextStub(toolBidText)), MAX_TOKENS_LONGFORM)
+    const raw = await llmGenerate(buildVoidCheckMessages(clauses, chaptersToTextStub(toolBidText)), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
     setToolVoidResult(sanitizeVoidCheck(extractJsonLoose(raw), clauses))
   }, [toolBidText, toolMaterial])
 
@@ -8763,7 +8913,7 @@ export function useBidWorkspace() {
     const stubChapters: Chapter[] = [
       { node_id: "", title: "上传的投标文件正文", sections: [], content: toolBidText, gen_status: "done" },
     ]
-    const raw = await llmGenerate(buildEvalMessages(scoringText, stubChapters), MAX_TOKENS_LONGFORM)
+    const raw = await llmGenerate(buildEvalMessages(scoringText, stubChapters), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
     setToolEvalResult(sanitizeAiReview(extractJsonLoose(raw), scoring))
   }, [toolBidText, toolMaterial])
 
@@ -8854,6 +9004,13 @@ export function useBidWorkspace() {
     return combinedScoringText(rep).trim() ? ([] as string[]) : ["技术评分要求", "商务评分要求"]
   }, [activeProject])
   const goParseStep = useCallback(() => setActiveStep(2), [])
+
+  /** R47（B19）：工具栏就地提示——自动档给当前环节挑了谁、凭什么（选型口径单测见 lib/modelRouting.test.ts） */
+  const roleHintText = useMemo(() => {
+    const role = roleForStep(activeStep)
+    const pick = rolePicks[role]
+    return rolePickHint(role, pick?.item ?? null, pick?.matchedTags ?? [])
+  }, [rolePicks, activeStep])
 
   return {
     // 登录 / 计费
@@ -9272,6 +9429,8 @@ export function useBidWorkspace() {
     modelOptions,
     selectedModelKey,
     handleSelectModel,
+    roleHintText,
+    modelRefForRole,
     // 全站技能带入（标书侧 5 个功能点）
     parseSkills,
     bidOutlineSkills,

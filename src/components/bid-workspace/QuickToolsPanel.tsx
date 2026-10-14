@@ -50,6 +50,7 @@ type QuickToolsPanelProps = Pick<
   | "factPatchBusy"
   | "startFactPatch"
   | "costConfirm"
+  | "modelRefForRole"
 >
 
 const TOOLS: { kind: ToolKind; desc: string; icon: typeof ScanSearch; materialLabel: string; materialPlaceholder: string; needBid: boolean }[] = [
@@ -302,6 +303,7 @@ export function QuickToolsPanel(p: QuickToolsPanelProps) {
                     onReparse={p.reparseToolSection}
                     reparseBusyKey={p.reparseBusyKey}
                     skillPickerSlot={<SkillPickerFor scope="bid-parse" source={p.parseSkills} align="right" />}
+                    modelRefForRole={p.modelRefForRole}
                     tenderText={p.toolMaterial}
                     warnings={p.toolParseWarnings}
                     onRescanStar={() => {
@@ -373,6 +375,7 @@ export function QuickToolsPanel(p: QuickToolsPanelProps) {
           <ComplaintLetterPanel
             tenderText={p.toolMaterial}
             runWithCostConfirm={p.costConfirm.runWithCostConfirm}
+            modelRefForRole={p.modelRefForRole}
           />
         </DialogContent>
       </Dialog>
@@ -391,6 +394,7 @@ export function QuickToolsPanel(p: QuickToolsPanelProps) {
           <ChallengeLetterPanel
             tenderText={p.toolMaterial}
             runWithCostConfirm={p.costConfirm.runWithCostConfirm}
+            modelRefForRole={p.modelRefForRole}
           />
         </DialogContent>
       </Dialog>

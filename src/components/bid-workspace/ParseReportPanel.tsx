@@ -25,7 +25,8 @@ import {
 } from "@/pages/BidWorkspace/bidTypes"
 import { COVERAGE_WARN, coveragePercent, parseCoverageRatio } from "@/pages/BidWorkspace/parseCoverage"
 import { countMarkerLossLines, lineHasMarkerLoss } from "@/pages/BidWorkspace/materialIntegrity"
-import { chatViaGateway } from "@/lib/modelGateway"
+import { chatViaGateway, type ModelRef } from "@/lib/modelGateway"
+import type { ModelRole } from "@/lib/modelRouting"
 import { extractJsonCandidate, parseJsonTolerant } from "@/lib/jsonTolerant"
 import {
   mergeRiskFindings,
@@ -71,6 +72,8 @@ type ParseReportPanelProps = {
   runWithCostConfirm?: (fn: () => void, message: string) => void
   /** 第3轮 G1/G2：归档只读锁定时禁用 AI 体检 */
   archived?: boolean
+  /** R47（B19）：按环节取模型（自动档=该环节选型；手选档=用户选的模型）；不传则维持平台内置口径 */
+  modelRefForRole?: (role: ModelRole) => ModelRef | null
 }
 
 const STATUS_BADGE: Record<ParseSectionStatus, string> = {
@@ -157,7 +160,7 @@ function renderDetailLine(line: string, isStar: boolean): ReactNode {
  * 解析报告主详情布局：左栏项列表（进度 N/M + 进度条 + 每项一句摘要与状态徽标，点选高亮），
  * 右栏选中项详情（状态徽标 + 重新解析此项 + 复制 + 结构化内容 + 人工编辑保存）。
  */
-export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, skillPickerSlot, tenderText, warnings, onRescanStar, basisMerged, onOpenStandardsPicker, runWithCostConfirm, archived }: ParseReportPanelProps) {
+export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, skillPickerSlot, tenderText, warnings, onRescanStar, basisMerged, onOpenStandardsPicker, runWithCostConfirm, archived, modelRefForRole }: ParseReportPanelProps) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   // 用户反馈轮：完整解析报告默认只看关键项（关键项 + 重点条款），可一键展开全部项
@@ -339,7 +342,8 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
         try {
           const excerpt = tenderText.slice(0, 12000)
           const res = await chatViaGateway({
-            modelRef: null,
+            // R47（B19）：语义级风险复核 = 全文逐条判定，走判定档（此前硬编码 null = 平台内置）
+            modelRef: modelRefForRole?.("judge") ?? null,
             messages: [
               { role: "system", content: AI_RISK_SYSTEM },
               { role: "user", content: `【招标文件原文（可能截断）】\n${excerpt}\n\n请输出风险条款 JSON 数组。` },
@@ -377,7 +381,8 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
         try {
           const list = pending.map((r) => `${r.key}\t${r.substantive ? "★" : r.keyMark ? "▲" : ""}${r.param}`).join("\n")
           const res = await chatViaGateway({
-            modelRef: null,
+            // R47（B19）：参数兜底研判 = 结构化抽取，走抽取档（此前硬编码 null = 平台内置）
+            modelRef: modelRefForRole?.("extract") ?? null,
             messages: [
               { role: "system", content: AI_PARAM_SYSTEM },
               { role: "user", content: `【我方产品能力概述】\n${brief}\n\n【待研判参数（每行：key\t原文）】\n${list}\n\n请逐行输出 JSON 数组。` },

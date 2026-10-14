@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { AlertTriangle, Clock, Cpu } from "lucide-react"
 import { modelRefKey, modelRefLabel, type ModelRef } from "@/lib/modelGateway"
+import { AUTO_MODEL_KEY } from "@/lib/modelRouting"
 import { decodeRhToken, isLocalDeployHost } from "@/lib/rhLogin"
 import {
   channelCoolingRemainingMs,
@@ -20,6 +21,10 @@ type ModelSelectProps = {
   models: ModelRef[]
   valueKey: string
   onChange: (key: string) => void
+  /** R47（B19）：非空时在下拉首位插入「自动」档（值 = AUTO_MODEL_KEY）；仅标书工作台传入 */
+  autoOptionLabel?: string
+  /** R47（B19）：自动档生效时的就地提示（本环节挑了谁、凭什么）；手选档不显示 */
+  autoHint?: string
 }
 
 // R233（r203-cooling-not-surfaced）：账号级失败会给通道打会话内冷却戳，但此前只有生成时
@@ -74,7 +79,7 @@ function useModelHealth(): Record<string, ModelHealthEntry> {
   return health
 }
 
-export function ModelSelect({ models, valueKey, onChange }: ModelSelectProps) {
+export function ModelSelect({ models, valueKey, onChange, autoOptionLabel, autoHint }: ModelSelectProps) {
   const platformModels = models.filter((m) => m.source === "platform")
   const personalModels = models.filter((m) => m.source === "personal")
   const coolingKeys = useCoolingKeys(models)
@@ -117,6 +122,8 @@ export function ModelSelect({ models, valueKey, onChange }: ModelSelectProps) {
         aria-label="选择本次生成使用的模型"
         className="h-7 max-w-44 cursor-pointer rounded-md border-0 bg-transparent text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
+        {/* R47（B19）：自动档哨兵项——不是具体模型，取值即「按环节智能选择」 */}
+        {autoOptionLabel && <option value={AUTO_MODEL_KEY}>{autoOptionLabel}</option>}
         {models.length === 0 && <option value="">平台内置 gpt-5.5</option>}
         {platformModels.length > 0 && (
           <optgroup label={platformDisabled ? "平台内置（本地不可用）" : "平台内置"}>
@@ -144,6 +151,15 @@ export function ModelSelect({ models, valueKey, onChange }: ModelSelectProps) {
           </optgroup>
         )}
       </select>
+      {autoHint && (
+        <span
+          className="hidden max-w-72 truncate text-[11px] text-muted-foreground md:inline"
+          title={autoHint}
+          role="status"
+        >
+          {autoHint}
+        </span>
+      )}
       {selectedCoolingMs > 0 && (
         <span
           className="badge-warning inline-flex shrink-0 items-center gap-1"

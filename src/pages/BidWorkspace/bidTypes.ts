@@ -3375,6 +3375,11 @@ export type FormatSettings = {
    * 原实现只要 sealed 就硬插一页声明，导致页数虚增（默认 false）。
    */
   sealedDeclarationPage: boolean
+  /**
+   * R47（B20）商务模板自动识别结果（缺省=未上传模板，界面与生成行为同存量口径）。
+   * 存在 format_settings json 列内：不新增 collection、不改 PocketBase schema。
+   */
+  templateProfile?: TemplateProfile
 }
 
 /** 面板缺省值（format_settings=null 时按此展示；任一改动即生成完整配置落库） */
@@ -3513,7 +3518,179 @@ export function normalizeFormatSettings(raw: unknown): FormatSettings | null {
     sealedPages: sealed && Number.isFinite(sealedPagesRaw) && sealedPagesRaw > 0 ? Math.min(9999, Math.round(sealedPagesRaw)) : null,
     // Q28 切片B：显式 true 才插声明页（存量配置无该字段 → false）；非暗标恒 false
     sealedDeclarationPage: sealed && rec.sealedDeclarationPage === true,
+    // R47（B20）：模板画像原样透传（非法/缺失→undefined，老项目零变化）
+    templateProfile: normalizeTemplateProfile(rec.templateProfile) ?? undefined,
   }
+}
+
+// ---------------------------------------------------------------------------
+// R47（B20）商务模板自动识别 —— 项目级「模板画像」（存 format_settings json 列内，零 schema）
+//
+// 商务同事给的标书模板 docx 里同时含四类信息：①样式（字体/字号/几级标题）②排版（边距/行距/
+// 表格/页眉页脚/页码/目录/编号）③内容（章节目录、每章要写什么）④要求（模板里明写的「须包含 /
+// 应列明」与 ★/▲ 实质性条款）。识别结果统一落成 TemplateProfile，供三处消费：
+//   ① 套用格式 patch → format_settings；② 写作注入 requirements → 大纲/正文提示词；
+//   ③ 界面复核 notes / alignment → 与招标文件评分点对齐结论。
+// 落库刻意选在既有 json 列内：不新增 collection、不改 PocketBase schema、不动 pb_data。
+// ---------------------------------------------------------------------------
+
+/** 模板识别到的某一级标题（1-6 级；missing=模板未定义该级，导出走本项目缺省） */
+export type TemplateHeadingProfile = {
+  /** 1-6 */
+  level: number
+  /** 识别来源：style=样式表定义 / sampled=文字级抽样推定 / missing=未识别 */
+  source: "style" | "sampled" | "missing"
+  /** 原始中文字体名（可能是本项目枚举外的字体，导出时按 patch 里的映射值落地） */
+  font: string
+  /** 原始磅值（0=未识别） */
+  sizePt: number
+  /** 映射后的受限枚举字号（导出用） */
+  size: FormatFontSize
+  align: FormatAlign
+}
+
+/** 模板里写明的「内容要求」条目（本地抽取，零 AI） */
+export type TemplateRequirement = {
+  /** 原文行（已去首尾空白、截断 200 字） */
+  text: string
+  /** content=内容/章节要求 · format=格式要求 · star=实质性（★/▲）条款 */
+  kind: "content" | "format" | "star"
+  /** 与招标文件评分点 / ★ 条款对上的条目名（空数组=模板多写、须人工判断是否漏项） */
+  matched: string[]
+}
+
+/** 商务模板识别结果（项目级，可重复识别覆盖） */
+export type TemplateProfile = {
+  /** 结构版本：后续扩展字段时递增，老数据仍可读 */
+  version: 1
+  sourceFileName: string
+  /** 识别时间（ISO 串） */
+  extractedAt: string
+  page: { paper: FormatPaper; margins: { top: number; bottom: number; left: number; right: number } }
+  body: { font: string; sizePt: number; size: FormatFontSize; lineSpacing: string; firstIndent: number }
+  /** 六级标题（始终 6 项，未识别的级 source=missing） */
+  headings: TemplateHeadingProfile[]
+  table: { border: string; contentFont: string }
+  /** 页眉文本（空=模板无页眉） */
+  header: string
+  /** 页脚文本（空=模板无页脚） */
+  footer: string
+  pageNumber: boolean
+  toc: boolean
+  /** 是否识别到封面页（首屏出现「投标文件/招标编号/投标人」式要素） */
+  cover: boolean
+  titleNumbering: TitleNumbering
+  requirements: TemplateRequirement[]
+  /** 与招标文件的对齐统计（未提供招标原文时后三项为 0） */
+  alignment: { scoreItemCount: number; starClauseCount: number; matched: number; unmatched: number }
+  /** 可直接合并进 format_settings 的补丁（六级 heading + 表格/页眉页脚/页码/目录/编号） */
+  patch: Partial<Omit<FormatSettings, "templateProfile">>
+  /** 识别说明（近似映射 / 降级 / 未识别项）；非空即需人工过一眼 */
+  notes: string[]
+}
+
+function asTemplateHeading(raw: unknown, level: number): TemplateHeadingProfile | null {
+  if (!raw || typeof raw !== "object") return null
+  const r = raw as Record<string, unknown>
+  const src = String(r.source ?? "")
+  const fb = DEFAULT_FORMAT_SETTINGS.heading[level - 1]
+  const sizePt = Number(r.sizePt)
+  return {
+    level,
+    source: src === "style" || src === "sampled" || src === "missing" ? src : "missing",
+    font: String(r.font ?? "").slice(0, 40),
+    sizePt: Number.isFinite(sizePt) && sizePt > 0 && sizePt < 200 ? Math.round(sizePt * 10) / 10 : 0,
+    size: asFormatSize(r.size, fb.size),
+    align: asFormatAlign(r.align, fb.align),
+  }
+}
+
+/** templateProfile json 反序列化容错（非对象/空标题→null=未上传模板，老项目行为不变） */
+export function normalizeTemplateProfile(raw: unknown): TemplateProfile | null {
+  if (!raw || typeof raw !== "object") return null
+  const r = raw as Record<string, unknown>
+  const headRaw = Array.isArray(r.headings) ? r.headings : []
+  const headings: TemplateHeadingProfile[] = []
+  for (let i = 0; i < 6; i++) {
+    const h = asTemplateHeading(headRaw[i], i + 1)
+    if (h) { headings.push(h); continue }
+    const fb = DEFAULT_FORMAT_SETTINGS.heading[i]
+    headings.push({ level: i + 1, source: "missing", font: "", sizePt: 0, size: fb.size, align: fb.align })
+  }
+  const page = (r.page && typeof r.page === "object" ? r.page : {}) as Record<string, unknown>
+  const mRaw = (page.margins && typeof page.margins === "object" ? page.margins : {}) as Record<string, unknown>
+  const d = DEFAULT_FORMAT_SETTINGS
+  const bodyRaw = (r.body && typeof r.body === "object" ? r.body : {}) as Record<string, unknown>
+  const tableRaw = (r.table && typeof r.table === "object" ? r.table : {}) as Record<string, unknown>
+  const alignRaw = (r.alignment && typeof r.alignment === "object" ? r.alignment : {}) as Record<string, unknown>
+  const paperRaw = String(page.paper ?? "")
+  const numberingRaw = String(r.titleNumbering ?? "")
+  const reqRaw = Array.isArray(r.requirements) ? r.requirements : []
+  const requirements: TemplateRequirement[] = []
+  for (const it of reqRaw) {
+    if (!it || typeof it !== "object") continue
+    const q = it as Record<string, unknown>
+    const text = String(q.text ?? "").trim().slice(0, 200)
+    if (!text) continue
+    const kind = String(q.kind ?? "content")
+    requirements.push({
+      text,
+      kind: kind === "format" || kind === "star" ? kind : "content",
+      matched: Array.isArray(q.matched) ? q.matched.map((x) => String(x).slice(0, 60)).slice(0, 8) : [],
+      })
+  }
+  const numOf = (v: unknown) => (Number.isFinite(Number(v)) ? Math.max(0, Math.round(Number(v))) : 0)
+  const patchRaw = (r.patch && typeof r.patch === "object" ? r.patch : {}) as Record<string, unknown>
+  return {
+    version: 1,
+    sourceFileName: String(r.sourceFileName ?? "").slice(0, 200),
+    extractedAt: String(r.extractedAt ?? "").slice(0, 40),
+    page: {
+      paper: paperRaw === "A4" || paperRaw === "A3" || paperRaw === "16K" ? paperRaw : d.paper,
+      margins: {
+        top: cmOf(mRaw.top, d.margins.top),
+        bottom: cmOf(mRaw.bottom, d.margins.bottom),
+        left: cmOf(mRaw.left, d.margins.left),
+        right: cmOf(mRaw.right, d.margins.right),
+      },
+    },
+    body: {
+      font: String(bodyRaw.font ?? "").slice(0, 40),
+      sizePt: (() => { const n = Number(bodyRaw.sizePt); return Number.isFinite(n) && n > 0 && n < 200 ? Math.round(n * 10) / 10 : 0 })(),
+      size: asFormatSize(bodyRaw.size, d.body.size),
+      lineSpacing: String(bodyRaw.lineSpacing ?? "").slice(0, 20) || d.body.lineSpacing,
+      firstIndent: Number.isFinite(Number(bodyRaw.firstIndent)) ? Math.min(4, Math.max(0, Number(bodyRaw.firstIndent))) : d.body.firstIndent,
+    },
+    headings,
+    table: {
+      border: String(tableRaw.border ?? "").trim().slice(0, 12) || d.table.border,
+      contentFont: String(tableRaw.contentFont ?? "").trim().slice(0, 12) || d.table.contentFont,
+    },
+    header: String(r.header ?? "").slice(0, 200),
+    footer: String(r.footer ?? "").slice(0, 200),
+    pageNumber: r.pageNumber === true,
+    toc: r.toc === true,
+    cover: r.cover === true,
+    titleNumbering:
+      numberingRaw === "1.1.1" || numberingRaw === "chapter" || numberingRaw === "none"
+        ? (numberingRaw as TitleNumbering)
+        : d.titleNumbering,
+    requirements,
+    alignment: {
+      scoreItemCount: numOf(alignRaw.scoreItemCount),
+      starClauseCount: numOf(alignRaw.starClauseCount),
+      matched: numOf(alignRaw.matched),
+      unmatched: numOf(alignRaw.unmatched),
+    },
+    patch: (patchRaw as Partial<Omit<FormatSettings, "templateProfile">>) ?? {},
+    notes: Array.isArray(r.notes) ? r.notes.map((x) => String(x).slice(0, 200)).slice(0, 20) : [],
+  }
+}
+
+/** 模板画像是否值得落库（六级全缺失且无任何要求 → 视为未识别，不覆盖既有画像） */
+export function isMeaningfulTemplateProfile(p: TemplateProfile | null): boolean {
+  if (!p) return false
+  return p.headings.some((h) => h.source !== "missing") || p.requirements.length > 0 || !!p.patch.table || !!p.patch.pageNumber
 }
 
 /** 格式规则检查禁则 key（bid_projects.format_check_items json 列；默认全开） */
@@ -5210,7 +5387,8 @@ export function sanitizeVoidCheck(raw: unknown, clauses: string[]): VoidCheck {
       skip_reason: "",
     })
   }
-  // LLM 漏掉的条款补成「不合规」，保证清单完整
+  // LLM 漏掉的条款补成「待人工核对的 partial」：模型漏答 / 输入截断检索不到 ≠ 投标文件不合规。
+  // 保持 severity=critical + review_status=pending，仍计入 voidCriticalUnresolved 风险雷达（只提示不拦确认）。
   for (const c of clauses) {
     const hit = items.some((i) => i.clause.includes(c.slice(0, 12)) || c.includes(i.clause.slice(0, 12)))
     if (!hit && c.trim()) {
@@ -5220,12 +5398,12 @@ export function sanitizeVoidCheck(raw: unknown, clauses: string[]): VoidCheck {
         source_location: "",
         response: "",
         response_location: "",
-        status: "non_compliant",
+        status: "partial",
         severity: "critical",
         kind: "invalidBid",
-        suggestion: "在投标文件中补充对该条款的实质性响应",
+        suggestion: "AI 未定位到该条款响应，需人工核对投标文件；确无响应时补充实质性响应",
         evidence: "",
-        reason: "AI 未在投标文件中找到对应响应",
+        reason: "AI 未定位到该条款的响应（模型漏答或超出输入范围），不得据此判定不合规",
         manual_checked: false,
         manual_status: "",
         review_status: "pending",

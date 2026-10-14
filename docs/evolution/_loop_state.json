@@ -1,10 +1,10 @@
 {
-  "round": 46,
+  "round": 47,
   "lastRound": {
-    "id": "R46",
-    "theme": "「格式更新」真可用性：本系统导出的 docx 把格式写死在每个 run 的 <w:rPr>（styles.xml 无 Normal、docDefaults 全空、文档内 <w:rFonts> 0 个），旧实现只改样式表 → 视觉零变化、行距必 fail。本轮同步改写文字级直接格式（elementSpans/rewriteDirectFormat）+ 缺 Normal 时补建 + 修 docDefaults rPr 偏移产出非法 XML；识别侧新增文字级抽样推定与「不臆造」如实提示。顺藤修更上游根因：exportBidDocxDefaults 只给 size 不给 font → 导出物 0 个 rFonts，Word 落主题默认字体（正文非仿宋/标题非黑体）；补 DEFAULT_RUN_FONT 后「导出→识别→刷新」首次闭合。233 files / 2758 passed / 2 skipped；eslint 119/13 持平预算",
+    "id": "R47",
+    "theme": "用户三问收口（B19 自动选模型 + B20 商务模板识别）并复核「格式更新」：① 新增 lib/modelRouting.ts 按环节自动选模型（六环节 longform/outline/extract/judge/vision/chat；硬门槛=非文本模态排除 + 长期不可用档案排除，标签加权 + 人工标注加成 + 会话冷却只降权 6 分 + 同分个人优先；默认档改「自动 · 按环节智能选择」，31 处 llm 调用点补 role，解析报告/合规矩阵/质疑函/投诉书四面板不再硬编码 modelRef:null）；② 新增 BidWorkspace/templateProfile.ts 编排层，合并 formatSpec 强链路 + bidDocxFormatExtract 补链路，补齐 1-6 级标题 / 表格 / 页眉页脚 / PAGE 页码域 / 目录 / 封面 / 标题编号 / 要求行，要求行与招标评分点 + ★▲ 条款本地 bigram 对齐，落 format_settings.templateProfile（零新 collection / 零 schema，空画像不覆盖旧画像），要求行注入大纲 v5 / 章级 v6 / 小节级 v7 提示词（空数组时与旧版逐字一致）；③ 格式更新沿用 R46 结论并扩识别面。237 files / 2821 passed / 2 skipped；eslint 119 error / 13 warning 持平预算",
     "verdict": "pass",
-    "at": "2026-10-14"
+    "at": "2026-10-15"
   },
   "eslintBaseline": 119,
   "gates": {
@@ -112,15 +112,15 @@
     },
     {
       "id": "B19-auto-model-route",
-      "title": "按任务角色自动选模型：现有只有手选 + 失败回退（modelFailover）+ 延迟预算（latencyBudget）+ 模型画像（modelProfiles，tags/specialty 仅 UI 展示、不参与路由），多处子面板传 modelRef:null 走平台默认（本地部署静默失效）。最小闭环 = 纯函数 pickModelForRole(role, available, profiles)（打分：tags 匹配 + 上下文长度 + 可用性 + 成本）+ 标书工作台各步骤接入 + 保留用户手选覆盖；不要先改整体网关",
-      "priority": "high",
-      "source": "self-found(R46 用户三问 Q1)"
+      "title": "【R47 已完成】按环节自动选模型已落地：新增 src/lib/modelRouting.ts（六环节 longform/outline/extract/judge/vision/chat；硬门槛=非文本模态排除 + 长期不可用档案直接排除；标签加权 + 人工标注加成 12 分 + 会话冷却降权 6 分（只降权不排除）+ 同分个人配置优先）；标书工作台默认档改为「自动 · 按环节智能选择」（AUTO_MODEL_KEY 哨兵值，手选具体模型时整体关闭自动路由）；31 处 llmGenerate 调用点显式补 role，其余按 scope 兜底推导（未分类兜底 judge，宁慢不错）；解析报告 / 合规矩阵 / 质疑函 / 投诉书四面板不再硬编码 modelRef:null（本地部署下平台内置必然 412，此前是静默失效）；模型选择器与工具栏就地提示「本环节挑了谁、凭什么」。取证 docs/evolution/_r47_model_route_verify.mjs（真实 pb_data.model_configs：6 通道 / 82 模型 / 28 启用；全绿）。剩余：① 模型画像 tags 目前主要走内置知识表，用户手动标注加成待真实使用后复核；② 环节偏好标签与权重随真实语料演进需同步 modelRouting.test.ts；③ 手选档仍是「一刀切全环节用同一个模型」，暂不做「手选若干 + 其余自动」的混合档",
+      "priority": "medium",
+      "source": "self-found(R46 用户三问 Q1) → R47 done"
     },
     {
       "id": "B20-template-onboarding",
-      "title": "商务模板 onboarding：现有两条重复识别链路（FormatTool/formatSpec 强、BidWorkspace/bidDocxFormatExtract 弱）+ 底稿合并仅支持 1–3 级标题。缺 4–6 级标题 / 表格样式 / 页眉页脚 / 页码 / 封面 / 目录域 / 编号规则，以及模板「内容要求」文本提取与招标文件评分点、★▲ 条款对齐。应统一为项目级 template_profile，禁止再复制第三条链路",
+      "title": "【R47 已完成】商务模板 onboarding 已落地：新增 src/pages/BidWorkspace/templateProfile.ts 编排层，合并两条既有识别链路（formatSpec 强链路定样式/页面 + bidDocxFormatExtract 补链路补 extras），补齐 1-6 级标题 / 表格 / 页眉页脚 / PAGE 页码域 / 目录域 / 封面 / 标题编号 / 模板要求行；「结合招标文件完善」= 给招标原文时用本地 bigram 相似度（阈值 0.34）把模板要求行与评分点、★▲ 条款对齐，命中数与漏项数写进 alignment 供界面复核；识别结果落 format_settings.templateProfile（零新 collection / 零 PocketBase schema 变更），空画像 isMeaningful=false 不覆盖旧画像，暗标 sealed 不被模板覆盖；要求行注入大纲（PROMPT_VERSION 5）/ 章级（6）/ 小节级（7）提示词，空数组时输出与旧版逐字一致（存量项目 prompt 与前缀缓存不受影响）；FormatSyncDialog 展示模板画像 + 1-6 级标题 + 布局 + 要求条数 + 对齐结论 + notes。取证 docs/evolution/_r47_template_profile_verify.mjs（3 份真实 docx + 安中医真实招标原文 152212 字；全绿）。剩余：① 真实商务模板样本仍少（模板库那份是封面模板，要求行 0 条），要求行抽取规则需要更多真实模板打磨；② 模板的「内容」侧（章节目录结构）尚未反向生成大纲骨架，目前只注入要求行；③ 要求行与评分点的相似度阈值 0.34 是本地规则初值，需要真实语料回归调参",
       "priority": "medium",
-      "source": "self-found(R46 用户三问 Q2)"
+      "source": "self-found(R46 用户三问 Q2) → R47 done"
     },
     {
       "id": "B21-export-font-guard",
@@ -130,6 +130,12 @@
     }
   ],
   "history": [
+    {
+      "id": "R047",
+      "theme": "用户三问收口（B19 自动选模型 + B20 商务模板识别）并复核「格式更新」：① 新增 lib/modelRouting.ts 按环节自动选模型（六环节 longform/outline/extract/judge/vision/chat；硬门槛=非文本模态排除 + 长期不可用档案排除，标签加权 + 人工标注加成 + 会话冷却只降权 6 分 + 同分个人优先；默认档改「自动 · 按环节智能选择」，31 处 llm 调用点补 role，解析报告/合规矩阵/质疑函/投诉书四面板不再硬编码 modelRef:null）；② 新增 BidWorkspace/templateProfile.ts 编排层，合并 formatSpec 强链路 + bidDocxFormatExtract 补链路，补齐 1-6 级标题 / 表格 / 页眉页脚 / PAGE 页码域 / 目录 / 封面 / 标题编号 / 要求行，要求行与招标评分点 + ★▲ 条款本地 bigram 对齐，落 format_settings.templateProfile（零新 collection / 零 schema，空画像不覆盖旧画像），要求行注入大纲 v5 / 章级 v6 / 小节级 v7 提示词（空数组时与旧版逐字一致）；③ 格式更新沿用 R46 结论并扩识别面。237 files / 2821 passed / 2 skipped；eslint 119 error / 13 warning 持平预算",
+      "verdict": "pass",
+      "at": "2026-10-15"
+    },
     {
       "id": "R046",
       "theme": "格式刷新真可用性 + 导出物无字体根因：文字级直接格式同步改写（含 Normal 补建 / docDefaults 偏移非法 XML 修复）+ 识别侧文字级抽样推定与如实提示 + exportBidDocxDefaults 写入 DEFAULT_RUN_FONT；233 files / 2758 passed / 2 skipped；eslint 119 error / 13 warning 持平预算",
@@ -213,7 +219,9 @@
     "r040": "219 files / 2617 passed | 2 skipped（+1 file / +20 用例：quoteDiscountAmbiguity.test.ts 18 例 + deliverability.test.ts 2 例）；eslint 本轮触及 7 文件 exit 0（0 error 0 warning），全仓 src 152 error / 19 warning 全为存量；tsc -b exit 2 —— 5 error 全在在途文件（ModelMetaDialog / PersonalConfigList / useModelConfig / bidDocxFormatExtract×2）；npx vite build exit 0（4.28s），「折扣写法有歧义」等文案落在 PptQuote 路由 chunk 而非主包",
     "r043": "225 files / 2682 passed | 2 skipped（+1 文件 / +200 用例：scripts/pbHooksIdentity.test.ts 9 例 + 工作区既有在途批次）；eslint 151 error / 20 warning（= 账本基线 151，持平）；tsc -b exit 0；vite build ✓ 8.35s",
     "r044": "225 files / 2682 passed | 2 skipped（+0 文件 / +0 用例：与 R043 同批；本轮只改实现与工具，未加减用例）；eslint 实测 **119 error / 13 warning**（R043 基线 151 → 119，−32；20 → 13，−7；连测两次一致）；tsc -b exit 0；vite build ✓ 7.83s（6078 modules）。新增 eslint-budget.json + 两条 health 脚本（.mjs/.cjs 也在 eslint 覆盖面内，实测 0 error）",
-    "r045": "231 files / 2747 passed | 2 skipped（本轮新增 6 文件 / 26 例：fontResolve / numberingResolve / anbidRegionPresets / BidCheckConfigDialog(首个组件测试) / bidExportChapters / 三处既有测试扩例）；eslint 119 error / 13 warning（= R44 基线，零新增）；tsc -b exit 0；vite build ✓ 4.65s"
+    "r045": "231 files / 2747 passed | 2 skipped（本轮新增 6 文件 / 26 例：fontResolve / numberingResolve / anbidRegionPresets / BidCheckConfigDialog(首个组件测试) / bidExportChapters / 三处既有测试扩例）；eslint 119 error / 13 warning（= R44 基线，零新增）；tsc -b exit 0；vite build ✓ 4.65s",
+    "r046": "233 files / 2758 passed | 2 skipped；eslint 119 error / 13 warning（= R44 基线，零新增）；tsc -b exit 0；vite build ✓",
+    "r047": "237 files / 2821 passed | 2 skipped（+4 文件 / +63 用例：modelRouting.test.ts / templateProfile.test.ts / templateRequirements.test.ts / voidEvidence.test.ts 等）；eslint 119 error / 13 warning（= R44 基线，零新增）；tsc -b exit 0；vite build ✓ 4.50s"
   },
   "notes": [
     "起点 R034；R031/R033 为已存在的进化日志（docs/evolution/）。",
@@ -260,7 +268,9 @@
     "R43 账本缺口说明：history 数组此前只回填到 R040，R041（门禁诚实性）/ R042（UI 回归网四张）以及本轮之前的中间轮次只在 backlog（B0-gate-honesty / B0b-schema-as-code / B0c-ui-regression）与各自 commit 里留痕，未逐条插入 history。本轮起把 R043 插回 history 头部；后续回写请保持 history 与 lastRound 同步，别继续拉缺口。",
     "R44 纪律（写死以免再犯）：**lint 基线只允许存在一个数字**。此前账本/轮报同时流传 151（R043 实测）/ 160（2026-10-13 初始）/ 163（R041 存档快照）三个数，导致「我们 lint 是 1xx」这种说法无法核对。R44 起唯一口径 = **119 error / 13 warning**，且三处必须同源：eslint-budget.json `totals.errors` ＝ 账本 `eslintBaseline` ＝ `gatesBaseline.eslint`；`pnpm verify:eslint-budget` 会因为不同源直接 exit 1（本轮它就是靠这条把旧账本 151 揪出来的）。要复算明细：`node docs/evolution/_r44_eslint_snapshot.cjs`。",
     "R44 新增人工检查入口：`pnpm health:manual`（scripts/health/manual-checks.mjs）一条命令跑两项**刻意不进 loop 四门**的验收 —— ① pb_migrations 空目录重建（需 pocketbase 二进制）② eslint 债务预算 + 账本同源。它与 `pnpm verify:migrations` 并存，以后每轮收尾建议至少跑一次；它**不替代** loop 四门。",
-    "R44 环境事实（修正 R43 轮报与 docs/20 §9.3）：`npx eslint .` 的**分母实测 780 个文件**（`.ts 477 / .tsx 227 / .js 45 / .mjs 27 / .cjs 4`），`pocketbase/pb_hooks/*.pb.js`、`scripts/health/*.mjs`、`docs/evolution/*.cjs` 都在报告内。准确表述 = **规则块只对 `**/*.{ts,tsx}` 生效**（非 ts 文件被解析、不套规则、不贡献 error），所以 R43「四门数字持平」的推理没错，但「不在任何门禁分母内」的说法是错的。推论：新增 `.mjs`/`.cjs` 脚本会进入分母，写脚本时顺手自检。"
+    "R44 环境事实（修正 R43 轮报与 docs/20 §9.3）：`npx eslint .` 的**分母实测 780 个文件**（`.ts 477 / .tsx 227 / .js 45 / .mjs 27 / .cjs 4`），`pocketbase/pb_hooks/*.pb.js`、`scripts/health/*.mjs`、`docs/evolution/*.cjs` 都在报告内。准确表述 = **规则块只对 `**/*.{ts,tsx}` 生效**（非 ts 文件被解析、不套规则、不贡献 error），所以 R43「四门数字持平」的推理没错，但「不在任何门禁分母内」的说法是错的。推论：新增 `.mjs`/`.cjs` 脚本会进入分母，写脚本时顺手自检。",
+    "R47 事实（用户三问收口，实测非推断）：① B19 自动选模型在用户真实清单（pocketbase/pb_data/data.db → model_configs：6 通道 / 82 模型 / 28 启用）上的落点是 正文撰写=opecode·glm-5.2、大纲规划=大模型·deepseek-v4.1-flash、解析抽取=opecode·deepseek-flash、判定审查=opecode·glm-5.2、图表审阅=opecode·deepseek-v4-flash-vision-exp、中文文书=opecode·glm-5.1（全部 personal，平台内置 ref 为空）。② B20 识别 3 份真实 docx 全部成功、1-6 级标题全覆盖，但这 3 份都「未写入字体」→ 按 R46 口径如实提示并按系统默认套用（不臆造）；与本系统产出的标书同源的文档还检出 15 条要求行。③ 与安中医项目真实招标原文（152212 字）对齐：抽出评分点 31 项 / ★▲ 条款 6 条。④ 三问里的第 3 问「格式更新」本轮结论 = R46 已修到真可用（文字级直接格式同步改写 + 缺 Normal 补建 + 导出侧补默认字体闭合「导出→识别→刷新」），R47 只是把识别面扩到 4-6 级标题 / 表格 / 页眉页脚 / 页码 / 目录 / 编号，未改动刷新内核。",
+    "R47 纪律（写死以免再犯）：① `useMemo` 里出现「本地状态强触发票」（如 rolePickTick：本地画像 / 会话冷却 / 健康档案变化计数）时，必须显式 `void tick` 消费并在依赖数组保留，否则 react-hooks/exhaustive-deps 报「unnecessary dependency」，容易被误删成「选型不随状态刷新」的真 bug。② 模板识别的两条链路只允许存在两条：强链路（formatSpec）定样式与页面、补链路（bidDocxFormatExtract）补 extras，字段优先级冲突时按此顺序裁决，禁止再加第三条 docx 解析链路。③ 模板画像落库走既有 format_settings json 列，禁止为它新增 collection / 改 PocketBase schema（本轮零 schema 变更）。"
   ],
   "gatesBaseline": {
     "tsc": 0,

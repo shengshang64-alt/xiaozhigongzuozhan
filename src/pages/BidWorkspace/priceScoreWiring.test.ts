@@ -14,7 +14,10 @@ const PANEL = new URL("../../components/bid-workspace/PriceScorePanel.tsx", impo
 const PAGE = new URL("./BidWorkspacePage.tsx", import.meta.url)
 const USE = new URL("./useBidWorkspace.ts", import.meta.url)
 
-const read = (u: URL) => readFileSync(u, "utf-8")
+// R47：源码扫描哨兵与工作区换行解耦——本机 core.autocrlf=true，同一份文件在不同
+// 检出状态可能是 CRLF 或 LF；下面的正则哨兵按 LF 书写，读入时统一归一，避免「换行
+// 变了就红」这种与行为无关的假失败（useBidWorkspace.ts 实测两种状态都存在过）。
+const read = (u: URL) => readFileSync(u, "utf-8").replace(/\r\n/g, "\n")
 
 describe("priceScoreModel 增口（R38）", () => {
   it("listPriceScoringCandidates 复用同一 PRICE_ITEM_RE 与 parsePriceFormula，不另立口径", () => {

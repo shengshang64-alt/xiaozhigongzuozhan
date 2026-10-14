@@ -39,6 +39,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
         modelOptions={p.modelOptions}
         selectedModelKey={p.selectedModelKey}
         handleSelectModel={p.handleSelectModel}
+        roleHintText={p.roleHintText}
       />
 
 
@@ -145,6 +146,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                   onOpenStandardsPicker={p.openStandardsPicker}
                   runWithCostConfirm={p.costConfirm.runWithCostConfirm}
                   archived={p.isArchivedLocked}
+                  modelRefForRole={p.modelRefForRole}
                 />
               </div>
               {/* R005（B-1 阶段一）：实质性条款覆盖矩阵——解析报告本地推导，零 AI 费用 */}
@@ -157,6 +159,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                   chapters={p.activeProject.bid_chapters}
                   onImportSections={p.updateParseReport}
                   runWithCostConfirm={p.costConfirm.runWithCostConfirm}
+                  modelRefForRole={p.modelRefForRole}
                 />
               </div>
               {/* R008（B-2 阶段一）：评分项本地交叉核对（原文扫描 vs 解析报告），零 AI 费用 */}
@@ -669,6 +672,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
           factPatchBusy={p.factPatchBusy}
           startFactPatch={p.startFactPatch}
           costConfirm={p.costConfirm}
+          modelRefForRole={p.modelRefForRole}
         />
       ) : (
         <main>

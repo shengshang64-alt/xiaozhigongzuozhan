@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react"
 import { Copy, Loader2, ShieldAlert, Sparkles } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { chatViaGateway } from "@/lib/modelGateway"
+import { chatViaGateway, type ModelRef } from "@/lib/modelGateway"
+import type { ModelRole } from "@/lib/modelRouting"
 import type { ParseReport, ParseSection } from "@/pages/BidWorkspace/bidTypes"
 import {
   buildComplianceRows,
@@ -99,6 +100,7 @@ export function ComplianceMatrixPanel({
   chapters,
   onImportSections,
   runWithCostConfirm,
+  modelRefForRole,
 }: {
   projectId: string
   report: ParseReport | null
@@ -109,6 +111,8 @@ export function ComplianceMatrixPanel({
   /** R016（B-1 阶段二）：AI 补扫写回解析报告分节的回调（= hook 的 updateParseReport） */
   onImportSections: (patch: { sections: ParseSection[] }) => void
   runWithCostConfirm: (fn: () => void, message: string) => void
+  /** R47（B19）：按环节取模型（自动档=该环节选型；手选档=用户选的模型）；不传则维持平台内置口径 */
+  modelRefForRole?: (role: ModelRole) => ModelRef | null
 }) {
   const [progress, setProgress] = useState<ComplianceProgressMap>({})
   const [scanning, setScanning] = useState(false)
@@ -163,9 +167,10 @@ export function ComplianceMatrixPanel({
         setScanning(true)
         try {
           const excerpt = tenderText.slice(0, 12000)
-          // R016 修正：走 modelGateway 网关（modelRef 空 = 平台内置模型），不依赖方案页的 studioModelRef
+          // R016 修正：走 modelGateway 网关，不依赖方案页的 studioModelRef
+          // R47（B19）：四类条款补扫 = 结构化抽取，走抽取档（此前硬编码 null = 平台内置，本地部署下必失败）
           const res = await chatViaGateway({
-            modelRef: null,
+            modelRef: modelRefForRole?.("extract") ?? null,
             messages: [
               {
                 role: "system",

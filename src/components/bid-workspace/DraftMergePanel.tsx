@@ -7,7 +7,7 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import type { useBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import { importDraftChapters } from "@/pages/BidWorkspace/bidDraftImport"
 import { FormatSyncDialog } from "./FormatSyncDialog"
-import { normalizeBidScope } from "@/pages/BidWorkspace/bidTypes"
+import { isMeaningfulTemplateProfile, normalizeBidScope, type TemplateProfile } from "@/pages/BidWorkspace/bidTypes"
 import type { DraftChapter, DraftMergePlan, MergeAction } from "@/pages/BidWorkspace/bidDraftMerge"
 import {
   applyMergePlan,
@@ -75,25 +75,38 @@ export function DraftMergePanel(p: DraftMergePanelProps) {
     )
   }
 
+  /**
+   * R47（B20）自动套用底稿格式：走模板画像识别（一次解析同时得到格式项 + 模板要求 + 对齐结论）。
+   * 自动档「全量套用」语义不变，额外把模板画像落进 format_settings.templateProfile，
+   * 之后大纲 / 正文生成自动消费画像里的写作要求。识别不到任何有效信息时静默不动。
+   */
   const autoApplyFormat = async (file: File) => {
     try {
-      const { extractDocxFormat, extractedToFields } = await import("@/pages/BidWorkspace/bidDocxFormatExtract")
-      const ext = await extractDocxFormat(file)
-      const fields = extractedToFields(ext)
-      if (!fields.length) return
+      const { extractTemplateProfileBundle } = await import("@/pages/BidWorkspace/templateProfile")
+      const { profile, fields } = await extractTemplateProfileBundle(file, { tenderText: proj.tender_text ?? "" })
+      if (!fields.length && !isMeaningfulTemplateProfile(profile)) return
       const patch: Record<string, unknown> = {}
       for (const f of fields) f.apply(patch as never)
-      const merged = { ...(proj.format_settings ?? {}), ...patch } as never
+      const merged: Record<string, unknown> = { ...(proj.format_settings ?? {}), ...patch }
+      if (isMeaningfulTemplateProfile(profile)) merged.templateProfile = profile
       p.updateProject({ format_settings: merged } as never)
-      toast.success(`已自动同步底稿格式 ${fields.length} 项`)
+      toast.success(
+        `已自动同步底稿格式 ${fields.length} 项` +
+          (profile.requirements.length ? `，并识别到 ${profile.requirements.length} 条模板写作要求` : ""),
+      )
     } catch { /* 静默 */ }
   }
 
-  const applyFormatPatch = (patch: Record<string, unknown>) => {
-    const merged = { ...(proj.format_settings ?? {}), ...patch } as never
+  /** 手动勾选应用：格式 patch 合入 format_settings，模板画像一并落库（空画像不覆盖旧画像） */
+  const applyFormatPatch = (patch: Record<string, unknown>, profile?: TemplateProfile | null) => {
+    const merged: Record<string, unknown> = { ...(proj.format_settings ?? {}), ...patch }
+    if (isMeaningfulTemplateProfile(profile ?? null)) merged.templateProfile = profile
     p.updateProject({ format_settings: merged } as never)
     setFormatOpen(false)
-    toast.success(`已同步底稿格式 ${Object.keys(patch).length} 项`)
+    toast.success(
+      `已同步底稿格式 ${Object.keys(patch).length} 项` +
+        (profile?.requirements.length ? `，${profile.requirements.length} 条模板要求已写入大纲 / 正文注入` : ""),
+    )
   }
 
   const load = async (file: File | null | undefined) => {
@@ -369,8 +382,9 @@ export function DraftMergePanel(p: DraftMergePanelProps) {
         open={formatOpen}
         file={formatFile}
         current={(proj.format_settings ?? null) as never}
+        tenderText={proj.tender_text ?? ""}
         onClose={() => setFormatOpen(false)}
-        onApply={(patch) => applyFormatPatch(patch as never)}
+        onApply={(patch, _autoNextTime, profile) => applyFormatPatch(patch as never, profile)}
       />
     </section>
   )

@@ -43,7 +43,7 @@ export function buildVoidInitialCheckMessages(plan: unknown, bidText: string): L
     "上一阶段已给出每条废标条款的定位与分类，本阶段据此逐条初检（先定位后比对）：",
     "在投标文件中找到对应响应→status=compliant；有响应但不完整或存疑→partial；带定位线索仍检索不到任何响应→non_compliant；",
     "每条必须输出：clause 照抄；kind 沿用上一阶段分类（invalidBid/rejectionItem）；source_location 该条款在招标文件中的位置（≤30 字）；response 响应原文摘要（≤80 字）；response_location 响应所在投标章节（≤30 字，找不到留空）；evidence 支撑判定的投标原文摘录（≤120 字）；",
-    "结构性线索豁免：投标文件「章节标题/目录项/附件清单/表格条目」提到相应材料（证书、报告、授权书、证明材料）时不得判 non_compliant——文本解析看不到图片与扫描件，判 compliant 并在定稿阶段补注「需人工核对原件」；",
+    "结构性线索降级（禁止无证据自动转合规）：投标文件「章节标题/目录项/附件清单/表格条目」仅提到相应材料（证书、报告、授权书、证明材料）而无正文实质响应时，不得判 compliant 也不得判 non_compliant——文本解析看不到图片与扫描件附件，此类情况判 partial 并在 suggestion 注明「需人工核对原件」；",
     "每条条款都要输出一行，拿不准标 partial。",
     "输出严格 JSON，禁止 markdown 围栏，格式：",
     '{"items":[{"clause":"","kind":"invalidBid","source_location":"","response":"","response_location":"","status":"compliant","evidence":""}]}',
@@ -60,7 +60,8 @@ export function buildVoidFinalizeMessages(initial: unknown, bidText: string): Ll
   const system = [
     VOID_SYSTEM_BASE,
     "本阶段为「定稿复核」，对上一阶段初检结果逐条复核、优先剔除误报后输出定稿合规核销矩阵：",
-    "1. 每条 partial / non_compliant 必须附 evidence（投标文件原文摘录 ≤120 字）；找不到任何可摘录依据时不得输出该条风险判定（改判 compliant 或删除风险）；",
+    "1. 每条 non_compliant 判定必须附 evidence（投标文件原文摘录 ≤120 字）；partial 中属于「未找到响应/附件不可见/输入不完整」的条目允许 evidence 为空，但 suggestion 必须写明待人工核对的具体对象；",
+    "1b. 找不到任何可摘录依据时，该条保留为 partial（待人工核对），禁止据此改判 compliant 或删除该条风险——没检索到不等于已经合规；",
     "2. 证照有效期看归属主体：制造商授权书/分包商营业执照等第三方证照有效期≠投标人自身证照，不得因此判 non_compliant；",
     "3. 业绩表出现多个不同客户名称属正常多项目列举，不得判「公司名称不一致」；名称一致性仅比对投标人落款/授权代表签章与营业执照；",
     "4. 编号/名称比对整段核对，禁止把 PDF 解析切分噪声（括号换行/前后句截断/空格差异）当实质差异；",

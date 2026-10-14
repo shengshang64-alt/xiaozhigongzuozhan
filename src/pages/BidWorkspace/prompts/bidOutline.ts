@@ -6,7 +6,8 @@ import { buildLotsScopeHint, BID_OUTLINE_REQ_KEY, STAR_CLAUSE_SECTION, clipText,
 import type { BidScope, ComplianceMode, ParseReport, RequirementClause } from "../bidTypes"
 import type { LlmMessage } from "@/lib/llm"
 
-export const PROMPT_VERSION = 4
+// R47（B20）v4→v5：新增「商务模板要求」注入槽（templateRequirements 非空才注入；空数组时输出与 v4 逐字一致）
+export const PROMPT_VERSION = 5
 
 /** 大纲生成：注入评分办法 / 响应要求 / 商务条款 + 招标要求条款清单 + 全局事实表；级数与叶子规模（leafTarget ±20%）作硬约束 */
 export function buildBidOutlineMessages(
@@ -23,6 +24,8 @@ export function buildBidOutlineMessages(
     implicitConstraints?: string[]
     /** 第十七轮 17D：历史范本目录结构标题行（本地抽取产物；空数组/缺省=不注入，行为同现状） */
     refTemplateOutline?: string[]
+    /** R47（B20）：商务模板里明写的要求行（TemplateProfile.requirements 已滤掉排版类；空数组/缺省=未上传模板，行为同现状） */
+    templateRequirements?: string[]
     /** 用户反馈轮项 3：是否输出商务标骨架章（缺省 true；false 时商务段整体替换为「不输出任何商务章节」） */
     includeBiz?: boolean
     /** R206 切片 1（R-002）：内容范围三模式；缺省时由 includeBiz 派生（true→both / false→tech），存量零变化 */
@@ -68,6 +71,7 @@ export function buildBidOutlineMessages(
   const leafHi = Math.max(leafLo, Math.floor(leafTarget * 1.2))
   const implicitList = opts?.implicitConstraints ?? []
   const requiredList = (opts?.requiredTechContents ?? []).map((k) => k.trim()).filter(Boolean)
+  const templateReqs = (opts?.templateRequirements ?? []).map((t) => (t ?? "").trim()).filter(Boolean).slice(0, 20)
   const depthRule =
     level === 0
       ? "不预设目录级数：由你按招标文件评分办法与章节要求自行决定技术部分合理级数（最多三级），保证评分办法每一档都有章节落点（级数约束只针对技术章，商务骨架章固定为章+一级小节两级）。"
@@ -108,6 +112,12 @@ export function buildBidOutlineMessages(
     "标题只写名称、不带编号、不以标点结尾；层级命名规范：一级=章，二级=节；",
     "节标题必须用具体响应式命名：主题词+落点词（承诺/响应/声明/证明/报价等），禁止「概述/说明/介绍/相关内容/其他」式空泛标题；",
   )
+  // R47（B20）：商务模板明写的要求——非空才追加硬约束条，缺省时 prompt 与现状字节一致
+  if (templateReqs.length) {
+    numbered.push(
+      `下面【商务模板要求】共 ${templateReqs.length} 条，全部来自商务同事提供的投标模板、是模板里明写的要求：大纲必须为每一条安排明确的章节落点（内容与结构口径以模板为准），禁止遗漏；`,
+    )
+  }
   // R207 切片 2（R-003）：无底稿兜底——解析到「响应文件组成」时强制顶层章逐项映射其顺序与命名（缺组成时不注入，走运行时告警）
   if (respText) {
     numbered.push(
@@ -220,6 +230,12 @@ export function buildBidOutlineMessages(
   if (refOutlineLines.length) {
     stableParts.push(
       `【历史范本目录结构（参考其章法与章节粒度，不照抄标题）】\n${refOutlineLines.map((t, i) => `${i + 1}. ${t}`).join("\n")}`,
+    )
+  }
+  // R47（B20）：商务模板要求行（项目级稳定块，同项目多次重生成 identical、不破前缀缓存；非空才注入）
+  if (templateReqs.length) {
+    stableParts.push(
+      `【商务模板要求（商务同事提供模板里明写的要求，大纲逐条须有章节落点）】\n${templateReqs.map((t, i) => `${i + 1}. ${t}`).join("\n")}`,
     )
   }
   const taskParts: string[] = []

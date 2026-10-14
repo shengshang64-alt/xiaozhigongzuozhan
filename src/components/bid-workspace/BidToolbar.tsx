@@ -1,10 +1,18 @@
 import { ArrowLeft, LayoutGrid, Wrench } from "lucide-react"
 import { ModelSelect } from "@/components/model-config/ModelSelect"
+import { AUTO_MODEL_LABEL, isAutoModelKey } from "@/lib/modelRouting"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 
 type BidToolbarProps = Pick<
   UseBidWorkspace,
-  "mainView" | "setMainView" | "mode" | "backToList" | "modelOptions" | "selectedModelKey" | "handleSelectModel"
+  | "mainView"
+  | "setMainView"
+  | "mode"
+  | "backToList"
+  | "modelOptions"
+  | "selectedModelKey"
+  | "handleSelectModel"
+  | "roleHintText"
 >
 
 export function BidToolbar({
@@ -15,6 +23,7 @@ export function BidToolbar({
   modelOptions,
   selectedModelKey,
   handleSelectModel,
+  roleHintText,
 }: BidToolbarProps) {
   return (
     <div className="sticky top-14 z-30 -mx-4 -mt-4 mb-5 flex items-center gap-2 border-b border-border bg-background/85 px-4 py-2 backdrop-blur lg:-mx-6 lg:-mt-6 lg:px-6">
@@ -56,8 +65,15 @@ export function BidToolbar({
           </button>
         </nav>
       )}
-      <div className="ml-auto">
-        <ModelSelect models={modelOptions} valueKey={selectedModelKey} onChange={handleSelectModel} />
+      <div className="ml-auto flex min-w-0 items-center gap-2">
+        {/* R47（B19）：标书工作台始终提供「自动 · 按环节智能选择」；选具体模型即关闭自动 */}
+        <ModelSelect
+          models={modelOptions}
+          valueKey={selectedModelKey}
+          onChange={handleSelectModel}
+          autoOptionLabel={AUTO_MODEL_LABEL}
+          autoHint={isAutoModelKey(selectedModelKey) ? roleHintText : undefined}
+        />
       </div>
     </div>
   )

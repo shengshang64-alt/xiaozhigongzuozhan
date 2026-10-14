@@ -13,7 +13,8 @@ import { baselineLabelFromText, extractBaselineSegment, extractFragmentSegment }
 // R167 v4：2026-10 易标对齐轮——素材融入不提及来源（与 bidChapter 同口径同步），PROMPT_VERSION 3→4
 // r287 v6（bid-l2-verbatim-compare 切片2·预防）：新增引号照录纪律规则条（第 6 条，其后规则序号顺移），
 // 源头抑制「照抄途中改写」——L2 摸底引文级改写 34 处均产自生成环节；对比报告 .loop/reports/2026-10-13-r287-*.md
-export const PROMPT_VERSION = 6
+// R47（B20）v6→v7：新增「商务模板要求」注入槽与规则条（templateRequirements 空数组时输出与 v6 逐字一致）
+export const PROMPT_VERSION = 7
 
 export function buildBidSectionMessages(
   projectName: string,
@@ -42,6 +43,7 @@ export function buildBidSectionMessages(
   const prevSummaries = opts.prevSummaries ?? []
   const implicitList = opts.implicitConstraints ?? []
   const clauseList = opts.clauses ?? []
+  const templateReqs = (opts.templateRequirements ?? []).map((t) => (t ?? "").trim()).filter(Boolean).slice(0, 20)
   const sectionClauses = opts.sectionClauses ?? []
   const writtenTitles = opts.writtenTitles ?? []
   // 循环 2 批 2-1：编排定向事实块非空时替代全量全局事实注入（与章级 builder 同口径）
@@ -105,6 +107,13 @@ export function buildBidSectionMessages(
   } else if (clauseList.length) {
     rules.push(
       `${ruleNo}. 下面【本章须响应的招标要求条款清单】中与本小节主题相关的条款，必须在本小节内实质性响应；其余条款由本章其他小节响应，不要在本小节展开；`,
+    )
+    ruleNo += 1
+  }
+  // R47（B20）：商务模板明写要求——非空才注入规则条（与章级 builder 同口径），缺省时字节一致
+  if (templateReqs.length) {
+    rules.push(
+      `${ruleNo}. 下面【商务模板要求】共 ${templateReqs.length} 条，是商务同事提供的投标模板里明写的要求，本小节内容涉及到的必须逐条满足（结构与内容口径以模板为准；排版类要求已写入导出排版设置，正文不必说明）；`,
     )
     ruleNo += 1
   }
@@ -252,6 +261,10 @@ export function buildBidSectionMessages(
     overviewBlock ? `【项目背景与概况（写作前先理解，正文须结合本项目实际情况组织内容）】\n${overviewBlock}` : "",
     `【技术需求与交货服务要求】\n${techText || "（未解析）"}`,
     opts.starBlock ?? "",
+    // R47（B20）：商务模板要求行（项目级稳定块，跨小节 identical 不破前缀缓存；未上传模板时为空串被滤掉）
+    templateReqs.length
+      ? `【商务模板要求（商务同事提供模板里明写的要求，涉及即须满足）】\n${templateReqs.map((t, i) => `${i + 1}. ${t}`).join("\n")}`
+      : "",
     // 循环 2 批 2-1：定向事实启用时全量全局事实不再进稳定块（定向块属小节差异内容，进 taskUser 保前缀缓存）
     directedOn ? "" : (opts.globalFacts ?? ""),
     `【全文大纲（仅供保持上下文一致，不要复述）】\n${outlineToText(outline ?? [])}`,
