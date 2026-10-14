@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { AlertTriangle, Cpu, FlaskConical, Loader2, Pencil, Plus, RefreshCw, Star, Trash2 } from "lucide-react"
 import { detectModelModality, isTextGenerationModel, modalityBadgeClass, modalityLabel } from "@/lib/modelModality"
 import { Button } from "@/components/ui/button"
@@ -11,6 +12,10 @@ import {
 } from "@/components/ui/dialog"
 import { healthNotice, healthShortLabel, type ModelHealthEntry } from "@/lib/modelHealth"
 import type { GatewayConfig } from "@/lib/modelGateway"
+import { Coins } from "lucide-react"
+import { resolveModelProfile, resolveQuotaHint, type ProfileSource } from "@/lib/modelProfiles"
+import { ModelMetaDialog } from "./ModelMetaDialog"
+import type { ModelMetaEntry, ModelQuota } from "@/lib/modelMetaLocal"
 
 type PersonalConfigListProps = {
   configs: GatewayConfig[]
@@ -28,6 +33,10 @@ type PersonalConfigListProps = {
   deleteBusy: boolean
   onCancelDelete: () => void
   onConfirmDelete: () => void
+  /** R-038：模型元数据（擅长/额度），key = personal:<cfgId>:<modelId> */
+  modelMeta?: Record<string, ModelMetaEntry>
+  /** R-038：保存模型元数据（用户在弹窗点保存时调用） */
+  onSaveModelMeta?: (cfg: GatewayConfig, modelId: string, patch: { specialty: string; tags: string[]; quota: ModelQuota | null }) => void
 }
 
 function EnableToggle({
@@ -86,7 +95,14 @@ export function PersonalConfigList({
   deleteBusy,
   onCancelDelete,
   onConfirmDelete,
+  modelMeta = {},
+  onSaveModelMeta,
 }: PersonalConfigListProps) {
+  // R-038：当前打开的元数据编辑弹窗目标（null = 关闭）
+  const [editingMeta, setEditingMeta] = useState<{ cfg: GatewayConfig; modelId: string } | null>(null)
+
+  // R-041：只看可用开关（默认开启——无额度/挂账的模型隐藏；取消勾选可看全部）
+  const [onlyUsable, setOnlyUsable] = useState(true)
   return (
     <section className="rounded-lg border border-border bg-card shadow-md">
       <header className="flex min-h-14 flex-wrap items-center gap-2 border-b border-border px-4 py-3">
@@ -94,10 +110,20 @@ export function PersonalConfigList({
         <span className="badge-neutral">
           Key 只存服务端 · 仅显示后四位
         </span>
+        {/* R-039 只看可用筛选：隐藏 unhealthy 挂账 + 未标注额度的模型 */}
+        <label className="ml-auto inline-flex cursor-pointer select-none items-center gap-1.5 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={onlyUsable}
+            onChange={(e) => setOnlyUsable(e.target.checked)}
+            className="h-3.5 w-3.5 accent-[#0e9f8a]"
+          />
+          只看可用（隐藏挂账与无额度）
+        </label>
         <Button
           size="sm"
           onClick={onAdd}
-          className="ml-auto bg-primary text-primary-foreground shadow-sm transition-transform hover:scale-105 hover:bg-primary/90"
+          className={onlyUsable ? "" : "ml-2"}
         >
           <Plus className="mr-1 h-4 w-4" />
           添加模型配置
@@ -184,7 +210,18 @@ export function PersonalConfigList({
               </div>
 
               <ul className="divide-y divide-border">
-                {(cfg.models ?? []).map((m) => {
+                {(onlyUsable
+                  ? (cfg.models ?? []).filter((m) => {
+                      const unhealthy = modelHealth[`personal:${cfg.id}:${m.id}`]
+                      if (unhealthy) return false
+                      const meta = modelMeta[`personal:${cfg.id}:${m.id}`]
+                      // R-041：用户标注额度 或 内置参考命中 → 视为可用
+                      if (meta?.quota) return true
+                      if (resolveQuotaHint(m.id)) return true
+                      return false
+                    })
+                  : (cfg.models ?? [])
+                ).map((m) => {
                   const isDefault = cfg.default_model === m.id
                   const modality = detectModelModality(m.id)
                   // R296：这一路是否已被实测挂账（404 已下线 / 上游停用 / Key 失效）
@@ -217,6 +254,66 @@ export function PersonalConfigList({
                           {healthShortLabel(unhealthy.cls)}
                         </span>
                       )}
+                      {(() => {
+                        // R-038：擅长/额度徽标（三层：用户标注 > 内置 > 名称推断）
+                        const meta = modelMeta[`personal:${cfg.id}:${m.id}`] ?? null
+                        const resolved = resolveModelProfile(m.id, meta?.specialty, meta?.tags)
+                        const sourceLabel: Record<ProfileSource, string> = {
+                          user: "用户标注",
+                          known: "内置知识表",
+                          inferred: "名称推断",
+                          none: "未标注",
+                        }
+                        const tip = resolved.profile
+                          ? `${resolved.profile.specialty}（来源：${sourceLabel[resolved.source]}${resolved.profile.tags.length ? " · " + resolved.profile.tags.join("、") : ""}）`
+                          : "未标注擅长，点右侧铅笔按钮补充"
+                        return (
+                          <>
+                            <span
+                              className={`min-w-0 max-w-[240px] shrink truncate text-xs ${
+                                resolved.source === "user"
+                                  ? "text-foreground"
+                                  : resolved.source === "none"
+                                    ? "italic text-muted-foreground/60"
+                                    : "text-muted-foreground"
+                              }`}
+                              title={tip}
+                            >
+                              {resolved.profile ? resolved.profile.specialty : "（未标注）"}
+                            </span>
+                            {(() => {
+                              const q = meta?.quota
+                              if (!q) return null
+                              const text =
+                                q.tier === "unlimited" ? "∞ 免费" :
+                                q.tier === "custom" ? (q.customText ?? "自定义") :
+                                q.tier === "go_plus" ? `Go+ ${((q.requests5h ?? 0) / 1000).toFixed(1)}k/5h · $${q.monthlyUsd ?? 0}` :
+                                `Go ${((q.requests5h ?? 0) / 1000).toFixed(1)}k/5h · $${q.monthlyUsd ?? 0}`
+                              return (
+                                <span
+                                  className="shrink-0 inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-1.5 py-0.5 text-[10px] leading-none text-primary"
+                                  title={`额度：${text}${meta?.quotaUpdatedAt ? ` · 更新于 ${new Date(meta.quotaUpdatedAt).toLocaleDateString("zh-CN")}` : ""}`}
+                                >
+                                  <Coins className="h-2.5 w-2.5" />
+                                  {text}
+                                </span>
+                              )
+                            })()}
+                            {onSaveModelMeta && (
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => setEditingMeta({ cfg, modelId: m.id })}
+                                title="编辑擅长与额度"
+                                aria-label={`编辑 ${m.id} 的标注`}
+                                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:bg-secondary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </button>
+                            )}
+                          </>
+                        )
+                      })()}
                       <EnableToggle
                         enabled={m.enabled}
                         disabled={busy}
@@ -259,11 +356,56 @@ export function PersonalConfigList({
                     暂无模型，点「刷新模型」重新拉取，或编辑配置检查接口地址与 Key。
                   </li>
                 )}
+                {onlyUsable && (cfg.models ?? []).length > 0 && (cfg.models ?? []).filter((m) => {
+                  const unhealthy = modelHealth[`personal:${cfg.id}:${m.id}`]
+                  if (unhealthy) return false
+                  const meta = modelMeta[`personal:${cfg.id}:${m.id}`]
+                  if (meta?.quota) return true
+                  if (resolveQuotaHint(m.id)) return true
+                  return false
+                }).length === 0 && (
+                  <li className="px-3 py-3 text-xs text-muted-foreground">
+                    「只看可用」已开启，本配置下 {cfg.models?.length ?? 0} 个模型全部被隐藏（未标注额度或已挂账）。取消勾选可查看全部。
+                  </li>
+                )}
+                {onlyUsable && (() => {
+                  const total = (cfg.models ?? []).length
+                  const visible = (cfg.models ?? []).filter((m) => {
+                    const unhealthy = modelHealth[`personal:${cfg.id}:${m.id}`]
+                    if (unhealthy) return false
+                    const meta = modelMeta[`personal:${cfg.id}:${m.id}`]
+                    if (meta?.quota) return true
+                    if (resolveQuotaHint(m.id)) return true
+                    return false
+                  }).length
+                  const hidden = total - visible
+                  return hidden > 0 && visible > 0 ? (
+                    <li className="px-3 py-2 text-xs italic text-muted-foreground/80">
+                      已隐藏 {hidden} 个模型（未标注额度或已挂账）
+                    </li>
+                  ) : null
+                })()}
               </ul>
             </article>
           )
         })}
       </div>
+
+      {onSaveModelMeta && (
+        <ModelMetaDialog
+          open={!!editingMeta}
+          modelId={editingMeta?.modelId ?? ""}
+          configName={editingMeta?.cfg.config_name ?? ""}
+          initial={editingMeta ? modelMeta[`personal:${editingMeta.cfg.id}:${editingMeta.modelId}`] ?? null : null}
+          busy={false}
+          onClose={() => setEditingMeta(null)}
+          onSubmit={(patch) => {
+            if (!editingMeta) return
+            onSaveModelMeta(editingMeta.cfg, editingMeta.modelId, patch)
+            setEditingMeta(null)
+          }}
+        />
+      )}
 
       <Dialog open={!!deletingConfig} onOpenChange={(v) => !v && !deleteBusy && onCancelDelete()}>
         <DialogContent className="max-w-md">

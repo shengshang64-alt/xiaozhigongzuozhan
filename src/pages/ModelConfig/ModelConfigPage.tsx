@@ -50,6 +50,8 @@ export function ModelConfigPage(p: ReturnType<typeof useModelConfig>) {
               deleteBusy={p.deleteBusy}
               onCancelDelete={p.cancelDelete}
               onConfirmDelete={p.confirmDelete}
+              modelMeta={p.modelMeta}
+              onSaveModelMeta={p.updateModelMeta}
             />
           </div>
           <aside className="lg:sticky lg:top-20 lg:self-start">

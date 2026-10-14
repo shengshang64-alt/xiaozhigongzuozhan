@@ -23,6 +23,15 @@ import {
   recordModelSuccess,
   type ModelHealthEntry,
 } from "@/lib/modelHealth"
+// R-038 模型元数据（擅长/额度）本地存储：不动后端，按用户分桶
+import {
+  clearUserMetaBucket,
+  onModelMetaChange,
+  readAllModelMeta,
+  upsertModelMeta,
+  type ModelMetaEntry,
+  type ModelQuota,
+} from "@/lib/modelMetaLocal"
 
 export interface FormValues {
   config_name: string
@@ -44,13 +53,23 @@ export function useModelConfig() {
   )
   useEffect(() => onHealthChange(() => setModelHealth(readModelHealth(userId))), [userId])
 
+  // R-038：模型元数据（擅长/额度）——同 modelHealth 模式：惰性读 + 订阅变更
+  const [modelMeta, setModelMeta] = useState<Record<string, ModelMetaEntry>>(
+    () => readAllModelMeta(userId),
+  )
+  useEffect(() => onModelMetaChange(() => setModelMeta(readAllModelMeta(userId))), [userId])
+
   const handleAccountChange = useCallback((account: RhAccountInfo | null) => {
     setAccountInfo(account)
     const uid = account?.userId ?? decodeRhToken()?.sub ?? null
+    // R-038 隐私收口（R119 同族）：登出时清空本用户的模型元数据桶（localStorage 里的擅长/额度）
+    const prevUid = decodeRhToken()?.sub ?? null
+    if (!uid && prevUid) clearUserMetaBucket(prevUid)
     setUserId(uid)
     setNeedsRhLogin(!uid)
     // R296：档案按用户分桶，换账号即换桶——在事件回调里就地重读，不留陈旧徽标
     setModelHealth(readModelHealth(uid))
+    setModelMeta(readAllModelMeta(uid))
   }, [])
 
   // ------------------------------ 配置列表 ------------------------------
@@ -216,6 +235,22 @@ export function useModelConfig() {
     [applyPatch],
   )
 
+  // R-038：保存模型元数据（擅长/额度）到 localStorage，不动后端
+  const updateModelMeta = useCallback(
+    (cfg: GatewayConfig, modelId: string, patch: { specialty: string; tags: string[]; quota: ModelQuota | null }) => {
+      upsertModelMeta(userId, cfg.id, modelId, {
+        specialty: patch.specialty || undefined,
+        tags: patch.tags.length ? patch.tags : undefined,
+        quota: patch.quota || undefined,
+        quotaUpdatedAt: patch.quota ? new Date().toISOString() : undefined,
+      })
+      // 立即刷新本地状态（storage 事件只在跨 tab 触发）
+      setModelMeta(readAllModelMeta(userId))
+      toast.success("模型标注已保存（仅本机）")
+    },
+    [userId],
+  )
+
   const refreshModels = useCallback(
     async (cfg: GatewayConfig) => {
       setBusyConfigId(cfg.id)
@@ -339,5 +374,8 @@ export function useModelConfig() {
     testResult,
     runTest,
     rerunTest,
+    // R-038 模型元数据
+    modelMeta,
+    updateModelMeta,
   }
 }
