@@ -5,9 +5,8 @@
  * 或传入文本文件路径作为第一参数。
  * 零 AI、零费用、纯本地扫描。
  */
-import { readFileSync, existsSync } from "node:fs"
-
 // 从项目 import 纯函数（npx tsx 支持 TS 直运）
+// 注: 本脚本实际只用 vitest 做验证, 不直接读文件, 故不再 import node:fs（消除未使用导入）。
 const importBidTypes = async () => {
   // 由于 bidTypes.ts 是 React 组件侧文件，import 需要 vite/tsconfig paths 支持
   // 此处用 vitest 方式：直接跑测试用例验证数字
@@ -46,7 +45,8 @@ const runVitest = async () => {
     console.log(result)
     console.log("[PASS] 关键本地扫描函数单测全绿，R-031 修复逻辑验证通过。")
     return 0
-  } catch (e: any) {
+  } catch (err) {
+    const e = err as { stdout?: string; message?: string }
     console.error("[FAIL]", e.stdout?.slice(-1000) || e.message)
     return 1
   }
