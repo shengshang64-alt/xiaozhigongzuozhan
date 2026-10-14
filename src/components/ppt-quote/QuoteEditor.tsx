@@ -77,7 +77,7 @@ const lockedCell =
   "h-8 w-full rounded border border-border/60 bg-muted/40 px-2 text-xs text-muted-foreground"
 
 // A2-8：数字单元格非法输入行内提示（编辑期保留草稿原文，失焦归一到合法值）
-function NumCell({
+export function NumCell({
   value,
   min,
   max,
