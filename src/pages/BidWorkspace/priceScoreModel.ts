@@ -377,15 +377,16 @@ export function fullScoreTargetPrice(
   if (formula.basis === "lowest") {
     price = Math.min(...others)
     note = "报价不高于最低对手报价即得价格分满分"
-  } else if (formula.kind === "ratio") {
-    price = sum / n
-    note = "报价等于（含自身）有效报价算术平均时比值取 1"
   } else {
-    // 偏差法求自洽不动点：p = (1-fl)·(S+p)/(n+1) ⇒ p = (1-fl)·S/(n+fl)
+    // 均价口径下我方报价自身也进样本池，报高会拖动基准价，须解自洽不动点：
+    //   p = (1-fl)·(S+p)/(n+1)  ⇒  p = (1-fl)·S/(n+fl)（fl=0 时退化为 S/n）
+    // 比值法取 min(1, base/p)=1 与偏差法取 dev=0 都归结为这同一个临界价。
     const denom = n + fl
     if (denom <= 0) return null
     price = ((1 - fl) * sum) / denom
-    note = "报价与自身计入后的基准价相等时得满分（已含下浮）"
+    note = formula.kind === "ratio"
+      ? "报价不高于此值即得满分（基准价含自身报价并下浮，非对手算术平均）"
+      : "报价与自身计入后的基准价相等时得满分（已含下浮）"
   }
   if (!Number.isFinite(price) || price <= 0) return null
   const pinned = centsToYuan(productCents([price]))

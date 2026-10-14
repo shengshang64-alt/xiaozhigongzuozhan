@@ -262,6 +262,33 @@ describe("fullScoreTargetPrice · 拿满价格分的报价临界", () => {
     expect(r.ok && r.result.score).toBe(30)
   })
 
+  it("比值法 + 均价 + 下浮率：临界价必须含下浮（p=(1-fl)·S/(n+fl)），报回去真得满分", () => {
+    // 均价口径 + 下浮 3% + 对手 1000/2000/3000 万。R35 交付时闭式解写成 sum/n，
+    // 按它报回去只得 9.7 分（漏乘下浮率），监工复验脚本 _r35_foreman_recheck.mts 抓出。
+    const f = parsePriceFormula(
+      "取所有有效投标报价的算术平均值下浮3%作为评标基准价，投标报价得分＝（评标基准价/投标报价）×10",
+      10,
+    )
+    expect(f.ok).toBe(true)
+    if (!f.ok) return
+    expect(f.formula.kind).toBe("ratio")
+    expect(f.formula.floatPct).toBe(3)
+    const others = [10_000_000, 20_000_000, 30_000_000]
+    const t = fullScoreTargetPrice(f.formula, 22_000_000, others)
+    expect(t).not.toBeNull()
+    // 真值 (1-0.03)*60000000/(3+0.03) = 19207920.79
+    expect(t!.price).toBe(19_207_920.79)
+    const back = scorePrice(f.formula, t!.price, others)
+    expect(back.ok).toBe(true)
+    if (!back.ok) return
+    expect(back.result.score).toBe(10)
+    // 临界价之上即掉分（比值 < 1）：报 1940 万只得 9.93 分
+    const over = scorePrice(f.formula, 19_400_000, others)
+    expect(over.ok && over.result.score).toBeLessThan(10)
+    // 回归钉：R35 的错答案 S/n＝2000 万，按它报回去只有 9.7 分
+    expect((scorePrice(f.formula, 20_000_000, others) as { result: { score: number } }).result.score).toBe(9.7)
+  })
+
   it("偏差法含下浮时求解自洽不动点，代回测算满分", () => {
     if (!dev.ok) throw new Error("前置失败")
     const t = fullScoreTargetPrice(dev.formula, 300, [100, 200])
