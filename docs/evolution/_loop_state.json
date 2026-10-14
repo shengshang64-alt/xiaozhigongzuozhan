@@ -21,9 +21,15 @@
     },
     {
       "id": "B0b-schema-as-code",
-      "title": "schema-as-code 已落地：pocketbase/pb_migrations/1791964662_collections_snapshot.js 已导出并双向验证（空目录 migrate up 可重建 40 集合；对现有库应用非破坏，见 docs/20 §9）。下一步：把「空目录 migrate up 必须能起 40 集合」固化成脚本/门禁（对标 dify 的 db-migration-test.yml）",
+      "title": "schema-as-code 已落地（R41b 完成）：pb_migrations/1791964662_collections_snapshot.js 已导出+双向验证；空目录重建验收已固化为 `pnpm verify:migrations`(scripts/health/verify-pb-migrations.mjs，空目录 40 集合，exit 0)。剩余：把该验收放进每轮人工检查清单（刻意不进 loop 四门，保持 loop 无 pocketbase 二进制依赖）",
       "priority": "high",
-      "source": "self-found(R41b)"
+      "source": "self-found(R41b done)"
+    },
+    {
+      "id": "B0c-ui-regression",
+      "title": "UI 回归网（R42 首张已落地：src/components/ppt-quote/DiscountCell.test.tsx，jsdom+testing-library，10 例；已验证删掉实现即 3/4/10 条变红）。继续补高风险交互：报价金额单元格往返落值、章节生成门禁、DiscountIntentDialog 确认弹窗——每次只补一层，改前先补测试",
+      "priority": "high",
+      "source": "self-found(R42)"
     },
     {
       "id": "B15",
