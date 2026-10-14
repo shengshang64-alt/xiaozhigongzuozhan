@@ -76,6 +76,10 @@ export function GlobalFactsPanel(p: GlobalFactsPanelProps) {
             事实是全文统一口径（工期、响应时间、人员配置、设备型号数量、质保期、验收标准、项目经理等），
             大纲与各章正文一律按此书写。当前为{manual ? "人工编辑版（优先生效）" : "解析报告自动抽取版"}，
             任何修改保存后即切换为人工编辑版；清空全部条目并保存可回退自动抽取。
+            <br />
+            带「【需人工确认】」的行是待商务拍板的取值（工期天数、报价、人员数量、质保与响应时限等）——
+            系统不会替你落定，商务确认后请删掉标记再保存；招标要求的比较口径（如「工期：不超过 90 天」）
+            可以原样保留，它是对招标要求的响应上限，不是已定承诺。
           </p>
 
           <div className="mt-3 grid gap-2">
@@ -116,7 +120,7 @@ export function GlobalFactsPanel(p: GlobalFactsPanelProps) {
                   addLine()
                 }
               }}
-              placeholder="新增一条事实，如：工期：合同签订后 90 日历天内交付"
+              placeholder="新增一条事实，如：工期：不超过 90 日历天"
               className="border-border bg-background text-xs focus-visible:shadow-[var(--focus-ring)]"
             />
             <Button

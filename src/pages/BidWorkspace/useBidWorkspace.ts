@@ -47,6 +47,9 @@ import { injectSkillBlock, skillBlockFor, skillCostSuffix, type SkillScope } fro
 import { detectMarkerSymbolLoss, markerLossNotice } from "./materialIntegrity"
 // R47（B20）：商务模板画像消费侧 —— 模板明写的「须包含 / 应列明」要求注入大纲与正文提示词
 import { templateProfileOf, templateRequirementLines } from "./templateProfile"
+// R48（P0-2 事实来源优先级）：AI 生成的事实草稿在进编辑态前规范化——需商务拍板主题上的
+// 「已定承诺形态」取值一律补【需人工确认】，招标原文比较口径（不超过/不少于…）保持原样。
+import { FACT_CONFIRM_MARK, normalizeFactSourceLines } from "./factSources"
 // R167：标书优质素材库（五类标准件）——分类基线取用与素材库读写（纯本地，零 AI）
 import {
   COMPANY_DEFAULTS,
@@ -2390,30 +2393,37 @@ export function useBidWorkspace() {
       toast.error("解析报告关键节为空，请先完成「② AI 解析报告」再生成事实设定")
       return
     }
-    // 循环 2 批 1-3：范本摘录非空时并入输入（前 3000 字），同主题事实优先采用范本口径
+    // R48（P0-2）：范本摘录只作写法参考并入输入（前 3000 字），不得覆盖本项目招标硬约束与已确认事实
     const tpl = (cur.ref_template_text ?? "").trim()
     const source = tpl
-      ? `${source0}\n\n【历史标书范本摘录（同主题事实优先采用范本口径）】\n${tpl.slice(0, 3000)}`
+      ? `${source0}\n\n【历史标书范本摘录（仅写法与表述参考，不得覆盖本项目招标要求与我方事实）】\n${tpl.slice(0, 3000)}`
       : source0
     setFactAiBusy(true)
     try {
       const raw = await llmGenerate(buildFactSettingsMessages(source), MAX_TOKENS_LONGFORM, undefined, 0, { role: "extract" })
-      let lines = factLinesFromText(raw)
+      let rawLines = factLinesFromText(raw)
       // 循环 2 批 1-2：解析为空（疑似格式异常）时自动做一次语法修复重试，不单独弹费用确认
-      if (!lines.length) {
+      if (!rawLines.length) {
         try {
           const repaired = await llmGenerate(buildJsonRepairMessages(raw), MAX_TOKENS_LONGFORM, undefined, 0, { role: "extract" })
-          lines = factLinesFromText(repaired)
+          rawLines = factLinesFromText(repaired)
         } catch {
           // 修复调用失败：按原口径走下方空结果提示
         }
       }
-      if (!lines.length) {
+      if (!rawLines.length) {
         toast.error("未能从解析报告提炼出事实设定，请检查解析结果后重试")
         return
       }
+      // R48（P0-2 事实来源优先级）：模型把招标要求数值写成本项目承诺时，一律补「【需人工确认】」——
+      // 待商务拍板的取值不得静默落成既定事实（招标原文比较口径「不超过…」原样保留，不标记）。
+      const { lines, marked } = normalizeFactSourceLines(rawLines)
       setFactDraft(lines)
-      toast.success(`已生成 ${lines.length} 条事实设定（编辑态），可继续修改，点「保存事实表」后全文生效`)
+      toast.success(
+        marked.length
+          ? `已生成 ${lines.length} 条事实设定（编辑态），其中 ${marked.length} 条需商务拍板的取值已标记「${FACT_CONFIRM_MARK}」，确认后请删掉标记；点「保存事实表」后全文生效`
+          : `已生成 ${lines.length} 条事实设定（编辑态），可继续修改，点「保存事实表」后全文生效`,
+      )
     } catch (e) {
       handleLlmError(e, "生成事实设定失败，请重试")
     } finally {

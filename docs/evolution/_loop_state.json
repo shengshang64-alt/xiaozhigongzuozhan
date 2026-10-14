@@ -1,8 +1,8 @@
 {
-  "round": 47,
+  "round": 48,
   "lastRound": {
-    "id": "R47",
-    "theme": "用户三问收口（B19 自动选模型 + B20 商务模板识别）并复核「格式更新」：① 新增 lib/modelRouting.ts 按环节自动选模型（六环节 longform/outline/extract/judge/vision/chat；硬门槛=非文本模态排除 + 长期不可用档案排除，标签加权 + 人工标注加成 + 会话冷却只降权 6 分 + 同分个人优先；默认档改「自动 · 按环节智能选择」，31 处 llm 调用点补 role，解析报告/合规矩阵/质疑函/投诉书四面板不再硬编码 modelRef:null）；② 新增 BidWorkspace/templateProfile.ts 编排层，合并 formatSpec 强链路 + bidDocxFormatExtract 补链路，补齐 1-6 级标题 / 表格 / 页眉页脚 / PAGE 页码域 / 目录 / 封面 / 标题编号 / 要求行，要求行与招标评分点 + ★▲ 条款本地 bigram 对齐，落 format_settings.templateProfile（零新 collection / 零 schema，空画像不覆盖旧画像），要求行注入大纲 v5 / 章级 v6 / 小节级 v7 提示词（空数组时与旧版逐字一致）；③ 格式更新沿用 R46 结论并扩识别面。237 files / 2821 passed / 2 skipped；eslint 119 error / 13 warning 持平预算",
+    "id": "R48",
+    "theme": "P0-2「事实来源优先级」（WorkBuddy 审查文档切片 2）：新增 BidWorkspace/factSources.ts 纯函数层（FACT_CONFIRM_MARK / FACT_COMMITMENT_TOPIC_RE / TENDER_CONSTRAINT_VALUE_RE / FactSourceTier / normalizeFactSourceLine / factSourceTierOf / normalizeFactSourceLines），规范化只作用于「AI 输出→编辑态」，把需商务拍板主题上的已定承诺形态取值补【需人工确认】，招标原文比较口径（不超过/不少于…）原样保留；prompts/factSettings.ts PROMPT_VERSION 1→2、新增来源优先级分层（招标硬约束 > 本项目已确认事实 > 待商务拍板 > 历史范本仅写法参考）、重写第 4/6/7 条（范本数值不得覆盖本项目招标硬约束与本项目已确认事实）；runGenerateFactSettings 改走 rawLines→normalizeFactSourceLines→setFactDraft 并 toast 报出标记条数，范本摘录标签去掉「同主题事实优先采用范本口径」；事实面板补「【需人工确认】=待商务拍板」口径。刻意不标记「预算金额/最高限价/控制价」以保住 priceCeilingFromFacts 报价天花板（bidTypes.ts:4360 + bidFormatCheck.test.ts:424-428 双侧守卫）。新增 3 个测试文件 / +21 例（factSources.test.ts 7 / factSourcePriority.test.ts 7 / factSourceWiring.test.ts 7，含「手册 §2.22 逐字块 == buildFactSettingsMessages 的 system」母手册+派生手册同源守卫，已做变异负例验证：改代码不改手册必红）；promptsSnapshot.test.ts.snap 的 buildFactSettingsMessages 条目按新文案更新（diff 只动该条）。241 files / 2848 passed / 2 skipped（含同期另一执行者的未提交 1 文件/6 例）；eslint 119 error / 13 warning 持平预算",
     "verdict": "pass",
     "at": "2026-10-15"
   },
@@ -14,6 +14,24 @@
     "eslint": "pass"
   },
   "backlog": [
+    {
+      "id": "B22-multi-agent-same-workspace",
+      "title": "同一工作区并发执行者（WorkBuddy AI，C:\\Users\\Administrator\\.workbuddy-ai）实测：R48 期间它在改 src/components/ppt-quote/QuoteEditor.tsx 并跑 vitest，导致 ① 我在途 tsc 被对方的半成品改动打成 error（对方随后自行还原）② 全仓 vitest 文件数含对方未提交文件（241 而非 240）。待办：约定「同一时刻只允许一个执行者写仓库」，或给另一方改用 worktree/分支；并复核 docs/evolution/_loop_state.json 的 round 是否会双 bump",
+      "priority": "high",
+      "source": "self-found(R48)"
+    },
+    {
+      "id": "B23-prompt-doc-generator-drift",
+      "title": "scripts/split-prompts.mjs 与母文档 docs/系统提示词分类手册.md 已既存漂移：执行它会冲掉 docs/提示词手册/01-标书工作台.md §2.27 与 08-站内助手.md 里的手补修订说明（R48 实测复现后已还原）。R48 起派生手册一律手工同步，并由 factSourceWiring.test.ts 的「母手册 §2.22 == 派生手册 §2.22 == 代码」守卫兜底。待办：修生成器（保留手补区）或改为只校验不覆盖",
+      "priority": "medium",
+      "source": "self-found(R48)"
+    },
+    {
+      "id": "B24-upgrade-doc-slices-3-4-5",
+      "title": "WorkBuddy《提示词升级文档》剩余切片：切片 3 长文可见性（长文生成的可观测/可续写）、切片 4 Flash 选型实测（deepseek-v4.1-flash 在真实标书链路的表现取证）、切片 5 交付金丝雀（生成→导出的端到端交付物体检）。切片 0 基线 / 切片 1 废标证据（R47 随行入库）/ 切片 2 事实来源优先级（R48）已完成",
+      "priority": "high",
+      "source": "benchmark"
+    },
     {
       "id": "B0-gate-honesty",
       "title": "门禁诚实性：驱动器已禁止「本轮文件 pass / 全仓被在途文件挡」式自我豁免（--verify-state）；四门实测 tsc 0 / eslint 151 已回写 _loop_state.json",
@@ -131,6 +149,12 @@
   ],
   "history": [
     {
+      "id": "R048",
+      "theme": "P0-2「事实来源优先级」（WorkBuddy 审查文档切片 2）：新增 BidWorkspace/factSources.ts 纯函数层（FACT_CONFIRM_MARK / FACT_COMMITMENT_TOPIC_RE / TENDER_CONSTRAINT_VALUE_RE / FactSourceTier / normalizeFactSourceLine / factSourceTierOf / normalizeFactSourceLines），规范化只作用于「AI 输出→编辑态」，把需商务拍板主题上的已定承诺形态取值补【需人工确认】，招标原文比较口径（不超过/不少于…）原样保留；prompts/factSettings.ts PROMPT_VERSION 1→2、新增来源优先级分层（招标硬约束 > 本项目已确认事实 > 待商务拍板 > 历史范本仅写法参考）、重写第 4/6/7 条（范本数值不得覆盖本项目招标硬约束与本项目已确认事实）；runGenerateFactSettings 改走 rawLines→normalizeFactSourceLines→setFactDraft 并 toast 报出标记条数，范本摘录标签去掉「同主题事实优先采用范本口径」；事实面板补「【需人工确认】=待商务拍板」口径。刻意不标记「预算金额/最高限价/控制价」以保住 priceCeilingFromFacts 报价天花板（bidTypes.ts:4360 + bidFormatCheck.test.ts:424-428 双侧守卫）。新增 3 个测试文件 / +21 例（factSources.test.ts 7 / factSourcePriority.test.ts 7 / factSourceWiring.test.ts 7，含「手册 §2.22 逐字块 == buildFactSettingsMessages 的 system」母手册+派生手册同源守卫，已做变异负例验证：改代码不改手册必红）；promptsSnapshot.test.ts.snap 的 buildFactSettingsMessages 条目按新文案更新（diff 只动该条）。241 files / 2848 passed / 2 skipped（含同期另一执行者的未提交 1 文件/6 例）；eslint 119 error / 13 warning 持平预算",
+      "verdict": "pass",
+      "at": "2026-10-15"
+    },
+    {
       "id": "R047",
       "theme": "用户三问收口（B19 自动选模型 + B20 商务模板识别）并复核「格式更新」：① 新增 lib/modelRouting.ts 按环节自动选模型（六环节 longform/outline/extract/judge/vision/chat；硬门槛=非文本模态排除 + 长期不可用档案排除，标签加权 + 人工标注加成 + 会话冷却只降权 6 分 + 同分个人优先；默认档改「自动 · 按环节智能选择」，31 处 llm 调用点补 role，解析报告/合规矩阵/质疑函/投诉书四面板不再硬编码 modelRef:null）；② 新增 BidWorkspace/templateProfile.ts 编排层，合并 formatSpec 强链路 + bidDocxFormatExtract 补链路，补齐 1-6 级标题 / 表格 / 页眉页脚 / PAGE 页码域 / 目录 / 封面 / 标题编号 / 要求行，要求行与招标评分点 + ★▲ 条款本地 bigram 对齐，落 format_settings.templateProfile（零新 collection / 零 schema，空画像不覆盖旧画像），要求行注入大纲 v5 / 章级 v6 / 小节级 v7 提示词（空数组时与旧版逐字一致）；③ 格式更新沿用 R46 结论并扩识别面。237 files / 2821 passed / 2 skipped；eslint 119 error / 13 warning 持平预算",
       "verdict": "pass",
@@ -221,9 +245,12 @@
     "r044": "225 files / 2682 passed | 2 skipped（+0 文件 / +0 用例：与 R043 同批；本轮只改实现与工具，未加减用例）；eslint 实测 **119 error / 13 warning**（R043 基线 151 → 119，−32；20 → 13，−7；连测两次一致）；tsc -b exit 0；vite build ✓ 7.83s（6078 modules）。新增 eslint-budget.json + 两条 health 脚本（.mjs/.cjs 也在 eslint 覆盖面内，实测 0 error）",
     "r045": "231 files / 2747 passed | 2 skipped（本轮新增 6 文件 / 26 例：fontResolve / numberingResolve / anbidRegionPresets / BidCheckConfigDialog(首个组件测试) / bidExportChapters / 三处既有测试扩例）；eslint 119 error / 13 warning（= R44 基线，零新增）；tsc -b exit 0；vite build ✓ 4.65s",
     "r046": "233 files / 2758 passed | 2 skipped；eslint 119 error / 13 warning（= R44 基线，零新增）；tsc -b exit 0；vite build ✓",
-    "r047": "237 files / 2821 passed | 2 skipped（+4 文件 / +63 用例：modelRouting.test.ts / templateProfile.test.ts / templateRequirements.test.ts / voidEvidence.test.ts 等）；eslint 119 error / 13 warning（= R44 基线，零新增）；tsc -b exit 0；vite build ✓ 4.50s"
+    "r047": "237 files / 2821 passed | 2 skipped（+4 文件 / +63 用例：modelRouting.test.ts / templateProfile.test.ts / templateRequirements.test.ts / voidEvidence.test.ts 等）；eslint 119 error / 13 warning（= R44 基线，零新增）；tsc -b exit 0；vite build ✓ 4.50s",
+    "r048": "241 files / 2848 passed | 2 skipped（本切片 +3 文件 / +21 例：factSources.test.ts / factSourcePriority.test.ts / factSourceWiring.test.ts；另含同期 WorkBuddy AI 执行者未提交的 QuoteEditorMoney.test.tsx 1 文件 / 6 例 —— 本切片自身等价口径 = 240 / 2842）；eslint 119 error / 13 warning（= R44 基线，零新增）；tsc -b exit 0；vite build ✓ 10.36s"
   },
   "notes": [
+    "R48 事实（实测非推断）：① 同一工作区内存在**并发执行者** —— WorkBuddy AI 运行时（C:\\Users\\Administrator\\.workbuddy-ai）在 R48 期间改 src/components/ppt-quote/QuoteEditor.tsx（import 了 itemSubtotal 却未使用）并跑 vitest，我在途的一次 `npx tsc -b` 因此报 TS6133；对方随后自行还原，重跑 tsc exit 0。全仓 vitest 文件数因此为 241（含对方未提交的 QuoteEditorMoney.test.tsx），本切片自身等价口径 240 / 2842。已登记 backlog B22。② `docs/提示词手册/08-站内助手.md` 长期显示 ` M` 但 `git hash-object` == index blob（15b696f…）—— 纯 CRLF 统计伪差异，**不是真改动，不要据此回滚**（澄清 R48 交接单遗留疑点）。③ scripts/split-prompts.mjs 有既存漂移，本轮禁跑，派生手册手工同步；新增 factSourceWiring.test.ts 用「手册逐字块 == 代码 system」守卫把这件事变成会红的测试（含变异负例验证）。④ promptsSnapshot.test.ts 用 toMatchSnapshot 锁住 buildFactSettingsMessages 全文：改提示词必须连带更新 .snap（本轮 diff 只动该条）并把 PROMPT_VERSION 1→2。",
+    "R48 纪律（写死以免再犯）：① 「什么算我方承诺」不能凭语义直觉决定，必须**先查下游消费侧** —— 预算金额/最高限价/控制价看着像金额，实为招标方给定约束，若被标【需人工确认】会让 bidTypes.ts:4360 priceCeilingFromFacts 的报价天花板静默失效（超限价不自知）。② 规范化只允许发生在「AI 输出 → 编辑态」这一次；对用户手工编辑行与已保存的 global_facts **一字不改**（系统不得静默改写人工确认过的口径）。③ 手册与代码必须同源且**可自动发现漂移**：新增/修改提示词时，母手册 §、派生手册 §、代码 system 三者要一起动，且要有会红的测试兜底，禁止「人肉记得同步」。",
     "起点 R034；R031/R033 为已存在的进化日志（docs/evolution/）。",
     "每 3 轮至少做一次 GitHub 对标（提示词 §3）。R034 未做→R35 已由驱动器钉为对标轮并完成。下一次对标应排 R38 前后。",
     "门禁四门：tsc/build/vitest 必须绝对绿；eslint 用相对基线。",
