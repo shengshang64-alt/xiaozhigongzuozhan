@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import type { useBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import { importDraftChapters } from "@/pages/BidWorkspace/bidDraftImport"
+import { FormatSyncDialog } from "./FormatSyncDialog"
 import { normalizeBidScope } from "@/pages/BidWorkspace/bidTypes"
 import type { DraftChapter, DraftMergePlan, MergeAction } from "@/pages/BidWorkspace/bidDraftMerge"
 import {
@@ -48,6 +49,8 @@ export function DraftMergePanel(p: DraftMergePanelProps) {
   const [appendExtras, setAppendExtras] = useState(true)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [applied, setApplied] = useState<DraftApplySummary | null>(null)
+  const [formatFile, setFormatFile] = useState<File | null>(null)
+  const [formatOpen, setFormatOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement | null>(null)
 
   const keptChapters = useMemo(() => draftKeptChapters(proj?.bid_chapters ?? []), [proj])
@@ -72,6 +75,27 @@ export function DraftMergePanel(p: DraftMergePanelProps) {
     )
   }
 
+  const autoApplyFormat = async (file: File) => {
+    try {
+      const { extractDocxFormat, extractedToFields } = await import("@/pages/BidWorkspace/bidDocxFormatExtract")
+      const ext = await extractDocxFormat(file)
+      const fields = extractedToFields(ext)
+      if (!fields.length) return
+      const patch: Record<string, unknown> = {}
+      for (const f of fields) f.apply(patch as never)
+      const merged = { ...(proj.format_settings ?? {}), ...patch } as never
+      p.updateProject({ format_settings: merged } as never)
+      toast.success(`已自动同步底稿格式 ${fields.length} 项`)
+    } catch { /* 静默 */ }
+  }
+
+  const applyFormatPatch = (patch: Record<string, unknown>) => {
+    const merged = { ...(proj.format_settings ?? {}), ...patch } as never
+    p.updateProject({ format_settings: merged } as never)
+    setFormatOpen(false)
+    toast.success(`已同步底稿格式 ${Object.keys(patch).length} 项`)
+  }
+
   const load = async (file: File | null | undefined) => {
     if (!file) return
     if (p.isArchivedLocked) {
@@ -87,6 +111,14 @@ export function DraftMergePanel(p: DraftMergePanelProps) {
       setDrafts(chapters)
       setPlan(next)
       setOpen(true)
+      if ((file.name ?? "").toLowerCase().endsWith(".docx")) {
+        if (localStorage.getItem("xiaozhi.bid.formatSync.auto.v1") === "1") {
+          void autoApplyFormat(file)
+        } else {
+          setFormatFile(file)
+          setFormatOpen(true)
+        }
+      }
       const hit = next.stats.keep + next.stats.reference
       toast.success(
         `底稿已切成 ${chapters.length} 章，与大纲对上 ${hit} 章（保留 ${next.stats.keep} · 参考 ${next.stats.reference}），待生成 ${next.stats.generate} 章`,
@@ -332,6 +364,13 @@ export function DraftMergePanel(p: DraftMergePanelProps) {
         }
         confirmText="应用"
         onConfirm={apply}
+      />
+      <FormatSyncDialog
+        open={formatOpen}
+        file={formatFile}
+        current={(proj.format_settings ?? null) as never}
+        onClose={() => setFormatOpen(false)}
+        onApply={(patch) => applyFormatPatch(patch as never)}
       />
     </section>
   )

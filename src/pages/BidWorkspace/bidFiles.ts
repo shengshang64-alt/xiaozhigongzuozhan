@@ -581,7 +581,7 @@ const DOCX_ALIGN: Record<FormatAlign, (typeof AlignmentType)[keyof typeof Alignm
 }
 
 /** 纸张尺寸（twips：A4=21×29.7cm，A3=29.7×42cm，16 开=18.5×26cm） */
-const PAPER_TWIPS: Record<string, { width: number; height: number }> = {
+export const PAPER_TWIPS: Record<string, { width: number; height: number }> = {
   A4: { width: 11906, height: 16838 },
   A3: { width: 16838, height: 23811 },
   "16K": { width: 10489, height: 14740 },
