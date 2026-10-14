@@ -1,8 +1,8 @@
 {
-  "round": 41,
+  "round": 42,
   "lastRound": {
-    "id": "R40",
-    "theme": "修 B8：报价「折扣(%)」与习惯写法「几折」的两种量纲歧义不再静默钳位——判定收敛为单一真源纯函数，行内与整组两个入口都改为「先确认再落金额」，已落库脏值只盘点不改写（横幅逐行确认 + 交付体检 warn 只报不拦）",
+    "id": "R42",
+    "theme": "补齐报价高风险交互的 UI 回归网（第 2、3 张）：NumCell 数字单元格（A2-8 编辑期留草稿原文/非法行内提示/失焦归一）+ DiscountIntentDialog 折扣歧义确认弹窗（B8 两种读法各点各的、金额与小计同源、不选不改）。改前先补测试，改后删实现已验证变红",
     "verdict": "pass"
   },
   "eslintBaseline": 151,
@@ -27,9 +27,9 @@
     },
     {
       "id": "B0c-ui-regression",
-      "title": "UI 回归网（R42 首张已落地：src/components/ppt-quote/DiscountCell.test.tsx，jsdom+testing-library，10 例；已验证删掉实现即 3/4/10 条变红）。继续补高风险交互：报价金额单元格往返落值、章节生成门禁、DiscountIntentDialog 确认弹窗——每次只补一层，改前先补测试",
+      "title": "UI 回归网（R42 已落地三张：DiscountCell 10 例 / NumCell 11 例 / DiscountIntentDialog 11 例，均 jsdom + testing-library，per-file @vitest-environment 覆盖不动全局 node 环境；三张都做过「删实现即变红」验证）。继续补高风险交互：GateChecklist 交卷闸门卡（未满足→强制放行需填备注、已确认→重置二次确认）——每次只补一层，改前先补测试",
       "priority": "high",
-      "source": "self-found(R42)"
+      "source": "self-found(R42 x3)"
     },
     {
       "id": "B15",
