@@ -88,6 +88,39 @@ type GwOk<T> = { ok: true; needLogin?: false } & T
 type GwFail = { ok: false; needLogin?: boolean; code?: string; message: string }
 export type GwResult<T> = GwOk<T> | GwFail
 
+/** 归因摘要上限：够放下服务端首行真因，又不撑爆 UI 与日志 */
+export const GW_FAIL_DETAIL_CHARS = 200
+
+/** 单行化 + 截断：异常 message 可能带换行/堆栈，压成一行短摘要（空串表示无可读信息，不编造） */
+function gwFailDetail(raw: unknown): string {
+  const s = typeof raw === "string" ? raw : raw instanceof Error ? raw.message || raw.name : ""
+  const one = s.replace(/\s+/g, " ").trim()
+  if (!one) return ""
+  return one.length > GW_FAIL_DETAIL_CHARS ? `${one.slice(0, GW_FAIL_DETAIL_CHARS)}…` : one
+}
+
+/**
+ * R39b：网关调用失败文案的归因口径（纯函数，便于单测锁口径）。
+ * 此前「fetch 抛错」与「有 HTTP 响应但正文不是网关 JSON 契约」两条完全不同的语义
+ * 共用同一个 catch，一律输出「网络异常，请稍后重试」——用户看到的永远是同一句
+ * 无法执行的话，真因（状态码 / 异常原文）只能靠翻服务端日志。
+ * 现按两语义分别成文，并把可读摘要带回来；**锚点「网络异常」「服务异常」必须保留**——
+ * @/lib/modelFailover 的 classifyCallFailure 正是靠它们把这类失败归为 unavailable
+ * （账号级不可用、可自动换通道），换掉措辞会静默破坏回退策略。
+ */
+export function gwFetchFailMessage(
+  input:
+    | { kind: "thrown"; error: unknown }
+    | { kind: "response"; status: number; ok: boolean },
+): string {
+  if (input.kind === "thrown") {
+    const detail = gwFailDetail(input.error)
+    return detail ? `网络异常，请稍后重试（${detail}）` : "网络异常，请稍后重试"
+  }
+  if (input.ok) return "返回格式异常"
+  return `服务异常（HTTP ${input.status}），请稍后重试`
+}
+
 async function gwFetch<T>(path: string, init?: RequestInit): Promise<GwResult<T>> {
   try {
     const res = await fetch(`${getPocketBaseUrl()}${path}`, {
@@ -103,11 +136,11 @@ async function gwFetch<T>(path: string, init?: RequestInit): Promise<GwResult<T>
     }
     const data = (await res.json().catch(() => null)) as (GwResult<T> & Record<string, unknown>) | null
     if (!data) {
-      return { ok: false, message: res.ok ? "返回格式异常" : `服务异常（HTTP ${res.status}），请稍后重试` }
+      return { ok: false, message: gwFetchFailMessage({ kind: "response", status: res.status, ok: !!res.ok }) }
     }
     return data as GwResult<T>
-  } catch {
-    return { ok: false, message: "网络异常，请稍后重试" }
+  } catch (err) {
+    return { ok: false, message: gwFetchFailMessage({ kind: "thrown", error: err }) }
   }
 }
 

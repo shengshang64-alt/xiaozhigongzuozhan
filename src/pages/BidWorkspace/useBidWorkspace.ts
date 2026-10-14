@@ -21,6 +21,8 @@ import {
 import { noteKnownGoodBudget, noteThinkingEmptyReply, observeModelCall, suggestInitialBudget } from "@/lib/latencyBudget"
 // Q28 切片F：上游 429 限流的会话内冷却闸门（并发 worker 取号错峰，见模块头注释）
 import { noteCallSucceeded, noteRateLimited, waitCallSlot } from "@/lib/rateLimitGate"
+// R39b：段级有界并发池（此前段级 fan-out 无上限，与项级 3 路叠加后整本可同时打出 60 路请求）
+import { runBulkPool } from "@/lib/bulkPool"
 // R191：长文「单次调用输出预算」分块口径（网关 120s 红线实测，见模块头注释）
 import { longformCallTokens, planLongformChunks, shouldDisableThinking, stripDuplicateSectionHead } from "./longformBudget"
 import { useCostConfirm } from "@/hooks/useCostConfirm"
@@ -374,7 +376,7 @@ import { deriveSection, deriveTrack } from "@/lib/kbTaxonomy"
 import type { OpportunityRow } from "@/pages/CustomerManagement/customerTypes"
 // numeric-consistency-02（做法 B）：只复用 PptQuote 的类型与纯函数 quoteTotal（无副作用依赖，不拉重模块进标书 chunk）
 import { quoteTotal, type QuoteRecord } from "@/pages/PptQuote/pptQuoteTypes"
-import { parseSegmentsFailedMessage } from "./bidGenFailure"
+import { orderedSegmentFailures, parseSegmentsFailedMessage } from "./bidGenFailure"
 
 // ---------------------------------------------------------------------------
 // 数据请求（走 __pb 代理自定义路由）
@@ -860,7 +862,14 @@ async function materializeWholeParseResult(key: string, raw: string): Promise<Pa
   return { text, structured: buildScoringStructured(key, obj) }
 }
 
-/** 超限切段通道：按自然边界切段（各项之间段一致，缓存跨项复用）→ 每段同任务并发 → AI 合并（跨块汇总）；
+/** 段级并发上限（R39b）：项级池已是 3 路，段级再无限 fan-out 叠加后，整本（20 段 × 3 项）
+ *  可同时打出 60 路请求——既把网关「单请求约 120s」的上限从偶发推成必然，也会直接撞上上游
+ *  TPM/RPM 限流并把整条通道戳进冷却。取 2：在途 ≤6 路，吞吐与限流风险折中；
+ *  段级只做同任务并发，真正的跨项流水仍由项级池负责，故调低它不牺牲整本吞吐。 */
+const PARSE_SEGMENT_CONCURRENCY = 2
+
+/** 超限切段通道：按自然边界切段（各项之间段一致，缓存跨项复用）→ 每段同任务并发（**受 PARSE_SEGMENT_CONCURRENCY 约束**）
+ *  → AI 合并（跨块汇总）；
  *  段数上限分层（R-038 Slice B）：废标/评分关键项放宽到整文全量覆盖（跨段合并 → 评分项/废标项跨块汇总），
  *  其余项沿用通用上限、超限回落检索通道（防「单项 × N 段」费用爆炸）；单段失败不拖垮其余段（合并以成功段为准）。 */
 async function parseSectionViaSegments(text: string, key: string): Promise<ParsePayload> {
@@ -869,27 +878,39 @@ async function parseSectionViaSegments(text: string, key: string): Promise<Parse
   if (segments.length <= 1) return parseSectionViaWholeFile(segments[0] ?? "", key)
   const total = segments.length
   // R39：留住每段的真实失败原因（此前被 catch 吞成空串，全灭时用户只看到「请重试」）
-  const segFailures: string[] = []
-  const results = await Promise.all(
-    segments.map(async (seg, i) => {
-      try {
-        const content = await llmGenerate(
-          buildWholeParseMessages(key, seg, { index: i + 1, total }),
-          MAX_TOKENS_LONGFORM,
-          "bid-parse",
-          0,
-          { disableThinking: true },
-        )
-        return { index: i + 1, total, content }
-      } catch (e) {
-        if (e instanceof AuthRequiredError) throw e
-        const msg = String((e as Error)?.message ?? e).trim()
-        if (msg && !segFailures.includes(msg)) segFailures.push(msg)
-        return { index: i + 1, total, content: "" }
+  const segFailReasons: (string | undefined)[] = new Array(total)
+  const results: ({ index: number; total: number; content: string } | undefined)[] = new Array(total)
+  // R39b：鉴权失败是整轮解析的终止条件——登记后即停止再派发新段（在途段自然结束），
+  // 与原先「命中即抛出」的对外行为一致；改由池回调登记而非直接 throw，是为了避开
+  // 「两个 worker 同时抛出 → 第二个异常无人 await」的 unhandled rejection。
+  let authError: AuthRequiredError | undefined
+  await runBulkPool({
+    total,
+    concurrency: PARSE_SEGMENT_CONCURRENCY,
+    isCancelled: () => authError !== undefined,
+    runTask: async (idx) => {
+      const content = await llmGenerate(
+        buildWholeParseMessages(key, segments[idx], { index: idx + 1, total }),
+        MAX_TOKENS_LONGFORM,
+        "bid-parse",
+        0,
+        { disableThinking: true },
+      )
+      results[idx] = { index: idx + 1, total, content }
+    },
+    onTaskError: (idx, err) => {
+      if (err instanceof AuthRequiredError) {
+        authError = authError ?? err
+        return
       }
-    }),
-  )
-  const ok = results.filter((r) => r.content.trim())
+      const msg = String((err as Error)?.message ?? err).trim()
+      if (msg) segFailReasons[idx] = msg
+      results[idx] = { index: idx + 1, total, content: "" }
+    },
+  })
+  if (authError) throw authError
+  const segFailures = orderedSegmentFailures(segFailReasons)
+  const ok = results.filter((r): r is { index: number; total: number; content: string } => !!r && !!r.content.trim())
   if (!ok.length) throw new Error(parseSegmentsFailedMessage(segFailures))
   const merged = await llmGenerate(
     buildSegmentMergeMessages(key, ok, isJsonParseItem(key) ? "json" : "markdown"),

@@ -48,6 +48,23 @@ const CATEGORY_HINTS: Record<GenFailureCategory, string> = {
 }
 
 /**
+ * R39b：把「按段索引逐个登记」的失败原因压成有序去重清单。
+ * 段级 fan-out 改由有界并发池调度后，完成顺序不再等于段序——若沿用「谁先失败谁先入队」，
+ * 同一份文件两次解析可能给出不同的首个原因（横幅文案随之漂移、现场无法复现）。
+ * 这里以段序为准（index 小的先出），重复原因只留一份，空值跳过；返回空数组＝没拿到真因。
+ * 纯函数、零依赖。
+ */
+export function orderedSegmentFailures(byIndex: (string | undefined | null)[]): string[] {
+  const out: string[] = []
+  for (const raw of byIndex ?? []) {
+    const msg = (raw ?? "").trim()
+    if (!msg || out.includes(msg)) continue
+    out.push(msg)
+  }
+  return out
+}
+
+/**
  * 分段解析全灭时的透出文案：真实原因（截断到 140 字）+ 一句可执行引导。
  * 一条原因都拿不到时退回原口径，绝不编造原因。
  */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { isBidTechChapter, parseSegmentsFailedMessage, summarizeBidGenFailures } from "./bidGenFailure"
+import { isBidTechChapter, orderedSegmentFailures, parseSegmentsFailedMessage, summarizeBidGenFailures } from "./bidGenFailure"
 import type { Chapter } from "@/pages/SolutionStudio/solutionTypes"
 
 function ch(p: Partial<Chapter> & { node_id: string; title: string }): Chapter {
@@ -79,5 +79,30 @@ describe("R39 解析分段全灭的透出文案（真因不再被吞）", () => 
     const msg = parseSegmentsFailedMessage(["E".repeat(400)])
     expect(msg).toContain("E".repeat(140))
     expect(msg).not.toContain("E".repeat(141))
+  })
+})
+
+describe("R39b 段级失败原因按段序聚合（完成顺序不再决定横幅文案）", () => {
+  it("按段索引顺序出，重复只留一份，空值跳过", () => {
+    expect(orderedSegmentFailures([undefined, "第二段的原因", "", "第二段的原因", "第五段的原因"])).toEqual([
+      "第二段的原因",
+      "第五段的原因",
+    ])
+  })
+
+  it("并发完成顺序打乱时，首因恒为最靠前的段——同一份文件两次解析给出同一句横幅", () => {
+    // 模拟「第 9 段先返回、第 2 段后返回」：登记桶按下标落位，与完成顺序无关
+    const byIndex = ["", "HTTP 429", "", "", "", "", "", "", "HTTP 429"]
+    expect(orderedSegmentFailures(byIndex)[0]).toBe("HTTP 429")
+  })
+
+  it("空输入 / 全空值返回空数组，交给调用方退回原口径（绝不编造原因）", () => {
+    expect(orderedSegmentFailures([])).toEqual([])
+    expect(orderedSegmentFailures([undefined, "  ", null, ""])).toEqual([])
+  })
+
+  it("首因+引导拼装：有序清单直接喂给 parseSegmentsFailedMessage，取到的就是第 1 段的原因", () => {
+    const reasons = orderedSegmentFailures([undefined, OPENCODE_400])
+    expect(parseSegmentsFailedMessage(reasons)).toContain("x-opencode-session")
   })
 })
