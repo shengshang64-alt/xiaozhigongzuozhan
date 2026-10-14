@@ -678,7 +678,7 @@ routerAdd("GET", "/api/intel/sources", (e) => {
     }
     var norm = function (s) { return String(s == null ? "" : s).trim() }
     var h = (e.requestInfo() || {}).headers || {}
-    var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
+    var userId = norm(String(e.get("rhUserId") || ""))
     var pub = function (rec) {
       return {
         id: rec.id,
@@ -716,7 +716,7 @@ routerAdd("POST", "/api/intel/sources", (e) => {
   try {
     var norm = function (s) { return String(s == null ? "" : s).trim() }
     var h = (e.requestInfo() || {}).headers || {}
-    var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
+    var userId = norm(String(e.get("rhUserId") || ""))
     if (!userId) return e.json(401, { ok: false, code: "LOGIN_REQUIRED", message: "请先登录后再添加信息源" })
     var body = e.requestInfo().body || {}
     var name = norm(body.source_name).slice(0, 100)
@@ -762,7 +762,7 @@ routerAdd("PATCH", "/api/intel/sources/{id}", (e) => {
   try {
     var norm = function (s) { return String(s == null ? "" : s).trim() }
     var h = (e.requestInfo() || {}).headers || {}
-    var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
+    var userId = norm(String(e.get("rhUserId") || ""))
     if (!userId) return e.json(401, { ok: false, code: "LOGIN_REQUIRED", message: "请先登录后再管理信息源" })
     var id = norm(e.request.pathValue("id"))
     var rec = null
@@ -815,7 +815,7 @@ routerAdd("DELETE", "/api/intel/sources/{id}", (e) => {
   try {
     var norm = function (s) { return String(s == null ? "" : s).trim() }
     var h = (e.requestInfo() || {}).headers || {}
-    var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
+    var userId = norm(String(e.get("rhUserId") || ""))
     if (!userId) return e.json(401, { ok: false, code: "LOGIN_REQUIRED", message: "请先登录后再管理信息源" })
     var id = norm(e.request.pathValue("id"))
     var rec = null
@@ -972,7 +972,7 @@ routerAdd("POST", "/api/intel/fetch-now", (e) => {
 
     var norm = function (s) { return String(s == null ? "" : s).trim() }
     var h = (e.requestInfo() || {}).headers || {}
-    var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
+    var userId = norm(String(e.get("rhUserId") || ""))
     if (!userId) return e.json(401, { ok: false, code: "LOGIN_REQUIRED", message: "请先登录后再手动抓取" })
     // 正文抓取预算（与 tick 同口径）：手动抓取单源，深抓上限 __maxBody 条 / __bodyDeadline 毫秒
     // 批次 A 扩容：__maxBody 5→10 / __bodyDeadline 9s→18s，与 tick 同比例，配合新增政府站代理开销
@@ -1302,7 +1302,7 @@ routerAdd("POST", "/api/intel/fetch-url", (e) => {
   try {
     var norm = function (s) { return String(s == null ? "" : s).trim() }
     var h = (e.requestInfo() || {}).headers || {}
-    var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
+    var userId = norm(String(e.get("rhUserId") || ""))
     if (!userId) return e.json(401, { ok: false, code: "LOGIN_REQUIRED", message: "请先登录后再抓取链接" })
     var body = e.requestInfo().body || {}
     var url = norm(body.url).slice(0, 600)
@@ -1374,7 +1374,7 @@ routerAdd("POST", "/api/intel/items/{id}/view", (e) => {
   try {
     var norm = function (s) { return String(s == null ? "" : s).trim() }
     var h = (e.requestInfo() || {}).headers || {}
-    var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
+    var userId = norm(String(e.get("rhUserId") || ""))
     if (!userId) return e.json(401, { ok: false, code: "LOGIN_REQUIRED", message: "请先登录后再标记情报状态" })
     var id = norm(e.request.pathValue("id"))
     var body = e.requestInfo().body || {}
@@ -1555,7 +1555,7 @@ routerAdd("GET", "/api/intel/items", (e) => {
 
     var norm = function (s) { return String(s == null ? "" : s).trim() }
     var h = (e.requestInfo() || {}).headers || {}
-    var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
+    var userId = norm(String(e.get("rhUserId") || ""))
     var q = (e.requestInfo() || {}).query || {}
     var qv = function (key) {
       var v = q[key]
@@ -1858,7 +1858,7 @@ routerAdd("POST", "/api/intel/cleanup-irrelevant", (e) => {
   try {
     var norm = function (s) { return String(s == null ? "" : s).trim() }
     var h = (e.requestInfo() || {}).headers || {}
-    var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
+    var userId = norm(String(e.get("rhUserId") || ""))
     if (!userId) return e.json(401, { ok: false, code: "LOGIN_REQUIRED", message: "请先登录后再清理情报" })
     var body = e.requestInfo().body || {}
     var doDelete = body.confirm === true
@@ -1947,7 +1947,7 @@ routerAdd("GET", "/api/intel/prefs", (e) => {
   try {
     var norm = function (s) { return String(s == null ? "" : s).trim() }
     var h = (e.requestInfo() || {}).headers || {}
-    var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
+    var userId = norm(String(e.get("rhUserId") || ""))
     if (!userId) return e.json(401, { ok: false, code: "LOGIN_REQUIRED", message: "请先登录后再读取个人偏好" })
     var DEFAULT_TOPICS = ["HIS", "EMR", "集成平台", "数据中心", "人工智能", "信创", "智慧医院", "互联互通", "招标"]
     var rec = null
@@ -1995,7 +1995,7 @@ routerAdd("POST", "/api/intel/prefs", (e) => {
   try {
     var norm = function (s) { return String(s == null ? "" : s).trim() }
     var h = (e.requestInfo() || {}).headers || {}
-    var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
+    var userId = norm(String(e.get("rhUserId") || ""))
     if (!userId) return e.json(401, { ok: false, code: "LOGIN_REQUIRED", message: "请先登录后再保存个人偏好" })
     var body = e.requestInfo().body || {}
     var regionFocus = norm(body.region_focus).slice(0, 20)
@@ -2181,7 +2181,7 @@ routerAdd("POST", "/api/intel/enrich", (e) => {
 
     var norm = function (s) { return String(s == null ? "" : s).trim() }
     var h = (e.requestInfo() || {}).headers || {}
-    var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
+    var userId = norm(String(e.get("rhUserId") || ""))
     if (!userId) return e.json(401, { ok: false, code: "LOGIN_REQUIRED", message: "请先登录后再回填存量情报" })
     var body = e.requestInfo().body || {}
     var dryRun = body.dry_run === true
@@ -2433,7 +2433,7 @@ routerAdd("POST", "/api/intel/extract-bid", (e) => {
   try {
     var norm = function (s) { return String(s == null ? "" : s).trim() }
     var h = (e.requestInfo() || {}).headers || {}
-    var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
+    var userId = norm(String(e.get("rhUserId") || ""))
     if (!userId) return e.json(401, { ok: false, code: "LOGIN_REQUIRED", message: "请先登录后再执行结构化抽取" })
     var body = e.requestInfo().body || {}
     var dryRun = body.dry_run === true
@@ -2561,8 +2561,7 @@ routerAdd("POST", "/api/intel/extract-bid", (e) => {
 // 供源管理面板识别「贡献源 vs 僵尸源」（抓取成功但 7 天 0 新增 = 内容不匹配需调关键词）。
 routerAdd("GET", "/api/intel/source-stats", function (e) {
   try {
-    var __h = (e.requestInfo() || {}).headers || {}
-    var uid = String(__h["x_rh_user_id"] || __h["X-Rh-User-Id"] || __h["x-rh-user-id"] || "").trim().slice(0, 64)
+    var uid = String(e.get("rhUserId") || "")
     if (!uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var sources = $app.findRecordsByFilter("intel_sources", "enabled=true", "source_name", 200, 0)
     var weekAgo = new Date(Date.now() - 7 * 86400000).toISOString()

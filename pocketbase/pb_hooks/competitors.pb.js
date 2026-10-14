@@ -88,8 +88,7 @@ onBootstrap(function (e) {
 // GET /api/competitors?page&perPage&sort&name&visibility&q
 routerAdd("GET", "/api/competitors", function (e) {
   try {
-    var __h = (e.requestInfo() || {}).headers || {}
-    var uid = String(__h["x_rh_user_id"] || __h["X-Rh-User-Id"] || __h["x-rh-user-id"] || "").trim().slice(0, 64)
+    var uid = String(e.get("rhUserId") || "")
     if (!uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var info = e.requestInfo()
     var query = info.query || {}
@@ -138,8 +137,7 @@ routerAdd("GET", "/api/competitors", function (e) {
 // GET /api/competitors/{id}
 routerAdd("GET", "/api/competitors/{id}", function (e) {
   try {
-    var __h = (e.requestInfo() || {}).headers || {}
-    var uid = String(__h["x_rh_user_id"] || __h["X-Rh-User-Id"] || __h["x-rh-user-id"] || "").trim().slice(0, 64)
+    var uid = String(e.get("rhUserId") || "")
     if (!uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var id = e.request.pathValue("id")
     if (!id) return e.json(400, { error: "id_required" })
@@ -156,8 +154,7 @@ routerAdd("GET", "/api/competitors/{id}", function (e) {
 // POST /api/competitors
 routerAdd("POST", "/api/competitors", function (e) {
   try {
-    var __h = (e.requestInfo() || {}).headers || {}
-    var uid = String(__h["x_rh_user_id"] || __h["X-Rh-User-Id"] || __h["x-rh-user-id"] || "").trim().slice(0, 64)
+    var uid = String(e.get("rhUserId") || "")
     if (!uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var coll = null
     try { coll = $app.findCollectionByNameOrId("competitors") } catch (_) { coll = null }
@@ -202,8 +199,7 @@ routerAdd("POST", "/api/competitors", function (e) {
 // PATCH /api/competitors/{id}  只更新 body 里出现的字段
 routerAdd("PATCH", "/api/competitors/{id}", function (e) {
   try {
-    var __h = (e.requestInfo() || {}).headers || {}
-    var uid = String(__h["x_rh_user_id"] || __h["X-Rh-User-Id"] || __h["x-rh-user-id"] || "").trim().slice(0, 64)
+    var uid = String(e.get("rhUserId") || "")
     if (!uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var id = e.request.pathValue("id")
     if (!id) return e.json(400, { error: "id_required" })
@@ -232,8 +228,7 @@ routerAdd("PATCH", "/api/competitors/{id}", function (e) {
 // DELETE /api/competitors/{id}
 routerAdd("DELETE", "/api/competitors/{id}", function (e) {
   try {
-    var __h = (e.requestInfo() || {}).headers || {}
-    var uid = String(__h["x_rh_user_id"] || __h["X-Rh-User-Id"] || __h["x-rh-user-id"] || "").trim().slice(0, 64)
+    var uid = String(e.get("rhUserId") || "")
     if (!uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var id = e.request.pathValue("id")
     if (!id) return e.json(400, { error: "id_required" })

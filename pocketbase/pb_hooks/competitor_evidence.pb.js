@@ -20,8 +20,7 @@
 // ---------------------------------------------------------------------------
 routerAdd("POST", "/api/competitor-evidence/bid-records", (e) => {
   try {
-    var __h = (e.requestInfo() || {}).headers || {}
-    var uid = String(__h["x_rh_user_id"] || __h["X-Rh-User-Id"] || __h["x-rh-user-id"] || "").trim().slice(0, 64)
+    var uid = String(e.get("rhUserId") || "")
     if (!uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
 
     var body = e.requestInfo().body || {}
@@ -109,8 +108,7 @@ routerAdd("POST", "/api/competitor-evidence/bid-records", (e) => {
 // ---------------------------------------------------------------------------
 routerAdd("POST", "/api/competitor-evidence/listed-announcements", (e) => {
   try {
-    var __h = (e.requestInfo() || {}).headers || {}
-    var uid = String(__h["x_rh_user_id"] || __h["X-Rh-User-Id"] || __h["x-rh-user-id"] || "").trim().slice(0, 64)
+    var uid = String(e.get("rhUserId") || "")
     if (!uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var body = e.requestInfo().body || {}
     var legalName = String(body.legal_name || "").trim().slice(0, 60)
@@ -176,8 +174,7 @@ routerAdd("POST", "/api/competitor-evidence/listed-announcements", (e) => {
 // ---------------------------------------------------------------------------
 routerAdd("POST", "/api/competitor-evidence/copyright-live", (e) => {
   try {
-    var __h = (e.requestInfo() || {}).headers || {}
-    var uid = String(__h["x_rh_user_id"] || __h["X-Rh-User-Id"] || __h["x-rh-user-id"] || "").trim().slice(0, 64)
+    var uid = String(e.get("rhUserId") || "")
     if (!uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var body = e.requestInfo().body || {}
     var owner = String(body.owner || "").trim().slice(0, 60)

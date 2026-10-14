@@ -83,8 +83,7 @@ routerAdd("GET", "/api/format_templates", function (e) {
     }
     var info = e.requestInfo()
     var query = info.query || {}
-    var __h = (e.requestInfo()||{}).headers||{}
-    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    var __uid = String(e.get("rhUserId") || "")
     if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var sort = String(query.sort || "-created")
     var filter = ""
@@ -114,8 +113,7 @@ routerAdd("GET", "/api/format_templates", function (e) {
 routerAdd("GET", "/api/format_templates/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
-    var __h = (e.requestInfo()||{}).headers||{}
-    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    var __uid = String(e.get("rhUserId") || "")
     if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
@@ -138,8 +136,7 @@ routerAdd("POST", "/api/format_templates", function (e) {
     var coll = ensureCollLocal()
     if (!coll) return e.json(500, { error: "coll_missing" })
     var body = e.requestInfo().body || {}
-    var __h = (e.requestInfo()||{}).headers||{}
-    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    var __uid = String(e.get("rhUserId") || "")
     if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!body.name) return e.json(400, { error: "name_required" })
     var isDefault = body.is_default === true || String(body.is_default) === "true"
@@ -171,8 +168,7 @@ routerAdd("POST", "/api/format_templates", function (e) {
 routerAdd("PATCH", "/api/format_templates/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
-    var __h = (e.requestInfo()||{}).headers||{}
-    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    var __uid = String(e.get("rhUserId") || "")
     if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
@@ -209,8 +205,7 @@ routerAdd("PATCH", "/api/format_templates/{id}", function (e) {
 routerAdd("DELETE", "/api/format_templates/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
-    var __h = (e.requestInfo()||{}).headers||{}
-    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    var __uid = String(e.get("rhUserId") || "")
     if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null

@@ -89,8 +89,7 @@ routerAdd("GET", "/api/follow_records", function (e) {
     ensureCollLocal()
     var info = e.requestInfo()
     var query = info.query || {}
-    var __h = (e.requestInfo()||{}).headers||{}
-    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    var __uid = String(e.get("rhUserId") || "")
     if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var page = parseInt(String(query.page || "1"), 10) || 1
     var perPage = parseInt(String(query.perPage || "50"), 10) || 50
@@ -134,8 +133,7 @@ routerAdd("GET", "/api/follow_records", function (e) {
 routerAdd("GET", "/api/follow_records/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
-    var __h = (e.requestInfo()||{}).headers||{}
-    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    var __uid = String(e.get("rhUserId") || "")
     if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
@@ -176,8 +174,7 @@ routerAdd("POST", "/api/follow_records", function (e) {
   try {
     var coll = ensureCollLocal()
     var body = e.requestInfo().body || {}
-    var __h = (e.requestInfo()||{}).headers||{}
-    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    var __uid = String(e.get("rhUserId") || "")
     if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var rec = new Record(coll)
     rec.set("rh_user_id", __uid)
@@ -198,8 +195,7 @@ routerAdd("POST", "/api/follow_records", function (e) {
 routerAdd("PATCH", "/api/follow_records/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
-    var __h = (e.requestInfo()||{}).headers||{}
-    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    var __uid = String(e.get("rhUserId") || "")
     if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
@@ -227,8 +223,7 @@ routerAdd("PATCH", "/api/follow_records/{id}", function (e) {
 routerAdd("DELETE", "/api/follow_records/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
-    var __h = (e.requestInfo()||{}).headers||{}
-    var __uid = String(__h["x_rh_user_id"]||__h["X-Rh-User-Id"]||__h["x-rh-user-id"]||"").trim().slice(0,64)
+    var __uid = String(e.get("rhUserId") || "")
     if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null

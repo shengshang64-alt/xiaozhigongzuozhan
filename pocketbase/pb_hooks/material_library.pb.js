@@ -147,8 +147,7 @@ onBootstrap(function (e) {
 routerAdd("GET", "/api/materials", function (e) {
   // ⚠️ 内联 helper：JSVM handler 独立 VM，勿上提
   function uidOf() {
-    var __h = (e.requestInfo() || {}).headers || {}
-    return String(__h["x_rh_user_id"] || __h["X-Rh-User-Id"] || __h["x-rh-user-id"] || "").trim().slice(0, 64)
+    return String(e.get("rhUserId") || "")
   }
   function exportMode(rec, mode) {
     var it = rec.publicExport()
@@ -190,8 +189,7 @@ routerAdd("GET", "/api/materials", function (e) {
 // GET /api/materials/{id} — 全量（含 image_data，供预览/PPT 插入）
 routerAdd("GET", "/api/materials/{id}", function (e) {
   function uidOf() {
-    var __h = (e.requestInfo() || {}).headers || {}
-    return String(__h["x_rh_user_id"] || __h["X-Rh-User-Id"] || __h["x-rh-user-id"] || "").trim().slice(0, 64)
+    return String(e.get("rhUserId") || "")
   }
   try {
     var __uid = uidOf()
@@ -221,8 +219,7 @@ routerAdd("GET", "/api/materials/{id}", function (e) {
 // POST /api/materials — 入库（sha256 去重；图库来源强制授权链；原图写 material_library_data）
 routerAdd("POST", "/api/materials", function (e) {
   function uidOf() {
-    var __h = (e.requestInfo() || {}).headers || {}
-    return String(__h["x_rh_user_id"] || __h["X-Rh-User-Id"] || __h["x-rh-user-id"] || "").trim().slice(0, 64)
+    return String(e.get("rhUserId") || "")
   }
   function metaOnly(rec) {
     var it = rec.publicExport()
@@ -301,8 +298,7 @@ routerAdd("POST", "/api/materials", function (e) {
 // PATCH /api/materials/{id} — 仅元数据可改（原图/哈希入库后不可变，保授权链可信）
 routerAdd("PATCH", "/api/materials/{id}", function (e) {
   function uidOf() {
-    var __h = (e.requestInfo() || {}).headers || {}
-    return String(__h["x_rh_user_id"] || __h["X-Rh-User-Id"] || __h["x-rh-user-id"] || "").trim().slice(0, 64)
+    return String(e.get("rhUserId") || "")
   }
   try {
     var __uid = uidOf()
@@ -337,8 +333,7 @@ routerAdd("PATCH", "/api/materials/{id}", function (e) {
 // POST /api/materials/{id}/usage — 被 PPT 引用一次 +1（元数据行小，直接改）
 routerAdd("POST", "/api/materials/{id}/usage", function (e) {
   function uidOf() {
-    var __h = (e.requestInfo() || {}).headers || {}
-    return String(__h["x_rh_user_id"] || __h["X-Rh-User-Id"] || __h["x-rh-user-id"] || "").trim().slice(0, 64)
+    return String(e.get("rhUserId") || "")
   }
   try {
     var __uid = uidOf()
@@ -360,8 +355,7 @@ routerAdd("POST", "/api/materials/{id}/usage", function (e) {
 // POST /api/materials/{id}/restore — 回收站恢复
 routerAdd("POST", "/api/materials/{id}/restore", function (e) {
   function uidOf() {
-    var __h = (e.requestInfo() || {}).headers || {}
-    return String(__h["x_rh_user_id"] || __h["X-Rh-User-Id"] || __h["x-rh-user-id"] || "").trim().slice(0, 64)
+    return String(e.get("rhUserId") || "")
   }
   try {
     var __uid = uidOf()
@@ -383,8 +377,7 @@ routerAdd("POST", "/api/materials/{id}/restore", function (e) {
 // DELETE /api/materials/{id} — 默认软删（回收站）；?hard=1 真删（连带原图行）
 routerAdd("DELETE", "/api/materials/{id}", function (e) {
   function uidOf() {
-    var __h = (e.requestInfo() || {}).headers || {}
-    return String(__h["x_rh_user_id"] || __h["X-Rh-User-Id"] || __h["x-rh-user-id"] || "").trim().slice(0, 64)
+    return String(e.get("rhUserId") || "")
   }
   try {
     var __uid = uidOf()
@@ -415,8 +408,7 @@ routerAdd("DELETE", "/api/materials/{id}", function (e) {
 // POST /api/materials-trash/purge — 清空回收站（连带原图行）
 routerAdd("POST", "/api/materials-trash/purge", function (e) {
   function uidOf() {
-    var __h = (e.requestInfo() || {}).headers || {}
-    return String(__h["x_rh_user_id"] || __h["X-Rh-User-Id"] || __h["x-rh-user-id"] || "").trim().slice(0, 64)
+    return String(e.get("rhUserId") || "")
   }
   try {
     var __uid = uidOf()
@@ -442,8 +434,7 @@ routerAdd("POST", "/api/materials-trash/purge", function (e) {
 // GET /api/materials-stats — 总览统计（元数据行小，全量聚合可承受）
 routerAdd("GET", "/api/materials-stats", function (e) {
   function uidOf() {
-    var __h = (e.requestInfo() || {}).headers || {}
-    return String(__h["x_rh_user_id"] || __h["X-Rh-User-Id"] || __h["x-rh-user-id"] || "").trim().slice(0, 64)
+    return String(e.get("rhUserId") || "")
   }
   try {
     var __uid = uidOf()

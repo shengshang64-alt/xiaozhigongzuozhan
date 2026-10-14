@@ -270,7 +270,7 @@ routerAdd("POST", "/api/customers/fetch-site", (e) => {
 
   try {
     var h = (e.requestInfo() || {}).headers || {}
-    var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
+    var userId = norm(String(e.get("rhUserId") || ""))
     if (!userId) return e.json(401, { ok: false, code: "LOGIN_REQUIRED", message: "请先登录后再抓取官网" })
     var body = e.requestInfo().body || {}
     var name = norm(body.name).slice(0, 80)
@@ -481,7 +481,7 @@ routerAdd("POST", "/api/customers/fetch-image", (e) => {
   }
   try {
     var h = (e.requestInfo() || {}).headers || {}
-    var userId = String(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "").trim()
+    var userId = String(e.get("rhUserId") || "")
     if (!userId) return e.json(401, { ok: false, code: "LOGIN_REQUIRED", message: "请先登录" })
     var body = e.requestInfo().body || {}
     var url = String(body.url || "").trim().slice(0, 1000)

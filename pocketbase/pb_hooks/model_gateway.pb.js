@@ -11,8 +11,7 @@
 routerAdd("GET", "/api/model-gw/configs", (e) => {
   try {
     var norm = function (s) { return String(s == null ? "" : s).replace(/[\u0000-\u001f\u007f]/g, "").trim() }
-    var h = (e.requestInfo() || {}).headers || {}
-    var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
+    var userId = norm(String(e.get("rhUserId") || ""))
     if (!userId) return e.json(401, { ok: false, code: "LOGIN_REQUIRED", message: "请先登录后再管理模型配置" })
     var fingerprint = function (where) { return "mgw-" + where + "-" + new Date().getTime().toString(36) + "-" + Math.floor(Math.random() * 1000000).toString(36) }
     var SECRET = "mgw-app-d61cf9ef4f3a43a9ac231816a7e5d501"
@@ -82,8 +81,7 @@ routerAdd("GET", "/api/model-gw/configs", (e) => {
 routerAdd("POST", "/api/model-gw/configs", (e) => {
   try {
     var norm = function (s) { return String(s == null ? "" : s).replace(/[\u0000-\u001f\u007f]/g, "").trim() }
-    var h = (e.requestInfo() || {}).headers || {}
-    var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
+    var userId = norm(String(e.get("rhUserId") || ""))
     if (!userId) return e.json(401, { ok: false, code: "LOGIN_REQUIRED", message: "请先登录后再管理模型配置" })
     var SECRET = "mgw-app-d61cf9ef4f3a43a9ac231816a7e5d501"
     var xorHex = function (s) {
@@ -214,8 +212,7 @@ routerAdd("POST", "/api/model-gw/configs", (e) => {
 routerAdd("PATCH", "/api/model-gw/configs/{id}", (e) => {
   try {
     var norm = function (s) { return String(s == null ? "" : s).replace(/[\u0000-\u001f\u007f]/g, "").trim() }
-    var h = (e.requestInfo() || {}).headers || {}
-    var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
+    var userId = norm(String(e.get("rhUserId") || ""))
     if (!userId) return e.json(401, { ok: false, code: "LOGIN_REQUIRED", message: "请先登录后再管理模型配置" })
     var SECRET = "mgw-app-d61cf9ef4f3a43a9ac231816a7e5d501"
     // R301：429 原文分类（与 chat / test / refresh-models / POST configs 路由同口径，各自自包含以保 Goja 并发安全）
@@ -451,8 +448,7 @@ routerAdd("PATCH", "/api/model-gw/configs/{id}", (e) => {
 routerAdd("DELETE", "/api/model-gw/configs/{id}", (e) => {
   try {
     var norm = function (s) { return String(s == null ? "" : s).replace(/[\u0000-\u001f\u007f]/g, "").trim() }
-    var h = (e.requestInfo() || {}).headers || {}
-    var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
+    var userId = norm(String(e.get("rhUserId") || ""))
     if (!userId) return e.json(401, { ok: false, code: "LOGIN_REQUIRED", message: "请先登录后再管理模型配置" })
     var id = norm(e.request.pathValue("id"))
     var rec = null
@@ -483,8 +479,7 @@ routerAdd("DELETE", "/api/model-gw/configs/{id}", (e) => {
 routerAdd("POST", "/api/model-gw/configs/{id}/refresh-models", (e) => {
   try {
     var norm = function (s) { return String(s == null ? "" : s).replace(/[\u0000-\u001f\u007f]/g, "").trim() }
-    var h = (e.requestInfo() || {}).headers || {}
-    var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
+    var userId = norm(String(e.get("rhUserId") || ""))
     if (!userId) return e.json(401, { ok: false, code: "LOGIN_REQUIRED", message: "请先登录后再管理模型配置" })
     var SECRET = "mgw-app-d61cf9ef4f3a43a9ac231816a7e5d501"
     var unxorHex = function (hx) {
@@ -651,8 +646,7 @@ routerAdd("POST", "/api/model-gw/configs/{id}/refresh-models", (e) => {
 routerAdd("POST", "/api/model-gw/test", (e) => {
   try {
     var norm = function (s) { return String(s == null ? "" : s).replace(/[\u0000-\u001f\u007f]/g, "").trim() }
-    var h = (e.requestInfo() || {}).headers || {}
-    var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
+    var userId = norm(String(e.get("rhUserId") || ""))
     if (!userId) return e.json(401, { ok: false, code: "LOGIN_REQUIRED", message: "请先登录后再管理模型配置" })
     var SECRET = "mgw-app-d61cf9ef4f3a43a9ac231816a7e5d501"
     var unxorHex = function (hx) {
@@ -803,8 +797,7 @@ routerAdd("POST", "/api/model-gw/test", (e) => {
 routerAdd("POST", "/api/model-gw/chat", (e) => {
   try {
     var norm = function (s) { return String(s == null ? "" : s).replace(/[\u0000-\u001f\u007f]/g, "").trim() }
-    var h = (e.requestInfo() || {}).headers || {}
-    var userId = norm(h["x_rh_user_id"] || h["X-Rh-User-Id"] || h["x-rh-user-id"] || "")
+    var userId = norm(String(e.get("rhUserId") || ""))
     if (!userId) return e.json(401, { ok: false, code: "LOGIN_REQUIRED", message: "请先登录后再使用模型网关" })
     var SECRET = "mgw-app-d61cf9ef4f3a43a9ac231816a7e5d501"
     var unxorHex = function (hx) {

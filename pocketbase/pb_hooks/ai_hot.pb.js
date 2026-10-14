@@ -8,8 +8,7 @@
 //  - 零 LLM 调用（纯 RSS 透传，无 AI 费用）；不发送任何本地数据（纯入站公开咨讯）
 //  - 不用 cronAdd（pb-hook-lint 禁止）：拉取时机=用户进入「AI 动态」页 / 手动刷新
 routerAdd("GET", "/api/ai_hot/feed", function (e) {
-  var __h = (e.requestInfo() || {}).headers || {}
-  var __uid = String(__h["x_rh_user_id"] || __h["X-Rh-User-Id"] || __h["x-rh-user-id"] || "").trim().slice(0, 64)
+  var __uid = String(e.get("rhUserId") || "")
   if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
   try {
     var res = $http.send({

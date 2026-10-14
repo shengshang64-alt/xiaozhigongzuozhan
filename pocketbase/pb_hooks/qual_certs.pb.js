@@ -81,15 +81,13 @@ onBootstrap(function (e) {
 })
 
 function qualUid(e) {
-  var __h = (e.requestInfo() || {}).headers || {}
-  return String(__h["x_rh_user_id"] || __h["X-Rh-User-Id"] || __h["x-rh-user-id"] || "").trim().slice(0, 64)
+  return String(e.get("rhUserId") || "")
 }
 
 // GET /api/qual_certs?page=1&perPage=100&category=... — 本人台账列表（按 valid_to 升序，临期在前）
 routerAdd("GET", "/api/qual_certs", function (e) {
   try {
-    var __h1 = (e.requestInfo() || {}).headers || {}
-    var uid = String(__h1["x_rh_user_id"] || __h1["X-Rh-User-Id"] || __h1["x-rh-user-id"] || "").trim().slice(0, 64)
+    var uid = String(e.get("rhUserId") || "")
     if (!uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     try { $app.findCollectionByNameOrId("qual_certs") } catch (_) {
       var col = new Collection({
@@ -142,8 +140,7 @@ routerAdd("GET", "/api/qual_certs", function (e) {
 // GET /api/qual_certs/summary — 到期三档统计（必须在 /{id} 路由之前注册）
 routerAdd("GET", "/api/qual_certs/summary", function (e) {
   try {
-    var __h2 = (e.requestInfo() || {}).headers || {}
-    var uid = String(__h2["x_rh_user_id"] || __h2["X-Rh-User-Id"] || __h2["x-rh-user-id"] || "").trim().slice(0, 64)
+    var uid = String(e.get("rhUserId") || "")
     if (!uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     try { $app.findCollectionByNameOrId("qual_certs") } catch (_) {
       var col = new Collection({
@@ -217,8 +214,7 @@ routerAdd("GET", "/api/qual_certs/summary", function (e) {
 // POST /api/qual_certs — 新增（cert_name 必填）
 routerAdd("POST", "/api/qual_certs", function (e) {
   try {
-    var __h3 = (e.requestInfo() || {}).headers || {}
-    var uid = String(__h3["x_rh_user_id"] || __h3["X-Rh-User-Id"] || __h3["x-rh-user-id"] || "").trim().slice(0, 64)
+    var uid = String(e.get("rhUserId") || "")
     if (!uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     try { $app.findCollectionByNameOrId("qual_certs") } catch (_) {
       var col = new Collection({
@@ -270,8 +266,7 @@ routerAdd("POST", "/api/qual_certs", function (e) {
 routerAdd("GET", "/api/qual_certs/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
-    var __h4 = (e.requestInfo() || {}).headers || {}
-    var uid = String(__h4["x_rh_user_id"] || __h4["X-Rh-User-Id"] || __h4["x-rh-user-id"] || "").trim().slice(0, 64)
+    var uid = String(e.get("rhUserId") || "")
     if (!uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     if (!id) return e.json(400, { error: "id_required" })
     var rec = null
@@ -289,8 +284,7 @@ routerAdd("GET", "/api/qual_certs/{id}", function (e) {
 routerAdd("PATCH", "/api/qual_certs/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
-    var __h5 = (e.requestInfo() || {}).headers || {}
-    var uid = String(__h5["x_rh_user_id"] || __h5["X-Rh-User-Id"] || __h5["x-rh-user-id"] || "").trim().slice(0, 64)
+    var uid = String(e.get("rhUserId") || "")
     if (!uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var rec = null
     try { rec = $app.findRecordById("qual_certs", id) } catch (_) { rec = null }
@@ -316,8 +310,7 @@ routerAdd("PATCH", "/api/qual_certs/{id}", function (e) {
 routerAdd("DELETE", "/api/qual_certs/{id}", function (e) {
   try {
     var id = e.request.pathValue("id")
-    var __h6 = (e.requestInfo() || {}).headers || {}
-    var uid = String(__h6["x_rh_user_id"] || __h6["X-Rh-User-Id"] || __h6["x-rh-user-id"] || "").trim().slice(0, 64)
+    var uid = String(e.get("rhUserId") || "")
     if (!uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var rec = null
     try { rec = $app.findRecordById("qual_certs", id) } catch (_) { rec = null }
