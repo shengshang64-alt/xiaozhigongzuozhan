@@ -1,9 +1,10 @@
 {
-  "round": 42,
+  "round": 43,
   "lastRound": {
-    "id": "R42",
-    "theme": "补齐报价高风险交互的 UI 回归网（第 2、3 张）：NumCell 数字单元格（A2-8 编辑期留草稿原文/非法行内提示/失焦归一）+ DiscountIntentDialog 折扣歧义确认弹窗（B8 两种读法各点各的、金额与小计同源、不选不改）。改前先补测试，改后删实现已验证变红",
-    "verdict": "pass"
+    "id": "R43",
+    "theme": "身份收敛：182 处内联身份副本 → zx_guard.pb.js 顶部 routerUse 中间件 1 处（全站唯一取值处）+ handler 统一 e.get(\"rhUserId\")；新增 scripts/pbHooksIdentity.test.ts 9 例双锁（结构锁 3：中间件三要素 / 内联副本清零且头名字面量恰好 1 处 / e.get 读数 ≥182；口径锁 6：抽取中间件真实源码执行，锁头名优先级 / 去控制字符 / trim / 截断 64 / next 恰好一次 / 非字符串归一）；160/160 行为等价（32 端点 × 5 种头，噪声地板 0）；口径审计：23/43 表 8091 行 distinct uid 仅 2 个、最长 15 < 64 → 统一口径不重键既有数据",
+    "verdict": "pass",
+    "at": "2026-10-14"
   },
   "eslintBaseline": 151,
   "gates": {
@@ -30,6 +31,12 @@
       "title": "UI 回归网（R42 已落地四张：DiscountCell 10 例 / NumCell 11 例 / DiscountIntentDialog 11 例 / GateChecklist 14 例 = 46 例，均 jsdom + testing-library，per-file @vitest-environment 覆盖不动全局 node 环境；四张都做过「删实现即变红」验证）。剩余可补：报价行编辑→小计/总额往返、导出前门禁拦截。此后新增 UI 高风险交互按「改前先补测试」继续",
       "priority": "medium",
       "source": "self-found(R42 x4)"
+    },
+    {
+      "id": "B0d-identity-convergence",
+      "title": "身份收敛已落地（R43 完成）：全站唯一取值处 = zx_guard.pb.js 顶部 routerUse 中间件（e.set(\"rhUserId\")），182 处内联副本清零、34 个业务钩子改 e.get(\"rhUserId\")；scripts/pbHooksIdentity.test.ts 9 例（结构锁 3 + 口径锁 6）进 loop；160/160 行为等价（32 端点 × 5 头，噪声地板 0）+ 口径审计（23 表 8091 行 longest uid 15 < 64）已归档 docs/evolution/_r43_*.cjs。剩余：身份**字段模型**收敛（一稿 P1-3，用 PocketBase 原生 auth 记录替代自建 rh_user_id 文本字段）需单开一轮，本轮明确不做",
+      "priority": "medium",
+      "source": "self-found(R43 done)"
     },
     {
       "id": "B15",
@@ -100,6 +107,12 @@
   ],
   "history": [
     {
+      "id": "R043",
+      "theme": "身份收敛（结构整备 C / 0 功能变更 / 0 前端改动 / 0 数据模型变更）：pb_hooks 里 182 处内联身份副本全删 → zx_guard.pb.js 顶部 routerUse 中间件单点取值并 e.set(\"rhUserId\")，34 个业务钩子改读 e.get(\"rhUserId\")；35 文件 +207 −355；新增 pbHooksIdentity.test.ts 9 例（结构锁 3 + 口径锁 6）；160/160 逐字节等价；改前头名口径已漂移 3 种（131 处截 64 / 22 处去控制字符不截断 / 1 处只 trim）",
+      "verdict": "pass",
+      "at": "2026-10-14"
+    },
+    {
       "id": "R040",
       "theme": "修 B8 折扣语义歧义：新增 src/lib/discountIntent 判定单一真源（阈值 5）+ DiscountIntentDialog 把两种读法各换算成真实金额；行内 DiscountCell 只在 blur/Enter 落值且歧义不写库、整组入口先判后落、存量横幅逐行确认、交付体检 warn 只报不拦；normalizeDiscount 的 R285 口径未动并有回归守卫。+1 文件 +20 用例（18 新 + 2 交付体检）；实机注入真实组件 23 项断言全过 / 0 pageerror",
       "verdict": "pass",
@@ -155,7 +168,8 @@
     "r037": "216 files / 2555 passed | 2 skipped —— 其中本轮新增 1 文件 / 6 用例（checklistMoney.test.ts），另 +2 文件 +16 用例来自工作区**既有未提交的 model-config 改动**（非本轮）；eslint 161 error / 20 warning —— +1 来自既有未提交新文件 src/components/model-config/ModelMetaDialog.tsx，本轮 5 个文件单独 lint 全部 0 error；tsc -b exit 0；**pnpm build 恢复可用 ✓ 6.42s**（见 notes E-1）",
     "r038": "218 files / 2593 passed | 2 skipped（+2 files / +38 用例，均来自本轮 priceScoreBrief.test.ts 27 例 + priceScoreWiring.test.ts 11 例）；eslint 触及 7 文件 19 problems（6 error / 13 warning）全为 useBidWorkspace.ts 在途既有位置，本轮新增 0 error；tsc -b exit 2 —— 5 error 全在在途文件（ModelMetaDialog / PersonalConfigList / useModelConfig / bidDocxFormatExtract×2），本轮 7 文件 0 error；npx vite build exit 0（6076 modules / 4.85s），「价格分测算」落在 BidWorkspace 路由 chunk 而非主包",
     "r039": "218 files / 2597 passed | 2 skipped（+4 用例，0 新文件）；eslint 触及文件 19 problems 全为在途既有存量（新增 0 error）；tsc -b exit 2 —— 5 error 全在在途文件（ModelMetaDialog / PersonalConfigList / useModelConfig / bidDocxFormatExtract×2）；npx vite build exit 0（6076 modules / 3.68s）",
-    "r040": "219 files / 2617 passed | 2 skipped（+1 file / +20 用例：quoteDiscountAmbiguity.test.ts 18 例 + deliverability.test.ts 2 例）；eslint 本轮触及 7 文件 exit 0（0 error 0 warning），全仓 src 152 error / 19 warning 全为存量；tsc -b exit 2 —— 5 error 全在在途文件（ModelMetaDialog / PersonalConfigList / useModelConfig / bidDocxFormatExtract×2）；npx vite build exit 0（4.28s），「折扣写法有歧义」等文案落在 PptQuote 路由 chunk 而非主包"
+    "r040": "219 files / 2617 passed | 2 skipped（+1 file / +20 用例：quoteDiscountAmbiguity.test.ts 18 例 + deliverability.test.ts 2 例）；eslint 本轮触及 7 文件 exit 0（0 error 0 warning），全仓 src 152 error / 19 warning 全为存量；tsc -b exit 2 —— 5 error 全在在途文件（ModelMetaDialog / PersonalConfigList / useModelConfig / bidDocxFormatExtract×2）；npx vite build exit 0（4.28s），「折扣写法有歧义」等文案落在 PptQuote 路由 chunk 而非主包",
+    "r043": "225 files / 2682 passed | 2 skipped（+1 文件 / +200 用例：scripts/pbHooksIdentity.test.ts 9 例 + 工作区既有在途批次）；eslint 151 error / 20 warning（= 账本基线 151，持平）；tsc -b exit 0；vite build ✓ 8.35s"
   },
   "notes": [
     "起点 R034；R031/R033 为已存在的进化日志（docs/evolution/）。",
@@ -195,7 +209,11 @@
     "R40 数据事实：/api/quotes（X-Rh-User-Id=local-user）返回 0 条报价记录 → 报价域的「真实语料」审计需要在用户实际登录身份下进行，别把「查不到」当「没问题」。",
     "R40 环境副作用：为取证启动了 :8000 Vite dev server（start-local.cmd 同参），按 hook 禁令未结束进程，当前仍在监听；stop-local.cmd 会连 :7000 一起停，勿轻易调用。",
     "R40 证据通道补充：除 Playwright 注入取证外，本轮另在 browser-use 连的本机 Chrome 真实会话里跑过一遍（线上壳 + 真实主题 + sonner Toaster）：行内填 0.9 失焦零写入并弹两种读法的真实金额，选 9 折读法只落一次 {discount:90} 且 toast 实际弹出；整组填 3 弹组级合计确认，点「都不是」不写。两个环境事实记死：窗口最小化时 document.hasFocus()=false -> **el.blur() 不产生 focusout，React onBlur 不触发**（要显式派发一次 FocusEvent('focusout')）；隐藏页里 CSS 动画被节流 -> Radix 关闭后节点滞留 DOM 但 data-state 已是 closed，判「弹窗已关」要看 data-state 而非只查节点存在。",
-    "R40 之后补记（用户反馈「项目又挂了」，13:41 实测）：挂的是 **:8000 Vite dev server 进程**，不是代码 —— PocketBase :7000 一直 200，Windows 应用程序日志无 node 崩溃记录，vite deps 目录无 temp 半成品残留；重启后浏览器实测 /ppt-quote 正常渲染、控制台 0 error、R40 新模块（discountIntent / DiscountIntentDialog / QuoteEditor）在真实应用里全部加载可用。**根因**：上一轮为取证用 `Start-Process node …vite.js` 直起服务，该进程随工具会话结束被回收（当时实测「在监听」只在同一次调用窗口内成立，不能当作持久服务）；改走项目自己的 `start-local.cmd`（内部 `start \"Vite\" /min cmd /c …&& set NODE_OPTIONS= &&`）派生独立控制台后，跨多次调用仍存活。**下轮起服务的规矩**：要常驻就用 start-local.cmd，不要自己 Start-Process node 直起；并且把「起服务」与「用它取证」放进同一次调用窗口内完成，跨窗口前先复测端口（Test-NetConnection 127.0.0.1 8000）。另注意历史高频杀手：WorkBuddy 沙箱经 NODE_OPTIONS 注入 safe-delete 守卫，vite 重优化依赖批量删 node_modules\\.vite*\\deps_temp_* 时会把 dev server 打死（SAFE_DELETE_BULK_CONFIRM_REQUIRED），start-local.cmd 已显式清空 NODE_OPTIONS 规避 —— 手工起服务时别把 NODE_OPTIONS 带进去。停止服务请只关那个 Vite 窗口，`stop-local.cmd` 会连 :7000 PocketBase 一起停。"
+    "R40 之后补记（用户反馈「项目又挂了」，13:41 实测）：挂的是 **:8000 Vite dev server 进程**，不是代码 —— PocketBase :7000 一直 200，Windows 应用程序日志无 node 崩溃记录，vite deps 目录无 temp 半成品残留；重启后浏览器实测 /ppt-quote 正常渲染、控制台 0 error、R40 新模块（discountIntent / DiscountIntentDialog / QuoteEditor）在真实应用里全部加载可用。**根因**：上一轮为取证用 `Start-Process node …vite.js` 直起服务，该进程随工具会话结束被回收（当时实测「在监听」只在同一次调用窗口内成立，不能当作持久服务）；改走项目自己的 `start-local.cmd`（内部 `start \"Vite\" /min cmd /c …&& set NODE_OPTIONS= &&`）派生独立控制台后，跨多次调用仍存活。**下轮起服务的规矩**：要常驻就用 start-local.cmd，不要自己 Start-Process node 直起；并且把「起服务」与「用它取证」放进同一次调用窗口内完成，跨窗口前先复测端口（Test-NetConnection 127.0.0.1 8000）。另注意历史高频杀手：WorkBuddy 沙箱经 NODE_OPTIONS 注入 safe-delete 守卫，vite 重优化依赖批量删 node_modules\\.vite*\\deps_temp_* 时会把 dev server 打死（SAFE_DELETE_BULK_CONFIRM_REQUIRED），start-local.cmd 已显式清空 NODE_OPTIONS 规避 —— 手工起服务时别把 NODE_OPTIONS 带进去。停止服务请只关那个 Vite 窗口，`stop-local.cmd` 会连 :7000 PocketBase 一起停。",
+    "R43 身份收敛纪律（写死以免再犯）：**全站身份取值只允许存在于 zx_guard.pb.js 的 routerUse 中间件一处**。改动前 HEAD 的 182 处内联副本里口径已漂移出 3 种（131 处 trim+截 64、22 处去控制字符但不截断、1 处只 trim）——这不是「同一段代码被复制」，而是安全语义有 3 个版本。此后新增路由/handler 一律 e.get(\"rhUserId\")，禁止再内联读 X-Rh-User-Id 头；scripts/pbHooksIdentity.test.ts 的结构锁会逐行列出违规点。又：PocketBase 每个 handler 跑在独立 VM 隔离里，文件级 const/var/function 在 handler 内一律 ReferenceError、globalThis 也不跨隔离 —— 所以只能走中间件，别再试 require()/共享函数。",
+    "R43 行为等价复核教训（写死以免再犯）：**不采信自己上一轮留下的取证产物**。上一轮留在 .probe/pb-smoke/ 的 pre/post JSON（三者哈希相同、看着很干净）经复核判定不可用：其 harness 用 `body += chunk` 累加字符串，多字节字符跨 TCP 分片会产生 \\uFFFD 伪影（本轮复现到「党\\uFFFD\\uFFFD书记」），且只抽 items.length / 首条 id，判别力弱。本轮改为 Buffer.concat 后统一 decode + 完整响应体逐字节比对 + 把「仅数组顺序不同」降级为差异分类，并且**先测噪声地板（同代码连跑两次 = 0）再比 pre vs post**。结论：160/160 零差异、扣除噪声后仍 0。",
+    "R43 口径审计事实：pb_data 里 23/43 张表含 rh_user_id，带值行 8091，**distinct uid 只有 2 个（local-user 10 字符 / sa03xruhigmthh8 15 字符），最长 15 < 64 截断线、含控制字符 0** → 把「去控制字符 + 截断 64」统一到全站不会重键任何既有数据。另：HEAD 非注释头名取值恰好 182 处 / 13 种字面量（盘点脚本 docs/evolution/_r43_head_idioms.cjs）——这个数字是「改动前」口径，收敛后应恒为 1 处（在中间件块内）。两条归档脚本：_r43_identity_equiv_verify.cjs（160 用例等价）、_r43_uid_length_audit.cjs（口径审计）。",
+    "R43 账本缺口说明：history 数组此前只回填到 R040，R041（门禁诚实性）/ R042（UI 回归网四张）以及本轮之前的中间轮次只在 backlog（B0-gate-honesty / B0b-schema-as-code / B0c-ui-regression）与各自 commit 里留痕，未逐条插入 history。本轮起把 R043 插回 history 头部；后续回写请保持 history 与 lastRound 同步，别继续拉缺口。"
   ],
   "gatesBaseline": {
     "tsc": 0,
