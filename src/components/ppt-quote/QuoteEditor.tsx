@@ -150,7 +150,7 @@ function NumCell({
 //    整行金额只剩原价的 1%，且只在输入瞬间闪一句「应在 1–100 之间」）；
 //  - >100：归一到 100 并行内说明（与 normalizeDiscount 同口径）；
 //  - 只在 blur/Enter 落值：逐键提交会把「输入 90 途中经过 9」误判成歧义。
-function DiscountCell({
+export function DiscountCell({
   value,
   ariaLabel,
   onAsk,
