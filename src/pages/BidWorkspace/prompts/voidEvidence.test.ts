@@ -10,10 +10,12 @@ import {
   buildVoidFinalizeMessages,
 } from "./voidCheckRounds"
 import { sanitizeVoidCheck } from "../bidTypes"
+import { selectBidEvidence } from "../bidVisibility"
 import type { LlmMessage } from "@/lib/llm"
 
 const clauses = ["未按招标文件要求盖章的投标无效", "投标报价超出最高限价的投标无效"]
-const bid = "投标文件正文示例：本项目提供五星售后服务承诺，响应时间 2 小时。"
+// R50（P0-3）：正常路径用证据包；短文本为 mode=full（输入完整），语义与换包前一致
+const bid = selectBidEvidence("投标文件正文示例：本项目提供五星售后服务承诺，响应时间 2 小时。", clauses)
 const systemText = (m: LlmMessage[]) => (typeof m[0].content === "string" ? m[0].content : "")
 
 describe("P0-1 sanitizeVoidCheck：未知态不得自动判定", () => {

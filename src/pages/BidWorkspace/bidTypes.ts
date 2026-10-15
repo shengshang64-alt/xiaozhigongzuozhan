@@ -2090,14 +2090,77 @@ function collectResponseAnnotations(
  * R31 评分点覆盖矩阵（纯本地零 AI）：每个编号评分项 ↔ 承接它的大纲叶子标题。
  * 只扫技术部分顶层章（商务骨架章不承担承接）；商务项（B*）不进矩阵。
  */
+/**
+ * 评分项名 ↔ 大纲节点文本的承接判定（零 AI）。
+ *
+ * 背景：覆盖矩阵原先只认节点 description 里的 `[响应:Rx]` 机械标注，模型这轮没写标注就一律判
+ * "未承接"——2026-10-15 用户实测：这本标书 107 个叶子 0 条标注，13 个技术资信评分项全被判未承接
+ * （含"售后服务、运维保障"这种章名就写着同名的），连着一次自动结构修复也修不好，用户看到的是
+ * "没按招标文件要求生成"。
+ *
+ * 口径（与 bidMustWrite.nameMatch 同源：都做「去标点 + 双向包含」，此处再补两条它覆盖不到的差异；
+ * 刻意保守——宁可漏判承接（红字提示，人工可核）也不假绿）：
+ *   ① 连接字差异：「售后服务、运维保障」↔ 章名「售后服务与运维保障方案」（归一掉 与/及/和/的）；
+ *   ② 短名后缀差异：「培训方案」↔ 章名「分层分类培训与考核方案」（去掉 方案/要求/评审 等后缀后取核心词）；
+ *   ③ 词序/省略差异：「历史数据治理、迁移与集成方案」↔「历史数据治理迁移与系统集成方案」
+ *      （公共子串 ≥4 字，阈值与 clauseMatchesTitle 一致）；
+ *   ④ 超过 20 字的评分说明句不参与标题匹配（否则「项目现状」这类通用词会把任意章都算成承接）。
+ */
+export function scoringItemMatchesLeaf(itemName: string, nodeText: string): boolean {
+  const name = normalizeForCoverage(itemName)
+  const text = normalizeForCoverage(nodeText)
+  if (name.length < 2 || !text) return false
+  if (text.includes(name)) return true
+  if (name.length >= 3 && name.includes(text)) return true
+  // 超过 20 字的评分说明句只认「整句出现」（上面两条），不参与模糊匹配——否则「项目现状」这类
+  // 通用词会把任意章都算成承接
+  if (name.length > 20) return false
+  // 公共子串 ≥4 字（与 clauseMatchesTitle 同阈值）。刻意不再设"去后缀取核心词"的兜底：
+  // 那会让「技术方案」的核心词「技术」命中任意含"技术"的章节名，把没落点的项判成已承接——
+  // 既静默了告警，也让"主观项强制入纲"失效（宁可多补一章，也不能假装已覆盖）。
+  return commonSubstringLen(name, text) >= 4
+}
+
+/** 承接判定用的归一化：去空白/括号/标点 + 去「与及和的」等连接字（评分项名与章名常只差这些字） */
+function normalizeForCoverage(s: string): string {
+  // \s 已覆盖全角空格，无需在字符类里再写一个全角空格字面量（那会触发 no-irregular-whitespace）
+  return (s ?? "").replace(/[\s（）()、，,。.．:：;；]/g, "").replace(/[与及和的]/g, "")
+}
+
+/**
+ * 资格/业绩/团队类评分项：靠商务材料（证书、业绩合同、人员名单）响应，**不由技术章节承接**，
+ * 因此不计入"技术章节未承接"的告警——否则这类项在只出技术章节的配置下永远亮红（实测 13 项里
+ * 有 4 项属此类：履约能力 / 综合实力 / 类似项目业绩与案例 / 项目团队配备）。
+ */
+const NON_CHAPTER_SCORING_RE = /履约|业绩|案例|信誉|信用|资质|资格|认证|证书|荣誉|奖项|团队|人员|社保|财务|纳税|注册资金|综合实力|技术资信/
+
+export function isNonChapterScoringItem(itemName: string): boolean {
+  return NON_CHAPTER_SCORING_RE.test(itemName ?? "")
+}
+
 export function buildScoringCoverageMatrix(
   outline: import("../SolutionStudio/solutionTypes").OutlineNode[],
   items: NumberedScoringItem[],
 ): ScoringCoverageEntry[] {
   const annotations = collectResponseAnnotations(techOutlineNodes(outline))
+  // 技术部分全部节点（不只叶子）：评分项常与**章名**同名（如"售后服务与运维保障方案"就是第 7 章），
+  // 章级命中即说明大纲有落点；只看叶子会把这类整章漏判成"未承接"（实测踩过）。
+  const nodes: { title: string; text: string }[] = []
+  const walkNodes = (list: import("../SolutionStudio/solutionTypes").OutlineNode[]) => {
+    for (const n of list) {
+      nodes.push({ title: n.title, text: `${n.title} ${n.description ?? ""}` })
+      if ((n.children ?? []).length) walkNodes(n.children ?? [])
+    }
+  }
+  walkNodes(techOutlineNodes(outline))
   return items
     .filter((s) => s.category === "tech")
-    .map((s) => ({ item: s, coveredBy: annotations.get(s.id) ?? [] }))
+    .map((s) => {
+      const byAnnotation = annotations.get(s.id) ?? []
+      if (byAnnotation.length) return { item: s, coveredBy: byAnnotation }
+      const semantic = nodes.filter((l) => scoringItemMatchesLeaf(s.item, l.text)).map((l) => l.title)
+      return { item: s, coveredBy: semantic }
+    })
 }
 
 /**
@@ -2110,13 +2173,92 @@ export function findUncoveredScoringIds(
   items: NumberedScoringItem[],
 ): string[] {
   return buildScoringCoverageMatrix(outline, items)
-    .filter((e) => !e.coveredBy.length)
+    // 资格/业绩/团队类不计入（落点在商务材料，不由技术章节承接，见 isNonChapterScoringItem）
+    .filter((e) => !e.coveredBy.length && !isNonChapterScoringItem(e.item.item))
     .map((e) => e.item.id)
+}
+
+/**
+ * 主观评分项强制入纲（用户裁定 2026-10-15：评分办法的主观材料必须在大纲里生成）。
+ *
+ * 为什么必须：主观项（技术方案/售后服务/培训/应急/团队配置这类**分档评议**项，见 classifySubjective）
+ * 是评委按章打分的——大纲里没有对应章节，评委就无从给分，等于直接丢分，而且没地方写。
+ * 客观项（价格/数量/证书/业绩计数类）不补：它们靠商务材料与证明材料响应，补章只会生成无意义正文。
+ *
+ * 实现：本地零 AI。对「既无 [响应:Rx] 标注、也无任何节点文本命中其名称」的主观项，补一个顶层技术章，
+ * 标题取评分项名，并把 `[响应:RN]` 写进 description——补章的同时把承接标注一并补上，
+ * 使覆盖矩阵与本函数口径一致（补完即承接，不会出现"补了章还报未承接"）。
+ */
+export function ensureSubjectiveScoringChapters(
+  nodes: import("../SolutionStudio/solutionTypes").OutlineNode[],
+  items: NumberedScoringItem[],
+): { nodes: import("../SolutionStudio/solutionTypes").OutlineNode[]; added: string[] } {
+  const list = nodes ?? []
+  const annotated = collectResponseAnnotations(techOutlineNodes(list))
+  const nodeTexts: string[] = []
+  const walk = (ns: import("../SolutionStudio/solutionTypes").OutlineNode[]) => {
+    for (const n of ns) {
+      nodeTexts.push(`${n.title} ${n.description ?? ""}`)
+      if ((n.children ?? []).length) walk(n.children ?? [])
+    }
+  }
+  walk(techOutlineNodes(list))
+  const added: string[] = []
+  const out = [...list]
+  for (const it of items ?? []) {
+    if (it.category !== "tech" || !it.isSubjective) continue
+    const covered =
+      (annotated.get(it.id) ?? []).length > 0 || nodeTexts.some((t) => scoringItemMatchesLeaf(it.item, t))
+    if (covered) continue
+    out.push({
+      id: makeUid(),
+      title: it.item,
+      children: [],
+      description: `[响应:${it.id}]`,
+    })
+    added.push(it.item)
+  }
+  return { nodes: added.length ? out : list, added }
+}
+
+/**
+ * 「前后一致」守卫：被跳过（未建章）的顶层节点里，**带小节**的那些。
+ *
+ * 带小节的节点几乎必然是真章节——条款碎片是光杆标题（R292 前 appendClause 的残留）。
+ * 2026-10-15 实测事故：「质保期外运维及新增接口服务方案」（评分项 R8、挂 6 个小节）以黑名单词
+ * 「质保期」开头被整章判碎片跳过，大纲里看得见、章节清单里没有。调用方对这些要单独红字点名，
+ * 不能只在成功提示里带一句。
+ */
+export function skippedFragmentsWithChildren(
+  nodes: import("../SolutionStudio/solutionTypes").OutlineNode[],
+  built: import("../SolutionStudio/solutionTypes").OutlineNode[],
+): string[] {
+  const builtIds = new Set((built ?? []).map((n) => n.id))
+  return (nodes ?? [])
+    .filter((n) => !builtIds.has(n.id) && (n.children ?? []).length > 0)
+    .map((n) => n.title)
 }
 
 // ------------------------------ 招标要求条款抽取（本地零 AI 调用） ------------------------------
 
-export type RequirementClause = { id: string; text: string; source: string }
+export type RequirementClause = {
+  id: string
+  text: string
+  source: string
+  /**
+   * 招标文件里的原编号（如「5.3.2」「（一）」「①」），用于偏离表/参数响应表与招标文件对号入座。
+   * 仅在行首编号形态明确时才有值（`1.` / `5.3.2` / `（一）` / `①`），裸数字行（如「3 年质保」）不取，
+   * 避免把正文里的数量当条款编号。缺失即空串，展示层据此决定是否显示。
+   */
+  no?: string
+}
+
+/**
+ * 偏离表的条款来源：**只对技术文件要求**（交货和服务要求＝技术需求与交货/服务要求原文）。
+ * 评分办法（tech_score）属得分点承接、响应文件格式要求（response_req）属编制规范，
+ * 二者都不该出现在「技术偏离表」里——专家看偏离表只找技术要求的响应，混入评分项会让表失真。
+ */
+export const DEVIATION_CLAUSE_SOURCES = ["delivery_req"] as const
 
 /** 拆分维度：按系统（一级章节/系统分组，一行一条）/ 按二级标题（再按分号拆）/ 按三级标题（再按句号拆到最小条款） */
 export type ClauseGranularity = "system" | "l2" | "l3"
@@ -2149,6 +2291,19 @@ function stripEnumerator(s: string): string {
     .trim()
 }
 
+/**
+ * 行首「条款原编号」抽取（只读取不删改，删改仍由 stripEnumerator 负责）。
+ * 刻意比 stripEnumerator 严一档：必须带分隔符（`1.`/`1、`/`（一）`/`①`）或是多段号（`5.3.2`），
+ * 裸数字行（「3 年质保」）不取——否则正文里的数量会被当成条款号，专家反而对不上。
+ * 导出：技术参数响应表按同一个口径取编号，避免两张表编号不一致。
+ */
+export function leadingClauseNo(s: string): string {
+  const m = String(s ?? "").match(
+    /^(?:[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]|[0-9]+(?:\.[0-9]+)+|[0-9]+[.、．]|[（(][0-9一二三四五六七八九十]+[)）]|[一二三四五六七八九十]+[、.．])/,
+  )
+  return m ? m[0].trim() : ""
+}
+
 function cleanClause(s: string): string {
   return s.replace(/\s+/g, " ").replace(/[，、；;：:，]+$/g, "").trim()
 }
@@ -2163,24 +2318,28 @@ function systemNameOfLine(line: string): string {
  * 从解析报告中本地抽取招标要求条款（零 AI 调用）：
  * 取技术需求 / 技术评分 / 响应文件要求解析项文本，先按行与编号切分，
  * 再按拆分维度决定是否继续按分号 / 句号细拆；每条 ≥8 字，去重，上限 limit 条。
- * 每条 {id, text, source}，source 为来源章节（系统名或解析项标题），偏离表按它分组。
+ * 每条 {id, text, source, no}，source 为来源章节（系统名或解析项标题），偏离表按它分组；
+ * no 为招标文件里的行首原编号（供专家对号入座）。
+ * opts.sources 可把来源解析项收窄（偏离表传 DEVIATION_CLAUSE_SOURCES 只取技术文件要求）。
  */
 export function extractRequirementClauses(
   report: ParseReport | null,
-  opts?: { limit?: number; granularity?: ClauseGranularity },
+  opts?: { limit?: number; granularity?: ClauseGranularity; sources?: readonly string[] },
 ): RequirementClause[] {
   const limit = Math.max(1, opts?.limit ?? 60)
   const granularity = opts?.granularity ?? "l3"
+  const sources = opts?.sources ?? CLAUSE_SOURCE_KEYS
   const out: RequirementClause[] = []
   const seen = new Set<string>()
   let seq = 0
-  for (const key of CLAUSE_SOURCE_KEYS) {
+  for (const key of sources) {
     const text = sectionText(report, key)
     if (!text.trim()) continue
     const fallbackSource = parseSectionTitle(key)
     for (const rawLine of text.split(/\n+/)) {
       const line = stripEnumerator(rawLine.trim())
       if (!line) continue
+      const clauseNo = leadingClauseNo(rawLine.trim())
       const systemName = systemNameOfLine(line)
       const source = systemName || fallbackSource
       // 一级切分：编号 / 行；二级：分号；三级：再按句号拆到最小条款
@@ -2191,14 +2350,16 @@ export function extractRequirementClauses(
       if (granularity === "l3") {
         pieces = pieces.flatMap((p) => p.split(/[。]/))
       }
-      for (const piece of pieces) {
-        const t = cleanClause(stripEnumerator(piece))
+      for (let pi = 0; pi < pieces.length; pi += 1) {
+        const t = cleanClause(stripEnumerator(pieces[pi]))
         if (t.replace(/[，、：:（）()]/g, "").length < MIN_CLAUSE_LEN) continue
         const dedupeKey = t.slice(0, 40)
         if (seen.has(dedupeKey)) continue
         seen.add(dedupeKey)
         seq += 1
-        out.push({ id: `c${seq}`, text: t, source })
+        // 原编号只挂在同一行的第一段：分号/句号拆出的后续段同属该编号下的要求，
+        // 给它们复制同一个编号会让「条款号→行」不再一对一，专家反而找不到。
+        out.push({ id: `c${seq}`, text: t, source, no: pi === 0 ? clauseNo : "" })
         if (out.length >= limit) return out
       }
     }
@@ -2604,11 +2765,26 @@ const TRUNCATED_BODY = /(?:[0-9０-９]+)$/
 export function isClauseFragmentTitle(title: string): boolean {
   const s = (title ?? "").trim()
   if (!s) return true
-  if (CLAUSE_TAG_BLOCKLIST.test(s)) return true
+  if (isClauseTagOnly(s)) return true
   if (TRUNCATED_TAIL.test(s)) return true
   if (s.length >= 10 && TRUNCATED_VERB_TAIL.test(s)) return true
   if (s.length > 10 && TRUNCATED_BODY.test(s)) return true
   return false
+}
+
+/**
+ * 商务约束标签黑名单必须「整名命中」或「标签 + 分隔符（：:（(、，/）」，不能只按前缀。
+ *
+ * 2026-10-15 用户实测事故：黑名单含「质保期」，而真章节「质保期外运维及新增接口服务方案」
+ * （还是评分项 R8、下面挂着 6 个小节）以「质保期」开头 → 被判条款碎片 → 「确认大纲」建章时
+ * **整章被跳过**，大纲里看得见、章节清单里没有，用户以为"小章节丢了"。
+ * 现在「质保期」仍需拦（整名命中），「质保期：三年」也拦（后接分隔符），而「质保期外…」放行。
+ */
+function isClauseTagOnly(title: string): boolean {
+  const m = title.match(CLAUSE_TAG_BLOCKLIST)
+  if (!m) return false
+  const rest = title.slice(m[0].length).trim()
+  return rest === "" || /^[：:（(、，,／/]/.test(rest)
 }
 
 /**
@@ -2775,20 +2951,68 @@ export const RESPONSE_LEVEL_LABEL: Record<Exclude<ResponseLevel, "">, string> = 
 export type DeviationRow = {
   clause_id: string
   clause_text: string
+  /** 招标文件里的行首原编号（如「5.3.2」/「（一）」），无则空串——专家按它对回招标文件 */
+  clause_no?: string
   source: string
   response_node: string
   response_level: ResponseLevel
+  /**
+   * 响应内容（**投标文件原文摘录**，2026-10-15 用户裁定口径）：必须是注入正文里逐字连续的一段，
+   * 允许用「……」省略中间，但不得改写 / 概括 / 增删字词 / 添加原文没有的承诺。
+   * 存量数据没有此字段，读侧一律走 deviationResponseText()（回退 response_summary）。
+   */
+  response_text?: string
+  /**
+   * 兼容字段：旧口径的「响应内容摘要」，以及「本次不可见」行由程序写入的内部核对文案
+   * （该文案绝不允许出现在对外交付物里，导出经 deviationExportSummary 换掉）。
+   * 新生成的行只写 response_text，不再写摘要。
+   */
   response_summary: string
   bid_ref: string
+  /** 原文出处（证据片段来源标识，如「第3章 售后服务/块2」），供专家回正文逐字核对 */
+  evidence_ref?: string
+  /**
+   * 程序判定（零 AI）：响应内容在投标文件正文里检索不到——疑似改写 / 概括 / 编造。
+   * 只提示不阻断：进面板角标与交卷体检 warn，导出前人工复核。
+   */
+  not_verbatim?: boolean
+  /**
+   * R50（P0-3 长文可见性）：本次注入范围内查不到可定位证据（AI 漏答，或该条款被判定为本次不可见）。
+   * 只提示不阻断：该行仍按 partial 展示，但要进交卷体检 warn 与面板「待人工核对」角标；
+   * 存量数据无此字段即视为 false（仅表示旧数据没有这个标记，不代表已人工核对）。
+   */
+  needs_review?: boolean
 }
 
 export type DeviationTable = {
   split_dim: ClauseGranularity
   rows: DeviationRow[]
   generated_at: string
+  /**
+   * 生成时做过的「招标要求 ↔ 响应材料」一一对应核对（行数=条款数、无重复、无越界行）。
+   * 存量数据无此字段；面板只在有值时显示对应结论，缺值不猜。
+   */
+  alignment?: DeviationAlignment
 }
 
-export type DeviationStats = { total: number; full: number; partial: number; deviation: number }
+/** 一一对应核对结果（偏离表生成时算一次，存进 response_map 的 alignment 字段） */
+export type DeviationAlignment = {
+  /** 本次抽取到的招标技术条款数 */
+  clause_count: number
+  /** 偏离表行数（一一对应成立时二者相等） */
+  row_count: number
+  /** 有条款但偏离表里没有对应行（正常为 0，缺行会被补成「部分响应·待核对」） */
+  missing: string[]
+  /** 同一条款出现多行（正常为 0，重复行已在规整阶段丢弃） */
+  duplicated: string[]
+}
+
+/** 响应内容的唯一读入口：新口径原文优先，回退存量摘要 / 程序写入的核对文案 */
+export function deviationResponseText(row: DeviationRow | null | undefined): string {
+  return String(row?.response_text ?? "").trim() || String(row?.response_summary ?? "").trim()
+}
+
+export type DeviationStats = { total: number; full: number; partial: number; deviation: number; needs_review: number }
 
 export function deviationStats(table: DeviationTable | null): DeviationStats {
   const rows = table?.rows ?? []
@@ -2797,7 +3021,35 @@ export function deviationStats(table: DeviationTable | null): DeviationStats {
     full: rows.filter((r) => r.response_level === "full").length,
     partial: rows.filter((r) => r.response_level === "partial").length,
     deviation: rows.filter((r) => r.response_level === "deviation").length,
+    // R50（P0-3）：待人工核对 = 本次不可见的行（含 AI 漏答兜底行）；它不占「偏离」计数，但必须能被数出来
+    needs_review: rows.filter((r) => r.needs_review === true).length,
   }
+}
+
+/**
+ * R50（P0-3 长文可见性）：待人工核对行的**内部**兜底文案白名单。
+ * 这些句子是给使用者看的（面板 / 交卷体检 / 提示词），说明「系统这次没看到」——
+ * 它们绝不允许出现在对外交付物里（偏离表 Word 是投标文件组成部分，评标专家看到的
+ * 只能是响应结论，不能是工具自己的过程性说明）。
+ */
+export const DEVIATION_REVIEW_INTERNAL_NOTES: readonly string[] = [
+  "本次输入未完整覆盖或 AI 未定位到对应响应，需人工核对未注入部分",
+  "本次注入范围内无可见证据，需人工核对未注入部分",
+]
+
+/** 对外口径：待核对行没有实质摘要时，导出用的响应结论（不含任何内部过程信息） */
+export const DEVIATION_REVIEW_EXPORT_SUMMARY = "响应内容详见投标文件正文对应章节"
+
+/**
+ * 偏离表导出取响应摘要：内部兜底文案一律换成对外口径；待核对行没有实质摘要时同样落到
+ * 对外口径；AI 已写出实质摘要的照常沿用（那句才是评标专家要看的响应结论）。
+ */
+export function deviationExportSummary(row: DeviationRow): string {
+  const s = deviationResponseText(row)
+  // 内部文案不外泄——即使 needs_review 标记缺失（如模型原样抄回了这句话）也照改
+  if (s && DEVIATION_REVIEW_INTERNAL_NOTES.includes(s)) return DEVIATION_REVIEW_EXPORT_SUMMARY
+  if (!s && row.needs_review === true) return DEVIATION_REVIEW_EXPORT_SUMMARY
+  return s
 }
 
 /**
@@ -2830,11 +3082,18 @@ export function normalizeDeviationTable(raw: unknown): DeviationTable | null {
       rows.push({
         clause_id: asString(r.clause_id).trim(),
         clause_text: clauseText,
+        clause_no: asString(r.clause_no).trim(),
         source: asString(r.source).trim() || "招标技术要求",
         response_node: asString(r.response_node ?? r.node).trim(),
         response_level: level,
+        ...(asString(r.response_text ?? r.response_original).trim()
+          ? { response_text: asString(r.response_text ?? r.response_original).trim() }
+          : {}),
         response_summary: asString(r.response_summary ?? r.summary).trim(),
         bid_ref: asString(r.bid_ref ?? r.ref).trim(),
+        ...(asString(r.evidence_ref ?? r.evidence).trim() ? { evidence_ref: asString(r.evidence_ref ?? r.evidence).trim() } : {}),
+        ...(r.not_verbatim === true ? { not_verbatim: true } : {}),
+        ...(r.needs_review === true ? { needs_review: true } : {}),
       })
       continue
     }
@@ -2852,10 +3111,21 @@ export function normalizeDeviationTable(raw: unknown): DeviationTable | null {
     })
   }
   if (!rows.length) return null
+  const alignRaw = Array.isArray(raw) ? null : ((raw as Record<string, unknown>)?.alignment as Record<string, unknown> | undefined)
   return {
     split_dim: splitDim,
     rows,
     generated_at: Array.isArray(raw) ? "" : asString((raw as Record<string, unknown>)?.generated_at),
+    ...(alignRaw && typeof alignRaw === "object"
+      ? {
+          alignment: {
+            clause_count: Number(alignRaw.clause_count) || 0,
+            row_count: Number(alignRaw.row_count) || 0,
+            missing: Array.isArray(alignRaw.missing) ? alignRaw.missing.map((m) => String(m)) : [],
+            duplicated: Array.isArray(alignRaw.duplicated) ? alignRaw.duplicated.map((m) => String(m)) : [],
+          },
+        }
+      : {}),
   }
 }
 
@@ -3765,6 +4035,19 @@ export type FormatCheckRule =
   | "numbering_sequence"
   | "deadline_date"
   | "schedule_consistency"
+  // R50（P0-3 长文可见性）：本次注入范围内无可定位证据的行（needs_review）单列一类，
+  // 否则它只判 partial、既不是负偏离也无规则可报，会在交卷体检里静默消失。
+  | "deviation_invisible_review"
+  // R52（2026-10-15 用户裁定「偏离表一定要原文响应」）：响应内容在投标文件正文里检索不到
+  // （疑似改写/概括/编造）单列一类——摘要读起来像响应，但专家回正文找不到原句。
+  | "deviation_not_verbatim"
+  // R54：部门基础要求（三份检查清单 + 售前工作规范）落地为体检规则，各自单列一类便于分级与统计
+  | "company_redline"
+  | "scoring_compliance"
+  | "outdated_term"
+  | "project_residue"
+  | "writing_voice"
+  | "dedicated_section"
 
 export const FORMAT_RULE_LABEL: Record<FormatCheckRule, string> = {
   ...FORMAT_CHECK_LABEL,
@@ -3784,6 +4067,14 @@ export const FORMAT_RULE_LABEL: Record<FormatCheckRule, string> = {
   numbering_sequence: "编号连续性（行首「第N期」类序列重复/倒序）",
   deadline_date: "落款日期核对（正文日期晚于投标截止＝倒签嫌疑）",
   schedule_consistency: "工期时序（总工期承诺 × 实施里程碑天数对账，评审报告 A2 教训）",
+  deviation_invisible_review: "长文可见性（偏离表：本次注入范围内无可定位响应证据，仅判部分响应，需人工核对）",
+  deviation_not_verbatim: "原文响应核对（偏离表响应内容在投标文件正文里逐字检索不到＝疑似改写/概括）",
+  company_redline: "公司红线条款（招标侧商务/合同条款：首款比例、售后年限、源代码与知产归属、免费升级、验收绑评级、履约保证金、工期矛盾、评建分离）",
+  scoring_compliance: "评分合规（单项≤3分、证书类≤1分、报告类≤3分、技术分占比≤50%、副标得分率≥50%）",
+  outdated_term: "术语旧称（卫生计生委→卫健委、人口健康信息平台→全民健康信息平台、3G/4G→5G 等）",
+  project_residue: "其他项目残留（文中出现别的医院名 / 别的项目编号）",
+  writing_voice: "写作规范（自称口径、模糊参数表述、暗标身份信息泄漏）",
+  dedicated_section: "必备专用章（承诺函 / 偏离表须在投标文件大纲内单独成章）",
 }
 
 export type FormatCheckHit = { chapter: string; rule: FormatCheckRule; quote: string; level: "warn" | "info" }
@@ -4273,7 +4564,7 @@ export function structuredNumberConflictHits(
   // 偏离表：条款原文给主题锚，比对响应说明里的数值（评标最逐字核对的面）
   for (const row of deviationTable?.rows ?? []) {
     if (hits.length >= 30) break
-    const summary = (row.response_summary ?? "").trim()
+    const summary = deviationResponseText(row)
     if (!summary || summary.includes("【待填写】")) continue
     const clauseText = row.clause_text ?? ""
     const anchorTopics = topics.filter((tp) => tp.length >= 2 && clauseText.includes(tp))
@@ -4308,10 +4599,17 @@ export function structuredNumberConflictHits(
 /** 废标级信号：★/▲ 实质性响应条款（本库既有约定）+ [强制] 前缀 + 明确「实质性响应/废标/无效标」字样 */
 const MANDATORY_CLAUSE_RE = /[★☆▲△]|\[强制\]|实质性响应|废标|无效标/
 
-/** 承诺不够（偏离表负偏离）：response_level==="deviation" 的行 surfaced 到交卷体检，每行 1 条、总 ≤30 */
+/**
+ * 承诺不够（偏离表负偏离）：response_level==="deviation" 的行 surfaced 到交卷体检，每行 1 条、每类 ≤30。
+ * R50b（安中医真实标书实测）：两类命中各自独立 ≤30——长文场景下「本次不可见·待核对」动辄上百条，
+ * 与负偏离共用同一个上限会把 deviation_undercommit（质量闸黑名单里的废标级项）整批挤出 hits，
+ * 交卷体检随之判为「无废标级命中」，闸门形同虚设；独立上限与文件内其它规则既有约定一致。
+ */
 export function deviationCommitHits(deviationTable: DeviationTable | null): FormatCheckHit[] {
+  const rows = deviationTable?.rows ?? []
   const hits: FormatCheckHit[] = []
-  for (const row of deviationTable?.rows ?? []) {
+  // 1) 先报「已确判负偏离」——废标级信号，不得被待核对量挤掉
+  for (const row of rows) {
     if (hits.length >= 30) break
     if (row.response_level !== "deviation") continue
     const clause = (row.clause_text ?? "").trim()
@@ -4326,6 +4624,38 @@ export function deviationCommitHits(deviationTable: DeviationTable | null): Form
         : `「${brief}」判为偏离（承诺低于招标要求），确认是否影响评分`).slice(0, 80),
       level: "warn",
     })
+  }
+  // 2) 再报「本次注入范围内无可见证据」的行（R50/P0-3）：只判了 partial，旧口径不进体检，
+  //    那会让「没看到」在最后一道关静默通过。独立 30 条上限，不与上一类互相挤占（仍只 warn，不阻断）。
+  let invisible = 0
+  for (const row of rows) {
+    if (invisible >= 30) break
+    if (row.needs_review !== true || row.response_level === "deviation") continue
+    const clause = (row.clause_text ?? "").trim()
+    const cid = (row.clause_id ?? "").trim()
+    hits.push({
+      chapter: `偏离表 · ${(cid || clause).slice(0, 16) || "未编号条款"}`,
+      rule: "deviation_invisible_review",
+      quote: `「${(clause || cid).slice(0, 40)}」本次注入范围内没有可见证据（可能是内容未注入或 AI 未定位），仅判为部分响应，导出前请人工核对未注入部分`.slice(0, 80),
+      level: "warn",
+    })
+    invisible += 1
+  }
+  // 3) 再报「响应内容不是投标文件原文」（2026-10-15 用户裁定：偏离表必须原文响应）：
+  //    程序侧逐行在正文里检索响应内容，检索不到即疑似改写/概括/编造。同样独立 30 条上限、只 warn。
+  let notVerbatim = 0
+  for (const row of rows) {
+    if (notVerbatim >= 30) break
+    if (row.not_verbatim !== true) continue
+    const clause = (row.clause_text ?? "").trim()
+    const cid = (row.clause_id ?? "").trim()
+    hits.push({
+      chapter: `偏离表 · ${(cid || clause).slice(0, 16) || "未编号条款"}`,
+      rule: "deviation_not_verbatim",
+      quote: `「${(clause || cid).slice(0, 40)}」的响应内容在投标文件正文里检索不到（疑似改写或概括，非原文摘录），导出前请改为正文原文`.slice(0, 80),
+      level: "warn",
+    })
+    notVerbatim += 1
   }
   return hits
 }
@@ -4426,7 +4756,7 @@ export function overPriceCeilingHits(
   }
   for (const row of deviationTable?.rows ?? []) {
     if (hits.length >= 15) break
-    const summary = (row.response_summary ?? "").trim()
+    const summary = deviationResponseText(row)
     if (summary && QUOTE_TOPIC_RE.test(summary)) {
       emit(`偏离表 · ${(row.clause_id || row.clause_text || "").trim().slice(0, 16) || "未编号条款"}`, summary)
     }
@@ -4538,7 +4868,7 @@ export function amountCaseMismatchHits(
   }
   for (const row of deviationTable?.rows ?? []) {
     if (hits.length >= 15) break
-    const summary = (row.response_summary ?? "").trim()
+    const summary = deviationResponseText(row)
     if (!summary) continue
     emit(`偏离表 · ${(row.clause_id || row.clause_text || "").trim().slice(0, 16) || "未编号条款"}`, summary)
   }
@@ -5308,7 +5638,11 @@ export function sanitizeOutlineCoverage(raw: unknown, clauses: RequirementClause
   return out
 }
 
-/** 偏离表 AI 映射结果规整：每行 {clause_id, response_node, response_level, response_summary, bid_ref}；AI 漏掉的条款补「偏离」行保证清单完整 */
+/**
+ * 偏离表 AI 映射结果规整：每行 {clause_id, response_node, response_level, response_text, bid_ref, evidence_ref}；
+ * AI 漏掉的条款补「部分响应·待人工核对」行，保证「招标条款 ↔ 响应材料」一一对应（行数=条款数）。
+ * 同一条款出现多行时只留第一行——重复行会让专家以为有两处响应，破坏一一对应。
+ */
 export function sanitizeDeviationRows(raw: unknown, clauses: RequirementClause[]): DeviationRow[] {
   const arr = asArray(Array.isArray(raw) ? raw : (raw as Record<string, unknown>)?.rows)
   const byId = new Map(clauses.map((c) => [c.id, c]))
@@ -5320,7 +5654,7 @@ export function sanitizeDeviationRows(raw: unknown, clauses: RequirementClause[]
     const idxNum = Number(idRaw)
     const clauseId = byId.has(idRaw) ? idRaw : Number.isFinite(idxNum) && byId.has(`c${idxNum}`) ? `c${idxNum}` : ""
     const clause = clauseId ? byId.get(clauseId) : undefined
-    if (!clause) continue
+    if (!clause || handled.has(clause.id)) continue
     const lvlRaw = asString(r.response_level ?? r.level).trim()
     const level: ResponseLevel =
       lvlRaw === "full" || lvlRaw === "完全响应"
@@ -5330,33 +5664,61 @@ export function sanitizeDeviationRows(raw: unknown, clauses: RequirementClause[]
           : lvlRaw === "deviation" || lvlRaw === "偏离"
             ? "deviation"
             : "deviation"
+    // 原文响应优先：response_text 为新口径（投标文件原文摘录），response_summary 为存量摘要
+    const responseText = asString(r.response_text ?? r.response_original).trim().slice(0, 400)
+    const legacySummary = asString(r.response_summary ?? r.summary).trim().slice(0, 200)
     rows.push({
       clause_id: clause.id,
       clause_text: clause.text,
+      clause_no: clause.no ?? "",
       source: clause.source,
       response_node: asString(r.response_node ?? r.node).trim() || "未找到响应",
       response_level: level,
-      response_summary: asString(r.response_summary ?? r.summary).trim().slice(0, 200),
+      ...(responseText ? { response_text: responseText } : {}),
+      response_summary: legacySummary,
       bid_ref: asString(r.bid_ref ?? r.ref).trim(),
+      ...(asString(r.evidence_ref ?? r.evidence).trim() ? { evidence_ref: asString(r.evidence_ref ?? r.evidence).trim().slice(0, 120) } : {}),
     })
     handled.add(clause.id)
   }
   for (const cl of clauses) {
     if (handled.has(cl.id)) continue
+    // R50（P0-3 长文可见性）：AI 漏答等于「本次不可见」，不等于「投标文件里没写」——
+    // 旧口径补 deviation 会让「没看到」直接变成负偏离，并经 deviationCommitHits 进入交卷体检硬闸；
+    // 现一律降为 partial（部分响应）+ 人工核对，与 sanitizeVoidCheck 的未知态口径对齐。
     rows.push({
       clause_id: cl.id,
       clause_text: cl.text,
+      clause_no: cl.no ?? "",
       source: cl.source,
       response_node: "未找到响应",
-      response_level: "deviation",
-      response_summary: "AI 未在投标文件中定位到对应响应，请人工复核补充",
+      response_level: "partial",
+      response_summary: "本次输入未完整覆盖或 AI 未定位到对应响应，需人工核对未注入部分",
       bid_ref: "",
+      needs_review: true,
     })
   }
   // 按条款原始顺序排回，分组展示稳定
   const order = new Map(clauses.map((c, i) => [c.id, i]))
   rows.sort((a, b) => (order.get(a.clause_id) ?? 999) - (order.get(b.clause_id) ?? 999))
   return rows
+}
+
+/**
+ * R50（P0-3 长文可见性）：把「本次注入范围内无可见证据」的条款在偏离表上逐行标记为待人工核对。
+ * 为什么必须打标而不是只靠提示词：模型完全可能对检索不到的条款给出 compliant/partial 的正常措辞，
+ * 而 partial 不进交卷体检——只有程序侧标记才能保证「本次不可见」永远有人看得见。
+ * 纯函数、不写库；invisibleRefs 取自 selectBidEvidence 的 clauses[].ref（=条款 id）。
+ */
+export function markInvisibleDeviationRows(rows: DeviationRow[], invisibleRefs: readonly string[]): DeviationRow[] {
+  if (!invisibleRefs.length) return rows
+  const invisible = new Set(invisibleRefs.filter(Boolean))
+  if (!invisible.size) return rows
+  return rows.map((r) =>
+    invisible.has(r.clause_id) && (!r.needs_review || !r.response_summary)
+      ? { ...r, needs_review: true, response_summary: r.response_summary || "本次注入范围内无可见证据，需人工核对未注入部分" }
+      : r,
+  )
 }
 
 export function sanitizeVoidCheck(raw: unknown, clauses: string[]): VoidCheck {
@@ -5965,6 +6327,18 @@ export function outlineLeafCount(nodes: OutlineNode[]): number {
 export function outlineMaxDepth(nodes: OutlineNode[]): number {
   if (!nodes?.length) return 0
   return 1 + Math.max(0, ...nodes.map((n) => outlineMaxDepth(n.children ?? [])))
+}
+
+/**
+ * 缺子节点的技术章。
+ *
+ * 层级设为 2/3 时，这些章等于「没生成完」：实测「安中医项目」生成时落了 10 个章、深度 1 的
+ * 扁平大纲（层级设置却是 3 级），用户只能看到一条容易被忽略的提示。生成管线在末尾用本函数
+ * 找出这些章，逐章重跑一次展开补齐（见 useBidWorkspace 大纲生成末段的「层级补齐」pass）。
+ * 只挑「完全没有子节点」的章：已有小节的章不重跑，避免覆盖已生成/已编辑的内容。
+ */
+export function techChaptersMissingChildren(nodes: OutlineNode[]): OutlineNode[] {
+  return techOutlineNodes(nodes).filter((n) => (n.children ?? []).length === 0)
 }
 
 /** 技术章叶子数（只数技术顶层章子树，商务骨架章不计——与条款覆盖/预算同一口径） */

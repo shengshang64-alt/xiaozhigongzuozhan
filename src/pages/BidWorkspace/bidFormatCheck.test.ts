@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   autoRepairChapter,
   FORMAT_CHECK_KEYS,
+  GATE_FATAL_RULES,
   formatCheckReport,
   numberConflictHits,
   structuredNumberConflictHits,
@@ -225,6 +226,24 @@ const devRow = (clause_text: string, response_level: string, clause_id = "c1"): 
     ],
   }) as DeviationTable
 
+/** R50（P0-3）：本次注入范围内无可定位证据的行——程序侧标记 needs_review（非负偏离） */
+const invisibleRow = (over: Partial<DeviationRow> = {}): DeviationTable =>
+  ({
+    rows: [
+      {
+        clause_id: "c1",
+        clause_text: "提供7×24小时运维支持",
+        source: "招标技术要求",
+        response_node: "未找到响应",
+        response_level: "partial",
+        response_summary: "本次注入范围内无可见证据，需人工核对未注入部分",
+        bid_ref: "",
+        needs_review: true,
+        ...over,
+      } as DeviationRow,
+    ],
+  }) as DeviationTable
+
 describe("deviationCommitHits（承诺不够 / 偏离表负偏离 surfaced 到交卷体检）", () => {
   it("普通条款判为偏离 → deviation_undercommit（提醒影响评分）", () => {
     const hits = deviationCommitHits(devRow("提供7×24小时运维支持", "deviation"))
@@ -254,6 +273,33 @@ describe("deviationCommitHits（承诺不够 / 偏离表负偏离 surfaced 到�
       checked_at: "",
     })
     expect(report?.hits[0]?.rule).toBe("deviation_undercommit")
+  })
+
+  // R50（P0-3 长文可见性）：partial 在旧口径下不进体检——「没看到」会静默通过最后一道关。
+  it("本次不可见（needs_review）行 → deviation_invisible_review（warn，不得静默）", () => {
+    const hits = deviationCommitHits(invisibleRow())
+    expect(hits.some((h) => h.rule === "deviation_invisible_review" && h.level === "warn")).toBe(true)
+    expect(hits[0].quote).toContain("人工核对")
+    // 不可见 ≠ 负偏离：只 surface「没看到」，不冒充 deviation_undercommit
+    expect(hits.some((h) => h.rule === "deviation_undercommit")).toBe(false)
+  })
+
+  it("已确判偏离的待核对行 → 只报 deviation_undercommit（不重复报可见性）", () => {
+    const hits = deviationCommitHits(invisibleRow({ response_level: "deviation" }))
+    expect(hits.some((h) => h.rule === "deviation_undercommit")).toBe(true)
+    expect(hits.some((h) => h.rule === "deviation_invisible_review")).toBe(false)
+  })
+
+  it("新规则 deviation_invisible_review 在白名单存活（normalize 不丢弃）", () => {
+    const report = normalizeFormatCheckReport({
+      hits: [{ chapter: "偏离表 · c1", rule: "deviation_invisible_review", quote: "x", level: "warn" }],
+      checked_at: "",
+    })
+    expect(report?.hits[0]?.rule).toBe("deviation_invisible_review")
+  })
+
+  it("可见性告警不进制裁名单（只提示，不阻断闸门确认）", () => {
+    expect(GATE_FATAL_RULES.has("deviation_invisible_review")).toBe(false)
   })
 })
 

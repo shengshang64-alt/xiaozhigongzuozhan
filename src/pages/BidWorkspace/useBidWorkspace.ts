@@ -17,10 +17,10 @@ import {
   TIMEOUT_RETRY_MIN_TOKENS,
   type ModelRef,
 } from "@/lib/modelGateway"
-// R47（B19）：按环节自动选模型（纯函数路由，口径与依据见 lib/modelRouting 模块头）。
-// 顶部选「自动 · 按环节智能选择」时，每次调用按自己的环节（role）取模型；选具体模型即整体关闭自动。
+// R47（B19）按环节选型的纯函数路由（口径见 lib/modelRouting 模块头）。
+// 注意：顶部「自动 · 按环节智能选择」档已于 2026-10-15 按用户裁定下线（一本标书固定一个模型），
+// 因此这里的 role 路由当前恒走"手选模型"分支；保留函数与常量用于识别历史值，勿据此恢复自动档。
 import {
-  AUTO_MODEL_KEY,
   buildRolePickMap,
   isAutoModelKey,
   MODEL_ROLE_ORDER,
@@ -32,6 +32,7 @@ import {
 import { onModelMetaChange, readModelMeta } from "@/lib/modelMetaLocal"
 import { configCoolingKey, isChannelCooling, onCoolingChange } from "@/lib/modelFailover"
 import { getModelHealth, onHealthChange } from "@/lib/modelHealth"
+import { readModelChoice, readPreferredModelKey, saveModelChoice } from "@/lib/modelPrefs"
 // R180：按模型实测延迟自适应首轮预算（r177-followup 残项落地，会话内存零持久化零 collection）
 import { noteKnownGoodBudget, noteThinkingEmptyReply, observeModelCall, suggestInitialBudget } from "@/lib/latencyBudget"
 // Q28 切片F：上游 429 限流的会话内冷却闸门（并发 worker 取号错峰，见模块头注释）
@@ -143,9 +144,12 @@ import {
   defaultParseConfig,
   alignChaptersWithOutline,
   pickChaptersToBuild,
+  skippedFragmentsWithChildren,
+  ensureSubjectiveScoringChapters,
   defenseRefChapterText,
   deriveStage,
   describeOutlineSync,
+  DEVIATION_CLAUSE_SOURCES,
   deviationStats,
   diagnoseOutlineChapterDrift,
   effectiveGlobalFacts,
@@ -265,6 +269,7 @@ import {
   sanitizeCoverageAudit,
   sanitizeDefenseOutline,
   sanitizeDefenseQuestions,
+  markInvisibleDeviationRows,
   sanitizeDeviationRows,
   sanitizeFactConflicts,
   sanitizeFactPatches,
@@ -298,6 +303,7 @@ import {
   techOutlineLeafCount,
   acceptRewrittenOutline,
   trimOutlineDepth,
+  techChaptersMissingChildren,
   trimToBudget,
   upsertParseSection,
   dedupeAcrossSections,
@@ -387,6 +393,9 @@ import { applyMustWrite, judgeMustWrite } from "./bidMustWrite"
 import { readRequiredTechKeywords } from "./mustWriteConfig"
 import { classifyOrigins, type CatalogDiff } from "./bidOutlineOrigin"
 import { buildTechParamCoverage } from "./techParamCoverage"
+import { checkDeviationAlignment, deviationVerbatimReport, markNonVerbatimRows } from "./deviationVerbatim"
+import { deptRulesHits, flattenOutlineTitles } from "./bidDeptRulesHits"
+import { writingVoiceRules } from "./bidWritingRules"
 import { findDemoScoreNodes, isDemoScoreTitle, summarizeDemoNodes } from "./demoSection"
 import { buildDemoSkeleton, scoringStrategySuggestions, DEMO_SKELETON_MARK } from "./scoringStrategyCard"
 // 第十三轮改造 3：素材优先注入——复用轮次 D 知识库块级检索（本地检索零 AI，命中为空静默跳过）
@@ -484,7 +493,7 @@ async function llmGenerate(
   maxTokens: number,
   scope?: SkillScope,
   temperature?: number,
-  opts?: { disableThinking?: boolean; role?: ModelRole },
+  opts?: { disableThinking?: boolean; role?: ModelRole; expectJson?: boolean },
 ): Promise<string> {
   // R180（r177-followup 残项落地）：把 120s 红线从「首调税」变成自适应起点——同模型
   // 会话内已证实超时/贴红线偏慢时，首调直接从已验证可用档起步（无验证档按折半）并同步
@@ -562,6 +571,35 @@ async function llmGenerate(
       return retry.text
     }
     r = retry
+  }
+  // 散文兜底（用户实测 2026-10-15，标书大纲「一直生成不了」的根因）：
+  // 推理型模型有时把答案写成分析过程（英文散文，如 "Let me analyze this task carefully…"）——
+  // 它既不是空回复（F1 不命中）也不是超时（R177 阶梯不命中），于是同一请求每次都以同样的散文失败。
+  // 处置与空回复同档：先记「该模型开思考会吃掉结构化输出」的证据（同模型后续首调即关思考），
+  // 本次立刻关思考把同一份请求再要一次——用户一次点击就能出结果，不必"看到失败再点一次"。
+  // 重试失败则保留首次结果，交由 withJsonRepair 抛既有的可读错误（不掩盖原始失败原因）。
+  if (
+    opts?.expectJson &&
+    !effDisableThinking &&
+    r.ok &&
+    r.status === "success" &&
+    r.text?.trim() &&
+    !extractJsonCandidate(r.text)
+  ) {
+    noteThinkingEmptyReply(latencyKey)
+    const retryJson = await chatViaGateway({
+      modelRef: ref,
+      messages: bidMessages,
+      page: "bid-workspace",
+      max_tokens: effTokens,
+      temperature,
+      disableThinking: true,
+    })
+    if (retryJson.needsLogin) throw new AuthRequiredError("请求需要重新验证，请稍后重试")
+    if (retryJson.ok && retryJson.status === "success" && retryJson.text?.trim()) {
+      noteKnownGoodBudget(retryJson.actualModelRefKey ?? latencyKey, effTokens)
+      return retryJson.text
+    }
   }
   // R177：超时是标书「只出几页 / 根本生成不出来」的真正根因——慢模型单个长小节实测 ~81s，
   // 偶发 >120s 被服务端（model_gateway.pb.js 红线，不可改）判超时 → 章节 0 字标 failed。
@@ -706,6 +744,7 @@ import {
 import { splitTenderText } from "./prompts/tenderSplit"
 import { buildScoringStructured, selfCheckScoringTotal, type ScoringBlockJSON } from "./parseSchemas"
 import { buildVoidScopeMessages, buildVoidInitialCheckMessages, buildVoidFinalizeMessages } from "./prompts/voidCheckRounds"
+import { describeBidVisibility, selectBidEvidence, type BidEvidencePack } from "./bidVisibility"
 import { voidClauseFloorWarning } from "./voidClauseFloor"
 import { extractVoidClauses, voidClauseSectionFrom, validateScoringSections } from "./bidTypes"
 import { coverageLevel, coveragePercent, missingCriticalSections, parseCoverageRatio } from "./parseCoverage"
@@ -752,6 +791,10 @@ async function withJsonRepair<T>(raw: string, parseFn: (text: string) => T): Pro
     // 根因判定：模型压根没给 JSON（返回了散文/推理过程/空回复）。
     // 此时「只修语法」在原理上必然失败，白花一次调用且掩盖真实原因 → 直接抛可读错误。
     if (!extractJsonCandidate(raw)) {
+      // 记证据（与空回复同档口径）：该模型开思考会把结构化输出写成散文，之后同模型首调直接关思考。
+      // 不记的话，用户在同一个模型上会反复撞同一堵墙（实测表现即"一直生成不了"）。
+      // 自动档已下线（一本标书固定一个模型），故当前模型即 activeModelRef，无需按环节推导。
+      noteThinkingEmptyReply(activeModelRef ? modelRefKey(activeModelRef) : "platform")
       const head = String(raw ?? "").trim().slice(0, 60)
       throw new Error(
         `模型未按 JSON 格式返回（本次返回的是${raw ? `非结构化文本，如「${head}…」` : "空内容"}），` +
@@ -775,12 +818,14 @@ async function withJsonRepair<T>(raw: string, parseFn: (text: string) => T): Pro
 }
 
 /** R-028（R254）废标检查真三轮递进（定位→初检→定稿，易标方式恢复）：三轮任一异常由调用方降级单轮；用户授权 3 次模型调用 */
-async function runVoidCheckThreeRounds(clauses: string[], bidText: string, starBlock: string): Promise<VoidCheck> {
-  const scopeRaw = await llmGenerate(buildVoidScopeMessages(clauses, bidText, starBlock), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
+async function runVoidCheckThreeRounds(clauses: string[], evidence: BidEvidencePack, starBlock: string): Promise<VoidCheck> {
+  // R50（P0-3）：三轮共用同一证据包——三轮看到的可见范围必须一致，否则第一轮定位到的证据
+  // 在第二/三轮可能已被入口截断，逐轮结论互相打架且无从解释。
+  const scopeRaw = await llmGenerate(buildVoidScopeMessages(clauses, evidence, starBlock), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
   const scope = await withJsonRepair(scopeRaw, extractJsonLoose)
-  const initRaw = await llmGenerate(buildVoidInitialCheckMessages(scope, bidText), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
+  const initRaw = await llmGenerate(buildVoidInitialCheckMessages(scope, evidence), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
   const initial = await withJsonRepair(initRaw, extractJsonLoose)
-  const finalRaw = await llmGenerate(buildVoidFinalizeMessages(initial, bidText), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
+  const finalRaw = await llmGenerate(buildVoidFinalizeMessages(initial, evidence), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
   return sanitizeVoidCheck(await withJsonRepair(finalRaw, extractJsonLoose), clauses)
 }
 
@@ -1304,19 +1349,23 @@ export function useBidWorkspace() {
 
   // ------------------------------ 模型选择（统一网关） ------------------------------
   const [modelOptions, setModelOptions] = useState<ModelRef[]>([])
-  // R47（B19）：默认「自动 · 按环节智能选择」（此前默认平台内置，本地部署下平台通道必然 412）
-  const [selectedModelKey, setSelectedModelKey] = useState(AUTO_MODEL_KEY)
+  // 默认模型（用户裁定 2026-10-15：一本标书一个模型，不要按环节自动换）——按优先级取：
+  //   ① 用户显式选择过的模型 → ② 实际成功用过的模型（R216）→ ③ 空串（由下方的列表收敛逻辑
+  //   落成具体模型：配置声明的默认 / 平台兜底，绝不会是"按环节智能选择"）
+  // 「自动 · 按环节智能选择」档已随本次改版下线；历史里若存过该哨兵，视为"没表过态"。
+  const [selectedModelKey, setSelectedModelKey] = useState(() => {
+    const uid = decodeRhToken()?.sub ?? null
+    const remembered = readModelChoice(uid)
+    if (remembered && !isAutoModelKey(remembered)) return remembered
+    return readPreferredModelKey(uid) ?? ""
+  })
 
   const loadModelOptions = useCallback(async () => {
     const av = await resolveAvailableModels()
     setModelOptions(av.models)
+    // 选择收敛：当前值不在可用清单里（模型被停用/删除，或首次为空）→ 落到实际可用的默认模型
     setSelectedModelKey((prev) =>
-      // R47（B19）：自动档哨兵值不是模型 key，不能被「匹配不到模型」的回落逻辑刷掉
-      prev === AUTO_MODEL_KEY || av.models.some((m) => modelRefKey(m) === prev)
-        ? prev
-        : av.defaultRef
-          ? modelRefKey(av.defaultRef)
-          : "",
+      av.models.some((m) => modelRefKey(m) === prev) ? prev : av.defaultRef ? modelRefKey(av.defaultRef) : "",
     )
   }, [])
 
@@ -1377,7 +1426,11 @@ export function useBidWorkspace() {
     [selectedModelKey, manualModelRef, roleModelMap],
   )
 
-  const handleSelectModel = useCallback((key: string) => setSelectedModelKey(key), [])
+  const handleSelectModel = useCallback((key: string) => {
+    setSelectedModelKey(key)
+    // 记住这次显式选择：下次打开标书工作台就是你选的这个（不再是系统按环节自动挑）
+    saveModelChoice(decodeRhToken()?.sub ?? null, key)
+  }, [])
 
   const handleLlmError = useCallback((e: unknown, fallback: string) => {
     if (e instanceof AuthRequiredError) {
@@ -2286,6 +2339,23 @@ export function useBidWorkspace() {
         cur.bid_chapters,
         extractDeadlineIso(sectionText(cur.parse_report, "bid_nodes") + "\n" + sectionText(cur.parse_report, "overview")),
       ),
+    )
+    // R54：部门基础要求（三份检查清单 + 售前工作规范）接线——公司红线条款 / 评分合规 /
+    // 术语旧称 / 其他项目残留 / 写作规范（人称·模糊参数·暗标身份）/ 承诺函与偏离表专用章。
+    // 纯本地零 AI，随体检白拿；一律 warn 只提示不阻断（红线级是否升硬门禁待用户拍板）。
+    report.hits.push(
+      ...deptRulesHits({
+        // 招标侧基准：招标原文 + 合同条款解析项（红线条款常写在合同/商务条款里）
+        tenderText: [cur.tender_text ?? "", sectionText(cur.parse_report, "contract_terms")].filter(Boolean).join("\n"),
+        bidText: resolveBidText(cur),
+        scoringItems: scoringItemsFromReport(cur.parse_report),
+        outline: flattenOutlineTitles(cur.bid_outline),
+        own: {
+          hospitals: [cur.hospital ?? ""],
+          tenderNos: [cur.tender_no ?? ""],
+          companyNames: [],
+        },
+      }),
     )
     return report
   }, [])
@@ -4352,6 +4422,8 @@ export function useBidWorkspace() {
           }),
           MAX_TOKENS_OUTLINE,
           "bid-outline",
+          undefined,
+          { expectJson: true },
         )
         const topNodes = await withJsonRepair(raw1, (t) => normalizeOutline(parseOutlineJson(t)))
         if (!topNodes.length) throw new Error("大纲格式解析失败，请重试")
@@ -4376,6 +4448,8 @@ export function useBidWorkspace() {
               ),
               MAX_TOKENS_OUTLINE,
               "bid-outline",
+              undefined,
+              { expectJson: true },
             )
             let kids = await withJsonRepair(raw2, (t) => normalizeOutline(parseOutlineJson(t)))
             // 章内深度：指定级数时裁到 level-1 层；不指定时最多节+条两层（总深不超三级）
@@ -4409,8 +4483,52 @@ export function useBidWorkspace() {
           }),
           MAX_TOKENS_OUTLINE,
           "bid-outline",
+          undefined,
+          { expectJson: true },
         )
         parsed = await withJsonRepair(raw, (t) => normalizeOutline(parseOutlineJson(t)))
+      }
+      // 层级补齐（本轮修复）：层级设为 2/3 时，「只有大章、没有小节」= 没生成完，必须补到位。
+      // 两条路径都会漏：① 单次生成路径在叶子预算偏小时模型只给章；② 分步路径的逐章展开失败会被
+      // 吞掉（仅把章名收进 stagedFailed）。实测「安中医项目」生成时就落了 10 章 / 深度 1 的扁平树，
+      // 与层级设置（3 级）不符。这里用与分步路径同一 prompt 逐章补齐，单章重试一次；仍失败则
+      // 收进 stagedFailed，由下方完成提示与红色告警明确列出，绝不再静默保留扁平大纲。
+      // 只补「完全没有子节点」的章：已有小节的章不重跑，避免覆盖已生成/已编辑的内容；
+      // 「有节但缺条」的深一层缺失交由既有 validateOutlineShape + 一次结构修复兜底。
+      if (outlineLevel >= 2) {
+        const techTopsForFill = parsed.filter((n) => !isBizPart(n))
+        const fillQuota = Math.max(3, Math.round(leafGoal / Math.max(1, techTopsForFill.length)))
+        for (const node of techChaptersMissingChildren(parsed)) {
+          let filled = false
+          for (let attempt = 0; attempt < 2 && !filled; attempt++) {
+            try {
+              const rawKids = await llmGenerate(
+                buildOutlineChildrenMessages(
+                  node.title,
+                  techTopsForFill.filter((x) => x.id !== node.id).map((x) => x.title),
+                  cur.parse_report,
+                  { quota: fillQuota, level: outlineLevel, sectionWords, globalFacts },
+                ),
+                MAX_TOKENS_OUTLINE,
+                "bid-outline",
+                undefined,
+                { expectJson: true },
+              )
+              const kids = trimOutlineDepth(
+                await withJsonRepair(rawKids, (t) => normalizeOutline(parseOutlineJson(t))),
+                outlineLevel - 1,
+              )
+              if (kids.length) {
+                node.children = kids
+                filled = true
+              }
+            } catch (e) {
+              if (e instanceof AuthRequiredError) throw e
+              // 其余异常下一轮重试；两轮都失败记入 stagedFailed
+            }
+          }
+          if (!filled && !stagedFailed.includes(node.title)) stagedFailed.push(node.title)
+        }
       }
       // 级数不指定时不做裁剪，由 AI 按招标要求自定；指定时 trimOutlineDepth 兜底
       let nodes = outlineLevel > 0 ? trimOutlineDepth(parsed, outlineLevel) : parsed
@@ -4441,7 +4559,7 @@ export function useBidWorkspace() {
             MAX_TOKENS_OUTLINE_FIX,
             undefined,
             undefined,
-            { role: "outline" },
+            { role: "outline", expectJson: true },
           )
           const fixedParsed = await withJsonRepair(fixRaw, (t) => normalizeOutline(parseOutlineJson(t)))
           const fixed = outlineLevel > 0 ? trimOutlineDepth(fixedParsed, outlineLevel) : fixedParsed
@@ -4474,6 +4592,8 @@ export function useBidWorkspace() {
             buildOutlineGateReviewMessages(nodes, outlineLevel, leafGoal, numberedForFix, sectionWords),
             MAX_TOKENS_OUTLINE,
             "bid-outline",
+            undefined,
+            { expectJson: true },
           )
           const review = await withJsonRepair(reviewRaw, sanitizeOutlineGateReview)
           if (review.passed || !review.issues.length) break
@@ -4482,7 +4602,7 @@ export function useBidWorkspace() {
             MAX_TOKENS_OUTLINE_FIX,
             undefined,
             undefined,
-            { role: "outline" },
+            { role: "outline", expectJson: true },
           )
           const gateParsed = await withJsonRepair(gateFixRaw, (t) => normalizeOutline(parseOutlineJson(t)))
           const gateFixed = outlineLevel > 0 ? trimOutlineDepth(gateParsed, outlineLevel) : gateParsed
@@ -4520,6 +4640,18 @@ export function useBidWorkspace() {
       const residue = cleanOutlineResidue(nodes)
       nodes = residue.nodes
       setOutlineResidueFixes(residue.fixes)
+      // 主观评分项强制入纲（用户裁定 2026-10-15）：评分办法里靠评委分档打分的主观项，大纲里必须有章，
+      // 否则评委无从给分、正文也没地方写。本地零 AI 补成技术章并写回 [响应:Rx] 标注（客观项不补：
+      // 它们靠商务材料响应）。生成出口就补齐，避免"生成完还要确认时才发现少章"。
+      const subjectiveEnsured = ensureSubjectiveScoringChapters(nodes, numberedForFix)
+      if (subjectiveEnsured.added.length) {
+        nodes = subjectiveEnsured.nodes
+        toast.success(
+          `已按评分办法补入 ${subjectiveEnsured.added.length} 个主观评分项章节：${subjectiveEnsured.added.slice(0, 4).join("、")}${
+            subjectiveEnsured.added.length > 4 ? " 等" : ""
+          }（主观项必须成章才能让评委给分；不需要可在大纲中删除）`,
+        )
+      }
       setOutlineDraft(nodes)
       if (residue.fixes.length) toast.success(`本次大纲已自动修正 ${residue.fixes.length} 处（残句归并 ${residue.residueCount} · 冗余章合并 ${residue.mergedGroups}），可展开查看原→新对照`)
       writeStageSnapshot("outline", "大纲生成完成", { outline: nodes })
@@ -4558,6 +4690,15 @@ export function useBidWorkspace() {
           outlineLevel > 0 ? `，技术部分 ${outlineLevel} 级目录` : "，级数按招标要求自动决定"
         }${scoringBlock}`,
       )
+      // 层级没补齐就明说（红色，不是"成功"里带一句）：层级设 2/3 而技术章仍无小节，
+      // 意味着这些章将来只有"大标题"，用户必须知道且能立刻重试。
+      if (outlineLevel >= 2 && stagedFailed.length) {
+        toast.error(
+          `以下技术章未能展开到 ${outlineLevel} 级（当前只有大标题、缺小节）：${stagedFailed.slice(0, 6).join("、")}${
+            stagedFailed.length > 6 ? ` 等 ${stagedFailed.length} 章` : ""
+          }；可再点一次「生成大纲」重试，或在大纲区手动补小节`,
+        )
+      }
     } catch (e) {
       handleLlmError(e, "大纲生成失败，请重试")
     } finally {
@@ -4630,9 +4771,21 @@ export function useBidWorkspace() {
     // T20：评分承接标注本地回填——把章↔评分点映射写回叶子 [响应:Rx]，消除「已映射但大纲无标注」。
     // 分步大纲不产标注（0/12 通病）；回填后评分点清单的承接对账与生成时的评分响应要求才有依据。
     const numbered = numberScoringItems(activeProjectRef.current?.parse_report ?? null)
-    const chapterTitles = outlineDraft.map((n) => ({ title: n.title, sections: (n.children ?? []).map((c) => c.title) }))
-    const filled = backfillResponseTags(outlineDraft, chapterTitles, numbered)
-    if (filled !== outlineDraft) setOutlineDraft(filled)
+    // 主观评分项强制入纲（同上）：手动改过大纲、或大纲是旧数据时，确认出口再兜一道——
+    // 补进去的章会一起落进 bid_outline，保证"大纲里看得见的"与"建成章节的"前后一致。
+    const subjectiveGuarded = ensureSubjectiveScoringChapters(outlineDraft, numbered)
+    if (subjectiveGuarded.added.length) {
+      setOutlineDraft(subjectiveGuarded.nodes)
+      toast.success(
+        `已按评分办法补入 ${subjectiveGuarded.added.length} 个主观评分项章节：${subjectiveGuarded.added.slice(0, 4).join("、")}${
+          subjectiveGuarded.added.length > 4 ? " 等" : ""
+        }`,
+      )
+    }
+    const baseDraft = subjectiveGuarded.nodes
+    const chapterTitles = baseDraft.map((n) => ({ title: n.title, sections: (n.children ?? []).map((c) => c.title) }))
+    const filled = backfillResponseTags(baseDraft, chapterTitles, numbered)
+    if (filled !== baseDraft) setOutlineDraft(filled)
     // 第十三轮改造 4：商务章照常构建（gen_status 固定 pending，永不参与正文生成），part 随章持久化
     // R297：建章先经 pickChaptersToBuild 摘掉条款碎片与空标题——全量重建 1:1 会把「交付地点」式
     // 碎片固化成 pending 章进入批量生成候选（R295 只堵了同步出口，本处堵确认出口）。
@@ -4664,6 +4817,17 @@ export function useBidWorkspace() {
           ? `；${fragmentTitles.length} 个大纲节点是招标条款原文（如「${fragmentTitles[0]}」），不是章节，未为其建章——请在大纲中手动删除或改名`
           : ""),
     )
+    // 前后一致守卫（用户裁定 2026-10-15）：被跳过的节点若**带小节**，那多半是真章节被判成碎片
+    // （实测事故：「质保期外运维及新增接口服务方案」以黑名单词开头、还挂着 6 个小节，被整章跳过）。
+    // 这种情况不能只是成功提示里带一句——单独红色告警，点名列出，避免"大纲里看得见、清单里没有"。
+    const skippedWithChildren = skippedFragmentsWithChildren(filled, build)
+    if (skippedWithChildren.length) {
+      toast.error(
+        `以下大纲节点未建章，但它们下面还有小节，可能是被误判为条款原文的真章节：${skippedWithChildren
+          .slice(0, 3)
+          .join("、")}${skippedWithChildren.length > 3 ? " 等" : ""}；请核对后改名/删除，或点「同步章节清单」重试`,
+      )
+    }
     // 第十七轮 17A：招标规定目录生效时本地核验匹配率（零 AI），<60% 仅提醒不阻断
     const outlineReqText = sectionText(activeProjectRef.current?.parse_report ?? null, BID_OUTLINE_REQ_KEY).trim()
     if (outlineReqText) {
@@ -5895,6 +6059,8 @@ export function useBidWorkspace() {
         }),
         // 循环 2 批 1-4：暗标开启时注入身份脱敏规则条（sealed=false 为空串，builder 静默不注入）
         sealedIdentityRules: sealedIdentityBlock(cur.format_settings?.sealed === true, cur.identity_words),
+        // R54：部门售前工作规范的写作口径（自称/模糊参数）；与体检侧 bidWritingRules 同一真源，避免两处漂移
+        voiceRules: `${writingVoiceRules().join("；")}；`,
         // 循环 2 批 2-1：定向事实——编排为本章挑了必守事实时，以定向事实块替代全量全局事实注入
         // （未重编排的老项目 facts 缺省，回退全量注入，行为与现状一致）
         directedFacts: chapterOrchOpt?.facts?.length ? buildDirectedFactsBlock(chapterOrchOpt.facts) : undefined,
@@ -6403,6 +6569,8 @@ export function useBidWorkspace() {
                 }),
                 // 循环 2 批 1-4：小节重写同口径注入暗标身份脱敏规则条
                 sealedIdentityRules: sealedIdentityBlock(cur.format_settings?.sealed === true, cur.identity_words),
+                // R54：小节重写同样带写作口径（口径同章级，避免同一章内两套语气）
+                voiceRules: `${writingVoiceRules().join("；")}；`,
                 // 05 三模式：小节重写同口径透传合规严格度
                 complianceMode: cur.gen_options?.compliance_mode,
                 sectionName,
@@ -7044,7 +7212,12 @@ export function useBidWorkspace() {
   const deviationClauseCount = useMemo(() => {
     const rep = activeProject?.parse_report ?? null
     if (!rep) return 0
-    return extractRequirementClauses(rep, { limit: 200, granularity: clauseGranularity }).length
+    // R52：口径与生成一致（只取技术文件要求）——否则按钮上预告的条数与实际生成的行数不符
+    return extractRequirementClauses(rep, {
+      limit: 200,
+      granularity: clauseGranularity,
+      sources: DEVIATION_CLAUSE_SOURCES,
+    }).length
   }, [activeProject?.parse_report, clauseGranularity])
 
   // R-022 技术参数落点：第五章全部技术和服务要求参数逐条核对（进偏离表/建节点=已覆盖，零 AI）
@@ -7079,28 +7252,56 @@ export function useBidWorkspace() {
     flushEditingContent()
     const cur = activeProjectRef.current
     if (!cur) return
-    const clauses = extractRequirementClauses(cur.parse_report, { limit: 200, granularity: clauseGranularity })
+    // R52：只对技术文件要求做偏离表（评分办法属得分点承接、响应文件格式要求属编制规范，都不进偏离表）
+    const clauses = extractRequirementClauses(cur.parse_report, {
+      limit: 200,
+      granularity: clauseGranularity,
+      sources: DEVIATION_CLAUSE_SOURCES,
+    })
     if (!clauses.length) {
-      toast.error("没有从解析报告抽取到招标技术条款，请先回到解析环节完成「交货和服务要求 / 技术评分要求 / 响应文件要求」解析")
+      toast.error("没有从解析报告抽取到招标技术要求，请先回到解析环节完成「交货和服务要求」解析")
       return
     }
     if (!cur.bid_chapters.some((c) => c.content.trim())) {
       toast.error("投标文件还没有正文，请先生成或编写章节内容再做偏离表")
       return
     }
+    // R50（P0-3）：偏离表素材从「每章前 300 字摘要」改为按条款定向检索的证据包
+    const deviationEvidence = selectBidEvidence(resolveBidText(cur), clauses.map((c) => ({ id: c.id, text: c.text })))
     setMapLoading(true)
     try {
       const raw = await llmGenerate(
-        buildDeviationMapMessages(clauses, cur.bid_outline, cur.bid_chapters, effectiveGlobalFacts(cur)),
+        buildDeviationMapMessages(clauses, cur.bid_outline, deviationEvidence, effectiveGlobalFacts(cur)),
         MAX_TOKENS_LONGFORM,
         "bid-deviation",
       )
-      const rows = sanitizeDeviationRows(extractJsonLoose(raw), clauses)
+      // R50（P0-3）：本次注入范围内无可见证据的条款，逐行标「待人工核对」——不能只靠模型自觉判 partial
+      // R52：再逐行核对「响应内容是不是投标文件原文」——不是原文（改写/概括/编造）标 not_verbatim，
+      //      与可见性标记独立（可见性说「有没有看到」，原文核对说「看到的是不是原文」）。
+      //      标记按**生成时的正文**算；正文改过之后偏离表本身就过期了，重新生成即一并刷新。
+      const rows = markNonVerbatimRows(
+        markInvisibleDeviationRows(
+          sanitizeDeviationRows(extractJsonLoose(raw), clauses),
+          deviationEvidence.clauses.filter((c) => !c.hit).map((c) => c.ref),
+        ),
+        resolveBidText(cur),
+      )
       if (!rows.length) throw new Error("偏离表解析失败，请重试")
-      const table: DeviationTable = { split_dim: clauseGranularity, rows, generated_at: new Date().toISOString() }
+      // R52：一一对应核对（招标条款 ↔ 响应材料），结论随表存库，面板与体检直接读
+      const alignment = checkDeviationAlignment(rows, clauses)
+      const verbatim = deviationVerbatimReport(rows)
+      const table: DeviationTable = { split_dim: clauseGranularity, rows, generated_at: new Date().toISOString(), alignment }
       updateProject({ response_map: table })
       const st = deviationStats(table)
-      toast.success(`技术偏离表已生成：共 ${st.total} 条，完全响应 ${st.full}、部分响应 ${st.partial}、偏离 ${st.deviation}`)
+      toast.success(
+        `技术偏离表已生成：招标要求 ${alignment.clause_count} 条 ↔ 响应 ${alignment.row_count} 行` +
+          `${alignment.missing.length || alignment.duplicated.length ? `（未对上：缺 ${alignment.missing.length} 行 / 重复 ${alignment.duplicated.length} 行）` : "（一一对应）"}` +
+          `；完全响应 ${st.full}、部分响应 ${st.partial}、偏离 ${st.deviation}` +
+          (verbatim.not_verbatim ? `；${verbatim.not_verbatim} 条响应内容在正文里找不到原文，请人工核对` : "") +
+          (st.needs_review ? `；其中 ${st.needs_review} 条本次无可见证据，已标「待人工核对」` : ""),
+      )
+      // R50（P0-3）：本次注入的可见范围同样必须让用户看见
+      if (!deviationEvidence.report.input_complete) toast.info(describeBidVisibility(deviationEvidence, "技术偏离表"))
     } catch (e) {
       handleLlmError(e, "偏离表生成失败，请重试")
     } finally {
@@ -7549,6 +7750,9 @@ export function useBidWorkspace() {
       )
       return
     }
+    // R50（P0-3 长文可见性）：废标自查不再 clipText 静默截断，
+    // 由 selectBidEvidence 按条款定向检索取证据包（含【输入可见性】说明块）；该包被正式三轮与降级单轮共用。
+    const evidence = selectBidEvidence(bidText, clauses)
     setVoidLoading(true)
     try {
       // 第十二轮改造 2：报告含 ★/▲ 重点条款节时给既有调用追加上下文段
@@ -7556,10 +7760,10 @@ export function useBidWorkspace() {
       // R-028（R254）：项目正式废标检查走真三轮（定位→初检→定稿）；三轮任一异常降级既有单轮，保证 AI 抖动下可用
       let check: VoidCheck
       try {
-        check = await runVoidCheckThreeRounds(clauses, bidText, starBlock)
+        check = await runVoidCheckThreeRounds(clauses, evidence, starBlock)
       } catch (roundErr) {
         if (roundErr instanceof AuthRequiredError) throw roundErr
-        const raw = await llmGenerate(buildVoidCheckMessages(clauses, bidText, starBlock), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
+        const raw = await llmGenerate(buildVoidCheckMessages(clauses, evidence, starBlock), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
         check = sanitizeVoidCheck(extractJsonLoose(raw), clauses)
       }
       updateProject({ void_check: check })
@@ -7567,6 +7771,8 @@ export function useBidWorkspace() {
       setActiveStep(5)
       const risky = check.items.filter((i) => effectiveVoidStatus(i) !== "compliant").length
       toast.success(risky ? `检查完成：${risky} 条存在风险或缺失，请逐条处理` : "检查完成：全部废标条款均已响应")
+      // R50（P0-3）：输入不完整必须让用户看见——否则「没注入」会被误读成「没风险」
+      if (!evidence.report.input_complete) toast.info(describeBidVisibility(evidence, "废标自查"))
     } catch (e) {
       handleLlmError(e, "废标项检查失败，请重试")
     } finally {
@@ -8910,7 +9116,8 @@ export function useBidWorkspace() {
       .slice(0, 30)
     if (!clauses.length) throw new Error("请先在「废标条款」框里粘贴条款，每行一条")
     if (!toolBidText.trim()) throw new Error("请先粘贴或上传投标文件正文")
-    const raw = await llmGenerate(buildVoidCheckMessages(clauses, chaptersToTextStub(toolBidText)), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
+    const evidence = selectBidEvidence(chaptersToTextStub(toolBidText), clauses)
+    const raw = await llmGenerate(buildVoidCheckMessages(clauses, evidence), MAX_TOKENS_LONGFORM, undefined, undefined, { role: "judge" })
     setToolVoidResult(sanitizeVoidCheck(extractJsonLoose(raw), clauses))
   }, [toolBidText, toolMaterial])
 

@@ -304,7 +304,10 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
   const selected: ParseSection = shown.find((s) => s.key === selectedKey) ?? shown[0]
   const selectedStatus = sectionStatus(selected)
   const okCount = shown.filter((s) => sectionStatus(s) === "ok").length
-  const pct = shown.length ? Math.round((okCount / shown.length) * 100) : 0
+  // 「解析进度」是整份报告的进度，必须按全量项算：原来的分子取的是 shown（当前视图筛选后），
+  // 分母却是 sections（全部），于是「只看关键项」视图下会显示成 9/22 而进度条满格——分子分母不同口径。
+  const okAllCount = sections.filter((s) => sectionStatus(s) === "ok").length
+  const pctAll = sections.length ? Math.round((okAllCount / sections.length) * 100) : 0
   const busyHere = reparseBusyKey === selected.key
   // R160：选中分区内命中符号丢失的行数（零 AI；供 header 徽标，跨会话可复核）
   const markerLossInSelected = countMarkerLossLines(selected.content)
@@ -478,11 +481,11 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
           <div className="flex items-center justify-between text-xs">
             <span className="font-medium text-muted-foreground">解析进度</span>
             <span className="font-semibold text-primary">
-              {okCount}/{sections.length}
+              {okAllCount}/{sections.length}
             </span>
           </div>
           <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
-            <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${pct}%` }} />
+            <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${pctAll}%` }} />
           </div>
           <p className="mt-1.5 text-xs text-muted-foreground">失败 / 未解析的项可在右侧单独重解析</p>
           {coveragePct != null && coveragePct < COVERAGE_WARN * 100 && (

@@ -7,11 +7,13 @@ import {
   VOID_ROUNDS_PROMPT_VERSION,
 } from "./voidCheckRounds"
 import { sanitizeVoidCheck } from "../bidTypes"
+import { selectBidEvidence } from "../bidVisibility"
 import type { LlmMessage } from "@/lib/llm"
 
 describe("R-028 废标三轮提示词与分类（R254）", () => {
   const clauses = ["未按招标文件要求盖章的投标无效", "投标报价超出最高限价的投标无效"]
-  const bid = "投标文件正文：本项目提供五星售后服务承诺。"
+  // R50（P0-3）：三轮共用同一证据包（短文本→mode=full，逐字注入）
+  const bid = selectBidEvidence("投标文件正文：本项目提供五星售后服务承诺。", clauses)
   const all = (m: LlmMessage[]) => m.map((x) => (typeof x.content === "string" ? x.content : "")).join("\n")
 
   it("第一轮·定位分类：system+user，含 invalidBid/rejectionItem 与 scope JSON 契约", () => {

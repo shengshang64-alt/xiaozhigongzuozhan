@@ -1,4 +1,4 @@
-import { clipText, MAX_BID_CHARS } from "../bidTypes"
+import { BID_VISIBILITY_CONTRACT_VOID, bidEvidenceBlock, type BidEvidencePack } from "../bidVisibility"
 import type { LlmMessage } from "@/lib/llm"
 
 // ---------------------------------------------------------------------------
@@ -9,16 +9,17 @@ import type { LlmMessage } from "@/lib/llm"
 // rejectionItem=单项评审要求、不满足作单项否决/扣分（不必然废标）。
 // ---------------------------------------------------------------------------
 
-export const VOID_ROUNDS_PROMPT_VERSION = 1 // 新建（R254）：定位分类 / 逐条初检 / 定稿去误报 三轮拆分
+export const VOID_ROUNDS_PROMPT_VERSION = 2 // P0-3 长文可见性：三轮共用同一证据包（可见性契约 + 定向检索片段），不再静默截断 | 上一版： 新建（R254）：定位分类 / 逐条初检 / 定稿去误报 三轮拆分
 
 /** 三轮共享稳定系统前缀 */
 const VOID_SYSTEM_BASE = [
   "你是资深开标评审专家，负责投标前的废标风险合规自查。",
   "始终使用简体中文；只依据给定材料判断，禁止编造。",
+  BID_VISIBILITY_CONTRACT_VOID,
 ].join("\n")
 
 /** 第一轮·定位与分类：为每条废标条款输出应然响应位置 + 同义词组 + kind（本阶段不判合规） */
-export function buildVoidScopeMessages(clauses: string[], bidText: string, starBlock?: string): LlmMessage[] {
+export function buildVoidScopeMessages(clauses: string[], evidence: BidEvidencePack, starBlock?: string): LlmMessage[] {
   const clauseLines = clauses.map((c, i) => `${i + 1}. ${c}`).join("\n")
   const system = [
     VOID_SYSTEM_BASE,
@@ -29,7 +30,7 @@ export function buildVoidScopeMessages(clauses: string[], bidText: string, starB
     "输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式：",
     '{"scope":[{"clause":"条款原文","kind":"invalidBid","where":"应在投标文件中出现响应的位置线索","synonyms":["同义词1","同义词2"]}]}',
   ].join("\n")
-  const user = `【废标条款清单】\n${clauseLines}\n\n${starBlock && starBlock.trim() ? `${starBlock.trim()}\n\n` : ""}【投标文件正文】\n${clipText(bidText, MAX_BID_CHARS)}\n\n请逐条输出定位与分类 JSON。`
+  const user = `【废标条款清单】\n${clauseLines}\n\n${starBlock && starBlock.trim() ? `${starBlock.trim()}\n\n` : ""}${bidEvidenceBlock(evidence)}\n\n请逐条输出定位与分类 JSON。`
   return [
     { role: "system", content: system },
     { role: "user", content: user },
@@ -37,7 +38,7 @@ export function buildVoidScopeMessages(clauses: string[], bidText: string, starB
 }
 
 /** 第二轮·逐条初检：带第一轮定位线索逐条比对，输出 status/response/evidence/locations，kind 透传 */
-export function buildVoidInitialCheckMessages(plan: unknown, bidText: string): LlmMessage[] {
+export function buildVoidInitialCheckMessages(plan: unknown, evidence: BidEvidencePack): LlmMessage[] {
   const system = [
     VOID_SYSTEM_BASE,
     "上一阶段已给出每条废标条款的定位与分类，本阶段据此逐条初检（先定位后比对）：",
@@ -48,7 +49,7 @@ export function buildVoidInitialCheckMessages(plan: unknown, bidText: string): L
     "输出严格 JSON，禁止 markdown 围栏，格式：",
     '{"items":[{"clause":"","kind":"invalidBid","source_location":"","response":"","response_location":"","status":"compliant","evidence":""}]}',
   ].join("\n")
-  const user = `【第一阶段定位与分类】\n${JSON.stringify(plan)}\n\n【投标文件正文】\n${clipText(bidText, MAX_BID_CHARS)}\n\n请逐条初检并输出 JSON。`
+  const user = `【第一阶段定位与分类】\n${JSON.stringify(plan)}\n\n${bidEvidenceBlock(evidence)}\n\n请逐条初检并输出 JSON。`
   return [
     { role: "system", content: system },
     { role: "user", content: user },
@@ -56,7 +57,7 @@ export function buildVoidInitialCheckMessages(plan: unknown, bidText: string): L
 }
 
 /** 第三轮·定稿去误报：复核初检 partial/non_compliant，强制证据剔误报，补 severity/suggestion，输出定稿矩阵 */
-export function buildVoidFinalizeMessages(initial: unknown, bidText: string): LlmMessage[] {
+export function buildVoidFinalizeMessages(initial: unknown, evidence: BidEvidencePack): LlmMessage[] {
   const system = [
     VOID_SYSTEM_BASE,
     "本阶段为「定稿复核」，对上一阶段初检结果逐条复核、优先剔除误报后输出定稿合规核销矩阵：",
@@ -71,7 +72,7 @@ export function buildVoidFinalizeMessages(initial: unknown, bidText: string): Ll
     "输出严格 JSON，禁止 markdown 围栏，格式：",
     '{"items":[{"clause":"","kind":"invalidBid","source_location":"","response":"","response_location":"","status":"compliant","severity":"critical","suggestion":"","evidence":""}]}',
   ].join("\n")
-  const user = `【第二阶段初检结果】\n${JSON.stringify(initial)}\n\n【投标文件正文】\n${clipText(bidText, MAX_BID_CHARS)}\n\n请复核并输出定稿 JSON。`
+  const user = `【第二阶段初检结果】\n${JSON.stringify(initial)}\n\n${bidEvidenceBlock(evidence)}\n\n请复核并输出定稿 JSON。`
   return [
     { role: "system", content: system },
     { role: "user", content: user },

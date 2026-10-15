@@ -6,11 +6,13 @@ import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import {
   CLAUSE_GRANULARITY_HINT,
   CLAUSE_GRANULARITY_LABEL,
+  deviationResponseText,
   RESPONSE_LEVEL_LABEL,
   type ClauseGranularity,
   type DeviationRow,
   type ResponseLevel,
 } from "@/pages/BidWorkspace/bidTypes"
+import { deviationVerbatimReport } from "@/pages/BidWorkspace/deviationVerbatim"
 import { PARAM_KIND_LABEL } from "@/pages/BidWorkspace/techParamCoverage"
 
 // ---------------------------------------------------------------------------
@@ -61,6 +63,9 @@ export function DeviationPanel(p: DeviationPanelProps) {
   const groups = groupRows(rows)
   const st = p.deviationSummary
   const exportBusyNow = p.exportBusy === "deviation"
+  // R52：一一对应（招标条款↔响应材料）与原文响应核对结论，均取自生成时写入的结论 / 纯本地复核
+  const alignment = p.deviationTable?.alignment ?? null
+  const verbatim = deviationVerbatimReport(rows)
   return (
     <section className="mt-6 rounded-lg border border-border bg-card shadow-md">
       <header className="flex min-h-14 flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
@@ -70,7 +75,7 @@ export function DeviationPanel(p: DeviationPanelProps) {
             技术偏离表
           </h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            按所选维度拆分招标技术条款，AI 逐条判定响应程度并定位响应位置，供评标专家按图索骥
+            按所选维度拆分招标技术要求，逐条摘录投标文件原文作为响应、并定位响应位置，供评标专家按图索骥
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -131,6 +136,9 @@ export function DeviationPanel(p: DeviationPanelProps) {
           })}
         </div>
         <p className="mt-1.5 text-xs text-muted-foreground">{CLAUSE_GRANULARITY_HINT[p.clauseGranularity]}</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          条款来源：招标文件「交货和服务要求」（技术文件要求）原文；评分办法与响应文件格式要求不进本表。
+        </p>
       </div>
 
       {p.techParamCoverage.hasParams && (
@@ -186,12 +194,53 @@ export function DeviationPanel(p: DeviationPanelProps) {
           </p>
         ) : (
           <>
-            <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-4">
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+              {alignment && (
+                <span
+                  className={`rounded-full px-2 py-0.5 font-medium ${
+                    alignment.missing.length || alignment.duplicated.length
+                      ? "bg-destructive/10 text-destructive"
+                      : "bg-primary/10 text-primary"
+                  }`}
+                >
+                  招标要求 {alignment.clause_count} 条 ↔ 响应 {alignment.row_count} 行
+                  {alignment.missing.length || alignment.duplicated.length
+                    ? ` · 未对上：缺 ${alignment.missing.length} 行 / 重复 ${alignment.duplicated.length} 行`
+                    : " · 一一对应"}
+                </span>
+              )}
+              <span
+                className={`rounded-full px-2 py-0.5 font-medium ${
+                  verbatim.not_verbatim > 0 ? "bg-warning/10 text-warning" : "bg-muted text-muted-foreground"
+                }`}
+                title="响应内容一律摘录投标文件正文原文；这里逐行在正文里检索，检索不到即疑似改写或概括"
+              >
+                原文响应 {verbatim.verbatim}/{verbatim.checked}
+                {verbatim.not_verbatim > 0 ? ` · 非原文 ${verbatim.not_verbatim} 条待改` : ""}
+                {verbatim.missing_text > 0 ? ` · 缺响应内容 ${verbatim.missing_text} 条` : ""}
+              </span>
+            </div>
+            {verbatim.not_verbatim > 0 && (
+              <p className="mb-3 rounded-md border border-warning/40 bg-warning/5 px-3 py-2 text-xs leading-relaxed text-foreground">
+                <span className="font-medium text-warning">非原文响应 {verbatim.not_verbatim} 条</span>
+                ：这些行的响应内容在投标文件正文里检索不到（疑似改写或概括）。偏离表要求原文响应——
+                请把响应内容改回正文原句（可用「……」省略中间），或补齐正文后重新生成。
+              </p>
+            )}
+            {st.needs_review > 0 && (
+              <p className="mb-3 rounded-md border border-warning/40 bg-warning/5 px-3 py-2 text-xs leading-relaxed text-foreground">
+                <span className="font-medium text-warning">待人工核对 {st.needs_review} 条</span>
+                ：这些条款在本次分析的正文范围里找不到可定位的响应证据（长文分段后未命中，或 AI 未定位到对应正文），
+                系统按「部分响应」兜底保留、未判为负偏离。导出前请人工确认正文相应部分确实已响应，再决定是否调整响应程度。
+              </p>
+            )}
+            <div className={`mb-4 grid grid-cols-2 gap-2 ${st.needs_review > 0 ? "md:grid-cols-5" : "md:grid-cols-4"}`}>
               {[
                 { label: "总条款", value: st.total, cls: "text-foreground" },
                 { label: "完全响应", value: st.full, cls: "text-primary" },
                 { label: "部分响应", value: st.partial, cls: "text-muted-foreground" },
                 { label: "偏离", value: st.deviation, cls: "text-destructive" },
+                ...(st.needs_review > 0 ? [{ label: "待人工核对", value: st.needs_review, cls: "text-warning" }] : []),
               ].map((card) => (
                 <div key={card.label} className="rounded-md border border-border bg-background px-3 py-2.5 text-center shadow-sm">
                   <p className={`text-xl font-bold ${card.cls}`}>{card.value}</p>
@@ -204,6 +253,11 @@ export function DeviationPanel(p: DeviationPanelProps) {
                 <div key={g.source}>
                   <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold text-foreground">
                     <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary">{g.rows.length} 条</span>
+                    {g.rows.some((r) => r.needs_review) && (
+                      <span className="rounded-full bg-warning/10 px-2 py-0.5 text-warning">
+                        待核对 {g.rows.filter((r) => r.needs_review).length} 条
+                      </span>
+                    )}
                     {g.source}
                   </h3>
                   <div className="overflow-x-auto rounded-md border border-border">
@@ -211,20 +265,34 @@ export function DeviationPanel(p: DeviationPanelProps) {
                       <thead>
                         <tr className="border-b border-border bg-muted/50 text-xs text-muted-foreground">
                           <th className="px-2 py-2 font-medium">条款序号</th>
-                          <th className="px-2 py-2 font-medium">招标要求</th>
+                          <th className="px-2 py-2 font-medium">招标要求（原文）</th>
                           <th className="px-2 py-2 font-medium">响应程度</th>
-                          <th className="px-2 py-2 font-medium">响应内容摘要</th>
+                          <th className="px-2 py-2 font-medium">响应内容（投标文件原文）</th>
                           <th className="px-2 py-2 font-medium">响应位置</th>
                         </tr>
                       </thead>
                       <tbody>
                         {g.rows.map((r, ri) => {
-                          const rowKey = `${g.source}-${r.clause_id || ri}`
+                          // 带行号兜底：新表已保证条款不重复，但存量表可能仍有同 clause_id 的行，
+                          // 只用 clause_id 做 key 会让 React 复用到错误的行
+                          const rowKey = `${g.source}-${r.clause_id || ri}-${ri}`
                           const expanded = expandedKey === rowKey
                           const jumpable = !!r.response_node && r.response_node !== "未找到响应"
                           return (
-                            <tr key={rowKey} className="border-b border-border/60 align-top last:border-0">
-                              <td className="px-2 py-2 font-mono text-xs text-muted-foreground">{r.clause_id || ri + 1}</td>
+                            <tr
+                              key={rowKey}
+                              className={`border-b border-border/60 align-top last:border-0 ${r.needs_review ? "bg-warning/5" : ""}`}
+                            >
+                              <td className="px-2 py-2 font-mono text-xs text-muted-foreground">
+                                {r.clause_no ? (
+                                  <span className="flex flex-col gap-0.5">
+                                    <span className="text-foreground">{r.clause_no}</span>
+                                    <span className="text-[10px]">{r.clause_id || ri + 1}</span>
+                                  </span>
+                                ) : (
+                                  r.clause_id || ri + 1
+                                )}
+                              </td>
                               <td className="max-w-md px-2 py-2">
                                 <button
                                   type="button"
@@ -240,15 +308,45 @@ export function DeviationPanel(p: DeviationPanelProps) {
                                 </button>
                               </td>
                               <td className="px-2 py-2">
-                                {r.response_level ? (
-                                  <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${LEVEL_BADGE[r.response_level]}`}>
-                                    {RESPONSE_LEVEL_LABEL[r.response_level]}
-                                  </span>
-                                ) : (
-                                  <span className="whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">待人工判定</span>
-                                )}
+                                <div className="flex flex-wrap items-center gap-1">
+                                  {r.response_level ? (
+                                    <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${LEVEL_BADGE[r.response_level]}`}>
+                                      {RESPONSE_LEVEL_LABEL[r.response_level]}
+                                    </span>
+                                  ) : (
+                                    <span className="whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">待人工判定</span>
+                                  )}
+                                  {r.needs_review && (
+                                    <span
+                                      title="本次分析的正文范围内没有可定位的响应证据，已按部分响应兜底；导出前请人工核对正文未覆盖部分"
+                                      className="whitespace-nowrap rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning"
+                                    >
+                                      待人工核对
+                                    </span>
+                                  )}
+                                </div>
                               </td>
-                              <td className="px-2 py-2 text-xs leading-relaxed text-muted-foreground">{r.response_summary || "—"}</td>
+                              <td className="px-2 py-2 text-xs leading-relaxed">
+                                {(() => {
+                                  const text = deviationResponseText(r)
+                                  if (!text) {
+                                    return <span className="text-muted-foreground">—（未摘录到正文原文）</span>
+                                  }
+                                  return (
+                                    <div className="space-y-1">
+                                      <p className="text-foreground">{text}</p>
+                                      {r.not_verbatim && (
+                                        <span
+                                          title="响应内容在投标文件正文里检索不到，疑似改写或概括；偏离表要求原文响应，请改回正文原句"
+                                          className="inline-block rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning"
+                                        >
+                                          非原文
+                                        </span>
+                                      )}
+                                    </div>
+                                  )
+                                })()}
+                              </td>
                               <td className="px-2 py-2">
                                 {jumpable ? (
                                   <button
@@ -262,6 +360,9 @@ export function DeviationPanel(p: DeviationPanelProps) {
                                   </button>
                                 ) : (
                                   <span className="text-xs font-medium text-destructive">{r.response_node || "未找到响应"}</span>
+                                )}
+                                {r.evidence_ref && (
+                                  <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground">原文出处：{r.evidence_ref}</p>
                                 )}
                               </td>
                             </tr>

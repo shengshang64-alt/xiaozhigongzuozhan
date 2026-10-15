@@ -26,6 +26,7 @@ import { formatDateTimeDisplay } from "@/lib/dateDisplay"
 import {
   CLAUSE_GRANULARITY_LABEL,
   RESPONSE_LEVEL_LABEL,
+  deviationExportSummary,
   REVIEW_STATUS_LABEL,
   SEVERITY_LABEL,
   VOID_STATUS_LABEL,
@@ -426,6 +427,41 @@ function h3(text: string): Paragraph {
   })
 }
 
+/** 四级小标题（（1）（2）… 式）——格式设置面板能设 6 级，导出必须接得住，否则设置等于没生效 */
+function h4(text: string): Paragraph {
+  return new Paragraph({
+    heading: HeadingLevel.HEADING_4,
+    spacing: { before: 100, after: 60 },
+    children: [new TextRun({ text, bold: true, size: 24, font: DEFAULT_RUN_FONT.heading })],
+  })
+}
+
+/** 五级小标题（① ②… 式） */
+function h5(text: string): Paragraph {
+  return new Paragraph({
+    heading: HeadingLevel.HEADING_5,
+    spacing: { before: 80, after: 60 },
+    children: [new TextRun({ text, bold: true, size: 24, font: DEFAULT_RUN_FONT.heading })],
+  })
+}
+
+/**
+ * 正文行 → 标题级别（0 = 正文段落）。
+ * 判据与既有「（一）」口径同源：短行（≤30 字）+ 不以句末标点结尾 + 枚举式编号。
+ * 为什么要把层级延到 4/5 级：格式设置面板暴露 6 级标题样式，导出此前最多只到 3 级
+ * （（一）→H3，其余一律当正文），四级以上样式永远没有落点，用户改了设置看不出任何变化。
+ * 刻意只认括号/圈号枚举，**不认「1.」「1.1」**——那两种在正文里绝大多数是列表项而不是标题，
+ * 误升标题会把交付物的结构搞乱，比"设置不生效"更糟。
+ */
+export function contentHeadingLevel(line: string): 0 | 2 | 3 | 4 {
+  const t = (line ?? "").trim()
+  if (!t || t.length > 30 || /[。！？；，、]$/.test(t)) return 0
+  if (/^（[一二三四五六七八九十]+）/.test(t)) return 2
+  if (/^[（(]\s*[0-9]{1,2}\s*[)）]/.test(t)) return 3
+  if (/^[①②③④⑤⑥⑦⑧⑨⑩]/.test(t)) return 4
+  return 0
+}
+
 /** 第十轮修复 4：正文段落规范排版——首行缩进 2 字符（480 twip）、1.5 倍行距、两端对齐 */
 function body(text: string): Paragraph {
   return new Paragraph({
@@ -611,6 +647,16 @@ export const PAPER_TWIPS: Record<string, { width: number; height: number }> = {
 
 const CM_TO_TWIPS = 566.93
 
+/** 导出级别 → docx 标题样式：必须覆盖 1-6 级（见 headingPara 的注释，四级以上曾被塌回 H3） */
+const HEADING_LEVELS = [
+  HeadingLevel.HEADING_1,
+  HeadingLevel.HEADING_2,
+  HeadingLevel.HEADING_3,
+  HeadingLevel.HEADING_4,
+  HeadingLevel.HEADING_5,
+  HeadingLevel.HEADING_6,
+]
+
 function cmToTwips(cm: number): number {
   return Math.round(cm * CM_TO_TWIPS)
 }
@@ -641,8 +687,7 @@ export type FormatDocxKit = {
   buildFmtTable: (rows: string[][]) => Table
 }
 
-export function createFormatDocxKit(fmt: FormatSettings): FormatDocxKit {
-  const fontRun: FormatDocxKit["fontRun"] = (text, o) =>
+export function createFormatDocxKit(fmt: FormatSettings): FormatDocxKit {  const fontRun: FormatDocxKit["fontRun"] = (text, o) =>
     new TextRun({
       text,
       bold: o.bold ?? false,
@@ -653,7 +698,9 @@ export function createFormatDocxKit(fmt: FormatSettings): FormatDocxKit {
   const headingAt: FormatDocxKit["headingAt"] = (i) => fmt.heading[Math.min(Math.max(i, 0), 5)]
   const headingPara: FormatDocxKit["headingPara"] = (level, text, opts) => {
     const h = headingAt(level)
-    const headingLevel = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3][Math.min(level, 2)]
+    // 级别映射必须覆盖 1-6 级：此前只映射 H1-H3，四级以上一律塌回 H3，
+    // 于是格式设置面板里四/五/六级标题的字体字号设了也不会有任何变化。
+    const headingLevel = HEADING_LEVELS[Math.min(Math.max(level, 0), HEADING_LEVELS.length - 1)]
     return new Paragraph({
       heading: headingLevel,
       alignment: DOCX_ALIGN[h.align],
@@ -819,10 +866,19 @@ async function exportBidDocxDefaults(project: BidProjectRecord): Promise<void> {
       }
       // 问题3：正文句以小节名/数字开头不再误升标题——改走整行精确匹配真小节标题
       const isSubHeading = isRealSectionHeading(line, chapter.sections, idx + 1)
-      // （一）（二）… 式小标题用 h3：整行短（≤30 字）且不以句末标点结尾才算
-      const isH3 = /^（[一二三四五六七八九十]+）/.test(line) && line.length <= 30 && !/[。！？；，、]$/.test(line)
-      if (!isSubHeading && !isH3 && firstBodyAt === -1) firstBodyAt = paras.length
-      paras.push(isSubHeading ? h2(line) : isH3 ? h3(line) : body(line))
+      const hLevel = contentHeadingLevel(line)
+      if (!isSubHeading && hLevel === 0 && firstBodyAt === -1) firstBodyAt = paras.length
+      paras.push(
+        isSubHeading
+          ? h2(line)
+          : hLevel === 2
+            ? h3(line)
+            : hLevel === 3
+              ? h4(line)
+              : hLevel === 4
+                ? h5(line)
+                : body(line),
+      )
     }
     const figs = figsAll.filter((f) => !usedFigTitles.has(f.title))
     if (figs.length) {
@@ -929,7 +985,8 @@ async function exportBidDocxFormatted(project: BidProjectRecord, fmt: FormatSett
       }),
     )
     // Q28 切片B：暗标目录不做超链接——Word 更新域后会给超链接目录项套 Hyperlink 字符样式（蓝色下划线）
-    children.push(new TableOfContents("目录", { hyperlink: !fmt.sealed, headingStyleRange: "1-3" }))
+    // 目录级别跟随实际会产出的标题层级（现在正文可到 5 级），否则四/五级标题不进目录
+    children.push(new TableOfContents("目录", { hyperlink: !fmt.sealed, headingStyleRange: "1-5" }))
     breakBeforeNext = true
   }
   // 标题编号样式：数字层级 "1 / 1.1"；章—节式 "第1章 / 1.1"（现状默认）；无编号
@@ -1030,9 +1087,9 @@ async function exportBidDocxFormatted(project: BidProjectRecord, fmt: FormatSett
         }
       }
       const isSubHeading = isRealSectionHeading(line, chapter.sections, idx + 1)
-      const isH3 = /^（[一二三四五六七八九十]+）/.test(line) && line.length <= 30 && !/[。！？；，、]$/.test(line)
-      if (!isSubHeading && !isH3 && firstBodyAt === -1) firstBodyAt = paras.length
-      paras.push(isSubHeading ? headingPara(1, line) : isH3 ? headingPara(2, line) : bodyPara(line))
+      const hLevel = contentHeadingLevel(line)
+      if (!isSubHeading && hLevel === 0 && firstBodyAt === -1) firstBodyAt = paras.length
+      paras.push(isSubHeading ? headingPara(1, line) : hLevel ? headingPara(hLevel, line) : bodyPara(line))
       li++
     }
     const figs = figsAll.filter((f) => !usedFigTitles.has(f.title))
@@ -1279,7 +1336,12 @@ function deviationCell(text: string, opts?: { bold?: boolean; width?: number }):
   })
 }
 
-/** 改造 4：独立导出技术偏离表 Word（按来源章节分组的表格：条款序号|招标要求|响应程度|响应内容摘要|响应位置） */
+/**
+ * 改造 4：独立导出技术偏离表 Word（按来源章节分组的表格：条款序号|招标要求原文|响应程度|响应内容（投标文件原文）|响应位置）
+ * R52：① 响应内容列输出**投标文件原文摘录**（deviationResponseText，存量数据自动回退旧摘要）；
+ *      ② 响应位置列在章-节编号之外补原文出处（evidence_ref），专家可回正文逐字核对；
+ *      ③ 表头摘要行写明「一一对应」核对结论（招标条款数 ↔ 响应行数），不让人自己数。
+ */
 export async function exportDeviationDocx(project: BidProjectRecord): Promise<void> {
   // 循环 6 A4：偏离表属投标文件组成部分——暗标时与正文同口径不输出页码
   const devFmt = project.format_settings ?? null
@@ -1300,6 +1362,16 @@ export async function exportDeviationDocx(project: BidProjectRecord): Promise<vo
       `拆分维度：${CLAUSE_GRANULARITY_LABEL[table.split_dim]}；总条款 ${table.rows.length} 条，完全响应 ${full} 条、部分响应 ${partial} 条、偏离 ${deviation} 条。`,
     ),
   )
+  if (table.alignment) {
+    const { clause_count, row_count, missing, duplicated } = table.alignment
+    children.push(
+      body(
+        missing.length || duplicated.length
+          ? `条款对应核对：招标要求 ${clause_count} 条、响应 ${row_count} 行；未完全对应——缺 ${missing.length} 行、重复 ${duplicated.length} 行，请回系统复核。`
+          : `条款对应核对：招标要求 ${clause_count} 条 ↔ 响应 ${row_count} 行，一一对应。响应内容均为投标文件正文原文摘录。`,
+      ),
+    )
+  }
   // 按来源章节分组导出
   const groups: { source: string; rows: DeviationRow[] }[] = []
   for (const r of table.rows) {
@@ -1317,20 +1389,24 @@ export async function exportDeviationDocx(project: BidProjectRecord): Promise<vo
             tableHeader: true,
             children: [
               deviationCell("条款序号", { bold: true, width: 9 }),
-              deviationCell("招标要求", { bold: true, width: 35 }),
-              deviationCell("响应程度", { bold: true, width: 11 }),
-              deviationCell("响应内容摘要", { bold: true, width: 29 }),
+              deviationCell("招标要求（原文）", { bold: true, width: 34 }),
+              deviationCell("响应程度", { bold: true, width: 10 }),
+              deviationCell("响应内容（投标文件原文）", { bold: true, width: 31 }),
               deviationCell("响应位置", { bold: true, width: 16 }),
             ],
           }),
           ...g.rows.map((r, ri) =>
             new TableRow({
               children: [
-                deviationCell(r.clause_id || String(ri + 1), { width: 9 }),
-                deviationCell(r.clause_text, { width: 35 }),
-                deviationCell(r.response_level ? RESPONSE_LEVEL_LABEL[r.response_level] : "待人工判定", { width: 11 }),
-                deviationCell(r.response_summary, { width: 29 }),
-                deviationCell([r.bid_ref, r.response_node].filter(Boolean).join(" "), { width: 16 }),
+                // 有招标文件原编号（5.3.2 / （一））时优先展示——专家按它对回招标文件，本表内部 id 退居括号
+                deviationCell(r.clause_no ? `${r.clause_no}（${r.clause_id || ri + 1}）` : r.clause_id || String(ri + 1), { width: 9 }),
+                deviationCell(r.clause_text, { width: 34 }),
+                deviationCell(r.response_level ? RESPONSE_LEVEL_LABEL[r.response_level] : "待人工判定", { width: 10 }),
+                deviationCell(deviationExportSummary(r), { width: 31 }),
+                deviationCell(
+                  [r.bid_ref, r.response_node, r.evidence_ref ? `原文出处：${r.evidence_ref}` : ""].filter(Boolean).join(" "),
+                  { width: 16 },
+                ),
               ],
             }),
           ),

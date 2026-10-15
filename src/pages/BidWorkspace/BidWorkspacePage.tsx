@@ -39,7 +39,6 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
         modelOptions={p.modelOptions}
         selectedModelKey={p.selectedModelKey}
         handleSelectModel={p.handleSelectModel}
-        roleHintText={p.roleHintText}
       />
 
 
@@ -308,6 +307,8 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               bidSourceMode={p.bidSourceMode}
               refMaterialsDraft={p.refMaterialsDraft}
               setRefMaterialsDraft={p.setRefMaterialsDraft}
+              setTargetPages={p.setTargetPages}
+              setSectionWords={p.setSectionWords}
             />
             <ComposeStep
               activeProject={p.activeProject}

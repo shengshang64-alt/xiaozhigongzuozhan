@@ -30,6 +30,7 @@ import {
   buildFactPatchMessages,
 } from "../bidTypes"
 import type { DupPair, DefenseQuestion } from "../bidTypes"
+import { selectBidEvidence } from "../bidVisibility"
 
 // R65 提示词搬迁第一批的防改字快照：构造器已搬至 prompts/*，bidTypes 仅 re-export；
 // 快照锁住 system+user 全文——任何一次「顺手改提示词」都会在这里现形（改字必须走 B 类流程：备份+对比+PROMPT_VERSION+1）。
@@ -52,10 +53,12 @@ describe("R65 提示词搬迁快照（prompts/* 只搬不改字）", () => {
   })
 
   it("buildVoidCheckMessages 内容与搬迁时一致", () => {
+    // R50（P0-3）：第二参数从「裸正文字符串」改为「证据包」，快照同步更新。
+    const clauses = ["1. 未按招标文件要求盖章的投标无效", "2. 投标报价超出最高限价的投标无效"]
     expect(
       buildVoidCheckMessages(
-        ["1. 未按招标文件要求盖章的投标无效", "2. 投标报价超出最高限价的投标无效"],
-        "投标文件正文示例：本项目提供五星售后服务承诺，响应时间 2 小时。",
+        clauses,
+        selectBidEvidence("投标文件正文示例：本项目提供五星售后服务承诺，响应时间 2 小时。", clauses),
         "【★实质性条款】★1 系统响应速度15分",
       ),
     ).toMatchSnapshot()
@@ -296,7 +299,8 @@ describe("R65 提示词搬迁快照（prompts/* 只搬不改字）", () => {
       buildDeviationMapMessages(
         [{ id: "R1", source: "招标第三章", text: "系统响应时间不超过 3 秒" }],
         [{ id: "n1", title: "第五章 安全设计", children: [], part: "tech" }],
-        [{ title: "第五章 安全设计", node_id: "n1", sections: [], gen_status: "done", content: "响应时间 2 秒。" }],
+        // R50（P0-3）：第三参数从「各章摘要用的 Chapter[]」改为「证据包」
+        selectBidEvidence("第五章 安全设计\n响应时间 2 秒。", [{ id: "R1", text: "系统响应时间不超过 3 秒" }]),
         "【全局事实】本项目工期：90 天",
       ),
     ).toMatchSnapshot()

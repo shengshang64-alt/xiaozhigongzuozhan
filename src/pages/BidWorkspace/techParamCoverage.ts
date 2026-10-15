@@ -1,6 +1,7 @@
 import {
   clauseMatchesTitle,
   collectLeafTitles,
+  DEVIATION_CLAUSE_SOURCES,
   extractRequirementClauses,
   techOutlineNodes,
   type DeviationTable,
@@ -106,9 +107,14 @@ export function buildTechParamCoverage(
     rows: [],
     uncoveredRows: [],
   }
-  // 全量抽取（默认上限 240，覆盖样例 116 项），拆分维度固定 l3 逐条到最小参数
+  // 全量抽取（默认上限 240，覆盖样例 116 项），拆分维度固定 l3 逐条到最小参数；
+  // 来源与偏离表同口径（只取技术文件要求），否则「已覆盖 N/M」的分母里混进评分项，与偏离表行数对不上
   const clauses: RequirementClause[] = report
-    ? extractRequirementClauses(report, { limit: opts?.limit ?? 240, granularity: "l3" })
+    ? extractRequirementClauses(report, {
+        limit: opts?.limit ?? 240,
+        granularity: "l3",
+        sources: DEVIATION_CLAUSE_SOURCES,
+      })
     : []
   if (!clauses.length) return empty
 

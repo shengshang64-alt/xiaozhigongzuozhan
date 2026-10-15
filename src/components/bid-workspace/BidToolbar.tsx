@@ -1,6 +1,5 @@
 import { ArrowLeft, LayoutGrid, Wrench } from "lucide-react"
 import { ModelSelect } from "@/components/model-config/ModelSelect"
-import { AUTO_MODEL_LABEL, isAutoModelKey } from "@/lib/modelRouting"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 
 type BidToolbarProps = Pick<
@@ -12,7 +11,6 @@ type BidToolbarProps = Pick<
   | "modelOptions"
   | "selectedModelKey"
   | "handleSelectModel"
-  | "roleHintText"
 >
 
 export function BidToolbar({
@@ -23,7 +21,6 @@ export function BidToolbar({
   modelOptions,
   selectedModelKey,
   handleSelectModel,
-  roleHintText,
 }: BidToolbarProps) {
   return (
     <div className="sticky top-14 z-30 -mx-4 -mt-4 mb-5 flex items-center gap-2 border-b border-border bg-background/85 px-4 py-2 backdrop-blur lg:-mx-6 lg:-mt-6 lg:px-6">
@@ -66,13 +63,12 @@ export function BidToolbar({
         </nav>
       )}
       <div className="ml-auto flex min-w-0 items-center gap-2">
-        {/* R47（B19）：标书工作台始终提供「自动 · 按环节智能选择」；选具体模型即关闭自动 */}
+        {/* 一个模型跑完整本标书：这里只列具体模型，不做按环节自动选型（用户裁定 2026-10-15）。
+            通道不可访问时的自动改道由 modelFailover 负责，下拉右侧会显示「冷却中」提示。 */}
         <ModelSelect
           models={modelOptions}
           valueKey={selectedModelKey}
           onChange={handleSelectModel}
-          autoOptionLabel={AUTO_MODEL_LABEL}
-          autoHint={isAutoModelKey(selectedModelKey) ? roleHintText : undefined}
         />
       </div>
     </div>

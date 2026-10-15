@@ -209,6 +209,7 @@ function OutlineNavTree({
   onFocusSection,
   doneChapterCount,
   techChapterTotal,
+  onRegenerateOutline,
 }: {
   outline: OutlineNode[]
   chapters: Chapter[]
@@ -225,10 +226,15 @@ function OutlineNavTree({
   onResizeSection: (nodeId: string, sectionIdx: number, mode: "expand" | "shrink") => void
   doneChapterCount: number
   techChapterTotal: number
+  /** 编制阶段（已有章节）的大纲重生成入口；不传则不渲染按钮（大纲未确认时的旧行为不变） */
+  onRegenerateOutline?: () => void
   generateDemo: boolean
 }) {
   // 复刻方案编制 ChapterNavTree 形态：扁平章列表 + 仅当前章展开小节 + 右侧状态图标（无徽标 / 无折叠箭头）
   // 章号/小节号按整本正文编号（商务章占前 12 章，技术章自「第13章」起），与正文标题、Word 预览、导出完全一致，按号即可查询
+  // 用户反馈（2026-10-15）：确认大纲后进入编制，这里只展开"当前章"的小节，看着像"小章节没了"。
+  // 补一个「全部展开」开关（默认关 = 原形态），需要通览整本目录时一键铺开所有章的小节。
+  const [expandAllSections, setExpandAllSections] = useState(false)
 
   const statusDot = (genStatus: Chapter["gen_status"], isActive: boolean): string => {
     if (genStatus === "done") return "bg-primary"
@@ -241,8 +247,29 @@ function OutlineNavTree({
     <aside className="flex h-full flex-col rounded-lg border border-border bg-card shadow-md">
       <div className="flex min-h-14 shrink-0 items-center justify-between border-b border-border px-4">
         <p className="text-sm font-semibold text-foreground">大纲目录</p>
-        <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
-          {doneChapterCount}/{techChapterTotal} 章
+        <span className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setExpandAllSections((v) => !v)}
+            title={expandAllSections ? "收起到只展开当前章的小节" : "展开所有章的小节，通览整本目录"}
+            className="rounded-md border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            {expandAllSections ? "只看当前章" : "全部展开"}
+          </button>
+          {onRegenerateOutline && (
+            <button
+              type="button"
+              onClick={onRegenerateOutline}
+              title="按当前生成设置重新生成大纲（会替换现有大纲，需再次确认后才重建章节清单）"
+              className="flex items-center gap-1 rounded-md border border-primary/40 px-2 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <RefreshCw className="h-3 w-3" />
+              重新生成大纲
+            </button>
+          )}
+          <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+            {doneChapterCount}/{techChapterTotal} 章
+          </span>
         </span>
       </div>
       <div className="shrink-0 px-4 pt-3">
@@ -286,7 +313,7 @@ function OutlineNavTree({
                   </>
                 )}
               </button>
-              {isActive && (ch.sections ?? []).length > 0 && (
+              {(isActive || expandAllSections) && (ch.sections ?? []).length > 0 && (
                 <ul className="ml-4 mt-0.5 border-l border-border pl-3">
                   {(ch.sections ?? []).map((sec, j) => (
                     <li
@@ -325,6 +352,9 @@ export function ComposeStep(p: ComposeStepProps) {
   const locked = p.isArchivedLocked
   // 大纲「重新生成」覆盖前的二次确认（本地 UI 状态）
   const [regenConfirmOpen, setRegenConfirmOpen] = useState(false)
+  // 用户反馈（2026-10-15）：大纲确认后进入逐章编制，大纲面板整块被条件渲染掉，想重生成大纲只能
+  // 退回解析环节。这里加一个"大纲视图开关"：编制阶段也能展开大纲编辑视图（改完再确认）。
+  const [outlineViewOpen, setOutlineViewOpen] = useState(false)
   // R294「确认大纲」清空既有正文前的二次确认：confirmOutline 是全量重建 bid_chapters
   // （content:"" + gen_status:"pending"），已生成正文的项目误点一次即清零（实测 21 个项目里
   // 12 个有正文、共 92 章 106.5 万字）。此处按「有正文才拦」的口径提示，不影响新项目一键确认。
@@ -720,7 +750,7 @@ export function ComposeStep(p: ComposeStepProps) {
         </div>
       )}
 
-      {!hasChapters ? (
+      {!hasChapters || outlineViewOpen ? (
         <div className="mt-5 grid grid-cols-1 items-start gap-4 lg:grid-cols-[2fr_3fr]">
           <div>
             {outlineReqActive && (
@@ -767,6 +797,7 @@ export function ComposeStep(p: ComposeStepProps) {
                       return
                     }
                     p.confirmOutline()
+                    setOutlineViewOpen(false) // 确认后回到逐章编制视图（编制阶段从大纲视图进来的）
                   }}
                   disabled={locked}
                   title={locked ? "已归档项目为只读" : undefined}
@@ -784,6 +815,15 @@ export function ComposeStep(p: ComposeStepProps) {
                   <RefreshCw className={`mr-1.5 h-4 w-4 ${p.outlineLoading ? "animate-spin" : ""}`} />
                   重新生成
                 </Button>
+                {hasChapters && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setOutlineViewOpen(false)}
+                    className="shrink-0 border-border text-muted-foreground hover:text-foreground"
+                  >
+                    返回逐章编制
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -1104,6 +1144,11 @@ export function ComposeStep(p: ComposeStepProps) {
                 onSelectChapter={p.selectChapter}
                 onFocusSection={p.focusSectionInChapter}
                 onRegenerateSection={p.regenerateSection}
+                onRegenerateOutline={() => {
+                  // 编制阶段的重生成：先切到大纲视图（确认弹窗后面能看到大纲），确认后按当前生成设置重跑
+                  setOutlineViewOpen(true)
+                  setRegenConfirmOpen(true)
+                }}
                 onResizeSection={p.resizeSection}
                 doneChapterCount={p.doneChapterCount}
                 techChapterTotal={p.techChapterTotal}
@@ -1362,6 +1407,8 @@ export function ComposeStep(p: ComposeStepProps) {
             <DialogTitle className="text-foreground">重新生成大纲？</DialogTitle>
             <DialogDescription>
               将沿用当前生成入口的参数重跑大纲生成，现有大纲与手动调整会被覆盖。
+              重新生成后会自动切到「大纲」视图供你核对，确认大纲后才会按新结构重建章节清单
+              （已生成正文的章节届时会再弹一次确认，不会静默清空）。
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2">
@@ -1403,6 +1450,7 @@ export function ComposeStep(p: ComposeStepProps) {
               onClick={() => {
                 setConfirmOutlineGuard(null)
                 p.confirmOutline()
+                setOutlineViewOpen(false)
               }}
               className="bg-destructive text-destructive-foreground shadow-md hover:bg-destructive/90 focus-visible:shadow-[var(--focus-ring)]"
             >

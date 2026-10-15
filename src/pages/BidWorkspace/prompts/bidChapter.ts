@@ -57,6 +57,11 @@ export type BidChapterPromptOpts = {
    */
   sealedIdentityRules?: string
   /**
+   * R54：部门售前工作规范的写作口径（bidWritingRules.writingVoiceRules() 产出；空串/缺省=不注入，
+   * prompt 与现状逐字一致）。与 sealedIdentityRules 同一条规则条位置，不新增提示词块。
+   */
+  voiceRules?: string
+  /**
    * 循环 2 批 2-1：编排定向事实块（buildDirectedFactsBlock 产出；非空时替代全量 globalFacts 注入，
    * 空串/缺省=保持全量注入，兼容未重编排的老项目）
    */
@@ -210,6 +215,12 @@ export function buildBidChapterMessages(
   // 循环 2 批 1-4：暗标身份脱敏规则条（sealed=true 时注入，零新增 LLM 调用）
   if (opts.sealedIdentityRules) {
     rules.push(`${ruleNo}. ${opts.sealedIdentityRules}`)
+    ruleNo += 1
+  }
+  // R54：部门售前工作规范的写作口径（自称/模糊参数）——与暗标身份条同一注入方式：
+  // 由 bidWritingRules.writingVoiceRules() 产出、调用方传入，缺省不注入则 prompt 与现状逐字一致
+  if (opts.voiceRules) {
+    rules.push(`${ruleNo}. ${opts.voiceRules}`)
     ruleNo += 1
   }
   // 第十七轮 17B：编制依据列示——规则句注入全部章；清单文本仅目标章携带（章级判断在调用处做）

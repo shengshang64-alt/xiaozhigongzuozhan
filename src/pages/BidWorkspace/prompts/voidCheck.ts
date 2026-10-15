@@ -1,14 +1,14 @@
-import { clipText, MAX_BID_CHARS } from "../bidTypes"
+import { BID_VISIBILITY_CONTRACT_VOID, bidEvidenceBlock, type BidEvidencePack } from "../bidVisibility"
 import type { LlmMessage } from "@/lib/llm"
 
 // ---------------------------------------------------------------------------
 // 废标自查 prompt（R65 提示词搬迁第一批，自 bidTypes.ts 原样搬迁：只搬不改字）
 // ---------------------------------------------------------------------------
 
-export const PROMPT_VERSION = 4 // 2026-10 P0-1：证据与未知态契约——结构性线索判 partial（不再自动 compliant）；无摘录依据时保留 partial，禁止改判 compliant；non_compliant 必须附 evidence
+export const PROMPT_VERSION = 5 // 2026-10 P0-3 长文可见性：素材改证据包（可见性契约 + 定向检索片段），不再静默截断 | 上一版： 2026-10 P0-1：证据与未知态契约——结构性线索判 partial（不再自动 compliant）；无摘录依据时保留 partial，禁止改判 compliant；non_compliant 必须附 evidence
 
 /** 第九轮改造 2：输出契约升级——双向定位（source_location/response_location）+ severity + suggestion + evidence */
-export function buildVoidCheckMessages(clauses: string[], bidText: string, starBlock?: string): LlmMessage[] {
+export function buildVoidCheckMessages(clauses: string[], evidence: BidEvidencePack, starBlock?: string): LlmMessage[] {
   const clauseLines = clauses.map((c, i) => `${i + 1}. ${c}`).join("\n")
   const system = [
     "你是资深开标评审专家，负责投标前的废标风险合规自查。对每条废标条款，在投标文件中查找对应响应或满足证据，并输出合规核销矩阵条目：",
@@ -29,10 +29,11 @@ export function buildVoidCheckMessages(clauses: string[], bidText: string, starB
     "检查前置定位（比对前先完成，不输出过程）：先通读投标文件整体结构，定位资质证明、业绩、授权书、报价、技术响应、服务承诺等重点材料的所在章节与附件位置，再带着该定位逐条比对；涉及材料齐全性的条款优先在其定位位置与目录/附件清单处核对，禁止只在正文局部检索后就下结论。",
     // 公司招投标培训（第一期）④电子标技能培训：公司真实废标案例补查
     "公司经验补查（电子标实际废标案例总结）：若投标文件正文出现下列硬伤，额外输出条款以「【公司经验】」开头的检查项——①模板占位文字残留（如「请填入您的内容」「复制内容后右键只保留文本」等模板指引语）；②投标金额大小写数字不符；③分项报价合计与总价不符；同样受防误报硬规则约束（必须附 evidence 原文摘录，找不到依据不得输出）；未发现问题时不必输出这些额外项。",
+    BID_VISIBILITY_CONTRACT_VOID,
     "输出严格 JSON，禁止解释文字、禁止 markdown 代码围栏，格式：",
     '{"items":[{"clause":"条款原文","source_location":"","response":"","response_location":"","status":"compliant","severity":"critical","suggestion":"","evidence":""}]}',
   ].join("\n")
-  const user = `【废标条款清单】\n${clauseLines}\n\n${starBlock && starBlock.trim() ? `${starBlock.trim()}\n\n` : ""}【投标文件正文】\n${clipText(bidText, MAX_BID_CHARS)}\n\n请逐条比对并输出 JSON。`
+  const user = `【废标条款清单】\n${clauseLines}\n\n${starBlock && starBlock.trim() ? `${starBlock.trim()}\n\n` : ""}${bidEvidenceBlock(evidence)}\n\n请逐条比对并输出 JSON。`
   return [
     { role: "system", content: system },
     { role: "user", content: user },

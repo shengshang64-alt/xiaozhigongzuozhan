@@ -28,7 +28,16 @@ import type { DraftApplySummary } from "@/pages/BidWorkspace/bidDraftPlan"
  */
 type DraftMergePanelProps = Pick<
   ReturnType<typeof useBidWorkspace>,
-  "activeProject" | "updateProject" | "isArchivedLocked" | "bidSourceMode" | "refMaterialsDraft" | "setRefMaterialsDraft"
+  | "activeProject"
+  | "updateProject"
+  | "isArchivedLocked"
+  | "bidSourceMode"
+  | "refMaterialsDraft"
+  | "setRefMaterialsDraft"
+  // 扩展目标（用户反馈 2026-10-15）：上传外部底稿后"要扩展多少"必须就地可控，
+  // 复用生成设置里同一对旋钮（目标页数 / 每小节字数），不另造一套篇幅口径
+  | "setTargetPages"
+  | "setSectionWords"
 >
 
 const ACTION_META: Record<MergeAction, { label: string; hint: string; variant: "success" | "warning" | "neutral" | "danger" }> = {
@@ -46,6 +55,8 @@ export function DraftMergePanel(p: DraftMergePanelProps) {
   const [fileName, setFileName] = useState("")
   const [drafts, setDrafts] = useState<DraftChapter[] | null>(null)
   const [plan, setPlan] = useState<DraftMergePlan | null>(null)
+  // 扩展目标提示用：本计划里"底稿没有、需按大纲生成"的章数（= 本次要扩展出来的章数）
+  const missingCount = plan?.stats.generate ?? 0
   const [appendExtras, setAppendExtras] = useState(true)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [applied, setApplied] = useState<DraftApplySummary | null>(null)
@@ -347,7 +358,47 @@ export function DraftMergePanel(p: DraftMergePanelProps) {
               </p>
             </div>
           ) : (
-            <div className="flex flex-wrap items-center gap-2">
+            <>
+            <div className="mt-3 rounded-md border border-border bg-muted/30 px-3 py-2.5">
+              <div className="flex flex-wrap items-center gap-3 text-xs">
+                <span className="font-medium text-foreground">扩展目标</span>
+                <label className="flex items-center gap-1.5">
+                  目标页数
+                  <input
+                    type="number"
+                    min={1}
+                    max={9999}
+                    value={p.activeProject?.target_pages ?? ""}
+                    placeholder="按招标文件估算"
+                    onChange={(e) => p.setTargetPages(e.target.value)}
+                    disabled={p.isArchivedLocked}
+                    className="h-7 w-24 rounded-md border border-border bg-background px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  />
+                </label>
+                <label className="flex items-center gap-1.5">
+                  每小节字数
+                  <input
+                    type="number"
+                    min={400}
+                    max={5000}
+                    step={100}
+                    value={p.activeProject?.section_words ?? ""}
+                    placeholder="默认按页数自适应"
+                    onChange={(e) => p.setSectionWords(e.target.value)}
+                    disabled={p.isArchivedLocked}
+                    className="h-7 w-24 rounded-md border border-border bg-background px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  />
+                </label>
+                {missingCount > 0 && (
+                  <span className="text-muted-foreground">待生成 {missingCount} 章将按此篇幅生成</span>
+                )}
+              </div>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                这两个值决定"扩到多少"：页数定整本篇幅与大纲叶子数（每节字数越小、节越细），生成正文时按节预算落笔。
+                底稿原文保留的章不受影响；填好后再「应用合并计划」→「逐章生成正文」。
+              </p>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               <Button size="sm" onClick={() => setConfirmOpen(true)} disabled={p.isArchivedLocked}>
                 <Sparkles className="mr-1.5 h-3.5 w-3.5" />
                 应用合并计划
@@ -356,6 +407,7 @@ export function DraftMergePanel(p: DraftMergePanelProps) {
                 仅整理章节归属与正文来源，不调用 AI、不产生费用；随时可逐章重新生成覆盖
               </span>
             </div>
+            </>
           )}
 
           {keptList}
