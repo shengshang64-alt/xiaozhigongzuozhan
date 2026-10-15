@@ -3,8 +3,8 @@
 // 背景 bug（项目13 实测 2026-10-07）：智能编排按叶选定 35 张配图，而 9 章正文全部 done 后落库配图只有
 // 14 张，缺口 21 张。机理是配图只在「小节首块」按 JSON 契约（{"content","figures"}）顺带产出，而这条契约在
 // 长文链路里很容易被吃掉：模型对 2000 字块直接返回纯文本（figures 丢失）、mermaid 源码渲染校验失败弃图、
-// 断点续跑跳过已产出小节（图随首轮丢失）——三种路径都静默丢图，而且此后再没有任何补图入口（「AI 配图生成」
-// 只管编排里 type=ai 的位图，本项目只有 3 张）。暗标技术标按招标要求需 35 张配图，缺 21 张无法交付。
+// 断点续跑跳过已产出小节（图随首轮丢失）——三种路径都静默丢图，而编排计划里选中的图落库不了就再没有补口。
+// 暗标技术标按招标要求需 35 张配图，缺 21 张无法交付。
 // 这里把「补齐」做成独立可测的纯函数层：编排计划（按叶展开，不用节级合并的那份顶指令映射，详见
 // scanOrchestratedFigures 注释）+ 已成稿正文 → 缺图清单 → 单图小请求 → 严格解析校验；执行编排在
 // useBidWorkspace.runFigureBackfill（单图单请求、小预算、关思考、解析不出即弃图不污染正文，
@@ -29,7 +29,7 @@ export const FIGURE_BACKFILL_EXCERPT_CHARS = 1200
 /** 标题命中判定的最短长度：太短的图名（如「架构图」）做包含匹配会误命中，只允许精确等值 */
 const TITLE_FUZZY_MIN_CHARS = 4
 
-/** AI 位图型不在补齐范围：它走 aigc 图像链路（「AI 配图生成」入口），不是本地结构化渲染 */
+/** ai 位图型不在补齐范围：它是外部位图通道（已下线），不是本地结构化渲染；存量编排里的 ai 型一律跳过 */
 const BACKFILLABLE_TYPES: OrchestrationFigureType[] = ["architecture", "flow", "demo", "mermaid", "gantt"]
 
 export type FigureBackfillPlan = { type: OrchestrationFigureType; title: string; caption?: string }
@@ -169,7 +169,7 @@ function scanOrchestratedFigures(
 }
 
 /**
- * 找出「编排已选中、正文里却没有落库」的配图：只统计技术章、只统计本地可渲染图型（AI 位图走生图链路），
+ * 找出「编排已选中、正文里却没有落库」的配图：只统计技术章、只统计本地可渲染图型（存量 ai 位图型跳过），
  * 同章同图名已在扫描里去重；按章—节—叶文档序返回，末尾的 limit 用于分批试跑。
  */
 export function collectFigureBackfillTargets(
@@ -191,7 +191,7 @@ export function collectFigureBackfillTargets(
 /**
  * 找出「编排选中且已经有落库配图」的图位：按章—节—叶文档序返回库内实际图名，供图位锚点落位。
  * 与 collectFigureBackfillTargets 共享同一套叶→节映射与命中口径（两处判据必须一致，否则要么
- * 重复补图、要么补了图却不落位），区别只在 type 过滤：AI 位图同样需要落位，故不限图型。
+ * 重复补图、要么补了图却不落位），区别只在 type 过滤：已落库的位图同样需要落位，故不限图型。
  */
 export function collectFigurePlacements(
   orch: BidOrchestration | null | undefined,

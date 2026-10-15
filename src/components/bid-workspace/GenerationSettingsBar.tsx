@@ -153,7 +153,7 @@ export function GenerationSettingsBar(p: GenerationSettingsBarProps) {
             ? p.maxFigures === 0
               ? "；已开启章节配图，但全文配图上限为 0（0=不配图）——请把上限调高（留空=不限）并重新编排，否则全文不会生成任何配图"
               : p.maxFigures >= FIGURES_UNLIMITED
-                ? "；已开启章节配图（上限=不限：编排判断宜图即配，均匀散布全文；AI 位图生成前另有逐张费用确认）"
+                ? "；已开启章节配图（上限=不限：编排判断宜图即配，均匀散布全文；配图为本地结构化渲染，随正文生成链路产出）"
                 : `；已开启章节配图（全文上限 ${p.maxFigures} 张，智能编排按上限全局择优）`
             : ""
         }`

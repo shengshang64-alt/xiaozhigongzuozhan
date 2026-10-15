@@ -55,15 +55,14 @@ type DeckEditorWorkspaceProps = {
   uploadSlideImage: (index: number, file: File) => void
   clearSlideImage: (index: number) => void
   applyPoolImagesToHinted: () => void
-  /** 逐页联网搜图 / AI 生图 */
+  /** 逐页联网搜图 */
   searchAndAttachImage: (index: number, query?: string, providerOverride?: ImageSearchProvider) => Promise<boolean>
-  aiGenerateImageForSlide: (index: number, promptOverride?: string) => void
   /** R-008 素材库：选图弹窗插入 + 缓存重拉 */
   attachImageFromLibrary: (index: number, materialId: string) => Promise<boolean>
   reloadLocalMaterials?: () => Promise<void>
   autoFigureProvider: ImageSearchProvider
   setAutoFigureProvider: (v: ImageSearchProvider) => void
-  slideFigureBusy: { index: number; kind: "search" | "ai" | "" }
+  slideFigureBusy: { index: number; kind: "search" | "" }
   /** R249：占位/空白页「一键补全」——空白页数、进行态、进度文案与触发 */
   blankSlideCount: number
   fillingBlank: boolean
@@ -106,7 +105,6 @@ export function DeckEditorWorkspace({
   clearSlideImage,
   applyPoolImagesToHinted,
   searchAndAttachImage,
-  aiGenerateImageForSlide,
   attachImageFromLibrary,
   reloadLocalMaterials,
   autoFigureProvider,
@@ -372,7 +370,6 @@ export function DeckEditorWorkspace({
             onClearImage={() => clearSlideImage(currentSlideIndex)}
             onApplyPoolImagesToHinted={applyPoolImagesToHinted}
             onSearchImage={(query) => searchAndAttachImage(currentSlideIndex, query)}
-            onAIGenerateImage={(prompt) => aiGenerateImageForSlide(currentSlideIndex, prompt)}
             autoFigureProvider={autoFigureProvider}
             setAutoFigureProvider={setAutoFigureProvider}
             figureBusyKind={slideFigureBusy.index === currentSlideIndex ? slideFigureBusy.kind : ""}

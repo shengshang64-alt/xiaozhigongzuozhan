@@ -7,7 +7,6 @@
 //   4) pixabay   — R-008 新增,浏览器直连 pixabay.com/api,支持中文直搜(医疗场景优先)
 // 说明:图库 API 都开启了 CORS、支持服务端渲染外的前端调用,不再新增 pb hook。
 //      下载图片字节转 dataURL 仍走既有的 /api/customers/fetch-image 代理(绕跨域/画布污染)。
-//      AI 生图不在本文件,由 callAigcAndPoll("nano-banana-pro", ...) 提供。
 //      hits 带授权链字段(pageUrl/photographer),素材库入库时 license+sourceUrl 缺一不入。
 
 export type ImageSearchProvider = "pexels" | "unsplash" | "pixabay"

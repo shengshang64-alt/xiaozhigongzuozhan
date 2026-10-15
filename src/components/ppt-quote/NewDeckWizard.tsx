@@ -33,8 +33,8 @@ type NewDeckWizardProps = {
   /** 「AI 生成 PPT」按钮旁的带入技能选择器（页面注入） */
   deckPickerSlot?: ReactNode
   /** 自动配图开关与参数 */
-  autoFigureMode: "off" | "search" | "ai" | "hybrid"
-  setAutoFigureMode: (v: "off" | "search" | "ai" | "hybrid") => void
+  autoFigureMode: "off" | "search"
+  setAutoFigureMode: (v: "off" | "search") => void
   autoFigureProvider: ImageSearchProvider
   setAutoFigureProvider: (v: ImageSearchProvider) => void
 }
@@ -263,16 +263,14 @@ export function NewDeckWizard({
                 </p>
                 <select
                   value={autoFigureMode}
-                  onChange={(e) => setAutoFigureMode(e.target.value as "off" | "search" | "ai" | "hybrid")}
+                  onChange={(e) => setAutoFigureMode(e.target.value as "off" | "search")}
                   disabled={deckGenerating}
                   className="ml-auto h-7 rounded-md border border-border bg-background px-1.5 text-[11px] text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60"
                 >
                   <option value="off">不自动（逐页手动）</option>
                   <option value="search">仅联网搜图（免费）</option>
-                  <option value="ai">仅 AI 生图（RH 扣费）</option>
-                  <option value="hybrid">先搜图，不中回退 AI</option>
                 </select>
-                {(autoFigureMode === "search" || autoFigureMode === "hybrid") ? (
+                {autoFigureMode === "search" ? (
                   <select
                     value={autoFigureProvider}
                     onChange={(e) => setAutoFigureProvider(e.target.value as ImageSearchProvider)}
@@ -288,11 +286,7 @@ export function NewDeckWizard({
               <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
                 {autoFigureMode === "off"
                   ? "默认不自动，逐页图框内部手工选图；可预先配好 API Key 后切换开关。"
-                  : autoFigureMode === "ai"
-                    ? "AI 生图走 RunningHub 上的 nano-banana-pro，会按页扣 RH 币；本地无 Key 会失败但不阻断主流程。"
-                    : autoFigureMode === "hybrid"
-                      ? "先图库搜图；命中不中时自动回退到 AI 生图（后者会扣 RH 币）。"
-                      : "仅 Pexels/Unsplash 图库。需先在逐页编辑里的 “API Key” 面板写好 Key（或写入 .env.local）；无 Key 会自动跳过。"}
+                  : "仅 Pexels/Unsplash/Pixabay 图库（素材库本地命中优先）。需先在逐页编辑里的 “API Key” 面板写好 Key（或写入 .env.local）；无 Key 会自动跳过。"}
               </p>
             </div>
             {deckGenerating && (

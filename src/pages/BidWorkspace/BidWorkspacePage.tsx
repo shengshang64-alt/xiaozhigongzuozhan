@@ -421,9 +421,6 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               pageFillBusy={p.pageFillBusy}
               startWordRefineAll={p.startWordRefineAll}
               wordRefineBusy={p.wordRefineBusy}
-              startAiFigures={p.startAiFigures}
-              aiFigureBusy={p.aiFigureBusy}
-              aiFigureProgress={p.aiFigureProgress}
               figureBackfillBusy={p.figureBackfillBusy}
               figureBackfillProgress={p.figureBackfillProgress}
               figureBackfillPending={p.figureBackfillPending}

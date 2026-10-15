@@ -24,7 +24,7 @@ export type FigureSpec =
   | { type: "demo"; title: string; sidebar?: string[]; main?: { block: string; desc?: string }[]; caption?: string }
   /** T16：mermaid 源码图（流程/层级/职责类关系图；code 经 sanitizeMermaidCode 净化与渲染校验，修复失败弃图） */
   | { type: "mermaid"; title: string; code: string; caption?: string }
-  /** T17：AI 位图（补图阶段经 RunningHub aigc 生成，url 已 persistMediaUrl 落 PocketBase；prompt 留存供重生成） */
+  /** 位图（章节内上传截图/图模板库插入；url 已 persistMediaUrl 落 PocketBase。历史数据里也可能有早期 AI 生图产出的位图） */
   | { type: "image"; title: string; url: string; prompt?: string; caption?: string }
 
 export type Chapter = {

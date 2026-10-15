@@ -12,7 +12,6 @@ import {
   PlusCircle,
   RefreshCw,
   Search,
-  Sparkles,
   Trash2,
   Upload,
   Wand2,
@@ -58,13 +57,11 @@ type SlideEditorProps = {
   onApplyPoolImagesToHinted: () => void
   /** 逐页联网搜图（默认拿本页 imageHint/标题作为 query） */
   onSearchImage?: (query?: string) => Promise<boolean>
-  /** 逐页 AI 生图（默认拿本页 imageHint/标题作为提示词） */
-  onAIGenerateImage?: (prompt?: string) => void
   /** 当前首选图搜 Provider，受控于上层 */
   autoFigureProvider?: ImageSearchProvider
   setAutoFigureProvider?: (v: ImageSearchProvider) => void
   /** 本页当前正在跑的图相关任务（逐页 busy） */
-  figureBusyKind?: "search" | "ai" | ""
+  figureBusyKind?: "search" | ""
   /** R-008：打开「从素材库选图」弹窗（弹窗由上层承载） */
   onPickFromLibrary?: () => void
 }
@@ -115,7 +112,6 @@ export function SlideEditor({
   onClearImage,
   onApplyPoolImagesToHinted,
   onSearchImage,
-  onAIGenerateImage,
   autoFigureProvider = "pexels",
   setAutoFigureProvider,
   figureBusyKind = "",
@@ -126,7 +122,7 @@ export function SlideEditor({
   // 真实配图：来源输入 + 粘贴地址输入
   const [poolSource, setPoolSource] = useState("")
   const [pastedUrl, setPastedUrl] = useState("")
-  // 逐页搜图 / AI 生图：临时关键词（默认取本页 imageHint，不传则后端自动取）
+  // 逐页搜图：临时关键词（默认取本页 imageHint，不传则后端自动取）
   const [figureQuery, setFigureQuery] = useState("")
   const [keyPanelOpen, setKeyPanelOpen] = useState(false)
   const [pexelsKeyDraft, setPexelsKeyDraft] = useState(() => getImageSearchKey("pexels"))
@@ -420,12 +416,12 @@ export function SlideEditor({
               图片经服务端代理下载后以数据内嵌，导出的 PPT 无外链、离线可看。
             </p>
 
-            {/* 联网搜图 / AI 生图 */}
+            {/* 联网搜图 / 素材库 */}
             <div className="mt-3.5 border-t border-border pt-3.5">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
                   <Camera className="h-3.5 w-3.5 text-indigo-500" />
-                  联网搜图 / AI 生图
+                  联网搜图 / 素材库
                 </p>
                 <select
                   value={autoFigureProvider}
@@ -500,18 +496,6 @@ export function SlideEditor({
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    void onAIGenerateImage?.(figureQuery.trim() || undefined)
-                  }}
-                  disabled={imageDisabled || figureBusyKind !== "" || !onAIGenerateImage}
-                  title="需已登录 RunningHub，自动消耗 RH 币；本地无 Key 会失败但不影响主流程"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                >
-                  {figureBusyKind === "ai" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                  AI 生图
-                </button>
-                <button
-                  type="button"
                   onClick={() => onPickFromLibrary?.()}
                   disabled={imageDisabled}
                   title="从素材库选图插入本页（原图内嵌导出，商用无忧）"
@@ -522,7 +506,7 @@ export function SlideEditor({
                 </button>
               </div>
               <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-                搜图命中后自动取首张，失败不阻断；AI 生图走 nano-banana-pro，失败会提示登录/余额。
+                搜图命中后自动取首张（素材库本地命中优先），失败不阻断，可逐页手动重试。
               </p>
             </div>
           </div>

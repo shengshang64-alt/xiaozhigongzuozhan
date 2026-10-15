@@ -135,7 +135,6 @@ export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
               clearSlideImage={p.clearSlideImage}
               applyPoolImagesToHinted={p.applyPoolImagesToHinted}
               searchAndAttachImage={p.searchAndAttachImage}
-              aiGenerateImageForSlide={p.aiGenerateImageForSlide}
               attachImageFromLibrary={p.attachImageFromLibrary}
               reloadLocalMaterials={p.reloadLocalMaterials}
               autoFigureProvider={p.autoFigureProvider}

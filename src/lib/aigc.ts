@@ -1,6 +1,5 @@
 import { pb, getPocketBaseUrl, pbAuthHeader } from "./pb"
 import { getAuthHeaders } from "./auth"
-import { isLocalDeployHost } from "./rhLogin"
 export async function fileToDataUrl(f: File): Promise<string> {
   return await new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -27,24 +26,13 @@ export interface AigcSubmitResponse {
 }
 
 // 兼容早期 scaffold 版 aigc.ts 的响应包络类型 (callAigc<AigcResponse<X>> 形式的存量页面代码)。
-// 新代码不需要它: 标准模型直接用 AigcSubmitResponse / callAigcAndPoll, AI 应用用 AiAppRunResponse。
+// 新代码不需要它: 标准模型直接用 AigcSubmitResponse / callAigc, AI 应用用 AiAppRunResponse。
 export interface AigcResponse<T = unknown> {
   taskId: string
   task_id?: string
   rhTaskId?: string
   results: T[]
   outputs: AigcOutput[]
-}
-
-export interface AigcPollResponse {
-  ok: boolean
-  taskId: string
-  status: "RUNNING" | "QUEUED" | "SUCCESS" | "FAILED" | "CANCEL"
-  outputs?: AigcOutput[]
-  model?: string
-  error?: string
-  message?: string
-  usage?: AigcUsage
 }
 
 // 真实扣费明细, 来自 RH /openapi/v2/query 终态响应的 usage 字段 (只在 SUCCESS/FAILED 等终态出现)。
@@ -57,119 +45,7 @@ export interface AigcUsage {
   thirdPartyConsumeMoney: string | null
 }
 
-// 价格预估响应。标准模型 endpoint 有真实单价, 通常 ok:true; AI 应用没有固定单价, RH price-preview
-// 端点未必覆盖, 失败一律 ok:false —— 调用方应隐藏价格徽标而不是报错阻塞生成按钮。
-export interface AigcPricePreview {
-  ok: boolean
-  estimatedPrice?: number
-  currency?: string
-  priceText?: string
-  freeLimit?: boolean
-  isFreeThisCall?: boolean
-  message?: string
-}
-
-// 标量参数契约 (来自 aigc_models_index.json, 经 GET /api/aigc/models 透出)。enum 存在时必须渲染成
-// select/segmented 控件且用 default 预选; required=true 的参数不允许隐藏或写死常量。
-export interface AigcScalarParam {
-  name: string
-  type?: "string" | "bool" | "number"
-  required?: boolean
-  enum?: string[]
-  default?: string | number | boolean
-}
-
-// 媒体输入契约。multiple=true 必须用 uploadAigcMediaFiles 支持多图/多文件上传 (上限 max_num),
-// 不能只做单图 uploadAigcMedia —— 图生图/图编辑类模型的 imageUrls 常见 max_num 5~10。
-export interface AigcMediaParam {
-  name: string
-  type?: "image" | "video" | "audio" | "zip"
-  required?: boolean
-  multiple?: boolean
-  max_num?: number
-  accept?: string
-  max_size?: number
-}
-
-export interface AigcModelInfo {
-  model: string
-  endpoint: string
-  output_type: "image" | "video" | "audio" | "3d" | "file"
-  primary_input?: { name: string; required?: boolean } | null
-  scalar_params?: AigcScalarParam[]
-  media_params?: AigcMediaParam[]
-}
-
-export interface AigcSuccess {
-  status: "success"
-  taskId: string
-  rhTaskId?: string
-  outputs: AigcOutput[]
-  url: string
-  model?: string
-  // 真实扣费明细 (来自 RH usage), 结果详情面板默认展示 taskId + usage.thirdPartyConsumeMoney。
-  usage?: AigcUsage
-}
-
-export interface AigcFailure {
-  status: "failed"
-  taskId?: string
-  error: string
-  /**
-   * errorKind 是稳定的英文枚举, 页面层按这个分支显示中文文案:
-   * - submit:         提交任务失败 (网络/服务器繁忙)
-   * - poll:           轮询任务状态失败 (临时上游错)
-   * - timeout:        超过 deadline 仍没出结果
-   * - aborted:        被 AbortSignal 取消
-   * - login_required: 412 / 401 SANDBOX_TOKEN_REQUIRED 等, 引导用户登录 RunningHub
-   * - insufficient_balance: RH 账户余额不足, 重试不解决, 引导充值
-   * - content_audit:  内容审核未通过 (RH 内容安全规则拦截), 重试同 prompt 也救不回, 让用户换措辞
-   * - task_failed:    其他业务失败 (上游模型推理失败 / 参数无效等)
-   */
-  errorKind:
-    | "submit"
-    | "poll"
-    | "timeout"
-    | "aborted"
-    | "login_required"
-    | "insufficient_balance"
-    | "content_audit"
-    | "task_failed"
-    /** R56：后端整条缺失（/api/aigc/* 全 404）——环境问题，必须与"未登录/余额不足"区分开 */
-    | "service_unavailable"
-    | "busy"
-  needsLogin?: boolean
-  usage?: AigcUsage
-}
-
-export type AigcResult = AigcSuccess | AigcFailure
-
 const LOGIN_REQUIRED_ZH = "请先登录 RunningHub 后再生成"
-
-const AIGC_ERROR_MESSAGES_ZH: Record<AigcFailure["errorKind"], string> = {
-  submit: "提交生成任务失败 (网络或服务器繁忙), 请稍后重试",
-  poll: "查询生成结果失败, 请稍后重试",
-  timeout: "AI 生成超时 (可能服务器繁忙), 请稍后重试",
-  aborted: "已取消",
-  login_required: LOGIN_REQUIRED_ZH,
-  insufficient_balance: "RunningHub 账户余额不足, 请充值后重试",
-  content_audit: "内容审核未通过",
-  task_failed: "生成失败, 请稍后重试或换个 prompt",
-  busy: "上一个任务还在生成中, 请等它完成后再试",
-  // R56：后端整条缺失（/api/aigc 全 404，实测本机即是）——说清是环境问题，别让用户去查账号
-  service_unavailable: "生图服务未就绪（本机未部署 aigc 服务；线上需 VibeX 网关 + aigc 服务）",
-}
-
-// callAigcAndPoll 在没有真实上游文案时会把 error 设成这些内部占位字符串 (见本文件 poll 循环),
-// 拼进 base 文案只会重复自己, 应该跳过。
-const AIGC_ERROR_PLACEHOLDER_VALUES = new Set([
-  "aborted",
-  "submit failed",
-  "poll timeout",
-  "task_failed",
-  "rh_login_required",
-  "login_required",
-])
 
 function authFailureHaystack(...parts: unknown[]): string {
   return parts
@@ -201,89 +77,6 @@ function isLoginRequiredSignal(status: number, ...parts: unknown[]): boolean {
   )
 }
 
-function loginRequiredFailure(opts?: { taskId?: string; error?: string }): AigcFailure {
-  return {
-    status: "failed",
-    taskId: opts?.taskId,
-    errorKind: "login_required",
-    error: opts?.error || "rh_login_required",
-    needsLogin: true,
-  }
-}
-
-// AigcFailure → 中文详情的默认安全格式化。对**所有** errorKind (不只 content_audit /
-// insufficient_balance) 都会把 RunningHub 返回的真实原因拼在中文文案后面, 除非它是内部占位符
-// 或者跟本地化文案完全一样。页面 hook 处理失败分支时应该直接调用这个函数, 不要自己写一份
-// errorKind 白名单去挑着拼 result.error —— 白名单漏掉的分支 (最常见就是 task_failed) 会把
-// RunningHub 的真实报错吞掉, 只剩一句通用文案, 用户看不出实际失败原因 (比如 "音频时长过短")。
-// login_required 只展示引导文案, 不拼 SANDBOX_TOKEN_REQUIRED 之类的技术码。
-export function formatAigcFailureMessage(result: AigcFailure): string {
-  const base = AIGC_ERROR_MESSAGES_ZH[result.errorKind] || "生成失败, 请重试"
-  if (result.errorKind === "login_required") return base
-  const raw = result.error
-  if (raw && !AIGC_ERROR_PLACEHOLDER_VALUES.has(raw) && raw !== base) {
-    return `${base}: ${raw}`
-  }
-  return base
-}
-
-// 一条历史任务 (来自 pb_hooks 的 /api/aigc/history, 按当前 RH 用户过滤).
-export interface AigcHistoryItem {
-  jobId: string
-  taskId: string
-  status: string // running | success | failed
-  page: string
-  prompt: string
-  resultUrl: string // 成功任务的 RH CDN URL, 失败/进行中为空串
-  errorMessage: string
-  rating: number
-  favorite: boolean
-  category: string
-  note: string
-  created: string
-  updated: string
-  // 提交时用的 RH 模型短名 (resumeAigcJob 恢复轮询时用它判断视频/音频类模型要用 30 分钟 deadline)。
-  model: string
-  // 真实扣费明细 (落库快照, 由 /jobs/<id>/poll 拿到终态时写入)。可能是空串 (usage 未知/未落库)。
-  consumeMoney: string
-  consumeCoins: string
-  taskCostTime: string
-  thirdPartyConsumeMoney: string
-}
-
-export interface AigcHistoryQuery {
-  page?: number
-  perPage?: number
-  status?: string
-  favorite?: boolean
-  category?: string
-  minRating?: number
-  sort?: "newest" | "oldest" | "rating" | "favorite"
-  signal?: AbortSignal
-}
-
-export type AigcHistoryPatch = Partial<Pick<AigcHistoryItem, "rating" | "favorite" | "category" | "note">>
-
-// 哪些模型需要 30 分钟级 deadline 而不是 8 分钟. 视频 / 音频 / 3D 这类重任务都按长跑处理.
-function _isLongRunningModel(modelName: string): boolean {
-  const m = modelName.toLowerCase()
-  return (
-    m.includes("seedance") ||
-    m.includes("sparkvideo") ||
-    m.includes("happyhorse") ||
-    m.includes("video") ||
-    m.includes("audio") ||
-    m.includes("music") ||
-    m.includes("mureka") ||
-    m.includes("song") ||
-    m.includes("3d") ||
-    m.includes("mesh") ||
-    m.includes("hunyuan3d") ||
-    m.includes("meshy") ||
-    m.includes("marble")
-  )
-}
-
 function buildHeaders(): Record<string, string> {
   // B1 沙箱域(*.apps.vibex.cn)上 getAuthHeaders() 返回 X-Vibex-Scoped-Token;
   // 老域返回空对象, 零影响。
@@ -293,95 +86,8 @@ function buildHeaders(): Record<string, string> {
   return headers
 }
 
-// 老代际后端兼容 (发布刷新契约, rh_vc_deploy 依赖 "legacyAigcRoutes" 这个标记判断
-// 本模板可以安全刷进老 app):
-// 2026-07-01 aa25af8 之前的 aigc.pb.js 注册的是按模型分路由
-// (/api/aigc/<model>/submit|jobs/{id}/poll|history...), 没有扁平路由。发布刷新
-// 只换前端 lib、不动 app 已装的 pb_hooks, 所以扁平路由 404 时自动降级到按模型
-// 路由并记住 (同一个后端只有一种代际)。新后端永远不会命中 404, 零开销。
-// upload / price-preview / models 是新代际才有的路由, 老页面代码不会调用, 不降级。
-let legacyAigcRoutes: boolean | null = null
-
-function aigcRouteUrl(flat: string, legacy: string | null): string {
-  const base = getPocketBaseUrl()
-  return `${base}${legacyAigcRoutes === true && legacy ? legacy : flat}`
-}
-
-// 探测式 fetch: 扁平路由 404 且代际未定时, 改打老代际路由重试一次并记住结果;
-// 重试仍 404 (后端两种路由都没有) 则复位探测状态并原样返回 404。
-async function fetchAigcRoute(flat: string, legacy: string | null, init: RequestInit): Promise<Response> {
-  let res = await fetch(aigcRouteUrl(flat, legacy), init)
-  if (res.status === 404 && legacyAigcRoutes === null && legacy) {
-    legacyAigcRoutes = true
-    res = await fetch(aigcRouteUrl(flat, legacy), init)
-    if (res.status === 404) legacyAigcRoutes = null
-  }
-  return res
-}
-
-function classifySubmitBusinessError(data: Partial<AigcSubmitResponse> | null, fallback = ""): AigcFailure | null {
-  const code = String(data?.errorCode || "")
-  const rawError = String(data?.error || "")
-  const message = String(data?.message || fallback || rawError || "")
-  const detailCode = String(
-    (data as { detail?: { code?: string } | string } | null)?.detail &&
-      typeof (data as { detail?: { code?: string } | string }).detail === "object"
-      ? ((data as { detail?: { code?: string } }).detail?.code || "")
-      : (data as { detail?: string } | null)?.detail || "",
-  )
-  if (isLoginRequiredSignal(0, code, rawError, message, detailCode, fallback, data)) {
-    return loginRequiredFailure({ error: "rh_login_required" })
-  }
-  const hay = `${code} ${rawError} ${message}`.toLowerCase()
-  // RH 并发上限 (421 TASK_QUEUE_MAXED / 1520): hook 已映射为 429 rh_task_queue_maxed,
-  // 老 hook 可能透传原始报文, 两种形态都识别。
-  if (
-    rawError === "rh_task_queue_maxed" ||
-    hay.includes("task_queue_maxed") ||
-    hay.includes("concurrency limit")
-  ) {
-    return { status: "failed", errorKind: "busy", error: message || "上一个任务还在生成中, 请等它完成后再试" }
-  }
-  if (
-    rawError === "rh_insufficient_balance" ||
-    code === "605" ||
-    hay.includes("insufficient") ||
-    hay.includes("balance") ||
-    hay.includes("余额") ||
-    hay.includes("点数") ||
-    hay.includes("积分")
-  ) {
-    return { status: "failed", errorKind: "insufficient_balance", error: message || "RunningHub 账户余额不足" }
-  }
-  if (
-    rawError === "rh_content_audit" ||
-    /content security audit|内容安全审查|内容审查|审核未通过|content moderation/i.test(message)
-  ) {
-    return { status: "failed", errorKind: "content_audit", error: message || "内容审核未通过" }
-  }
-  // R56（2026-10-15 实测）：生图后端整条不存在时（本机 PB 上 /api/aigc/* 全 404）必须说清是
-  // **环境缺服务**，不能落成"网络或服务器繁忙"或"请先登录 RunningHub"——后者会把环境问题
-  // 说成账号问题，用户会一直去登录/充值而查不到真因（与"保存失败，请检查网络"同类误导）。
-  if (
-    code === "404" ||
-    hay.includes("http 404") ||
-    hay.includes("file not found") ||
-    hay.includes("failed: http 404")
-  ) {
-    return {
-      status: "failed",
-      errorKind: "service_unavailable",
-      error: message || "生图服务未就绪（本机未部署 aigc 服务；线上需 VibeX 网关 + aigc 服务）",
-    }
-  }
-  if (rawError || code || message) {
-    return { status: "failed", errorKind: "submit", error: message || rawError || "submit failed" }
-  }
-  return null
-}
-
-// 单次 submit, 不 poll. 多数页面应使用 callAigcAndPoll, 它已内置 poll 循环 + 错误映射.
-// 直接用本函数的场景: 用户希望非阻塞提交后自己手工 poll (例如把 taskId 存 PB 后异步处理).
+// 单次 submit, 不 poll. 页面直接用本函数的场景: 用户希望非阻塞提交后自己手工 poll
+// (例如把 taskId 存 PB 后异步处理)。
 // 泛型默认 AigcSubmitResponse; 存量代码 callAigc<AigcResponse<X>>(...) 也兼容。
 export async function callAigc<T = AigcSubmitResponse>(path: string, body: unknown): Promise<T> {
   const base = getPocketBaseUrl()
@@ -458,9 +164,8 @@ export interface AigcUploadResponse {
 
 // upload 的老代际路由是 /api/aigc/media/upload (返回 { ok, downloadUrl }), 新代际是
 // /api/aigc/upload。发布刷新只换前端 lib、不动 app 已装的 pb_hooks, 老后端上新路由
-// 404 (真实事故: app-bcbdf4c8 老 hook + 刷新后新 lib, 上传全 404) —— 与
-// legacyAigcRoutes 同理探测降级并记住。rh_vc_deploy 依赖 "legacyAigcUploadRoute"
-// 这个标记判断本模板可以安全刷进老代际后端的 app。
+// 404 (真实事故: app-bcbdf4c8 老 hook + 刷新后新 lib, 上传全 404) —— 同理探测降级并记住。
+// rh_vc_deploy 依赖 "legacyAigcUploadRoute" 这个标记判断本模板可以安全刷进老代际后端的 app。
 let legacyAigcUploadRoute: boolean | null = null
 
 const AIGC_UPLOAD_FILE_TYPES = ["image", "audio", "video", "zip"] as const
@@ -545,263 +250,7 @@ export async function uploadAiAppMedia(
   return (await res.json()) as AiAppUploadResponse
 }
 
-// 共享 poll 循环, 被 callAigcAndPoll (提交后立即 poll) 和 resumeAigcJob (对已有 jobId 恢复 poll,
-// 例如页面挂载时接着跑 loadAigcHistory() 里状态还是 running 的任务) 复用 —— 两者的轮询/超时/错误
-// 映射语义必须完全一致, 不要各写一份容易漂移。
-// opts.rhTaskId / opts.model 只用于成功时回填 AigcSuccess.rhTaskId/model 展示字段, 不影响请求本身
-// (poll 请求只需要 jobId/taskId, 后端会自己查表拿 rh_task_id)。
-async function pollAigcToResult(
-  taskId: string,
-  opts: {
-    pollIntervalMs?: number
-    deadlineMs?: number
-    signal?: AbortSignal
-    rhTaskId?: string
-    model?: string
-  },
-): Promise<AigcResult> {
-  const defaultDeadline = _isLongRunningModel(opts.model || "") ? 30 * 60_000 : 8 * 60_000
-  const pollFlat = `/api/aigc/jobs/${encodeURIComponent(taskId)}/poll`
-  // 老代际 poll 路由带模型名; resume 场景 item.model 缺失时无法构造, 降级不可用
-  const pollLegacy = opts.model
-    ? `/api/aigc/${encodeURIComponent(opts.model)}/jobs/${encodeURIComponent(taskId)}/poll`
-    : null
-  const deadline = Date.now() + (opts.deadlineMs ?? defaultDeadline)
-  let interval = opts.pollIntervalMs ?? 2500
-
-  while (Date.now() < deadline) {
-    if (opts.signal?.aborted) {
-      return { status: "failed", taskId, errorKind: "aborted", error: "aborted" }
-    }
-    await new Promise((r) => setTimeout(r, interval))
-    interval = Math.min(interval + 500, 5000)
-
-    let pollRes: Response
-    try {
-      pollRes = await fetchAigcRoute(pollFlat, pollLegacy, {
-        method: "POST",
-        credentials: "include",
-        headers: buildHeaders(),
-        body: "{}",
-        signal: opts.signal,
-      })
-    } catch (e) {
-      const aborted = (e as { name?: string })?.name === "AbortError"
-      if (aborted) {
-        return { status: "failed", taskId, errorKind: "aborted", error: "aborted" }
-      }
-      // 网络抖动 / PB 重启窗口 → 当作 RUNNING, 继续 poll
-      continue
-    }
-
-    if (pollRes.status === 412 || pollRes.status === 401) {
-      const data = (await pollRes.json().catch(() => ({}))) as { error?: string; message?: string }
-      return loginRequiredFailure({ taskId, error: data.message || data.error || "rh_login_required" })
-    }
-    // 两种代际路由都 404 = 后端根本没有这个 poll 路由, 快速失败, 不要空转到 deadline
-    if (pollRes.status === 404) {
-      return { status: "failed", taskId, errorKind: "poll", error: "poll route not found (HTTP 404)" }
-    }
-    if (!pollRes.ok) continue // 5xx / 其它 4xx 当瞬时, 继续 poll
-
-    const data = (await pollRes.json().catch(() => ({}))) as AigcPollResponse
-    const status = String(data.status || "RUNNING").toUpperCase()
-    if (status === "SUCCESS") {
-      const outputs = data.outputs || []
-      const first = outputs.find((o) => !o.type || o.type === "image" || o.type === "video") || outputs[0]
-      return {
-        status: "success",
-        taskId,
-        rhTaskId: opts.rhTaskId,
-        outputs,
-        url: first?.url || "",
-        model: data.model || opts.model,
-        usage: data.usage,
-      }
-    }
-    if (status === "FAILED" || status === "CANCEL") {
-      const errMsg = (data.error || data.message || "task_failed") as string
-      // RH 内容审核失败的固定特征 — 重试同 prompt 救不回, 必须用 content_audit 让前端
-      // 显示"换个表达试试", 不能跟普通 poll 错混在一起
-      const isContentAudit =
-        /content security audit|内容安全审查|内容审查|审核未通过|content moderation/i.test(errMsg)
-      return {
-        status: "failed",
-        taskId,
-        errorKind: isContentAudit ? "content_audit" : "task_failed",
-        error: errMsg,
-        usage: data.usage,
-      }
-    }
-    // RUNNING / QUEUED → 继续 loop
-  }
-
-  return { status: "failed", taskId, errorKind: "timeout", error: "poll timeout" }
-}
-
-// 提交 + 自动 poll, 一次调用拿到出图 / 视频 URL. 失败 / 超时 / 412 全部返回结构化 AigcResult, **不 throw**.
-//
-// 模型代码只需要:
-//   const r = await callAigcAndPoll("nano-banana-pro", { prompt, ... })
-//   if (r.status === "success") { /* r.url, r.outputs */ } else { /* r.error, r.errorKind, r.needsLogin? */ }
-//
-// modelName: RH 模型短名 (必须在后端 ALLOWED_MODELS 中)
-//   实际请求路径: /api/aigc/submit(body.model) + /api/aigc/jobs/<taskId>/poll
-// body: 模型专属字段, 跟 rh-openapi reference 对齐.
-//   常见字段:
-//     - prompt: string (文生图必填)
-//     - aspectRatio: "1:1" | "3:4" | "16:9" 等
-//     - resolution: "1k" | "2k" | "4k"  (具体取值看 reference)
-//     - imageUrls: string[]  (图生图 / 图编辑必填, use uploadAigcMedia(file).downloadUrl or another public URL)
-//     - duration / generateAudio / ratio / realPersonMode  (视频特有, 看 seedance reference)
-//     - page: string  (推荐传页面 slug, 用于审计)
-// opts.pollIntervalMs: 默认 2500ms, 每次 +500 至 5000ms 上限
-// opts.deadlineMs: 默认 8 分钟 (image, 给 BananaPro 4k / 多参考图 + RH 队列繁忙留余量), **视频/音频/3D 模型自动延长到 30 分钟** (按 modelName 识别 seedance/sparkvideo/happyhorse/video/audio/music/3d/mesh 等)
-// opts.signal: AbortSignal, 中止时 result 为 { status: "failed", errorKind: "aborted" }
-export async function callAigcAndPoll(
-  modelName: string,
-  body: unknown,
-  opts?: { pollIntervalMs?: number; deadlineMs?: number; signal?: AbortSignal },
-): Promise<AigcResult> {
-  const submitFlat = `/api/aigc/submit`
-  const submitLegacy = `/api/aigc/${encodeURIComponent(modelName)}/submit`
-  const submitBody = { ...((body || {}) as Record<string, unknown>), model: modelName }
-
-  // submit 撞 PB 热重载窗口 (1-2 秒) 时会拿到 connection refused / 5xx,
-  // 这时不能直接 return failed (用户体验是"点生成没反应"), 等 1.5s retry, 最多 3 次.
-  // 跟 poll 阶段的 fetch throw → continue 兜底对齐.
-  let submitRes: Response | null = null
-  let lastSubmitErr = ""
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (opts?.signal?.aborted) {
-      return { status: "failed", errorKind: "aborted", error: "aborted" }
-    }
-    try {
-      const r = await fetchAigcRoute(submitFlat, submitLegacy, {
-        method: "POST",
-        credentials: "include",
-        headers: buildHeaders(),
-        body: JSON.stringify(submitBody),
-        signal: opts?.signal,
-      })
-      // 412 (登录态过期) 和 4xx (业务错) 不重试 — 重试也救不回来
-      if (r.status === 412 || (r.status >= 400 && r.status < 500)) {
-        submitRes = r
-        break
-      }
-      // 5xx → 大概率 PB 热重载窗口或上游瞬时错, 重试
-      if (!r.ok) {
-        const text = await r.text().catch(() => "")
-        lastSubmitErr = `submit HTTP ${r.status} ${text.slice(0, 200)}`
-        if (attempt < 2) {
-          await new Promise((res) => setTimeout(res, 1500))
-          continue
-        }
-        submitRes = r
-        break
-      }
-      // 2xx → 成功
-      submitRes = r
-      break
-    } catch (e) {
-      const aborted = (e as { name?: string })?.name === "AbortError"
-      if (aborted) {
-        return { status: "failed", errorKind: "aborted", error: "aborted" }
-      }
-      // 网络层错误 (connection refused / PB 进程没起 / DNS 等), 大概率 PB 热重载窗口
-      lastSubmitErr = String((e as Error)?.message || e)
-      if (attempt < 2) {
-        await new Promise((res) => setTimeout(res, 1500))
-        continue
-      }
-      return { status: "failed", errorKind: "submit", error: lastSubmitErr }
-    }
-  }
-
-  if (!submitRes) {
-    return { status: "failed", errorKind: "submit", error: lastSubmitErr || "submit failed" }
-  }
-
-  if (submitRes.status === 412 || submitRes.status === 401) {
-    const text = await submitRes.text().catch(() => "")
-    let data: { error?: string; message?: string; detail?: { code?: string } | string } = {}
-    try {
-      data = JSON.parse(text || "{}") as typeof data
-    } catch {
-      data = {}
-    }
-    if (isLoginRequiredSignal(submitRes.status, text, data, data.detail)) {
-      return loginRequiredFailure({ error: data.message || data.error || "rh_login_required" })
-    }
-  }
-  if (!submitRes.ok) {
-    const text = await submitRes.text().catch(() => "")
-    let data: Partial<AigcSubmitResponse> | null
-    try {
-      data = JSON.parse(text || "{}") as Partial<AigcSubmitResponse>
-    } catch {
-      data = null
-    }
-    if (isLoginRequiredSignal(submitRes.status, text, data)) {
-      return loginRequiredFailure({ error: "rh_login_required" })
-    }
-    const businessErr = classifySubmitBusinessError(data, text.slice(0, 200))
-    if (businessErr) return businessErr
-    return {
-      status: "failed",
-      errorKind: "submit",
-      error: `submit HTTP ${submitRes.status} ${text.slice(0, 200)}`,
-    }
-  }
-
-  const sub = (await submitRes.json()) as AigcSubmitResponse
-  const taskId = sub.taskId
-  if (!taskId) {
-    const businessErr = classifySubmitBusinessError(sub)
-    if (businessErr) return businessErr
-    return { status: "failed", errorKind: "submit", error: "submit returned no taskId" }
-  }
-
-  return pollAigcToResult(taskId, {
-    pollIntervalMs: opts?.pollIntervalMs,
-    deadlineMs: opts?.deadlineMs,
-    signal: opts?.signal,
-    rhTaskId: sub.rhTaskId,
-    model: sub.model || modelName,
-  })
-}
-
-// 恢复一个已提交、还没跑到终态的任务的 poll —— 用于页面挂载 (或用户手动点开"进行中"任务) 时,
-// 把 loadAigcHistory() 里 status === "running" 的历史项接着跑完, 而不是让它在浏览器刷新/关闭重开后
-// 就再也没人推进 (RH 那边任务其实早就跑完了, 只是没人来 poll 把结果写回 aigc_tasks)。
-//
-// 页面标准用法 (挂载时):
-//   const items = await loadAigcHistory("nano-banana-pro")
-//   const runningItems = items.filter((it) => it.status === "running")
-//   runningItems.forEach((it) => {
-//     // 先把 it 渲染成"进行中"卡片, 再后台续跑:
-//     resumeAigcJob(it).then((r) => { /* 更新这张卡片: success → url, failed → error */ })
-//   })
-//
-// 跟 callAigcAndPoll 的核心区别: 不需要重新 submit, 直接对已有 jobId 继续 poll。如果 RH 那边
-// 早已完成, 第一次 poll 就会拿到终态并顺带把 PB 记录写成 success/failed —— 不会因为"用户来晚了"
-// 就丢结果。deadline 仍按 item.model 是否为视频/音频等长任务模型选 8/30 分钟, 不是"从任务提交时刻
-// 算起还剩多久", 而是"从这次 resume 调用开始, 最多再等这么久", 所以对一个已经跑了很久的任务重新
-// resume 也不会立刻超时。
-export async function resumeAigcJob(
-  item: { jobId: string; model?: string },
-  opts?: { pollIntervalMs?: number; deadlineMs?: number; signal?: AbortSignal },
-): Promise<AigcResult> {
-  return pollAigcToResult(item.jobId, {
-    pollIntervalMs: opts?.pollIntervalMs,
-    deadlineMs: opts?.deadlineMs,
-    signal: opts?.signal,
-    model: item.model,
-  })
-}
-
-// ============ AI 应用 (rh-app) 的提交/轮询/恢复 helper, 与标准模型的 callAigcAndPoll /
-// resumeAigcJob / formatAigcFailureMessage 完全对称。页面不要自己写 while poll 循环。 ============
+// ============ AI 应用 (rh-app) 的提交/轮询/恢复 helper。页面不要自己写 while poll 循环。 ============
 
 export interface AiAppPollOpts {
   // 默认 3000ms, 与旧版 useAiAppPage 模板行为一致
@@ -902,7 +351,7 @@ export async function callAiAppAndPoll(slug: string, body: unknown, opts?: AiApp
 // 时, 把 history 里 status === "running" 的历史项接着跑完, 而不是让它在浏览器刷新/关闭重开后
 // 就再也没人推进 (RH 那边任务其实早就跑完了, 只是没人来 poll 把结果写回 aigc_tasks)。
 // 页面标准用法 (挂载时):
-//   const r = await callAiApp<{ ok: boolean; items?: AigcHistoryItem[] }>(`/api/aigc/ai-app/${SLUG}/history`, {})
+//   const r = await callAiApp<{ ok: boolean; items?: { jobId: string; status: string }[] }>(`/api/aigc/ai-app/${SLUG}/history`, {})
 //   r.items?.filter((it) => it.status === "running").forEach((it) => {
 //     // 先把 it 渲染成"进行中"卡片, 再后台续跑:
 //     resumeAiAppJob(SLUG, it).then((res) => { /* 更新这张卡片: succeeded → url, failed → error */ })
@@ -925,7 +374,7 @@ const AI_APP_ERROR_MESSAGES_ZH: Record<string, string> = {
   RH_TASK_QUEUE_MAXED: "上一个任务还在生成中, 请等它完成后再试",
 }
 
-// AiAppRunResponse 失败分支 → 中文详情的默认安全格式化, 镜像 formatAigcFailureMessage。
+// AiAppRunResponse 失败分支 → 中文详情的默认安全格式化（错误码 → 中文文案表的唯一出口）。
 // 对**所有**错误码都把 RunningHub 返回的真实原因拼在中文文案后面 (除非与基础文案重复), 不做
 // 白名单挑着拼 —— 白名单漏掉的分支会把 RH 真实报错 (如 "音频时长过短") 吞掉。
 // 页面处理失败分支时直接调用这个函数, 不要自己按 error.code 写一份映射。
@@ -944,52 +393,6 @@ export function formatAiAppFailureMessage(res: AiAppRunResponse): string {
   if (base === AI_APP_ERROR_MESSAGES_ZH.RH_LOGIN_REQUIRED) return base
   if (raw && raw !== base) return `${base}: ${raw}`
   return base
-}
-
-// 加载当前 RH 用户在该模型下的历史任务 (默认按 -created 倒序). 用于页面挂载时恢复历史:
-// 把最近一张成功结果 (status === "success" && resultUrl) 恢复到主展示区, 避免刷新后空白。
-//   const items = await loadAigcHistory("nano-banana-pro")
-//   const last = items.find((it) => it.status === "success" && it.resultUrl)
-//   if (last) setResultUrl(last.resultUrl)
-// 失败时返回 [] (不 throw), 让页面优雅降级到空历史。
-export async function loadAigcHistory(
-  modelName: string,
-  opts?: AigcHistoryQuery,
-): Promise<AigcHistoryItem[]> {
-  try {
-    const res = await fetchAigcRoute(`/api/aigc/history`, `/api/aigc/${encodeURIComponent(modelName)}/history`, {
-      method: "POST",
-      credentials: "include",
-      headers: buildHeaders(),
-      body: JSON.stringify({
-        page: opts?.page ?? 1,
-        perPage: opts?.perPage ?? 20,
-        status: opts?.status,
-        favorite: opts?.favorite,
-        category: opts?.category,
-        minRating: opts?.minRating,
-        sort: opts?.sort,
-        model: modelName,
-      }),
-      signal: opts?.signal,
-    })
-    if (!res.ok) return []
-    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; items?: AigcHistoryItem[] }
-    return Array.isArray(data.items) ? data.items : []
-  } catch {
-    return []
-  }
-}
-
-export async function listAigcModels(): Promise<AigcModelInfo[]> {
-  const res = await fetch(`${getPocketBaseUrl()}/api/aigc/models`, {
-    method: "GET",
-    credentials: "include",
-    headers: buildHeaders(),
-  })
-  if (!res.ok) return []
-  const data = (await res.json().catch(() => ({}))) as { models?: AigcModelInfo[] }
-  return Array.isArray(data.models) ? data.models : []
 }
 
 // 多图/多文件上传的标准通路 —— media_params.multiple=true 的参数 (如图生图 imageUrls) 必须走这个,
@@ -1015,54 +418,6 @@ export async function uploadAigcMediaFiles(
     ),
   )
   return results.filter((url) => !!url)
-}
-
-// 把 price-preview 响应格式化成徽标文案。RH 有时只回 estimatedPrice、不回 priceText ——
-// **禁止**页面只判断 `r.ok && r.priceText`(实测会永远落到"按实际扣费"/假"预估中")。
-// 返回 null = 本次拿不到价, View 用「按实际扣费」降级, 绝不能用「费用预估中」当失败兜底。
-export function formatAigcPricePreview(r: AigcPricePreview | null | undefined): string | null {
-  if (!r || !r.ok) return null
-  if (r.isFreeThisCall) return "本次免费"
-  const text = typeof r.priceText === "string" ? r.priceText.trim() : ""
-  if (text) return text
-  if (typeof r.estimatedPrice === "number" && Number.isFinite(r.estimatedPrice)) {
-    const currency = (r.currency || "CNY").trim() || "CNY"
-    return `约 ${r.estimatedPrice} ${currency}`
-  }
-  return null
-}
-
-// 标准模型价格预估: body 跟提交 callAigcAndPoll(modelName, body) 时完全一样的参数即可 (会自动加
-// model 字段)。**从不 throw**, 网络错误/端点不存在/模型不允许都归一成 { ok: false }。
-// 页面用法: 参数变化时设 priceLoading=true → debounce (~500ms) 调本函数 →
-// setPriceText(formatAigcPricePreview(r)) → finally priceLoading=false。
-// View 徽标三态: priceLoading?'预估中':(priceText||'按实际扣费')。绝不能因为预估失败挡住生成。
-export async function previewAigcPrice(
-  modelName: string,
-  body: unknown,
-): Promise<AigcPricePreview> {
-  // R170 (r130-price-preview-404)：本地部署 PocketBase 未挂 /api/aigc/price-preview 路由
-  // （补该端点要动 pb_hooks，受"本地部署不碰 pb_hooks"红线约束），每次 AI 生图/报价预估都会
-  // 在浏览器 console 留一条原生 404 报错，标书侧 generateAiFigures 与 PPT 侧共用本 helper，
-  // 属高频噪音。这里在本地域直接短路返回 { ok: false }，不发起 fetch——契约不变（"从不
-  // throw"、失败归一 ok:false），View 仍按既有三态降级显示"按实际扣费"，不影响真实计费
-  // 链路（实际扣费走 callAigcAndPoll，与本预估函数无关）。线上域行为完全不变。
-  if (isLocalDeployHost()) {
-    return { ok: false, message: "本地部署未挂 price-preview 端点，已跳过预估" }
-  }
-  try {
-    const base = getPocketBaseUrl()
-    const res = await fetch(`${base}/api/aigc/price-preview`, {
-      method: "POST",
-      credentials: "include",
-      headers: buildHeaders(),
-      body: JSON.stringify({ ...((body || {}) as Record<string, unknown>), model: modelName }),
-    })
-    if (!res.ok) return { ok: false, message: `HTTP ${res.status}` }
-    return (await res.json().catch(() => ({ ok: false }))) as AigcPricePreview
-  } catch (e) {
-    return { ok: false, message: String((e as Error)?.message || e) }
-  }
 }
 
 // 相对路径 → 当前 origin 绝对 URL（老代际导出, persistMediaUrl 依赖）。

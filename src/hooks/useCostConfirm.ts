@@ -1,5 +1,5 @@
 // Canonical billing-confirm wrapper. Any page that calls a paid RHAPI helper
-// (callAigcAndPoll / callAiApp(.../run) with a real charge / callLlmWithFallback with a
+// (callAiApp(.../run) with a real charge / callLlmWithFallback with a
 // paid model) must route that call through `runWithCostConfirm` returned here instead
 // of calling the paid helper directly. See vibex_billing_contract.yaml for why this
 // exact shape matters: the publish audit treats a call wrapped in
@@ -10,7 +10,7 @@
 //   const cc = useCostConfirm()
 //   const onGenerateClick = () => {
 //     cc.runWithCostConfirm(async () => {
-//       await callAigcAndPoll("demo-model", body)
+//       await callAiAppAndPoll(SLUG, runBody)
 //     }, "预计消耗约 ¥0.76，实际扣费以 RunningHub 为准")
 //   }
 //   return (

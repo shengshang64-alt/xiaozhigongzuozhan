@@ -17,7 +17,6 @@ import { useCostConfirm } from "@/hooks/useCostConfirm"
 import { useScopeSkills } from "@/hooks/useScopeSkills"
 import { injectSkillBlock, skillBlockFor, skillCostSuffix, type SkillScope } from "@/lib/skillCore"
 import { makeUid, type Chapter, type OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
-import { callAigcAndPoll, formatAigcFailureMessage, previewAigcPrice, type AigcFailure } from "@/lib/aigc"
 import {
   buildSearchQuery,
   searchImages,
@@ -466,14 +465,14 @@ export function usePptQuote() {
   // 导出页面切换动画（deck 级，导出时注入 OOXML；不持久化）
   const [deckTransition, setDeckTransition] = useState<DeckTransition>("fade")
 
-  // 真实配图自动预分配（向导开关）："off" | "search" | "ai" | "hybrid"（先搜后 AI 兜底）
-  const [autoFigureMode, setAutoFigureMode] = useState<"off" | "search" | "ai" | "hybrid">("off")
+  // 真实配图自动预分配（向导开关）："off" | "search"（只走图库搜图，本地素材库优先）
+  const [autoFigureMode, setAutoFigureMode] = useState<"off" | "search">("off")
   const [autoFigureProvider, setAutoFigureProvider] = useState<ImageSearchProvider>("pexels")
-  // 逐页预置开关：搜图/AI 生图的当页 busy 状态（0 = 闲置）
-  const [slideFigureBusy, setSlideFigureBusy] = useState<{ index: number; kind: "search" | "ai" | "" }>({ index: -1, kind: "" })
+  // 逐页预置开关：搜图的当页 busy 状态（0 = 闲置）
+  const [slideFigureBusy, setSlideFigureBusy] = useState<{ index: number; kind: "search" | "" }>({ index: -1, kind: "" })
   // TDZ 规避：`runAutoFigure` 定义在 `doGenerateDeck` 之后，deps 数组不能直接引用；
   // 用 ref 中转，定义完成后用 useEffect 同步，`doGenerateDeck` 中只读 `ref.current`。
-  const runAutoFigureRef = useRef<((mode: "off" | "search" | "ai" | "hybrid", provider: ImageSearchProvider) => Promise<void>) | null>(null)
+  const runAutoFigureRef = useRef<((mode: "off" | "search", provider: ImageSearchProvider) => Promise<void>) | null>(null)
 
   // 真实配图：从医院官网取候选图池 + 逐页插入
   const [imagePool, setImagePool] = useState<{ source: string; loading: boolean; urls: string[]; error: string }>({
@@ -1111,7 +1110,7 @@ export function usePptQuote() {
     [attachImageFromUrl],
   )
 
-  // ---------------- 逐页联网搜图 / AI 生图 ----------------
+  // ---------------- 逐页联网搜图 ----------------
 
   /** 拉取图片 URL → dataURL，失败时抛内层错信息。 */
   const urlToDataUrl = useCallback(async (url: string): Promise<string> => {
@@ -1236,72 +1235,13 @@ export function usePptQuote() {
     [autoFigureProvider, setSlideImage, urlToDataUrl, tryAttachFromLibrary],
   )
 
-  /** 单页 AI 生图（nano-banana-pro）：本地无 RH Key 会 401/412，不阻断主流程 */
-  const doAiGenerateImageForSlide = useCallback(
-    async (index: number, promptOverride?: string) => {
-      const deck = activeDeckRef.current
-      const sl = deck?.slides?.[index]
-      if (!sl) return false
-      const hint = (promptOverride || buildSearchQuery({ imageHint: sl.imageHint, title: sl.title, firstBullet: sl.bullets[0] })).trim()
-      if (!hint) {
-        toast.error("本页无可用提示词")
-        return false
-      }
-      const prompt = `医疗信息化汇报 PPT 实景配图，主题：${hint}；专业、干净、真实感，避免文字水印与多余图标，水平构图 16:9`
-      setSlideFigureBusy({ index, kind: "ai" })
-      try {
-        const r = await callAigcAndPoll("nano-banana-pro", {
-          prompt,
-          aspectRatio: "16:9",
-          page: "ppt-deck",
-        })
-        if (r.status !== "success") {
-          const msg = formatAigcFailureMessage(r as AigcFailure)
-          toast.error(msg)
-          return false
-        }
-        const url = r.url || r.outputs?.[0]?.url
-        if (!url) {
-          toast.error("AI 未返回图片 URL")
-          return false
-        }
-        const dataUrl = await urlToDataUrl(url)
-        setSlideImage(index, dataUrl, `AI · ${hint.slice(0, 24)}`)
-        toast.success("AI 生图已插入本页")
-        return true
-      } catch (e) {
-        toast.error(String((e as Error)?.message || e) || "AI 生图失败")
-        return false
-      } finally {
-        setSlideFigureBusy({ index: -1, kind: "" })
-      }
-    },
-    [setSlideImage, urlToDataUrl],
-  )
-
-  // 计费契约（useCostConfirm.ts 头注）：付费生图必须包 runWithCostConfirm。对齐标书侧
-  // AI 位图口径：先价格预估（previewAigcPrice 从不 throw），确认后再执行逐页生图。
-  const aiGenerateImageForSlide = useCallback(
-    (index: number, promptOverride?: string) => {
-      void previewAigcPrice("nano-banana-pro", { prompt: "预算预估", aspectRatio: "16:9", page: "ppt-deck" }).then((price) => {
-        const priceText = price.ok && price.message ? `，预估单价 ${price.message}` : ""
-        costConfirm.runWithCostConfirm(() => {
-          void doAiGenerateImageForSlide(index, promptOverride)
-        }, `将调用 AI 为本页生成实景配图（1 次生图调用${priceText}），实际扣费以 RunningHub 为准`)
-      })
-    },
-    [costConfirm, doAiGenerateImageForSlide],
-  )
-
   /**
    * 自动配图为当前 active deck 一切换完毕的 slides 补图：
-   *   - search: 只跑图库搜索
-   *   - ai:     只跑 AI 生图
-   *   - hybrid: 先搜图，失败回退 AI 生图
+   *   - search: 素材库本地命中优先，未命中再联网搜图
    *   失败不阻断，每页内部 catch，并发 3 路，上限 12 页。
    */
   const runAutoFigure = useCallback(
-    async (mode: "off" | "search" | "ai" | "hybrid", provider: ImageSearchProvider) => {
+    async (mode: "off" | "search", provider: ImageSearchProvider) => {
       if (mode === "off") return
       const deck = activeDeckRef.current
       if (!deck?.slides?.length) return
@@ -1321,53 +1261,32 @@ export function usePptQuote() {
           if (!t) break
           try {
             let inserted = false
-            if (mode === "search" || mode === "hybrid") {
-              // R-008 取图顺序①：先试素材库本地命中，未命中再联网搜图
-              try {
-                if (await tryAttachFromLibrary(t.i, t.s)) {
-                  inserted = true
-                  toast.success(`第 ${t.i + 1} 页已命中素材库配图`)
-                }
-              } catch {
-                /* 本地未命中 → 联网搜图 */
+            // R-008 取图顺序①：先试素材库本地命中，未命中再联网搜图
+            try {
+              if (await tryAttachFromLibrary(t.i, t.s)) {
+                inserted = true
+                toast.success(`第 ${t.i + 1} 页已命中素材库配图`)
               }
-              if (!inserted) {
-                const q = buildSearchQuery({ imageHint: t.s.imageHint, title: t.s.title, firstBullet: t.s.bullets[0] })
-                if (q) {
-                  try {
-                    const res = await searchImages(provider, q, { perPage: 4 })
-                    if (res.ok && res.hits.length) {
-                      const hit = res.hits[0]
-                      try {
-                        const dataUrl = await urlToDataUrl(hit.url)
-                        setSlideImage(t.i, dataUrl, hit.alt || `${provider} · ${q}`)
-                        inserted = true
-                      } catch {
-                        /* 代理下载失败→下面 fall back AI */
-                      }
-                    }
-                  } catch {
-                    /* search 失败 → fallback */
-                  }
-                }
-              }
+            } catch {
+              /* 本地未命中 → 联网搜图 */
             }
-            if (!inserted && (mode === "ai" || mode === "hybrid")) {
-              const hint = buildSearchQuery({ imageHint: t.s.imageHint, title: t.s.title, firstBullet: t.s.bullets[0] })
-              if (hint) {
-                const prompt = `医疗信息化汇报 PPT 实景配图，主题：${hint}；专业、干净、真实感，避免文字水印与多余图标，水平构图 16:9`
+            if (!inserted) {
+              const q = buildSearchQuery({ imageHint: t.s.imageHint, title: t.s.title, firstBullet: t.s.bullets[0] })
+              if (q) {
                 try {
-                  const r = await callAigcAndPoll("nano-banana-pro", { prompt, aspectRatio: "16:9", page: "ppt-deck" })
-                  if (r.status === "success") {
-                    const url = r.url || r.outputs?.[0]?.url
-                    if (url) {
-                      const dataUrl = await urlToDataUrl(url)
-                      setSlideImage(t.i, dataUrl, `AI · ${hint.slice(0, 24)}`)
+                  const res = await searchImages(provider, q, { perPage: 4 })
+                  if (res.ok && res.hits.length) {
+                    const hit = res.hits[0]
+                    try {
+                      const dataUrl = await urlToDataUrl(hit.url)
+                      setSlideImage(t.i, dataUrl, hit.alt || `${provider} · ${q}`)
                       inserted = true
+                    } catch {
+                      /* 代理下载失败 → 本页留空，逐页手动重试 */
                     }
                   }
                 } catch {
-                  /* AI fail → skip */
+                  /* search 失败 → 本页留空 */
                 }
               }
             }
@@ -2529,9 +2448,8 @@ export function usePptQuote() {
     clearSlideImage,
     applyPoolImagesToHinted,
     slideImageBusy,
-    // 逐页搜图 / AI 生图 / 自动配图开关
+    // 逐页搜图 / 自动配图开关
     searchAndAttachImage,
-    aiGenerateImageForSlide,
     // 素材库（R-008）：选图弹窗插入 + 缓存重拉
     attachImageFromLibrary,
     reloadLocalMaterials,

@@ -211,13 +211,13 @@ export function buildFigureSvg(spec: FigureSpec, p: FigurePalette): string {
   ].join("")
 }
 
-/** T17：AI 位图内联渲染体（<img> 加载，失败显示占位提示） */
+/** 位图内联渲染体（<img> 加载，失败显示占位提示）——图片来自章节内上传/图模板库 */
 function ImageFigureBody({ url, title }: { url: string; title: string }) {
   const [failed, setFailed] = useState(false)
   if (failed) {
     return (
       <div className="flex h-32 items-center justify-center bg-background text-xs text-muted-foreground">
-        AI 配图加载失败（「{title}」），可在章节内重试生成
+        配图加载失败（「{title}」），可在章节内重新上传替换
       </div>
     )
   }
@@ -262,7 +262,7 @@ function mermaidFigureLabel(spec: Extract<FigureSpec, { type: "mermaid" }>): str
   return spec.code.trim().startsWith("gantt") ? "甘特图" : "关系图"
 }
 
-/** 章节内配图卡片：标题 + 内联 SVG / mermaid / AI 位图 */
+/** 章节内配图卡片：标题 + 内联 SVG / mermaid / 位图 */
 export function BidFigure({ spec }: { spec: FigureSpec }) {
   const markup = useMemo(() => (spec.type === "mermaid" || spec.type === "image" ? "" : buildFigureSvg(spec, tokenPalette())), [spec])
   const typeLabel =
@@ -273,7 +273,7 @@ export function BidFigure({ spec }: { spec: FigureSpec }) {
         : spec.type === "mermaid"
           ? mermaidFigureLabel(spec)
           : spec.type === "image"
-            ? "AI 配图"
+            ? "配图"
             : "界面示意"
   return (
     <figure className="overflow-hidden rounded-lg border border-border bg-card shadow-md">

@@ -472,7 +472,7 @@ function body(text: string): Paragraph {
   })
 }
 
-/** AI 位图 URL → PNG（fetch + Blob 解码，供 docx ImageRun）；失败返回 null 走【图】标题文字降级 */
+/** 位图 URL → PNG（fetch + Blob 解码，供 docx ImageRun）；失败返回 null 走【图】标题文字降级 */
 export async function imageUrlToPng(url: string): Promise<{ data: Uint8Array; width: number; height: number } | null> {
   try {
     const res = await fetch(url, { credentials: "include" })

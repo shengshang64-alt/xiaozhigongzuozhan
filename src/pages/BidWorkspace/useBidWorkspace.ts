@@ -33,7 +33,6 @@ import { onModelMetaChange, readModelMeta } from "@/lib/modelMetaLocal"
 import { configCoolingKey, isChannelCooling, onCoolingChange } from "@/lib/modelFailover"
 import { getModelHealth, onHealthChange } from "@/lib/modelHealth"
 import { readModelChoice, readPreferredModelKey, saveModelChoice } from "@/lib/modelPrefs"
-import { resolveImageModel } from "@/lib/imageModel"
 // R180：按模型实测延迟自适应首轮预算（r177-followup 残项落地，会话内存零持久化零 collection）
 import { noteKnownGoodBudget, noteThinkingEmptyReply, observeModelCall, suggestInitialBudget } from "@/lib/latencyBudget"
 // Q28 切片F：上游 429 限流的会话内冷却闸门（并发 worker 取号错峰，见模块头注释）
@@ -682,8 +681,6 @@ import { buildScoringMaterial } from "./prompts/tenderStructure"
 import { buildWordAdjustmentMessages } from "./prompts/wordAdjust"
 import { buildMermaidRepairMessages } from "./prompts/mermaidFigure"
 import { repairMermaidCode } from "./mermaidFigure"
-import { buildAiImagePrompt, AI_IMAGE_MODEL, AI_IMAGE_PAGE } from "./prompts/aiImage"
-import { applyAiFigureToChapters, collectAiFigureTargets, leafTitleOf } from "./aiFigure"
 // Q28 切片G：编排配图补齐——缺图判定 / 单图小请求提示词 / 严格解析 / 图位锚点（纯函数层，见模块注释）
 import {
   applyFigureAnchors,
@@ -692,7 +689,7 @@ import {
   collectFigurePlacements,
   parseFigureBackfill,
 } from "./prompts/figureBackfill"
-import { callAigcAndPoll, persistMediaUrl, previewAigcPrice, uploadAigcMedia } from "@/lib/aigc"
+import { persistMediaUrl, uploadAigcMedia } from "@/lib/aigc"
 import {
   addFigureTemplate,
   figureKindFromName,
@@ -2905,7 +2902,6 @@ export function useBidWorkspace() {
                 scoringItems,
                 knowledgeCandidates: batchKnowledge.candidates,
                 mermaidEnabled: cap > 0,
-                aiImageEnabled: cap > 0,
                 figureCap: cap,
               }),
               MAX_TOKENS_LONGFORM,
@@ -2976,153 +2972,15 @@ export function useBidWorkspace() {
       () => {
         void runOrchestration()
       },
-      `AI 将为 ${leafCount} 个技术章叶子预编排正文版面（哪节宜用表格、哪节配一张架构/流程/界面示意/关系图/AI 配图），分 ${batchCount} 次调用（每次最多 ${ORCHESTRATION_BATCH_SIZE} 个叶子），配图全局择优、总数不超过 ${cap} 张，并为每节挑选本章必守事实、给出写作焦点与配图图注；编排结果只对之后的正文生成生效（格式异常时自动修复一次），${costText()}`,
+      `AI 将为 ${leafCount} 个技术章叶子预编排正文版面（哪节宜用表格、哪节配一张架构/流程/界面示意/关系图），分 ${batchCount} 次调用（每次最多 ${ORCHESTRATION_BATCH_SIZE} 个叶子），配图全局择优、总数不超过 ${cap} 张，并为每节挑选本章必守事实、给出写作焦点与配图图注；编排结果只对之后的正文生成生效（格式异常时自动修复一次），${costText()}`,
     )
   }, [costConfirm, requireLogin, runOrchestration])
-
-  // ------------------------------ T17：AI 位图补图阶段（易标 illustration-generating AI 分支移植） ------------------------------
-
-  const [aiFigureBusy, setAiFigureBusy] = useState(false)
-  const [aiFigureProgress, setAiFigureProgress] = useState<{ current: number; total: number; title: string } | null>(null)
-
-  /**
-   * AI 位图生成（独立异步阶段，绝不进小节串行生成循环）：
-   * 收集编排选中的 type=ai 配图 → 并发 2 路走 aigc 文生图（易标 prompt 口径）→ 成功后
-   * persistMediaUrl 落 PocketBase → 回填 {type:"image"} 到所在章 figures。
-   * 全程失败不阻塞正文：单图失败跳过并在收尾汇报；aigc 通道不可用/未登录/无余额给出明确提示。
-   */
-  const runAiFigures = useCallback(
-    async (): Promise<{ ok: number; failed: number; skipped: boolean }> => {
-      const cur = activeProjectRef.current
-      if (!cur) return { ok: 0, failed: 0, skipped: true }
-      const orch = cur.orchestration
-      if (!orch) {
-        toast.error("请先完成智能编排（编排中把具象场景节标记为「AI 配图」），再生成 AI 位图")
-        return { ok: 0, failed: 0, skipped: true }
-      }
-      const targets = collectAiFigureTargets(orch, cur.bid_outline)
-      if (!targets.length) {
-        toast.info("编排里没有选中的「AI 配图」——智能编排会只为具象场景节（机房/数据中心/现场实施等）标记 AI 配图；可重新编排或先用架构/流程/mermaid 图型")
-        return { ok: 0, failed: 0, skipped: true }
-      }
-      setAiFigureBusy(true)
-      let ok = 0
-      let failed = 0
-      const done: { chapterNodeId: string; figure: FigureSpec }[] = []
-      try {
-        // 并发 2 路（对齐 aigc 生图默认并发约束），单图失败跳过不拖垮批次
-        const queue = [...targets]
-        const worker = async (): Promise<void> => {
-          for (;;) {
-            const target = queue.shift()
-            if (!target) return
-            if (cancelBulkRef.current) return
-            const leafTitle = leafTitleOf(cur.bid_outline, target.nodeId)
-            setAiFigureProgress({ current: targets.length - queue.length, total: targets.length, title: target.title })
-            const chapter = cur.bid_chapters.find((c) => c.node_id === target.chapterNodeId)
-            const prompt = buildAiImagePrompt({
-              title: target.title,
-              caption: target.caption,
-              scene: target.scene || leafTitle,
-              style: target.style,
-              sectionText: chapter?.content ?? "",
-            })
-            try {
-              // R56：生图模型走「账号级覆盖 → 全局默认」的唯一入口（此前硬编码 AI_IMAGE_MODEL）
-              const r = await callAigcAndPoll(resolveImageModel(userId).model, { prompt, aspectRatio: "16:9", page: AI_IMAGE_PAGE })
-              if (r.status !== "success") {
-                failed += 1
-                continue
-              }
-              const rawUrl = r.url || r.outputs?.[0]?.url
-              if (!rawUrl) {
-                failed += 1
-                continue
-              }
-              // 外链落地 PB（失败返回原 URL 不阻塞），回填 image 型 FigureSpec
-              const url = await persistMediaUrl(rawUrl, "bid-ai-figure")
-              done.push({
-                chapterNodeId: target.chapterNodeId,
-                figure: {
-                  type: "image",
-                  title: target.title,
-                  url,
-                  prompt,
-                  ...(target.caption ? { caption: target.caption } : {}),
-                },
-              })
-              ok += 1
-            } catch {
-              failed += 1
-            }
-          }
-        }
-        await Promise.all([worker(), worker()])
-        // 统一落库（按章聚合，一次 updateChapter 一章）
-        const byNode = applyAiFigureToChapters(
-          activeProjectRef.current?.bid_chapters ?? [],
-          done,
-        )
-        for (const [nodeId, figures] of byNode) {
-          updateChapter(nodeId, { figures })
-        }
-        if (ok > 0) {
-          writeStageSnapshot("chapter", `AI 位图生成：${ok} 张`, {})
-        }
-        return { ok, failed, skipped: false }
-      } finally {
-        setAiFigureBusy(false)
-        setAiFigureProgress(null)
-      }
-    },
-    [updateChapter, writeStageSnapshot],
-  )
-
-  /** 手动入口：AI 位图生成（费用确认 + 单价预估；aigc 未登录/无余额的错误在结果里给中文提示） */
-  const startAiFigures = useCallback(() => {
-    if (!requireLogin()) return
-    if (blockIfArchived()) return
-    const cur = activeProjectRef.current
-    if (!cur) return
-    if (bulkGeneratingRef.current) {
-      toast.error("批量生成进行中，请先停止批量或等待其完成，再生成 AI 位图")
-      return
-    }
-    if (!cur.orchestration) {
-      toast.error("请先完成智能编排，再生成 AI 位图")
-      return
-    }
-    const targetCount = collectAiFigureTargets(cur.orchestration, cur.bid_outline).length
-    if (!targetCount) {
-      // 配图上限为 0 时编排必然选不中任何配图——给出可操作的指引，而不是让用户误以为编排漏标
-      toast.info(
-        cur.figures_enabled && maxFigures === 0
-          ? "全文配图上限为 0（0=不配图），编排不会选中任何配图：请在「生成设置 → 全文配图上限」调高（留空=不限），重新编排后再生成配图"
-          : "编排里没有选中的「AI 配图」；智能编排只为具象场景节标记 AI 配图，可重新编排",
-      )
-      return
-    }
-    void previewAigcPrice(AI_IMAGE_MODEL, { prompt: "预算预估", aspectRatio: "16:9", page: AI_IMAGE_PAGE }).then((price) => {
-      const priceText = price.ok && price.message ? `，预估单价 ${price.message}` : ""
-      costConfirm.runWithCostConfirm(() => {
-        setAiFigureBusy(true)
-        void runAiFigures()
-          .then((r) => {
-            if (r.skipped) return
-            if (r.ok > 0) toast.success(`AI 位图生成完成：成功 ${r.ok} 张${r.failed ? `、失败 ${r.failed} 张（可重试补齐）` : ""}，已插入对应章节`)
-            else toast.error("AI 位图全部生成失败——请检查 RunningHub 登录态与余额后重试")
-          })
-          .catch((e) => handleLlmError(e, "AI 位图生成失败"))
-          .finally(() => setAiFigureBusy(false))
-      }, `将为编排选中的 ${targetCount} 处具象场景生成 AI 配图（工程图示/实景照片风格，16:9，生成后自动插入对应章节，约 ${targetCount} 次生图调用${priceText}），生成失败不阻塞正文，${costText()}`)
-    })
-  }, [blockIfArchived, costConfirm, handleLlmError, maxFigures, requireLogin, runAiFigures])
 
   // ------------------------------ Q28 切片G：编排配图补齐（figure backfill + 图位落位） ------------------------------
   // 实测缺陷（项目13 / 2026-10-07）：智能编排选定 35 张配图覆盖 27 个小节，9 章正文全部 done 后库里只有 14 张。
   // 机理是配图只随「小节首块」的 JSON 契约（{"content","figures"}）顺带产出：模型对 2000 字块直接返纯文本
   // （figures 键丢失）、mermaid 渲染校验失败弃图、断点续跑跳过已产出小节（图随首轮丢失）三条路都静默丢图，
-  // 而产品侧此前唯一的补图入口「AI 配图生成」只覆盖编排里 type=ai 的位图（本项目 3 张），结构化图根本没有补口。
+  // 而产品侧此前没有独立补图入口，结构化图丢了就再也补不回来。
   // 这里补上独立后置阶段：按编排计划逐张发「千字摘录 + 单图 JSON 契约」的小请求，解析不出合法图即弃图
   // （宁缺毋滥——坏 mermaid 进暗标是废标风险），并把每张图按其小节写回图位锚点行，让导出的 Word 不再把
   // 一章 3-5 张图全挤在章首（bidFiles 早就支持「【图：标题】」按标题精确插位，但生成链路从未写过这种行）。
@@ -4955,7 +4813,7 @@ export function useBidWorkspace() {
       }
       setFigureUploadBusy(true)
       try {
-        // 外链落地 PB（已落地的 URL 原样返回），与 AI 位图同一条持久化链路
+        // 外链落地 PB（已落地的 URL 原样返回）
         const landed = await persistMediaUrl(url, "bid-figure-upload")
         const titleClean = title.trim().slice(0, 40) || "章节插图"
         const figure: FigureSpec = { type: "image", title: titleClean, url: landed }
@@ -9475,9 +9333,6 @@ export function useBidWorkspace() {
     wordRefineState,
     startWordRefineAll,
     startWordRefineChapter,
-    aiFigureBusy,
-    aiFigureProgress,
-    startAiFigures,
     // Q28 切片G：编排配图补齐
     figureBackfillBusy,
     figureBackfillProgress,

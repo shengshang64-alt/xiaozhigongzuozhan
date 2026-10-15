@@ -146,9 +146,6 @@ type ComposeStepProps = Pick<
   | "wordRefineBusy"
   | "setWordRefine"
   | "setAutoConsistencyAudit"
-  | "startAiFigures"
-  | "aiFigureBusy"
-  | "aiFigureProgress"
   | "figureBackfillBusy"
   | "figureBackfillProgress"
   | "figureBackfillPending"
@@ -645,32 +642,8 @@ export function ComposeStep(p: ComposeStepProps) {
                 {p.wordRefineBusy ? "精调中…" : "字数精调"}
               </Button>
             )}
-            {/* T17：AI 位图生成（易标 illustration AI 分支移植）——独立异步补图阶段，生成成功自动插入对应章节 */}
-            {p.doneChapterCount > 0 && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={p.aiFigureBusy || locked || p.bulkGenerating}
-                title={
-                  locked
-                    ? "已归档项目为只读"
-                    : p.aiFigureProgress
-                      ? `正在生成第 ${p.aiFigureProgress.current}/${p.aiFigureProgress.total} 张：${p.aiFigureProgress.title}`
-                      : "为编排选中的具象场景节生成 AI 配图（工程图示/实景照片），生成后自动插入对应章节"
-                }
-                onClick={p.startAiFigures}
-                className="h-7 border-primary/40 text-primary hover:bg-primary/10"
-              >
-                {p.aiFigureBusy ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Wand2 className="mr-1.5 h-3.5 w-3.5" />}
-                {p.aiFigureBusy
-                  ? p.aiFigureProgress
-                    ? `AI 配图 ${p.aiFigureProgress.current}/${p.aiFigureProgress.total}…`
-                    : "AI 配图生成中…"
-                  : "AI 配图生成"}
-              </Button>
-            )}
             {/* Q28 切片G：编排配图补齐——正文链路只在小节首块按 JSON 契约顺带出图，纯文本回复/mermaid 弃图/续跑跳过都会静默丢图，
-                而「AI 配图生成」只管编排里的位图，结构化图此前没有任何补口（项目13 实测编排 35 张、落库 14 张） */}
+                补齐入口按编排计划逐张补出结构化图（项目13 实测编排 35 张、落库 14 张） */}
             {p.doneChapterCount > 0 && (
               <Button
                 size="sm"
