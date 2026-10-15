@@ -33,6 +33,7 @@ import { onModelMetaChange, readModelMeta } from "@/lib/modelMetaLocal"
 import { configCoolingKey, isChannelCooling, onCoolingChange } from "@/lib/modelFailover"
 import { getModelHealth, onHealthChange } from "@/lib/modelHealth"
 import { readModelChoice, readPreferredModelKey, saveModelChoice } from "@/lib/modelPrefs"
+import { resolveImageModel } from "@/lib/imageModel"
 // R180：按模型实测延迟自适应首轮预算（r177-followup 残项落地，会话内存零持久化零 collection）
 import { noteKnownGoodBudget, noteThinkingEmptyReply, observeModelCall, suggestInitialBudget } from "@/lib/latencyBudget"
 // Q28 切片F：上游 429 限流的会话内冷却闸门（并发 worker 取号错峰，见模块头注释）
@@ -3027,7 +3028,8 @@ export function useBidWorkspace() {
               sectionText: chapter?.content ?? "",
             })
             try {
-              const r = await callAigcAndPoll(AI_IMAGE_MODEL, { prompt, aspectRatio: "16:9", page: AI_IMAGE_PAGE })
+              // R56：生图模型走「账号级覆盖 → 全局默认」的唯一入口（此前硬编码 AI_IMAGE_MODEL）
+              const r = await callAigcAndPoll(resolveImageModel(userId).model, { prompt, aspectRatio: "16:9", page: AI_IMAGE_PAGE })
               if (r.status !== "success") {
                 failed += 1
                 continue
