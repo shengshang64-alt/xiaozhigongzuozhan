@@ -25,6 +25,8 @@ import {
   type StandardItem,
 } from "@/pages/BidWorkspace/bidTypes"
 import { COVERAGE_WARN, coveragePercent, parseCoverageRatio } from "@/pages/BidWorkspace/parseCoverage"
+import { buildParseSummary, summarizeParseHealth } from "@/pages/BidWorkspace/parseSummary"
+import { ParseSummaryBoard } from "./ParseSummaryBoard"
 import { countMarkerLossLines, lineHasMarkerLoss } from "@/pages/BidWorkspace/materialIntegrity"
 import { chatViaGateway, type ModelRef } from "@/lib/modelGateway"
 import type { ModelRole } from "@/lib/modelRouting"
@@ -164,6 +166,11 @@ function renderDetailLine(line: string, isStar: boolean): ReactNode {
 export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, skillPickerSlot, tenderText, warnings, onRescanStar, basisMerged, onOpenStandardsPicker, runWithCostConfirm, archived, modelRefForRole }: ParseReportPanelProps) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
+  // R56（对标喜鹊解析首屏）：默认三栏摘要（基本信息/评分要求/招标需求），
+  // 「全部解析项」切回原有清单+明细——21 项的逐条能力一点不丢，只是不再压在第一屏。
+  const [view, setView] = useState<"summary" | "detail">("summary")
+  const summaryColumns = useMemo(() => buildParseSummary(report), [report])
+  const parseHealth = useMemo(() => summarizeParseHealth(report), [report])
   // 用户反馈轮：完整解析报告默认只看关键项（关键项 + 重点条款），可一键展开全部项
   const [keyOnly, setKeyOnly] = useState(false)
   // Q26 切片A：降级分区原文默认折叠（节选前若干行），按项 key 记忆展开态，防 2 万字碎片铺满列表
@@ -461,6 +468,34 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
         </p>
       </div>
     )}
+    {/* R56：视图切换——首屏三栏摘要，可切回「全部解析项」明细（21 项能力一点不丢） */}
+    <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div className="flex gap-1.5">
+        {([["summary", "三栏摘要"], ["detail", "全部解析项"]] as const).map(([v, label]) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => setView(v)}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+              view === v ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted text-muted-foreground hover:text-card-foreground"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <span className="text-xs text-muted-foreground">{parseHealth.text}</span>
+    </div>
+    {view === "summary" ? (
+      <ParseSummaryBoard
+        columns={summaryColumns}
+        onOpen={(key) => {
+          setSelectedKey(key)
+          setView("detail")
+        }}
+      />
+    ) : (
+      <>
     <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[300px_1fr]">
       <aside className="flex max-h-[calc(100vh-320px)] min-h-[560px] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-md">
         <header className="flex min-h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3">
@@ -1033,6 +1068,8 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
           </ul>
         </div>
       </section>
+    )}
+      </>
     )}
     </>
   )
