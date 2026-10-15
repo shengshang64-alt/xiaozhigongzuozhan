@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import { decodeRhToken, type RhAccountInfo } from "@/lib/rhLogin"
-import { pbJsonRequest } from "@/lib/pbJson"
+import { pbJsonRequest, saveFailureReason } from "@/lib/pbJson"
 import { extractJsonCandidate } from "@/lib/jsonTolerant"
 import { formatDateTimeDisplay } from "@/lib/dateDisplay"
 import type { LlmMessage } from "@/lib/llm"
@@ -1794,9 +1794,10 @@ export function useBidWorkspace() {
         if (autoSaveResetRef.current) window.clearTimeout(autoSaveResetRef.current)
         autoSaveResetRef.current = window.setTimeout(() => setAutoSaveState("idle"), 2000)
       }
-    } catch {
+    } catch (e) {
       if (quiet) setAutoSaveState("idle")
-      if (!quiet) toast.error("保存失败，请检查网络后重试")
+      // R56：带服务端真实原因（1MB 上限事故就是被"请检查网络"吞掉后才拖了一整天）
+      if (!quiet) toast.error(`保存失败：${saveFailureReason(e)}（内容未落库，请勿刷新）`)
     } finally {
       if (persistChain.get(rec.id) === run) persistChain.delete(rec.id)
     }
@@ -1988,8 +1989,10 @@ export function useBidWorkspace() {
   const persistProjectById = useCallback(async (projectId: string, patch: Partial<BidProjectRecord>, quiet = false) => {
     try {
       await apiFetch(`/api/bid_projects/${projectId}`, { method: "PATCH", body: JSON.stringify(patch) })
-    } catch {
-      if (!quiet) toast.error("保存失败，请检查网络后重试")
+    } catch (e) {
+      // R56：带上服务端真实原因（pbJsonRequest 已保真，如「HTTP 400 · bid_chapters: The maximum
+      // allowed JSON size is …」），并明确「内容未落库」——旧文案"请检查网络"会诱导用户刷新丢内容
+      if (!quiet) toast.error(`保存失败：${saveFailureReason(e)}（内容未落库，请勿刷新）`)
     }
   }, [])
 
