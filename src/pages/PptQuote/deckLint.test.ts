@@ -213,3 +213,42 @@ describe("groupIssuesByPage（R166 编辑期常驻自检的页级聚合）", () 
     expect(groupIssuesByPage([]).size).toBe(0)
   })
 })
+
+// R56（2026-10-15 用户反馈「PPT 不能画图」实测驱动）：结构化图示覆盖按比例自检。
+// 实测触发场景：真实 deck 7 页里只有 1 页带架构图——旧规则只在 visualPages===0 时报，
+// 这种"有图但极少"的状况既不提示也不修，用户体感就是"不能画图"。
+describe("lintDeck · 结构化图示覆盖不足（R56）", () => {
+  const fig = (title: string): Slide =>
+    mk({
+      title,
+      bullets: ["要点"],
+      figures: [{ type: "architecture", title: "系统架构", layers: [{ name: "接入层", modules: ["网关"] }] } as NonNullable<Slide["figures"]>[number]],
+    })
+
+  it("7 页仅 1 页带结构图 → 报 few_figures（真实 deck 的形状）", () => {
+    const deck = [
+      fig("一体化平台消除数据孤岛"),
+      ...Array.from({ length: 6 }, (_, i) => mk({ title: `结论${i}`, bullets: ["要点一二"] })),
+    ]
+    const hit = find(lintDeck(deck), "few_figures")
+    expect(hit?.level).toBe("warn")
+    expect(hit?.msg).toContain("1 页带结构图")
+  })
+
+  it("覆盖达标（4 页 2 图 = 1/3）不报；少于 4 页不参与判定", () => {
+    const ok = [fig("架构"), fig("流程"), mk({ title: "结论一", bullets: ["要点"] }), mk({ title: "结论二", bullets: ["要点"] })]
+    expect(find(lintDeck(ok), "few_figures")).toBeUndefined()
+    const tiny = [fig("架构"), mk({ title: "结论", bullets: ["要点"] })]
+    expect(find(lintDeck(tiny), "few_figures")).toBeUndefined()
+  })
+
+  it("chart/kpi 不计入图示覆盖（口径分开：那两类是数据可视与找图，另有规则）", () => {
+    const deck = [
+      mk({ title: "营收", bullets: ["要点"], chart: { type: "bar", categories: ["Q1"], series: [{ data: [1] }] } as Slide["chart"] }),
+      mk({ title: "指标", bullets: ["要点"], kpi: [{ label: "覆盖", value: "12" }] as Slide["kpi"] }),
+      mk({ title: "结论一", bullets: ["要点"] }),
+      mk({ title: "结论二", bullets: ["要点"] }),
+    ]
+    expect(find(lintDeck(deck), "few_figures")).toBeTruthy()
+  })
+})

@@ -71,6 +71,12 @@ export function lintDeck(slides: Slide[]): DeckLintIssue[] {
 
   let visualPages = 0
   let imagePages = 0
+  // R56（2026-10-15 用户反馈「PPT 不能画图」实测驱动）：结构化图示页数单独统计。
+  // 旧规则只在 visualPages === 0 时报「纯文字」——真实 deck 7 页里有 1 页带架构图就不触发，
+  // 于是「7 页只有 1 页图」这种状况既不提示也不修，用户翻到没图的页体感就是"不能画图"。
+  // 只数 figures（架构/流程/界面示意——**系统可自动绘制**、补图零素材成本），
+  // 刻意不与 chart/kpi（数据可视）和 imageHint（要找图）混口径：那两类另有规则。
+  let figurePages = 0
   // R277：模板/占位残留问题单独收集，最终优先展示（导出即漏脸级别，比结构告警更该先看到）
   const placeholderIssues: DeckLintIssue[] = []
 
@@ -81,6 +87,7 @@ export function lintDeck(slides: Slide[]): DeckLintIssue[] {
     const hasImage = isImageBearing(s)
     if (hasVisual) visualPages += 1
     if (hasImage) imagePages += 1
+    if ((s.figures?.length ?? 0) > 0) figurePages += 1
 
     // 1) 空页：既无要点又无图表/KPI/配图
     if (!bullets.length && !hasVisual && !hasImage && (s.layout ?? "auto") !== "section") {
@@ -160,6 +167,16 @@ export function lintDeck(slides: Slide[]): DeckLintIssue[] {
   // 6) 整份层面：图文并茂占比不足（呼应 Anthropic「别让 PPT 只有一堆文字框」）
   if (slides.length >= 4 && visualPages === 0) {
     issues.push({ level: "warn", page: 0, code: "no_visual", msg: "整份没有图表/KPI 页，纯文字观感偏弱，可让 AI 补数据可视化页" })
+  }
+  // 6b) R56：结构化图示覆盖不足——按比例报，不再只看"完全没有"。
+  // 阈值 1/3：4 页至少 2 页、7 页至少 3 页有结构图；这类图**系统能自己画**，是最该补的一类。
+  if (slides.length >= 4 && figurePages < Math.ceil(slides.length / 3)) {
+    issues.push({
+      level: "warn",
+      page: 0,
+      code: "few_figures",
+      msg: `整册 ${slides.length} 页里只有 ${figurePages} 页带结构图（架构/流程/界面示意）——系统可自动绘制，建议对讲架构与流程的页补图`,
+    })
   }
   if (slides.length >= 6 && imagePages === 0) {
     issues.push({ level: "info", page: 0, code: "no_image", msg: "整份没有配图页，可从素材库选图（优先）或用「一键配图」补 1-2 张真实场景图" })
