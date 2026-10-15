@@ -135,6 +135,8 @@ export interface AigcFailure {
     | "insufficient_balance"
     | "content_audit"
     | "task_failed"
+    /** R56：后端整条缺失（/api/aigc/* 全 404）——环境问题，必须与"未登录/余额不足"区分开 */
+    | "service_unavailable"
     | "busy"
   needsLogin?: boolean
   usage?: AigcUsage
@@ -154,6 +156,8 @@ const AIGC_ERROR_MESSAGES_ZH: Record<AigcFailure["errorKind"], string> = {
   content_audit: "内容审核未通过",
   task_failed: "生成失败, 请稍后重试或换个 prompt",
   busy: "上一个任务还在生成中, 请等它完成后再试",
+  // R56：后端整条缺失（/api/aigc 全 404，实测本机即是）——说清是环境问题，别让用户去查账号
+  service_unavailable: "生图服务未就绪（本机未部署 aigc 服务；线上需 VibeX 网关 + aigc 服务）",
 }
 
 // callAigcAndPoll 在没有真实上游文案时会把 error 设成这些内部占位字符串 (见本文件 poll 循环),
@@ -354,6 +358,21 @@ function classifySubmitBusinessError(data: Partial<AigcSubmitResponse> | null, f
     /content security audit|内容安全审查|内容审查|审核未通过|content moderation/i.test(message)
   ) {
     return { status: "failed", errorKind: "content_audit", error: message || "内容审核未通过" }
+  }
+  // R56（2026-10-15 实测）：生图后端整条不存在时（本机 PB 上 /api/aigc/* 全 404）必须说清是
+  // **环境缺服务**，不能落成"网络或服务器繁忙"或"请先登录 RunningHub"——后者会把环境问题
+  // 说成账号问题，用户会一直去登录/充值而查不到真因（与"保存失败，请检查网络"同类误导）。
+  if (
+    code === "404" ||
+    hay.includes("http 404") ||
+    hay.includes("file not found") ||
+    hay.includes("failed: http 404")
+  ) {
+    return {
+      status: "failed",
+      errorKind: "service_unavailable",
+      error: message || "生图服务未就绪（本机未部署 aigc 服务；线上需 VibeX 网关 + aigc 服务）",
+    }
   }
   if (rawError || code || message) {
     return { status: "failed", errorKind: "submit", error: message || rawError || "submit failed" }
