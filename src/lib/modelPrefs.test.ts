@@ -1,13 +1,17 @@
 import { beforeEach, describe, expect, it } from "vitest"
 import {
+  clearModelChoice,
   clearPreferredModel,
   normalizeModelKey,
+  readModelChoice,
+  saveModelChoice,
   pickPreferredModelRef,
   readPreferredModelKey,
   rememberUsedModel,
   resolvePreferredRef,
 } from "@/lib/modelPrefs"
 import type { ModelRef } from "@/lib/modelGateway"
+import { AUTO_MODEL_KEY } from "@/lib/modelRouting"
 
 // R216 缺陷修复配套测试：锁死「选 A 调 B」静默路由错乱的修复口径。
 // 回归价值：一旦有人把偏好优先级改回「数组第一个」，本文件立即变红。
@@ -58,6 +62,8 @@ beforeEach(() => {
   // 每个用例从干净状态起步，防止用例间通过 localStorage 互相污染
   clearPreferredModel(USER)
   clearPreferredModel(OTHER_USER)
+  clearModelChoice(USER)
+  clearModelChoice(OTHER_USER)
 })
 
 describe("normalizeModelKey", () => {
@@ -239,5 +245,44 @@ describe("跨模块闭环：记忆 → 解析 → 成为默认（复现原缺陷
     // 断言：默认落在用户真正用过的 sensenova，而不是数组第一条 bailing
     expect(defaultRef?.configId).toBe("cfgBig")
     expect(defaultRef?.modelId).toBe("sensenova-6.8-flash-lite")
+  })
+})
+// R-latest（用户反馈）：默认模型不能再是「系统按环节自动挑」——用户显式选择优先级最高，
+// 且连「自动」档也照记（用户点了自动就是明确想要自动，不能被系统改回去）。
+// 回归价值：一旦有人把默认值改回 AUTO_MODEL_KEY，或让显式选择被「成功用过」覆盖，本段立即变红。
+describe("显式选择记忆（用户选谁就用谁）", () => {
+  it("存读往返：记个人模型键", () => {
+    saveModelChoice(USER, "personal:cfg1:model-a")
+    expect(readModelChoice(USER)).toBe("personal:cfg1:model-a")
+  })
+
+  it("用户点过「自动」档也照记（不能被系统改回别的）", () => {
+    saveModelChoice(USER, AUTO_MODEL_KEY)
+    expect(readModelChoice(USER)).toBe(AUTO_MODEL_KEY)
+  })
+
+  it("非法键不写入；脏数据读出为 null", () => {
+    saveModelChoice(USER, "不是合法键")
+    expect(readModelChoice(USER)).toBeNull()
+    seedRaw(`xz_model_choice:${USER}`, "personal:only-two-parts")
+    expect(readModelChoice(USER)).toBeNull()
+    seedRaw(`xz_model_choice:${USER}`, "垃圾值")
+    expect(readModelChoice(USER)).toBeNull()
+  })
+
+  it("与「成功用过」互不覆盖：清了显式选择仍保留使用历史", () => {
+    rememberUsedModel(USER, "personal:cfg1:model-a")
+    saveModelChoice(USER, "personal:cfg2:model-b")
+    expect(readModelChoice(USER)).toBe("personal:cfg2:model-b")
+    expect(readPreferredModelKey(USER)).toBe("personal:cfg1:model-a")
+
+    clearModelChoice(USER)
+    expect(readModelChoice(USER)).toBeNull()
+    expect(readPreferredModelKey(USER)).toBe("personal:cfg1:model-a")
+  })
+
+  it("按用户分桶：别人的选择读不到", () => {
+    saveModelChoice(USER, "personal:cfg1:model-a")
+    expect(readModelChoice(OTHER_USER)).toBeNull()
   })
 })

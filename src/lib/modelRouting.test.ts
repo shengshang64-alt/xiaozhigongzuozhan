@@ -4,7 +4,6 @@
 import { describe, expect, it } from "vitest"
 import {
   AUTO_MODEL_KEY,
-  AUTO_MODEL_LABEL,
   MODEL_ROLE_ORDER,
   MODEL_ROLE_TAGS,
   buildRoleCandidates,
@@ -232,6 +231,5 @@ describe("R47 自动档口径", () => {
     expect(isAutoModelKey("")).toBe(false)
     expect(rolePickHint("extract", refOf("fast-json"), ["快速"])).toContain("解析抽取")
     expect(rolePickHint("vision", null)).toContain("请手动选一个")
-    expect(AUTO_MODEL_LABEL).toContain("自动")
   })
 })

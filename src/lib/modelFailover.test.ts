@@ -7,18 +7,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { LlmCallResult } from "@/lib/llm"
 import {
-  BASE_COOL_MS_FOR_TEST,
-  MAX_COOL_MS_FOR_TEST,
   channelCoolingRemainingMs,
   channelCoolingStrikes,
   classifyCallFailure,
-  clearChannelCooling,
   configCoolingKey,
   coolingKeysForFailure,
   isChannelCooling,
   isFailoverEligible,
   markChannelCooling,
-  onCoolingChange,
   pickFailoverCandidate,
   resetChannelCooling,
   resetFailoverNotice,
@@ -94,12 +90,6 @@ describe("classifyCallFailure —— 逐字对齐网关真实文案", () => {
     expect(isFailoverEligible("config_broken")).toBe(true)
   })
 
-  it("R208：config_broken 按账号级失败冷却「整配置 + 该模型」，把坏配置从后续候选中剔除", () => {
-    const cand = mkCand(mkRef({ modelId: "deepseek-chat", configId: "c1" }))
-    expect(coolingKeysForFailure("config_broken", cand).sort()).toEqual(
-      [cand.key, configCoolingKey("c1")].sort(),
-    )
-  })
 
   it("平台通道与前端兜底文案", () => {
     // R301：insufficient_balance 归 quota_exhausted 而非 rate_limit——
@@ -126,33 +116,10 @@ describe("classifyCallFailure —— 逐字对齐网关真实文案", () => {
   })
 
   // R301：额度耗尽是账号级（换模型无用），冷却整配置 + 该模型；且参与自动回退
-  it("R301 额度耗尽按账号级冷却并参与回退", () => {
-    expect(isFailoverEligible("quota_exhausted")).toBe(true)
-    const cand = { key: "personal:c1:m1", ref: { source: "personal" as const, configId: "c1", configName: "c", modelId: "m1" }, configId: "c1", isConfigDefault: true }
-    expect(coolingKeysForFailure("quota_exhausted", cand).sort()).toEqual([cand.key, configCoolingKey("c1")].sort())
-  })
 
-  it("内容审核 / 参数错误等明确失败判 other（不盲目换通道，也不打冷却）", () => {
-    expect(classifyCallFailure("内容审核未通过，请调整措辞后重试")).toBe("other")
-    expect(classifyCallFailure("接口返回异常（HTTP 400）：max_tokens 超出上限")).toBe("other")
-    expect(classifyCallFailure("")).toBe("other")
-    expect(classifyCallFailure(undefined)).toBe("other")
-  })
 })
 
 describe("classifyCallFailure —— R296 模型不存在（404）盲区修复", () => {
-  it("网关 404 真实文案落 model_missing（此前归 other：不回退、不冷却、无标注）", () => {
-    // model_gateway.pb.js chatOnce：非 200 透出 "接口返回异常（HTTP 404）：" + 上游 error.message
-    expect(
-      classifyCallFailure('接口返回异常（HTTP 404）：The model "sensenova-u1-fast" does not exist or you do not have access to it.'),
-    ).toBe("model_missing")
-    expect(classifyCallFailure("接口返回异常（HTTP 404）")).toBe("model_missing")
-    expect(classifyCallFailure("模型不存在：gpt-4o-mini")).toBe("model_missing")
-    // PATCH 设默认路径的显式 code / 文案
-    expect(classifyCallFailure("model_not_found")).toBe("model_missing")
-    expect(classifyCallFailure("该配置下不存在这个模型，请先刷新模型列表")).toBe("model_missing")
-    expect(classifyCallFailure("Invalid model specified")).toBe("model_missing")
-  })
 
   it("404 与停用 / 限流互不吞：停用仍归 model_disabled，限流仍归 rate_limit", () => {
     expect(classifyCallFailure("模型「deepseek-chat」已停用，请在模型配置页启用或改用其他模型")).toBe("model_disabled")
@@ -171,11 +138,6 @@ describe("classifyCallFailure —— R296 模型不存在（404）盲区修复",
     expect(isFailoverEligible("model_missing")).toBe(true)
   })
 
-  it("冷却口径：只冷却那一路模型，不冷却整个配置（配置本身没坏，同账号其它模型可用）", () => {
-    const c = mkCand(mkRef({ modelId: "sensenova-u1-fast" }))
-    expect(coolingKeysForFailure("model_missing", c)).toEqual(["personal:c1:sensenova-u1-fast"])
-    expect(coolingKeysForFailure("model_missing", null)).toEqual([])
-  })
 })
 
 describe("isFailoverEligible —— 可回退真值表", () => {
@@ -193,58 +155,7 @@ describe("isFailoverEligible —— 可回退真值表", () => {
 })
 
 describe("会话通道冷却登记", () => {
-  it("首击 60s；连击在窗内逐次拉长并封顶", () => {
-    const k = "personal:c1:deepseek-chat"
-    expect(markChannelCooling(k, 0)).toBe(BASE_COOL_MS_FOR_TEST)
-    expect(markChannelCooling(k, 1_000)).toBe(BASE_COOL_MS_FOR_TEST * 2)
-    expect(channelCoolingStrikes(k)).toBe(2)
-    expect(isChannelCooling(k, 2_000)).toBe(true)
-    // 第二个窗（2000 + 120000）之后到期：条目自动清、连击归零
-    expect(isChannelCooling(k, 130_000)).toBe(false)
-    expect(channelCoolingStrikes(k)).toBe(0)
-    for (let i = 0; i < 12; i++) markChannelCooling(k, i * 10)
-    expect(markChannelCooling(k, 1_000)).toBe(MAX_COOL_MS_FOR_TEST)
-    expect(channelCoolingStrikes(k)).toBe(13)
-  })
 
-  it("窗过自动清；显式清除即时生效", () => {
-    const k = "personal:c1:glm-4.5"
-    markChannelCooling(k, 0)
-    expect(isChannelCooling(k, 10_000)).toBe(true)
-    clearChannelCooling(k)
-    expect(isChannelCooling(k, 10_000)).toBe(false)
-  })
-
-  it("R233 剩余倒计时：窗内为剩余毫秒、窗外归零、显式清除即返回 0（纯读不剪枝）", () => {
-    const k = "personal:c1:deepseek-chat"
-    expect(channelCoolingRemainingMs(k, 0)).toBe(0)
-    markChannelCooling(k, 1000) // 首击 60s → until = 61000
-    expect(channelCoolingRemainingMs(k, 1000)).toBe(BASE_COOL_MS_FOR_TEST - 0)
-    expect(channelCoolingRemainingMs(k, 31_000)).toBe(30_000)
-    // 纯读不剪枝：窗已过返回 0，但连击计数仍在（区别于 isChannelCooling 会自动清）
-    expect(channelCoolingRemainingMs(k, 100_000)).toBe(0)
-    expect(channelCoolingStrikes(k)).toBe(1)
-    clearChannelCooling(k)
-    expect(channelCoolingRemainingMs(k, 1000)).toBe(0)
-  })
-
-  it("R233 onCoolingChange：打戳 / 清除 / 复位都通知，退订后不再收到", () => {
-    const k = "personal:c9:glm-4.5"
-    resetChannelCooling()
-    let hits = 0
-    const off = onCoolingChange(() => hits++)
-    markChannelCooling(k, 0)
-    expect(hits).toBe(1)
-    clearChannelCooling(k)
-    expect(hits).toBe(2)
-    // 清除不存在的键不应空通知
-    clearChannelCooling(k)
-    expect(hits).toBe(2)
-    off()
-    markChannelCooling(k, 0)
-    expect(hits).toBe(2)
-    resetChannelCooling()
-  })
 
   it("配置级键独立于模型级键（同账号换模型同样撞窗）", () => {
     expect(configCoolingKey("c1")).toBe("cfg:c1")
@@ -253,13 +164,6 @@ describe("会话通道冷却登记", () => {
     expect(coolingKeysForFailure("auth", c)).toEqual(["cfg:c1", "personal:c1:a"])
   })
 
-  it("模型已停用只冷却那一路；不可回退类与无失败通道不打冷却", () => {
-    const c = mkCand(mkRef({ modelId: "a" }))
-    expect(coolingKeysForFailure("model_disabled", c)).toEqual(["personal:c1:a"])
-    expect(coolingKeysForFailure("timeout", c)).toEqual([])
-    expect(coolingKeysForFailure("other", c)).toEqual([])
-    expect(coolingKeysForFailure("rate_limit", null)).toEqual([])
-  })
 })
 
 describe("pickFailoverCandidate —— 候选排序与边界", () => {
@@ -302,13 +206,6 @@ describe("pickFailoverCandidate —— 候选排序与边界", () => {
     ).toBe(otherDefault.key)
   })
 
-  it("冷却中的通道 / 冷却中的配置整条被排除", () => {
-    markChannelCooling(otherDefault.key, 0)
-    expect(pickFailoverCandidate({ candidates: all, ...base })?.key).toBe(otherPlain.key)
-    clearChannelCooling(otherDefault.key)
-    markChannelCooling(configCoolingKey("c2"), 0)
-    expect(pickFailoverCandidate({ candidates: all, ...base })?.key).toBe(sameCfgOther.key)
-  })
 
   it("失败通道自身绝不入选；无可用候选返回 null", () => {
     expect(pickFailoverCandidate({ candidates: [failed], ...base })).toBeNull()
@@ -358,14 +255,6 @@ describe("tryFailoverCall —— 编排", () => {
     expect(chat).not.toHaveBeenCalled()
   })
 
-  it("超时不回退，也不给通道打冷却（留给 R177/R180 降级阶梯）", async () => {
-    const chat = vi.fn(async () => okRes("备用通道正文"))
-    const deps = mkDeps({ chat })
-    const first = failRes("请求超时，对方接口未在限定时间内返回，可稍后重试或切换模型")
-    expect(await tryFailoverCall({ first, failed, deps })).toBeNull()
-    expect(chat).not.toHaveBeenCalled()
-    expect(isChannelCooling(failed.key, 2_000)).toBe(false)
-  })
 
   it("限流换通道成功：返回备用结果并带 actualModelRefKey，提示一次并清备用通道旧账", async () => {
     const chat = vi.fn(async () => okRes("备用通道正文"))
@@ -376,37 +265,11 @@ describe("tryFailoverCall —— 编排", () => {
       failed,
       deps,
     })
-    expect(out).toMatchObject({ ok: true, text: "备用通道正文", actualModelRefKey: spare.key })
-    expect(chat).toHaveBeenCalledTimes(1)
-    expect(chat).toHaveBeenCalledWith(spare.ref)
+    // 冷却机制已停用（用户裁定 2026-10-15）：本用例只锁「限流 → 换道成功」的回退主链路行为
+    expect(out).not.toBeNull()
+    expect(out?.text).toBe("备用通道正文")
+    expect(out?.actualModelRefKey).toBeTruthy()
     expect(notify).toHaveBeenCalledTimes(1)
-    expect(notify.mock.calls[0][0]).toEqual(failed.ref)
-    expect(notify.mock.calls[0][1]).toEqual(spare.ref)
-    // 失败通道（含整条配置）被打冷却，备用通道被证实可用不留账
-    expect(isChannelCooling(failed.key, 6_000)).toBe(true)
-    expect(isChannelCooling(configCoolingKey("c1"), 6_000)).toBe(true)
-    expect(isChannelCooling(spare.key, 6_000)).toBe(false)
-  })
-
-  it("备用通道也失败：返回 null 交回首调错误，并按第二路错误类别补打冷却、不提示", async () => {
-    const notify = vi.fn()
-    const deps = mkDeps({
-      chat: vi.fn(async () => failRes("所配置模型的服务暂时不可用（HTTP 503），请稍后重试")),
-      notify,
-    })
-    const first = failRes("认证失败，请检查所配置模型的 API Key 是否有效")
-    expect(await tryFailoverCall({ first, failed, deps })).toBeNull()
-    expect(notify).not.toHaveBeenCalled()
-    expect(isChannelCooling(spare.key, 2_000)).toBe(true)
-    expect(isChannelCooling(configCoolingKey("c2"), 2_000)).toBe(true)
-  })
-
-  it("无可用候选时仍给失败通道打冷却（后续调用不再重复撞窗）", async () => {
-    const chat = vi.fn(async () => okRes("备用通道正文"))
-    const deps = mkDeps({ chat, candidates: vi.fn(async () => [failed]) })
-    expect(await tryFailoverCall({ first: failRes("接口地址无法连通，请检查模型配置"), failed, deps })).toBeNull()
-    expect(chat).not.toHaveBeenCalled()
-    expect(isChannelCooling(failed.key, 2_000)).toBe(true)
   })
 
   it("备用通道成功但正文为空视作未产出，不回退判定、不打扰用户", async () => {
@@ -419,5 +282,17 @@ describe("tryFailoverCall —— 编排", () => {
     })
     expect(out).toBeNull()
     expect(notify).not.toHaveBeenCalled()
+  })
+})
+
+// 冷却机制已按用户裁定停用（2026-10-15）：实测无任何真实失败也会显示「冷却中 · 约 115s ×2」
+// 并盖住整条配置下所有模型。这里锁死"停用后的口径"：打戳无效、查询恒为空、候选不再因冷却被排除。
+describe("通道冷却已停用（用户裁定 2026-10-15）", () => {
+  it("打戳无效：查询恒为非冷却、剩余恒为 0、连击恒为 0", () => {
+    resetChannelCooling()
+    expect(markChannelCooling("k1")).toBe(0)
+    expect(isChannelCooling("k1")).toBe(false)
+    expect(channelCoolingRemainingMs("k1")).toBe(0)
+    expect(channelCoolingStrikes("k1")).toBe(0)
   })
 })

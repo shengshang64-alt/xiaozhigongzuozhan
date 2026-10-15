@@ -143,8 +143,6 @@ export function isFailoverEligible(cls: CallFailureClass): boolean {
 // 导出供单测锁口径（避免测试里硬编码窗长），实现内仍用短名
 export const BASE_COOL_MS_FOR_TEST = 60_000
 export const MAX_COOL_MS_FOR_TEST = 5 * 60_000
-const BASE_COOL_MS = BASE_COOL_MS_FOR_TEST
-const MAX_COOL_MS = MAX_COOL_MS_FOR_TEST
 
 interface CoolingEntry {
   until: number
@@ -181,45 +179,54 @@ export function configCoolingKey(configId: string): string {
   return `cfg:${configId}`
 }
 
-/** 打一枚冷却戳并返回本次窗长；连击在窗内逐次拉长（60s / 120s / … 封顶 5 分钟） */
-export function markChannelCooling(key: string, now: number = Date.now()): number {
-  const strikes = (cooling.get(key)?.strikes ?? 0) + 1
-  const window = Math.min(BASE_COOL_MS * strikes, MAX_COOL_MS)
-  cooling.set(key, { until: now + window, strikes })
-  notifyCoolingChange()
-  return window
+// ---------------------------------------------------------------------------
+// 通道冷却：**已按用户裁定停用**（2026-10-15）
+//
+// 依据：实测该机制在没有任何真实失败（PocketBase 日志里连续多分钟 model-gw/chat 全部 ok、
+// 零 429/upstream 错误）的情况下，仍把整条配置标成「冷却中 · 约 115s ×2」并让该配置下**所有**
+// 模型都带冷却后缀，误导明显大于收益（用户原话："这个冷却中是不需要的"）。
+//
+// 停用范围与保留范围：
+//  - 停用：冷却戳登记、候选剔除、UI 倒计时与后缀（下面前几个函数一律成为空实现，
+//    保留导出以免调用点与类型改动扩散）；
+//  - **保留**：模型不可访问时自动换别的通道再试一次（回退主链路 failover 不受影响）——
+//    那是用户明确要的能力，与"冷却"是两件事。
+//  - coolingKeysForFailure（纯函数）保留：它只是"某类失败该冷却哪些键"的口径说明，本身无副作用。
+// ---------------------------------------------------------------------------
+
+/** 已停用：不再登记冷却戳（返回 0，调用方无需判空） */
+export function markChannelCooling(_key: string, _now: number = Date.now()): number {
+  void _key
+  void _now
+  return 0
 }
 
-export function clearChannelCooling(key: string): void {
-  if (cooling.delete(key)) notifyCoolingChange()
+/** 已停用 */
+export function clearChannelCooling(_key: string): void {
+  void _key
 }
 
-/** 是否仍在冷却；窗已过则顺手清掉条目（连击计数随之归零） */
-export function isChannelCooling(key: string, now: number = Date.now()): boolean {
-  const e = cooling.get(key)
-  if (!e) return false
-  if (e.until <= now) {
-    cooling.delete(key)
-    return false
-  }
-  return true
+/** 已停用：任何通道都不再被判为冷却中（因此也不会被从候选中剔除） */
+export function isChannelCooling(_key: string, _now: number = Date.now()): boolean {
+  void _key
+  void _now
+  return false
 }
 
-export function channelCoolingStrikes(key: string): number {
-  return cooling.get(key)?.strikes ?? 0
+/** 已停用：连击计数恒为 0 */
+export function channelCoolingStrikes(_key: string): number {
+  void _key
+  return 0
 }
 
-/**
- * 冷却剩余毫秒：未在冷却或窗已过返回 0。纯读、不剪枝（区别于 isChannelCooling 会
- * 顺带清过期条目并归零连击），供 UI 渲染恢复倒计时。
- */
-export function channelCoolingRemainingMs(key: string, now: number = Date.now()): number {
-  const e = cooling.get(key)
-  if (!e) return 0
-  return Math.max(0, e.until - now)
+/** 已停用：剩余冷却恒为 0（UI 不再显示倒计时） */
+export function channelCoolingRemainingMs(_key: string, _now: number = Date.now()): number {
+  void _key
+  void _now
+  return 0
 }
 
-/** 单测边界用：清空整张登记表 */
+/** 已停用：无登记表可清，保留导出供既有调用点使用 */
 export function resetChannelCooling(): void {
   cooling.clear()
   notifyCoolingChange()

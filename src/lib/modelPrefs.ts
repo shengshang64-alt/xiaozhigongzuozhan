@@ -19,6 +19,7 @@
  * 非浏览器环境）一律降级为「无偏好」，绝不阻断主流程。
  */
 
+import { AUTO_MODEL_KEY } from "@/lib/modelRouting"
 import type { ModelRef } from "@/lib/modelGateway"
 
 const STORAGE_KEY_PREFIX = "xz_model_pref"
@@ -141,5 +142,62 @@ export function clearPreferredModel(userId: string | null): void {
     st.removeItem(storageKeyFor(userId))
   } catch {
     /* 清不掉也无所谓，下一次写入会覆盖 */
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 显式选择记忆（R-latest，用户反馈：默认应由我自己选，系统别替我判断）
+//
+// 与记忆「实际成功用过的模型」（rememberUsedModel，R216 自动记录）的区别：
+//   - 显式选择 = 用户在模型选择器里亲手点的那个，**优先级最高**，且连「自动」档也照记
+//     （用户点了自动，就是明确想要自动，不能又被系统改回去）；
+//   - 成功用过 = 自动口径的兜底，仅在用户还没表过态时决定默认值。
+// 两者分开存（不同键），互不覆盖：清掉显式选择只回到自动口径，不会丢使用历史。
+//
+// 存储口径与既有偏好一致：localStorage、按用户分桶、读写全部 try/catch 降级为无值。
+// ---------------------------------------------------------------------------
+
+const CHOICE_KEY_PREFIX = "xz_model_choice"
+
+/** 按用户分桶的显式选择键（与偏好键分开，互不覆盖） */
+function choiceKeyFor(userId: string | null): string {
+  return `${CHOICE_KEY_PREFIX}:${userId && userId.trim() ? userId.trim() : "anonymous"}`
+}
+
+/** 读用户显式选择的模型（含 AUTO_MODEL_KEY 哨兵）；没表过态 / 值脏 / 存储不可用 → null */
+export function readModelChoice(userId: string | null): string | null {
+  const st = safeStorage()
+  if (!st) return null
+  try {
+    const raw = st.getItem(choiceKeyFor(userId))
+    if (!raw) return null
+    if (raw === AUTO_MODEL_KEY) return raw
+    return normalizeModelKey(raw)
+  } catch {
+    return null
+  }
+}
+
+/** 记住用户的显式选择（选择器 onChange 调用）；非法 key / 存储不可用一律静默跳过 */
+export function saveModelChoice(userId: string | null, key: string): void {
+  const clean = key === AUTO_MODEL_KEY ? key : normalizeModelKey(key)
+  if (!clean) return
+  const st = safeStorage()
+  if (!st) return
+  try {
+    st.setItem(choiceKeyFor(userId), clean)
+  } catch {
+    /* 配额满 / 写入被拒 → 放弃本次记忆，不影响主流程 */
+  }
+}
+
+/** 仅供测试：清空某用户的显式选择 */
+export function clearModelChoice(userId: string | null): void {
+  const st = safeStorage()
+  if (!st) return
+  try {
+    st.removeItem(choiceKeyFor(userId))
+  } catch {
+    /* 清不掉也无所谓 */
   }
 }

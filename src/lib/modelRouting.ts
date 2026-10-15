@@ -228,7 +228,6 @@ export function resolveRoleModelRef(
 // ---------------------------------------------------------------------------
 
 export const AUTO_MODEL_KEY = "__auto__"
-export const AUTO_MODEL_LABEL = "自动 · 按环节智能选择"
 
 export function isAutoModelKey(key: string | null | undefined): boolean {
   return key === AUTO_MODEL_KEY

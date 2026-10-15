@@ -7,24 +7,7 @@ import { GlobalCommandPalette } from "@/components/shell/GlobalCommandPalette"
 import { Badge } from "@/components/ui/badge"
 import { isLocalDeployHost, type RhAccountInfo } from "@/lib/rhLogin"
 import { getCachedTeamProfile, TEAM_ROLE_LABELS, type TeamRole } from "@/lib/teamAuth"
-
-const ROUTE_TITLES: Record<string, string> = {
-  "/": "工作台",
-  "/solution-studio": "方案编制",
-  "/product-mapping": "产品映射",
-  "/bid-workspace": "标书工作",
-  "/bid-check": "标书检查",
-  "/ppt-quote": "PPT 与报价",
-  "/materials": "素材库",
-  "/intel-center": "情报中心",
-  "/competitors": "竞品分析",
-  "/customer-management": "客户管理",
-  "/knowledge": "知识库",
-  "/format-tool": "格式刷新",
-  "/team": "团队管理",
-  "/model-config": "模型配置",
-  "/assistant": "小智助手",
-}
+import { labelFor } from "@/lib/routeRegistry"
 
 // 角色徽标配色：viewer 用醒目「只读」色提醒权限受限，admin 高亮，editor 中性。
 const ROLE_BADGE_VARIANT: Record<TeamRole, "success" | "neutral" | "warning"> = {
@@ -54,7 +37,9 @@ type TopBarShellProps = {
 
 export function TopBarShell({ onAccountChange, onToggleSidebar }: TopBarShellProps) {
   const { pathname } = useLocation()
-  const currentTitle = ROUTE_TITLES[pathname] ?? "工作台"
+  // 文案唯一真源 = lib/routeRegistry（原先本文件另有一份 ROUTE_TITLES，与侧栏文案漂移：
+  // 同一路径一处叫「标书工作」一处叫「标书工作台」）
+  const currentTitle = labelFor(pathname)
   const [appearanceOpen, setAppearanceOpen] = useState(false)
 
   return (

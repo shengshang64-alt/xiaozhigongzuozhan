@@ -1,83 +1,18 @@
 import { useLocation, useNavigate } from "react-router-dom"
-import {
-  BookOpen,
-  Bot,
-  Building2,
-  FileCheck2,
-  FileText,
-  LayoutGrid,
-  Layers,
-  Monitor,
-  Images,
-  Search,
-  Settings,
-  Flame,
-  Type,
-  UserCog,
-  Users,
-  ShieldCheck,
-  ArrowLeftRight,
-  ClipboardCheck,
-} from "lucide-react"
+import { Layers } from "lucide-react"
 import { preloadRoute } from "@/lib/routePreload"
+import { NAV_GROUPS, ROUTE_BY_PATH } from "@/lib/routeRegistry"
 import { decodeRhToken, isLocalDeployHost, type RhAccountInfo } from "@/lib/rhLogin"
 import { getCachedTeamProfile } from "@/lib/teamAuth"
 
-type NavItem = { path: string; label: string; icon: typeof FileText; adminOnly?: boolean }
-type NavSection = { title: string; items: NavItem[] }
-
-// 导航分组与《小智工作站-重构设计方案》对齐（docs/redesign/）：按售前作战阶段重排
-// 总览 → 发现 → 研判 → 制胜 → 决胜 → 沉淀 → 支撑（导航即作战地图）
-const NAV_SECTIONS: NavSection[] = [
-  {
-    title: "总览",
-    items: [{ path: "/", label: "作战驾驶舱", icon: LayoutGrid }],
-  },
-  {
-    title: "发现",
-    items: [
-      { path: "/intel-center", label: "情报中心", icon: Search },
-      { path: "/ai-hot", label: "AI 动态", icon: Flame },
-    ],
-  },
-  {
-    title: "研判",
-    items: [{ path: "/customer-management", label: "客户管理", icon: Users }],
-  },
-  {
-    title: "制胜",
-    items: [
-      { path: "/solution-studio", label: "方案工作室", icon: FileText },
-      { path: "/product-mapping", label: "产品映射", icon: ArrowLeftRight },
-      { path: "/ppt-quote", label: "PPT 与报价", icon: Monitor },
-      { path: "/materials", label: "素材库", icon: Images },
-    ],
-  },
-  {
-    title: "决胜",
-    items: [
-      { path: "/bid-workspace", label: "标书工作台", icon: FileCheck2 },
-      { path: "/bid-check", label: "标书检查", icon: ClipboardCheck },
-      { path: "/format-tool", label: "格式刷新", icon: Type },
-    ],
-  },
-  {
-    title: "沉淀",
-    items: [
-      { path: "/knowledge", label: "知识库", icon: BookOpen },
-      { path: "/qual-certs", label: "资质台账", icon: ShieldCheck },
-      { path: "/competitors", label: "竞品分析", icon: Building2 },
-    ],
-  },
-  {
-    title: "支撑",
-    items: [
-      { path: "/assistant", label: "小智助手", icon: Bot },
-      { path: "/model-config", label: "模型配置", icon: Settings },
-      { path: "/team", label: "团队管理", icon: UserCog, adminOnly: true },
-    ],
-  },
-]
+// 导航分组与文案、图标全部取自 lib/routeRegistry（唯一真源）。
+// 原先这里另存一份 NAV_SECTIONS 文案/图标，与 App.tsx 的 lazy 列表、TopBarShell 的标题映射
+// 三处手工同步，已经漂移出「标书工作 / 标书工作台」这类不一致；标签栏要显示标签名，
+// 更需要唯一口径，故本文件只保留分组顺序（NAV_GROUPS），条目一律从注册表取。
+const NAV_SECTIONS = NAV_GROUPS.map((group) => ({
+  title: group.title,
+  items: group.paths.map((path) => ROUTE_BY_PATH[path]).filter(Boolean),
+}))
 
 type SidebarNavProps = {
   accountInfo: RhAccountInfo | null

@@ -1,13 +1,26 @@
-import { createContext, useCallback, useEffect, useState } from "react"
-import { Outlet, useLocation } from "react-router-dom"
+import { createContext, useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react"
+import { useLocation, useNavigate } from "react-router-dom"
 import { Toaster } from "sonner"
 import { ErrorBoundary } from "@/components/common/ErrorBoundary"
 import { BackToTop } from "@/components/common/BackToTop"
 import { decodeRhToken, type RhAccountInfo } from "@/lib/rhLogin"
 import { TeamAuthGate } from "@/components/team-auth/TeamAuthGate"
+import { hasRoute, labelFor } from "@/lib/routeRegistry"
+import {
+  activateTab,
+  closeEveryTab,
+  closeOthersAt,
+  closeRightOf,
+  closeTabAt,
+  ensureTab,
+  getTabsSnapshot,
+  subscribeTabs,
+} from "@/lib/workspaceTabStore"
 import { SidebarNav } from "./SidebarNav"
 import { TopBarShell } from "./TopBarShell"
 import { FloatingAssistant } from "./FloatingAssistant"
+import { TabbedOutlet } from "./TabbedOutlet"
+import { WorkspaceTabs } from "./WorkspaceTabs"
 
 /**
  * 壳级账号信息 context：RhAccountMenu 挂在壳顶栏，
@@ -41,31 +54,74 @@ export function WorkbenchShell() {
 
 
   // 动态文档标题：切页时更新浏览器标签，多任务场景一眼识别
-  const routeLabels: Record<string, string> = {
-    "/": "作战驾驶舱",
-    "/solution-studio": "方案编制",
-    "/product-mapping": "产品映射",
-    "/bid-workspace": "标书工作台",
-    "/bid-check": "标书检查",
-    "/ppt-quote": "PPT 与报价",
-    "/materials": "素材库",
-    "/intel-center": "情报中心",
-    "/competitors": "竞品分析",
-    "/customer-management": "客户管理",
-    "/knowledge": "知识库",
-    "/format-tool": "格式刷新",
-    "/assistant": "小智助手",
-    "/model-config": "模型配置",
-    "/team": "团队管理",
-    "/qual-certs": "资质台账",
-  }
   const { pathname } = useLocation()
-  useEffect(() => {
-    const label = routeLabels[pathname]
-    document.title = label ? `${label} · 小智工作站` : "小智工作站 · 售前工作台"
-    // 切页时重置主内容区滚动（避免从长列表跳入新页面后停在中间）
-    window.scrollTo({ top: 0 })
+  const navigate = useNavigate()
+  // 工作区标签（壳级单例 store）：标签栏与内容区共用同一份，见 lib/workspaceTabStore.ts
+  const tabs = useSyncExternalStore(subscribeTabs, getTabsSnapshot).tabs
+
+  // 路由变化 / 换账号 → 同步标签集合。放在 layout effect 里且不经 useState，避免
+  // react-hooks/set-state-in-effect（该规则在 eslint 预算里只许下降）。
+  const uid = accountInfo?.userId ?? decodeRhToken()?.sub ?? ""
+  useLayoutEffect(() => {
+    ensureTab(uid, pathname)
+  }, [uid, pathname])
+
+  // 每个标签记住自己的滚动位置：切走前存下、切回时还原（新标签从顶部开始）。
+  // 滚动仍在 window 上（BackToTop / sticky 顶栏/侧栏逻辑一概不动），只是恢复目标值。
+  const scrollByPathRef = useRef<Record<string, number>>({})
+  const prevPathRef = useRef(pathname)
+  useLayoutEffect(() => {
+    const prev = prevPathRef.current
+    if (prev !== pathname) {
+      scrollByPathRef.current[prev] = window.scrollY
+      window.scrollTo({ top: scrollByPathRef.current[pathname] ?? 0 })
+      prevPathRef.current = pathname
+    }
+    document.title = hasRoute(pathname) ? `${labelFor(pathname)} · 小智工作站` : "小智工作站 · 售前工作台"
+    // 保活副作用兜底：隐藏容器（display:none）里量不到尺寸，图表类页面（competitors 的 echarts 等）
+    // 切回来可能保持 0×0 空白。激活后发一次 resize，让监听 window resize 的图表重新自适应。
+    window.dispatchEvent(new Event("resize"))
   }, [pathname])
+
+  // 标签栏动作：先改标签集合，再让地址跟上（关闭当前标签 → 落到邻居标签）
+  const syncRouteTo = useCallback(
+    (path: string) => {
+      if (path !== pathname) navigate(path)
+    },
+    [navigate, pathname],
+  )
+  const handleActivateTab = useCallback(
+    (path: string) => {
+      activateTab(path)
+      syncRouteTo(path)
+    },
+    [syncRouteTo],
+  )
+  const handleCloseTab = useCallback(
+    (path: string) => {
+      closeTabAt(path)
+      syncRouteTo(getTabsSnapshot().tabs.active)
+    },
+    [syncRouteTo],
+  )
+  const handleCloseOthers = useCallback(
+    (path: string) => {
+      closeOthersAt(path)
+      syncRouteTo(getTabsSnapshot().tabs.active)
+    },
+    [syncRouteTo],
+  )
+  const handleCloseRight = useCallback(
+    (path: string) => {
+      closeRightOf(path)
+      syncRouteTo(getTabsSnapshot().tabs.active)
+    },
+    [syncRouteTo],
+  )
+  const handleCloseAll = useCallback(() => {
+    closeEveryTab()
+    syncRouteTo(getTabsSnapshot().tabs.active)
+  }, [syncRouteTo])
 
   return (
     <ShellAccountContext.Provider value={accountInfo}>
@@ -79,10 +135,19 @@ export function WorkbenchShell() {
               collapsed={collapsed}
               onToggleSidebar={() => setCollapsed((v) => !v)}
             />
+            {/* 工作区标签栏：只有一个标签时不渲染（与改造前单页体验一致） */}
+            <WorkspaceTabs
+              tabs={tabs}
+              onActivate={handleActivateTab}
+              onClose={handleCloseTab}
+              onCloseOthers={handleCloseOthers}
+              onCloseRight={handleCloseRight}
+              onCloseAll={handleCloseAll}
+            />
             <main className="flex-1 px-4 pb-10 pt-5 lg:px-6">
               <div key={accountKey} className="mx-auto w-full max-w-[1560px]">
                 <ErrorBoundary key={`eb-${accountKey}`}>
-                  <Outlet />
+                  <TabbedOutlet tabs={tabs} pathname={pathname} />
                 </ErrorBoundary>
         <BackToTop />
               </div>
