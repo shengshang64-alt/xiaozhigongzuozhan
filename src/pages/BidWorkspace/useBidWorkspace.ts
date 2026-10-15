@@ -2355,6 +2355,8 @@ export function useBidWorkspace() {
           tenderNos: [cur.tender_no ?? ""],
           companyNames: [],
         },
+        // 已生成技术偏离表即视为《偏离表》专用件已满足（它常以独立文件随标提交、不作正文章节）
+        satisfiedSections: cur.response_map && (cur.response_map as DeviationTable).rows?.length ? ["deviation"] : [],
       }),
     )
     return report

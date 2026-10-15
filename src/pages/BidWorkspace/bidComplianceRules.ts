@@ -21,7 +21,12 @@ export type RedlineHit = { rule: string; line: number; text: string; note: strin
 
 const linesOf = (text: string) => String(text ?? "").split("\n")
 
-/** 通用：逐行扫一组正则，命中即返回（规则名 + 行号 + 命中句子 + 处置提示） */
+/**
+ * 通用：逐行扫一组正则，命中即返回（规则名 + 行号 + 命中句子 + 处置提示）。
+ * text 存**以命中词为中心的窗口**而不是行首 90 字——真实标书里红线词常出现在长表格行的第 200 字之后，
+ * 只截行首会让体检提示变成「第 2495 行：院卫生费用核算报表、重点专科数据上报…」，用户照着找不到关键词。
+ * 用 match() 而非 test()：即使某条规则日后带上 g 标志，也不会因 lastIndex 变成有状态判定。
+ */
 function scanLines(text: string, rules: { rule: string; re: RegExp; note: string; severity: "redline" | "warn" }[]): RedlineHit[] {
   const out: RedlineHit[] = []
   const lines = linesOf(text)
@@ -29,9 +34,17 @@ function scanLines(text: string, rules: { rule: string; re: RegExp; note: string
     const line = lines[i]
     if (!line.trim()) continue
     for (const r of rules) {
-      if (r.re.test(line)) {
-        out.push({ rule: r.rule, line: i + 1, text: line.trim().slice(0, 90), note: r.note, severity: r.severity })
-      }
+      const m = line.match(r.re)
+      if (!m) continue
+      const at = m.index ?? 0
+      const start = Math.max(0, at - 24)
+      out.push({
+        rule: r.rule,
+        line: i + 1,
+        text: (start > 0 ? "…" : "") + line.slice(start, start + 90).trim(),
+        note: r.note,
+        severity: r.severity,
+      })
     }
   }
   return out
@@ -65,7 +78,9 @@ export const COMPANY_REDLINE_RULES: { key: string; label: string; re: RegExp; no
   {
     key: "source_code",
     label: "要求交付源代码 / 知识产权归业主",
-    re: /(源代码|源码|源程序)|(知识产权|著作权|版权)[^。；\n]{0,10}?(归|属)[^。；\n]{0,6}?(采购人|业主|甲方|建设单位|招标人)/,
+    // 裸「源码」有歧义（实测误报：「药品溯源码」被判成源代码条款）——必须在 溯/开 之外才算；
+    // 用 [^溯开] 而不是负向后顾，避免依赖 lookbehind 的引擎支持差异
+    re: /(?:源代码|源程序|[^溯开]源码|^源码)|(知识产权|著作权|版权)[^。；\n]{0,10}?(归|属)[^。；\n]{0,6}?(采购人|业主|甲方|建设单位|招标人)/,
     note: "清单原文：「是否有源代码、知识产权归属业主的条款」——属公司红线，须销售确认",
     severity: "redline",
   },
@@ -229,8 +244,34 @@ export function findOutdatedTerms(text: string): { term: string; suggestion: str
 // 四、其他项目残留扫描（清单原文反复强调的"低级错误"）
 // ---------------------------------------------------------------------------
 
-/** 其他机构/医院名（判断"这不是本项目"的通用后缀；本项目自有名称由调用方以 own 列表排除） */
-const OTHER_ORG_RE = /[A-Za-z0-9\u4e00-\u9fa5]{2,15}(?:人民医院|中医院|中西医结合医院|妇幼保健院|儿童医院|中心医院|肿瘤医院|医院|卫生院|疾控中心|卫生健康委员会|卫健委)/g
+/**
+ * 其他机构/医院名。**两次收紧**（2026-10-15 真实标书实测驱动）：
+ *  ① 旧形态 `[汉字]{2,15}医院` 把「互联网医院」「关联医院」「上线后医院」这类以「医院」结尾的
+ *     普通短语全当机构名，20 条上限被打满且全是误报；
+ *  ② 只认「强特征后缀」仍不够——「公立中医医院」「级医院评审指标上报与公立中医医院」照样命中
+ *     （任何汉字串都能当机构名前缀）。
+ * 现在一律要求**地名/大学锚点**：`地名(省/市/县/区/州/盟/旗/大学) + ≤4 字 + 机构后缀`。
+ * 「厦门市杏林医院」「安徽省卫生健康委员会」会报；「公立中医医院」不报。
+ * 中间最多 4 字也是实测压出来的：「新增院**区**或接入互联网医院」里「区」是「院区」的区、不是地名，
+ * 放宽到 8 字就会把它当成「区+…+医院」。
+ * 宁可漏报（少报一个别家医院名）也不能 20 条全误报——后者会让整条规则被无视。
+ */
+const HOSPITAL_RE =
+  /[A-Za-z0-9\u4e00-\u9fa5]{2,12}(?:省|市|县|区|州|盟|旗|大学)[\u4e00-\u9fa5]{0,4}?(?:人民医院|中医医院|中医院|中西医结合医院|附属医院|中心医院|妇幼保健院|儿童医院|肿瘤医院|口腔医院|胸科医院|传染病医院|精神病医院|康复医院|职工医院|民族医院|社区医院|卫生院|疾病预防控制中心|疾控中心|卫生健康委员会|卫健委|医院)/g
+
+/**
+ * 机构名左边界裁剪：命中常把句子前缀一起带进来（实测「参考了XX市人民医院」整体命中），
+ * 从**最后一个虚词/标点**之后开始才算名字。
+ * 刻意不含 中/外/前/后/上/下/内/生 —— 它们出现在真实机构名里（中心医院、中医院、卫生院），
+ * 放进去会把「中心医院」裁成「心医院」。
+ */
+const NAME_LEAD_TRIM_RE = /.*[的了和与及在是为按据对等把被由向给让使于其该本见考从、，。；：（）【】\s]/
+
+function trimNameLead(v: string): string {
+  const m = String(v ?? "").match(NAME_LEAD_TRIM_RE)
+  const cut = m ? v.slice(m[0].length) : v
+  return cut.length >= 4 ? cut : v
+}
 /** 其他项目编号形态（与本项目招标编号格式类似但不同者） */
 const OTHER_TENDER_NO_RE = /(?:[A-Z]{2,6}[-－]?\d{4}[-－]?\d{2,4}(?:[-－]\d{1,3})?|\[[A-Za-z0-9]{4,10}\][A-Za-z0-9[\]（）()-]{4,40})/g
 
@@ -250,9 +291,10 @@ export function findProjectResidue(
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     if (!line.trim()) continue
-    for (const m of line.matchAll(OTHER_ORG_RE)) {
-      const v = m[0]
+    for (const m of line.matchAll(HOSPITAL_RE)) {
+      const v = trimNameLead(m[0])
       if (ownH.some((h) => h.includes(v) || v.includes(h))) continue
+      if (out.some((o) => o.line === i + 1 && o.kind === "hospital" && o.value === v)) continue
       out.push({ kind: "hospital", value: v, line: i + 1 })
     }
     for (const m of line.matchAll(OTHER_TENDER_NO_RE)) {

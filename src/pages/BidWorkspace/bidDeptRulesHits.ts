@@ -20,6 +20,7 @@
 import type { FormatCheckHit, FormatCheckRule } from "./bidTypes"
 import {
   checkScoringCompliance,
+  COMPANY_REDLINE_RULES,
   findCompanyRedlineHits,
   findOutdatedTerms,
   findProjectResidue,
@@ -42,6 +43,11 @@ export type DeptRulesInput = {
   outline: { title: string; level?: number }[]
   /** 本项目自有值：残留扫描的排除项（自己的医院名/编号不能被报成"别人的"） */
   own?: { hospitals?: string[]; tenderNos?: string[]; companyNames?: string[] }
+  /**
+   * 已在**大纲之外**满足的专用件 key（如 deviation = 已生成技术偏离表）。
+   * 真实标书实测：偏离表多以独立文件随标提交、不作为正文章节，不传就会天天误报"缺偏离表"。
+   */
+  satisfiedSections?: string[]
 }
 
 /** 大纲树 → 带层级的扁平标题表（专用章检查按 maxLevel 判层级，所以要带 level） */
@@ -65,20 +71,49 @@ function toHits(
   return items.slice(0, cap).map((it) => ({ chapter, rule, quote: it.quote.slice(0, 80), level: "warn" as const }))
 }
 
+/**
+ * 命中行只取关键词前后的一段窗口。
+ * 直接截前 30 字会把关键词切掉——真实标书实测：体检里显示「自称口径『我方』不合规（第1575行：本项目一体化核心业务系统整体采用B/S…）」，
+ * 用户照着那句话根本找不到「我方」，等于提示无效。有 inRow 时以它为中心取窗口。
+ */
+function lineWindow(line: string, word: string, span = 34): string {
+  const s = String(line ?? "")
+  const key = String(word ?? "")
+  const at = key ? s.indexOf(key) : -1
+  if (at < 0) return s.slice(0, span)
+  const start = Math.max(0, at - Math.floor(span / 3))
+  return (start > 0 ? "…" : "") + s.slice(start, start + span)
+}
+
 export function deptRulesHits(input: DeptRulesInput): FormatCheckHit[] {
   const hits: FormatCheckHit[] = []
   const tender = String(input.tenderText ?? "")
   const bid = String(input.bidText ?? "")
 
-  // ① 公司红线条款（招标侧）
+  // ① 公司红线条款（招标侧）——**按规则去重**：真实标书实测「履约保证金」在第 175/180/638/639/640…
+  //    行各报一次，19 条命中里 15 条是同一规则的重复刷屏，等于把别的红线挤出体检。每条规则只报首处。
   if (tender.trim()) {
+    const redlineRaw = findCompanyRedlineHits(tender)
+    const seenRule = new Set<string>()
+    const redline = redlineRaw.filter((h) => {
+      if (seenRule.has(h.rule)) return false
+      seenRule.add(h.rule)
+      return true
+    })
     hits.push(
       ...toHits(
         "company_redline",
         "招标文件",
-        findCompanyRedlineHits(tender).map((h) => ({
-          quote: `${h.severity === "redline" ? "【红线】" : "【提示】"}${h.note}（第 ${h.line} 行：${h.text.slice(0, 40)}）`,
-        })),
+        redline.map((h) => {
+          // 窗口以**规则实际命中的那个词**为中心：只截行首会把关键词切掉，用户照着提示找不到原文
+          const keyWord = String(h.text ?? "").match(COMPANY_REDLINE_RULES.find((r) => r.key === h.rule)?.re ?? /$^/)?.[0] ?? ""
+          const total = redlineRaw.filter((x) => x.rule === h.rule).length
+          return {
+            quote: `${h.severity === "redline" ? "【红线】" : "【提示】"}${h.note}（第 ${h.line} 行：${lineWindow(h.text, keyWord, 40)}）${
+              total > 1 ? `｜全文共 ${total} 处` : ""
+            }`,
+          }
+        }),
       ),
     )
   }
@@ -117,8 +152,8 @@ export function deptRulesHits(input: DeptRulesInput): FormatCheckHit[] {
     // 刻意**不含**暗标身份泄漏——formatCheckReport 的 identity_leak 规则已在查同一件事，
     // 两处都报会让同一句话在体检里出现两遍，反而降低信噪比。
     const voice = [
-      ...findPronounHits(bid).map((h) => ({ quote: `自称口径「${h.word}」不合规（第 ${h.line} 行：${h.text.slice(0, 30)}）` })),
-      ...findVagueParamHits(bid).map((h) => ({ quote: `模糊参数「${h.word}」（第 ${h.line} 行：${h.text.slice(0, 30)}）` })),
+      ...findPronounHits(bid).map((h) => ({ quote: `自称口径「${h.word}」不合规（第 ${h.line} 行：${lineWindow(h.text, h.word)}）` })),
+      ...findVagueParamHits(bid).map((h) => ({ quote: `模糊参数「${h.word}」（第 ${h.line} 行：${lineWindow(h.text, h.word)}）` })),
     ]
     hits.push(...toHits("writing_voice", "投标正文", voice))
   }
@@ -130,7 +165,9 @@ export function deptRulesHits(input: DeptRulesInput): FormatCheckHit[] {
       ...toHits(
         "dedicated_section",
         "投标文件大纲",
-        checkDedicatedSections(input.outline ?? []).map((s) => ({ quote: `${s.label}：${s.reason}——${s.hint}` })),
+        checkDedicatedSections(input.outline ?? [], { satisfied: input.satisfiedSections ?? [] }).map((s) => ({
+          quote: `${s.label}：${s.reason}——${s.hint}`,
+        })),
       ),
     )
   }

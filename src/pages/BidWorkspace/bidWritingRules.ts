@@ -130,10 +130,17 @@ export type OutlineSectionLike = { title: string; level?: number }
 /**
  * 必备专用件检查（吃大纲节点或章节清单标题）。
  * 缺失 → 违规；存在但层级深于 maxLevel → 违规（规范要求"不低于三级"）。
+ * opts.satisfied：已知在**大纲之外**已满足的专用件（真实标书实测：偏离表常以独立文件随标提交、
+ * 并不作为正文章节存在，此时按"缺偏离表"报就是误报），传 key 即跳过该项。
  */
-export function checkDedicatedSections(sections: OutlineSectionLike[]): { key: string; label: string; reason: string; hint: string }[] {
+export function checkDedicatedSections(
+  sections: OutlineSectionLike[],
+  opts?: { satisfied?: readonly string[] },
+): { key: string; label: string; reason: string; hint: string }[] {
+  const satisfied = new Set(opts?.satisfied ?? [])
   const issues: { key: string; label: string; reason: string; hint: string }[] = []
   for (const spec of REQUIRED_DEDICATED_SECTIONS) {
+    if (satisfied.has(spec.key)) continue
     const hit = (sections ?? []).find((s) => spec.match.test(String(s?.title ?? "")))
     if (!hit) {
       issues.push({ key: spec.key, label: spec.label, reason: `缺少《${spec.label}》`, hint: spec.hint })
