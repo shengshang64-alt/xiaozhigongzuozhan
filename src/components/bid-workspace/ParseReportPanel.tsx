@@ -11,6 +11,7 @@ import {
   PARSE_KEY_SECTIONS,
   PARSE_STATUS_LABEL,
   parseSectionTier,
+  parseSectionFields,
   requiredParseFailures,
   STAR_CLAUSE_SECTION,
   sectionSnippet,
@@ -314,6 +315,9 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
   // Q26 切片A：详情区降级原文折叠计算（〔系统降级 开头且超阈值时默认节选，可一键展开）
   const DEGRADED_FOLD_LIMIT = 15
   const detailLines = selected.content.split(/\n+/).filter((l) => l.trim())
+  // R55（对标易标）：信息卡类解析项有结构化字段时按「标签 → 值」两列呈现，比一行行「字段名：值」好读得多；
+  // 老报告/检索通道产物无 fields，自动回退下面的行式列表，行为不变。
+  const fieldPairs = parseSectionFields(selected)
   const isDegradedDetail = selected.content.startsWith("〔系统降级")
   const degradedCollapsed = isDegradedDetail && !expandedDegraded.has(selected.key) && detailLines.length > DEGRADED_FOLD_LIMIT
   const shownDetailLines = degradedCollapsed ? detailLines.slice(0, DEGRADED_FOLD_LIMIT) : detailLines
@@ -654,6 +658,21 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
                   完成编辑
                 </Button>
               </div>
+            </div>
+          ) : fieldPairs.length ? (
+            <div className="overflow-hidden rounded-md border border-border">
+              <table className="w-full text-left text-sm">
+                <tbody>
+                  {fieldPairs.map((f, i) => (
+                    <tr key={`${f.label}-${i}`} className="border-b border-border/60 last:border-0">
+                      <th className="w-44 shrink-0 bg-muted/40 px-3 py-2 align-top text-xs font-medium text-muted-foreground">
+                        {f.label}
+                      </th>
+                      <td className="px-3 py-2 text-sm leading-relaxed text-foreground">{f.value}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           ) : selected.content.trim() ? (
             <div>

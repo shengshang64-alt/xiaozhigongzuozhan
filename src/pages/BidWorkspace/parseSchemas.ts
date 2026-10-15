@@ -75,7 +75,115 @@ export function buildScoringStructured(key: string, obj: unknown): ScoringBlockJ
 }
 
 /** 结构化 → 下游 ScoringItem[]（criteria 合并出处，与 extractScoringFromText 行文本口径一致） */
-export function scoringItemsFromStructured(b: ScoringBlockJSON): ScoringItem[] {
+
+// ---------------------------------------------------------------------------
+// R55：信息卡类解析项的结构化保留（对标易标「结构化项=固定字段、叙述项=自由文本」两条契约）
+//
+// 背景：整文通道的 JSON 项**本来就是扁平固定字段**（bid_deposit → {amount, payment_method,
+// account, deadline, refund_conditions}），落库前被 flattenFieldMap 摊平成「字段名：值」文本、
+// 丢掉结构，于是每个下游都要按行正则再猜一遍（factSources / tenderMeta / deadline 抽取各写一套）。
+// 本块把原对象按同一张标签表留成 fields：**展示直接两列呈现，下游按标签取值，正则只留兜底**。
+//
+// 单一真源：PARSE_FIELD_LABELS 同时驱动 ① 摊平文本（wholeParse.flattenFieldMap）② 结构化字段，
+// 两边标签永不漂移。
+// ---------------------------------------------------------------------------
+
+/** 一条「标签 → 值」（标签取中文标签表；bid_nodes 这类动态列表标签取原文节点名） */
+export type ParseFieldKV = { label: string; value: string }
+
+/** 字段块结构化表示（信息卡类解析项，存入 ParseSection.structured） */
+export type FieldsBlockJSON = {
+  kind: "fields"
+  fields: ParseFieldKV[]
+}
+
+/**
+ * 信息卡类解析项的字段标签表（field → 中文标签）。
+ * 与 wholeParse 的 JSON 契约键名一一对应；**新增/改名只能在这里改**，摊平文本与结构化字段同源。
+ * 不含 tech_score/biz_score（走 ScoringBlockJSON）与纯逐条项（void_items 等，本质是条款列表）。
+ */
+export const PARSE_FIELD_LABELS: Record<string, Record<string, string>> = {
+  project_info: { project_background: "项目背景", construction_content: "建设内容概况", duration: "工期要求", funding: "资金来源" },
+  purchaser_info: { purchaser_name: "采购人名称", contact_person: "联系人", contact_phone: "联系电话", address: "地址" },
+  agency_info: { agency_name: "代理机构名称", contact_person: "联系人", contact_phone: "联系电话", email: "邮箱", address: "地址" },
+  bid_deposit: { amount: "保证金金额", payment_method: "缴纳形式", account: "收款账户", deadline: "缴纳截止", refund_conditions: "退还条件" },
+  bid_open_req: { time_place: "时间地点", requirements: "参与要求", invalid_bid_rules: "无效标认定", process: "开标流程" },
+  eval_req: { committee: "评标委员会", method: "评标方法", principles: "评标原则", others: "其他说明" },
+  contract_terms: {
+    award_notice: "中标公示",
+    signing_deadline: "签订时限",
+    performance_bond: "履约保证金",
+    termination: "解除与终止",
+    warranty_linkage: "质保衔接",
+    disputes: "争议解决",
+  },
+  compilation_basis: { standards: "编制依据" },
+  delivery_req: {
+    implementation_period: "实施周期",
+    delivery_scope: "交付范围",
+    delivery_location: "交付地点",
+    acceptance: "验收要求",
+    warranty: "质保期",
+    after_sales: "售后服务",
+    response_time: "响应时限",
+    training: "培训要求",
+    tech_requirements: "技术需求要点",
+  },
+  response_req: {
+    composition: "响应文件组成",
+    format_requirements: "格式与签章要求",
+    signature_seal: "签字盖章",
+    binding_copies: "装订份数",
+    deadline: "递交截止",
+    submission_method: "递交方式",
+  },
+}
+
+/**
+ * 从整文 JSON 原对象构建字段块；非字段类 key / 无有效字段返回 undefined。
+ * 数组字段（如发货范围）取元素逐条成对，空值与「没有提及」一律不建行——保持与摊平文本同口径。
+ */
+export function buildFieldsStructured(key: string, obj: unknown): FieldsBlockJSON | undefined {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return undefined
+  const rec = obj as Record<string, unknown>
+  const fields: ParseFieldKV[] = []
+
+  // bid_nodes 是动态列表（节点名自定），标签取原文节点名，值取时间
+  if (key === "bid_nodes") {
+    const nodes = Array.isArray(rec.nodes) ? rec.nodes : []
+    for (const n of nodes) {
+      if (!n || typeof n !== "object") continue
+      const r = n as Record<string, unknown>
+      const label = str(r.node).trim()
+      const value = str(r.time).trim()
+      if (missing(label) || missing(value)) continue
+      fields.push({ label, value })
+    }
+    return fields.length ? { kind: "fields", fields } : undefined
+  }
+
+  const labels = PARSE_FIELD_LABELS[key]
+  if (!labels) return undefined
+  for (const [field, label] of Object.entries(labels)) {
+    const v = rec[field]
+    if (Array.isArray(v)) {
+      const items = v.map((x) => str(x).trim()).filter((s) => s && !missing(s))
+      items.forEach((s) => fields.push({ label, value: s }))
+      continue
+    }
+    const s = str(v).trim()
+    if (!missing(s)) fields.push({ label, value: s })
+  }
+  return fields.length ? { kind: "fields", fields } : undefined
+}
+
+/**
+ * 整文 JSON 原对象 → 结构化（唯一入口，替代原先只认评分项的调用）。
+ * 评分项 → ScoringBlockJSON；信息卡类 → FieldsBlockJSON；其余（纯逐条项）→ undefined。
+ */
+export function buildParseStructured(key: string, obj: unknown): ScoringBlockJSON | FieldsBlockJSON | undefined {
+  return buildScoringStructured(key, obj) ?? buildFieldsStructured(key, obj)
+}export function scoringItemsFromStructured(b: ScoringBlockJSON): ScoringItem[] {
   return b.items.map((it) => ({
     item: it.name,
     score: it.score,

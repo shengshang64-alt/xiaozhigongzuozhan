@@ -1954,6 +1954,32 @@ export function reportNeedsReparse(sections: ParseSection[]): boolean {
   return sections.some((s) => (s.key === "tech_score" || s.key === "biz_score") && s.content.trim() && !s.structured)
 }
 
+/** R55：信息卡类结构化字段对（按形状读，不 import parseSchemas，与评分项读取同口径避免环依赖） */
+export type ParseFieldPair = { label: string; value: string }
+
+/**
+ * R55：取某个解析项的**结构化字段**（保证金金额/缴纳形式/关键节点…）。
+ * 命中文档：整文 JSON 通道产出的报告（structured.kind === "fields"）；
+ * 老报告与检索通道产物无此结构，返回空数组——调用方自行回退行式文本，行为与改造前一致。
+ */
+export function parseSectionFields(sec: ParseSection | null | undefined): ParseFieldPair[] {
+  const st = sec?.structured as { kind?: string; fields?: unknown } | undefined
+  if (!st || st.kind !== "fields" || !Array.isArray(st.fields)) return []
+  const out: ParseFieldPair[] = []
+  for (const f of st.fields as { label?: unknown; value?: unknown }[]) {
+    const label = typeof f?.label === "string" ? f.label.trim() : ""
+    const value = typeof f?.value === "string" ? f.value.trim() : ""
+    if (label && value) out.push({ label, value })
+  }
+  return out
+}
+
+/** R55：按标签取字段值（下游统一入口；同标签多条取首条，与摊平文本「首行携带标签」口径一致） */
+export function parseSectionFieldValue(report: ParseReport | null, key: string, label: string): string {
+  const sec = report?.sections.find((s) => s.key === key)
+  return parseSectionFields(sec).find((f) => f.label === label)?.value ?? ""
+}
+
 // ------------------------------ R-031 P4：评分分区结构化校验（纯函数、零 AI） ------------------------------
 // 来源：安中医 2026BFAFZ50845 实测——「项目团队配备 10 分」同时出现在 tech_score/biz_score 两分区；
 // 技术分区声明「技术 90 分、商务 0 分」，自含条目合计仅 68 分（声明与条目矛盾）。

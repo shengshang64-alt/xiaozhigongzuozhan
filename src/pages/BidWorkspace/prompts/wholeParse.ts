@@ -18,6 +18,7 @@
 
 import type { LlmMessage } from "@/lib/llm"
 import { parseSectionTitle } from "../bidTypes"
+import { PARSE_FIELD_LABELS } from "../parseSchemas"
 
 /** 整文通道文件字数上限：≤ 该值走整文直读（约 4 万 token 输入，主流 128k 模型安全） */
 export const WHOLE_FILE_LIMIT = 60000
@@ -528,43 +529,12 @@ function flattenOutline(rec: Record<string, unknown>): string {
   return lines.join("\n")
 }
 
-/** 扁平字段落 摊平（数组字段取首个元素当行首标签，其余续行） */
-const FIELD_LABELS: Record<string, Record<string, string>> = {
-  project_info: { project_background: "项目背景", construction_content: "建设内容概况", duration: "工期要求", funding: "资金来源" },
-  purchaser_info: { purchaser_name: "采购人名称", contact_person: "联系人", contact_phone: "联系电话", address: "地址" },
-  agency_info: { agency_name: "代理机构名称", contact_person: "联系人", contact_phone: "联系电话", email: "邮箱", address: "地址" },
-  delivery_req: {
-    implementation_period: "实施周期",
-    delivery_scope: "交付范围",
-    delivery_location: "交付地点",
-    acceptance: "验收要求",
-    warranty: "质保期",
-    after_sales: "售后服务",
-    response_time: "响应时限",
-    training: "培训要求",
-    tech_requirements: "技术需求要点",
-  },
-  response_req: {
-    composition: "响应文件组成",
-    format_requirements: "格式与签章要求",
-    signature_seal: "签字盖章",
-    binding_copies: "装订份数",
-    deadline: "递交截止",
-    submission_method: "递交方式",
-  },
-  bid_deposit: { amount: "保证金金额", payment_method: "缴纳形式", account: "收款账户", deadline: "缴纳截止", refund_conditions: "退还条件" },
-  bid_open_req: { time_place: "时间地点", requirements: "参与要求", invalid_bid_rules: "无效标认定", process: "开标流程" },
-  eval_req: { committee: "评标委员会", method: "评标方法", principles: "评标原则", others: "其他说明" },
-  contract_terms: {
-    award_notice: "中标公示",
-    signing_deadline: "签订时限",
-    performance_bond: "履约保证金",
-    termination: "解除与终止",
-    warranty_linkage: "质保衔接",
-    disputes: "争议解决",
-  },
-  compilation_basis: { standards: "编制依据" },
-}
+/**
+ * 扁平字段落 摊平（数组字段取首个元素当行首标签，其余续行）。
+ * 标签表已收到 parseSchemas.PARSE_FIELD_LABELS（单一真源）：同时驱动这里的摊平文本与
+ * ParseSection.structured 的结构化字段，两边标签永不漂移。
+ */
+const FIELD_LABELS = PARSE_FIELD_LABELS
 
 function flattenFieldMap(key: string, rec: Record<string, unknown>): string {
   const labels = FIELD_LABELS[key]

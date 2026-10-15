@@ -742,7 +742,7 @@ import {
   WHOLE_FILE_LIMIT,
 } from "./prompts/wholeParse"
 import { splitTenderText } from "./prompts/tenderSplit"
-import { buildScoringStructured, selfCheckScoringTotal, type ScoringBlockJSON } from "./parseSchemas"
+import { buildParseStructured, selfCheckScoringTotal, type FieldsBlockJSON, type ScoringBlockJSON } from "./parseSchemas"
 import { buildVoidScopeMessages, buildVoidInitialCheckMessages, buildVoidFinalizeMessages } from "./prompts/voidCheckRounds"
 import { describeBidVisibility, selectBidEvidence, type BidEvidencePack } from "./bidVisibility"
 import { voidClauseFloorWarning } from "./voidClauseFloor"
@@ -908,7 +908,8 @@ function selectRelevantChunksWithSynonyms(text: string, key: string, extraKeywor
 }
 
 /** R-026（R253）：解析项落库载荷——行式文本 content + 可选评分结构化对象（仅 whole JSON 通道的 tech_score/biz_score 产出） */
-type ParsePayload = { text: string; structured?: ScoringBlockJSON }
+// R55：structured 不只评分块——信息卡类解析项落 FieldsBlockJSON（标签→值），展示与下游共用
+type ParsePayload = { text: string; structured?: ScoringBlockJSON | FieldsBlockJSON }
 
 async function parseSectionViaRetrieval(text: string, key: string): Promise<ParsePayload> {
   const isScoringKey = key === "tech_score" || key === "biz_score"
@@ -964,7 +965,9 @@ async function materializeWholeParseResult(key: string, raw: string): Promise<Pa
   }
   const text = flattenParseItemJson(key, obj) || "原文未提及"
   // R-026（R253）：JSON 项摊平成行式文本落 content（下游零改动），同时保留结构化对象落 structured
-  return { text, structured: buildScoringStructured(key, obj) }
+  // R55：结构化不再只给评分项——信息卡类（保证金/开标/关键节点/合同条款…）同样保留字段，
+  //      供解析报告两列展示与下游按标签取值（正则只留兜底）
+  return { text, structured: buildParseStructured(key, obj) }
 }
 
 /** 段级并发上限（R39b）：项级池已是 3 路，段级再无限 fan-out 叠加后，整本（20 段 × 3 项）
@@ -3740,7 +3743,7 @@ export function useBidWorkspace() {
           try {
             const parsed = await parseSectionItem(text, key, channel)
             slots[i] = { key, title, content: parsed.text, ...(parsed.structured ? { structured: parsed.structured } : {}) }
-            if (parsed.structured) {
+            if (parsed.structured?.kind === "scoring") {
               const scw = selfCheckScoringTotal(parsed.structured)
               if (scw) scoringSelfCheck.push(`${title}：${scw}`)
             }
@@ -3760,7 +3763,7 @@ export function useBidWorkspace() {
                 try {
                   const retried = await parseSectionItem(text, key, channel)
                   slots[i] = { key, title, content: retried.text, ...(retried.structured ? { structured: retried.structured } : {}) }
-                  if (retried.structured) {
+                  if (retried.structured?.kind === "scoring") {
                     const scw = selfCheckScoringTotal(retried.structured)
                     if (scw) scoringSelfCheck.push(`${title}：${scw}`)
                   }
