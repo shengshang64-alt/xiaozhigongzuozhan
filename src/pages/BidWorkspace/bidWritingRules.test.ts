@@ -58,9 +58,15 @@ describe("人称口径（自称按项目设置，不写死）", () => {
 })
 
 describe("参数表述口径（禁模糊比较）", () => {
-  it("不予低于/相当于这类词放过", () => {
-    const hits = findVagueParamHits(LINES("响应时间不低于3秒", "性能相当于同类产品", "并发能力左右"))
-    expect(hits.map((h) => h.word)).toEqual(["不低于", "相当于", "左右"])
+  it("真模糊词命中：相当于/左右/若干这类说不清的表述", () => {
+    const hits = findVagueParamHits(LINES("性能相当于同类产品", "并发能力左右", "响应时间若干秒"))
+    expect(hits.map((h) => h.word)).toEqual(["相当于", "左右", "若干"])
+  })
+
+  it("R56：下限承诺（不低于/不高于/不少于）放行——它是明确边界，不是模糊", () => {
+    // 真实标书实测「不低于」一次命中 152 处，会把真模糊词淹掉；
+    // 规范针对的是"说不清"，而"不低于 3 秒"给出了明确边界（且是投标常见口径）
+    expect(findVagueParamHits(LINES("响应时间不低于3秒", "可用性不高于5分钟", "驻场不少于6人"))).toEqual([])
   })
 
   it("具体数值不报", () => {
@@ -127,8 +133,9 @@ describe("文件命名（日期+标题+版本）", () => {
 })
 
 describe("scanChapterText 汇总", () => {
-  it("一次扫出三类命中", () => {
-    const r = scanChapterText("我们提供的智业系统响应时间不低于3秒", { identityMarkers: ["智业"] })
+  it("一次扫出三类命中（人称 / 模糊参数 / 身份泄漏）", () => {
+    // R56：「不低于」已放行，示例改用真模糊词「相当于」，三类命中各一
+    const r = scanChapterText("我们提供的智业系统性能相当于同类产品", { identityMarkers: ["智业"] })
     expect(r.pronouns).toHaveLength(1)
     expect(r.vagueParams).toHaveLength(1)
     expect(r.identityLeaks).toHaveLength(1)

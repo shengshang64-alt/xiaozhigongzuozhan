@@ -59,11 +59,12 @@ describe("deptRulesHits：六类命中各自归码", () => {
     expect(withOwn[0].quote).toContain("XX市人民医院")
   })
 
-  it("⑤ 写作规范：自称口径与模糊参数归 writing_voice，且不重复报暗标身份泄漏（那是 identity_leak 的活）", () => {
-    const hits = deptRulesHits(base({ bidText: "我们承诺系统可用性不低于 99.9%。" }))
+  it("⑤ 写作规范：自称口径与真模糊词归 writing_voice，且不重复报暗标身份泄漏（那是 identity_leak 的活）", () => {
+    // R56：「不低于」已放行（下限承诺是明确边界），示例用真模糊词「相当于」
+    const hits = deptRulesHits(base({ bidText: "我们承诺系统性能相当于同类产品。" }))
     expect(rulesOf(hits)).toEqual(["writing_voice", "writing_voice"])
     expect(hits.map((h) => h.quote).join("|")).toContain("我们")
-    expect(hits.map((h) => h.quote).join("|")).toContain("不低于")
+    expect(hits.map((h) => h.quote).join("|")).toContain("相当于")
   })
 
   it("⑥ 专用章：大纲缺承诺函/偏离表时报 dedicated_section", () => {

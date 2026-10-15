@@ -55,20 +55,32 @@ function isExplicitMode(value: unknown): value is AiContextMode {
   return value === "original" || value === "sanitized_summary" || value === "blocked"
 }
 
-/** 文档显式设置过策略（ai_context_mode 非空）则整体以显式值为准，否则取分类默认 */
+/** weight=0（或非法负数）的落点：最低权重，**不丢语料** */
+export const MIN_RETRIEVAL_WEIGHT = 0.1
+
+/**
+ * 文档策略：**权重字段独立可信**，分类档只做兜底；mode / is_sensitive 维持原契约。
+ *
+ * R56 修正（2026-10-15 真实语料实测驱动）：旧口径把 weight 的读取绑在「mode 显式」这一支里，
+ * 且要求 `> 0`，造成两个静默失真：
+ *  ① 空 mode 的文档（实测 184 篇）库里的权重被整体忽略；
+ *  ② `weight = 0` 被 `> 0` 挡掉后回退分类档——实测 1293 篇「产品资料」标 0 想压低，
+ *     结果按分类档拿 1.2，**比默认还重**。
+ * 现定 weight 语义：`>0` 用库值；`=0`（或非法负数）落到 MIN_RETRIEVAL_WEIGHT＝最低权重。
+ * 刻意**不把 0 解释成"不检索"**——那会让这 1293 篇语料直接从检索里消失；真要"不进 AI"
+ * 请用 ai_context_mode=blocked（已有档位、检索侧已生效）。
+ * 另：is_sensitive 的既有语义与权重上限均**保持不变**（只加严在 contextSnippetOf 的 PII 掩码，
+ * 不参与排序），避免擅自动到已核定的敏感策略。
+ */
 export function effectivePolicy(doc: KbDocRow): KbCategoryPolicy {
   const base = KB_CATEGORY_POLICY[categoryOf(doc)] ?? KB_CATEGORY_POLICY["其他"]
+  const dbWeight = doc.retrieval_weight
+  const hasDbWeight = typeof dbWeight === "number" && Number.isFinite(dbWeight)
+  const weight = hasDbWeight ? (dbWeight > 0 ? dbWeight : MIN_RETRIEVAL_WEIGHT) : base.retrieval_weight
   if (isExplicitMode(doc.ai_context_mode)) {
-    return {
-      ai_context_mode: doc.ai_context_mode,
-      retrieval_weight:
-        typeof doc.retrieval_weight === "number" && doc.retrieval_weight > 0
-          ? doc.retrieval_weight
-          : base.retrieval_weight,
-      is_sensitive: doc.is_sensitive === true,
-    }
+    return { ai_context_mode: doc.ai_context_mode, retrieval_weight: weight, is_sensitive: doc.is_sensitive === true }
   }
-  return base
+  return { ...base, retrieval_weight: weight }
 }
 
 /** 进 AI 上下文与引用摘录使用的片段：sanitized_summary 文档只给摘要，绝不出现原文 */

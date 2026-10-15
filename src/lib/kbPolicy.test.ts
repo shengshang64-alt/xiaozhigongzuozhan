@@ -92,14 +92,19 @@ describe("effectivePolicy", () => {
     expect(p.retrieval_weight).toBe(2.0)
     expect(p.is_sensitive).toBe(true)
   })
-  it("显式 mode 但 weight 为 0 / 负数时回落分类默认", () => {
+  it("显式 mode 但 weight 为 0 时落到最低权重（R56 契约变更：0 = 压低，不是忽略）", () => {
     const p = effectivePolicy(mkDoc({ doc_category: "资质证书", ai_context_mode: "original", retrieval_weight: 0 }))
     expect(p.ai_context_mode).toBe("original")
-    expect(p.retrieval_weight).toBe(0.5) // 资质证书默认权重
+    // 旧口径把 0 挡掉后回退分类档 0.5；实测 1293 篇「产品资料」标 0 想压低，
+    // 回退分类档反而拿 1.2（比默认更重）——现统一落最低权重：排到最后，但语料不消失
+    expect(p.retrieval_weight).toBe(0.1)
   })
-  it("非法 mode 字符串不作为显式覆盖，整体取分类默认", () => {
+  it("权重字段独立生效：mode 写错不为它连坐（R56 契约变更）", () => {
     const p = effectivePolicy(mkDoc({ doc_category: "合同商务", ai_context_mode: "weird", retrieval_weight: 3 }))
-    expect(p).toEqual({ ai_context_mode: "sanitized_summary", retrieval_weight: 0.5, is_sensitive: true })
+    expect(p.ai_context_mode).toBe("sanitized_summary") // 非法 mode 不作显式覆盖
+    expect(p.is_sensitive).toBe(true)
+    // 实测 184 篇空 mode 文档的权重曾被整体忽略；权重是独立可信的数字字段
+    expect(p.retrieval_weight).toBe(3)
   })
   it("未知分类兜底「其他」默认（original / 1.0 / false）", () => {
     const p = effectivePolicy(mkDoc({ doc_category: "乱填的" }))

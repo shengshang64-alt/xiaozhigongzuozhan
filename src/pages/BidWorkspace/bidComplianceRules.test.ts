@@ -68,8 +68,17 @@ describe("评分合规校验（清单「其他项」原文口径）", () => {
     expect(keys).toContain("cap_single")
     expect(keys).toContain("cap_cert")
     expect(keys).toContain("cap_report")
-    // 该组数据同时会触发「技术分占比」警告（属另一条规则），这里只断言三条上限类问题都是红线
-    expect(issues.filter((i) => i.key.startsWith("cap_")).every((i) => i.level === "redline")).toBe(true)
+    // R56 分级：3~5 分超限属行业常见设置，按「提示」报（该组数据最高 5 分，故无红线）
+    expect(issues.filter((i) => i.key.startsWith("cap_")).every((i) => i.level === "warn")).toBe(true)
+  })
+
+  it("R56 分级：超过上限但未到 8 分按提示报，≥8 分才判红线且必须写明「须销售确认」", () => {
+    const warn = checkScoringCompliance([{ item: "总体技术方案", score: 7, category: "tech" }])
+    expect(warn.find((i) => i.key === "cap_single")?.level).toBe("warn")
+    const red = checkScoringCompliance([{ item: "总体技术方案", score: 8, category: "tech" }])
+    const hit = red.find((i) => i.key === "cap_single")
+    expect(hit?.level).toBe("redline")
+    expect(hit?.message).toContain("销售确认")
   })
 
   it("刚好卡在上限时不报（3/1/3 分）", () => {

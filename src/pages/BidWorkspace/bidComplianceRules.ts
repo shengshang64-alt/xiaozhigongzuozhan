@@ -151,6 +151,12 @@ export const SCORE_CAP_CERT = 1
 export const SCORE_CAP_REPORT = 3
 export const TECH_SCORE_SHARE_MAX = 0.5
 export const SUB_BID_PASS_SHARE_MIN = 0.5
+/**
+ * R56 分级阈值：超过上限但未到 SCORE_REDLINE_MIN 的按「提示」报，达到才判红线。
+ * 为什么要分级：真实标书实测「总体技术解决方案」等单项 5 分一次报出 14 条红线，
+ * 而 3~5 分是行业常见设置、改不了招标文件——全判红线会让真红线被淹没。
+ */
+export const SCORE_REDLINE_MIN = 8
 
 export function checkScoringCompliance(items: ScoringItemLike[]): ScoringComplianceIssue[] {
   const issues: ScoringComplianceIssue[] = []
@@ -160,12 +166,17 @@ export function checkScoringCompliance(items: ScoringItemLike[]): ScoringComplia
     const isCert = /证书|认证|资质|著作权|软著|登记证/.test(subject)
     const isReport = /测试报告|检测报告|评测报告|检验报告/.test(subject)
     const cap = isCert ? SCORE_CAP_CERT : isReport ? SCORE_CAP_REPORT : SCORE_CAP_SINGLE
-    if (Number(it.score) > cap) {
+    const score = Number(it.score)
+    if (score > cap) {
+      const redline = score >= SCORE_REDLINE_MIN
+      const capText = isCert ? "证书类 1 个最多 1 分" : isReport ? "测试报告类 1 个最多 3 分" : "单项不得超过 3 分"
       issues.push({
         key: isCert ? "cap_cert" : isReport ? "cap_report" : "cap_single",
-        level: "redline",
+        level: redline ? "redline" : "warn",
         subject,
-        message: `「${subject}」${it.score} 分，超过上限 ${cap} 分（${isCert ? "证书类 1 个最多 1 分" : isReport ? "测试报告类 1 个最多 3 分" : "单项不得超过 3 分"}）`,
+        message: `「${subject}」${it.score} 分，超过上限 ${cap} 分（${capText}）${
+          redline ? "，且已达高额档，须销售确认" : "——3~5 分为行业常见设置，提示核对"
+        }`,
       })
     }
   }
