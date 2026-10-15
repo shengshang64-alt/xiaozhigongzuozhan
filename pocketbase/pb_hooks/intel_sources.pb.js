@@ -101,16 +101,18 @@ routerAdd("GET", "/api/intel_sources", function (e) {
     ensureCollLocal()
     var info = e.requestInfo()
     var query = info.query || {}
+    // 身份门（与 F-SEC-05 同一批收口）：身份只认 zx_guard 中间件注入的 e.get("rhUserId")
+    var __uid = String(e.get("rhUserId") || "")
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var page = parseInt(String(query.page || "1"), 10) || 1
     var perPage = parseInt(String(query.perPage || "50"), 10) || 50
     if (perPage > 200) perPage = 200
     var sort = String(query.sort || "-created")
     var filterParts = []
     var params = {}
-    if (query.owner_id !== undefined && query.owner_id !== "") {
-      filterParts.push("owner_id = {:owner_id}")
-      params.owner_id = String(query.owner_id)
-    }
+    // 可见范围：内置源（owner_id 为空）+ 本人的自定义源；不再接受客户端自报 owner_id 越权读他人源
+    filterParts.push("(owner_id = '' || owner_id = {:owner_id})")
+    params.owner_id = __uid
     if (query.source_type !== undefined && query.source_type !== "") {
       filterParts.push("source_type = {:source_type}")
       params.source_type = String(query.source_type)
@@ -123,7 +125,7 @@ routerAdd("GET", "/api/intel_sources", function (e) {
       filterParts.push("enabled = {:enabled}")
       params.enabled = String(query.enabled)
     }
-    var filter = filterParts.length > 0 ? filterParts.join(" && ") : ""
+    var filter = filterParts.join(" && ")
     var records = filter
       ? $app.findRecordsByFilter("intel_sources", filter, sort, perPage, (page - 1) * perPage, params)
       : $app.findRecordsByFilter("intel_sources", "", sort, perPage, (page - 1) * perPage)

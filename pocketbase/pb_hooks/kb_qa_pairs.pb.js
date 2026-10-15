@@ -148,6 +148,12 @@ routerAdd("GET", "/api/kb_qa_pairs/{id}", function (e) {
     var rec = null
     try { rec = $app.findRecordById("kb_qa_pairs", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
+    // F-SEC-03/04：personal 记录仅归属人可访问（team 记录维持团队可协作）；
+    // 归属判断内联在本路由内（Goja 跨 routerAdd 不共享顶层函数，见 zx_guard 说明）
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id") || "") === __uid) } catch (_ownErr) {}
+    if (!__own) { try { __own = (String(rec.get("visibility") || "") !== "personal") } catch (_visErr) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     return e.json(200, rec.publicExport())
   } catch (err) {
     var msg = String(err && err.message || err)
@@ -208,6 +214,12 @@ routerAdd("PATCH", "/api/kb_qa_pairs/{id}", function (e) {
     var rec = null
     try { rec = $app.findRecordById("kb_qa_pairs", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
+    // F-SEC-03/04：personal 记录仅归属人可访问（team 记录维持团队可协作）；
+    // 归属判断内联在本路由内（Goja 跨 routerAdd 不共享顶层函数，见 zx_guard 说明）
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id") || "") === __uid) } catch (_ownErr) {}
+    if (!__own) { try { __own = (String(rec.get("visibility") || "") !== "personal") } catch (_visErr) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     var body = e.requestInfo().body || {}
     // IDOR fix: owner transfer disabled
     if ("question" in body) rec.set("question", body.question === undefined || body.question === null ? "" : String(body.question))
@@ -233,6 +245,12 @@ routerAdd("DELETE", "/api/kb_qa_pairs/{id}", function (e) {
     var rec = null
     try { rec = $app.findRecordById("kb_qa_pairs", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
+    // F-SEC-03/04：personal 记录仅归属人可访问（team 记录维持团队可协作）；
+    // 归属判断内联在本路由内（Goja 跨 routerAdd 不共享顶层函数，见 zx_guard 说明）
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id") || "") === __uid) } catch (_ownErr) {}
+    if (!__own) { try { __own = (String(rec.get("visibility") || "") !== "personal") } catch (_visErr) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     $app.delete(rec)
     return e.json(200, { ok: true })
   } catch (err) {

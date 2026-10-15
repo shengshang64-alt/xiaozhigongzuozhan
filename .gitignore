@@ -67,3 +67,7 @@ _dupcheck.txt
 dup_check.txt
 dedup_intel_done.txt
 _intel_audit.js
+
+# 常驻守护运行时产物（PID 与误落盘的锁文件路径，不入库）
+dev-supervisor.pid
+*.pid

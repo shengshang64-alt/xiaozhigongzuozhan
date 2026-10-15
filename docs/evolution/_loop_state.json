@@ -1,8 +1,8 @@
 {
-  "round": 48,
+  "round": 51,
   "lastRound": {
-    "id": "R48",
-    "theme": "P0-2「事实来源优先级」（WorkBuddy 审查文档切片 2）：新增 BidWorkspace/factSources.ts 纯函数层（FACT_CONFIRM_MARK / FACT_COMMITMENT_TOPIC_RE / TENDER_CONSTRAINT_VALUE_RE / FactSourceTier / normalizeFactSourceLine / factSourceTierOf / normalizeFactSourceLines），规范化只作用于「AI 输出→编辑态」，把需商务拍板主题上的已定承诺形态取值补【需人工确认】，招标原文比较口径（不超过/不少于…）原样保留；prompts/factSettings.ts PROMPT_VERSION 1→2、新增来源优先级分层（招标硬约束 > 本项目已确认事实 > 待商务拍板 > 历史范本仅写法参考）、重写第 4/6/7 条（范本数值不得覆盖本项目招标硬约束与本项目已确认事实）；runGenerateFactSettings 改走 rawLines→normalizeFactSourceLines→setFactDraft 并 toast 报出标记条数，范本摘录标签去掉「同主题事实优先采用范本口径」；事实面板补「【需人工确认】=待商务拍板」口径。刻意不标记「预算金额/最高限价/控制价」以保住 priceCeilingFromFacts 报价天花板（bidTypes.ts:4360 + bidFormatCheck.test.ts:424-428 双侧守卫）。新增 3 个测试文件 / +21 例（factSources.test.ts 7 / factSourcePriority.test.ts 7 / factSourceWiring.test.ts 7，含「手册 §2.22 逐字块 == buildFactSettingsMessages 的 system」母手册+派生手册同源守卫，已做变异负例验证：改代码不改手册必红）；promptsSnapshot.test.ts.snap 的 buildFactSettingsMessages 条目按新文案更新（diff 只动该条）。241 files / 2848 passed / 2 skipped（含同期另一执行者的未提交 1 文件/6 例）；eslint 119 error / 13 warning 持平预算",
+    "id": "R51",
+    "theme": "安中医真实标书回归夹具（R50 §5 未覆盖边界第 1 条）：把「长文检索召回率未用真实标书验证」从口径变成可复跑数字。新增 scripts/azhongyi-real-fixture.mjs（只读 PocketBase 项目 mfl6howomsw5i0l；脱敏加固 3 处：投标正文章节内容也脱敏、新增行级脱敏 scrubLabelLines/LABEL_LINE 处理地址·联系人·电话·邮编·传真标签行与地址续行、新增（…交口）→（某路口）与…路N号→某市某路 000 号 正则），产出全量夹具 .probe/az-fixture/azhongyi.full.json（tender 152053 字 / bid 138810 字 / 133 条款，不入库）与脱敏子集 src/pages/BidWorkspace/__fixtures__/azhongyiRealBid.json（tender 32957 / bid 47103 字 / 18 章 / 133 条款；第 3 章整章保留、其余每章截 1900 字）。新增 src/pages/BidWorkspace/bidVisibilityRealBid.test.ts 27 例（只断言行为不变量与下限 hitFloor=40，不把命中率写死）：§0 夹具自洽与脱敏（真名计数 0）§1 mode=retrieval/input_complete=false/注入≤20000/未注入如实计量/note 写明不得当作不存在 §2 未覆盖章片段确实不在注入素材 §3 召回下限+命中必带 sources+未命中逐条点名 §4 旧口径 clipText(12000) 只覆盖 2-3 章却自称 input_complete=true 不得回归 §5 端到端 sanitize+markInvisible → 不可见一律 partial+needs_review、导出无内部文案 §6 buildDeviationMapMessages 含真实证据包不含未注入片段 §7 全量夹具存在时（skipIf）139k 字下 needs_review>100。真实测量：全量 clause_hit=13/133(9.8%)、注入 6 段 19542 字、未注入 119268、漏第 4/8/9-18 章；子集 clause_hit=56/133(42%)、注入 7 段 19944 字、未注入 27159。顺带修真实缺陷：bidTypes.ts 的 deviationCommitHits 原让负偏离（deviation_undercommit，在 GATE_FATAL_RULES 硬闸黑名单）与「本次不可见」（deviation_invisible_review）共用 30 条上限，长文下不可见上百条会把负偏离整批挤出 hits → 交卷体检误判「无废标级命中」；现改为先收集负偏离（≤30）再收集不可见（独立 ≤30）。245 files / 2917 passed / 2 skipped；tsc 0 error；vite build 3.91s；eslint 119 error / 13 warning = R50 基线零新增",
     "verdict": "pass",
     "at": "2026-10-15"
   },
@@ -16,7 +16,7 @@
   "backlog": [
     {
       "id": "B22-multi-agent-same-workspace",
-      "title": "同一工作区并发执行者（WorkBuddy AI，C:\\Users\\Administrator\\.workbuddy-ai）实测：R48 期间它在改 src/components/ppt-quote/QuoteEditor.tsx 并跑 vitest，导致 ① 我在途 tsc 被对方的半成品改动打成 error（对方随后自行还原）② 全仓 vitest 文件数含对方未提交文件（241 而非 240）。待办：约定「同一时刻只允许一个执行者写仓库」，或给另一方改用 worktree/分支；并复核 docs/evolution/_loop_state.json 的 round 是否会双 bump",
+      "title": "同一工作区并发执行者（WorkBuddy AI，C:\\Users\\Administrator\\.workbuddy-ai）实测：R48 期间它在改 src/components/ppt-quote/QuoteEditor.tsx 并跑 vitest，导致 ① 我在途 tsc 被对方的半成品改动打成 error（对方随后自行还原）② 全仓 vitest 文件数含对方未提交文件（241 而非 240）。待办：约定「同一时刻只允许一个执行者写仓库」，或给另一方改用 worktree/分支；并复核 docs/evolution/_loop_state.json 的 round 是否会双 bump【R49 实测确认已发生】R49（本地自动化线）原记 R48，与项目 R48（factSources 事实来源优先级）撞号 —— 即本条担心的「round 双 bump」已真实发生；R49 已主动顺延，并在 .loop/ledger.json 与 docs/evolution/_loop_state.json 两边写明编号来源。",
       "priority": "high",
       "source": "self-found(R48)"
     },
@@ -28,7 +28,7 @@
     },
     {
       "id": "B24-upgrade-doc-slices-3-4-5",
-      "title": "WorkBuddy《提示词升级文档》剩余切片：切片 3 长文可见性（长文生成的可观测/可续写）、切片 4 Flash 选型实测（deepseek-v4.1-flash 在真实标书链路的表现取证）、切片 5 交付金丝雀（生成→导出的端到端交付物体检）。切片 0 基线 / 切片 1 废标证据（R47 随行入库）/ 切片 2 事实来源优先级（R48）已完成",
+      "title": "WorkBuddy《提示词升级文档》剩余切片：切片 3 长文可见性（长文生成的可观测/可续写）、切片 4 Flash 选型实测（deepseek-v4.1-flash 在真实标书链路的表现取证）、切片 5 交付金丝雀（生成→导出的端到端交付物体检）。切片 0 基线 / 切片 1 废标证据（R47 随行入库）/ 切片 2 事实来源优先级（R48）已完成；**切片 3 长文可见性已由 R50 完成**（docs/evolution/R50_20261015.md），剩切片 4 Flash 选型实测 / 切片 5 交付金丝雀",
       "priority": "high",
       "source": "benchmark"
     },
@@ -46,7 +46,7 @@
     },
     {
       "id": "B0c-ui-regression",
-      "title": "UI 回归网（R42 已落地四张：DiscountCell 10 例 / NumCell 11 例 / DiscountIntentDialog 11 例 / GateChecklist 14 例 = 46 例，均 jsdom + testing-library，per-file @vitest-environment 覆盖不动全局 node 环境；四张都做过「删实现即变红」验证）。剩余可补：报价行编辑→小计/总额往返、导出前门禁拦截。此后新增 UI 高风险交互按「改前先补测试」继续",
+      "title": "UI 回归网（R42 四张：DiscountCell 10 例 / NumCell 11 例 / DiscountIntentDialog 11 例 / GateChecklist 14 例 = 46 例，均 jsdom + testing-library，per-file @vitest-environment 覆盖不动全局 node 环境；四张都做过「删实现即变红」验证）。R49 已补完「报价行编辑 → 小计 / 总额往返」半张（src/components/ppt-quote/QuoteEditorMoney.test.tsx 6 例，含探针行 15 × 599,729.21 × 90% = 8,096,344.34 与「删实现即变红」验证）。剩余可补：导出前门禁拦截（该拦的必须拦、该放行的必须放行）。此后新增 UI 高风险交互按「改前先补测试」继续",
       "priority": "medium",
       "source": "self-found(R42 x4)"
     },
@@ -58,27 +58,15 @@
     },
     {
       "id": "B15",
-      "title": "pb_hooks 网关补丁待重启生效：重启 :7000 后复测 opecode 通道是否恢复；并评估把「模型配置健康徽标」从 /models 连通改为真跑一次 chat（本次假绿根因）",
+      "title": "pb_hooks 网关补丁待重启生效：重启 :7000 后复测 opecode 通道是否恢复；并评估把「模型配置健康徽标」从 /models 连通改为真跑一次 chat（本次假绿根因）（R49 复核：核心动作「重启 :7000」仍被项目 hook 挡住，无变化）",
       "priority": "high",
       "source": "self-found"
-    },
-    {
-      "id": "B1",
-      "title": "R031 遗留 A1-A6：编制层（大纲去重/gen_status/★响应/规定目录/数字一致性/评分落点门禁）",
-      "priority": "high",
-      "source": "round-report"
     },
     {
       "id": "B2",
       "title": "条款-响应合规矩阵可视化：R35 复核确认数据链与偏离表导出均已落地（buildScoringCoverageMatrix bidTypes.ts:2088 + exportDeviationDocx bidFiles.ts:1260），降级为「是否需要统一矩阵视图」的产品判断，不再是能力缺口",
       "priority": "medium",
       "source": "benchmark"
-    },
-    {
-      "id": "B10",
-      "title": "报价总额 ↔ 标书正文报价数字对账（bidTypes.ts:4147 注明属做法 B；现已有 quoteTotalCents 单源，门槛降低）；R38 面板已能本地复算价格分，正文报价数字与之对账门槛进一步降低",
-      "priority": "medium",
-      "source": "round-report"
     },
     {
       "id": "B4",
@@ -145,9 +133,33 @@
       "title": "导出字体护栏：docx 库 TextRun 不给 font 就不写 <w:rFonts>。本轮已修 exportBidDocxDefaults，但 ppt/方案/报告等其余导出路径需同口径排查（凡导出可见文字的路径都要带字体），并考虑在构建层加「无字体 run 计数」自检",
       "priority": "medium",
       "source": "self-found(R46)"
+    },
+    {
+      "id": "B25-long-bid-retrieval-recall",
+      "title": "长文检索召回率偏低（R51 真实测量，非推断）：安中医 138810 字 / 133 条款 / 20000 字预算下 clause_hit 仅 13/133 = 9.8%，脱敏子集 47103 字下 56/133 = 42% —— 同一算法，正文缩短后命中率涨 4 倍以上，说明瓶颈是「预算 ÷ 正文长度」而非打分算法。未覆盖章已逐条点名（全量下第 4、8、9-18 章）。R50 交付的可见性闸门本身没错（它如实说「我只看见 13 条」），但靠 13 条证据判 133 条条款的响应性，业务上不可接受。候选解法：① 压缩单位证据（章内二次摘要后再取证）② 提高 20000 字预算或按模型上下文动态定预算 ③ 两阶段取证（先按条款粗筛章节、再精取正文）④ 章节摘要树。注意：修完必须同时更新 bidVisibilityRealBid.test.ts 的 hitFloor 下限，并补第二份不同结构（如纯条款清单型）标书作对照样本。",
+      "priority": "high",
+      "source": "self-found(R51)"
     }
   ],
   "history": [
+    {
+      "id": "R051",
+      "theme": "安中医真实标书回归夹具（R50 §5 未覆盖边界第 1 条）：把「长文检索召回率未用真实标书验证」从口径变成可复跑数字。新增 scripts/azhongyi-real-fixture.mjs（只读 PocketBase 项目 mfl6howomsw5i0l；脱敏加固 3 处：投标正文章节内容也脱敏、新增行级脱敏 scrubLabelLines/LABEL_LINE 处理地址·联系人·电话·邮编·传真标签行与地址续行、新增（…交口）→（某路口）与…路N号→某市某路 000 号 正则），产出全量夹具 .probe/az-fixture/azhongyi.full.json（tender 152053 字 / bid 138810 字 / 133 条款，不入库）与脱敏子集 src/pages/BidWorkspace/__fixtures__/azhongyiRealBid.json（tender 32957 / bid 47103 字 / 18 章 / 133 条款；第 3 章整章保留、其余每章截 1900 字）。新增 src/pages/BidWorkspace/bidVisibilityRealBid.test.ts 27 例（只断言行为不变量与下限 hitFloor=40，不把命中率写死）：§0 夹具自洽与脱敏（真名计数 0）§1 mode=retrieval/input_complete=false/注入≤20000/未注入如实计量/note 写明不得当作不存在 §2 未覆盖章片段确实不在注入素材 §3 召回下限+命中必带 sources+未命中逐条点名 §4 旧口径 clipText(12000) 只覆盖 2-3 章却自称 input_complete=true 不得回归 §5 端到端 sanitize+markInvisible → 不可见一律 partial+needs_review、导出无内部文案 §6 buildDeviationMapMessages 含真实证据包不含未注入片段 §7 全量夹具存在时（skipIf）139k 字下 needs_review>100。真实测量：全量 clause_hit=13/133(9.8%)、注入 6 段 19542 字、未注入 119268、漏第 4/8/9-18 章；子集 clause_hit=56/133(42%)、注入 7 段 19944 字、未注入 27159。顺带修真实缺陷：bidTypes.ts 的 deviationCommitHits 原让负偏离（deviation_undercommit，在 GATE_FATAL_RULES 硬闸黑名单）与「本次不可见」（deviation_invisible_review）共用 30 条上限，长文下不可见上百条会把负偏离整批挤出 hits → 交卷体检误判「无废标级命中」；现改为先收集负偏离（≤30）再收集不可见（独立 ≤30）。245 files / 2917 passed / 2 skipped；tsc 0 error；vite build 3.91s；eslint 119 error / 13 warning = R50 基线零新增",
+      "verdict": "pass",
+      "at": "2026-10-15"
+    },
+    {
+      "id": "R050",
+      "theme": "P0-3 长文可见性（WorkBuddy 升级文档切片 3）：长投标正文进废标自查 / 偏离表前先做「输入可见性报告 + 按条款定向检索证据包」。新增 src/pages/BidWorkspace/bidVisibility.ts（纯函数：20000 字预算；按「第N章」切章 → ≤6000 字块 / 300 字重叠 / 来源 id 形如「第3章 资质证明/块2」；条款关键词 + 同义词 + IDF 加权打分；selectBidEvidence 产出 mode=full|retrieval|truncated 的证据包，input_complete 仅 full 为真）。三份提示词（voidCheck 4→5 / voidCheckRounds 1→2 / deviationMap 1→2）system 各带可见性契约、user 由程序注入【输入可见性】块，删除 clipText 与「每章前 300 字摘要」等静默截断。偏离表未知态不再落成负偏离：sanitizeDeviationRows 漏答兜底 deviation → partial + needs_review（旧口径会经 deviation_undercommit 撞 GATE_FATAL_RULES 硬闸，把「系统没看到」判成「投标人没承诺」）；新增 markInvisibleDeviationRows 按检索未命中条款打标。新增体检规则 deviation_invisible_review（warn，不进硬闸名单）；DeviationPanel 补「待人工核对」角标 / 分组计数 / 统计卡 / 核对指引；bidFiles 导出偏离表改用 deviationExportSummary，内部过程文案不外泄。测试 +3：bidVisibility.test.ts 24 例、promptVisibilityWiring.test.ts 9 例（母手册 == 派生手册 == 代码 system）、DeviationPanel.test.tsx 5 例（jsdom）。244 files / 2890 passed / 2 skipped；tsc 0 error；vite build 4.01s；eslint 119 error / 13 warning = 基线零新增",
+      "verdict": "pass",
+      "at": "2026-10-15"
+    },
+    {
+      "id": "R049",
+      "theme": "B0c 剩余项「报价编辑器金额往返回归网」（本地自动化线 R49；因项目 R48 已被并发执行者的「事实来源优先级」切片占用，本线主动顺延为 R49）：新增 src/components/ppt-quote/QuoteEditorMoney.test.tsx（6 例，jsdom + @testing-library，状态化 harness 复演线上 usePptQuote 的 mutateQuote，totals 由 groupSubtotal/quoteTotal 从最新 state 重算），驱动真实「数量 / 单价（元）/ 折扣（百分比）」输入框，断言「行小计 / 分组小计 / 报价总计」三处逐分自洽且等于金额单一真源 itemSubtotal；探针行 = R034 经典反例 15 × 599,729.21 × 90%（精确 8,096,344.34，裸浮点得 8,096,344.33）。已做「删实现即变红」反向验证：把 QuoteEditor.tsx:674 的 const sub = itemSubtotal(item) 临时改成裸浮点 → 第 1、4 条 2 failed | 4 passed；git checkout 还原后 6 passed、git diff 为空。业务代码 0 改动 / 0 新依赖 / 0 schema / 0 提示词。顺带核对并结掉三处陈旧待办：B1（A1-A6 已落地接线：composeGates.ts 387 行 + useBidWorkspace.ts:712 导入 / :6938 调用 / :6944-6958 逐条弹）、B10（overPriceCeilingHits :2259 与 quoteRecordCeilingHits :2263 均已接进 refreshFormatReport 本地体检）、docs/13 §3.2/§3.3/§3.4。241 files / 2848 passed / 2 skipped（连跑 3 次一致；本轮自身 +1 文件 / +6 用例，其余增量属并发在途 factSources 批次）；eslint 119 error / 13 warning = 基线零新增；vite build 6.30s",
+      "verdict": "pass",
+      "at": "2026-10-15"
+    },
     {
       "id": "R048",
       "theme": "P0-2「事实来源优先级」（WorkBuddy 审查文档切片 2）：新增 BidWorkspace/factSources.ts 纯函数层（FACT_CONFIRM_MARK / FACT_COMMITMENT_TOPIC_RE / TENDER_CONSTRAINT_VALUE_RE / FactSourceTier / normalizeFactSourceLine / factSourceTierOf / normalizeFactSourceLines），规范化只作用于「AI 输出→编辑态」，把需商务拍板主题上的已定承诺形态取值补【需人工确认】，招标原文比较口径（不超过/不少于…）原样保留；prompts/factSettings.ts PROMPT_VERSION 1→2、新增来源优先级分层（招标硬约束 > 本项目已确认事实 > 待商务拍板 > 历史范本仅写法参考）、重写第 4/6/7 条（范本数值不得覆盖本项目招标硬约束与本项目已确认事实）；runGenerateFactSettings 改走 rawLines→normalizeFactSourceLines→setFactDraft 并 toast 报出标记条数，范本摘录标签去掉「同主题事实优先采用范本口径」；事实面板补「【需人工确认】=待商务拍板」口径。刻意不标记「预算金额/最高限价/控制价」以保住 priceCeilingFromFacts 报价天花板（bidTypes.ts:4360 + bidFormatCheck.test.ts:424-428 双侧守卫）。新增 3 个测试文件 / +21 例（factSources.test.ts 7 / factSourcePriority.test.ts 7 / factSourceWiring.test.ts 7，含「手册 §2.22 逐字块 == buildFactSettingsMessages 的 system」母手册+派生手册同源守卫，已做变异负例验证：改代码不改手册必红）；promptsSnapshot.test.ts.snap 的 buildFactSettingsMessages 条目按新文案更新（diff 只动该条）。241 files / 2848 passed / 2 skipped（含同期另一执行者的未提交 1 文件/6 例）；eslint 119 error / 13 warning 持平预算",
@@ -246,9 +258,13 @@
     "r045": "231 files / 2747 passed | 2 skipped（本轮新增 6 文件 / 26 例：fontResolve / numberingResolve / anbidRegionPresets / BidCheckConfigDialog(首个组件测试) / bidExportChapters / 三处既有测试扩例）；eslint 119 error / 13 warning（= R44 基线，零新增）；tsc -b exit 0；vite build ✓ 4.65s",
     "r046": "233 files / 2758 passed | 2 skipped；eslint 119 error / 13 warning（= R44 基线，零新增）；tsc -b exit 0；vite build ✓",
     "r047": "237 files / 2821 passed | 2 skipped（+4 文件 / +63 用例：modelRouting.test.ts / templateProfile.test.ts / templateRequirements.test.ts / voidEvidence.test.ts 等）；eslint 119 error / 13 warning（= R44 基线，零新增）；tsc -b exit 0；vite build ✓ 4.50s",
-    "r048": "241 files / 2848 passed | 2 skipped（本切片 +3 文件 / +21 例：factSources.test.ts / factSourcePriority.test.ts / factSourceWiring.test.ts；另含同期 WorkBuddy AI 执行者未提交的 QuoteEditorMoney.test.tsx 1 文件 / 6 例 —— 本切片自身等价口径 = 240 / 2842）；eslint 119 error / 13 warning（= R44 基线，零新增）；tsc -b exit 0；vite build ✓ 10.36s"
+    "r048": "241 files / 2848 passed | 2 skipped（本切片 +3 文件 / +21 例：factSources.test.ts / factSourcePriority.test.ts / factSourceWiring.test.ts；另含同期 WorkBuddy AI 执行者未提交的 QuoteEditorMoney.test.tsx 1 文件 / 6 例 —— 本切片自身等价口径 = 240 / 2842）；eslint 119 error / 13 warning（= R44 基线，零新增）；tsc -b exit 0；vite build ✓ 10.36s",
+    "r049": "241 files / 2848 passed | 2 skipped（连跑 3 次一致）；eslint 119 error / 13 warning；vite build 6.30s（本轮自身 +1 文件 / +6 用例，其余增量属并发在途 factSources 批次，本轮未碰）",
+    "r050": "244 files / 2890 passed | 2 skipped；tsc 0 error；vite build 4.01s；eslint 119 error / 13 warning（= 基线，零新增）",
+    "r051": "245 files / 2917 passed | 2 skipped（+1 文件 / +27 例：bidVisibilityRealBid.test.ts；其余增量属并发在途批次）；eslint 119 error / 13 warning（= R50 基线，零新增）；tsc -b exit 0；npx vite build ✓ 3.91s；真实召回率：全量 13/133 (9.8%)、脱敏子集 56/133 (42%)"
   },
   "notes": [
+    "R50 的关键判断（两处口径反转）：① 「AI 漏答」不再等于「负偏离」——旧兜底 deviation 会经 deviationCommitHits → deviation_undercommit 命中 GATE_FATAL_RULES（硬闸），即工具没看到的内容会把可交付标书判成承诺不够；现一律 partial + needs_review，并单列 deviation_invisible_review（warn，不入硬闸）。② 内部过程文案与对外交付物分离——偏离表 Word 是投标文件组成部分，deviationExportSummary 把「AI 未定位 / 未注入」这类句子换成对外口径，即使 needs_review 标记缺失（模型原样抄回）也照改。另：新增体检规则必须同时进 FORMAT_RULE_LABEL（它是 normalizeFormatCheckReport 白名单的唯一真源），否则回读即被静默丢弃——本轮先由 tsc 报 TS2322 暴露，已一并修掉。",
     "R48 事实（实测非推断）：① 同一工作区内存在**并发执行者** —— WorkBuddy AI 运行时（C:\\Users\\Administrator\\.workbuddy-ai）在 R48 期间改 src/components/ppt-quote/QuoteEditor.tsx（import 了 itemSubtotal 却未使用）并跑 vitest，我在途的一次 `npx tsc -b` 因此报 TS6133；对方随后自行还原，重跑 tsc exit 0。全仓 vitest 文件数因此为 241（含对方未提交的 QuoteEditorMoney.test.tsx），本切片自身等价口径 240 / 2842。已登记 backlog B22。② `docs/提示词手册/08-站内助手.md` 长期显示 ` M` 但 `git hash-object` == index blob（15b696f…）—— 纯 CRLF 统计伪差异，**不是真改动，不要据此回滚**（澄清 R48 交接单遗留疑点）。③ scripts/split-prompts.mjs 有既存漂移，本轮禁跑，派生手册手工同步；新增 factSourceWiring.test.ts 用「手册逐字块 == 代码 system」守卫把这件事变成会红的测试（含变异负例验证）。④ promptsSnapshot.test.ts 用 toMatchSnapshot 锁住 buildFactSettingsMessages 全文：改提示词必须连带更新 .snap（本轮 diff 只动该条）并把 PROMPT_VERSION 1→2。",
     "R48 纪律（写死以免再犯）：① 「什么算我方承诺」不能凭语义直觉决定，必须**先查下游消费侧** —— 预算金额/最高限价/控制价看着像金额，实为招标方给定约束，若被标【需人工确认】会让 bidTypes.ts:4360 priceCeilingFromFacts 的报价天花板静默失效（超限价不自知）。② 规范化只允许发生在「AI 输出 → 编辑态」这一次；对用户手工编辑行与已保存的 global_facts **一字不改**（系统不得静默改写人工确认过的口径）。③ 手册与代码必须同源且**可自动发现漂移**：新增/修改提示词时，母手册 §、派生手册 §、代码 system 三者要一起动，且要有会红的测试兜底，禁止「人肉记得同步」。",
     "起点 R034；R031/R033 为已存在的进化日志（docs/evolution/）。",
@@ -297,7 +313,11 @@
     "R44 新增人工检查入口：`pnpm health:manual`（scripts/health/manual-checks.mjs）一条命令跑两项**刻意不进 loop 四门**的验收 —— ① pb_migrations 空目录重建（需 pocketbase 二进制）② eslint 债务预算 + 账本同源。它与 `pnpm verify:migrations` 并存，以后每轮收尾建议至少跑一次；它**不替代** loop 四门。",
     "R44 环境事实（修正 R43 轮报与 docs/20 §9.3）：`npx eslint .` 的**分母实测 780 个文件**（`.ts 477 / .tsx 227 / .js 45 / .mjs 27 / .cjs 4`），`pocketbase/pb_hooks/*.pb.js`、`scripts/health/*.mjs`、`docs/evolution/*.cjs` 都在报告内。准确表述 = **规则块只对 `**/*.{ts,tsx}` 生效**（非 ts 文件被解析、不套规则、不贡献 error），所以 R43「四门数字持平」的推理没错，但「不在任何门禁分母内」的说法是错的。推论：新增 `.mjs`/`.cjs` 脚本会进入分母，写脚本时顺手自检。",
     "R47 事实（用户三问收口，实测非推断）：① B19 自动选模型在用户真实清单（pocketbase/pb_data/data.db → model_configs：6 通道 / 82 模型 / 28 启用）上的落点是 正文撰写=opecode·glm-5.2、大纲规划=大模型·deepseek-v4.1-flash、解析抽取=opecode·deepseek-flash、判定审查=opecode·glm-5.2、图表审阅=opecode·deepseek-v4-flash-vision-exp、中文文书=opecode·glm-5.1（全部 personal，平台内置 ref 为空）。② B20 识别 3 份真实 docx 全部成功、1-6 级标题全覆盖，但这 3 份都「未写入字体」→ 按 R46 口径如实提示并按系统默认套用（不臆造）；与本系统产出的标书同源的文档还检出 15 条要求行。③ 与安中医项目真实招标原文（152212 字）对齐：抽出评分点 31 项 / ★▲ 条款 6 条。④ 三问里的第 3 问「格式更新」本轮结论 = R46 已修到真可用（文字级直接格式同步改写 + 缺 Normal 补建 + 导出侧补默认字体闭合「导出→识别→刷新」），R47 只是把识别面扩到 4-6 级标题 / 表格 / 页眉页脚 / 页码 / 目录 / 编号，未改动刷新内核。",
-    "R47 纪律（写死以免再犯）：① `useMemo` 里出现「本地状态强触发票」（如 rolePickTick：本地画像 / 会话冷却 / 健康档案变化计数）时，必须显式 `void tick` 消费并在依赖数组保留，否则 react-hooks/exhaustive-deps 报「unnecessary dependency」，容易被误删成「选型不随状态刷新」的真 bug。② 模板识别的两条链路只允许存在两条：强链路（formatSpec）定样式与页面、补链路（bidDocxFormatExtract）补 extras，字段优先级冲突时按此顺序裁决，禁止再加第三条 docx 解析链路。③ 模板画像落库走既有 format_settings json 列，禁止为它新增 collection / 改 PocketBase schema（本轮零 schema 变更）。"
+    "R47 纪律（写死以免再犯）：① `useMemo` 里出现「本地状态强触发票」（如 rolePickTick：本地画像 / 会话冷却 / 健康档案变化计数）时，必须显式 `void tick` 消费并在依赖数组保留，否则 react-hooks/exhaustive-deps 报「unnecessary dependency」，容易被误删成「选型不随状态刷新」的真 bug。② 模板识别的两条链路只允许存在两条：强链路（formatSpec）定样式与页面、补链路（bidDocxFormatExtract）补 extras，字段优先级冲突时按此顺序裁决，禁止再加第三条 docx 解析链路。③ 模板画像落库走既有 format_settings json 列，禁止为它新增 collection / 改 PocketBase schema（本轮零 schema 变更）。",
+    "R49 事实（本地自动化线，实测非推断）：① 主题 = B0c 剩余项「报价编辑器金额往返回归网」，新增 src/components/ppt-quote/QuoteEditorMoney.test.tsx 6 例（jsdom + testing-library，状态化 harness 等价线上 usePptQuote 的 mutateQuote；探针行 = R034 经典反例 15 × 599,729.21 × 90%，精确 8,096,344.34 而裸浮点得 8,096,344.33），断言「行小计 / 分组小计 / 报价总计」三处逐分自洽且等于 itemSubtotal 单一真源；已做「删实现即变红」反向验证（把 QuoteEditor.tsx:674 临时改成裸浮点 → 第 1、4 条 2 failed | 4 passed；git checkout 还原后 6 passed、diff 为空）。业务代码 0 改动 / 0 新依赖 / 0 schema / 0 提示词。② 四门实测：npx tsc -b exit 0；CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD=100000 npx vite build 6.30s exit 0；npx vitest run 241 files / 2848 passed / 2 skipped（连跑 3 次一致）；npx eslint . 119 error / 13 warning = 基线零新增。③ 核对结掉三处陈旧待办并已从 backlog 移除：B1（A1-A6 已落地接线：composeGates.ts 387 行 + useBidWorkspace.ts:712 导入 / :6938 调用 / :6944-6958 逐条弹；另有 BidCheck/rules/response.ts L2-R1 二次覆盖）、B10（overPriceCeilingHits useBidWorkspace.ts:2259 与 quoteRecordCeilingHits :2263 均已接进 refreshFormatReport，与 numberConflictHits:2255 / amountCaseMismatchHits:2272 同一路径）、docs/13 §3.2/§3.3/§3.4（useActiveWork / modelFailover / CustomerProfileCard.tsx:126 有 docs13-3.4 注释）—— 依据见本条，如需回滚按此恢复。④ 新增待办 B25-export-gate-ui-test（B0c 另一半，登记在 .loop/ledger.json）。⑤ 未执行 git commit：工作区存在并发在途批次，git add -A 会连带提交他人未完成改动。",
+    "R49 教训（并发纪律，实测）：同一工作区出现两个执行者（均本机 WorkBuddy AI 运行时）同时迭代，round 被双 bump —— 项目账本 R48（factSources 事实来源优先级）与本地自动化线原记 R48 撞号。处置：本地线主动顺延为 R49，两边账本均已写明编号来源。推论：① 写账本前必须重新读，并在写入脚本里断言期望的 round 值（本轮即用 chk(st.round === 48) 兜住），否则会被并发覆盖；② 同一时刻只应有一个执行者写仓库（另一方可改用 git worktree / 分支），或给执行者分配不重叠的轮次号段；③ 全量 vitest 的绝对数里可能混入对方未提交文件，报告必须点名区分「本轮贡献」与「在途增量」；④ 开工时 git status 干净不代表整轮干净，收尾写数字前应再跑一次 git status --porcelain 并点名排除并发批次。",
+    "R51 事实（Codex 主线，实测非推断）：① 真实标书召回率首次有数字 —— 安中医全量 138810 字 / 133 条款 / 20000 字预算下 clause_hit=13/133=9.8%（仅注入 6 段 19542 字、未注入 119268 字），脱敏子集 47103 字下 56/133=42%（注入 7 段 19944 字）。同一套检索算法，正文缩短后命中率涨 4 倍以上 → 瓶颈是「预算 ÷ 正文长度」，不是打分算法；解法方向是压缩单位证据 / 提高预算 / 先摘要再取证，而不是重写检索。② 漏在哪是确定的：全量下第 4、8、9-18 章完全未覆盖，已逐章点名，下轮可直接照着补。③ 样本量 = 1 份标书，结论强度有限。",
+    "R51 教训（真实长文才会暴露的闸门缺陷）：deviationCommitHits 里「负偏离」（deviation_undercommit，在 GATE_FATAL_RULES 硬闸黑名单）与「本次不可见」（deviation_invisible_review，warn）原共用同一个 30 条上限。R50 引入可见性规则后，长文场景不可见动辄上百条，会把负偏离整批挤出 hits → 交卷体检判「无废标级命中」→ 硬闸形同虚设。规律：① 任何「命中上限」必须按「是否进硬闸」分组，硬闸类不得与非硬闸类争抢配额；② 这类缺陷只有真实长文（139k 字 / 133 条款）能暴露，构造样本命中数少、必然测不出来 —— 这是「构造样本测试充分性」的反例，真实语料夹具应作为长文本链路的常规门槛。"
   ],
   "gatesBaseline": {
     "tsc": 0,

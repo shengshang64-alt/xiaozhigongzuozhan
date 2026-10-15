@@ -4,6 +4,11 @@ set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 cd /d "%ROOT%"
 
+rem --no-browser: used by dev-supervisor.ps1 on automatic restarts so the
+rem launcher never pops a browser window on its own.
+set "OPENBROWSER=1"
+if /i "%~1"=="--no-browser" set "OPENBROWSER=0"
+
 echo ============================================
 echo   Xiaozhi Sales Workbench - Local Launcher
 echo ============================================
@@ -81,10 +86,16 @@ goto :vite_poll
 echo.
 echo ============================================
 echo   READY  -^>  http://127.0.0.1:8000/
-echo   LAN access       http://192.168.1.38:8000/  (T13-LAN: 0.0.0.0, qita neiwang diannao ke fangwen)
+rem LAN IP is probed at startup: the built-in address used to be hard-coded and went stale
+rem after a network change, which made colleagues open a dead address.
+set "LANIP="
+for /f "usebackq tokens=2 delims=:" %%a in (`ipconfig ^| findstr /c:"IPv4"`) do if not defined LANIP set "LANIP=%%a"
+for /f "tokens=* delims= " %%a in ("!LANIP!") do set "LANIP=%%a"
+if not defined LANIP set "LANIP=127.0.0.1"
+echo   LAN access       http://!LANIP!:8000/  (T13-LAN: 0.0.0.0, qita neiwang diannao ke fangwen)
 echo   Backend API      http://127.0.0.1:7000
 echo   DB dashboard     http://127.0.0.1:7000/_/
 echo ============================================
-start "" http://127.0.0.1:8000/
+if "%OPENBROWSER%"=="1" start "" http://127.0.0.1:8000/
 endlocal
 exit /b 0

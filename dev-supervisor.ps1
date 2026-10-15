@@ -22,7 +22,11 @@ if (Test-Path $LockFile) {
     Write-Output "supervisor already running (pid $oldPid)"; exit 0
   }
 }
-$LockFile | Set-Content -Encoding ASCII ([string]$PID)
+# NOTE: the -Path switch is required. Without it Set-Content cannot bind Path,
+# the call fails, and $ErrorActionPreference = "SilentlyContinue" swallows the
+# error -- so the lock file was never written and several supervisors could run
+# at once (each one killing/restarting the other's stack).
+Set-Content -Path $LockFile -Value ([string]$PID) -Encoding ASCII
 
 function Log([string]$msg) {
   $line = "{0} {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $msg
@@ -51,7 +55,7 @@ function Find-PidOnPort([int]$port) {
 
 function Start-Stack {
   Log "starting stack via start-local.cmd"
-  Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "`"$Root\start-local.cmd`"" -WorkingDirectory $Root -WindowStyle Hidden
+  Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "`"$Root\start-local.cmd`" --no-browser" -WorkingDirectory $Root -WindowStyle Hidden
 }
 
 function Stop-Pid([int]$procId) {
@@ -60,6 +64,7 @@ function Stop-Pid([int]$procId) {
 
 Log "supervisor start (port $Port, pb $PbPort, interval ${IntervalSec}s)"
 $failStreak = 0
+$pbFailStreak = 0
 while ($true) {
   $viteOk = Test-Http "http://127.0.0.1:$Port/"
   $pbOk = Test-Http "http://127.0.0.1:$PbPort/api/health"
@@ -77,6 +82,23 @@ while ($true) {
     }
   } else {
     $failStreak = 0
+    # PB-only failure: vite is fine but the backend is down/hung.
+    # Without this branch a dead PocketBase stays dead until vite also breaks,
+    # and every page silently loses all its data.
+    if (-not $pbOk) {
+      $pbFailStreak++
+      $pbHungPid = Find-PidOnPort $PbPort
+      Log ("pb unhealthy streak={0} pid={1}" -f $pbFailStreak, $pbHungPid)
+      if ($pbFailStreak -ge 2) {
+        if ($pbHungPid -gt 0) { Stop-Pid $pbHungPid }
+        Log "restarting stack (pb streak $pbFailStreak)"
+        Start-Stack
+        $pbFailStreak = 0
+        Start-Sleep -Seconds 20
+      }
+    } else {
+      $pbFailStreak = 0
+    }
   }
   if ($Once) { Log "once mode done"; break }
   Start-Sleep -Seconds $IntervalSec

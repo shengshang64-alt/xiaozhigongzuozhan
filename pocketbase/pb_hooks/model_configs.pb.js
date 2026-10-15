@@ -101,29 +101,34 @@ routerAdd("GET", "/api/model_configs", function (e) {
     ensureCollLocal()
     var info = e.requestInfo()
     var query = info.query || {}
+    // 身份门（F-SEC-05 / D-SEC-01 / 重构优先级 1）：身份只认 zx_guard 中间件注入的
+    // e.get("rhUserId")，缺失一律 401；客户端传入的 rh_user_id 不再作为身份依据。
+    var __uid = String(e.get("rhUserId") || "")
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
     var page = parseInt(String(query.page || "1"), 10) || 1
     var perPage = parseInt(String(query.perPage || "50"), 10) || 50
     if (perPage > 200) perPage = 200
     var sort = String(query.sort || "-created")
     var filterParts = []
     var params = {}
-    if (query.rh_user_id !== undefined && query.rh_user_id !== "") {
-      filterParts.push("rh_user_id = {:rh_user_id}")
-      params.rh_user_id = String(query.rh_user_id)
-    }
-    var filter = filterParts.length > 0 ? filterParts.join(" && ") : ""
-    var records = filter
-      ? $app.findRecordsByFilter("model_configs", filter, sort, perPage, (page - 1) * perPage, params)
-      : $app.findRecordsByFilter("model_configs", "", sort, perPage, (page - 1) * perPage)
+    // 归属由服务端强制：只能读到自己的配置
+    filterParts.push("rh_user_id = {:rh_user_id}")
+    params.rh_user_id = __uid
+    var filter = filterParts.join(" && ")
+    var records = $app.findRecordsByFilter("model_configs", filter, sort, perPage, (page - 1) * perPage, params)
     var items = []
     for (var i = 0; i < records.length; i++) {
-      items.push(records[i].publicExport())
+      // api_key 一律掩码：任何响应体不含完整密钥（老路由补的门，新路由 /api/model-gw/configs 本就脱敏）
+      var exp = records[i].publicExport()
+      var rawKey = ''
+      try { rawKey = String(records[i].get("api_key") || "") } catch (_x) { rawKey = '' }
+      exp.api_key = ''
+      exp.has_key = !!rawKey
+      items.push(exp)
     }
     var totalItems = items.length
     try {
-      var countRecords = filter
-        ? $app.findRecordsByFilter("model_configs", filter, sort, 100000, 0, params)
-        : $app.findRecordsByFilter("model_configs", "", sort, 100000, 0)
+      var countRecords = $app.findRecordsByFilter("model_configs", filter, sort, 100000, 0, params)
       totalItems = countRecords.length
     } catch (err2) {}
     return e.json(200, { items: items, page: page, perPage: perPage, totalItems: totalItems })
