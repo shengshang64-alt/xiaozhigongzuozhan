@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest"
 import {
   buildParamResponseRows,
   checkParamResponseCoverage,
+  extractTenderRequirementClauses,
   locateTenderSection,
+  narrowToTechParamSubsection,
+  resolveDeviationClauses,
   resolveTechParamSource,
   summarizeParamResponse,
 } from "./techParamResponse"
-import type { ParseReport } from "./bidTypes"
+import { extractRequirementClauses, parseSectionTitle, type ParseReport } from "./bidTypes"
 
 /**
  * R53（2026-10-15 用户裁定）：技术参数响应表的素材层——
@@ -37,6 +40,27 @@ describe("locateTenderSection：按标题定位，到下个同级/更高级标�
 
   it("找不到就返回 null（绝不猜一段正文出来）", () => {
     expect(locateTenderSection(TENDER, "不存在的章节")).toBeNull()
+  })
+
+  it("R54 同一关键词多处命中时取正文最长的一处（目录行/正文引用句不能赢过真章节）", () => {
+    const doc = [
+      "第三章 采购需求 ......................... 24", // 目录行：下一个同级标题紧邻 → 正文为空
+      "第四章 评标方法和标准",
+      "7.3 投标人应认真阅读招标文件所有的事项、格式、条款和技术规范等。", // 正文引用句：只有两行页脚
+      "第 11 页 共 256 页",
+      "8.招标文件的澄清与修改",
+      "第三章 采购需求", // 真章节：正文到下一个章级标题为止
+      "1.本采购需求中提出的服务方案仅为参考，如无明确限制，投标人可以进行优化",
+      "2.投标人所投产品须具有处于有效期内的节能产品认证证书",
+      "六、技术参数及要求",
+      "软件性能支持处理日均门诊患者人次达 15000 以上、住院患者人次 5000 以上",
+      "第四章 评标方法和标准",
+      "评标委员会根据投标人所投软件对采购需求中技术参数及要求的响应情况进行评分",
+    ].join("\n")
+    const hit = locateTenderSection(doc, "采购需求")
+    expect(hit?.heading).toBe("第三章 采购需求")
+    expect(hit?.body).toContain("软件性能支持处理日均门诊患者人次达 15000 以上")
+    expect(hit?.body).not.toContain("评标委员会")
   })
 })
 
@@ -70,6 +94,24 @@ describe("resolveTechParamSource：描述 → 标题 → 解析分区，三层�
     const s = resolveTechParamSource("", null)
     expect(s.how).toBe("none")
     expect(s.text).toBe("")
+  })
+
+  it("R54：设了正文下限时，只有页脚的短命中不算命中（宁可回退，也不把页脚当参数章节）", () => {
+    const report = {
+      scope: "full",
+      sections: [{ key: "delivery_req", title: "交货和服务要求", content: "系统须支持国产化数据库，兼容主流国产操作系统" }],
+    } as ParseReport
+    const tender = [
+      "7.3 投标人应认真阅读招标文件所有的事项、格式、条款和技术规范等。",
+      "第 11 页 共 256 页",
+      "8.招标文件的澄清与修改",
+      "8.1 采购人可主动地或在解答投标人提出的问题时对招标文件进行澄清与修改。",
+    ].join("\n")
+    // 不设下限＝沿用旧行为（短命中照样用）；设了下限＝回退解析报告分区
+    expect(resolveTechParamSource(tender, report).how).toBe("heading")
+    const strict = resolveTechParamSource(tender, report, undefined, { minBodyChars: 200 })
+    expect(strict.how).toBe("parse")
+    expect(strict.text).toContain("国产化数据库")
   })
 })
 
@@ -133,5 +175,225 @@ describe("checkParamResponseCoverage：抽到的条款 ↔ 参数表行，缺的
   it("抽到但表里没有的条款被点名（行数应等于条款数）", () => {
     const cov = checkParamResponseCoverage(["系统须支持国产化数据库", "须提供移动护理终端 30 台"], rows)
     expect(cov.missing).toEqual(["须提供移动护理终端 30 台"])
+  })
+})
+
+/**
+ * R54（2026-10-15 用户裁定）：偏离表条款必须取**招标原文的采购需求/技术规格章节**，
+ * 不能再从解析报告 delivery_req 的 9 个扁平字段值里切句子（那样「培训资源保障有力的，得4分」这类评分细则、
+ * 验收流程会混进偏离表）。但**切分口径必须与 extractRequirementClauses 完全一致**，否则「拆分维度」按钮失效。
+ */
+describe("extractTenderRequirementClauses：从招标原文抽条款，三档粒度与既有口径一致", () => {
+  // 5.1 故意重复一次（验去重）；5.5「培训。」不足 8 字（验长度门槛）；5.3/5.4 含分号与句号（验 l2/l3）
+  const SECTION = [
+    "5.1 ★ 系统须支持国产化数据库，兼容达梦、人大金仓",
+    "5.2 ▲ 要求提供三年免费质保与 7×24 小时运维响应",
+    "5.3 【评审项】系统可用性不得低于 99.9%；单点故障恢复时间不超过 30 分钟",
+    "5.4 应提供不少于 3 场用户培训。培训须覆盖系统管理员与业务操作员",
+    "5.1 ★ 系统须支持国产化数据库，兼容达梦、人大金仓",
+    "5.5 培训。",
+  ].join("\n")
+
+  it("空文本返回空数组（绝不猜条款）", () => {
+    expect(extractTenderRequirementClauses("")).toEqual([])
+    expect(extractTenderRequirementClauses("   \n  \n")).toEqual([])
+  })
+
+  it("system=按行：一行一条（去重后），过短行丢弃", () => {
+    const cs = extractTenderRequirementClauses(SECTION, { granularity: "system", label: "第五章 采购需求" })
+    expect(cs.map((c) => c.text)).toEqual([
+      "★ 系统须支持国产化数据库，兼容达梦、人大金仓",
+      "▲ 要求提供三年免费质保与 7×24 小时运维响应",
+      "【评审项】系统可用性不得低于 99.9%；单点故障恢复时间不超过 30 分钟",
+      "应提供不少于 3 场用户培训。培训须覆盖系统管理员与业务操作员",
+    ])
+    // 行首编号取「行首原编号」，且分号/句号拆出的后续段不带编号（条款号↔行保持一对一）
+    expect(cs.map((c) => c.no)).toEqual(["5.1", "5.2", "5.3", "5.4"])
+    expect(cs.map((c) => c.id)).toEqual(["c1", "c2", "c3", "c4"])
+  })
+
+  it("l2=再按分号拆（句号不拆），l3=分号+句号都拆到最小条款", () => {
+    const l2 = extractTenderRequirementClauses(SECTION, { granularity: "l2", label: "第五章 采购需求" })
+    expect(l2).toHaveLength(5)
+    expect(l2.map((c) => c.text)).toContain("单点故障恢复时间不超过 30 分钟")
+    expect(l2.map((c) => c.text)).toContain("应提供不少于 3 场用户培训。培训须覆盖系统管理员与业务操作员")
+    expect(l2.find((c) => c.text === "单点故障恢复时间不超过 30 分钟")?.no).toBe("")
+
+    const l3 = extractTenderRequirementClauses(SECTION, { granularity: "l3", label: "第五章 采购需求" })
+    expect(l3).toHaveLength(6)
+    expect(l3.map((c) => c.text)).toContain("培训须覆盖系统管理员与业务操作员")
+    expect(l3.filter((c) => c.no === "5.3").map((c) => c.text)).toHaveLength(1)
+  })
+
+  it("source 用调用方传的章节标题（行内「系统名：要求」仍优先取系统名，与既有口径同）", () => {
+    const cs = extractTenderRequirementClauses("核心数据库：须支持国产化替代；兼容达梦与人大金仓", {
+      granularity: "l2",
+      label: "第五章 采购需求",
+    })
+    expect(cs.map((c) => c.source)).toEqual(["核心数据库", "核心数据库"])
+    const plain = extractTenderRequirementClauses("5.1 ★ 系统须支持国产化数据库，兼容达梦、人大金仓", { label: "第五章 采购需求" })
+    expect(plain[0].source).toBe("第五章 采购需求")
+  })
+
+  it("limit 生效（条数预告与生成都要能收口）", () => {
+    expect(extractTenderRequirementClauses(SECTION, { granularity: "l3", limit: 2, label: "x" })).toHaveLength(2)
+  })
+
+  it("R54b：PDF 表格残留行（| 开头 / 竖线密集）与页码页脚行不进条款", () => {
+    const noise = [
+      "5.1 ★ 系统须支持国产化数据库，兼容达梦、人大金仓",
+      "| 诊 | 中药房管理系统 | 1 | 套",
+      "1 | 经 | 患者主索引 | 1 | 套",
+      "第 215 页 共 256 页",
+      "第 216 页",
+      "5.2 ▲ 要求提供三年免费质保与 7×24 小时运维响应",
+      "5.3 支持上传纠纷相关附件材料，如图片、文档等；详见第 12 页的说明", // 行首带字＝不是页码行，照常保留
+    ].join("\n")
+    const cs = extractTenderRequirementClauses(noise, { granularity: "l3", label: "第五章 采购需求" })
+    expect(cs.map((c) => c.text)).toEqual([
+      "★ 系统须支持国产化数据库，兼容达梦、人大金仓",
+      "▲ 要求提供三年免费质保与 7×24 小时运维响应",
+      "支持上传纠纷相关附件材料，如图片、文档等",
+      "详见第 12 页的说明",
+    ])
+  })
+
+  it("R54b：噪声过滤在共享内核里——extractRequirementClauses 同口径同结果", () => {
+    const text = ["5.1 ★ 系统须支持国产化数据库，兼容达梦、人大金仓", "| 诊 | 中药房管理系统 | 1 | 套", "第 215 页 共 256 页"].join("\n")
+    const report = { scope: "full", sections: [{ key: "delivery_req", title: "交货和服务要求", content: text }] } as ParseReport
+    const fromReport = extractRequirementClauses(report, { granularity: "l3", sources: ["delivery_req"] })
+    expect(fromReport.map((c) => c.text)).toEqual(["★ 系统须支持国产化数据库，兼容达梦、人大金仓"])
+    expect(extractTenderRequirementClauses(text, { granularity: "l3", label: "交货和服务要求" })).toEqual(fromReport)
+  })
+
+  it("口径一致性守卫：同一段文本走新函数 vs extractRequirementClauses（等价 report）逐字一致", () => {
+    const report = {
+      scope: "full",
+      sections: [{ key: "delivery_req", title: "交货和服务要求", content: SECTION }],
+    } as ParseReport
+    for (const granularity of ["system", "l2", "l3"] as const) {
+      const fromTender = extractTenderRequirementClauses(SECTION, {
+        granularity,
+        label: parseSectionTitle("delivery_req"),
+      })
+      const fromReport = extractRequirementClauses(report, { granularity, sources: ["delivery_req"] })
+      expect(fromTender).toEqual(fromReport)
+      expect(fromTender.map((c) => c.text)).toEqual(fromReport.map((c) => c.text))
+    }
+  })
+})
+
+describe("narrowToTechParamSubsection：章内收窄到「技术参数/技术规格」子章节（只认行首标题形态）", () => {
+  const CHAPTER = [
+    "第三章 采购需求",
+    "一、采购需求前附表",
+    "服务期限：合同签订之日起 36 个月，含全部实施与验收周期",
+    "二、总体要求",
+    "系统采用模块化设计，具备良好的扩展性与可靠性，支持国产化替代",
+    "六、技术参数及要求",
+    "序号 | 技术参数及要求",
+    "★1 软件性能支持处理日均门诊患者人次达 15000 以上、住院患者人次 5000 以上",
+    "注：投标文件中须提供承诺函并盖公章（或电子签章），承诺函格式自拟，须体现上述内容",
+    "★2 数据处理能力：为保障新信息系统上线后，医院历史诊疗与运营数据的完整性、可用性与延续性，承建方须制定并执行周密、可靠的历史数据迁移与归档整体方案",
+    "★3 数据上报能力：要求按照国家、省、市的政策性的接口要求进行数据上报，包含但不限于公立中医医院绩效监测中医病案首页数据质量与接口标准上报相关数据",
+    "第四章 评标方法和标准",
+    "评标委员会根据投标人所投软件对采购需求中技术参数及要求的响应情况进行评分",
+  ].join("\n")
+
+  it("命中行首标题形态的子章节，正文到下一个同级/更高级标题为止", () => {
+    const sub = narrowToTechParamSubsection(CHAPTER)
+    expect(sub?.heading).toBe("六、技术参数及要求")
+    expect(sub?.body).toContain("软件性能支持处理日均门诊患者人次达 15000 以上")
+    expect(sub?.body).toContain("数据处理能力")
+    expect(sub?.body).not.toContain("评分") // 第四章的评分句不在子章节正文里
+  })
+
+  it("正文里引用这些词的句子不算标题（不匹配就返回 null，调用方保持整章）", () => {
+    const body = [
+      "系统采用模块化设计，具备良好的扩展性与可靠性",
+      "评标委员会根据投标人所投软件对采购需求中技术参数及要求的响应情况进行评分",
+    ].join("\n")
+    expect(narrowToTechParamSubsection(body)).toBeNull()
+  })
+
+  it("子章节正文过短（「技术规格：见附件。」）不收窄，避免把整章换成一句话", () => {
+    expect(narrowToTechParamSubsection(["5. 技术规格", "见附件。"].join("\n"))).toBeNull()
+  })
+
+  it("resolveTechParamSource 命中整章后自动收窄，label 用「›」标出层级", () => {
+    const s = resolveTechParamSource(CHAPTER, null)
+    expect(s.how).toBe("heading")
+    expect(s.label).toBe("按招标原文标题定位：第三章 采购需求 › 六、技术参数及要求")
+    expect(s.text).toContain("数据处理能力")
+    expect(s.text).not.toContain("服务期限")
+  })
+})
+
+describe("resolveDeviationClauses：先招标原文、未命中才回退解析报告（回退行为与改动前逐字一致）", () => {
+  // 解析报告 delivery_req 里混进一条评分细则——命中原文时它绝不能进偏离表
+  const REPORT = {
+    scope: "full",
+    sections: [
+      {
+        key: "delivery_req",
+        title: "交货和服务要求",
+        content: ["5.1 ★ 系统须支持国产化数据库，兼容达梦、人大金仓", "培训资源保障有力的，得4分"].join("\n"),
+      },
+    ],
+  } as ParseReport
+
+  it("招标原文命中采购需求章节时从原文抽条款，解析报告里的评分细则不进表", () => {
+    const tender = [
+      "第五章 采购需求",
+      "5.1 ★ 系统须支持国产化数据库，兼容达梦、人大金仓",
+      "5.2 ▲ 要求提供三年免费质保与 7×24 小时运维响应",
+      "5.3 【评审项】系统可用性不得低于 99.9%，单点故障恢复时间不超过 30 分钟",
+      "5.4 应提供不少于 3 场用户培训，培训须覆盖系统管理员与业务操作员",
+      "5.5 投标人须提供完整的项目实施方案与进度计划，明确各阶段交付物与责任人",
+      "5.6 系统须提供开放接口，支持与院内现有业务系统完成数据对接与联调",
+      "5.7 提供 7×24 小时故障响应，重大故障 2 小时内到场处理",
+      "第六章 评标办法",
+      "6.1 培训资源保障有力的，得4分",
+    ].join("\n")
+    const r = resolveDeviationClauses(tender, REPORT, { limit: 200, granularity: "l3" })
+    expect(r.how).toBe("heading")
+    expect(r.label).toBe("按招标原文标题定位：第五章 采购需求")
+    expect(r.clauses[0].text).toBe("★ 系统须支持国产化数据库，兼容达梦、人大金仓")
+    expect(r.clauses.length).toBeGreaterThanOrEqual(7)
+    expect(r.clauses.some((c) => c.text.includes("得4分"))).toBe(false)
+    expect(r.clauses.every((c) => tender.includes(c.text))).toBe(true)
+  })
+
+  it("招标原文里定位不到参数章节 → 回退 delivery_req，结果与改动前逐字一致", () => {
+    const tender = "第一章 招标公告\n本项目采用公开招标方式，欢迎合格供应商参与。"
+    const r = resolveDeviationClauses(tender, REPORT, { limit: 200, granularity: "l3" })
+    const legacy = extractRequirementClauses(REPORT, { limit: 200, granularity: "l3", sources: ["delivery_req"] })
+    expect(r.how).toBe("parse")
+    expect(r.label).toContain("已回退解析报告分区")
+    expect(r.clauses).toEqual(legacy)
+  })
+
+  it("原文命中章节但抽不到合格条款（正文够长、全是过短引用行）时，回退也要说清楚实际来源", () => {
+    // 45 行「见附件。」＝正文 ≥200 字（过得了正文下限），但每段不足 8 字 → 抽不出条款
+    const tender = ["第五章 采购需求", ...Array.from({ length: 45 }, () => "见附件。")].join("\n")
+    const r = resolveDeviationClauses(tender, REPORT, { limit: 200, granularity: "l3" })
+    expect(r.how).toBe("parse")
+    expect(r.label).toContain("未抽到合格条款，已回退解析报告分区")
+    expect(r.clauses).toEqual(extractRequirementClauses(REPORT, { limit: 200, granularity: "l3", sources: ["delivery_req"] }))
+  })
+
+  it("原文与报告都没有时条款为空且来源如实（面板据此提示先补原文/解析）", () => {
+    const r = resolveDeviationClauses("", null)
+    expect(r.clauses).toEqual([])
+    expect(r.how).toBe("none")
+    expect(r.label).toBe("未找到技术参数来源")
+  })
+
+  it("用户描述优先（命中即 custom，且标出实际章节）", () => {
+    const tender = ["第五章 采购需求", "5.1 ★ 系统须支持国产化数据库，兼容达梦、人大金仓", "附件一 技术规格书", "1.1 终端须支持双频 Wi-Fi"].join("\n")
+    const r = resolveDeviationClauses(tender, null, { customHint: "附件一 技术规格书" })
+    expect(r.how).toBe("custom")
+    expect(r.label).toBe("按你的描述定位：附件一 技术规格书")
+    expect(r.clauses.map((c) => c.text)).toEqual(["终端须支持双频 Wi-Fi"])
   })
 })

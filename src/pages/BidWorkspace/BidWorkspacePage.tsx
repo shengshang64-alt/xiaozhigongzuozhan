@@ -437,6 +437,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               clauseGranularity={p.clauseGranularity}
               setClauseGranularity={p.setClauseGranularity}
               deviationClauseCount={p.deviationClauseCount}
+              deviationSourceLabel={p.deviationSourceLabel}
               mapLoading={p.mapLoading}
               generateDeviationTable={p.generateDeviationTable}
               deviationTable={p.deviationTable}

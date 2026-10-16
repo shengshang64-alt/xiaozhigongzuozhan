@@ -2340,6 +2340,99 @@ function systemNameOfLine(line: string): string {
   return m ? m[1].trim() : ""
 }
 
+/** 条款切分上下文：多段文本（多个解析分区）共用一张去重表与一条连续编号 */
+type ClauseSplitCtx = { seen: Set<string>; seq: number }
+
+/**
+ * PDF 表格提取残留行（如「| 诊 | 中药房管理系统 | 1 | 套」）不是要求条款：
+ * 以 `|` 开头，或去空白后 `|` 数 ≥3 且占字符数 >30%（竖线密集的表格行）一律跳过。
+ * R54：过滤放在**共享内核**里，偏离表/参数响应/大纲覆盖三条路径口径仍然逐字一致。
+ */
+function isTableRowLine(s: string): boolean {
+  const t = (s ?? "").trim()
+  if (!t) return false
+  if (t.startsWith("|")) return true
+  const compact = t.replace(/\s/g, "")
+  if (!compact) return false
+  const bars = (compact.match(/\|/g) ?? []).length
+  return bars >= 3 && bars / compact.length > 0.3
+}
+
+/** PDF 页脚残留行（「第 215 页 共 256 页」）：整行只有页码，不可能是条款；行首带字（「详见第 12 页」）不在此列 */
+function isPageFooterLine(s: string): boolean {
+  return /^第\s*\d+\s*页(\s*共\s*\d+\s*页)?$/.test((s ?? "").trim())
+}
+
+/** 一行原文是否是 PDF 抽取噪声（表格残留 / 页码页脚）——两条抽条款路径共用同一判据 */
+function isExtractionNoiseLine(s: string): boolean {
+  return isTableRowLine(s) || isPageFooterLine(s)
+}
+
+/**
+ * 条款切分内核（纯函数）：**一段**文本 → 条款数组。口径（偏离表/参数响应表/大纲覆盖必须完全一致）：
+ * 一级按行（去行首编号）→ l2 再按分号 → l3 再按句号；每段去空白、去行首编号；
+ * 去括号标点后不足 8 字丢弃；表格行/页码页脚（PDF 抽取噪声）丢弃；同前 40 字去重；原编号只挂同一行的第一段。
+ * 导出 `splitRequirementClauses` 供「从招标原文抽条款」复用，ctx 版仅供本文件多分区合并用。
+ */
+function splitClauseBlock(
+  text: string,
+  sourceLabel: string,
+  granularity: ClauseGranularity,
+  limit: number,
+  ctx: ClauseSplitCtx,
+): RequirementClause[] {
+  const out: RequirementClause[] = []
+  if (limit <= 0) return out
+  for (const rawLine of (text ?? "").split(/\n+/)) {
+    if (isExtractionNoiseLine(rawLine)) continue
+    const line = stripEnumerator(rawLine.trim())
+    if (!line) continue
+    const clauseNo = leadingClauseNo(rawLine.trim())
+    const systemName = systemNameOfLine(line)
+    const source = systemName || sourceLabel
+    // 一级切分：编号 / 行；二级：分号；三级：再按句号拆到最小条款
+    let pieces: string[] = [line]
+    if (granularity === "l2" || granularity === "l3") {
+      pieces = pieces.flatMap((p) => p.split(/[；;]/))
+    }
+    if (granularity === "l3") {
+      pieces = pieces.flatMap((p) => p.split(/[。]/))
+    }
+    for (let pi = 0; pi < pieces.length; pi += 1) {
+      if (isExtractionNoiseLine(pieces[pi])) continue // 行内切出的片段也可能是表格残留/页码
+      const t = cleanClause(stripEnumerator(pieces[pi]))
+      if (t.replace(/[，、：:（）()]/g, "").length < MIN_CLAUSE_LEN) continue
+      const dedupeKey = t.slice(0, 40)
+      if (ctx.seen.has(dedupeKey)) continue
+      ctx.seen.add(dedupeKey)
+      ctx.seq += 1
+      // 原编号只挂在同一行的第一段：分号/句号拆出的后续段同属该编号下的要求，
+      // 给它们复制同一个编号会让「条款号→行」不再一对一，专家反而找不到。
+      out.push({ id: `c${ctx.seq}`, text: t, source, no: pi === 0 ? clauseNo : "" })
+      if (out.length >= limit) return out
+    }
+  }
+  return out
+}
+
+/**
+ * 单段文本抽条款（零 AI）：与 `extractRequirementClauses` 同一内核、同一口径，只是输入换成
+ * 「任意一段文本」（典型用法：`resolveTechParamSource` 定位到的招标原文采购需求章节）。
+ * sourceLabel 为该段文本的兜底来源名（章节标题），行内「系统名：要求」形态仍优先取系统名。
+ */
+export function splitRequirementClauses(
+  text: string,
+  opts?: { limit?: number; granularity?: ClauseGranularity; sourceLabel?: string },
+): RequirementClause[] {
+  return splitClauseBlock(
+    text ?? "",
+    opts?.sourceLabel ?? "",
+    opts?.granularity ?? "l3",
+    Math.max(1, opts?.limit ?? 60),
+    { seen: new Set<string>(), seq: 0 },
+  )
+}
+
 /**
  * 从解析报告中本地抽取招标要求条款（零 AI 调用）：
  * 取技术需求 / 技术评分 / 响应文件要求解析项文本，先按行与编号切分，
@@ -2347,6 +2440,7 @@ function systemNameOfLine(line: string): string {
  * 每条 {id, text, source, no}，source 为来源章节（系统名或解析项标题），偏离表按它分组；
  * no 为招标文件里的行首原编号（供专家对号入座）。
  * opts.sources 可把来源解析项收窄（偏离表传 DEVIATION_CLAUSE_SOURCES 只取技术文件要求）。
+ * 切分口径已抽到 `splitClauseBlock`，与 `splitRequirementClauses` 共用（防两处口径分叉）。
  */
 export function extractRequirementClauses(
   report: ParseReport | null,
@@ -2356,39 +2450,12 @@ export function extractRequirementClauses(
   const granularity = opts?.granularity ?? "l3"
   const sources = opts?.sources ?? CLAUSE_SOURCE_KEYS
   const out: RequirementClause[] = []
-  const seen = new Set<string>()
-  let seq = 0
+  const ctx: ClauseSplitCtx = { seen: new Set<string>(), seq: 0 }
   for (const key of sources) {
     const text = sectionText(report, key)
     if (!text.trim()) continue
-    const fallbackSource = parseSectionTitle(key)
-    for (const rawLine of text.split(/\n+/)) {
-      const line = stripEnumerator(rawLine.trim())
-      if (!line) continue
-      const clauseNo = leadingClauseNo(rawLine.trim())
-      const systemName = systemNameOfLine(line)
-      const source = systemName || fallbackSource
-      // 一级切分：编号 / 行；二级：分号；三级：再按句号拆到最小条款
-      let pieces: string[] = [line]
-      if (granularity === "l2" || granularity === "l3") {
-        pieces = pieces.flatMap((p) => p.split(/[；;]/))
-      }
-      if (granularity === "l3") {
-        pieces = pieces.flatMap((p) => p.split(/[。]/))
-      }
-      for (let pi = 0; pi < pieces.length; pi += 1) {
-        const t = cleanClause(stripEnumerator(pieces[pi]))
-        if (t.replace(/[，、：:（）()]/g, "").length < MIN_CLAUSE_LEN) continue
-        const dedupeKey = t.slice(0, 40)
-        if (seen.has(dedupeKey)) continue
-        seen.add(dedupeKey)
-        seq += 1
-        // 原编号只挂在同一行的第一段：分号/句号拆出的后续段同属该编号下的要求，
-        // 给它们复制同一个编号会让「条款号→行」不再一对一，专家反而找不到。
-        out.push({ id: `c${seq}`, text: t, source, no: pi === 0 ? clauseNo : "" })
-        if (out.length >= limit) return out
-      }
-    }
+    out.push(...splitClauseBlock(text, parseSectionTitle(key), granularity, limit - out.length, ctx))
+    if (out.length >= limit) break
   }
   return out
 }

@@ -84,7 +84,20 @@ describe("R-022 技术参数落点", () => {
     const custom = buildTechParamCoverage([], report(), devTable(["", "", "deviation", "deviation", "", "", "", ""]), { perItemPenalty: 1 })
     expect(base.perItemPenalty).toBe(0.5)
     expect(custom.perItemPenalty).toBe(1)
-    expect(custom.deviationPenalty).toBe(custom.negativeCount * 1)
+    expect(custom.deviationPenalty).toEqual(custom.negativeCount * 1)
+  })
+
+  it("R54：传入 clauses 时直接用同一口径条款（偏离表/落点不分叉），不再回读解析报告", () => {
+    // 解析报告里只有 1 条，但调用方传入 2 条（= 偏离表同一来源解析的产物）→ 分母必须按传入的算
+    const cov = buildTechParamCoverage([], report(), null, {
+      clauses: [
+        { id: "c1", text: "▲ 数据库须支持国产化替代，兼容主流操作系统", source: "第五章 采购需求" },
+        { id: "c2", text: "系统可用性 99.9%，提供 7×24 小时运维响应", source: "第五章 采购需求" },
+      ],
+    })
+    expect(cov.total).toBe(2)
+    expect(cov.rows.map((r) => r.source)).toEqual(["第五章 采购需求", "第五章 采购需求"])
+    expect(cov.starCount).toBe(1)
   })
 
   it("uncoveredParamIds 返回未覆盖参数 id 且去重", () => {

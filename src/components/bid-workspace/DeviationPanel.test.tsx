@@ -45,6 +45,7 @@ function panel(rows: DeviationRow[], alignment?: DeviationTable["alignment"]) {
     clauseGranularity: "system",
     setClauseGranularity: () => {},
     deviationClauseCount: rows.length,
+    deviationSourceLabel: "按招标原文标题定位：第五章 采购需求",
     mapLoading: false,
     generateDeviationTable: () => {},
     deviationTable: table,
@@ -150,5 +151,43 @@ describe("R52 偏离表面板：原文响应 + 一一对应", () => {
     panel([rowOf({ clause_no: "5.3.2", clause_id: "c12" })])
     expect(screen.getByText("5.3.2")).toBeInTheDocument()
     expect(screen.getByText("c12")).toBeInTheDocument()
+  })
+})
+
+/**
+ * R54（2026-10-15 用户裁定）：偏离表条款取招标原文采购需求章节，而不是解析报告字段值切句。
+ * 面板那行「条款来源」必须显示**实际**来源（原文标题 / 回退解析报告分区），不能写死一句话糊弄。
+ */
+describe("R54 偏离表面板：条款来源如实显示", () => {
+  it("显示实际来源（招标原文标题定位）", () => {
+    panel([rowOf()])
+    expect(screen.getByText(/按招标原文标题定位：第五章 采购需求/)).toBeInTheDocument()
+  })
+
+  it("回退解析报告时同样如实写出（不写死「交货和服务要求」）", () => {
+    const table = {
+      split_dim: "system",
+      rows: [rowOf()],
+      generated_at: "2026-10-15T00:00:00.000Z",
+    } as DeviationTable
+    const props = {
+      clauseGranularity: "system",
+      setClauseGranularity: () => {},
+      deviationClauseCount: 1,
+      deviationSourceLabel: "已回退解析报告分区：交货和服务要求",
+      mapLoading: false,
+      generateDeviationTable: () => {},
+      deviationTable: table,
+      deviationSummary: { total: 1, full: 1, partial: 0, deviation: 0, needs_review: 0 },
+      doneChapterCount: 3,
+      jumpToResponseNode: () => {},
+      exportDeviationWord: () => {},
+      exportBusy: "",
+      deviationSkills: {},
+      techParamCoverage: { hasParams: false },
+      addUncoveredTechParamsToOutline: () => {},
+    } as unknown as Parameters<typeof DeviationPanel>[0]
+    render(<DeviationPanel {...props} />)
+    expect(screen.getByText(/已回退解析报告分区：交货和服务要求/)).toBeInTheDocument()
   })
 })

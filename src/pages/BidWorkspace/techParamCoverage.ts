@@ -88,7 +88,7 @@ export function buildTechParamCoverage(
   outline: OutlineNode[],
   report: ParseReport | null | undefined,
   deviationTable: DeviationTable | null | undefined,
-  opts?: { perItemPenalty?: number; limit?: number },
+  opts?: { perItemPenalty?: number; limit?: number; clauses?: RequirementClause[] },
 ): TechParamCoverage {
   const perItemPenalty = opts?.perItemPenalty ?? DEFAULT_NEGATIVE_PENALTY
   const empty: TechParamCoverage = {
@@ -108,14 +108,18 @@ export function buildTechParamCoverage(
     uncoveredRows: [],
   }
   // 全量抽取（默认上限 240，覆盖样例 116 项），拆分维度固定 l3 逐条到最小参数；
-  // 来源与偏离表同口径（只取技术文件要求），否则「已覆盖 N/M」的分母里混进评分项，与偏离表行数对不上
-  const clauses: RequirementClause[] = report
-    ? extractRequirementClauses(report, {
-        limit: opts?.limit ?? 240,
-        granularity: "l3",
-        sources: DEVIATION_CLAUSE_SOURCES,
-      })
-    : []
+  // 来源与偏离表同口径（只取技术文件要求），否则「已覆盖 N/M」的分母里混进评分项，与偏离表行数对不上。
+  // 调用方（hook）若传入 clauses，即为「同一次 resolveDeviationClauses 的产物」——偏离表/条数预告/落点三处同一口径；
+  // 未传时保持旧路径（解析报告 delivery_req 分区），存量调用与单测零改动。
+  const clauses: RequirementClause[] =
+    opts?.clauses ??
+    (report
+      ? extractRequirementClauses(report, {
+          limit: opts?.limit ?? 240,
+          granularity: "l3",
+          sources: DEVIATION_CLAUSE_SOURCES,
+        })
+      : [])
   if (!clauses.length) return empty
 
   const leaves = collectLeafTitles(techOutlineNodes(outline ?? []))

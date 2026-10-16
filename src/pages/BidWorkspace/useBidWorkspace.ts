@@ -149,7 +149,6 @@ import {
   defenseRefChapterText,
   deriveStage,
   describeOutlineSync,
-  DEVIATION_CLAUSE_SOURCES,
   deviationStats,
   diagnoseOutlineChapterDrift,
   effectiveGlobalFacts,
@@ -393,6 +392,7 @@ import { applyMustWrite, judgeMustWrite } from "./bidMustWrite"
 import { readRequiredTechKeywords } from "./mustWriteConfig"
 import { classifyOrigins, type CatalogDiff } from "./bidOutlineOrigin"
 import { buildTechParamCoverage } from "./techParamCoverage"
+import { resolveDeviationClauses } from "./techParamResponse"
 import { checkDeviationAlignment, deviationVerbatimReport, markNonVerbatimRows } from "./deviationVerbatim"
 import { deptRulesHits, flattenOutlineTitles } from "./bidDeptRulesHits"
 import { writingVoiceRules } from "./bidWritingRules"
@@ -7077,22 +7077,30 @@ export function useBidWorkspace() {
 
   const deviationTable: DeviationTable | null = activeProject?.response_map ?? null
   const deviationSummary = useMemo(() => deviationStats(deviationTable), [deviationTable])
-  const deviationClauseCount = useMemo(() => {
-    const rep = activeProject?.parse_report ?? null
-    if (!rep) return 0
-    // R52：口径与生成一致（只取技术文件要求）——否则按钮上预告的条数与实际生成的行数不符
-    return extractRequirementClauses(rep, {
-      limit: 200,
-      granularity: clauseGranularity,
-      sources: DEVIATION_CLAUSE_SOURCES,
-    }).length
-  }, [activeProject?.parse_report, clauseGranularity])
+  // R54：条款来源改为「招标原文采购需求/技术规格章节」——先用 resolveTechParamSource 定位原文，命中则从原文抽条款，
+  // 未命中/原文抽不到合格条款才回退解析报告 delivery_req（回退口径与改动前逐字一致）。
+  // 条数预告与生成必须同调 resolveDeviationClauses，否则按钮上说 137 条、生成出来 90 条。
+  const deviationSource = useMemo(
+    () =>
+      resolveDeviationClauses(activeProject?.tender_text, activeProject?.parse_report ?? null, {
+        limit: 200,
+        granularity: clauseGranularity,
+      }),
+    [activeProject?.tender_text, activeProject?.parse_report, clauseGranularity],
+  )
+  const deviationClauseCount = deviationSource.clauses.length
+  /** 面板「条款来源」一行展示的实际来源（招标原文标题 / 回退解析报告分区） */
+  const deviationSourceLabel = deviationSource.label
 
   // R-022 技术参数落点：第五章全部技术和服务要求参数逐条核对（进偏离表/建节点=已覆盖，零 AI）
-  const techParamCoverage = useMemo(
-    () => buildTechParamCoverage(coverageNodes, activeProject?.parse_report ?? null, deviationTable),
-    [coverageNodes, activeProject?.parse_report, deviationTable],
-  )
+  // R54：与偏离表同一次来源解析口径（l3 全量、上限 240），避免「已覆盖 N/M」的分母与偏离表行数打架
+  const techParamCoverage = useMemo(() => {
+    const src = resolveDeviationClauses(activeProject?.tender_text, activeProject?.parse_report ?? null, {
+      limit: 240,
+      granularity: "l3",
+    })
+    return buildTechParamCoverage(coverageNodes, activeProject?.parse_report ?? null, deviationTable, { clauses: src.clauses })
+  }, [coverageNodes, activeProject?.tender_text, activeProject?.parse_report, deviationTable])
 
   /** R-022 一键补入：把未覆盖技术参数插入大纲技术章下（无匹配新建章），重新生成正文即落实响应 */
   const addUncoveredTechParamsToOutline = useCallback(() => {
@@ -7120,14 +7128,16 @@ export function useBidWorkspace() {
     flushEditingContent()
     const cur = activeProjectRef.current
     if (!cur) return
-    // R52：只对技术文件要求做偏离表（评分办法属得分点承接、响应文件格式要求属编制规范，都不进偏离表）
-    const clauses = extractRequirementClauses(cur.parse_report, {
+    // R54：条款取自招标原文「采购需求 / 技术规格」章节；定位不到才回退解析报告 delivery_req 分区。
+    // 与面板条数预告（deviationSource）同调 resolveDeviationClauses，保证预告条数 = 实际生成条数。
+    const clauses = resolveDeviationClauses(cur.tender_text, cur.parse_report, {
       limit: 200,
       granularity: clauseGranularity,
-      sources: DEVIATION_CLAUSE_SOURCES,
-    })
+    }).clauses
     if (!clauses.length) {
-      toast.error("没有从解析报告抽取到招标技术要求，请先回到解析环节完成「交货和服务要求」解析")
+      toast.error(
+        "没有从招标原文或解析报告抽到招标技术要求，请先粘贴招标文件原文，或回到解析环节完成「采购需求 / 交货和服务要求」解析",
+      )
       return
     }
     if (!cur.bid_chapters.some((c) => c.content.trim())) {
@@ -9370,6 +9380,7 @@ export function useBidWorkspace() {
     clauseGranularity,
     setClauseGranularity,
     deviationClauseCount,
+    deviationSourceLabel,
     jumpToResponseNode,
     exportDeviationWord,
     // 循环 5 A2：覆盖审计与补写（交卷体检环节消费；仅会话内结果，不落库）

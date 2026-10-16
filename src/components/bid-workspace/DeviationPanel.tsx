@@ -24,6 +24,7 @@ type DeviationPanelProps = Pick<
   | "clauseGranularity"
   | "setClauseGranularity"
   | "deviationClauseCount"
+  | "deviationSourceLabel"
   | "mapLoading"
   | "generateDeviationTable"
   | "deviationTable"
@@ -137,7 +138,7 @@ export function DeviationPanel(p: DeviationPanelProps) {
         </div>
         <p className="mt-1.5 text-xs text-muted-foreground">{CLAUSE_GRANULARITY_HINT[p.clauseGranularity]}</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          条款来源：招标文件「交货和服务要求」（技术文件要求）原文；评分办法与响应文件格式要求不进本表。
+          条款来源：{p.deviationSourceLabel || "招标文件「采购需求 / 技术规格」章节原文"}；评分办法与响应文件格式要求不进本表。
         </p>
       </div>
 

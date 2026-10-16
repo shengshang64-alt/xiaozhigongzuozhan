@@ -162,6 +162,7 @@ type ComposeStepProps = Pick<
   | "clauseGranularity"
   | "setClauseGranularity"
   | "deviationClauseCount"
+  | "deviationSourceLabel"
   | "mapLoading"
   | "generateDeviationTable"
   | "deviationTable"
@@ -1308,6 +1309,7 @@ export function ComposeStep(p: ComposeStepProps) {
             clauseGranularity={p.clauseGranularity}
             setClauseGranularity={p.setClauseGranularity}
             deviationClauseCount={p.deviationClauseCount}
+            deviationSourceLabel={p.deviationSourceLabel}
             mapLoading={p.mapLoading}
             generateDeviationTable={p.generateDeviationTable}
             deviationTable={p.deviationTable}
