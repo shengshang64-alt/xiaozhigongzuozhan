@@ -13,6 +13,7 @@ import { ComposeStep } from "@/components/bid-workspace/ComposeStep"
 import { DraftMergePanel } from "@/components/bid-workspace/DraftMergePanel"
 import { DupCheckPanel } from "@/components/bid-workspace/DupCheckPanel"
 import { DefensePanel } from "@/components/bid-workspace/DefensePanel"
+import { DeptChecklistPanel } from "@/components/bid-workspace/DeptChecklistPanel"
 import { MockEvalPanel } from "@/components/bid-workspace/MockEvalPanel"
 import { OpportunityLinkBar } from "@/components/bid-workspace/OpportunityLinkBar"
 import { ParseConfigDialog } from "@/components/bid-workspace/ParseConfigDialog"
@@ -516,6 +517,14 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               fixTyposBusy={p.fixTyposBusy}
               startFixTypos={p.startFixTypos}
               jumpToAuditChapter={p.jumpToAuditChapter}
+            />
+            {/* 部门检查清单：三份参照清单（招标书 / 投标文件 / 解决方案）原样导入，人工勾选 + 交叉检查 + 签名留痕。
+                落既有 checklists 集合的项目级副本（零 schema 变更），零 AI、不做自动判定。 */}
+            <DeptChecklistPanel
+              key={`dept-check-${p.activeProject.id}`}
+              projectId={p.activeProject.id}
+              projectName={p.activeProject.project_name}
+              locked={p.isArchivedLocked}
             />
             </>
           )}

@@ -139,7 +139,11 @@ export function useChecklist(deps: {
       const data = await apiFetch<ListResponse<ChecklistRecord>>(
         `/api/checklists?rh_user_id=${encodeURIComponent(uid)}&perPage=200`,
       )
-      setMyChecklists(data.items ?? [])
+      // 标书工作台的「部门检查清单」（source_mode = dept_check）与本域共用 checklists 表，
+      // 但 items / rating_targets 是另一套结构（逐行可填的检查表 + 扩展元数据对象）：
+      // 放进来会在建设清单列表里显示成 0 元的怪清单，点开后还会把 rating_targets 对象当评级数组渲染。
+      // 故本域列表一律过滤掉（归属与结构见 pages/BidWorkspace/bidChecklistStore.ts）。
+      setMyChecklists((data.items ?? []).filter((rec) => rec.source_mode !== "dept_check"))
     } catch {
       toast.error("我的清单加载失败，请稍后重试")
     } finally {

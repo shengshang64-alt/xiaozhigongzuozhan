@@ -119,7 +119,9 @@ export type ChecklistRecord = {
   checklist_name: string
   hospital: string
   rating_targets: string[]
-  source_mode: "rating" | "customer_match"
+  // 既有值 rating / customer_match；dept_check = 标书工作台的「部门检查清单」项目级副本
+  // （同一张 checklists 表、另一套 items/rating_targets 结构，本域列表会显式过滤掉，见 checklistLogic.loadMyChecklists）
+  source_mode: "rating" | "customer_match" | "dept_check"
   customer_raw: string
   items: ChecklistLine[]
   total_amount: number
