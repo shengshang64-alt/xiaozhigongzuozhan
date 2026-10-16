@@ -9,6 +9,7 @@ import { ChapterEditor } from "@/components/solution-studio/ChapterEditor"
 import { OutlineTreeEditor } from "@/components/solution-studio/OutlineTreeEditor"
 import { ChapterBudgetBar } from "@/components/bid-workspace/ChapterBudgetBar"
 import { DeviationPanel } from "@/components/bid-workspace/DeviationPanel"
+import { TechParamResponsePanel } from "@/components/bid-workspace/TechParamResponsePanel"
 import { FigureInsertTools } from "@/components/bid-workspace/FigureInsertTools"
 import { ScoreMappingPanel } from "@/components/bid-workspace/ScoreMappingPanel"
 import { BidMaterialAmmoPanel } from "@/components/bid-workspace/BidMaterialAmmoPanel"
@@ -1321,6 +1322,13 @@ export function ComposeStep(p: ComposeStepProps) {
             deviationSkills={p.deviationSkills}
             techParamCoverage={p.techParamCoverage}
             addUncoveredTechParamsToOutline={p.addUncoveredTechParamsToOutline}
+          />
+          {/* R55：技术参数响应表——紧邻偏离表（偏离表在前保持既定位置）；数据只需 activeProject 的
+              tender_text / parse_report，面板内部自算，不动 useBidWorkspace 返回面；key 绑项目 id 防「章节描述」串项目 */}
+          <TechParamResponsePanel
+            key={proj.id}
+            tenderText={proj.tender_text ?? ""}
+            report={proj.parse_report ?? null}
           />
         </>
       )}
