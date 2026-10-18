@@ -38,6 +38,17 @@ type TabbedOutletProps = {
 }
 
 export function TabbedOutlet({ tabs, pathname }: TabbedOutletProps) {
+  // 路径未注册时直接渲染 404，不与已开标签的内容叠加。
+  // 原先的实现把 NotFound 追加到 tabs 之后，遇到 active 标签路径与 pathname
+  // 不一致（未注册时 tabs.active 仍保留最后一个已开标签），旧标签会与 NotFound
+  // 一起渲染，看上去「页面没换」，给用户「静默失败」的错觉。
+  if (!hasRoute(pathname)) {
+    return (
+      <ErrorBoundary key="eb-not-found">
+        <NotFound />
+      </ErrorBoundary>
+    )
+  }
   return (
     <>
       {tabs.items.map((path) => {
@@ -56,7 +67,6 @@ export function TabbedOutlet({ tabs, pathname }: TabbedOutletProps) {
           </div>
         )
       })}
-      {!hasRoute(pathname) && <NotFound />}
     </>
   )
 }

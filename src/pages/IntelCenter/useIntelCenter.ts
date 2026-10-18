@@ -458,43 +458,13 @@ export function useIntelCenter() {
     void loadItems(1)
   }, [loadItems])
 
-  // ------------------------------ 定时抓取触发（服务端 30 分钟门控） ------------------------------
-  const tickRef = useRef(false)
-
-  const triggerTick = useCallback(async () => {
-    try {
-      const r = await apiFetch<{ ok: boolean; ran: boolean; added: number; message?: string }>(
-        "/api/intel/tick",
-        { method: "POST" },
-      )
-      if (r.ok && r.ran) {
-        if (r.added > 0) {
-          toast.success(`自动抓取完成，新增 ${r.added} 条待确认情报`)
-          refreshItems()
-          void loadSources()
-        }
-      }
-    } catch {
-      /* 抓取触发失败不打扰用户，下一轮会重试 */
-    }
-  }, [refreshItems])
-
-  // 循环7 C1-1：定时刷新经 ref 取最新 triggerTick，避免空依赖 useEffect 捕获挂载时的
-  // 初始筛选闭包、15 分钟 tick 用旧条件覆盖当前列表
-  const triggerTickRef = useRef<() => Promise<void>>(async () => {})
-  useEffect(() => {
-    triggerTickRef.current = triggerTick
-  }, [triggerTick])
-
-  useEffect(() => {
-    if (tickRef.current) return
-    tickRef.current = true
-    void triggerTickRef.current()
-    const timer = window.setInterval(() => void triggerTickRef.current(), 15 * 60 * 1000)
-    return () => window.clearInterval(timer)
-  }, [])
-
   // ------------------------------ 信息源 ------------------------------
+  // R52（2026-10-16）：本块整体上移到 triggerTick 之前。原顺序里 triggerTick(464) 在
+  // 自身 deps 未包含 loadSources 的情况下前向引用 loadSources(507)，形成「声明前访问」：
+  // react-hooks/immutability 报 TDZ、preserve-manual-memoization 判「memo 无法保留」。
+  // 运行时当时不出错（triggerTick 只在 effect/interval 里被调用），但一旦启用 React Compiler
+  // 且上调 panicThreshold，loadSources 会失去稳定引用 → [loadSources] 每次渲染都变 →
+  // setSourcesLoading(true) → 无限渲染。整体上移即从根上消除该前向引用。
   const [sources, setSources] = useState<IntelSourceRow[]>([])
   const [sourcesLoading, setSourcesLoading] = useState(false)
   const [sourcesPanelOpen, setSourcesPanelOpen] = useState(false)
@@ -519,6 +489,42 @@ export function useIntelCenter() {
   useEffect(() => {
     void loadSources()
   }, [loadSources])
+
+  // ------------------------------ 定时抓取触发（服务端 30 分钟门控） ------------------------------
+  const tickRef = useRef(false)
+
+  const triggerTick = useCallback(async () => {
+    try {
+      const r = await apiFetch<{ ok: boolean; ran: boolean; added: number; message?: string }>(
+        "/api/intel/tick",
+        { method: "POST" },
+      )
+      if (r.ok && r.ran) {
+        if (r.added > 0) {
+          toast.success(`自动抓取完成，新增 ${r.added} 条待确认情报`)
+          refreshItems()
+          void loadSources()
+        }
+      }
+    } catch {
+      /* 抓取触发失败不打扰用户，下一轮会重试 */
+    }
+  }, [refreshItems, loadSources])
+
+  // 循环7 C1-1：定时刷新经 ref 取最新 triggerTick，避免空依赖 useEffect 捕获挂载时的
+  // 初始筛选闭包、15 分钟 tick 用旧条件覆盖当前列表
+  const triggerTickRef = useRef<() => Promise<void>>(async () => {})
+  useEffect(() => {
+    triggerTickRef.current = triggerTick
+  }, [triggerTick])
+
+  useEffect(() => {
+    if (tickRef.current) return
+    tickRef.current = true
+    void triggerTickRef.current()
+    const timer = window.setInterval(() => void triggerTickRef.current(), 15 * 60 * 1000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   const openSourcesPanel = useCallback(() => setSourcesPanelOpen(true), [])
   const closeSourcesPanel = useCallback(() => setSourcesPanelOpen(false), [])

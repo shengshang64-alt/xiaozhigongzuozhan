@@ -7,12 +7,14 @@ import {
   CRITICAL_SECTION_KEYS,
   coverageLevel,
   coveragePercent,
+  decideOutlineCriticalGate,
   isBlockingMissingStatus,
+  missingCriticalSectionTitles,
   missingCriticalSections,
   parseCoverageRatio,
   parsedContentChars,
 } from "./parseCoverage"
-import type { ParseSection } from "./bidTypes"
+import { requestedKeys, type ParseSection } from "./bidTypes"
 
 const sec = (content: string): ParseSection => ({ key: "overview", title: "项目概述", content })
 const src = (n: number): string => "字".repeat(n) // n 个非空白字符的原文
@@ -109,5 +111,49 @@ describe("R288+ 生成前门禁：关键解析项缺失判据（真实场景实�
 
   it("返回顺序与 CRITICAL_SECTION_KEYS 一致（便于提示语稳定）", () => {
     expect(missingCriticalSections([])).toEqual([...CRITICAL_SECTION_KEYS])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// R58（B28）关键项门禁的两处修正（真实数据复算驱动）
+//   ① 未请求的关键项不算缺失：默认 key 档解析不请求 void_items（它在 PARSE_EXTRA_SECTIONS 里），
+//      而门禁把它当关键项 → 25 条真实记录里 5 条 key 档项目被假拦。
+//   ② 已有非空大纲时不硬拦，改二次确认（默认取消）；无大纲保持硬拦。
+// 反向验证（删实现即变红）：
+//   · 去掉 missingCriticalSections 的 requestedKeys 过滤 → 用例①红；
+//   · 把 decideOutlineCriticalGate 改回「只看 criticalMissing 非空 → block」→ 用例②红。
+// ---------------------------------------------------------------------------
+describe("R58（B28）关键项门禁：作用域感知 + 已有大纲不硬拦", () => {
+  const mk = (key: string, content: string, status?: ParseSection["status"]): ParseSection =>
+    ({ key, title: key, content, ...(status ? { status } : {}) }) as ParseSection
+
+  /** 关键项档实际请求的 8 项（不含 void_items） */
+  const keyKeys = requestedKeys({ scope: "key", extra_keys: [] })
+  /** 完整档实际请求的项（含 void_items） */
+  const fullKeys = requestedKeys({ scope: "full", extra_keys: ["void_items"] })
+
+  it("① 未请求的关键项不算缺失：key 档不请求 void_items，就不该因它缺失被拦", () => {
+    const sections = keyKeys.map((k) => mk(k, "有内容", "ok"))
+    // 不传 requestedKeys（旧口径）：把没请求过的 void_items 也算成缺失 → 假拦
+    expect(missingCriticalSections(sections)).toEqual(["void_items"])
+    // 传该项目的实际请求范围：反馈为空，放行
+    expect(missingCriticalSections(sections, CRITICAL_SECTION_KEYS, keyKeys)).toEqual([])
+    expect(missingCriticalSectionTitles({ scope: "key", sections }, CRITICAL_SECTION_KEYS, keyKeys)).toEqual([])
+    // 反向对照：同一份数据在完整档（请求了 void_items）下判缺是正确的，不是被放掉
+    expect(missingCriticalSections(sections, CRITICAL_SECTION_KEYS, fullKeys)).toEqual(["void_items"])
+  })
+
+  it("①b 请求过的关键项真缺失时照旧判缺（作用域感知不得放掉真拦截）", () => {
+    const sections = fullKeys.filter((k) => k !== "tech_score").map((k) => mk(k, "有内容", "ok"))
+    expect(missingCriticalSections(sections, CRITICAL_SECTION_KEYS, fullKeys)).toEqual(["tech_score"])
+  })
+
+  it("② 已有非空大纲 → confirm（不硬拦）；无大纲 → block（保持硬拦）；不缺项 → pass", () => {
+    expect(decideOutlineCriticalGate([], true)).toBe("pass")
+    expect(decideOutlineCriticalGate([], false)).toBe("pass")
+    expect(decideOutlineCriticalGate(["void_items"], true)).toBe("confirm")
+    expect(decideOutlineCriticalGate(["void_items"], false)).toBe("block")
+    // 多项缺失也一样：有纲就不硬拦
+    expect(decideOutlineCriticalGate([...CRITICAL_SECTION_KEYS], true)).toBe("confirm")
   })
 })

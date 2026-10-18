@@ -2,11 +2,12 @@
 // R70 提示词搬迁第六批，自 bidTypes.ts 原样搬迁：只搬不改字（快照锁字见 promptsSnapshot.test.ts）
 // ---------------------------------------------------------------------------
 
-import { BID_STYLE_RULES, FULLTEXT_GUARD_RULES, PARAM_RESPONSE_BOUNDARY_RULES, PRE_OUTPUT_SELFCHECK_RULES, scoringDetailLines, truthPreamble, writtenSectionTitles } from "../bidTypes"
+import { BID_STYLE_RULES, FULLTEXT_GUARD_RULES, PARA_SHAPE_RULE, PARAM_RESPONSE_BOUNDARY_RULES, PRE_OUTPUT_SELFCHECK_RULES, PROSE_LINT_RULES, scoringDetailLines, truthPreamble, writtenSectionTitles } from "../bidTypes"
 import type { ParseReport, RequirementClause, ScoringItem } from "../bidTypes"
 import type { LlmMessage } from "@/lib/llm"
 
-export const PROMPT_VERSION = 1
+// REQ-052 v1→v2：BID_STYLE_RULES 新增「正文编号层次」条（续写路径同步，避免续写把层次写回扁平）
+export const PROMPT_VERSION = 2
 
 export function buildBidContinueMessages(
   projectName: string,
@@ -68,6 +69,16 @@ export function buildBidContinueMessages(
   // docs/07 §5.3/§5.4 落地（第 18 轮）：续写同样受输出前自检与历史缺陷反例约束
   body.push("输出前自检与历史缺陷反例（每条必须遵守）：")
   for (const t of PRE_OUTPUT_SELFCHECK_RULES) {
+    body.push(`${body.length + 1}. ${t}`)
+  }
+  // REQ-022（2026-10-17）：续写是「自动补足 / 继续生成」走的路径，任务本身就是往不够字数的地方灌字
+  // （见上一条 push「续写约 N 字使整章达到篇幅预算」）——一条专门灌字的路径若没有段落形态约束，
+  // 模型凑预算最省力的做法就是写长段落。实测 608 段超 300 字里相当一部分出自补足而非首次生成。
+  // 同时补注 PROSE_LINT_RULES：本文件此前从未注入过它，连老的「每段 200 字以内」也没有。
+  body.push("正文段落形态（每条必须遵守）：")
+  body.push(`${body.length + 1}. ${PARA_SHAPE_RULE}`)
+  body.push("版式与文风硬条款（每条必须遵守，违反即重写）：")
+  for (const t of PROSE_LINT_RULES) {
     body.push(`${body.length + 1}. ${t}`)
   }
   body.push(`${body.length + 1}. 只输出续写部分纯文本：禁止 markdown 符号、禁止开场白、禁止复述结尾、禁止收尾总结语。`)

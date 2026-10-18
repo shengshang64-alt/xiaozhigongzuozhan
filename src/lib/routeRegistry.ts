@@ -62,7 +62,7 @@ const def = (
  * loader 路径与 pages 下各页面的 index.tsx 一一对应（它们都是默认导出的薄壳）。
  */
 const ROUTE_DEFS: RouteDef[] = [
-  def("/", "作战驾驶舱", LayoutGrid, () => import("@/pages/Home/index.tsx")),
+  def("/", "工作台总览", LayoutGrid, () => import("@/pages/Home/index.tsx")),
   def("/intel-center", "情报中心", Search, () => import("@/pages/IntelCenter/index.tsx")),
   def("/ai-hot", "AI 动态", Flame, () => import("@/pages/AiHot/index.tsx")),
   def("/customer-management", "客户管理", Users, () => import("@/pages/CustomerManagement/index.tsx")),
@@ -109,13 +109,12 @@ export function labelFor(path: string): string {
  * 只放路径，label/icon/adminOnly 一律从 ROUTES 取，杜绝两处文案漂移。
  */
 export const NAV_GROUPS: { title: string; paths: string[] }[] = [
-  { title: "总览", paths: ["/"] },
-  { title: "发现", paths: ["/intel-center", "/ai-hot"] },
-  { title: "研判", paths: ["/customer-management"] },
-  { title: "制胜", paths: ["/solution-studio", "/product-mapping", "/ppt-quote", "/materials"] },
-  { title: "决胜", paths: ["/bid-workspace", "/bid-check", "/format-tool"] },
-  { title: "沉淀", paths: ["/knowledge", "/qual-certs", "/competitors"] },
-  { title: "支撑", paths: ["/assistant", "/model-config", "/team"] },
+  // 业务分组替代"作战地图/总览/发现/研判/制胜/决胜/沉淀/支撑"军事化术语，
+  // 用一线售前能听懂的动词短语：哪里看线索、哪里写材料、哪里沉淀资产。
+  // AI 动态（模型调用记录/用量）属于"沉淀·团队"——元功能，不放"客户·线索"。
+  { title: "客户 · 线索", paths: ["/", "/customer-management", "/intel-center"] },
+  { title: "方案 · 标书 · 汇报", paths: ["/solution-studio", "/product-mapping", "/ppt-quote", "/materials", "/bid-workspace", "/bid-check", "/format-tool"] },
+  { title: "沉淀 · 团队", paths: ["/knowledge", "/qual-certs", "/competitors", "/assistant", "/model-config", "/ai-hot", "/team"] },
 ]
 
 // ---------------------------------------------------------------------------

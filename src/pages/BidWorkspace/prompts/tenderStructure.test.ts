@@ -85,6 +85,56 @@ describe("detectTenderChapters + dedupeChaptersByTitle（拆行吸收与 stub �
     expect(classifyChapterTitle("第五章 政府采购合同")).toBe("contract")
     expect(classifyChapterTitle("第六章 投标文件格式")).toBe("format")
   })
+
+  // REQ-015（2026-10-17）：福建政采「第四章 资格审查与评标」合写标题。
+  // 修复前该章判 other，导致整章评分素材丢空——96 份真语料里 28 例次、17 份文件 0 字。
+  it("REQ-015：资格审查与评标「合写」章名判 scoring（修复前判 other → 评分素材整章丢空）", () => {
+    expect(classifyChapterTitle("第四章 资格审查与评标")).toBe("scoring")
+    expect(classifyChapterTitle("第四章　资格审查与评标")).toBe("scoring")
+    expect(classifyChapterTitle("第四章 资格审查和评标")).toBe("scoring")
+    expect(classifyChapterTitle("第三章 资格评审与评标办法")).toBe("scoring")
+    // 纯资格审查（不含评标）仍不得误判为评分章：它是资格性审查，评分素材另在别章
+    expect(classifyChapterTitle("第三章 资格审查")).not.toBe("scoring")
+  })
+
+  it("REQ-015：合写评分章整章进入评分素材（海沧/福安真实形态）", () => {
+    // 关键：本样例**不含**前附表「评标方法」行、也无节级评分标题，
+    // 故素材非空的唯一来源就是「第四章 资格审查与评标」被判为 scoring 章——
+    // 词表一旦回退，本用例必红（2026-10-17 变异实测）。
+    const text = [
+      "第一章 投标邀请",
+      "某医院互联互通测评项目公开招标。",
+      "第二章 投标人须知前附表（表1、2）",
+      "项号 | 条款号 | 编列内容",
+      "第三章 投标人须知",
+      "投标文件应包含资格及资信证明文件。",
+      "第四章 资格审查与评标",
+      "一、资格审查",
+      "1 | 营业执照 | 提供有效副本复印件 | 符合要求",
+      "二、评审因素与分值构成（不是节级评分标题，避免被 section 兜底掩盖）",
+      "本项目采用综合评分法，总分 100 分。",
+      "1 | 技术功能响应（30 分） | 完全满足第五章要求得满分 | —",
+      "第五章 招标内容及要求",
+      "★参数：支持互联互通四甲测评指标。",
+      "第六章 政府采购合同（参考文本）",
+      "合同条款略。",
+    ].join("\n")
+    const mat = buildScoringMaterial(text)
+    expect(mat).not.toBe("")
+    expect(mat).toContain("技术功能响应")
+    expect(mat).toContain("本项目采用综合评分法")
+    // 相邻章不得混入（须知的投标文件句、第五章参数、第六章合同）
+    expect(mat).not.toContain("资格及资信证明文件")
+    expect(mat).not.toContain("★参数")
+    expect(mat).not.toContain("合同条款略")
+  })
+
+  it("REQ-015 反向锁：目录页码行仍是目录行，不得因合写修复被重新认成正文标题", () => {
+    // 福安真实形态：正文标题行无页码（认）；目录 stub 带页码（不认）——修复只动词表，不动这条判据
+    expect(isChapterHeadingLine("第四章   资格审查与评标 17")).toBe(false)
+    expect(isChapterHeadingLine("第四章   资格审查与评标")).toBe(true)
+    expect(isChapterHeadingLine("第二章 投标人须知前附表（表1、2） 3")).toBe(false)
+  })
 })
 
 describe("buildScoringMaterial（评分办法解析不到的主修复）", () => {
@@ -141,6 +191,76 @@ describe("buildScoringMaterial（评分办法解析不到的主修复）", () =>
   it("无评分章节返回空串（调用方回退通用检索，不硬凑）", () => {
     const text = ["第一章 招标公告", "某医院信息化项目公开招标。", "第二章 投标人须知", "投标截止时间略。"].join("\n")
     expect(buildScoringMaterial(text)).toBe("")
+  })
+})
+
+describe("REQ-020 超长评分章：整行整项取舍，绝不切在句中", () => {
+  /** 造一份超长评分章：章内每行都是一个完整评分项 */
+  function longScoringChapter(itemCount: number, lineLen = 200): string {
+    const lines = ["第一章 投标人须知", "投标须知略。", "第四章 评标办法"]
+    for (let i = 1; i <= itemCount; i++) {
+      const pad = "本条评分标准说明".repeat(Math.ceil(lineLen / 8)).slice(0, lineLen)
+      lines.push(`${i}-${i} | 评分项${i} | ${pad}`)
+    }
+    lines.push("第五章 合同条款", "合同条款略。")
+    return lines.join("\n")
+  }
+
+  it("超长评分章不再被句中切断：素材每一行都必须是原文的完整行", () => {
+    // 250 项 × 约 220 字 ≈ 55000 字。**显式给小预算**强制触发截断——
+    // 否则章长没超默认上限时根本不会截断，断言等于白测（第一版就踩了这个坑）。
+    const text = longScoringChapter(250)
+    // 精确到「整行」而不是「子串」：句中硬切出来的残行虽然仍是原文的子串，
+    // 但它不等于任何一个原文行。用 Set 做整行比对才抓得住（子串判据恒真，测不出东西）。
+    const sourceLines = new Set(text.split("\n").map((l) => l.trim()))
+    for (const cap of [30000, 8000, 1500]) {
+      const mat = buildScoringMaterial(text, { sectionCap: cap, totalCap: 100000 })
+      const bodyLines = mat
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l && !l.startsWith("【评分章节") && !l.startsWith("…（本章超长"))
+      expect(bodyLines.length).toBeGreaterThan(0)
+      // 核心断言：每一行都必须**等于原文的某一行**（不接受残行/半句）
+      const broken = bodyLines.filter((l) => !sourceLines.has(l))
+      expect({ cap, broken }).toEqual({ cap, broken: [] })
+      // 且确实发生了截断（证明上面这条断言是在截断场景下验的）
+      expect(mat).toContain("本章超长")
+    }
+  })
+
+  it("上限放宽后不再产生截断提示（旧版 30000 会截断）", () => {
+    const text = longScoringChapter(250)
+    const mat = buildScoringMaterial(text)
+    expect(mat).not.toContain("本章超长")
+    // 与旧预算对比：显式传旧预算时仍会截断，说明是本轮的常量调整起的效
+    const old = buildScoringMaterial(text, { sectionCap: 30000, totalCap: 36000 })
+    expect(old).toContain("本章超长")
+    // 且旧预算取到的内容严格少于新预算
+    expect(old.replace(/\s+/g, "").length).toBeLessThan(mat.replace(/\s+/g, "").length)
+  })
+
+  it("预算极小时也不返回空串：至少收下第一整行（不让短预算比旧行为更差）", () => {
+    const text = [
+      "第四章 评标办法",
+      "1-1 | 评分项一 | 说明一",
+      "1-2 | 评分项二 | 说明二",
+      "第五章 合同条款",
+      "略。",
+    ].join("\n")
+    // 预算给到只够一行
+    const mat = buildScoringMaterial(text, { sectionCap: 40, totalCap: 100000 })
+    expect(mat).not.toBe("")
+    expect(mat).toContain("1-1 | 评分项一 | 说明一")
+    // 第二行放不下就整行不要，不许取半行
+    expect(mat).not.toContain("1-2")
+    expect(mat).toContain("本章超长")
+  })
+
+  it("截断提示文案改为「已按整行截断」，与句中断开的旧文案区分", () => {
+    const text = longScoringChapter(250)
+    const old = buildScoringMaterial(text, { sectionCap: 30000, totalCap: 36000 })
+    expect(old).toContain("已按整行截断")
+    expect(old).not.toContain("已按上限截断")
   })
 })
 

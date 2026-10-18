@@ -9,7 +9,8 @@
 import { MAX_TENDER_CHARS, clipText, parseSectionDef, truthPreamble } from "../bidTypes"
 import type { LlmMessage } from "@/lib/llm"
 
-export const PROMPT_VERSION = 5 // 2026-10 易标对齐轮：tech_score/biz_score 评分项 vs 评分要求语义区分
+export const PROMPT_VERSION = 6 // R54（2026-10-16）：mode=full 不再被截到 14,000（契约一致性，见下方 user 分支注释）；
+// 上一版 5 = 2026-10 易标对齐轮：tech_score/biz_score 评分项 vs 评分要求语义区分
 
 /**
  * Issue 2（逐项独立提示词重构）：为单个解析项构造专属 System/User 提示词，每项一次独立 LLM 调用。
@@ -23,7 +24,7 @@ export const PROMPT_VERSION = 5 // 2026-10 易标对齐轮：tech_score/biz_scor
 export function buildSectionParseMessages(
   key: string,
   tenderText: string,
-  opts?: { sourceMode?: "full" | "retrieval" | "truncated" },
+  opts?: { sourceMode?: "full" | "retrieval" | "truncated" | "scoring-material" },
 ): LlmMessage[] {
   const d = parseSectionDef(key)
   const title = d?.title ?? key
@@ -96,18 +97,37 @@ export function buildSectionParseMessages(
       "职责互斥：同一信息若其他解析项更合适承担（如项目基本信息归项目概述、技术/商务评分明细归各自评分项、时间节点归投标关键节点），本项不重复提取。",
     ].join("\n")
   }
+  // ⚠️ mode 契约一致性（R54 修正，2026-10-16）：`mode === "full"` 由
+  // selectRelevantChunks 在 `source.length <= RETRIEVAL_BUDGET_CHARS(20000)` 时给出，
+  // 其语义是「**完整原文、无省略**」。但本分支此前用 `clipText(tenderText, MAX_TENDER_CHARS)`（14,000）
+  // ——于是 14,001~20,000 字的招标会被**标成「招标文件全文」却静默截断**（最多丢 30%），
+  // 且 full 分支的 tail 不含任何「不得臆造」护栏（retrieval / truncated 两条都有），
+  // 等于告诉模型「这是全文」又鼓励它直接输出 → 静默失真（本仓 R50 立的口径：内部省略必须显式可见）。
+  // 现按契约原样注入全文；仅当明显超出该通道应有上限（> MAX_TENDER_CHARS * 2）时才如实降级为「摘录」口径。
+  //
+  // REQ-029（2026-10-17）：新增 `scoring-material` 模式——内容是 buildScoringMaterial 已定位好的
+  // **评分表素材**，不是按关键词检索出来的片段，因此**不裁剪**。原 retrieval 分支把素材
+  // clipText 到 28,000，实测 #46 的 54,625 字素材会被砍掉 26,625 字（保头 70% + 保尾 30%，
+  // 中间整段评分项凭空消失），这是 REQ-020 收益在 prompt 层不兑现的直接原因。
+  // 素材已由 sliceWholeLines 做完整行取舍，这里再裁一次等于把上一层的修复抹掉。
+  const fullOverBudget = mode === "full" && tenderText.length > MAX_TENDER_CHARS * 2
+  const effMode = fullOverBudget ? "truncated" : mode
   const user =
-    mode === "retrieval"
-      ? `【相关原文片段（系统已按本解析项关键词从招标文件中检索选块，无关章节已省略，每片段标注了所属章节）】\n${clipText(tenderText, MAX_TENDER_CHARS * 2)}`
-      : mode === "truncated"
-        ? `【招标文件摘录（受篇幅所限系统保留了开头与结尾，中间部分省略）】\n${clipText(tenderText, MAX_TENDER_CHARS * 2)}`
-        : `【招标文件全文】\n${clipText(tenderText, MAX_TENDER_CHARS)}`
+    effMode === "scoring-material"
+      ? `【评分表素材（系统已从招标文件中定位出评分办法/评标办法章节与评分表，其余章节已省略；素材内以「【评分章节：…】」分块，各块彼此独立）】\n${tenderText}`
+      : effMode === "retrieval"
+        ? `【相关原文片段（系统已按本解析项关键词从招标文件中检索选块，无关章节已省略，每片段标注了所属章节）】\n${clipText(tenderText, MAX_TENDER_CHARS * 2)}`
+        : effMode === "truncated"
+          ? `【招标文件摘录（受篇幅所限系统保留了开头与结尾，中间部分省略）】\n${clipText(tenderText, MAX_TENDER_CHARS * 2)}`
+          : `【招标文件全文】\n${tenderText}`
   const tail =
-    mode === "retrieval"
-      ? "请只在上述片段内提取，片段里没有的内容直接省略对应行，禁止凭常识或经验补写；若片段与本解析项明显无关（如仅命中目录条目、通知性文字），只输出一行「原文未提及」。"
-      : mode === "truncated"
-        ? "请只在上述摘录内提取；相关内容若落在省略区间则无法确认，直接省略对应行，禁止臆造。"
-        : `请只提取「${title}」并按上述契约直接输出正文。`
+    effMode === "scoring-material"
+      ? "请只在上述评分表素材内提取，素材里没有的评分项直接省略，禁止凭常识或经验补写；逐块提取后合并，同一评分项只输出一次。"
+      : effMode === "retrieval"
+        ? "请只在上述片段内提取，片段里没有的内容直接省略对应行，禁止凭常识或经验补写；若片段与本解析项明显无关（如仅命中目录条目、通知性文字），只输出一行「原文未提及」。"
+        : effMode === "truncated"
+          ? "请只在上述摘录内提取；相关内容若落在省略区间则无法确认，直接省略对应行，禁止臆造。"
+          : `请只提取「${title}」并按上述契约直接输出正文。`
   return [
     { role: "system", content: [...base, task, textContract].join("\n") },
     { role: "user", content: user },

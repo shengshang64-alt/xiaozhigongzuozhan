@@ -423,6 +423,15 @@ export function useSolutionStudio() {
     }
   }, [])
 
+  // ---- 自动保存状态与定时器（R52 2026-10-16：整体上移到首个使用点之前）----
+  // 原先这三项声明在编辑工作台段（原 L718-720），而 persistSolution(426) 已在用 setAutoSaveState /
+  // autoSaveResetRef，flushEditingContent 在用 saveTimerRef —— 形成前向引用：
+  // react-hooks/immutability 报「声明前访问」、preserve-manual-memoization 判「memo 无法保留」。
+  // 运行时当时不出错（都在回调内延迟执行），但顺序本身就是编译器与读者都读不懂的债，故前移。
+  const [autoSaveState, setAutoSaveState] = useState<"idle" | "saving" | "saved">("idle")
+  const autoSaveResetRef = useRef<number | null>(null)
+  const saveTimerRef = useRef<number | null>(null)
+
   const persistSolution = useCallback(
     async (rec: SolutionRecord, patch: Partial<SolutionRecord>, quiet = false) => {
       try {
@@ -715,9 +724,6 @@ export function useSolutionStudio() {
   const [activeChapterId, setActiveChapterId] = useState<string | null>(null)
   const [editingContent, setEditingContentState] = useState("")
   const editingContentRef = useRef("")
-  const [autoSaveState, setAutoSaveState] = useState<"idle" | "saving" | "saved">("idle")
-  const autoSaveResetRef = useRef<number | null>(null)
-  const saveTimerRef = useRef<number | null>(null)
   // 最近一次「本地→远端」持久化的 Promise（persistSolution 内部自捕获，永不 reject）。
   // 写 doc_status 前先 await 它：后端 PATCH 是「读整行→改→存整行」，两笔并发会互相覆盖丢字段（R001 竞态根因）。
   const lastPersistRef = useRef<Promise<void> | null>(null)

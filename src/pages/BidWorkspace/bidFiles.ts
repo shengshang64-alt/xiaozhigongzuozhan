@@ -22,6 +22,7 @@ import { renderMermaidToSvg } from "./mermaidFigure"
 import type { Chapter, FigureSpec } from "@/pages/SolutionStudio/solutionTypes"
 import { DOCX_SIZE_HALFPT } from "./bidFormatConstants"
 import { triggerBlobDownload } from "@/lib/download"
+import { unzipSync, strFromU8 } from "fflate" // REQ-057：大文件只读 document.xml 用（项目既有依赖，mammoth 未导出 zip 能力）
 import { formatDateTimeDisplay } from "@/lib/dateDisplay"
 import {
   CLAUSE_GRANULARITY_LABEL,
@@ -105,6 +106,88 @@ export function renderPageRefs(s: string): string {
     .replace(/〔P\?〕/g, "见章节")
 }
 
+/** REQ-057（2026-10-18）大文件分流阈值：**word/document.xml 解压后大小**超过此值改走
+ * 「只读 document.xml」路径。
+ *
+ * 【为什么不能用 file.size 当判据（验收官 55 份全量扫描推翻的第一版设计）】
+ * 内存消耗取决于 **document.xml 解压后的大小**，不是 docx 文件大小——因为图片压缩率差异极大：
+ *   file 24.4MB → xml 24.6MB（压缩比 101%，几乎没压缩）→ OOM
+ *   file 33.3MB → xml 25.1MB（压缩比 75%）           → OOM
+ *   file 33.2MB → xml 22.9MB（压缩比 69%，同源同目录）→ 通过
+ *   file 274.7MB → xml 20.5MB（压缩比 7%）           → 通过
+ *   file 143.4MB → xml 18.8MB（压缩比 13%）          → 通过
+ *   file 167.2MB → xml 14.3MB（压缩比 9%）           → 通过
+ * **274MB 的文件能过、24MB 的反而 OOM** —— 按文件大小分流会把这两个都判反。
+ *
+ * 【怎么在不解压的前提下拿到 xml 大小】
+ * zip 中央目录里就存着 uncompressedSize。fflate 的 `unzipSync` 即使 filter 全返回 false，
+ * 也会把每个 entry 的元信息（含 `originalSize`）交给 filter 回调——用这个读大小，零解压成本：
+ *   实测 274.7MB 文件 55ms、143.4MB 文件 50ms、20.8MB 文件 4ms。
+ *
+ * 【阈值为什么取 20MB】
+ * 验收官实测：能通过的最大 XML 是 22.9MB（heap 954MB），OOM 掉的最小 XML 是 24.6MB。
+ * 边界在 22.9~24.6MB 之间；取 20MB 留 3MB 安全余量。
+ *
+ * 为什么保留旧路径：extractDocxText 是公共入口（招标解析 / 范本导入 / 知识库上传），
+ * 小文件的旧路径本来工作正常，能不改的行为就不改。 */
+export const DOCX_XML_SIZE_THRESHOLD = 20 * 1024 * 1024
+
+/** 旧路径（mammoth）的 media 体积上限：超过则改走新路径。
+ *
+ * 【为什么必须同时卡 media（55 份全量扫描推翻的第二版设计）】
+ * 只卡 xml 大小会漏掉最有代表性的一类文件——**正文不大、图片极多**：
+ *   池州【主】143.4MB：xml 仅 18.8MB（未超 20MB 阈值）→ 走旧路径 → media 209.6MB
+ *     → mammoth 把 1278 张图全解成 base64 塞进 HTML（实测 HTML 达 293MB）→ **OOM**
+ *   合稿第5版 274.5MB：xml 15.2MB → 旧路径 → media 334MB → OOM
+ *   蚌医 167.2MB：     xml 14.3MB → 旧路径 → media 165.8MB → OOM
+ *   1、智业框架 86MB：  xml 15.7MB → 旧路径 → media 87.8MB  → OOM
+ * 全量扫描实测：19 份失败**全部**是这类「xml 未超阈值但 media 巨大」的文件。
+ *
+ * 【旧路径的内存公式（实测拟合）】
+ *   峰值 heap ≈ media 解压总量 × 1.4 + xml 解压量 × 2 + jsdom DOM 开销
+ *   media 是主项：1278 张图 209.6MB → HTML 293MB → 峰值 >8GB。
+ *
+ * 【阈值为什么取 40MB】
+ * 55 份全量实测（3.36GB，每份独立进程）：
+ *   media ≥ 65.7MB 的 10 份——全部走新路径，全部成功
+ *   media 53.9MB 的「信息集成平台项目」——旧路径 OOM（唯一失败件）
+ *   media 58.6MB 的 2 份——旧路径却成功（图片压缩率不同，无法用 media 单独区分）
+ * 即 media 与 OOM 不是单调对应，53.9MB 会挂而 58.6MB 能过。所以**不取边界值**，
+ * 取 40MB 让「media 偏大」的一律走新路径（新路径已验证峰值远低于旧路径，
+ * 实测 334MB media 的文件在新路径下也通过）。宁可用更省内存的那条，不赌压缩率。 */
+export const DOCX_MEDIA_SIZE_THRESHOLD = 40 * 1024 * 1024
+
+/** 读 docx 里 word/document.xml 与 word/media/* 的解压后大小。
+ *
+ * 只读 zip 中央目录，不解压任何 entry —— 这是判据能低成本落地的关键。
+ * 实测：274.7MB 文件 55ms、143.4MB 50ms、20.8MB 4ms。
+ *
+ * 返回值：
+ *   xmlSize    — document.xml 解压后大小（决定新路径自身的 DOM 开销）
+ *   mediaSize  — word/media/* 解压总量（决定旧路径的 base64 膨胀，是 OOM 主因）
+ *   readable   — zip 能否读出中央目录（false 时调用方按旧路径处理，保持原错误行为） */
+export function peekDocxSizes(arrayBuffer: ArrayBuffer): { xmlSize: number; mediaSize: number; readable: boolean } {
+  let xmlSize = 0
+  let mediaSize = 0
+  try {
+    unzipSync(new Uint8Array(arrayBuffer), {
+      filter: (file) => {
+        if (file.name === "word/document.xml") xmlSize = file.originalSize ?? 0
+        else if (file.name.startsWith("word/media/")) mediaSize += file.originalSize ?? 0
+        return false // 全部拒绝解压，只借回调读元信息
+      },
+    })
+  } catch {
+    return { xmlSize: 0, mediaSize: 0, readable: false } // 损坏/非 zip：交给旧路径去报错
+  }
+  return { xmlSize, mediaSize, readable: true }
+}
+
+/** 兼容旧签名：只取 document.xml 大小（单测与探针在用）。 */
+export function peekDocumentXmlSize(arrayBuffer: ArrayBuffer): number {
+  return peekDocxSizes(arrayBuffer).xmlSize
+}
+
 /** T-DOCX（2026-09-28 解析审计）：docx 文本提取升级——表格感知。
  * extractRawText 会把表格拆成碎单元格流：竖排表头「投标价格分」逐字拆 5 行、
  * 序号/分值/评分标准的对应关系断裂，AI 解析评分表时极易错位配对（实测东华656 安庆二院
@@ -112,10 +195,23 @@ export function renderPageRefs(s: string): string {
  *  - 表格行：单元格以「 | 」分隔（LLM 读表格的标准形态）
  *  - 竖排单元格：单元格内按换行分隔的片段全部 ≤2 字时判定为竖排字，合并（「投 标 价 格 分」→「投标价格分」）
  *  - 普通段落：textContent 独立成行
- * 消费方：招标文件解析 / 范本资料导入 / 知识库 docx 上传，全部受益。 */
+ * 消费方：招标文件解析 / 范本资料导入 / 知识库 docx 上传，全部受益。
+ *
+ * REQ-057（2026-10-18）：word/document.xml 解压后超过 DOCX_XML_SIZE_THRESHOLD 的文件改走
+ * extractDocxTextFromXml（只读 document.xml，不解压图片）；小文件维持本函数原行为，一字未改。
+ * 判据是 **xml 大小而非文件大小**——图片压缩率差异极大，按文件大小会把 274MB(过) 和
+ * 24MB(OOM) 判反（详见 DOCX_XML_SIZE_THRESHOLD 注释里的 55 份全量实测）。 */
 export async function extractDocxText(file: File, opts?: PageTagOptions): Promise<string> {
-  const mammoth = await import("mammoth")
+  // REQ-057：按「document.xml 大小」**或**「media 总量」分流，任一超限即走新路径。
+  // 只读 zip 中央目录，不解压（274MB 文件 55ms）。
+  // 两个条件缺一不可：只卡 xml 会漏掉「正文不大、图片极多」的一类（池州 xml 18.8MB 但
+  // media 209.6MB，旧路径照样 OOM）；只卡 media 会漏掉「正文巨大」的一类。
   const buf = await file.arrayBuffer()
+  const { xmlSize, mediaSize } = peekDocxSizes(buf)
+  if (xmlSize > DOCX_XML_SIZE_THRESHOLD || mediaSize > DOCX_MEDIA_SIZE_THRESHOLD) {
+    return extractDocxTextFromXml(buf, opts)
+  }
+  const mammoth = await import("mammoth")
   const result = await mammoth.convertToHtml({ arrayBuffer: buf })
   const html = result.value ?? ""
   const parsed = new DOMParser().parseFromString(html, "text/html")
@@ -138,12 +234,7 @@ export async function extractDocxText(file: File, opts?: PageTagOptions): Promis
     for (const node of Array.from(el.children)) {
       const tag = node.tagName.toLowerCase()
       if (tag === "table") {
-        for (const tr of Array.from(node.querySelectorAll("tr"))) {
-          const cells = Array.from(tr.children).map((td) => cellText(td)).filter(Boolean)
-          // 相邻重复空列去重（rowspan/colspan 空位）；整行全空跳过
-          const cleaned = cells.filter((c, i) => c !== "" || (cells[i - 1] ?? "") !== "")
-          if (cleaned.some((c) => c)) lines.push(cleaned.join(" | "))
-        }
+        lines.push(...tableRowsToLines(node, cellText))
         lines.push("") // 表格后空行，保持分块边界
       } else if (tag === "br") {
         lines.push("")
@@ -161,6 +252,278 @@ export async function extractDocxText(file: File, opts?: PageTagOptions): Promis
   const out = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim()
   // docx 无物理页：锚点占位 〔P?〕，下游按章节定位（不硬造页码）
   return opts?.pageTag && out ? "〔P?〕 " + out : out
+}
+
+/**
+ * REQ-057（2026-10-18）：大文件 docx 文本提取——**只解压 word/document.xml，完全不碰 word/media**。
+ *
+ * 【为什么必须另开一条路】
+ * 旧路径 `mammoth.convertToHtml` 会把 media 下全部图片转成 base64 data URI 塞进 HTML，
+ * 再用 jsdom 建 DOM 树，实测放大系数 50~100 倍：
+ *   15.4MB → 峰值 heapUsed 1183MB；42.2MB → 2029MB；143.4MB【池州】→ 8192MB 仍 OOM。
+ * 而 143MB 文件里 document.xml 只有 17.9MB、图片 1278 张占 209.6MB——**99% 的内存花在取文本用不到的东西上**。
+ *
+ * 【与旧路径的行为对应关系】（逐条，验收要求核对）
+ *   ① 表格：复用同一个 `tableRowsToLines` + 同一个 cellText 口径（rowspan/colspan 还原、竖排字合并）
+ *   ② 竖排字：cellText 里「片段全部 ≤2 字则合并」的逻辑原样沿用（「投 标 价 格 分」→「投标价格分」）
+ *   ③ 普通段落：`w:p` 独立成行，段内取全部 `w:t` 文本
+ *   ④ 空行压缩：`\n{3,}` → `\n\n`（与旧路径同一句）
+ *   ⑤ 页码锚点：opts.pageTag 时前缀 `〔P?〕`
+ *   ⑥ 表格后空行：保持分块边界
+ *
+ * 【XML → HTML 的等价映射】（这是新旧两条路唯一的语义差）
+ *   w:tbl   → table（内部 w:tr → tr，w:tc → td，vMerge/gridSpan 换算成 rowspan/colspan）
+ *   w:p     → p（内部 w:t 拼接；w:br / w:cr → 换行）
+ *   w:tab   → 制表符
+ * mammoth 把 vMerge 的续格渲染成 `rowspan`，这里同样换算，故 tableRowsToLines 的向上填充逻辑照旧生效。
+ */
+export async function extractDocxTextFromXml(arrayBuffer: ArrayBuffer, opts?: PageTagOptions): Promise<string> {
+  const files = unzipSync(new Uint8Array(arrayBuffer), {
+    // 只解压 word/document.xml。图片（media）与页眉页脚一律不取：
+    //  - media 是内存爆点（143MB 文件里图片占 209MB），且取文本用不到；
+    //  - 页眉页脚取进来反而制造差异（见下方注释）。
+    filter: (f) => f.name === "word/document.xml",
+  })
+  const entry = files["word/document.xml"]
+  if (!entry) throw new Error("不是有效的 docx：缺少 word/document.xml")
+  const xml = strFromU8(entry)
+
+  const parsed = new DOMParser().parseFromString(xml, "application/xml")
+  const decode = (s: string) =>
+    s.replace(/&nbsp;/gi, " ").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&#39;/gi, "'")
+
+  /** 单元格文本：与旧路径 cellText 完全同口径（含竖排字合并） */
+  const cellText = (td: Element): string => {
+    const raw = decode(td.textContent ?? "")
+    const rows = raw
+      .split(/\n+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    if (rows.length > 1 && rows.every((r) => [...r].length <= 2)) return rows.join("")
+    return raw.replace(/\s+/g, " ").trim()
+  }
+
+  /** w:p → 纯文本。逐个**直接子节点**走，不能对 w:p 整体取 getElementsByTagName("w:t")：
+   *  - w:tab 要还原成空格，否则目录行「第一章 公司相关资质 3」粘成「第一章公司相关资质3」；
+   *  - w:br / w:cr 要还原成换行，否则段内断行被拼平（旧路径 mammoth 会出 <br>）；
+   *  - **文本框（w:txbxContent）必须取**：实测漳州那份首行「正本」就在文本框里，
+   *    旧路径 mammoth 会渲染它；跳过就丢——「正本/副本」是投标文件判定信息。
+   *    文本框里的 w:p 由 visit 递归进去取 w:t，不单独成行（它属于当前段落）。 */
+  const paraText = (p: Element): string => {
+    let out = ""
+    const visit = (el: Element) => {
+      for (const c of Array.from(el.children)) {
+        const tag = c.tagName
+        if (tag === "w:pPr" || tag === "w:rPr" || tag === "w:sectPr") continue
+        // mc:AlternateContent 同时含 mc:Choice 与 mc:Fallback 两份等价内容（文本框新/旧表示），
+        // 两份都取会得到「正本正本」。只取 mc:Choice（新表示），Fallback 跳过——
+        // 与 mammoth 一致（它读 Choice 分支）。
+        if (tag === "mc:AlternateContent") {
+          const choice = Array.from(c.children).find((x) => x.tagName === "mc:Choice")
+          if (choice) visit(choice)
+          continue
+        }
+        if (tag === "w:t") out += c.textContent ?? ""
+        else if (tag === "w:tab") out += " " // 制表符 → 空格（目录行、表格制表分隔）
+        else if (tag === "w:br" || tag === "w:cr") out += "\n" // 段内换行
+        else visit(c) // 含 w:txbxContent / w:r / w:hyperlink
+      }
+    }
+    visit(p)
+    return out
+  }
+
+  /** w:tc → 补 colspan/rowspan 属性后的 Element（供 tableRowsToLines 复用） */
+  const toHtmlTable = (tbl: Element): Element => {
+    const doc = tbl.ownerDocument!
+    const rows = Array.from(tbl.getElementsByTagName("w:tr"))
+    const table = doc.createElement("table")
+    for (const tr of rows) {
+      const htmlTr = doc.createElement("tr")
+      for (const tc of Array.from(tr.getElementsByTagName("w:tc"))) {
+        const td = doc.createElement("td")
+        const tcPr = Array.from(tc.children).find((c) => c.tagName === "w:tcPr")
+        // 纵向合并：w:vMerge (w:val="restart" 起始 / 无 val 表示续行) → rowspan
+        let rowspan = 1
+        if (tcPr) {
+          const vMerge = Array.from(tcPr.children).find((c) => c.tagName === "w:vMerge")
+          if (vMerge) {
+            const restart = vMerge.getAttribute("w:val") === "restart"
+            if (!restart) continue // 续行格不输出（与 mammoth 一致：续行在 HTML 里没有 td）
+            // 起始格：数一下后续连续有多少个 vMerge 续行，换算成 rowspan
+            const rowIdx = rows.indexOf(tr)
+            for (let k = rowIdx + 1; k < rows.length; k++) {
+              const cells = Array.from(rows[k].getElementsByTagName("w:tc"))
+              const ci = Array.from(tr.getElementsByTagName("w:tc")).indexOf(tc)
+              const next = cells[ci]
+              if (!next) break
+              const nextPr = Array.from(next.children).find((c) => c.tagName === "w:tcPr")
+              const nextVm = nextPr ? Array.from(nextPr.children).find((c) => c.tagName === "w:vMerge") : null
+              if (!nextVm || nextVm.getAttribute("w:val") === "restart") break
+              rowspan += 1
+            }
+          }
+          // 横向合并：w:gridSpan w:val → colspan
+          const gridSpan = Array.from(tcPr.children).find((c) => c.tagName === "w:gridSpan")
+          const span = Number(gridSpan?.getAttribute("w:val") ?? 1)
+          if (span > 1) td.setAttribute("colspan", String(span))
+          if (rowspan > 1) td.setAttribute("rowspan", String(rowspan))
+        }
+        // 单元格内容：多个 w:p 之间用 \n 连接——**必须保留换行**，
+        // 因为 cellText 的竖排判定依赖它：实测真标书里有「信/用/承/诺」这种逐字成段的单元格，
+        // 若压成空格，rows.every(≤2字) 判据失效，竖排字就合并不了（实测会输出「信 用 承 诺」）。
+        //
+        // ⚠️ 不能用 `:scope > w:p` 选择器：jsdom 的 XML 文档（application/xml）不支持 `:scope`，
+        // 实测 querySelectorAll(":scope > w:p") 恒返回 0 条 → 永远落到兜底分支。
+        // 改用 children 直接筛（XML DOM 的 children 只含元素节点）。
+        const inner = Array.from(tc.children)
+          .filter((c) => c.tagName === "w:p")
+          .map((p) => paraText(p))
+          .filter((s) => s !== "")
+          .join("\n")
+        // 兜底：直接子 w:p 找不到时（结构异常），退回全量子段落扫描
+        td.textContent = inner || Array.from(tc.getElementsByTagName("w:p")).map((p) => paraText(p)).join("\n")
+        htmlTr.appendChild(td)
+      }
+      table.appendChild(htmlTr)
+    }
+    return table
+  }
+
+  /** w:p → 纯文本。逐个**直接子节点**走，不能对 w:p 整体取 getElementsByTagName("w:t")：
+   *  - 文本框（w:txbxContent）里嵌套的 w:t 会被重复计一次，实测「正本」→「正本正本」；
+   *  - w:tab 要还原成空格，否则目录行「第一章 公司相关资质 3」粘成「第一章公司相关资质3」；
+   *  - w:br / w:cr 要还原成换行，否则段内断行被拼平（旧路径 mammoth 会出 <br>）。
+   * 只走直接子节点的递归，遇到 w:pPr / w:rPr 这类属性容器要跳过。 */
+  const lines: string[] = []
+  const body = parsed.getElementsByTagName("w:body")[0]
+  const walk = (container: Element) => {
+    for (const node of Array.from(container.children)) {
+      const tag = node.tagName
+      if (tag === "w:tbl") {
+        lines.push(...tableRowsToLines(toHtmlTable(node), cellText))
+        lines.push("") // 表格后空行，保持分块边界
+      } else if (tag === "w:p") {
+        // 段内 w:br 是**软换行**，不是段落边界。旧路径里 mammoth 把段内 <br> 转成 textContent
+        // 的一个换行符，随后 `replace(/\s+/g, " ")` 折叠成空格，整段仍是一行——
+        // 所以这里也必须把段内换行折叠为空格，不能拆成多行（拆了行差会到 6~7%）。
+        const text = decode(paraText(node)).replace(/\s+/g, " ").trim()
+        if (text) lines.push(text)
+      } else {
+        // 容器继续下钻（w:sdt、w:txbxContent、w:sectPr 等）
+        if (node.children.length) walk(node)
+      }
+    }
+  }
+  if (body) walk(body)
+
+  // 【为什么不取页眉页脚】实测漳州那份 document.xml 里「正本」出现 9 次、footer1.xml 里 0 次，
+  // 说明正文本身就有；而宁德那份若把 footer 前置，会多出「报价部分 / 1 / 19」三行旧路径没有的内容
+  // （旧路径 mammoth 不渲染该 footer）。取页脚 = 引入新差异，故只读 document.xml。
+  const out = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim()
+  return opts?.pageTag && out ? "〔P?〕 " + out : out
+}
+
+/**
+ * REQ-019（2026-10-17）：表格 → 竖线行，按 rowspan/colspan 还原成**规整网格**。
+ *
+ * 缺陷（验收官在 REQ-015 验收中发现的既有 bug）：docx 用**纵向合并单元格**（vMerge）时，
+ * mammoth 把合并渲染成 `<td rowspan="8">`，**后续行在 HTML 里就只剩 2 个 td**（不是 3 个 td 其中 1 个空）。
+ * 于是评分表 T3 跨 8 行时，后 7 行从 `名称 | 分值 | 说明` 塌缩成 `分值 | 说明`，
+ * 名称列凭空消失且无法从文本层恢复——用户看到「3 分 | 投标人提供的医院信息系统…」，
+ * 不知道这是哪一项。实测福安 10/20 = 50% 评分项丢名称；84/96 份文件含 rowspan。
+ *
+ * 修法：**按 rowspan 向上填充**（不是保留空列、也不是章节层猜名）。
+ * 用一张 `carry` 网格记住每个列位当前仍被哪个合并单元格占着；渲染某行时，
+ * 该行没有对应 td 的列位就用 carry 里那份格子的文本填充。这样：
+ *  - 纵向合并的续行拿到与首行**同一个**名称（T3 八行都叫「T3、信息系统功能方案」）；
+ *  - 行数不变（不删行、不合并行）→ 评分行总数不减少；
+ *  - 只对**声明了 rowspan 的表格**生效，其余表格逐字走原路径（零行为变化）。
+ *
+ * 为什么不选另外两种（验收标准要求说明）：
+ *  - 「保留空列占位」：HTML 里根本没有那个 td，无从保留；若强行按表头列数补哨兵，
+ *    会给**所有**短行（含真·空列）插哨兵，把 14126 个短行全改写成带哨兵的行，噪声大且改变下游提示词口径。
+ *  - 「章节层补名兜底」：会把两个相邻但分属不同合并区的行张冠李戴，验收官也明确只建议作过渡。
+ *
+ * 竖排字合并（cellText 内 rows.every(≤2 字) 那段）**一字未改**，仍按原逻辑处理单元格内容。
+ */
+export function tableRowsToLines(table: Element, cellText: (td: Element) => string): string[] {
+  // REQ-057：不用 querySelectorAll("tr")。本函数同时被新旧两条路径调用，新路径传进来的是
+  // **XML 文档**（application/xml）里 createElement 出来的元素——jsdom 对 XML 文档的 CSS
+  // 选择器支持不完整，验收官全量扫描时曾报 `Unknown pseudo-class :p`（同一文件单进程失败、
+  // 独立进程成功，属间歇性失败）。getElementsByTagName 在 HTML/XML 两种文档下行为一致，
+  // 且不需要选择器解析，从根上消除这类不稳定。
+  const trs = Array.from(table.getElementsByTagName("tr"))
+  if (!trs.length) return []
+  // 网格列数：取「含 colspan 展开」后的最大行宽，作为规整网格宽度
+  const gridWidthOf = (tr: Element) =>
+    Array.from(tr.children).reduce((n, td) => n + Math.max(1, Number(td.getAttribute("colspan") ?? 1)), 0)
+  const hasSpanInfo = trs.some((tr) => Array.from(tr.children).some((td) => Number(td.getAttribute("rowspan") ?? 1) > 1))
+  // 无 rowspan：逐字走旧路径（filter(Boolean) + 相邻重复空列去重），保证既有行为零变化
+  if (!hasSpanInfo) {
+    const out: string[] = []
+    for (const tr of trs) {
+      const cells = Array.from(tr.children).map((td) => cellText(td)).filter(Boolean)
+      const cleaned = cells.filter((c, i) => c !== "" || (cells[i - 1] ?? "") !== "")
+      if (cleaned.some((c) => c)) out.push(cleaned.join(" | "))
+    }
+    return out
+  }
+
+  const width = trs.reduce((w, tr) => Math.max(w, gridWidthOf(tr)), 0)
+  if (width < 2) return []
+  /**
+   * 每个列位当前被哪一份「上方合并单元格」占着：{ text, remain, real }。
+   * remain = 还要向下覆盖几行；real = 该列是否「该单元格自己的第一列」。
+   * real 用来区分**横向**合并产生的占位列与**纵向**合并要补的列：
+   *  - 横向（colspan）第 2..n 列只是占位，旧实现里那个 td 只输出一格 → 不计入输出；
+   *  - 纵向（rowspan）的续行没有 td，必须补上同一个名称 → 计入输出。
+   * 混为一谈会把同一文本重复灌进多列（实测伪造出「评分因素 | 评分因素」，
+   * 让 #9/#17/#26/#28/#37 五份本来正常的行反而对不上，假报丢内容）。
+   */
+  const carry: Array<{ text: string; remain: number; real: boolean } | null> = new Array(width).fill(null)
+  const out: string[] = []
+  for (const tr of trs) {
+    const rowText: string[] = new Array(width).fill("")
+    const rowReal: boolean[] = new Array(width).fill(false)
+    /** 取用上方合并格：把它的文本落到本列，并递减剩余行数 */
+    const takeCarry = (c: number) => {
+      const cr = carry[c]!
+      rowText[c] = cr.text
+      rowReal[c] = cr.real
+      cr.remain -= 1
+      if (cr.remain <= 0) carry[c] = null
+    }
+    let col = 0
+    for (const td of Array.from(tr.children)) {
+      // 跳过被上方 rowspan 占据的列位，并把那份文本填进来（这就是「向上填充」）
+      while (col < width && carry[col]) {
+        takeCarry(col)
+        col++
+      }
+      if (col >= width) break
+      const colspan = Math.max(1, Number(td.getAttribute("colspan") ?? 1))
+      const rowspan = Math.max(1, Number(td.getAttribute("rowspan") ?? 1))
+      const text = cellText(td)
+      for (let k = 0; k < colspan && col + k < width; k++) {
+        // 文本只落第一列；其余列位仅占位，输出时丢弃（保持与旧实现「一个 td 一格」一致）
+        rowText[col + k] = k === 0 ? text : ""
+        rowReal[col + k] = k === 0
+        carry[col + k] = rowspan > 1 ? { text, remain: rowspan - 1, real: k === 0 } : null
+      }
+      col += colspan
+    }
+    // 行尾仍被上方合并覆盖的列位（本行 td 用完了）
+    while (col < width) {
+      if (carry[col]) takeCarry(col)
+      col++
+    }
+    // 与旧实现同口径：只输出「真实存在且非空」的格（旧路径先 filter(Boolean) 再 join）
+    const cells: string[] = []
+    for (let c = 0; c < width; c++) if (rowReal[c] && rowText[c] !== "") cells.push(rowText[c])
+    if (cells.length) out.push(cells.join(" | "))
+  }
+  return out
 }
 
 /** T-PDF（2026-09-28 解析审计）：把 pdfjs 文本项按几何坐标重建行。
@@ -869,8 +1232,13 @@ async function exportBidDocxDefaults(project: BidProjectRecord): Promise<void> {
       const hLevel = contentHeadingLevel(line)
       if (!isSubHeading && hLevel === 0 && firstBodyAt === -1) firstBodyAt = paras.length
       paras.push(
+        // REQ-053（2026-10-18）：真小节标题按编号段数分 H2/H3，与预览端 bidWordPreviewLogic.classify
+        // 同口径（`/^\d+\.\d+\.\d+/` → h3）。修前一律 h2，三段编号「2.5.1 阶段验收…」预览显示三级、
+        // 导出后掉成二级——所见非所得，且把三级标题挤进二级导致目录层级断档。
         isSubHeading
-          ? h2(line)
+          ? /^\d+\.\d+\.\d+/.test(line.trim())
+            ? h3(line)
+            : h2(line)
           : hLevel === 2
             ? h3(line)
             : hLevel === 3

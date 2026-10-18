@@ -30,6 +30,8 @@ import { isIncompleteSectionChapter } from "@/pages/BidWorkspace/chapterCompleti
 import { summarizeBidGenFailures } from "@/pages/BidWorkspace/bidGenFailure"
 import type { Chapter, OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
 import { typeLabel } from "@/pages/SolutionStudio/solutionTypes"
+// R-302：按字符偏移定位 textarea（抽成纯函数，jsdom 单测覆盖边界）
+import { jumpTextareaToOffset } from "@/pages/BidWorkspace/bidFocusJump"
 import { formatCount } from "@/lib/money"
 import { toast } from "sonner"
 
@@ -39,6 +41,11 @@ type ComposeStepProps = Pick<
   | "outlineDraft"
   | "outlineLoading"
   | "generateOutline"
+  // R58（B28）：关键项缺失但已有大纲时的二次确认（默认取消，防一键覆盖）
+  | "outlineCriticalConfirmOpen"
+  | "outlineCriticalConfirmText"
+  | "confirmGenerateOutlineCritical"
+  | "cancelGenerateOutlineCritical"
   | "outlineLevel"
   | "setOutlineLevel"
   | "targetPages"
@@ -153,6 +160,7 @@ type ComposeStepProps = Pick<
   | "startFigureBackfill"
   | "contentFocus"
   | "focusSectionInChapter"
+  | "focusPositionInChapter"
   | "outlineClauseTotal"
   | "coveredClauseCount"
   | "uncoveredClauses"
@@ -192,11 +200,15 @@ const LEVEL_OPTIONS: { value: 0 | 1 | 2 | 3; label: string }[] = [
   { value: 3, label: "三级" },
 ]
 
+// REQ-054（2026-10-18）：大纲固定两级。此前 0 档写给「AI 自行决定合理层级」、3 档写「三级颗粒度最细」，
+// 但 Chapter.sections 是 string[]（只装一层小节），第 3 级节点入库即丢——界面承诺与实际不符。
+// 实测 15 个存量项目 929 个三级节点只有 5 个成为小节。故三档文案一律说清「目录两级」，
+// 3 档额外说明为什么选了三级还是两级，避免用户以为选三级能拿到三级目录。
 const LEVEL_HINT: Record<0 | 1 | 2 | 3, string> = {
-  0: "按招标要求自动：AI 按评分办法与章节要求自行决定合理层级（默认）",
+  0: "自动：章 + 节两级；更深的功能层次由正文（一）/（1）/① 表达（默认）",
   1: "只生成「部分 / 章」一级目录",
-  2: "生成「章—节」两级目录",
-  3: "生成「章—节—条」三级目录，颗粒度最细",
+  2: "两级：章 + 节（大纲不生成第三层）",
+  3: "两级：章 + 节（本产品的「三级」等价于两级，第三层由正文（一）/（1）/① 承载）",
 }
 
 function OutlineNavTree({
@@ -361,13 +373,58 @@ export function ComposeStep(p: ComposeStepProps) {
   // @r211 R-004 标书 Word 式分页预览开关
   const [wordPreviewOpen, setWordPreviewOpen] = useState(false)
   // 第十一轮改造 6：编辑器定位——contentFocus 变化时找到标题行并选中滚动
+  // R-302 扩展：当 contentFocus.offset 有值时（来自"版式?"徽标点击），直接按 offset 定位，不再按 title 找。
+  //   预览模式下 textarea 未挂载 → 先切到编辑模式（setViewMode），本 effect 因 deps 含 viewMode 会再次执行并完成跳转。
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const previewScrollRef = useRef<HTMLDivElement | null>(null)
   const bidFileInputRef = useRef<HTMLInputElement | null>(null)
   const [focusFlash, setFocusFlash] = useState(false)
+  // 切片A3：正文视图模式——有内容时默认预览（折叠卡片），无内容或手动编辑时切 textarea
+  // R-302：声明位置前移到定位 effect 之前（effect 需要读 viewMode 决定是否先切编辑模式）
+  const [viewMode, setViewMode] = useState<"preview" | "edit">("preview")
+  /** R-302：已完成的定位指令 seq——防止手动切换 preview/edit 或正文变动时重复跳转 */
+  const handledFocusSeqRef = useRef<number>(-1)
+  /** R-302：闪烁计时器（用 ref 管理而非 effect cleanup，避免正文变动导致 cleanup 提前取消、闪烁卡住） */
+  const flashTimerRef = useRef<number | null>(null)
+
+  /** R-302：触发一次 2.2 秒的定位闪烁 */
+  const flashFocus = () => {
+    setFocusFlash(true)
+    if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current)
+    flashTimerRef.current = window.setTimeout(() => {
+      setFocusFlash(false)
+      flashTimerRef.current = null
+    }, 2200)
+  }
+  useEffect(() => {
+    return () => {
+      if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current)
+    }
+  }, [])
+
+  // R-302：按字符偏移定位的原语已抽到 @/pages/BidWorkspace/bidFocusJump（可 jsdom 单测）
+  // ——边界（越界 clamp / 空正文 / hitLen=0 至少选 1 字）由 bidFocusJump.test.ts 钉死
+
   useEffect(() => {
     const focus = p.contentFocus
     if (!focus) return
+    if (focus.seq === handledFocusSeqRef.current) return
+
+    // R-302 路径 A：按 offset 跳转（title 字段存 excerpt，仅用于选区长度）
+    if (typeof focus.offset === "number") {
+      const el = textareaRef.current
+      // textarea 未挂载（仍处预览态）时直接返回：切编辑态由点击方负责
+      // （不在此处 setViewMode —— effect 内同步 setState 会触发 react-hooks/set-state-in-effect，
+      //   且"跳转需要可编辑视图"本就是点击时的 UI 决策）
+      if (!el) return
+      const ok = jumpTextareaToOffset(el, focus.offset, (focus.title ?? "").length)
+      // 正文尚未注入（刚切章 / 异步加载）：不标记 handled，等 editingContent 到货后 deps 变化自动重试
+      if (!ok) return
+      handledFocusSeqRef.current = focus.seq
+      flashFocus()
+      return
+    }
+
     // 预览模式：在 Word 样式连续预览里定位（滚动到标题节点 + 闪烁高亮）；编辑模式仍走 textarea 选中
     const box = previewScrollRef.current
     if (box) {
@@ -375,6 +432,7 @@ export function ComposeStep(p: ComposeStepProps) {
         (n.dataset.wpTitle ?? "").includes(focus.title),
       )
       if (!target) return
+      handledFocusSeqRef.current = focus.seq
       target.scrollIntoView({ behavior: "smooth", block: "start" })
       const prevBg = target.style.backgroundColor
       target.style.transition = "background-color 0.4s"
@@ -404,18 +462,15 @@ export function ComposeStep(p: ComposeStepProps) {
       offset += line.length + 1
     }
     if (hitIdx < 0) return
+    handledFocusSeqRef.current = focus.seq
     el.focus()
     el.setSelectionRange(hitPos, hitPos + focus.title.length)
     const ratio = value.length > 0 ? hitPos / value.length : 0
     el.scrollTop = Math.max(0, el.scrollHeight * ratio - el.clientHeight / 3)
-    setFocusFlash(true)
-    const timer = window.setTimeout(() => setFocusFlash(false), 2200)
-    return () => window.clearTimeout(timer)
-  }, [p.contentFocus])
+    flashFocus()
+  }, [p.contentFocus, viewMode, p.editingContent])
   // 切片A4：生成总览面板折叠态
   const [overviewOpen, setOverviewOpen] = useState(false)
-  // 切片A3：正文视图模式——有内容时默认预览（折叠卡片），无内容或手动编辑时切 textarea
-  const [viewMode, setViewMode] = useState<"preview" | "edit">("preview")
   // 大纲侧栏可拖拽宽度（原固定 200px 太窄看不清章名）：拖动右侧分隔条调宽，双击恢复默认，localStorage 持久化
   const { width: outlineW, onDragStart: outlineDrag, reset: outlineReset } = useResizableSidebar({
     storageKey: "bidkit.compose.outlineW",
@@ -1039,13 +1094,88 @@ export function ComposeStep(p: ComposeStepProps) {
                             type="button"
                             className="min-w-0 flex-1 truncate text-left text-foreground hover:text-primary hover:underline"
                             onClick={() => p.selectChapter(ch.node_id)}
-                            title={ch.gen_status === "failed" && ch.genError ? `${ch.title}｜失败原因：${ch.genError}` : ch.title}
+                            title={
+                              ch.gen_status === "failed" && ch.genError
+                                ? `${ch.title}｜失败原因：${ch.genError}`
+                                : ch.proseLintWarning
+                                  ? `${ch.title}｜${ch.proseLintWarning}`
+                                  : ch.sanityWarning
+                                    ? `${ch.title}｜${ch.sanityWarning}`
+                                    : ch.figureAnnotationWarning
+                                      ? `${ch.title}｜${ch.figureAnnotationWarning}`
+                                      : ch.title
+                            }
                           >
                             {ch.title}
                           </button>
                           <span className="shrink-0 tabular-nums text-muted-foreground">
                             {chars > 0 ? `${chars}` : "-"}/{budget > 0 ? budget : "-"} 字
                             {ch.underlength && <span className="ml-1 text-warning">偏短</span>}
+                            {ch.sanityWarning && (
+                              <button
+                                type="button"
+                                className="ml-1 cursor-pointer text-destructive underline-offset-2 hover:underline"
+                                title={`${ch.sanityWarning} — 点击跳到该位置（切编辑态并选中，闪烁 2.2 秒）`}
+                                onClick={() => {
+                                  // R55：与"版式?"徽标同一条跳转通道（R-302 抽出的 bidFocusJump）。
+                                  // 丢字是"少了一个字"，正解是人工补字，所以只给跳转、不给整章重写入口。
+                                  // 预览态 textarea 未挂载 → 必须在点击事件里切编辑态（不在 effect 内 setState）
+                                  setViewMode("edit")
+                                  const hit = ch.sanityFirstHit
+                                  if (hit && typeof hit.offset === "number") {
+                                    p.focusPositionInChapter(ch.node_id, hit.offset, hit.excerpt)
+                                  } else {
+                                    // 兜底：无 firstHit 数据（R55 之前的存量章）时只切到该章编辑态
+                                    p.selectChapter(ch.node_id)
+                                  }
+                                }}
+                              >
+                                丢字?
+                              </button>
+                            )}
+                            {ch.proseLintWarning && (
+                              <button
+                                type="button"
+                                // REQ-021：按严重度分色。结构性（标题跳号/关键章缺表）会被评审扣分 → 红色；
+                                // 观感（套话/内联指引/长段落/长句）只是啰嗦 → 琥珀色 warning。
+                                // 未跑过 lint 的历史章 severity 为 undefined，按红色兜底（沿用旧观感，不降级提醒）。
+                                className={`ml-1 cursor-pointer underline-offset-2 hover:underline ${
+                                  ch.proseLintSeverity === "style" ? "text-warning" : "text-destructive"
+                                }`}
+                                title={`${ch.proseLintWarning} — 点击跳到该位置（切编辑态并选中，闪烁 2.2 秒）`}
+                                onClick={() => {
+                                  // R-302：跳字符位置必须处于可编辑视图（textarea 才存在），
+                                  // 事件处理器里切模式（不在 effect 内 setState）
+                                  setViewMode("edit")
+                                  const hit = ch.proseLintFirstHit
+                                  if (hit && typeof hit.offset === "number") {
+                                    p.focusPositionInChapter(ch.node_id, hit.offset, hit.excerpt)
+                                  } else {
+                                    // 兜底：无 firstHit 数据（历史章未跑过 lint）时只切到该章编辑态
+                                    p.selectChapter(ch.node_id)
+                                  }
+                                }}
+                              >
+                                版式?
+                              </button>
+                            )}
+                            {ch.figureAnnotationWarning && (
+                              // REQ-027：截图标注检查（F-04）。
+                              // 一律琥珀色——「缺招标要求/投标响应标注」是建议项而非缺陷：
+                              // 实测 45 份真实标书 804 张截图里，仅 1 张写了该标注。
+                              // 若用红色，用户会把"公司规范建议"误读成"要废标"，红字可信度随即崩塌。
+                              <button
+                                type="button"
+                                className="ml-1 cursor-pointer text-warning underline-offset-2 hover:underline"
+                                title={`${ch.figureAnnotationWarning} — 点击切到该章编辑态逐个核对`}
+                                onClick={() => {
+                                  setViewMode("edit")
+                                  p.selectChapter(ch.node_id)
+                                }}
+                              >
+                                截图?
+                              </button>
+                            )}
                           </span>
                           {ch.gen_status === "failed" && !locked && !p.bulkGenerating && (
                             <Button
@@ -1057,6 +1187,19 @@ export function ComposeStep(p: ComposeStepProps) {
                             >
                               <RefreshCw className="mr-1 h-3 w-3" />
                               重试
+                            </Button>
+                          )}
+                          {ch.proseLintWarning && !locked && !p.bulkGenerating && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => p.refineChapter(ch.node_id, "rewrite")}
+                              disabled={!!p.chapterBusy}
+                              title="按版式与文风硬条款重写本章（去 AI 套话 / 禁内联指引 / 修正标题层级 / 关键章补表）"
+                            >
+                              <Wand2 className="mr-1 h-3 w-3" />
+                              重写
                             </Button>
                           )}
                         </div>
@@ -1406,6 +1549,41 @@ export function ComposeStep(p: ComposeStepProps) {
               className="bg-primary text-primary-foreground shadow-md hover:bg-primary/90 focus-visible:shadow-[var(--focus-ring)]"
             >
               确认覆盖
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {/* R58（B28）：关键解析项缺失但项目已有大纲——不再硬拦，改为二次确认。
+          默认动作是取消（取消按钮为默认焦点/主按钮，Esc 与点遮罩同样走取消），
+          只有用户明确点「继续并覆盖」才会重跑生成，避免一键覆盖既有大纲与手动调整。 */}
+      <Dialog
+        open={p.outlineCriticalConfirmOpen}
+        onOpenChange={(o) => {
+          if (!o) p.cancelGenerateOutlineCritical()
+        }}
+      >
+        <DialogContent className="max-w-md rounded-2xl border-border bg-card shadow-lg">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">解析报告缺少关键项，仍要重新生成大纲？</DialogTitle>
+            <DialogDescription>{p.outlineCriticalConfirmText}</DialogDescription>
+          </DialogHeader>
+          <p className="rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">
+            继续重新生成将<b>覆盖现有大纲及手动调整</b>，且需重新付费调用 AI；建议先取消，回到「AI 解析报告」补齐缺失项后再生成。
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button
+              autoFocus
+              onClick={p.cancelGenerateOutlineCritical}
+              className="bg-primary text-primary-foreground shadow-md hover:bg-primary/90 focus-visible:shadow-[var(--focus-ring)]"
+            >
+              取消（保留现有大纲）
+            </Button>
+            <Button
+              variant="outline"
+              onClick={p.confirmGenerateOutlineCritical}
+              className="border-destructive/40 text-destructive shadow-sm hover:bg-destructive/5"
+            >
+              继续并覆盖
             </Button>
           </div>
         </DialogContent>

@@ -11,6 +11,7 @@ import {
   type ParseReport,
 } from "./bidTypes"
 import type { OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
+import type { LlmMessage } from "@/lib/llm"
 
 // Issue 2（逐项独立提示词重构）锈死网：
 // - buildSectionParseMessages 为每个解析项产出专属 System/User，overview/tech_score 采用参考口径；
@@ -342,5 +343,64 @@ describe("extractStarClauses（★条款扫描：标记行 + 后续正文行）"
     expect(clauses[0]).toContain("微服务架构")
     expect(clauses[1]).toContain("日均门诊15000")
     expect(clauses.join("|")).not.toContain("按无效投标处理")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// R54（2026-10-16）：mode 契约一致性守卫。
+//
+// selectRelevantChunks 在 `source.length <= RETRIEVAL_BUDGET_CHARS(20000)` 时给出 mode="full"，
+// 语义是「完整原文、无省略」。而本提示词此前对该分支用 clipText(text, MAX_TENDER_CHARS=14000)，
+// 于是 14,001~20,000 字的招标会被**标成「招标文件全文」却静默截断**（最多丢 30%），
+// 且 full 分支的 tail 不含 retrieval/truncated 两条都有的「不得臆造」护栏 → 模型以为手里是全文。
+// 本组锁三件事：① full 且在上限内 → 原样注入、不截断；② 超出上限 → 如实降级为「摘录」口径，
+// 绝不保留「全文」字样；③ retrieval/truncated 的既有口径不被牵连。
+// ---------------------------------------------------------------------------
+describe("buildSectionParseMessages：mode 契约一致性（R54 防「标称全文却静默截断」）", () => {
+    // LlmMessage.content 是 string | LlmContentPart[]；本组构造的提示词 content 恒为 string，
+    // 这里显式收窄，避免用 any/断言绕过类型（tsc 会拦）。
+    const userTexts = (msgs: LlmMessage[]) =>
+      msgs.filter((m) => m.role === "user").map((m) => (typeof m.content === "string" ? m.content : ""))
+    const userOf = (msgs: LlmMessage[]) => userTexts(msgs).join("\n")
+    const tailOf = (msgs: LlmMessage[]) => userTexts(msgs).at(-1) ?? ""
+
+  it("【核心】mode=full 且字数在 14,000~20,000 之间：全文原样注入，不得被截到 14,000", () => {
+    // 构造落在「旧实现的截断线 14,000」与「full 判定线 20,000」之间的文本：
+    // 旧实现在这里会把后段丢掉，却仍标「招标文件全文」——本用例就是那条回归线。
+    const unit = "本项目技术参数逐条响应。"
+    const clause = "★结尾废标条款：未提供医疗器械经营许可证作废标处理。"
+    const tender = unit.repeat(1200) + clause
+    expect(tender.length).toBeGreaterThan(14000)
+    expect(tender.length).toBeLessThan(20000)
+
+    const msgs = buildSectionParseMessages("overview", tender, { sourceMode: "full" })
+    const u = userOf(msgs)
+    expect(u).toContain("【招标文件全文】")
+    // 全文注入：尾部内容必须在场（旧实现必红）
+    expect(u).toContain(clause)
+    expect(u).not.toContain("省略")
+  })
+
+  it("mode=full 且明显超出通道上限（>28,000 字）：如实降级为「摘录」，不得再声称「全文」", () => {
+    const huge = "招标正文。".repeat(10000) // 50,000 字
+    const msgs = buildSectionParseMessages("overview", huge, { sourceMode: "full" })
+    const u = userOf(msgs)
+    expect(u).not.toContain("【招标文件全文】")
+    expect(u).toContain("【招标文件摘录")
+    expect(tailOf(msgs)).toContain("禁止臆造")
+  })
+
+  it("mode=retrieval：保留既有片段口径与「未提及」护栏（不被本次改动牵连）", () => {
+    const msgs = buildSectionParseMessages("overview", "片段内容".repeat(10), { sourceMode: "retrieval" })
+    const u = userOf(msgs)
+    expect(u).toContain("【相关原文片段")
+    expect(tailOf(msgs)).toContain("原文未提及")
+  })
+
+  it("mode=truncated：保留「保留开头与结尾」的如实口径", () => {
+    const msgs = buildSectionParseMessages("overview", "首尾摘录".repeat(10), { sourceMode: "truncated" })
+    const u = userOf(msgs)
+    expect(u).toContain("【招标文件摘录")
+    expect(tailOf(msgs)).toContain("禁止臆造")
   })
 })

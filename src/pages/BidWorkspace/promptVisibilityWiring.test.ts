@@ -1,23 +1,21 @@
 // R50（P0-3 长文可见性）接线守卫：手册与代码同源 + 旧「静默截断」口径在源码里彻底消失 + 证据包真的接进了业务入口。
 // 动机：升级文档 P0-3 明确「先做输入可见性报告」，而可见性报告只有真接进废标/偏离表才有效——手册漂移或只改提示词不改调用都必须变红。
-import { readFileSync } from "node:fs"
-import path from "node:path"
-import { fileURLToPath } from "node:url"
+import { hookSources, sourceText } from "@/testing/hookSources"
 import { describe, expect, it } from "vitest"
 import { buildDeviationMapMessages } from "./prompts/deviationMap"
 import { buildVoidCheckMessages } from "./prompts/voidCheck"
 import { selectBidEvidence } from "./bidVisibility"
 
-const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
-const ROOT = path.resolve(SRC, "..")
-const read = (rel: string) => readFileSync(path.join(SRC, rel), "utf-8")
-const readRoot = (rel: string) => readFileSync(path.join(ROOT, rel), "utf-8")
+// 读取走 src/testing/hookSources 单一入口（R57 · 审计 §3.1）：路径口径（仓库相对 POSIX）、
+// 行尾归一（CRLF→LF）与「读不到时会喊」都收敛在那一处；God Hook 只用 hookSources() 读。
+const read = (rel: string) => sourceText(`src/${rel}`)
+const readRoot = sourceText
 const MASTER = "docs/系统提示词分类手册.md"
 const DERIVED = "docs/提示词手册/01-标书工作台.md"
 
 /** 取文档中某标题后第一个三反引号代码块的逐字内容（行尾统一按 LF 比较） */
 function codeBlockAfter(file: string, header: string): string {
-  const s = readRoot(file).replace(/\r\n/g, "\n")
+  const s = readRoot(file) // 行尾已在读取入口归一为 LF
   const i = s.indexOf(header)
   expect(i, `未找到标题：${header}`).toBeGreaterThan(-1)
   const start = s.indexOf("```\n", i)
@@ -70,7 +68,7 @@ describe("P0-3 旧口径（静默截断）在源码里彻底消失", () => {
 })
 
 describe("P0-3 证据包真的接进了业务入口", () => {
-  const hook = read("pages/BidWorkspace/useBidWorkspace.ts")
+  const hook = hookSources()
 
   it("废标自查：正式三轮与降级单轮共用同一个证据包，不再传裸正文", () => {
     const start = hook.indexOf("const runVoidCheck = useCallback")

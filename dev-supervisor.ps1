@@ -14,19 +14,40 @@ $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $LockFile = Join-Path $Root "dev-supervisor.pid"
 $LogFile = Join-Path $Root "dev-supervisor.log"
 
-# 单实例锁
-if (Test-Path $LockFile) {
-  $oldPid = 0
-  [int]::TryParse((Get-Content $LockFile -Raw), [ref]$oldPid) | Out-Null
-  if ($oldPid -gt 0 -and (Get-Process -Id $oldPid -ErrorAction SilentlyContinue)) {
-    Write-Output "supervisor already running (pid $oldPid)"; exit 0
-  }
+# Single-instance lock.
+# NOTE (2026-10-16): this used to be "read dev-supervisor.pid, and if that PID
+# exists assume a supervisor is alive". That wedged the app in two ways:
+#   1. Windows recycles PIDs. After this supervisor was killed its PID (8884)
+#      was handed to an unrelated process (360huabao.exe), so the lock looked
+#      held forever. Every XiaozhiDevSupervisorWatchdog run then printed
+#      "supervisor already running" and exited 0, nothing ever restarted the
+#      stack, and the app stayed down until the pid file was deleted by hand.
+#   2. Check-then-write is a race. The logon task and the 5-minute watchdog
+#      task could both pass the test before either wrote, leaving two
+#      supervisors running at once, each killing/restarting the other's stack.
+# Hold an exclusive handle on the lock file instead: acquiring it is atomic,
+# and Windows releases it automatically when this process exits, so neither a
+# recycled PID nor a killed supervisor can leave the lock stuck.
+# Keep in mind $ErrorActionPreference = "SilentlyContinue" above: any failure
+# that is not raised as an exception here would be swallowed silently, so all
+# lock work below is deliberately explicit.
+# FileShare.Read, not None: a second supervisor asking for ReadWrite access is
+# still refused (the lock is exactly as exclusive), but monitoring tools can
+# still read which PID owns it. With FileShare.None the pid file was unreadable
+# to everyone -- including the ops scripts -- for as long as the supervisor lived.
+try {
+  $LockStream = [System.IO.File]::Open($LockFile, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::Read)
+} catch {
+  Write-Output "supervisor already running (lock on $LockFile is held)"; exit 0
 }
-# NOTE: the -Path switch is required. Without it Set-Content cannot bind Path,
-# the call fails, and $ErrorActionPreference = "SilentlyContinue" swallows the
-# error -- so the lock file was never written and several supervisors could run
-# at once (each one killing/restarting the other's stack).
-Set-Content -Path $LockFile -Value ([string]$PID) -Encoding ASCII
+# The held handle is what enforces single-instance; the PID written inside is
+# only there so a human can see who owns it.
+# NOTE: SetLength(0) is required -- without it a shorter new PID would leave
+# trailing digits from the old one and the file would read as the wrong PID.
+$LockStream.SetLength(0)
+$pidBytes = [System.Text.Encoding]::ASCII.GetBytes([string]$PID)
+$LockStream.Write($pidBytes, 0, $pidBytes.Length)
+$LockStream.Flush()
 
 function Log([string]$msg) {
   $line = "{0} {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $msg

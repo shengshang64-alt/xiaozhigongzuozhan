@@ -5,19 +5,18 @@
 // ③ 算分口径只在视图模型一处实现，JSX 里不得再写第二套；
 // ④ 无 effect 内同步 setState（级联渲染），换项目的输入重置由调用方 key 重挂载完成。
 // 风格同 deckLintPanel.test.ts / quoteDiscount.test.ts（源码扫描，无需 jsdom）。
-import { readFileSync } from "node:fs"
+import { hookSources, sourceText } from "@/testing/hookSources"
 import { describe, expect, it } from "vitest"
 
-const MODEL = new URL("./priceScoreModel.ts", import.meta.url)
-const BRIEF = new URL("./priceScoreBrief.ts", import.meta.url)
-const PANEL = new URL("../../components/bid-workspace/PriceScorePanel.tsx", import.meta.url)
-const PAGE = new URL("./BidWorkspacePage.tsx", import.meta.url)
-const USE = new URL("./useBidWorkspace.ts", import.meta.url)
+// 路径统一为**仓库相对 POSIX 路径**；读取走 src/testing/hookSources 单一入口（R57 · 审计 §3.1）。
+// R47 曾在本文件内自带 `replace(/\r\n/g,"\n")` 兜底行尾——该策略现已上移到读取入口一处；
+// God Hook 不再用路径字面量读（全仓只允许 hookSources.ts 里出现 useBidWorkspace.ts 这个路径）。
+const MODEL = "src/pages/BidWorkspace/priceScoreModel.ts"
+const BRIEF = "src/pages/BidWorkspace/priceScoreBrief.ts"
+const PANEL = "src/components/bid-workspace/PriceScorePanel.tsx"
+const PAGE = "src/pages/BidWorkspace/BidWorkspacePage.tsx"
 
-// R47：源码扫描哨兵与工作区换行解耦——本机 core.autocrlf=true，同一份文件在不同
-// 检出状态可能是 CRLF 或 LF；下面的正则哨兵按 LF 书写，读入时统一归一，避免「换行
-// 变了就红」这种与行为无关的假失败（useBidWorkspace.ts 实测两种状态都存在过）。
-const read = (u: URL) => readFileSync(u, "utf-8").replace(/\r\n/g, "\n")
+const read = sourceText
 
 describe("priceScoreModel 增口（R38）", () => {
   it("listPriceScoringCandidates 复用同一 PRICE_ITEM_RE 与 parsePriceFormula，不另立口径", () => {
@@ -92,7 +91,7 @@ describe("页面挂载与取数（R38）", () => {
   })
 
   it("hook 把报价单快照并置 state 并导出（ref 只服务同步体检，渲染层读不到）", () => {
-    const code = read(USE)
+    const code = hookSources()
     expect(code).toContain("const [quoteRefs, setQuoteRefs] = useState<QuoteTotalRef[]>([])")
     expect(code).toContain("quoteRefsRef.current = next")
     expect(code).toContain("setQuoteRefs(next)")

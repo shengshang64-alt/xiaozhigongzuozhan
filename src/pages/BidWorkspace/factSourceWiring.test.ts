@@ -5,21 +5,19 @@
 //   ② 生成链路真的调了规范化 —— runGenerateFactSettings 必须经 normalizeFactSourceLines 再 setFactDraft；
 //   ③ 旧口径的承诺句在源码里彻底消失（「同主题事实优先采用范本口径」「本项目工期：90 天」式模板）。
 // 纯 node fs，无需 jsdom。
-import { readFileSync } from "node:fs"
-import path from "node:path"
-import { fileURLToPath } from "node:url"
+import { hookSources, sourceText } from "@/testing/hookSources"
 import { describe, expect, it } from "vitest"
 import { buildFactSettingsMessages } from "./prompts/factSettings"
 import { FACT_CONFIRM_MARK, normalizeFactSourceLines } from "./factSources"
 
-const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..") // src/
-const ROOT = path.resolve(SRC, "..") // 仓库根（docs/ 在这层）
-const read = (rel: string) => readFileSync(path.join(SRC, rel), "utf-8")
-const readRoot = (rel: string) => readFileSync(path.join(ROOT, rel), "utf-8")
+// 源码与文档读取走 src/testing/hookSources 单一入口（R57 · 审计 §3.1）：路径口径（仓库相对 POSIX）、
+// 行尾归一（CRLF→LF）与「读不到时会喊」都收敛在那一处；「src/ 相对 还是 仓库根相对」只在这里表达一次。
+const read = (rel: string) => sourceText(`src/${rel}`)
+const readRoot = sourceText
 
 /** 取文档中某标题后第一个三反引号代码块的逐字内容（行尾统一按 LF 比较） */
 function codeBlockAfter(file: string, header: string): string {
-  const s = readRoot(file).replace(/\r\n/g, "\n")
+  const s = readRoot(file) // 行尾已在读取入口归一为 LF
   const i = s.indexOf(header)
   expect(i, `未找到标题：${header}`).toBeGreaterThan(-1)
   const start = s.indexOf("```\n", i)
@@ -47,7 +45,7 @@ describe("P0-2 手册与提示词同源（改代码不改手册必红）", () =>
 })
 
 describe("P0-2 生成链路接线（范本不得覆盖本项目 / 要求类数字不得静默落定）", () => {
-  const hook = read("pages/BidWorkspace/useBidWorkspace.ts")
+  const hook = hookSources()
   const start = hook.indexOf("const runGenerateFactSettings = useCallback")
   const seg = hook.slice(start, hook.indexOf("}, [", start))
 

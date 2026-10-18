@@ -2,11 +2,12 @@
 // R67 提示词搬迁第三批，自 bidTypes.ts 原样搬迁：只搬不改字（快照锁字见 promptsSnapshot.test.ts）
 // ---------------------------------------------------------------------------
 
-import { scoringDetailLines, truthPreamble, BID_STYLE_RULES, FULLTEXT_GUARD_RULES, PARAM_RESPONSE_BOUNDARY_RULES, PRE_OUTPUT_SELFCHECK_RULES } from "../bidTypes"
+import { scoringDetailLines, truthPreamble, BID_STYLE_RULES, FULLTEXT_GUARD_RULES, PARA_SHAPE_RULE, PARAM_RESPONSE_BOUNDARY_RULES, PRE_OUTPUT_SELFCHECK_RULES, PROSE_LINT_RULES } from "../bidTypes"
 import type { BidRefineKind, ScoringItem } from "../bidTypes"
 import type { LlmMessage } from "@/lib/llm"
 
-export const PROMPT_VERSION = 1
+// REQ-052 v1→v2：BID_STYLE_RULES 新增「正文编号层次」条（改写/扩写路径同步，避免重写时丢层次）
+export const PROMPT_VERSION = 2
 
 /** 改造 2：投标文件口径的改写/扩写/精简 prompt（含全局事实 + 本章评分细则 + 写作风格硬条款） */
 export function buildBidRefineMessages(
@@ -46,6 +47,13 @@ export function buildBidRefineMessages(
     // docs/07 §5.3/§5.4 落地（第 18 轮）：改写/扩写也补输出前自检与历史缺陷反例（只加约束、不改语义）
     "输出前自检与历史缺陷反例（每条必须遵守）：",
     ...PRE_OUTPUT_SELFCHECK_RULES.map((t, i) => `${i + 1}. ${t}`),
+    // R-302（2026-10-16 售前/演示反馈）：版式硬条款（AI 套话黑名单 / 禁内联指引 / 标题层级 / 关键章必出表 / 必出甘特图）
+    "版式与文风硬条款（每条必须遵守，违反即重写）：",
+    ...PROSE_LINT_RULES.map((t, i) => `${i + 1}. ${t}`),
+    // REQ-022（2026-10-17）：整章重写/扩写会重新把段落撑大——PROSE_LINT_RULES 只给了句长上限，
+    // 句数区间与段落数下限必须单独注入，否则「重写一遍」就等于把段落形态病改回来。
+    "正文段落形态（每条必须遵守）：",
+    `1. ${PARA_SHAPE_RULE}`,
     "输出铁律：直接输出处理后的完整正文纯文本，小节标题行保持「N.M 小节名」格式，禁止 markdown 符号、禁止任何解释说明或开场白。",
   ]
     .filter((s) => s !== "")

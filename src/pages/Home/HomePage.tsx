@@ -31,7 +31,7 @@ export function HomePage(p: ReturnType<typeof useHome>) {
         greeting={p.greeting}
         displayName={displayName}
         summaryLines={[
-          p.activeWorkTotal > 0 ? `各工作台共 ${p.activeWorkTotal}${p.activeWorkExact ? "" : "+"} 项工作在制` : "",
+          // 移除「各工作台共 X 项工作在制」—— 下方 StatsRow 第一张卡片「工作台进行中事项」已精确展示此数字。
           p.overdueTodoCount > 0 ? `${p.overdueTodoCount} 条待办已逾期` : "",
           p.intelPendingCount > 0 ? `${p.intelPendingCount} 条情报待确认` : "",
           p.qualRisk.total > 0 ? `资质${p.qualRisk.line}（投标核验）` : "",

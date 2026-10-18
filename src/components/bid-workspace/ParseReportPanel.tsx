@@ -432,9 +432,10 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
 
   return (
     <>
+    {/* R58：门禁红字为主、琥珀告警为补充说明——两者同时出现时红幅在前 */}
+    {requiredFailuresBanner}
     {warningBanner}
     {qualityBanner}
-    {requiredFailuresBanner}
     {coverageBanner}
     {lotsChips && (
       <div className="mb-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">

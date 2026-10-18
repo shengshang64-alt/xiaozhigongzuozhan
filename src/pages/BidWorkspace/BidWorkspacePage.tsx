@@ -316,6 +316,10 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               outlineDraft={p.outlineDraft}
               outlineLoading={p.outlineLoading}
               generateOutline={p.generateOutline}
+              outlineCriticalConfirmOpen={p.outlineCriticalConfirmOpen}
+              outlineCriticalConfirmText={p.outlineCriticalConfirmText}
+              confirmGenerateOutlineCritical={p.confirmGenerateOutlineCritical}
+              cancelGenerateOutlineCritical={p.cancelGenerateOutlineCritical}
               outlineLevel={p.outlineLevel}
               setOutlineLevel={p.setOutlineLevel}
               targetPages={p.targetPages}
@@ -428,6 +432,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               startFigureBackfill={p.startFigureBackfill}
               contentFocus={p.contentFocus}
               focusSectionInChapter={p.focusSectionInChapter}
+              focusPositionInChapter={p.focusPositionInChapter}
               outlineClauseTotal={p.outlineClauseTotal}
               coveredClauseCount={p.coveredClauseCount}
               uncoveredClauses={p.uncoveredClauses}

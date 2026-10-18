@@ -37,3 +37,30 @@ describe("contentHeadingLevel：正文行→标题级别", () => {
     expect(contentHeadingLevel("   ")).toBe(0)
   })
 })
+
+/**
+ * REQ-052（2026-10-18）：口径边界守卫。
+ *
+ * 提示词第 3 条此前写「3 级为「N.M.K 小节名」」，与导出端冲突——真产物里模型写出
+ * 139 条 `2.5.1 …`（三明），而 `contentHeadingLevel` 按设计根本不认数字编号。
+ * 修法是把数字编号限定到「节」这一级，小节内部改用「（一）→（1）→①」，
+ * 于是必须锁住两条路各自管一段、不许混：
+ *
+ *   `（一）/（1）/①`  →  contentHeadingLevel  →  行内层次（H3/H4/H5）
+ *   `N.M` / `N.M.K`   →  isRealSectionHeading →  真小节标题（H2/H3）
+ */
+describe("REQ-052 行内编号与数字编号的分工边界", () => {
+  it("三层行内编号连续映射：（一）→2 级、（1）→3 级、①→4 级", () => {
+    // 2/3/4 在导出端分别落 h3/h4/h5，正好是小节内部的三层
+    expect(contentHeadingLevel("（一）建档发卡")).toBe(2)
+    expect(contentHeadingLevel("（1）支持身份证发卡")).toBe(3)
+    expect(contentHeadingLevel("①写卡失败提示重试")).toBe(4)
+  })
+
+  it("N.M.K 不被 contentHeadingLevel 认作行内标题（它走 isRealSectionHeading）", () => {
+    // 守住口径边界：数字编号是「节」的编号，不是小节内部的层次
+    expect(contentHeadingLevel("2.5.1 阶段验收")).toBe(0)
+    expect(contentHeadingLevel("2.5 数据迁移")).toBe(0)
+    expect(contentHeadingLevel("5.3.2 门急诊挂号收费系统")).toBe(0)
+  })
+})

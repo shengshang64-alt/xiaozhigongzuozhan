@@ -83,6 +83,15 @@ import {
 } from "@/pages/SolutionStudio/solutionTypes"
 // R301：标书章节生成失败原因落库（复用 SolutionStudio R280/R282 归因助手，零 schema/零 AI）
 import { BLANK_OUTPUT_REASON, describeGenFailure } from "@/pages/SolutionStudio/genFailureNote"
+// R-301 (2026-10-15): AIGC 丢字/孤字本地检测（端到端 BUG-101 修复，零 AI、毫秒级）
+import { detectLostChars } from "./bidTextSanity"
+// R-302（2026-10-16）：版式与文风本地校验（端到端反馈 #5 配套，零 AI、毫秒级）
+import { lintProse } from "./bidProseLinter"
+// REQ-025（2026-10-17）：长段落本地重排——纯字符串、零 AI、零失真（字符守恒有自证）
+import { splitLongParagraphs } from "./proseParagraphSplitter"
+import { listifyEnumeration } from "./proseEnumListifier"
+import { formatDensitySummary, measureItemDensity } from "./proseItemDensity"
+import { checkFigureAnnotations } from "./figureAnnotation"
 import {
   aggregateAuditByChapter,
   assignClausesToChapters,
@@ -286,7 +295,9 @@ import {
   selectOrchestrationFigures,
   sliceSectionPieces,
   SNAPSHOT_CONTENT_MAX,
+  SNAPSHOT_DIAG_KEY,
   SNAPSHOT_RETAIN,
+  isRestorableSnapshot,
   STAGED_OUTLINE_LEAF_GOAL,
   starClauseCount,
   starClausesEnabled,
@@ -677,7 +688,7 @@ import {
   SECTION_KEYWORDS,
   type RetrievalSource,
 } from "./prompts/tenderRetrieval"
-import { buildScoringMaterial } from "./prompts/tenderStructure"
+import { buildScoringMaterial, buildScoringMaterialDetail } from "./prompts/tenderStructure"
 import { buildWordAdjustmentMessages } from "./prompts/wordAdjust"
 import { buildMermaidRepairMessages } from "./prompts/mermaidFigure"
 import { repairMermaidCode } from "./mermaidFigure"
@@ -737,6 +748,11 @@ import {
   PARSE_SEGMENT_CHARS,
   PARSE_WARMUP_DELAY_MS,
   parseSegmentCap,
+  dedupeScoringItems,
+  dispatchKeysForSegment,
+  segmentScoreExpectation,
+  splitScoringMaterialByPack,
+  stripSyntheticHeaderItems,
   WHOLE_FILE_LIMIT,
 } from "./prompts/wholeParse"
 import { splitTenderText } from "./prompts/tenderSplit"
@@ -745,7 +761,24 @@ import { buildVoidScopeMessages, buildVoidInitialCheckMessages, buildVoidFinaliz
 import { describeBidVisibility, selectBidEvidence, type BidEvidencePack } from "./bidVisibility"
 import { voidClauseFloorWarning } from "./voidClauseFloor"
 import { extractVoidClauses, voidClauseSectionFrom, validateScoringSections } from "./bidTypes"
-import { coverageLevel, coveragePercent, missingCriticalSections, parseCoverageRatio } from "./parseCoverage"
+import {
+  coverageLevel,
+  coveragePercent,
+  missingCriticalSectionTitles,
+  missingCriticalSections,
+  parseCoverageRatio,
+  detectParseDegradation,
+  decideOutlineCriticalGate,
+  CRITICAL_SECTION_KEYS,
+} from "./parseCoverage"
+import {
+  buildOutlineDiag,
+  classifyOutlineFailure,
+  outlineDiagLabel,
+  shouldRecordOutlineDiag,
+  type OutlineDiag,
+  type OutlineDiagKind,
+} from "./outlineDiagnostics"
 import { runComposeGates } from "./composeGates"
 import { assessTenderParseQuality } from "./parseQuality"
 
@@ -909,11 +942,58 @@ function selectRelevantChunksWithSynonyms(text: string, key: string, extraKeywor
 // R55：structured 不只评分块——信息卡类解析项落 FieldsBlockJSON（标签→值），展示与下游共用
 type ParsePayload = { text: string; structured?: ScoringBlockJSON | FieldsBlockJSON }
 
+// ---------------------------------------------------------------------------
+// REQ-020（2026-10-18）：评分素材截断诊断收集器。
+//
+// 背景：`buildScoringMaterial` 在评分章超过 60000 字（或总量超 120000）时按整行截断，
+// 截断提示只拼进素材文本 → 只喂给模型，**用户在界面上看不到**，等于仍然静默。
+// 这里把 `buildScoringMaterialDetail` 的诊断结果收集起来，解析结束时写进
+// `parse_report.scoringTruncation`，由 ParseReportPanel 展示。
+//
+// 为什么用模块级 Map 而不是从函数逐层返回：
+//   素材有 3 个调用点（检索通道 / 整文直读 / 切段通道），同一次解析最多算 2 次；
+//   逐层改签名会牵动 `parseSectionVia*` 三层的返回类型，而它们已被 R-026/R-029 加固过。
+//   收集器用「数据源身份 + key」做去重键，每次解析开始前 reset。
+// ---------------------------------------------------------------------------
+type ScoringTruncation = { keptChars: number; droppedChars: number; fromLine: number }
+const scoringTruncationSink = new Map<string, ScoringTruncation>()
+
+/** 解析开始前清空收集器（同一次解析内多次调用取 droppedChars 最大的那条） */
+function resetScoringTruncationSink(): void {
+  scoringTruncationSink.clear()
+}
+
+/** 记录一次评分素材构建的诊断；未截断不记。key 用 `${source}::${parseKey}` 去重 */
+function recordScoringTruncation(source: string, parseKey: string, d: { truncated: boolean; keptChars: number; droppedChars: number; droppedFromLine: number }): void {
+  if (!d.truncated || d.droppedChars <= 0) return
+  const k = `${source}::${parseKey}`
+  const prev = scoringTruncationSink.get(k)
+  if (prev && prev.droppedChars >= d.droppedChars) return
+  scoringTruncationSink.set(k, { keptChars: d.keptChars, droppedChars: d.droppedChars, fromLine: d.droppedFromLine })
+}
+
+/** 汇总收集器结果：多 key 时取 droppedChars 最大的一条，字数按 key 累加（用户看到的是总量） */
+function summarizeScoringTruncation(): ScoringTruncation | undefined {
+  if (!scoringTruncationSink.size) return undefined
+  const all = [...scoringTruncationSink.values()]
+  const worst = all.reduce((a, b) => (b.droppedChars > a.droppedChars ? b : a))
+  return {
+    keptChars: all.reduce((a, b) => a + b.keptChars, 0),
+    droppedChars: all.reduce((a, b) => a + b.droppedChars, 0),
+    fromLine: worst.fromLine,
+  }
+}
+
 async function parseSectionViaRetrieval(text: string, key: string): Promise<ParsePayload> {
-  const isScoringKey = key === "tech_score" || key === "biz_score"
-  const scoringMaterial = isScoringKey ? buildScoringMaterial(text) : ""
+  const isScoringKey = isScoringParseKey(key)
+  // REQ-020：主链改用带诊断的构建器，截断时记进收集器（buildScoringMaterial 输出与其逐字相同）
+  const scoringDetail = isScoringKey ? buildScoringMaterialDetail(text) : null
+  if (scoringDetail) recordScoringTruncation("retrieval", key, scoringDetail)
+  const scoringMaterial = scoringDetail?.text ?? ""
   const src = scoringMaterial
-    ? { mode: "retrieval" as const, text: scoringMaterial, selected: [], totalChunks: 0 }
+    // REQ-029：已定位的评分素材不再走 retrieval 口径——那条路会把素材 clipText 到 28,000，
+    // 实测 #46 的 54,625 字会被砍掉 26,625 字（保头 70% + 保尾 30%），中间整段评分项凭空消失。
+    ? { mode: "scoring-material" as const, text: scoringMaterial, selected: [], totalChunks: 0 }
     : selectRelevantChunks(text, key)
   const attempt = (maxTokens: number) =>
     llmGenerate(buildSectionParseMessages(key, src.text, { sourceMode: src.mode }), maxTokens, "bid-parse", 0, { disableThinking: true })
@@ -935,10 +1015,65 @@ async function parseSectionViaRetrieval(text: string, key: string): Promise<Pars
 //   整文 JSON/markdown 契约 → 超限切段合并 → retrieval 兜底，路由见 parseSectionItem。
 // ---------------------------------------------------------------------------
 
-/** 整文通道单次调用：system 稳定 → user 完整文件 → user 任务（跨项同前缀吃提示词缓存）；空回复翻倍重试与检索通道同口径 */
-async function parseSectionViaWholeFile(text: string, key: string): Promise<ParsePayload> {
+/** 单段评分结果 → 剔除无编号表头行 + 按段补「包NN 」前缀（解析失败则原样返回，绝不因清洗丢整段） */
+function scopeSegmentJson(raw: string, pack: string | undefined): string {
+  try {
+    const obj = extractJsonLoose(raw)
+    if (!obj || typeof obj !== "object") return raw
+    const rec = obj as Record<string, unknown>
+    if (!Array.isArray(rec.items)) return raw
+    const before = rec.items as Record<string, unknown>[]
+    const kept = stripSyntheticHeaderItems(before)
+    let changed = kept.length !== before.length
+    const items = kept.map((it) => {
+      const name = String((it as Record<string, unknown>)?.name ?? "").trim()
+      if (!name) return it
+      // 幂等：无条件先剥掉模型可能自带的「包NN 」，再以**本段归属**为准重拼。
+      // 不能写成「已有前缀就原样返回」——模型可能拼错包号（例如把包01 的项写成「包02 2-1 …」），
+      // 那样错误包号会被保留，下游按包分组时包01 的该项就丢了。
+      const cleanName = name.replace(/^包\d+\s*/, "")
+      const rename = (finalName: string) => {
+        if (finalName === name) return it
+        changed = true
+        return { ...(it as Record<string, unknown>), name: finalName }
+      }
+      // pack 为空时绝不加前缀：96 份真实素材里只有 5 份是多包结构，其余 91 份加了就是污染
+      // （福安/海沧等单包标书会被写成「包01 T1 …」，破坏 REQ-019/REQ-015 已验收成果）。
+      if (!pack) return rename(cleanName)
+      // 多包一律补前缀，不再要求 name 含「数字-数字」编号。
+      // 金山60 的项名形如「1 投标响应情况」「1、投标响应」，没有层级编号；
+      // 若按编号过滤，三个包的「投标响应」会全部无前缀，界面/偏离表里三条同名项分不出归属，
+      // 按包分组时也全归到「无包」（实测 88 项里 60 项漏前缀）。
+      // 表头行已在 stripSyntheticHeaderItems 剔除，不会漏进来，所以这里可以无条件补。
+      return rename(`${pack} ${cleanName}`)
+    })
+    return changed ? JSON.stringify({ ...rec, items }) : raw
+  } catch {
+    return raw
+  }
+}
+
+/** 整文通道单次调用：system 稳定 → user 完整文件 → user 任务（跨项同前缀吃提示词缓存）；空回复翻倍重试与检索通道同口径
+ *
+ *  REQ-029（2026-10-17）：评分项（tech_score/biz_score）**换输入不换输出**——
+ *  文件 message 换成 buildScoringMaterial 定位出的评分表素材，system 与任务（含 JSON 契约）
+ *  逐字不动，下游 flattenParseItemJson / extractScoringFromText 零改动。
+ *  素材为空（原文确实没有评分表）时回退整文，16 份「原文无评分表」的文件行为不变。 */
+async function parseSectionViaWholeFile(
+  text: string,
+  key: string,
+  opts?: { scoringMaterial?: string },
+): Promise<ParsePayload> {
+  // 调用方已经算好素材时直接用（避免对素材再跑一次 buildScoringMaterial）；
+  // 未传则按原文现算——素材为空（原文确实没有评分表）时回退整文。
+  const scoringMaterial =
+    opts?.scoringMaterial !== undefined
+      ? opts.scoringMaterial
+      : isScoringParseKey(key)
+        ? buildScoringMaterial(text)
+        : ""
   const attempt = (maxTokens: number) =>
-    llmGenerate(buildWholeParseMessages(key, text), maxTokens, "bid-parse", 0, { disableThinking: true })
+    llmGenerate(buildWholeParseMessages(key, text, undefined, scoringMaterial), maxTokens, "bid-parse", 0, { disableThinking: true })
   let raw: string
   try {
     raw = await attempt(MAX_TOKENS_LONGFORM)
@@ -977,11 +1112,45 @@ const PARSE_SEGMENT_CONCURRENCY = 2
 /** 超限切段通道：按自然边界切段（各项之间段一致，缓存跨项复用）→ 每段同任务并发（**受 PARSE_SEGMENT_CONCURRENCY 约束**）
  *  → AI 合并（跨块汇总）；
  *  段数上限分层（R-038 Slice B）：废标/评分关键项放宽到整文全量覆盖（跨段合并 → 评分项/废标项跨块汇总），
- *  其余项沿用通用上限、超限回落检索通道（防「单项 × N 段」费用爆炸）；单段失败不拖垮其余段（合并以成功段为准）。 */
+ *  其余项沿用通用上限、超限回落检索通道（防「单项 × N 段」费用爆炸）；单段失败不拖垮其余段（合并以成功段为准）。
+ *
+ *  REQ-029（2026-10-17）：评分项的切段对象从「整本原文」改为「评分表素材」——
+ *  否则天坛 41.3 万字切 10 段、每段 4.5 万字里评分表只占几百字，模型仍要在每段里自己找
+ *  （这正是 REQ-016「综合实力 3」全丢的机制）。素材只有 9,493 字，一次调用即装下，
+ *  走整文直读；只有素材本身超限时才按素材切段。素材为空时行为与改前完全一致。 */
 async function parseSectionViaSegments(text: string, key: string): Promise<ParsePayload> {
-  const segments = splitTenderText(text, PARSE_SEGMENT_CHARS)
+  const scoringKey = isScoringParseKey(key)
+  // REQ-020：切段通道同样收截断诊断（主链最常走这条；输出与 buildScoringMaterial 逐字相同）
+  const segScoringDetail = scoringKey ? buildScoringMaterialDetail(text) : null
+  if (segScoringDetail) recordScoringTruncation("segments", key, segScoringDetail)
+  const scoringMaterial = segScoringDetail?.text ?? ""
+  // REQ-029：评分项的切段对象从「整本原文」改为「评分表素材」，且**即使素材整份装得下也照样切**。
+  //
+  // 为什么不整份直读（实测，2026-10-18）：素材「装得下」只看输入上限（60,000），
+  // 但真正的瓶颈是**单次输出预算**——金山60 素材 33,777 字整份投喂，模型出到 T9 就停，
+  // T10~T13 全丢（它们位于素材 90%~92% 处）；#46 包01 65 条也只出 38 条，尾部 1-45~1-48 全丢。
+  // 规律是输入越长、产出率越低、丢的总是尾部。所以改成按「包边界 + 每段 ≤25 条评分行」切，
+  // 逐段投喂再合并——切点落在整行边界，不切在句中。
+  //
+  // 素材为空（原文确实没有评分表）时行为与改前完全一致：按原文切段。
+  const sourceText = scoringKey && scoringMaterial ? scoringMaterial : text
+  const packSegs = scoringKey && scoringMaterial ? splitScoringMaterialByPack(scoringMaterial, PARSE_SEGMENT_CHARS) : []
+  const segments = (packSegs.length ? packSegs.map((s) => s.text) : splitTenderText(sourceText, PARSE_SEGMENT_CHARS))
   if (segments.length > parseSegmentCap(key)) return parseSectionViaRetrieval(text, key)
-  if (segments.length <= 1) return parseSectionViaWholeFile(segments[0] ?? "", key)
+  if (segments.length <= 1) return parseSectionViaWholeFile(sourceText, key, scoringKey && scoringMaterial ? { scoringMaterial: sourceText } : undefined)
+  // REQ-029：评分项按段类型分派 key——技术段只发 tech_score，商务/价格段只发 biz_score。
+  // 不分派时商务段（只含 2-x）发给 tech_score，模型没技术项可抽就把商务项硬抽出来：
+  // #46 三个包的商务段各被抽走 6 条，共 18 条跨口径污染（实测）。分派后污染 0。
+  // 判定为「本 key 不该处理的段」直接跳过，不消耗调用。
+  // 类型信号缺失时**必须跳过**：`dispatchKeysForSegment` 返回空数组时若当成「全跑」，
+  // 两个 key 会同时处理同一段——tech_score 会把商务/价格项抽走、biz_score 会把技术项抽走，
+  // 这是最严重的一类污染（比漏抽危害大）。宁可不解析该段，也不能让污染进库。
+  const shouldSkipSegment = (i: number): boolean => {
+    if (!packSegs.length || !isScoringParseKey(key)) return false
+    const allowed = dispatchKeysForSegment(packSegs[i]?.kind, ["tech_score", "biz_score"])
+    if (allowed.length === 0) return true
+    return !allowed.includes(key)
+  }
   const total = segments.length
   // R39：留住每段的真实失败原因（此前被 catch 吞成空串，全灭时用户只看到「请重试」）
   const segFailReasons: (string | undefined)[] = new Array(total)
@@ -995,13 +1164,32 @@ async function parseSectionViaSegments(text: string, key: string): Promise<Parse
     concurrency: PARSE_SEGMENT_CONCURRENCY,
     isCancelled: () => authError !== undefined,
     runTask: async (idx) => {
-      const content = await llmGenerate(
-        buildWholeParseMessages(key, segments[idx], { index: idx + 1, total }),
-        MAX_TOKENS_LONGFORM,
-        "bid-parse",
-        0,
-        { disableThinking: true },
-      )
+      // 本 key 与该段类型不匹配 → 不调用模型，记空结果（合并时会被过滤掉）
+      if (shouldSkipSegment(idx)) {
+        results[idx] = { index: idx + 1, total, content: "" }
+        return
+      }
+      const attemptOnce = () =>
+        llmGenerate(
+          buildWholeParseMessages(key, segments[idx], { index: idx + 1, total }, scoringKey ? segments[idx] : ""),
+          MAX_TOKENS_LONGFORM,
+          "bid-parse",
+          0,
+          { disableThinking: true },
+        )
+      let content = await attemptOnce()
+      // REQ-039（2026-10-18）：段内分值校验 —— 模型偶尔漏掉「表头后第一行」这类最大单项。
+      // 实测金山60 段5（注入 6,723 字符，三轮完全相同）：run1 出 16 项含 29 分项，
+      // run2/run3 只出 15 项且缺它。29 分是包01 技术项满分 58 分的一半，靠模型自觉不可靠。
+      // 这里用**素材侧分值合计**做确定性对照：本段应得多少分 vs 模型出了多少分，缺就重跑一次。
+      // 只重跑一次（避免放大调用量与限流风险），重跑仍缺则保留首次结果并如实降级。
+      if (isScoringParseKey(key)) {
+        const expect = segmentScoreExpectation(segments[idx])
+        if (expect.rows > 0 && sumItemScores(content) + 1e-6 < expect.sum) {
+          const retry = await attemptOnce().catch(() => "")
+          if (retry && sumItemScores(retry) > sumItemScores(content)) content = retry
+        }
+      }
       results[idx] = { index: idx + 1, total, content }
     },
     onTaskError: (idx, err) => {
@@ -1016,7 +1204,19 @@ async function parseSectionViaSegments(text: string, key: string): Promise<Parse
   })
   if (authError) throw authError
   const segFailures = orderedSegmentFailures(segFailReasons)
-  const ok = results.filter((r): r is { index: number; total: number; content: string } => !!r && !!r.content.trim())
+  const ok = results
+    .filter((r): r is { index: number; total: number; content: string } => !!r && !!r.content.trim())
+    // REQ-029：合并前两件事（都只对评分项生效，其他解析项原样透传）：
+    //  ① 剔掉「无编号表头行」被当评分项（价格分翻倍根因，见 stripSyntheticHeaderItems）；
+    //  ② 按段补「包NN 」前缀——商务段/价格段是碎片段，模型常忘加前缀，
+    //     下游（偏离表/总装）按 name 合并去重，没前缀就会把三包的同名项误判成重复。
+    //     用代码补而不靠模型自觉，才能保证 100% 覆盖。
+    .map((r) => {
+      if (!isScoringParseKey(key)) return r
+      const pack = packSegs[r.index - 1]?.pack
+      return { ...r, content: scopeSegmentJson(r.content, pack) }
+    })
+    .filter((r) => r.content.trim().length > 0)
   if (!ok.length) throw new Error(parseSegmentsFailedMessage(segFailures))
   const merged = await llmGenerate(
     buildSegmentMergeMessages(key, ok, isJsonParseItem(key) ? "json" : "markdown"),
@@ -1025,7 +1225,52 @@ async function parseSectionViaSegments(text: string, key: string): Promise<Parse
     0,
     { disableThinking: true },
   )
-  return materializeWholeParseResult(key, merged)
+  // REQ-029：合并结果再走一次代码级去重——同一 (包|编号) 只留一条。
+  // 提示词里已要求模型按「合同包 + 层级编号」去重，但模型可能漏；
+  // 价格项重复会让用户看到翻倍的分值，必须由代码兜底（实测 #46 包02 的 3-1 曾重复）。
+  return materializeWholeParseResult(key, isScoringParseKey(key) ? dedupeScoringJson(merged, key) : merged)
+}
+
+/**
+ * 把一段模型输出的 JSON 里 items 的分值加总（解析失败返回 -1，表示无法判定、不触发重跑）。
+ * REQ-039：与素材侧 `segmentScoreExpectation` 对照，判断该段是否漏抽了评分项。
+ */
+function sumItemScores(raw: string): number {
+  try {
+    const obj = extractJsonLoose(raw)
+    if (!obj || typeof obj !== "object") return -1
+    const rec = obj as Record<string, unknown>
+    if (!Array.isArray(rec.items)) return -1
+    let sum = 0
+    for (const it of rec.items as Record<string, unknown>[]) {
+      const m = /\d+(?:\.\d+)?/.exec(String((it as Record<string, unknown>)?.score ?? ""))
+      if (m) sum += Number(m[0])
+    }
+    return Math.round(sum * 100) / 100
+  } catch {
+    return -1
+  }
+}
+
+/** 合并结果按 (项类型|包|编号) 去重（解析失败原样返回，绝不因去重丢结果）。
+ *
+ * REQ-038：必须带上项类型。一次合并只处理一个解析 key 的结果，所以整批 items 的类型
+ * 就是本次的 `key`。不带类型会把技术项与商务项的独立编号（都从 1-1 起）误当重复删掉——
+ * 实测金山60 包01 因此丢了 1-1/2-1/3-1 三条商务项。
+ */
+function dedupeScoringJson(raw: string, parseKey: string): string {
+  try {
+    const obj = extractJsonLoose(raw)
+    if (!obj || typeof obj !== "object") return raw
+    const rec = obj as Record<string, unknown>
+    if (!Array.isArray(rec.items)) return raw
+    const items = rec.items as Record<string, unknown>[]
+    const kept = dedupeScoringItems(stripSyntheticHeaderItems(items), undefined, () => parseKey)
+    if (kept.length === items.length) return raw
+    return JSON.stringify({ ...rec, items: kept })
+  } catch {
+    return raw
+  }
 }
 
 /** 解析素材路由：whole=整文直读（≤上限）→ 超限切段合并；retrieval=既有按项关键词检索选块 */
@@ -1033,6 +1278,14 @@ async function parseSectionItem(text: string, key: string, channel: ParseChannel
   if (channel === "retrieval") return parseSectionViaRetrieval(text, key)
   if (text.length <= WHOLE_FILE_LIMIT) return parseSectionViaWholeFile(text, key)
   return parseSectionViaSegments(text, key)
+}
+
+/**
+ * REQ-029：评分项判定（tech_score/biz_score）——这两个项在 whole 通道改走评分表素材。
+ * 与 parseSectionViaRetrieval 内的 `isScoringKey` 同口径；单独抽出是因为整文/切段两条路径都要用。
+ */
+function isScoringParseKey(key: string): boolean {
+  return key === "tech_score" || key === "biz_score"
 }
 
 /** T16：生成产物中的 mermaid 配图逐张校验+修复（错误回传模型一次；修复仍失败弃图，不阻塞正文落库） */
@@ -1772,6 +2025,8 @@ export function useBidWorkspace() {
   // ------------------------------ 当前项目 ------------------------------
   const [activeProject, setActiveProject] = useState<BidProjectRecord | null>(null)
   const activeProjectRef = useRef<BidProjectRecord | null>(null)
+  /** R56（B27）：上一条大纲失败诊断，用于 5 秒内同因连点抑制（跨时间的重复失败仍如实留证） */
+  const lastOutlineDiagRef = useRef<OutlineDiag | null>(null)
 
   function applyProjectState(next: BidProjectRecord | null) {
     activeProjectRef.current = next
@@ -3738,7 +3993,13 @@ export function useBidWorkspace() {
           }
         }
         const scoringWarnAll = [...scoringDedupWarn, ...scoringMismatchWarn]
+        // R58（B29）：解析层退化自检接线。放在本地废标扫描合并（上方）之后，让本地补录的废标条款计入规模。
+        // 置 warnings 首位：ParseReportPanel 的琥珀横幅只显示首条（summarizeParseWarnings.headline），
+        // 退化告警必须稳定露出；红色「必选项解析失败」横幅在该面板中渲染于琥珀横幅之前（红字为主、本告警为补充）。
+        const degradation = detectParseDegradation(report, text, requestedKeys(cfg))
+        const degradationWarn = degradation.degraded ? [degradation.reason] : []
         const warnings = [
+          ...degradationWarn,
           ...(degradedTitles.length
             ? [`${degradedTitles.length} 项 AI 解析未完成，已降级为关键词检索原文（${degradedTitles.slice(0, 3).join("、")}${degradedTitles.length > 3 ? " 等" : ""}），请人工核对，模型恢复后可逐项重新解析`]
             : []),
@@ -4036,6 +4297,22 @@ export function useBidWorkspace() {
   // ------------------------------ ③ 投标文件编制 ------------------------------
   const [outlineDraft, setOutlineDraft] = useState<OutlineNode[]>([])
   const [outlineLoading, setOutlineLoading] = useState(false)
+  // R58（B28）：关键解析项缺失但项目已有大纲时，二次确认是否继续重新生成（默认取消，防覆盖）
+  const [outlineCriticalConfirmOpen, setOutlineCriticalConfirmOpen] = useState(false)
+  const [outlineCriticalConfirmText, setOutlineCriticalConfirmText] = useState("")
+  const pendingGenerateOutlineRef = useRef<(() => void) | null>(null)
+  // R58（B28）：确认/取消两个动作都清空待执行回调——取消（含 Esc / 点遮罩）绝不执行生成，
+  // 避免一键覆盖用户已有大纲与手动调整。
+  const confirmGenerateOutlineCritical = useCallback(() => {
+    setOutlineCriticalConfirmOpen(false)
+    const run = pendingGenerateOutlineRef.current
+    pendingGenerateOutlineRef.current = null
+    run?.()
+  }, [])
+  const cancelGenerateOutlineCritical = useCallback(() => {
+    setOutlineCriticalConfirmOpen(false)
+    pendingGenerateOutlineRef.current = null
+  }, [])
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [importCandidates, setImportCandidates] = useState<SolutionRecord[]>([])
   const [importLoading, setImportLoading] = useState(false)
@@ -4217,17 +4494,67 @@ export function useBidWorkspace() {
     [targetPages, estimatedPages, sectionWords],
   )
 
-  const runGenerateOutline = useCallback(async () => {
+  /**
+   * R56（B27）：「大纲生成不出来」必须留下可诊断的原因。
+   *
+   * 真实库盘点（2026-10-16，25 个项目）：9 个从未产出大纲，而这 9 个的失败**一条记录都没留**——
+   * 失败路径原本只有一句 toast，关掉 toast 证据即消失，于是「大文件是否致败」长期无法定论，
+   * 也无法区分「用户从没点过生成」与「点了但失败」。
+   *
+   * 落库走既有 bid_stage_snapshots 通道（无需改 PocketBase 结构：stage 是纯文本、label ≤200、
+   * payload 为 json，且该通道本就同时承载成果快照与事件留痕）。写入的行带 diag 键，
+   * 因此被 isRestorableSnapshot 判为不可恢复——不会成为「恢复此版本」的假成果。
+   */
+  const recordOutlineDiag = useCallback(
+    (
+      kind: OutlineDiagKind,
+      ctx: {
+        startedAt: number
+        reason?: string
+        detail?: string
+        criticalMissing?: string[]
+        coveragePct?: number | null
+        staged?: boolean
+        leafGoal?: number
+      },
+    ) => {
+      const cur = activeProjectRef.current
+      if (!cur) return
+      const diag = buildOutlineDiag({
+        kind,
+        reason: ctx.reason,
+        detail: ctx.detail,
+        startedAt: ctx.startedAt,
+        report: cur.parse_report,
+        tenderChars: (cur.tender_text ?? "").length,
+        criticalMissing: ctx.criticalMissing,
+        coveragePct: ctx.coveragePct ?? null,
+        staged: ctx.staged ?? false,
+        outlineLevel,
+        leafGoal: ctx.leafGoal ?? 0,
+        hasDraft: outlineDraft.length > 0,
+      })
+      // 手抖连点抑制：同因 5 秒内只记一条；隔一会儿再撞同一堵墙则如实记录（重复失败是要留的证据）
+      if (!shouldRecordOutlineDiag(lastOutlineDiagRef.current, diag)) return
+      lastOutlineDiagRef.current = diag
+      writeStageSnapshot("outline", outlineDiagLabel(diag), { [SNAPSHOT_DIAG_KEY]: diag })
+    },
+    [outlineDraft.length, outlineLevel, writeStageSnapshot],
+  )
+
+  const runGenerateOutline = useCallback(async (opts?: { skipCriticalGate?: boolean }) => {
     const cur = activeProjectRef.current
     if (!cur) return
+    const startedAt = Date.now()
     if (!cur.parse_report) {
+      recordOutlineDiag("blocked_no_report", { startedAt })
       toast.error("请先完成招标文件 AI 解析，再按评分办法生成大纲")
       return
     }
     if (!hasAnySection(cur.parse_report, OUTLINE_DEPEND_KEYS)) {
-      toast.error(
-        `大纲生成依赖「${missingSectionTitles(cur.parse_report, OUTLINE_DEPEND_KEYS).join(" / ")}」解析项，请先回到解析环节勾选并解析`,
-      )
+      const depMissing = missingSectionTitles(cur.parse_report, OUTLINE_DEPEND_KEYS)
+      recordOutlineDiag("blocked_dependency", { startedAt, reason: `大纲依赖的解析项为空：${depMissing.join(" / ")}` })
+      toast.error(`大纲生成依赖「${depMissing.join(" / ")}」解析项，请先回到解析环节勾选并解析`)
       return
     }
     // R-038（R258）解析覆盖率可见性 + R288+ 阻断判据切换。
@@ -4237,16 +4564,45 @@ export function useBidWorkspace() {
     // 使**所有大标书都无法生成**；而实测真正的病灶是「响应文件要求/投标文件目录要求解析为空」，
     // 二者恰是大纲硬依赖（OUTLINE_DEPEND_KEYS）。故此处：关键项缺失 → 阻断（真漏内容风险）；
     // 覆盖率偏低 → 仅告警（保留可见性与人工核对提示）。
+    // R56（B27）：覆盖率要带进失败诊断（catch 在 try 之外，故先声明）；块内必定赋值
+    let covPctForDiag: number | null
     {
       const covRatio = parseCoverageRatio(cur.parse_report.sections, cur.tender_text)
       const covLvl = coverageLevel(covRatio, cur.tender_text)
       const covPct = coveragePercent(covRatio)
-      const criticalMissing = missingCriticalSections(cur.parse_report.sections)
-      if (criticalMissing.length) {
-        toast.error(
-          `关键解析项缺失：${missingSectionTitles(cur.parse_report, criticalMissing).join(" / ")}（驱动大纲编排、评分响应与废标规避），请回「AI 解析报告」逐项补齐后再生成大纲`,
-        )
-        return
+      covPctForDiag = covPct
+      // R58（B28）：关键项缺失只按该项目实际请求的 key 判定（默认 key 档不请求 void_items）
+      const reqKeys = requestedKeys(cur.parse_config)
+      const criticalMissing = missingCriticalSections(cur.parse_report.sections, CRITICAL_SECTION_KEYS, reqKeys)
+      if (!opts?.skipCriticalGate) {
+        const criticalTitles = criticalMissing.length
+          ? missingCriticalSectionTitles(cur.parse_report, CRITICAL_SECTION_KEYS, reqKeys)
+          : []
+        // R58（B28）：动作判定抽成纯函数（有非空大纲 → 二次确认；无大纲 → 保持硬拦）
+        const gate = decideOutlineCriticalGate(criticalMissing, (cur.bid_outline ?? []).length > 0)
+        if (gate === "confirm") {
+          // 已有大纲：不硬拦，弹二次确认（默认取消，避免一键覆盖用户已调整的大纲）
+          setOutlineCriticalConfirmText(
+            `当前解析报告缺少「${criticalTitles.join("、")}」，但项目已有投标文件大纲。继续重新生成将覆盖现有大纲及手动调整，是否继续？`,
+          )
+          pendingGenerateOutlineRef.current = () => {
+            void runGenerateOutline({ skipCriticalGate: true })
+          }
+          setOutlineCriticalConfirmOpen(true)
+          return
+        }
+        if (gate === "block") {
+          recordOutlineDiag("blocked_critical", {
+            startedAt,
+            reason: `关键解析项缺失：${criticalTitles.join(" / ")}`,
+            criticalMissing,
+            coveragePct: covPct,
+          })
+          toast.error(
+            `关键解析项缺失：${criticalTitles.join(" / ")}（驱动大纲编排、评分响应与废标规避），请回「AI 解析报告」逐项补齐后再生成大纲`,
+          )
+          return
+        }
       }
       if (covLvl !== "ok" && covPct != null) {
         toast.info(
@@ -4259,6 +4615,9 @@ export function useBidWorkspace() {
       toast.info("未解析到「响应文件要求」的响应文件组成，大纲将按评分办法与常规骨架兜底编排；建议回到第 2 步补勾并解析该项以严格对齐招标组成要求")
     }
     setOutlineLoading(true)
+    // R56（B27）：本次尝试的实际规模要带进失败诊断，而 catch 在 try 之外读不到 try 内的 const
+    let diagStaged = false
+    let diagLeafGoal = 0
     try {
       // 改造 3：注入本地抽取的招标要求条款清单，要求每条条款落到叶子节点并输出 coverage 映射
       const clauses = extractRequirementClauses(cur.parse_report, { limit: 60, granularity: "l3" })
@@ -4275,6 +4634,8 @@ export function useBidWorkspace() {
       // 逐技术章 call2 展开节/条（注入其余章标题防重复 + 叶子配额=leafGoal/技术章数 ±2），
       // 程序拼装后走既有 trim/validate/fix 流程；≤40 走现状单次生成，行为不变。
       const staged = outlineScope !== "biz" && leafGoal > STAGED_OUTLINE_LEAF_GOAL
+      diagStaged = staged
+      diagLeafGoal = leafGoal
       const stagedFailed: string[] = []
       let raw = ""
       let parsed: OutlineNode[]
@@ -4568,11 +4929,21 @@ export function useBidWorkspace() {
         )
       }
     } catch (e) {
+      // R56（B27）：先落诊断记录再提示。toast 关掉就没了，而这条记录是「为什么没出大纲」的唯一复盘依据。
+      const cls = classifyOutlineFailure(e)
+      recordOutlineDiag(cls.kind, {
+        startedAt,
+        reason: cls.reason,
+        detail: cls.detail,
+        coveragePct: covPctForDiag,
+        staged: diagStaged,
+        leafGoal: diagLeafGoal,
+      })
       handleLlmError(e, "大纲生成失败，请重试")
     } finally {
       setOutlineLoading(false)
     }
-  }, [handleLlmError, outlineDraft.length, outlineLevel, sectionWords, writeStageSnapshot])
+  }, [handleLlmError, outlineDraft.length, outlineLevel, recordOutlineDiag, sectionWords, writeStageSnapshot])
 
   const generateOutline = useCallback(() => {
     if (!requireLogin()) return
@@ -5139,11 +5510,137 @@ export function useBidWorkspace() {
           effectiveGlobalFactsLines(cur),
           cur.format_check_items ?? FORMAT_CHECK_KEYS,
         )
-        if (!res.applied.length) return 0
-        updateChapter(nodeId, { content: res.content })
-        if (activeChapterId === nodeId) {
-          editingContentRef.current = res.content
-          setEditingContentState(res.content)
+        if (res.applied.length) {
+          updateChapter(nodeId, { content: res.content })
+          if (activeChapterId === nodeId) {
+            editingContentRef.current = res.content
+            setEditingContentState(res.content)
+          }
+        }
+        // REQ-025（2026-10-17）：长段落本地重排（纯字符串、零 AI、零失真）。
+        // 为什么放在 applyAutoRepair 里：这里覆盖全部 8 个生成/续写/重写/扩写入口，
+        //   而 REQ-022 的提示词规则只能"预防"，模型波动时仍会写出超长段（同一请求 3 轮
+        //   实测 2/3 达标，1 轮失控）。检测器（REQ-021）负责发现，本函数负责就地修好。
+        // 为什么不用模型：拆段不需要理解语义，只需要知道句子在哪结束——纯本地毫秒级完成，
+        //   且字符 100% 守恒、数字一个不动（有自证）。模型拆段要每段一次调用且会静默丢段。
+        // 拆不动的（单句超 300 字的枚举句）原样保留并在 lint 里继续报，不硬拆。
+        let fixedContent = res.content
+        try {
+          const sp = splitLongParagraphs(res.content)
+          if (sp.splitParagraphs > 0) {
+            fixedContent = sp.content
+            updateChapter(nodeId, { content: fixedContent })
+            if (activeChapterId === nodeId) {
+              editingContentRef.current = fixedContent
+              setEditingContentState(fixedContent)
+            }
+          }
+        } catch {
+          // 重排失败不阻断主流程
+        }
+        // REQ-026（2026-10-17）：超长顿号清单 → 分行（纯本地、零 AI、零增字）。
+        // 为什么还要这一步：REQ-025 只能按句号拆段，而「涉及A系统、B系统、C系统…几百字」是**一句话**，
+        //   句号拆不动它（旧稿拆完仍残留 61 段）。这类句子的病灶不是"句子太长"，
+        //   而是**本该做成清单的内容被写成了散文**。
+        // 判据来自真实语料（60 份真标书 226.6 万字 vs 44.6 万字 AI 稿）：
+        //   同一判据真实标书每万字 0.049 处、AI 稿 1.232 处，25 倍差；故只在命中时动，不误伤正常长句。
+        // 只把「可切的顿号」换成换行，一个字符都不新增（输出各行用「、」拼回＝原句，有自证）。
+        // 形态按用户 2026-10-17 拍板："每项一行"；不加编号（罗列系统名不是步骤/流程）。
+        try {
+          const ls = listifyEnumeration(fixedContent)
+          if (ls.hits > 0) {
+            fixedContent = ls.converted
+            updateChapter(nodeId, { content: fixedContent })
+            if (activeChapterId === nodeId) {
+              editingContentRef.current = fixedContent
+              setEditingContentState(fixedContent)
+            }
+          }
+        } catch {
+          // 清单分行失败不阻断主流程
+        }
+        // R-301（2026-10-15）：成稿后丢字/孤字/句破碎本地检测（端到端 BUG-101）
+        // 挂在此处即覆盖全部 8 个生成/续写/重写/扩写入口（均经 applyAutoRepair）
+        // biz 商务骨架章不写正文，跳过；命中写入 chapter.sanityWarning 让 UI 弹红字徽标
+        if (!ch.part?.startsWith("biz")) {
+          try {
+            const r = detectLostChars(fixedContent)
+            if (r.hits.length > 0) {
+              // R55：同时落首条命中的 offset+excerpt，让"丢字?"徽标可点击跳到该位置
+              // （hits 已按置信度排序，hits[0] 就是 summary 里"最严重"的那条）
+              const first = r.hits[0]
+              updateChapter(nodeId, {
+                sanityWarning: r.summary,
+                sanityFirstHit: { offset: first.offset, excerpt: first.excerpt },
+              })
+            } else if (ch.sanityWarning || ch.sanityFirstHit) {
+              updateChapter(nodeId, { sanityWarning: undefined, sanityFirstHit: undefined })
+            }
+          } catch {
+            // 自检失败不阻断主流程
+          }
+          // R-302（2026-10-16）：版式与文风本地校验（端到端反馈 #5）
+          // AI 套话 / 内联指引 / 标题层级 / 关键章缺表 4 类；命中写入 proseLintWarning 让 UI 弹红字徽标 + 重写入口
+          // 同时存 proseLintFirstHit（首条命中的 offset+excerpt），让"版式?"徽标可点击跳到该位置
+          // REQ-021（2026-10-17）：新增长段落/长句 2 类；另存 proseLintSeverity 让 UI 分色——
+          //   结构性（红，会扣分：标题跳号/关键章缺表）/ 观感（琥珀，只是啰嗦：套话/内联指引/长段/长句），
+          //   避免"写啰嗦"被用户误读成"要废标"。summary 已按严重度分别计数并写明"仅列出前 N 条"。
+          try {
+            const lp = lintProse(fixedContent, ch.title)
+            if (lp.hits.length > 0) {
+              const first = lp.hits[0]
+              updateChapter(nodeId, {
+                proseLintWarning: lp.summary,
+                proseLintFirstHit: { offset: first.offset, excerpt: first.excerpt },
+                proseLintSeverity: lp.severity ?? undefined,
+              })
+            } else if (ch.proseLintWarning || ch.proseLintFirstHit || ch.proseLintSeverity) {
+              updateChapter(nodeId, {
+                proseLintWarning: undefined,
+                proseLintFirstHit: undefined,
+                proseLintSeverity: undefined,
+              })
+            }
+          } catch {
+            // lint 失败不阻断主流程
+          }
+          // REQ-046（2026-10-18）：颗粒度校验（功能条目密度 / 条目中位长度 / 标题层级）。
+          // 用户指定新金标准（池州主-1129上午修订）后实测差距是数量级的：金标准功能章 60/万字、
+          // 标题最深 7 级；工作站三明 10/万字、海沧/安庆/芜湖/福安 0/万字、标题 2-3 级。
+          // 传 ch.title 让模块按章判：密度**只对功能类章**触发。金标准按章实测——
+          // 12.9 设计方案 60/万字、12.10 历史继承 24、12.11 门诊方案 9、12.12 护士站 6，
+          // 所以拿全书均值卡每一章会把非功能章全判成不达标，反而逼出「为凑条目拆碎句子」的坏写法。
+          // 只提示不阻断（同 figureAnnotationWarning 口径）：颗粒度偏粗不是废标项，
+          // 但用户必须知道这一节"没拆细"，否则拿出去评标才发现一个功能点都没列。
+          // 纯本地零 AI，不改正文——靠正则改写散文会切出半句话（proseEnumListifier 已论证）。
+          if (!ch.part?.startsWith("biz")) {
+            try {
+              const dr = measureItemDensity(fixedContent, ch.title)
+              const summary = formatDensitySummary(dr)
+              if (dr.issues.length > 0) {
+                if (ch.itemDensityWarning !== summary) updateChapter(nodeId, { itemDensityWarning: summary })
+              } else if (ch.itemDensityWarning) {
+                updateChapter(nodeId, { itemDensityWarning: undefined })
+              }
+            } catch {
+              // 颗粒度校验失败不阻断主流程
+            }
+          }
+          // REQ-027（2026-10-17）：截图标注合规检查（F-04）。
+          // 只写提示文案，不阻断、不改正文——「缺标注」是建议项（真实标书 804 张图仅 1 张写了，
+          // 实测支撑见 figureAnnotation.ts 模块头），只有「缺图注/图注超长」才是 warn。
+          try {
+            const fa = checkFigureAnnotations(fixedContent, ch.figures ?? [])
+            if (fa.issues.length > 0) {
+              if (ch.figureAnnotationWarning !== fa.summary) {
+                updateChapter(nodeId, { figureAnnotationWarning: fa.summary })
+              }
+            } else if (ch.figureAnnotationWarning) {
+              updateChapter(nodeId, { figureAnnotationWarning: undefined })
+            }
+          } catch {
+            // 截图检查失败不阻断主流程
+          }
         }
         return res.applied.length
       } catch {
@@ -5685,7 +6182,25 @@ export function useBidWorkspace() {
     if (!cur || !nodeId) return
     const ch = cur.bid_chapters.find((c) => c.node_id === nodeId)
     if (ch && ch.content !== editingContentRef.current) {
-      updateChapter(nodeId, { content: editingContentRef.current }, { quiet: true })
+      // R55：正文一经人工改动，成稿期算出的两类本地标记（丢字 / 版式）立即作废。
+      // 为什么必须作废：它们的 offset 锚在**旧正文**上——继续显示既误报（人已修好还红着）
+      // 又会让徽标跳到错误位置（比不跳更坏）。这正是 R-301/R-302 注释里写的"人工修订后清空"
+      // 契约（此前只在重新生成时清空，人工编辑不清，属未落地）。下次生成/重写会重跑并重写标记。
+      const stale =
+        ch.sanityWarning || ch.sanityFirstHit || ch.proseLintWarning || ch.proseLintFirstHit
+      updateChapter(
+        nodeId,
+        stale
+          ? {
+              content: editingContentRef.current,
+              sanityWarning: undefined,
+              sanityFirstHit: undefined,
+              proseLintWarning: undefined,
+              proseLintFirstHit: undefined,
+            }
+          : { content: editingContentRef.current },
+        { quiet: true },
+      )
     }
   }, [activeChapterId, updateChapter])
   // 循环 6 A3：卸载 cleanup 经此 ref 冲刷正文编辑防抖（声明顺序见 cleanup 处注释）
@@ -5813,8 +6328,9 @@ export function useBidWorkspace() {
   )
 
   // ------------------------------ 第十一轮改造 6：三级目录点击定位 ------------------------------
-  /** 节/条级点击后由编制视图消费的定位指令（seq 自增保证重复点击同一标题也能再次触发） */
-  const [contentFocus, setContentFocus] = useState<{ nodeId: string; title: string; seq: number } | null>(null)
+  /** 节/条级点击后由编制视图消费的定位指令（seq 自增保证重复点击同一标题也能再次触发）
+   *  R-302 扩展：offset 可选，用于按字符偏移跳到指定位置（"版式?"徽标点击） */
+  const [contentFocus, setContentFocus] = useState<{ nodeId: string; title: string; seq: number; offset?: number } | null>(null)
   const focusSeqRef = useRef(0)
 
   const focusSectionInChapter = useCallback(
@@ -5838,6 +6354,27 @@ export function useBidWorkspace() {
       if (activeChapterId !== nodeId) selectChapter(nodeId)
       focusSeqRef.current += 1
       setContentFocus({ nodeId, title: needle, seq: focusSeqRef.current })
+    },
+    [activeChapterId, selectChapter],
+  )
+
+  // R-302（2026-10-16）：按字符偏移跳到章节正文对应位置（供"版式?"徽标点击跳转）
+  // 实现：扩展 contentFocus 携带 offset + excerpt，ComposeStep 接收后用 setSelectionRange + scrollTop 跳转 + 触发 focusFlash
+  // 注：与 focusSectionInChapter 共用 contentFocus 通道，避免引入新的 React state
+  const focusPositionInChapter = useCallback(
+    (nodeId: string, offset: number, hint: string) => {
+      const cur = activeProjectRef.current
+      if (!cur) return
+      const ch = cur.bid_chapters.find((c) => c.node_id === nodeId)
+      if (!ch || !(ch.content ?? "").trim()) {
+        toast.info("该章正文尚未生成")
+        return
+      }
+      const safeOffset = Math.max(0, Math.min(offset, ch.content.length))
+      if (activeChapterId !== nodeId) selectChapter(nodeId)
+      focusSeqRef.current += 1
+      // 复用 setContentFocus 通道；offset 字段让 ComposeStep 内的 useEffect 知道选区起点
+      setContentFocus({ nodeId, title: hint, seq: focusSeqRef.current, offset: safeOffset })
     },
     [activeChapterId, selectChapter],
   )
@@ -8618,6 +9155,14 @@ export function useBidWorkspace() {
       if (blockIfArchived()) return // 循环 6 A1：归档只读——快照恢复会大面积覆盖产物（必拦）
       const cur = activeProjectRef.current
       if (!cur) return
+      // R56（B27）：非成果行（失败诊断 / 环节事件留痕）不得进入恢复流程。
+      // 这类行没有可恢复的成果：旧实现会走到「已恢复该历史版本」（假成功，什么都没变），
+      // 而勾了「同时清空下游产物」时会把正文与各报告清空却恢复不出大纲（数据损毁级）。
+      // 真实库里 3 条 chapter 事件行（payload 为空）已属此类。
+      if (!isRestorableSnapshot(snap)) {
+        toast.error("该记录是失败诊断/环节事件留痕，不含可恢复的成果，已跳过；点「查看」可看到当时的原因")
+        return
+      }
       setSnapshotBusyId(snap.id)
       try {
         const payload = (snap.payload ?? {}) as Record<string, unknown>
@@ -9203,6 +9748,11 @@ export function useBidWorkspace() {
     catalogDiff,
     addMissingCatalogToOutline,
     generateOutline,
+    // R58（B28）：关键项缺失但已有大纲时的二次确认（默认取消）
+    outlineCriticalConfirmOpen,
+    outlineCriticalConfirmText,
+    confirmGenerateOutlineCritical,
+    cancelGenerateOutlineCritical,
     outlineLevel,
     setOutlineLevel,
     targetPages,
@@ -9357,6 +9907,8 @@ export function useBidWorkspace() {
     // 第十一轮改造 6：三级目录点击定位
     contentFocus,
     focusSectionInChapter,
+    // R-302：按偏移跳转（"版式?"徽标点击）
+    focusPositionInChapter,
     // ③ 条款覆盖（改造 3）
     outlineClauseTotal: outlineClauses.length,
     coveredClauseCount,

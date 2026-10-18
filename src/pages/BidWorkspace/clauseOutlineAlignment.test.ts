@@ -2,9 +2,7 @@
 // 覆盖核验却按大纲全深度叶子统计 —— 补入瞬间转绿、交付物里却一个字都没有（假绿）。
 // 本文件锁死三件事：①条款落点归一到「章 → 节」的节层（生成唯一可见层）；②大纲与章节清单对齐只增不删；
 // ③不存在「只写 bid_outline 不写 bid_chapters」的补入出口（源码扫描守卫）。纯 node fs，无需 jsdom/RTL。
-import { readFileSync } from "node:fs"
-import path from "node:path"
-import { fileURLToPath } from "node:url"
+import { hookSources, sourceText } from "@/testing/hookSources"
 import { describe, expect, it } from "vitest"
 import {
   alignChaptersWithOutline,
@@ -23,8 +21,9 @@ import {
 import { hasPendingSections } from "./chapterCompletion"
 import type { Chapter, OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
 
-const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
-const read = (rel: string) => readFileSync(path.join(SRC, rel), "utf-8")
+// 读取走 src/testing/hookSources 单一入口（R57 · 审计 §3.1）：
+// 路径口径（仓库相对 POSIX）、行尾归一（CRLF→LF）、读不到时的可读报错都收敛在那一处。
+const read = (rel: string) => sourceText(`src/${rel}`)
 
 // --------------------------- 落点归一：只落在生成可见的节层 ---------------------------
 
@@ -208,7 +207,7 @@ function updateProjectObjects(src: string): string[] {
 }
 
 describe("R292 接线守卫：写 bid_outline 的出口必须同时写 bid_chapters", () => {
-  const hook = read("pages/BidWorkspace/useBidWorkspace.ts")
+  const hook = hookSources()
 
   it("所有 updateProject 对象字面量：出现 bid_outline 即出现 bid_chapters", () => {
     const objs = updateProjectObjects(hook)
@@ -287,7 +286,7 @@ describe("评分项补入章节的 description 标注格式（collectResponseAnn
   })
 
   it("源码守卫：addUncoveredScoringToOutline 的 description 必须用 [响应:id] 方括号格式", () => {
-    const hook = read("pages/BidWorkspace/useBidWorkspace.ts")
+    const hook = hookSources()
     expect(hook).not.toContain("响应评分项 ${m.id}")
     expect(hook).toContain("[响应:${m.id}]")
   })
@@ -324,7 +323,7 @@ describe("R294「确认大纲」清空既有正文的二次确认", () => {
   })
 
   it("源码事实守卫：confirmOutline 仍是全量重建（本次只加确认闸，未偷改重建语义）", () => {
-    const hook = read("pages/BidWorkspace/useBidWorkspace.ts")
+    const hook = hookSources()
     // content: "" + gen_status: "pending" 的重建写法必须仍在（若被改成保留正文，本测试提醒复核口径变更）
     expect(hook).toMatch(/content: ""/)
     expect(hook).toMatch(/gen_status: "pending" as const/)
@@ -521,7 +520,7 @@ describe("R297 pickChaptersToBuild（确认大纲出口的建章前置过滤）"
 })
 
 describe("R297 confirmOutline 接线守卫（堵上确认出口的两个洞：碎片建章 + 批量生成竞态）", () => {
-  const hook = read("pages/BidWorkspace/useBidWorkspace.ts")
+  const hook = hookSources()
   const start = hook.indexOf("const confirmOutline = useCallback")
   const seg = hook.slice(start, hook.indexOf("}, [outlineDraft, updateProject, writeStageSnapshot]", start))
 
@@ -599,7 +598,7 @@ describe("R299 诊断带出 fragmentNodes（删除必须按 id，不能按标题
 })
 
 describe("R299 源码事实守卫：删除落库 + UI 逐条清理入口", () => {
-  const hook = read("pages/BidWorkspace/useBidWorkspace.ts")
+  const hook = hookSources()
   const ui = read("components/bid-workspace/OutlineCoverage.tsx")
   const compose = read("components/bid-workspace/ComposeStep.tsx")
 

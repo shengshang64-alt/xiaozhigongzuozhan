@@ -1,5 +1,16 @@
 // ---------------------------------------------------------------------------
 // R69 提示词搬迁第五批，自 bidTypes.ts 原样搬迁：只搬不改字（快照锁字见 promptsSnapshot.test.ts）
+//
+// ⚠️ 无生产调用者（R54 2026-10-16 全仓核验，务必先读再动）：
+//   本函数 `buildTenderParseMessages` 的全仓引用只有 —— 它自己、`bidTypes.ts:7092` 的 barrel 再导出、
+//   2 个测试（promptsSnapshot / bidPromptBase）、以及 2 个工具脚本（split-prompts.mjs / r50_bidtypes.mjs）。
+//   **前端运行时没有任何地方调用它。** 真正的整文解析走 `wholeParse.ts` 的 `buildWholeParseMessages`
+//   （阈值 WHOLE_FILE_LIMIT=60000 / PARSE_SEGMENT_CHARS=45000×最多 20~24 段），检索兜底走
+//   `sectionParse.ts` 的 `buildSectionParseMessages`（预算 RETRIEVAL_BUDGET_CHARS=20000）。
+//
+//   保留在此的 `clipText(tenderText, MAX_TENDER_CHARS=14000)` 因此**不是**线上链路的上限，
+//   却极易被误读成「解析只看 1.4 万字」的根因 —— R54 审计时就曾据此得出错误结论，
+//   最后靠「谁真的调用它」才纠正。若将来要复活本通道，请先确认它相对 wholeParse 的取舍理由。
 // ---------------------------------------------------------------------------
 
 import { MAX_TENDER_CHARS, clipText, parseSectionDef, requestedKeys, truthPreamble } from "../bidTypes"

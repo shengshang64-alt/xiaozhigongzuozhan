@@ -1,6 +1,6 @@
 import { Check } from "lucide-react"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
-import { PIPELINE_STEPS, stepEntryMissing, stepGateConfirmed, type BidProjectRecord } from "@/pages/BidWorkspace/bidTypes"
+import { PIPELINE_STEPS, daysUntil, stepEntryMissing, stepGateConfirmed, type BidProjectRecord } from "@/pages/BidWorkspace/bidTypes"
 
 type PipelineStepperProps = Pick<UseBidWorkspace, "activeStep" | "requestStep" | "activeProject"> & {
   /** 重构轮：未响应条款数（第③步橙色角标，缺失橙） */
@@ -22,16 +22,12 @@ function stepDone(step: number, proj: BidProjectRecord | null): boolean {
 }
 
 /** 重构轮：开标倒计时（天）；无日期/非法日期返回 null */
-function daysUntilOpen(iso: string | null | undefined): number | null {
-  if (!iso) return null
-  const t = Date.parse(iso)
-  if (!Number.isFinite(t)) return null
-  return Math.ceil((t - Date.now()) / 86400_000)
-}
-
 export function PipelineStepper({ activeStep, requestStep, activeProject, missCount = 0, riskCount = 0 }: PipelineStepperProps) {
   // 重构轮：开标前倒计时徽标（≤7 天红，其余中性；无日期不显）
-  const daysLeft = daysUntilOpen(activeProject?.bid_open_date)
+  // R52（2026-10-16）：原先此处有一份与 bidTypes.daysUntil 重名的私有副本 daysUntilOpen，
+  // 而本文件本来就在从 bidTypes 取其它符号——两个实现两个活跃消费者（BidProjectList 用的是 bidTypes 版），
+  // 口径分叉风险大于收益，已收敛回单一真源。
+  const daysLeft = daysUntil(activeProject?.bid_open_date)
   return (
     <nav aria-label="投标流程步骤" className="mx-auto max-w-7xl px-4 pt-5">
       <ol className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-border bg-card p-2 shadow-md">

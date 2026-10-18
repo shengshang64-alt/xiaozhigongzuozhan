@@ -17,9 +17,11 @@ import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import {
   SNAPSHOT_STAGE_BADGE,
   SNAPSHOT_STAGE_LABEL,
+  isRestorableSnapshot,
   type SnapshotStage,
   type StageSnapshotRow,
 } from "@/pages/BidWorkspace/bidTypes"
+import { describeOutlineDiag, parseOutlineDiag } from "@/pages/BidWorkspace/outlineDiagnostics"
 
 type StageHistoryPanelProps = Pick<
   UseBidWorkspace,
@@ -69,6 +71,8 @@ export function StageHistoryPanel(p: StageHistoryPanelProps) {
   const [clearDownstream, setClearDownstream] = useState(true)
   // chapter/check/eval 恢复的二次确认
   const [restoreConfirm, setRestoreConfirm] = useState<StageSnapshotRow | null>(null)
+  // R56（B27）：诊断行的「查看」要显示当时的原因与规模，而不是「环节产物快照」
+  const previewDiag = preview ? parseOutlineDiag(preview.payload ?? null) : null
 
   const askDownstream = (snap: StageSnapshotRow) => snap.stage === "parse" || snap.stage === "outline" || snap.stage === "reset"
 
@@ -114,13 +118,20 @@ export function StageHistoryPanel(p: StageHistoryPanelProps) {
         <ul className="mt-3 space-y-1.5">
           {p.stageHistory.map((snap) => {
             const busy = p.snapshotBusyId === snap.id
+            // R56（B27）：诊断行（大纲失败/被拦）改用 warning 徽标并撤掉「恢复此版本」——
+            // 它没有可恢复的成果，此前点下去会假报「已恢复该历史版本」（勾清空下游时还会清正文）。
+            const diag = parseOutlineDiag(snap.payload ?? null)
+            const restorable = isRestorableSnapshot(snap)
             return (
               <li
                 key={snap.id}
                 className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-background px-3 py-2"
               >
-                <Badge variant={SNAPSHOT_STAGE_BADGE[snap.stage as SnapshotStage] ?? "neutral"} className="shrink-0">
-                  {SNAPSHOT_STAGE_LABEL[snap.stage as SnapshotStage] ?? snap.stage}
+                <Badge
+                  variant={diag ? "warning" : (SNAPSHOT_STAGE_BADGE[snap.stage as SnapshotStage] ?? "neutral")}
+                  className="shrink-0"
+                >
+                  {diag ? "大纲诊断" : (SNAPSHOT_STAGE_LABEL[snap.stage as SnapshotStage] ?? snap.stage)}
                 </Badge>
                 <span className="min-w-0 flex-1 truncate text-xs text-foreground" title={snap.label}>
                   {snap.label}
@@ -135,15 +146,19 @@ export function StageHistoryPanel(p: StageHistoryPanelProps) {
                     <Eye className="h-3.5 w-3.5" />
                     查看
                   </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => requestRestore(snap)}
-                    className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
-                  >
-                    {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-                    恢复此版本
-                  </button>
+                  {restorable ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => requestRestore(snap)}
+                      className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
+                    >
+                      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                      恢复此版本
+                    </button>
+                  ) : (
+                    <span className="px-2 py-1 text-xs text-muted-foreground">留痕·不可恢复</span>
+                  )}
                 </span>
               </li>
             )
@@ -160,8 +175,12 @@ export function StageHistoryPanel(p: StageHistoryPanelProps) {
             </DialogTitle>
             <DialogDescription>{preview?.label ?? ""}</DialogDescription>
           </DialogHeader>
-          <div className="rounded-md border border-border bg-background p-3 text-xs leading-relaxed text-muted-foreground">
-            {preview ? payloadSummary(preview.stage as SnapshotStage, preview.payload ?? null) : ""}
+          <div className="whitespace-pre-line rounded-md border border-border bg-background p-3 text-xs leading-relaxed text-muted-foreground">
+            {preview
+              ? previewDiag
+                ? describeOutlineDiag(previewDiag)
+                : payloadSummary(preview.stage as SnapshotStage, preview.payload ?? null)
+              : ""}
           </div>
           <p className="text-xs text-muted-foreground">
             {preview ? `留档于 ${preview.created ? formatDateTimeDisplay(preview.created) : "—"}` : ""}
@@ -170,18 +189,20 @@ export function StageHistoryPanel(p: StageHistoryPanelProps) {
             <Button variant="outline" onClick={() => setPreview(null)} className="border-border text-muted-foreground hover:text-foreground">
               关闭
             </Button>
-            <Button
-              variant="outline"
-              className="border-primary/40 text-primary hover:bg-primary/10"
-              onClick={() => {
-                const snap = preview
-                setPreview(null)
-                if (snap) requestRestore(snap)
-              }}
-            >
-              <RotateCcw className="mr-1.5 h-4 w-4" />
-              恢复此版本
-            </Button>
+            {preview && isRestorableSnapshot(preview) ? (
+              <Button
+                variant="outline"
+                className="border-primary/40 text-primary hover:bg-primary/10"
+                onClick={() => {
+                  const snap = preview
+                  setPreview(null)
+                  if (snap) requestRestore(snap)
+                }}
+              >
+                <RotateCcw className="mr-1.5 h-4 w-4" />
+                恢复此版本
+              </Button>
+            ) : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>

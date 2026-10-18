@@ -2,7 +2,7 @@
 // R70 提示词搬迁第六批，自 bidTypes.ts 原样搬迁：只搬不改字（快照锁字见 promptsSnapshot.test.ts）
 // ---------------------------------------------------------------------------
 
-import { buildLotsScopeHint, BID_STYLE_RULES, FULLTEXT_GUARD_RULES, ORCHESTRATION_FIGURE_TYPE_LABEL, PARAM_RESPONSE_BOUNDARY_RULES, PRE_OUTPUT_SELFCHECK_RULES, basisStyleRule, complianceModeRule, scoringDetailLines, sectionText, truthPreamble } from "../bidTypes"
+import { buildLotsScopeHint, BID_STYLE_RULES, FULLTEXT_GUARD_RULES, ORCHESTRATION_FIGURE_TYPE_LABEL, PARA_SHAPE_RULE, PARAM_RESPONSE_BOUNDARY_RULES, PRE_OUTPUT_SELFCHECK_RULES, PROSE_LINT_RULES, basisStyleRule, complianceModeRule, scoringDetailLines, sectionText, truthPreamble } from "../bidTypes"
 import type { ParseReport, BidSectionPromptOpts } from "../bidTypes"
 import type { Chapter, OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
 import type { LlmMessage } from "@/lib/llm"
@@ -14,7 +14,8 @@ import { baselineLabelFromText, extractBaselineSegment, extractFragmentSegment }
 // r287 v6（bid-l2-verbatim-compare 切片2·预防）：新增引号照录纪律规则条（第 6 条，其后规则序号顺移），
 // 源头抑制「照抄途中改写」——L2 摸底引文级改写 34 处均产自生成环节；对比报告 .loop/reports/2026-10-13-r287-*.md
 // R47（B20）v6→v7：新增「商务模板要求」注入槽与规则条（templateRequirements 空数组时输出与 v6 逐字一致）
-export const PROMPT_VERSION = 7
+// REQ-052 v7→v8：BID_STYLE_RULES 新增「正文编号层次」条（（一）分组 /（1）条目 /① 细则）
+export const PROMPT_VERSION = 8
 
 export function buildBidSectionMessages(
   projectName: string,
@@ -61,7 +62,7 @@ export function buildBidSectionMessages(
     `你是一位深耕医疗信息化行业十余年的资深投标顾问，正在编写投标项目「${projectName}」（采购人：${hospital || "未填写"}）技术标第${chapterNo}章「${ch.title}」的第 ${opts.sectionIndex + 1} 个小节「${opts.sectionNo} ${opts.sectionName}」（本章共 ${opts.sectionCount} 个小节，本次只写这一个小节）。`,
     truthPreamble(),
     "写作铁律：",
-    `1. 只写本小节内容：输出第一行必须是小节标题行「${opts.sectionNo} ${opts.sectionName}」（纯文本行，不带任何编号外的符号），随后直接写正文段落（3-8 段、每段 3-6 句）；不要写本章其他小节、不要输出章标题、不要开场白与收尾总结；`,
+    `1. 只写本小节内容：输出第一行必须是小节标题行「${opts.sectionNo} ${opts.sectionName}」（纯文本行，不带任何编号外的符号），随后直接写正文段落（${PARA_SHAPE_RULE}；小节内容分 3 组以上时，按「正文编号层次」条用（一）/（1）/① 归组，不再写成一整段散文）；不要写本章其他小节、不要输出章标题、不要开场白与收尾总结；`,
     "2. 内容必须真实可落地、可直接用于正式投标文件：使用行业规范术语（HIS、EMR、LIS、PACS、集成平台、电子病历分级评价、互联互通测评、等级保护 2.0、商用密码应用等），杜绝空话套话；",
     "3. 紧扣招标文件的评分办法与技术需求做实质性响应，涉及指标处给出量化承诺（并发用户数、响应时间、驻场人数、到场时限等），取值以招标原文与全局事实为准并遵守最小值响应：满足招标要求档位即可，禁止自行加码承诺；",
     scoringDetail
@@ -218,6 +219,13 @@ export function buildBidSectionMessages(
     rules.push(`${ruleNo}. ${t}`)
   }
   ruleNo += 1
+  // R-302（2026-10-16 售前/演示反馈）：版式硬条款（AI 套话黑名单 / 禁内联指引 / 标题层级 / 关键章必出表 / 必出甘特图）
+  rules.push(`${ruleNo}. 版式与文风硬条款（每条必须遵守，违反即重写）：`)
+  for (const t of PROSE_LINT_RULES) {
+    ruleNo += 1
+    rules.push(`${ruleNo}. ${t}`)
+  }
+  ruleNo += 1
   // 第十六轮 B2 改造 2.2：预编排注入——本小节被选中配图时输出契约改为 JSON（content+figures），否则维持纯文本
   // 循环 2 批 2-1：写作焦点进规则句；编排图带图注时要求图元素支撑图注
   if (opts.orchestration?.writing_focus) {
@@ -307,10 +315,14 @@ export function buildBidSectionMessages(
     writtenTitles.length ? `【已写小节标题清单（不得重复其主题）】\n${writtenTitles.join("\n")}` : "",
     opts.writtenTail ? `【已写小节内容结尾（仅供衔接，禁止重复或照抄）】\n${opts.writtenTail}` : "",
     sectionClauses.length
-      ? `【本小节须响应的招标要求条款（逐条成段响应）】\n${sectionClauses.map((c) => `${c.id}. ${c.text}`).join("\n")}`
+      ? `【本小节须响应的招标要求条款（逐条成段响应）】\n${sectionClauses
+          .map((c, i) => `${i + 1}. ${c.text}`)
+          .join("\n")}`
       : "",
     clauseList.length && !sectionClauses.length
-      ? `【本章须响应的招标要求条款清单（与本小节相关的在本小节落实）】\n${clauseList.map((c) => `${c.id}. ${c.text}`).join("\n")}`
+      ? `【本章须响应的招标要求条款清单（与本小节相关的在本小节落实）】\n${clauseList
+          .map((c, i) => `${i + 1}. ${c.text}`)
+          .join("\n")}`
       : "",
     `请编写本小节完整正文，第一行为「${opts.sectionNo} ${opts.sectionName}」标题行。`,
   ]

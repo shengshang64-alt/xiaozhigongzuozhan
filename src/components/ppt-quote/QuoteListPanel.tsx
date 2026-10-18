@@ -106,7 +106,9 @@ export function QuoteListPanel({
           <ReceiptText className="h-8 w-8 text-muted-foreground" />
           <p className="text-sm font-medium text-foreground">还没有报价方案</p>
           <p className="max-w-sm text-xs text-muted-foreground">
-            点击「新建报价」手动录入行项，或关联方案 / 标书项目让 AI 按建设内容推荐报价初稿
+            点击「新建报价」手动录入行项，或关联方案 / 标书项目让 AI 按建设内容推荐报价初稿。
+            <br />
+            报价清单支持多版本谈判（初稿 / 复核 / 终稿），可一键导出 Excel 谈判表与 Word 报价书。
           </p>
         </div>
       ) : (

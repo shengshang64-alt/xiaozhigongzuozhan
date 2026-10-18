@@ -2,7 +2,7 @@
 // R69 提示词搬迁第五批，自 bidTypes.ts 原样搬迁：只搬不改字（快照锁字见 promptsSnapshot.test.ts）
 // ---------------------------------------------------------------------------
 
-import { buildLotsScopeHint, BID_STYLE_RULES, FULLTEXT_GUARD_RULES, ORCHESTRATION_FIGURE_TYPE_LABEL, PARAM_RESPONSE_BOUNDARY_RULES, PRE_OUTPUT_SELFCHECK_RULES, basisStyleRule, complianceModeRule, scoringDetailLines, sectionText, truthPreamble } from "../bidTypes"
+import { buildLotsScopeHint, BID_STYLE_RULES, FULLTEXT_GUARD_RULES, ORCHESTRATION_FIGURE_TYPE_LABEL, PARA_SHAPE_RULE, PARAM_RESPONSE_BOUNDARY_RULES, PRE_OUTPUT_SELFCHECK_RULES, PROSE_LINT_RULES, basisStyleRule, complianceModeRule, scoringDetailLines, sectionText, truthPreamble } from "../bidTypes"
 import type { CompilationBasisPrompt, ComplianceMode, MergedOrchestration, ParseReport, RequirementClause, ScoringItem } from "../bidTypes"
 import type { Chapter, OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
 import type { LlmMessage } from "@/lib/llm"
@@ -12,7 +12,8 @@ import { baselineLabelFromText, extractBaselineSegment, extractFragmentSegment }
 // R167 v4：2026-10 易标对齐轮——素材融入不提及来源（kbMaterial/directedKnowledge/refMaterials 规则句与注入段头同步改写），PROMPT_VERSION 3→4
 // r287 v5（bid-l2-verbatim-compare 切片2·预防）：新增引号照录纪律规则条（第 6 条，其后规则序号顺移），与 bidSection v6 同口径
 // R47（B20）v5→v6：新增「商务模板要求」注入槽与规则条（templateRequirements 空数组时输出与 v5 逐字一致）
-export const PROMPT_VERSION = 6
+// REQ-052 v6→v7：BID_STYLE_RULES 新增「正文编号层次」条（（一）分组 /（1）条目 /① 细则），章级同步生效
+export const PROMPT_VERSION = 7
 
 export type BidChapterPromptOpts = {
   wordBudget: number
@@ -117,7 +118,7 @@ export function buildBidChapterMessages(
     scoringDetail
       ? `3. 本章已映射到以下评分点（评标专家将逐条核对响应情况），正文必须对每个评分点给出明确的实质性响应段落（响应措施、量化承诺或证明材料，并标明对应评分项名），禁止只罗列功能清单而不响应评分要求。评分细则（项名 + 分值 + 评审标准原文）如下，对齐评审标准中的给分档位：\n${scoringDetail}`
       : "3. 本章未分配到具体评分细则，请结合项目背景与本章定位写出实质性响应内容；",
-    `4. 严格按给定小节组织正文：每个小节标题单独一行，格式「${chapterNo}.1 小节名」，小节下写 2-5 段、每段 3-6 句；`,
+    `4. 严格按给定小节组织正文：每个小节标题单独一行，格式「${chapterNo}.1 小节名」，小节下正文段落${PARA_SHAPE_RULE}；`,
     `5. 本章字数预算约 ${opts.wordBudget} 字（整份目标页数按章节权重折算），在该篇幅内围绕招标参数与评分办法扩展；禁止自造招标未给的具体参数数字，拿不准的用「按招标文件要求响应」等规范表述；`,
   ]
   const clauseList = opts.clauses ?? []
@@ -260,6 +261,13 @@ export function buildBidChapterMessages(
     rules.push(`${ruleNo}. ${t}`)
   }
   ruleNo += 1
+  // R-302（2026-10-16 售前/演示反馈）：版式硬条款（AI 套话黑名单 / 禁内联指引 / 标题层级 / 关键章必出表 / 必出甘特图）
+  rules.push(`${ruleNo}. 版式与文风硬条款（每条必须遵守，违反即重写）：`)
+  for (const t of PROSE_LINT_RULES) {
+    ruleNo += 1
+    rules.push(`${ruleNo}. ${t}`)
+  }
+  ruleNo += 1
   // 第十六轮 B2 改造 2.2：预编排结果注入写作规则（figure 选中时调用方已把 figures 开关强制打开，这里只注入内容约束）
   // 循环 2 批 2-1：写作焦点进规则句；编排图带图注时要求图元素支撑图注
   if (opts.orchestration?.writing_focus) {
@@ -358,7 +366,9 @@ export function buildBidChapterMessages(
     `【当前要编写的章节】第${chapterNo}章 ${ch.title}`,
     sectionLines ? `本章小节：\n${sectionLines}` : "本章无预设小节，请按内容逻辑自行组织 2-4 个小节。",
     clauseList.length
-      ? `【本章须响应的招标要求条款清单（逐条成段响应）】\n${clauseList.map((c) => `${c.id}. ${c.text}`).join("\n")}`
+      ? `【本章须响应的招标要求条款清单（逐条成段响应）】\n${clauseList
+          .map((c, i) => `${i + 1}. ${c.text}`)
+          .join("\n")}`
       : "",
     opts.figures ? "请编写本章完整正文并按约定格式输出 JSON（content 正文 + 可选 figures）。" : "请编写本章完整正文。",
   ]

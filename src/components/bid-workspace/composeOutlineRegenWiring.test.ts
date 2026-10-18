@@ -4,13 +4,11 @@
 // 整个大纲区连同重生成入口一起消失，用户只能退回解析环节才能重跑大纲。
 // 现在：编制阶段也能打开大纲视图（`!hasChapters || outlineViewOpen`），且大纲目录面板头带重生成入口。
 // 缺任一环该功能就"看不见"，所以断在源码上（与 proseFallbackWiring 同类接线守卫）。
-import { readFileSync } from "node:fs"
-import path from "node:path"
-import { fileURLToPath } from "node:url"
+import { sourceText } from "@/testing/hookSources"
 import { describe, expect, it } from "vitest"
 
-const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
-const COMPOSE = readFileSync(path.join(SRC, "components/bid-workspace/ComposeStep.tsx"), "utf-8")
+// 读取走 src/testing/hookSources 单一入口（R57 · 审计 §3.1）。
+const COMPOSE = sourceText("src/components/bid-workspace/ComposeStep.tsx")
 
 describe("编制阶段重新生成大纲接线守卫", () => {
   it("分支条件允许编制阶段打开大纲视图", () => {
