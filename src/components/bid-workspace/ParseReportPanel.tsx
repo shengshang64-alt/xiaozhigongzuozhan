@@ -240,6 +240,19 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
         </p>
       </div>
     ) : null
+  // REQ-020：评分章截断提示横幅 —— 独立于 warningSummary，仅当 scoringTruncation 存在时显示
+  // 这样「只有截断、没有其他警告」的情况也能看见
+  const truncationBanner =
+    report?.scoringTruncation ? (
+      <div className="mb-3 rounded-md border border-amber-300/60 bg-amber-50 px-4 py-3 shadow-sm text-amber-800">
+        <p className="text-xs font-semibold leading-relaxed">
+          评分章素材已按整行截断：已收录 {report.scoringTruncation.keptChars.toLocaleString()} 字，另有 {report.scoringTruncation.droppedChars.toLocaleString()} 字未纳入
+        </p>
+        <p className="mt-1 text-xs leading-relaxed text-amber-700">
+          截断从第 {report.scoringTruncation.fromLine.toLocaleString()} 行起，尾部评分项可能缺失，建议人工核对或分段上传完整招标文件
+        </p>
+      </div>
+    ) : null
   // R-029（R255）：招标文件解析质量横幅——suspect_scanned 红、low 琥珀；ok/无字段不显示
   const qualityBanner =
     report?.parse_quality && report.parse_quality !== "ok" ? (
@@ -435,6 +448,7 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
     {/* R58：门禁红字为主、琥珀告警为补充说明——两者同时出现时红幅在前 */}
     {requiredFailuresBanner}
     {warningBanner}
+    {truncationBanner}
     {qualityBanner}
     {coverageBanner}
     {lotsChips && (
