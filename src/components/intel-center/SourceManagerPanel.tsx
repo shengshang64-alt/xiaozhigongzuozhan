@@ -77,7 +77,16 @@ type SourceRowProps = {
   onFetchNow: (source: IntelSourceRow) => void
 }
 
-function SourceRow({ source, fetchingSourceId, onToggle, onRequestDelete, onFetchNow, weekAdded }: SourceRowProps & { weekAdded?: number }) {
+function SourceRow({
+  source,
+  fetchingSourceId,
+  onToggle,
+  onRequestDelete,
+  onFetchNow,
+  weekAdded,
+  weekStatsState,
+  onRetryWeekStats,
+}: SourceRowProps & { weekAdded?: number; weekStatsState?: "idle" | "loading" | "done" | "error"; onRetryWeekStats?: () => void }) {
   const hint = statusHint(source)
   return (
     <li className="rounded-lg border border-border bg-background p-3.5 shadow-sm transition-shadow hover:shadow-md">
@@ -140,9 +149,26 @@ function SourceRow({ source, fetchingSourceId, onToggle, onRequestDelete, onFetc
       </div>
       <p className={`mt-1 truncate text-xs ${hint.className}`} title={hint.detail || undefined}>
         {hint.text}
-        {typeof weekAdded === "number" && weekAdded >= 0 ? (
+        {weekStatsState === "loading" && (
+          <span className="ml-1.5 font-normal text-muted-foreground flex items-center gap-1">
+            <Loader2 className="h-3 w-3 animate-spin text-primary" />
+            加载中…
+          </span>
+        )}
+        {weekStatsState === "error" && (
+          <button
+            type="button"
+            onClick={onRetryWeekStats}
+            className="ml-1.5 flex items-center gap-1 text-xs text-warning hover:underline"
+            title="重新获取本周新增统计"
+          >
+            <RefreshCw className="h-3 w-3" />
+            读取失败，点击重试
+          </button>
+        )}
+        {weekStatsState === "done" && typeof weekAdded === "number" && weekAdded >= 0 && (
           <span className="ml-1.5 font-normal text-muted-foreground">· 近 7 天新增 {weekAdded} 条</span>
-        ) : null}
+        )}
       </p>
     </li>
   )
@@ -300,6 +326,8 @@ export function SourceManagerPanel({
                         onRequestDelete={setPendingDelete}
                         onFetchNow={onFetchNow}
                       weekAdded={weekStats?.[source.id]}
+                      weekStatsState={weekStatsState}
+                      onRetryWeekStats={() => setWeekStatsState("idle")}
                       />
                     ))}
                   </ul>
@@ -365,6 +393,8 @@ export function SourceManagerPanel({
                         onRequestDelete={setPendingDelete}
                         onFetchNow={onFetchNow}
                       weekAdded={weekStats?.[source.id]}
+                      weekStatsState={weekStatsState}
+                      onRetryWeekStats={() => setWeekStatsState("idle")}
                       />
                     ))}
                   </ul>
