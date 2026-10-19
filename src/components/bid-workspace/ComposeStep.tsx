@@ -1176,6 +1176,20 @@ export function ComposeStep(p: ComposeStepProps) {
                                 截图?
                               </button>
                             )}
+                            {ch.itemDensityWarning && (
+                              // REQ-048：功能章条目密度检查 —— 功能章 0 条条目为真缺陷，红色
+                              <button
+                                type="button"
+                                className="ml-1 cursor-pointer text-destructive underline-offset-2 hover:underline"
+                                title={`${ch.itemDensityWarning} — 点击切到该章编辑态`}
+                                onClick={() => {
+                                  setViewMode("edit")
+                                  p.selectChapter(ch.node_id)
+                                }}
+                              >
+                                条目?
+                              </button>
+                            )}
                           </span>
                           {ch.gen_status === "failed" && !locked && !p.bulkGenerating && (
                             <Button
