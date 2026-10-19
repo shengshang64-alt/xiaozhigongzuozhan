@@ -27,7 +27,13 @@ rem NOTE: --dir/--hooksDir/--migrationsDir are resolved relative to the
 rem pocketbase.exe location, NOT the current directory. Absolute paths are
 rem required, otherwise pb_hooks are silently skipped and every custom API
 rem route returns 404.
-start "PocketBase" /min "%ROOT%\vibex-local\bin\windows\pocketbase.exe" serve --http=127.0.0.1:7000 --dir="%ROOT%\pocketbase\pb_data" --hooksDir="%ROOT%\pocketbase\pb_hooks" --migrationsDir="%ROOT%\pocketbase\pb_migrations"
+rem /b, NOT /min. Measured 2026-10-19: when this script runs under the SYSTEM
+rem supervisor (session 0, no interactive desktop), "start /min" needs a new
+rem console window and silently fails -- PocketBase was never launched in 28
+rem consecutive attempts over 29 minutes. "start /b" shares this console, needs
+rem no window, and the child survives this cmd exiting. Output goes to a log so
+rem the next failure is diagnosable instead of invisible.
+start "PocketBase" /b "%ROOT%\vibex-local\bin\windows\pocketbase.exe" serve --http=127.0.0.1:7000 --dir="%ROOT%\pocketbase\pb_data" --hooksDir="%ROOT%\pocketbase\pb_hooks" --migrationsDir="%ROOT%\pocketbase\pb_migrations" >> "%ROOT%\pocketbase\pb_run.log" 2>&1
 
 set /a PB_WAIT=0
 :pb_poll
@@ -40,7 +46,10 @@ set /a PB_WAIT+=1
 if !PB_WAIT! GEQ 30 (
   echo       ERROR: PocketBase did not become ready.
   echo       Check: port 7000 free? exe present in vibex-local\bin\windows ?
-  pause
+  rem Only pause when a human launched this (double-click). The supervisor runs
+  rem with --no-browser in a HIDDEN window: a bare "pause" blocks there forever,
+  rem which is how 28 stuck cmd.exe processes accumulated on 2026-10-19.
+  if "%OPENBROWSER%"=="1" pause
   exit /b 1
 )
 ping -n 2 127.0.0.1 >NUL
@@ -76,7 +85,8 @@ set /a VITE_WAIT+=1
 if !VITE_WAIT! GEQ 40 (
   echo       ERROR: Vite did not become ready.
   echo       Check the Vite window for the real error message.
-  pause
+  rem Same reason as the PocketBase branch above: never block a hidden run.
+  if "%OPENBROWSER%"=="1" pause
   exit /b 1
 )
 ping -n 2 127.0.0.1 >NUL

@@ -3800,6 +3800,8 @@ export function useBidWorkspace() {
       const startProjectId = activeProjectRef.current?.id ?? null
       if (source === "project") setParseChunkWarnings([])
       else setToolParseWarnings([])
+      // REQ-020：解析开始前清空评分章截断收集器
+      resetScoringTruncationSink()
       // 第十二轮改造 2：★/▲ 重点条款本地扫描（零 AI 费用）；未勾选则不扫描、保留旧节不动
       const starOn = starClausesEnabled(cfg)
       // Q27/切片B：文本签名（长度+首中尾采样）——重解析判断包结构是否可能已变，决定 lots_scope 去留
@@ -4021,6 +4023,9 @@ export function useBidWorkspace() {
           const finalReport: ParseReport = {
             ...mergedReport,
             ...(warnings.length ? { warnings: warnings.map((w) => w.slice(0, 100)).slice(0, 20) } : {}),
+            ...(summarizeScoringTruncation()
+              ? { scoringTruncation: summarizeScoringTruncation() }
+              : {}),
             tender_text_sig: tenderTextSig,
             ...(reportNeedsReparse(mergedReport.sections) ? { needs_reparse: true } : {}),
             ...(pq !== "ok" ? { parse_quality: pq } : {}),
