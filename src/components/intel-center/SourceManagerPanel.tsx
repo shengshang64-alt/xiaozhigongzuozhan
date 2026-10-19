@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { Loader2, MessageCircle, Plus, RefreshCw, Trash2, Wrench, X } from "lucide-react"
 import { vibexAuthHeaders } from "@/lib/rhLogin"
+import { getPocketBaseUrl } from "@/lib/pb"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import {
   fmtIntelTime,
@@ -185,18 +186,35 @@ export function SourceManagerPanel({
   //   面板关闭时 React 少注册一个 Hook，再次打开时 Hook 顺序变化，会抛
   //   "Rendered fewer hooks than expected" 并导致整页白屏（情报源管理是最高频入口）。
   //   修法：所有 Hook 一律提到 early-return 之前，用 open 作为 effect 内部守卫而非跳过调用。
+  // REQ-009：改为三态加载，失败不伪装成空
   const [weekStats, setWeekStats] = useState<Record<string, number> | null>(null)
+  const [weekStatsState, setWeekStatsState] = useState<"idle" | "loading" | "done" | "error">("idle")
   useEffect(() => {
-    if (!open || weekStats) return
-    fetch("/api/intel/source-stats", { headers: { "Content-Type": "application/json", ...vibexAuthHeaders() } })
+    if (!open) return
+    // 只要是 idle/error 才发起请求；done 时不重复拉取
+    if (weekStatsState === "done") return
+    const controller = new AbortController()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setWeekStatsState("loading")
+    setWeekStats(null)
+    fetch(`${getPocketBaseUrl()}/api/intel/source-stats`, {
+      signal: controller.signal,
+      headers: { "Content-Type": "application/json", ...vibexAuthHeaders() },
+    })
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error("HTTP " + res.status))))
       .then((data: { stats?: Array<{ source_id: string; week_added: number }> }) => {
         const map: Record<string, number> = {}
         for (const st of data.stats ?? []) map[st.source_id] = st.week_added
         setWeekStats(map)
+        setWeekStatsState("done")
       })
-      .catch(() => setWeekStats({}))
-  }, [open, weekStats])
+      .catch((e) => {
+        if (e.name === "AbortError") return
+        setWeekStats(null)
+        setWeekStatsState("error")
+      })
+    return () => controller.abort()
+  }, [open, weekStatsState])
   // Hook 全部调用完毕后才允许 early-return（React Hooks 规则：Hook 不得出现在条件分支中）
   if (!open) return null
   // T3 健康概览：失败源置顶展示，问题源不用在 40 行里逐条找
