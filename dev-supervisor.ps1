@@ -7,7 +7,8 @@ param(
   [switch]$Once,
   [int]$Port = 8000,
   [int]$PbPort = 7000,
-  [int]$IntervalSec = 15
+  [int]$IntervalSec = 15,
+  [int]$DiskWarnGb = 8
 )
 $ErrorActionPreference = "SilentlyContinue"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -86,7 +87,30 @@ function Stop-Pid([int]$procId) {
 Log "supervisor start (port $Port, pb $PbPort, interval ${IntervalSec}s)"
 $failStreak = 0
 $pbFailStreak = 0
+# Disk headroom guard (added 2026-10-19).
+# A full C: broke this app in a way that looked like a code bug: a half-finished
+# dependency install left node_modules without its top-level links, Vite could
+# not resolve the pdfjs worker, and the bid workspace would not open for hours.
+# Nothing in this loop watched free space, so the real cause stayed invisible.
+# The marker lives outside the repo on purpose: the repo must only ever contain
+# product code changes.
+$diskAlertFile = "C:\Users\Administrator\.dsh\bot\workspace\disk-alert.txt"
+$diskWarned = $false
 while ($true) {
+  try {
+    $freeGb = [math]::Round((Get-PSDrive C).Free / 1GB, 2)
+    if ($freeGb -lt $DiskWarnGb) {
+      if (-not $diskWarned) {
+        $diskWarned = $true
+        Log ("DISK LOW: C: only {0} GB free (threshold {1} GB) - this WILL break installs" -f $freeGb, $DiskWarnGb)
+        Set-Content -Path $diskAlertFile -Value ("C: free {0} GB at {1}" -f $freeGb, (Get-Date -Format "yyyy-MM-dd HH:mm:ss")) -Encoding ASCII
+      }
+    } elseif ($diskWarned) {
+      $diskWarned = $false
+      Log ("DISK OK: C: back to {0} GB free" -f $freeGb)
+      Remove-Item -Path $diskAlertFile -Force -ErrorAction SilentlyContinue
+    }
+  } catch {}
   $viteOk = Test-Http "http://127.0.0.1:$Port/"
   $pbOk = Test-Http "http://127.0.0.1:$PbPort/api/health"
   if (-not $viteOk) {
