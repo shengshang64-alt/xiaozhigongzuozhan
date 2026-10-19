@@ -167,7 +167,7 @@ export function BidWarRoom({ activeProject, missCount = 0, riskCount = 0 }: { ac
   const fmtWarn = fmt ? fmt.hits.filter((h) => h.level === "warn").length : 0
   const fmtInfo = fmt ? fmt.hits.filter((h) => h.level === "info").length : 0
 
-  const signals: { level: SignalLevel; label: string; value: string; icon: ReactNode; to?: string }[] = [
+  const signals: { level: SignalLevel; label: string; value: string; icon: ReactNode; to?: string; onClick?: () => void }[] = [
     {
       // Q20 配套：资质有效期核验置顶——过期证书写进标书即废标风险
       level: (() => {
@@ -179,7 +179,9 @@ export function BidWarRoom({ activeProject, missCount = 0, riskCount = 0 }: { ac
         return qual.total > 0 ? "ok" : "info"
       })(),
       label: "资质有效期核验",
-      to: "/qual-certs",
+      // 只有非 error 态才跳转；error 态时渲染按钮，点击触发重试
+      to: qualState === "error" ? undefined : "/qual-certs",
+      onClick: qualState === "error" ? () => setQualState("idle") : undefined,
       value: (() => {
         if (qualState === "loading") return "核验中…"
         if (qualState === "error") return "读取失败，点击重试"
@@ -325,6 +327,16 @@ export function BidWarRoom({ activeProject, missCount = 0, riskCount = 0 }: { ac
                       >
                         {inner}
                       </Link>
+                    </li>
+                  ) : s.onClick ? (
+                    <li key={s.label}>
+                      <button
+                        type="button"
+                        onClick={s.onClick}
+                        className="flex items-center gap-2 rounded-lg border border-border/70 bg-background px-2.5 py-1.5 transition-colors hover:bg-secondary/60 w-full text-left"
+                      >
+                        {inner}
+                      </button>
                     </li>
                   ) : (
                     <li key={s.label} className="flex items-center gap-2 rounded-lg border border-border/70 bg-background px-2.5 py-1.5">
