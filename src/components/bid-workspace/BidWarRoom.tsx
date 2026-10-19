@@ -113,19 +113,33 @@ export function BidWarRoom({ activeProject, missCount = 0, riskCount = 0 }: { ac
   const [intelState, setIntelState] = useState<"idle" | "loading" | "done" | "error">("idle")
   // Q20 配套（2026-09-28）：资质有效期核验——作战室打开时懒加载三档计数（过期/临期直接进红黄灯）
   const [qual, setQual] = useState<{ total: number; expired: number; critical: number; warning: number } | null>(null)
+  const [qualState, setQualState] = useState<"idle" | "loading" | "done" | "error">("idle")
 
   useEffect(() => {
-    if (!open || qual) return
+    if (!open) return
+    // 只要是 idle/error 才发起请求；done 时不重复拉取
+    if (qualState === "done") return
+    const controller = new AbortController()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setQualState("loading")
+    setQual(null)
     fetch(`${getPocketBaseUrl()}/api/qual_certs/summary`, {
+      signal: controller.signal,
       headers: { "Content-Type": "application/json", ...vibexAuthHeaders() },
     })
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
       .then((data: { total?: number; buckets?: Record<string, number> }) => {
         const b = data.buckets ?? {}
         setQual({ total: Number(data.total ?? 0), expired: Number(b.expired ?? 0), critical: Number(b.critical ?? 0), warning: Number(b.warning ?? 0) })
+        setQualState("done")
       })
-      .catch(() => setQual({ total: 0, expired: 0, critical: 0, warning: 0 }))
-  }, [open, qual])
+      .catch((e) => {
+        if (e.name === "AbortError") return
+        setQual(null)
+        setQualState("error")
+      })
+    return () => controller.abort()
+  }, [open, qualState])
 
   const proj = activeProject
   const report = proj.parse_report
@@ -156,16 +170,26 @@ export function BidWarRoom({ activeProject, missCount = 0, riskCount = 0 }: { ac
   const signals: { level: SignalLevel; label: string; value: string; icon: ReactNode; to?: string }[] = [
     {
       // Q20 配套：资质有效期核验置顶——过期证书写进标书即废标风险
-      level: !qual ? "info" : qual.expired > 0 ? "danger" : qual.critical > 0 ? "warning" : qual.total > 0 ? "ok" : "info",
+      level: (() => {
+        if (qualState === "loading") return "info"
+        if (qualState === "error") return "warning" // 失败态用琥珀色：告知可重试，非废标级阻断
+        if (!qual) return "info"
+        if (qual.expired > 0) return "danger"
+        if (qual.critical > 0) return "warning"
+        return qual.total > 0 ? "ok" : "info"
+      })(),
       label: "资质有效期核验",
       to: "/qual-certs",
-      value: !qual
-        ? "核验中…"
-        : qual.expired > 0 || qual.critical > 0
-          ? `${qual.expired > 0 ? `${qual.expired} 过期` : ""}${qual.expired > 0 && qual.critical > 0 ? " · " : ""}${qual.critical > 0 ? `${qual.critical} 临期` : ""}`
-          : qual.total > 0
-            ? "全部有效"
-            : "台账未登记",
+      value: (() => {
+        if (qualState === "loading") return "核验中…"
+        if (qualState === "error") return "读取失败，点击重试"
+        if (!qual) return "核验中…"
+        if (qual.expired > 0 || qual.critical > 0) {
+          return `${qual.expired > 0 ? `${qual.expired} 过期` : ""}${qual.expired > 0 && qual.critical > 0 ? " · " : ""}${qual.critical > 0 ? `${qual.critical} 临期` : ""}`
+        }
+        if (qual.total > 0) return "全部有效"
+        return "台账未登记"
+      })(),
       icon: <ShieldAlert className="h-4 w-4" />,
     },
     {
