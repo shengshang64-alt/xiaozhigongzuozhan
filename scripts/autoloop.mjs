@@ -477,11 +477,35 @@ async function runAllGates(baseline) {
 }
 
 // ---------------------------------------------------------------- 轮报查找 / 停机
-function findReport(round) {
+/**
+ * 找本轮轮报。
+ * 实测教训（2026-10-20）：不能用「开工时的 state.round」去找——执行引擎会在本轮里
+ * 自己把 round**推进**（R57 → 写 R58 轮报），于是驱动器按旧编号去找必然扑空，
+ * 把一份合格的轮报判成「未找到（异常）」。R57 试跑即因此误判：
+ * 实际已产出 R58_20261020.md，驱动器却找 R57_20261016.md（上一轮的旧文件），
+ * 阴差阳错「找到了」，判定看着像对、其实是错的。
+ * 现在的口径：轮报编号可以是**开工轮次**或**推进后的轮次**（两者都接受），
+ * 但必须是**本次运行期间新写入/更新过的文件**（mtime 晚于开工时刻），
+ * 防止把上一轮遗留的同名旧轮报当成本轮成果。
+ */
+function findReport(rounds, sinceMs) {
   try {
     const files = fs.readdirSync(EVOLUTION_DIR)
-    const re = new RegExp(`^R0*${round}[_.]`)
-    return files.find((f) => re.test(f)) || null
+    const cands = []
+    for (const f of files) {
+      const m = /^R0*(\d+)[_.].*\.md$/.exec(f)
+      if (!m) continue
+      const num = Number(m[1])
+      if (!rounds.includes(num)) continue
+      let mtime = 0
+      try { mtime = fs.statSync(path.join(EVOLUTION_DIR, f)).mtimeMs } catch { continue }
+      if (sinceMs && mtime < sinceMs) continue
+      cands.push({ file: f, num, mtime })
+    }
+    if (!cands.length) return null
+    // 优先最大轮次编号（引擎推进后的那份）
+    cands.sort((a, b) => b.num - a.num || b.mtime - a.mtime)
+    return cands[0].file
   } catch {
     return null
   }
@@ -657,8 +681,13 @@ async function doRun(rounds) {
     log('独立复验四门…')
     const gates = await runAllGates(state.gatesBaseline.eslint)
     gates.forEach((g) => log(`  门禁 ${g.name}: ${g.ok ? 'PASS' : 'FAIL'} — ${g.detail}`))
-    const report = findReport(state.round)
-    log(`轮报：${report || '未找到（异常）'}`)
+
+    // 轮报编号：执行引擎通常会在本轮把 round 推进（R57→写 R58），所以开环/闭环两个编号都接受，
+    // 但必须是本次运行期间**新写入**的文件（mtime >= 开工时刻），不能把旧轮报当本轮成果。
+    const closedState = readState()
+    const reportRounds = [...new Set([state.round, closedState.round])]
+    const report = findReport(reportRounds, t0)
+    log(`轮报：${report || '未找到（异常）'}（接受编号 ${reportRounds.map((r) => `R${r}`).join(' / ')}，要求本次运行期间写入）`)
 
     const allOk = q.code === 0 && engineOk && gates.every((g) => g.ok) && !!report
     log(`本轮判定：${allOk ? 'PASS' : 'FAIL'}`)
@@ -669,7 +698,13 @@ async function doRun(rounds) {
     // 门禁基线与门禁结果同批回写，保证「数字」与「结论」出自同一次实测
     after.gatesBaseline = { tsc: TSC_BASELINE, eslint: state.gatesBaseline.eslint }
     after.eslintBaseline = state.gatesBaseline.eslint
-    if (after.round <= state.round) {
+
+    // 本轮实际产出的轮次编号：引擎通常自己推进（round 从 state.round → +1），以它为准。
+    // 旧实现一律用 state.round（开环轮次）写 lastRound.id，会与引擎写下的 history 头部脱节
+    // （R58 试跑即出现：history 记 R058 已完成，lastRound.id 却写 R57）。
+    const advanced = after.round > state.round
+    const roundId = advanced ? after.round : state.round
+    if (!advanced) {
       log(`注意：执行引擎未推进轮次（仍为 ${after.round}），驱动器代为 +1`)
       after.round = state.round + 1
       after.history = [...(after.history || []), {
@@ -677,21 +712,22 @@ async function doRun(rounds) {
         at: new Date().toISOString().slice(0, 10),
       }]
     }
+    // lastRound：以引擎写下的 theme 为内容，但 id/verdict 用驱动器**实测**结论覆盖
     after.lastRound = {
-      id: `R${state.round}`,
+      id: `R${roundId}`,
       theme: (after.lastRound && after.lastRound.theme) || '(未记录)',
       verdict: allOk ? 'pass' : 'fail',
     }
     writeState(after)
 
     // 4b) 提交驱动器产物，保持工作区干净（否则下一轮开工恒为「1 项未提交」）
-    const ci = await commitArtifacts(`R${state.round}`)
+    const ci = await commitArtifacts(`R${roundId}`)
     if (ci.leftover) {
       const st = readState()
       st.leftover = { at: nowIso(), count: ci.leftover, paths: ci.leftoverPaths.slice(0, 20) }
       writeState(st)
     }
-    if (ci.committed) log(`已提交驱动器产物（R${state.round}），工作区剩余未提交：${ci.leftover}`)
+    if (ci.committed) log(`已提交驱动器产物（R${roundId}），工作区剩余未提交：${ci.leftover}`)
 
     // 5) 失败计数与停机
     if (!allOk) {
@@ -699,7 +735,7 @@ async function doRun(rounds) {
       if (consecutiveFail >= MAX_CONSECUTIVE_FAIL) {
         writeStop(
           `门禁连续 ${MAX_CONSECUTIVE_FAIL} 轮不通过`,
-          `最后一轮 R${state.round}，用时 ${durSec}s。\n\n门禁结果：\n${gates.map((g) => `- ${g.name}: ${g.ok ? 'PASS' : 'FAIL'} — ${g.detail}`).join('\n')}`,
+          `最后一轮 R${roundId}，用时 ${durSec}s。\n\n门禁结果：\n${gates.map((g) => `- ${g.name}: ${g.ok ? 'PASS' : 'FAIL'} — ${g.detail}`).join('\n')}`,
         )
         log(`连续 ${MAX_CONSECUTIVE_FAIL} 轮失败，停机。`)
         break
