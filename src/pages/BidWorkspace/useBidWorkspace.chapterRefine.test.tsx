@@ -125,8 +125,9 @@ describe("R59（B32 第二簇）章节正文精修行为网", () => {
     expect(c1?.content, "编辑的正文必须真的落库").toBe("人工修订后的正文")
     expect(c1?.title, "标题不得被正文编辑误改").toBe("第一章 项目理解")
     expect(c2?.content, "兄弟章不得被正文编辑误改").toBe("第二章原文")
-    // 本地状态同步：编辑器里的章内容跟着变
-    expect(result.current.activeChapter?.content).toBe("人工修订后的正文")
+    // 本地状态同步：编辑器里的章内容跟着变。防抖 flush 发生在 act 之外，setActiveProject 的
+    // 重渲染可能与 PATCH 落地（h.calls）错开一拍，这里用 waitFor 等本地状态真正刷出来再断言。
+    await waitFor(() => expect(result.current.activeChapter?.content).toBe("人工修订后的正文"))
   })
 
   it("正文一经人工改动，丢字/版式标记立即作废（R55 契约第一次行为级钉住）", async () => {
@@ -154,10 +155,12 @@ describe("R59（B32 第二簇）章节正文精修行为网", () => {
     expect("sanityWarning" in (c1 ?? {}), "sanityWarning 必须随正文作废").toBe(false)
     expect("proseLintWarning" in (c1 ?? {}), "proseLintWarning 必须随正文作废").toBe(false)
     expect("proseLintSeverity" in (c1 ?? {}), "proseLintSeverity 必须随正文作废").toBe(false)
-    // 本地状态同样清空
-    expect(result.current.activeChapter?.sanityWarning).toBeUndefined()
-    expect(result.current.activeChapter?.proseLintWarning).toBeUndefined()
-    expect(result.current.activeChapter?.proseLintSeverity).toBeUndefined()
+    // 本地状态同样清空（防抖 flush 在 act 之外，重渲染与 PATCH 落地可能错开一拍，用 waitFor 兜底）
+    await waitFor(() => {
+      expect(result.current.activeChapter?.sanityWarning).toBeUndefined()
+      expect(result.current.activeChapter?.proseLintWarning).toBeUndefined()
+      expect(result.current.activeChapter?.proseLintSeverity).toBeUndefined()
+    })
   })
 
   it("正文没真的变化就不落库（进入章节不动笔，不产生写请求）", async () => {
