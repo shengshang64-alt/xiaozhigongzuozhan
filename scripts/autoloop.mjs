@@ -41,6 +41,8 @@ import path from 'node:path'
 // ---------------------------------------------------------------- 常量
 const ROOT = path.resolve(import.meta.dirname, '..')
 const PROMPT_FILE = path.join(ROOT, 'Qoder自主迭代提示词-v2.md')
+/** Claude 权限配置（白名单 + 红线 deny）；必须走文件，见 claudeArgs() 里的实测教训 */
+const CLAUDE_SETTINGS_FILE = path.join(ROOT, 'scripts', 'autoloop-claude-settings.json')
 const EVOLUTION_DIR = path.join(ROOT, 'docs', 'evolution')
 const STATE_FILE = path.join(EVOLUTION_DIR, '_loop_state.json')
 const STOP_FILE = path.join(EVOLUTION_DIR, '_STOP.md')
@@ -76,32 +78,25 @@ let ENGINE = 'claude'
 
 const QODER_ARGS = ['-p', '--permission-mode', 'accept_edits', '-o', 'json']
 /**
- * Claude Code 参数：
- *   -p / --print         非交互，从 stdin 读提示词、结束即退出
- *   --output-format json 单条 JSON 结果（含 is_error / num_turns / result / permission_denials）
- *   --permission-mode    acceptEdits：允许改文件；Bash 类命令仍需白名单或 bypass
- *   --allowedTools       显式放行迭代必需的 Bash 子命令（git/npx/node/npm），其余仍受管
- *   --add-dir            允许访问仓库外的 .probe 夹具目录
- * 注意：不要用 --dangerously-skip-permissions（会连红线一起放开），用白名单更可控。
+ * Claude Code 参数。
+ * 关键教训（2026-10-20 实测）：**权限白名单必须走 --settings 文件，不能用 --allowedTools 命令行**。
+ *   驱动器按沙箱约束用 spawn(cmd, args, { shell: true })（spawnSync 会 EBUSY），于是参数被拼成
+ *   一条 cmd.exe 命令行；而 `Bash(git status:*)` 里的圆括号与 `*` 是 cmd 元字符，会被吃掉/错拆，
+ *   claude 收到畸形参数后**立即 exit=1（0.1s）**，日志看起来像「模型没干活」，实际是传参失败。
+ *   放进 JSON 文件后命令行只剩一个普通路径参数，不再有元字符。
+ *
+ *   -p / --print         非交互，stdin 读提示词、结束即退出
+ *   --output-format json 单条 JSON（含 is_error / num_turns / result / permission_denials）
+ *   --permission-mode    acceptEdits：允许改文件
+ *   --settings           权限白名单 + 红线 deny（见 autoloop-claude-settings.json）
+ *   不用 --dangerously-skip-permissions：它会连红线一起放开，白名单更可控。
  */
 function claudeArgs() {
   return [
     '-p',
     '--output-format', 'json',
     '--permission-mode', 'acceptEdits',
-    // 迭代必需的只读/构建类命令：门禁四门 + git 状态与提交（不含 push/reset/clean）
-    '--allowedTools',
-    [
-      'Edit', 'Write', 'Read', 'Glob', 'Grep', 'TodoWrite',
-      'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git add:*)',
-      'Bash(git commit:*)', 'Bash(git checkout --:*)', 'Bash(git stash:*)',
-      'Bash(npx tsc:*)', 'Bash(npx vite:*)', 'Bash(npx vitest:*)', 'Bash(npx eslint:*)',
-      'Bash(npx vite-node:*)', 'Bash(node:*)', 'Bash(npm:*)', 'Bash(pnpm:*)',
-      'Bash(ls:*)', 'Bash(cat:*)', 'Bash(head:*)', 'Bash(tail:*)', 'Bash(wc:*)',
-      'Bash(grep:*)', 'Bash(rg:*)', 'Bash(find:*)', 'Bash(sed:*)', 'Bash(awk:*)',
-      'Bash(mkdir:*)', 'Bash(echo:*)', 'Bash(cd:*)', 'Bash(printf:*)',
-    ].join(' '),
-    // 夹具在仓库外（.probe 与 docs 都在仓内，这里只是保险）
+    '--settings', CLAUDE_SETTINGS_FILE,
     '--add-dir', ROOT,
   ]
 }
