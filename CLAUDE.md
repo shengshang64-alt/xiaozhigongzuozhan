@@ -15,7 +15,7 @@
 |---|---|---|
 | 1 | `npx tsc -b` | 0 error |
 | 2 | `CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD=100000 npx vite build` | 构建成功 |
-| 3 | `npx vitest run` | 全绿（基线 **283 files / 3324 passed / 2 skipped**，R58 收修实测） |
+| 3 | `npx vitest run` | 全绿（基线 **296 files / 3486 passed / 2 skipped**，R58 实测） |
 | 4 | `npx eslint .` | error ≤ **116** 且 warning ≤ **11**（存量债预算，见 `eslint-budget.json`） |
 
 > 第 3、4 条基线随轮次下降，**以 `eslint-budget.json` 与 `docs/evolution/_loop_state.json` 的 `gatesBaseline` 为准**（两者必须同源，
@@ -24,9 +24,11 @@
 > 第 3 条（vitest）的真源是账本 `baseline.r{最新轮次}`，每轮加/减用例后**必须同步本行**：R55 收尾时实测此处仍是 R52 期的
 > 273 files / 3244 passed（R54 自己已记 3248，即本行落后 4 例、无人复算），已按 R55 实测值更正；R56 收尾时按当场实跑同步为
 > 279 files / 3290 passed（+4 文件 / +26 例）；**R57 收尾时按当场实跑同步为 282 files / 3308 passed**（+3 文件 / +18 例：
-> `hookSources.test.ts` 8 + `hookSourcesConvergence.test.ts` 5 + `useBidWorkspace.behavior.test.tsx` 5）；R58 收修（B28/B29）时
-> 按当场实跑同步为 **283 files / 3324 passed**（+1 文件 / +16 例：`parseDegradation.test.ts` 新建 11 例 +
-> `parseCoverage.test.ts` +3 例 + `useBidWorkspace.behavior.test.tsx` +2 例）。数字与账本不一致时以**当场实跑**为准。
+> `hookSources.test.ts` 8 + `hookSourcesConvergence.test.ts` 5 + `useBidWorkspace.behavior.test.tsx` 5）；R58（B32 项目 CRUD
+> 行为网）时按当场实跑同步为 **296 files / 3486 passed**（R58 自身 +1 文件 / +6 例：`useBidWorkspace.projectCrud.test.tsx`；
+> 282→295 的增量来自并行 REQ 线：B28/B29 关键项门禁 + 解析退化自检 `parseDegradation.test.ts` 11 例 +
+> `parseCoverage.test.ts` +3 例 + `useBidWorkspace.behavior.test.tsx` +2 例，及 REQ-009/010 情报/资质统计等非 loop 轮次）。
+> 数字与账本不一致时以**当场实跑**为准。
 
 **第 2 条的 `CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD` 前缀是必需的**：本机沙箱通过 `NODE_OPTIONS`
 注入了 safe-delete 守卫，`vite build` 清空 `dist/` 时会触发批量删除拦截（阈值 50，`dist/assets` 有 260+ 文件）。
