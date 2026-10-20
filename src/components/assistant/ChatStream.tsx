@@ -9,6 +9,7 @@ import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/rhLogin"
 import type { ChatMsg } from "@/lib/assistantCore"
 import { triggerBlobDownload } from "@/lib/download"
+import { DOCX_DEFAULT_STYLES } from "@/lib/exportFont"
 import { localDateStamp } from "@/lib/dateStamp"
 
 const MD_COMPONENTS: Components = {
@@ -280,7 +281,7 @@ function SkillAdoptRow({ skillName, content }: { skillName: string; content: str
         .map((l) => l.trim())
         .filter(Boolean)
         .map((l) => new Paragraph({ children: [new TextRun(l)] }))
-      const doc = new Document({ sections: [{ children: [new Paragraph({ children: [new TextRun({ text: "售前周报", bold: true, size: 32 })] }), ...paras] }] })
+      const doc = new Document({ styles: DOCX_DEFAULT_STYLES, sections: [{ children: [new Paragraph({ children: [new TextRun({ text: "售前周报", bold: true, size: 32 })] }), ...paras] }] })
       const blob = await Packer.toBlob(doc)
       triggerBlobDownload(blob, `售前周报-${localDateStamp()}.docx`)
       toast.success("周报 Word 已下载")

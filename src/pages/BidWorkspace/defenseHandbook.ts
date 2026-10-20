@@ -6,6 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import { AlignmentType, Document, HeadingLevel, Packer, Paragraph, TextRun } from "docx"
+import { DOCX_DEFAULT_STYLES } from "@/lib/exportFont"
 import { triggerBlobDownload } from "@/lib/download"
 import { buildSafeFileName } from "@/lib/fileName"
 import { localDateStamp } from "@/lib/dateStamp"
@@ -149,7 +150,7 @@ function blocksToParagraphs(blocks: HandbookBlock[]): Paragraph[] {
 /** 生成并触发下载（调用方负责 try/catch 兜提示；空内容时本函数也会抛同款友好错误） */
 export async function exportDefenseHandbook(projectName: string, defense: BidDefense): Promise<void> {
   const blocks = buildDefenseHandbookBlocks(projectName, defense)
-  const doc = new Document({ sections: [{ children: blocksToParagraphs(blocks) }] })
+  const doc = new Document({ styles: DOCX_DEFAULT_STYLES, sections: [{ children: blocksToParagraphs(blocks) }] })
   const blob = await Packer.toBlob(doc)
   triggerBlobDownload(blob, handbookFileName(projectName))
 }

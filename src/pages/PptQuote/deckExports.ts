@@ -1,5 +1,6 @@
 import PptxGenJS from "pptxgenjs"
 import { AlignmentType, Document, HeadingLevel, Packer, Paragraph, TextRun } from "docx"
+import { DOCX_DEFAULT_STYLES } from "@/lib/exportFont"
 import { unzipSync, zipSync, strFromU8, strToU8 } from "fflate"
 import {
   deckTypeLabel,
@@ -503,7 +504,7 @@ function downloadBlob(bytes: Uint8Array, fileName: string) {
 // ---------------------------------------------------------------------------
 
 export async function saveDocx(fileName: string, children: Paragraph[]): Promise<void> {
-  const doc = new Document({ sections: [{ children }] })
+  const doc = new Document({ styles: DOCX_DEFAULT_STYLES, sections: [{ children }] })
   const blob = await Packer.toBlob(doc)
   triggerBlobDownload(blob, fileName)
 }

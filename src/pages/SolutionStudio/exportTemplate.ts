@@ -1,4 +1,5 @@
 import type { Paragraph, TableOfContents } from "docx"
+import { DEFAULT_RUN_FONT } from "@/lib/exportFont"
 import { typeLabel, type SolutionRecord } from "./solutionTypes.ts"
 import { localDateStamp } from "@/lib/dateStamp"
 
@@ -67,7 +68,7 @@ export async function buildExportFrontMatter(
     new DocxParagraph({
       alignment: AlignmentType.CENTER,
       spacing: { before: opts?.before ?? 0 },
-      children: [new TextRun({ text, size, bold: opts?.bold })],
+      children: [new TextRun({ text, size, bold: opts?.bold, font: opts?.bold ? DEFAULT_RUN_FONT.heading : DEFAULT_RUN_FONT.body })],
     })
   const children: (Paragraph | TableOfContents)[] = []
   if (tpl.cover) {
@@ -82,7 +83,7 @@ export async function buildExportFrontMatter(
       new DocxParagraph({
         heading: HeadingLevel.HEADING_1,
         alignment: AlignmentType.CENTER,
-        children: [new TextRun({ text: "目  录", bold: true, size: 32 })],
+        children: [new TextRun({ text: "目  录", bold: true, size: 32, font: DEFAULT_RUN_FONT.heading })],
       }),
     )
     children.push(new DocxToc("目录", { hyperlink: true, headingStyleRange: "1-2" }))

@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx-js-style"
 import { AlignmentType, Document, Packer, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } from "docx"
+import { DOCX_DEFAULT_STYLES } from "@/lib/exportFont"
 import {
   formatMoney,
   groupSubtotal,
@@ -336,6 +337,7 @@ export async function exportQuoteDocx(quote: QuoteRecord): Promise<void> {
     rows,
   })
   const finalDoc = new Document({
+    styles: DOCX_DEFAULT_STYLES,
     sections: [
       {
         children: [...children, table, totalInWordsParagraph(quote), ...tailParagraphs(quote)],

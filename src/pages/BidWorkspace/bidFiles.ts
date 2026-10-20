@@ -22,6 +22,7 @@ import { renderMermaidToSvg } from "./mermaidFigure"
 import type { Chapter, FigureSpec } from "@/pages/SolutionStudio/solutionTypes"
 import { DOCX_SIZE_HALFPT } from "./bidFormatConstants"
 import { triggerBlobDownload } from "@/lib/download"
+import { DEFAULT_RUN_FONT } from "@/lib/exportFont"
 import { unzipSync, strFromU8 } from "fflate" // REQ-057：大文件只读 document.xml 用（项目既有依赖，mammoth 未导出 zip 能力）
 import { formatDateTimeDisplay } from "@/lib/dateDisplay"
 import {
@@ -747,15 +748,8 @@ export async function downloadDocx(
   triggerBlobDownload(blob, fileName)
 }
 
-/**
- * 现状默认导出（存量项目 format_settings=null 走此路径）用的默认字体。
- * 必须显式写入：不写字体时 docx 里不会有任何 <w:rFonts>，Word 会落到主题默认字体，
- * 导致「导出的标书字体不是仿宋/黑体」且格式识别/暗标检查读不到字体（R46 实测根因）。
- */
-const DEFAULT_RUN_FONT: Record<"heading" | "body", { ascii: string; hAnsi: string; eastAsia: string }> = {
-  heading: { ascii: "SimHei", hAnsi: "SimHei", eastAsia: "黑体" },
-  body: { ascii: "FangSong", hAnsi: "FangSong", eastAsia: "仿宋" },
-}
+// 默认字体已收口到 src/lib/exportFont.ts（单一真源，R62），此处只 import 使用；
+// 历史根因见该文件头注释（R46：不写 font 则 docx 无 <w:rFonts>，落到主题默认字体）。
 
 function titlePara(text: string): Paragraph {
   return new Paragraph({

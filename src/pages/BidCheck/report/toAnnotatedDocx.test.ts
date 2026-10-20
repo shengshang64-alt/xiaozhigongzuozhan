@@ -1,5 +1,6 @@
 // R270 五期 · 标注版 Word 批注引擎单测
 import { describe, expect, it } from "vitest"
+import { strFromU8, unzipSync } from "fflate"
 import {
   buildAnnotatedDocx,
   buildAnnotatedDocxBlob,
@@ -169,5 +170,20 @@ describe("toAnnotatedDocx · Blob", () => {
     const buf = new Uint8Array(await blob.arrayBuffer())
     expect(buf[0]).toBe(0x50)
     expect(buf[1]).toBe(0x4b)
+  })
+
+  it("R62 导出字体护栏：styles.xml 落默认中文字体（不裸奔到主题默认）", async () => {
+    const r = result({
+      items: [item({ status: "pass", hits: [] })],
+      paragraphs: [{ text: "干净段", heading: false, index: 0, inTable: false, hasImage: false }],
+      chapterOf: [0],
+    })
+    const blob = await buildAnnotatedDocxBlob(r)
+    const unzipped = unzipSync(new Uint8Array(await blob.arrayBuffer()))
+    const stylesXml = strFromU8(unzipped["word/styles.xml"])
+    // 真实产物证据：docDefaults 里必须有 w:rFonts，且中文字体是仿宋（否则 Word 落主题默认字体）
+    expect(stylesXml).toContain("w:docDefaults")
+    expect(stylesXml).toContain("w:rFonts")
+    expect(stylesXml).toContain("仿宋")
   })
 })

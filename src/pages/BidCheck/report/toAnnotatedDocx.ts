@@ -21,6 +21,7 @@ import {
   Paragraph,
   TextRun,
 } from "docx"
+import { DOCX_DEFAULT_STYLES } from "@/lib/exportFont"
 import { buildSafeFileName } from "@/lib/fileName"
 import { triggerBlobDownload } from "@/lib/download"
 import {
@@ -199,6 +200,7 @@ export function buildAnnotatedDocx(result: BidCheckResult): Document {
 
   const date = new Date()
   const doc = new Document({
+    styles: DOCX_DEFAULT_STYLES,
     creator: "BidCheck",
     title: `标书检查标注版 - ${result.sourceName}`,
     subject: "标书检查中枢五期：Word 批注引擎导出",
