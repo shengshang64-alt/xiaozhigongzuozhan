@@ -103,7 +103,15 @@ function claudeArgs() {
 
 const MAX_ENGINE_MS = 90 * 60 * 1000 // 单轮执行上限 90 分钟
 const MAX_GATE_MS = 30 * 60 * 1000 // 单条门禁上限 30 分钟
-const MAX_CONSECUTIVE_FAIL = 2 // 连续失败轮数上限，达到即停
+const MAX_CONSECUTIVE_FAIL = 2 // 门禁连续失败轮数上限（代码问题），达到即停
+/**
+ * 引擎未产出的容忍度（2026-10-21 新增）。
+ * 事故：R62/R63 上游 API 429「Go usage limit exceeded」，引擎一字未出、工作区未改、四门全绿，
+ * 却被计入 MAX_CONSECUTIVE_FAIL 并停机，_STOP.md 还把「四门 PASS」写成停机原因 —— 归因错位。
+ * 现在引擎类失败走独立的退避重试通道：每轮之间线性退避，连续 MAX_ENGINE_FAIL 次才停。
+ */
+const MAX_ENGINE_FAIL = 4 // 引擎连续未产出上限（429/网络/鉴权），达到才停
+const ENGINE_BACKOFF_MS = 3 * 60 * 1000 // 引擎类失败的退避基数（×第几次）
 const MAX_CONSECUTIVE_EMPTY = 3 // 连续空转（没改任何文件）轮数上限，达到即停
 
 // ---------------------------------------------------------------- 基础工具
@@ -687,7 +695,8 @@ async function doRun(rounds) {
     return 1
   }
 
-  let consecutiveFail = 0
+  let consecutiveFail = 0 // 门禁类失败（引擎有产出但代码红）
+  let consecutiveEngineFail = 0 // 引擎类失败（429/网络/鉴权，引擎根本没产出）
   for (let seq = 1; seq <= rounds; seq++) {
     const state = readState()
     log(`═══════════ 第 ${seq}/${rounds} 轮 · R${state.round} ═══════════`)
@@ -731,8 +740,23 @@ async function doRun(rounds) {
     const report = findReport(reportRounds, t0)
     log(`轮报：${report || '未找到（异常）'}（接受编号 ${reportRounds.map((r) => `R${r}`).join(' / ')}，要求本次运行期间写入）`)
 
-    const allOk = q.code === 0 && engineOk && gates.every((g) => g.ok) && !!report
-    log(`本轮判定：${allOk ? 'PASS' : 'FAIL'}`)
+    // ── 区分「引擎没干活」与「引擎干了但门禁红」 ──────────────────────────
+    // 实测事故（2026-10-21 R62/R63）：上游 API 429（Go usage limit exceeded），引擎根本没产出；
+    // 四门却全 PASS（工作区没被改）。旧逻辑把两者混在一个 consecutiveFail 里，
+    // 于是「配额耗尽」被记成「门禁连续 2 轮不通过」并停机，_STOP.md 里写的四门结果还全是 PASS
+    // —— 归因完全错位，会把人引去查代码。
+    const gatesOk = gates.every((g) => g.ok)
+    const engineNoWork = !engineOk
+    const allOk = q.code === 0 && engineOk && gatesOk && !!report
+    if (allOk) {
+      log('本轮判定：PASS')
+    } else if (engineNoWork) {
+      log(`本轮判定：ENGINE_FAIL（引擎未产出；四门${gatesOk ? '仍全绿' : '有红'}）`)
+    } else if (!gatesOk) {
+      log('本轮判定：GATE_FAIL（引擎有产出但门禁不通过）')
+    } else {
+      log('本轮判定：FAIL（引擎与门禁均无异常，但缺轮报等收尾产物）')
+    }
 
     // 4) 回写状态（执行引擎未推进轮次时由驱动器兜底推进）
     const after = readState()
@@ -741,49 +765,103 @@ async function doRun(rounds) {
     after.gatesBaseline = { tsc: TSC_BASELINE, eslint: state.gatesBaseline.eslint }
     after.eslintBaseline = state.gatesBaseline.eslint
 
-    // 本轮实际产出的轮次编号：引擎通常自己推进（round 从 state.round → +1），以它为准。
-    // 旧实现一律用 state.round（开环轮次）写 lastRound.id，会与引擎写下的 history 头部脱节
-    // （R58 试跑即出现：history 记 R058 已完成，lastRound.id 却写 R57）。
+    // 本轮轮次编号：引擎成功产出时通常自己推进（round 从 state.round → +1），以它为准；
+    // 引擎未产出时不推进，编号沿用开环轮次（仅供停机文案引用）。
     const advanced = after.round > state.round
     const roundId = advanced ? after.round : state.round
-    if (!advanced) {
-      log(`注意：执行引擎未推进轮次（仍为 ${after.round}），驱动器代为 +1`)
-      after.round = state.round + 1
-      after.history = [...(after.history || []), {
-        id: `R${state.round}`, theme: '(驱动器兜底推进)', verdict: allOk ? 'pass' : 'fail',
-        at: new Date().toISOString().slice(0, 10),
-      }]
-    }
-    // lastRound：以引擎写下的 theme 为内容，但 id/verdict 用驱动器**实测**结论覆盖
-    after.lastRound = {
-      id: `R${roundId}`,
-      theme: (after.lastRound && after.lastRound.theme) || '(未记录)',
-      verdict: allOk ? 'pass' : 'fail',
-    }
-    writeState(after)
 
-    // 4b) 提交驱动器产物，保持工作区干净（否则下一轮开工恒为「1 项未提交」）
-    const ci = await commitArtifacts(`R${roundId}`)
-    if (ci.leftover) {
-      const st = readState()
-      st.leftover = { at: nowIso(), count: ci.leftover, paths: ci.leftoverPaths.slice(0, 20) }
-      writeState(st)
-    }
-    if (ci.committed) log(`已提交驱动器产物（R${roundId}），工作区剩余未提交：${ci.leftover}`)
+    // 引擎类失败（429/网络/鉴权）：**不推进轮次、不写 lastRound、不记 history**。
+    // 理由：这一轮什么都没发生，工作区与上一轮 PASS 后完全一致；若照样 +1 并写 fail，
+    // 账本会出现「R63 fail / 四门全 PASS」这种自相矛盾的条目（正是 R62/R63 的实况），
+    // 且把轮次号白送给一次没执行的运行。这里只记一条 engineFail 事件供事后审计。
+    if (engineNoWork) {
+      after.engineFail = {
+        at: nowIso(),
+        engine: ENGINE,
+        exit: q.code,
+        isError: q.parsed ? q.parsed.is_error : null,
+        message: String((q.parsed && q.parsed.result) || q.stderr || '').trim().slice(0, 300),
+        consecutive: consecutiveEngineFail,
+      }
+      writeState(after)
+      log('本轮未推进轮次、未写 lastRound（引擎未产出，账本保持上一轮 PASS 状态）')
+    } else {
+      // 本轮实际产出的轮次编号见上方 roundId 定义（引擎自己推进则用它，否则用开环轮次）
 
-    // 5) 失败计数与停机
-    if (!allOk) {
+      // 旧实现一律用 state.round（开环轮次）写 lastRound.id，会与引擎写下的 history 头部脱节
+      // （R58 试跑即出现：history 记 R058 已完成，lastRound.id 却写 R57）。
+      if (!advanced) {
+        log(`注意：执行引擎未推进轮次（仍为 ${after.round}），驱动器代为 +1`)
+        after.round = state.round + 1
+        after.history = [...(after.history || []), {
+          id: `R${state.round}`, theme: '(驱动器兜底推进)', verdict: allOk ? 'pass' : 'fail',
+          at: new Date().toISOString().slice(0, 10),
+        }]
+      }
+      // lastRound：以引擎写下的 theme 为内容，但 id/verdict 用驱动器**实测**结论覆盖
+      after.lastRound = {
+        id: `R${roundId}`,
+        theme: (after.lastRound && after.lastRound.theme) || '(未记录)',
+        verdict: allOk ? 'pass' : 'fail',
+      }
+      writeState(after)
+
+      // 4b) 提交驱动器产物，保持工作区干净（否则下一轮开工恒为「1 项未提交」）
+      const ci = await commitArtifacts(`R${roundId}`)
+      if (ci.leftover) {
+        const st = readState()
+        st.leftover = { at: nowIso(), count: ci.leftover, paths: ci.leftoverPaths.slice(0, 20) }
+        writeState(st)
+      }
+      if (ci.committed) log(`已提交驱动器产物（R${roundId}），工作区剩余未提交：${ci.leftover}`)
+    }
+
+    // 5) 失败计数与停机——**按成因分开计**（2026-10-21 修：原来混用一个计数器会误诊）
+    //    · GATE_FAIL：引擎有产出但门禁红 → 这是代码问题，连续 2 轮即停（原语义，保留）
+    //    · ENGINE_FAIL：引擎没产出（429 配额 / 网络 / 鉴权）→ 与代码无关，改走「退避重试」，
+    //      连续 MAX_ENGINE_FAIL 轮才停，且停机文案明确指向上游而非门禁。
+    if (allOk) {
+      consecutiveFail = 0
+      consecutiveEngineFail = 0
+    } else if (engineNoWork) {
+      consecutiveEngineFail++
+      consecutiveFail = 0 // 引擎没干活不代表代码坏了，不累加门禁失败
+      const summary = String((q.parsed && q.parsed.result) || q.stderr || '').trim().slice(0, 200)
+      if (consecutiveEngineFail >= MAX_ENGINE_FAIL) {
+        writeStop(
+          `执行引擎连续 ${MAX_ENGINE_FAIL} 轮未产出（上游 API/网络问题，非代码缺陷）`,
+          [
+            `最后一轮 R${roundId}，用时 ${durSec}s。`,
+            '',
+            `引擎返回：exit=${q.code} is_error=${q.parsed ? q.parsed.is_error : 'n/a'}`,
+            `引擎消息：${summary || '(空)'}`,
+            '',
+            '四门结果（工作区未被改动，因此**全绿不代表本轮做了什么**）：',
+            ...gates.map((g) => `- ${g.name}: ${g.ok ? 'PASS' : 'FAIL'} — ${g.detail}`),
+            '',
+            '## 判断指引',
+            '',
+            '若引擎消息含 429 / usage limit / quota，属上游额度耗尽：等额度恢复后直接重启驱动器即可，**不需要改代码**。',
+            '若为鉴权失败，检查 ~/.claude/settings.json 的 ANTHROPIC_BASE_URL 与密钥。',
+          ].join('\n'),
+        )
+        log(`引擎连续 ${MAX_ENGINE_FAIL} 轮未产出，停机（非门禁问题）。`)
+        break
+      }
+      const waitMs = ENGINE_BACKOFF_MS * consecutiveEngineFail
+      log(`引擎未产出（第 ${consecutiveEngineFail}/${MAX_ENGINE_FAIL} 次），${Math.round(waitMs / 1000)}s 后重试本轮…`)
+      await new Promise((resolve) => setTimeout(resolve, waitMs))
+    } else {
       consecutiveFail++
+      consecutiveEngineFail = 0
       if (consecutiveFail >= MAX_CONSECUTIVE_FAIL) {
         writeStop(
-          `门禁连续 ${MAX_CONSECUTIVE_FAIL} 轮不通过`,
+          consecutiveFail ? `门禁连续 ${MAX_CONSECUTIVE_FAIL} 轮不通过` : '本轮失败',
           `最后一轮 R${roundId}，用时 ${durSec}s。\n\n门禁结果：\n${gates.map((g) => `- ${g.name}: ${g.ok ? 'PASS' : 'FAIL'} — ${g.detail}`).join('\n')}`,
         )
         log(`连续 ${MAX_CONSECUTIVE_FAIL} 轮失败，停机。`)
         break
       }
-    } else {
-      consecutiveFail = 0
     }
   }
   log('驱动器运行结束。')
