@@ -130,13 +130,35 @@ function lastLines(text, n) {
 /**
  * 执行外部命令并收集输出。
  * 必须异步 spawn + shell:true（见文件头「沙箱约束」第 1 条）。
+ *
+ * ⚠ 传参纪律（2026-10-20 实测，曾导致每轮成果提交静默丢失）：
+ *   shell:true 时 Node 只是把 `cmd + ' ' + args.join(' ')` 原样交给 cmd.exe，**不做任何转义**。
+ *   于是任何含空格的参数都会被拆成多个参数，含 ( ) & | < > ^ % ! 的还会被 cmd 当元字符处理。
+ *   实测：`git commit -m "chore(loop): R58 驱动器回写状态与日志"`
+ *         → git 收到 pathspec 'chore' 'loop:' 'R58' … 并报 "did not match any file(s)"，
+ *           exit=1，而驱动器只把它记成「轮末仍有 N 项未提交」不去停轮 —— 结果是**驱动器的
+ *           状态回写与日志一条都没入库**，但日志看起来像正常收尾。
+ *   修法：这里统一做 Windows 命令行引用（含空格/元字符的参数加双引号并转义内部引号），
+ *         同时把整条命令行作为单个字符串交给 shell（不再让 Node 去 join 未转义的 args）。
+ *   另：多行/含引号的**文本内容**（如 commit message）优先走 stdin（git commit -F -），
+ *       不要硬塞命令行——那是最容易被引用规则反噬的地方。
  */
+const CMD_NEEDS_QUOTE = /[\s"&|<>^()%!]/
+function quoteWinArg(a) {
+  const s = String(a)
+  if (!CMD_NEEDS_QUOTE.test(s)) return s
+  // cmd.exe：双引号内空格与多数元字符失效；内部双引号用 \" 转义（标准库同款口径）
+  return `"${s.replace(/"/g, '\\"')}"`
+}
+
 function run(cmd, args, opts = {}) {
   return new Promise((resolve) => {
     const started = Date.now()
     let child
+    const line = [cmd, ...args.map(quoteWinArg)].join(' ')
     try {
-      child = spawn(cmd, args, {
+      // 传整条命令行 + shell:true：由 shell 解析，参数已完成引用
+      child = spawn(line, {
         cwd: ROOT,
         shell: true,
         env: { ...process.env, ...CHILD_ENV, ...(opts.env || {}) },
@@ -252,11 +274,17 @@ async function commitArtifacts(roundId) {
   await run('git', ['add', '.loop'], { timeoutMs: 60000 })
   const staged = await run('git', ['status', '--porcelain'], { timeoutMs: 60000 })
   if (!staged.stdout.trim()) return { committed: false, leftover: 0, leftoverPaths: [] }
-  const c = await run('git', ['commit', '-q', '-m', `chore(loop): ${roundId} 驱动器回写状态与日志`], { timeoutMs: 60000 })
+  // commit message 走 stdin（-F -）：多行/含中文/含括号的文案不经过命令行，
+  // 免遭 shell 引用规则反噬（见 run() 的「传参纪律」）
+  const msg = `chore(loop): ${roundId} 驱动器回写状态与日志\n`
+  const c = await run('git', ['commit', '-q', '-F', '-'], { stdin: msg, timeoutMs: 60000 })
+  if (c.code !== 0) {
+    log(`⚠ 驱动器产物提交失败（exit=${c.code}）：${lastLines(c.stderr || c.stdout, 3)}`)
+  }
   const after = await run('git', ['status', '--porcelain'], { timeoutMs: 60000 })
   const leftoverPaths = after.stdout.trim() ? after.stdout.trim().split(/\r?\n/) : []
   if (leftoverPaths.length) {
-    log(`⚠ 轮末仍有 ${leftoverPaths.length} 项未提交（非驱动器产物；Qoder 可能未按 §6 提交，留人工核查）：`)
+    log(`⚠ 轮末仍有 ${leftoverPaths.length} 项未提交（非驱动器产物；执行引擎可能未按 §6 提交，留人工核查）：`)
     leftoverPaths.slice(0, 10).forEach((l) => log(`    ${l}`))
   }
   return { committed: c.code === 0, leftover: leftoverPaths.length, leftoverPaths }
