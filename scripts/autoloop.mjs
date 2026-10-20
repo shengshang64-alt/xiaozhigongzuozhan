@@ -266,8 +266,16 @@ function writeState(state) {
 
 /**
  * 轮末提交驱动器产物（状态 / 轮报 / 日志），保持工作区干净——否则下一轮开工时
- * 状态文件恒为「已修改」，既污染 git 又让 Qoder 的「开工先看 git status」失去意义。
- * add docs/evolution 与 .loop；若仍有其它未提交改动（说明 Qoder 未按 §6 提交完），只告警不代提，并把路径写回 state.leftover。
+ * 状态文件恒为「已修改」，既污染 git 又让执行引擎的「开工先看 git status」失去意义。
+ * add docs/evolution 与 .loop；若仍有其它未提交改动（说明执行引擎未按 §6 提交完），只告警不代提，并把路径写回 state.leftover。
+ *
+ * ⚠ 关于 `_prompt_R{n}.md` 的「永远剩 1 项」现象（2026-10-21 查清）：
+ *   每轮开头驱动器写 `_prompt_R{当前轮}.md` 留档，**随后**才调执行引擎；引擎收尾时
+ *   按 §6 自己 `git add -A` 提交，于是它提交进去的是**本轮**的 prompt（R62 提交里就带着
+ *   `_prompt_R60.md`）。等驱动器再提交时，工作区里已多出**下一轮**刚写的 prompt，
+ *   而那个文件属于下一轮，本就不该塞进本轮的 chore(loop) 提交。
+ *   结论：这不是缺陷，是「留档先于执行」的必然结果；原日志文案会误导成「引擎没提交完」，
+ *   故 leftover 只报**非 _prompt_** 的项，_prompt 残留单独降级为 debug 级说明。
  */
 async function commitArtifacts(roundId) {
   await run('git', ['add', 'docs/evolution'], { timeoutMs: 60000 })
@@ -282,7 +290,13 @@ async function commitArtifacts(roundId) {
     log(`⚠ 驱动器产物提交失败（exit=${c.code}）：${lastLines(c.stderr || c.stdout, 3)}`)
   }
   const after = await run('git', ['status', '--porcelain'], { timeoutMs: 60000 })
-  const leftoverPaths = after.stdout.trim() ? after.stdout.trim().split(/\r?\n/) : []
+  const allLeft = after.stdout.trim() ? after.stdout.trim().split(/\r?\n/) : []
+  // 下一轮的提示词留档不算「引擎漏提交」（见函数头说明）
+  const leftoverPaths = allLeft.filter((l) => !/_prompt_R\d+\.md/.test(l))
+  const promptOnly = allLeft.filter((l) => /_prompt_R\d+\.md/.test(l))
+  if (promptOnly.length) {
+    log(`  （另有 ${promptOnly.length} 项下一轮提示词留档待下轮提交，属正常）`)
+  }
   if (leftoverPaths.length) {
     log(`⚠ 轮末仍有 ${leftoverPaths.length} 项未提交（非驱动器产物；执行引擎可能未按 §6 提交，留人工核查）：`)
     leftoverPaths.slice(0, 10).forEach((l) => log(`    ${l}`))
