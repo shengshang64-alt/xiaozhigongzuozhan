@@ -7,10 +7,35 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { CompanyTemplateHint } from "@/components/common/CompanyTemplateHint"
 import { DataTable, type DataTableColumn } from "@/components/ui/DataTable"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
-import { daysUntil, displayStageLabel, effectiveHospital, type BidProjectRecord, type BidStage } from "@/pages/BidWorkspace/bidTypes"
+import { daysUntil, displayStageLabel, effectiveHospital, isGenTargetChapter, normalizeBidScope, type BidProjectRecord, type BidStage } from "@/pages/BidWorkspace/bidTypes"
 import { extractTenderMeta, tenderMetaHits } from "@/pages/BidWorkspace/tenderMeta"
 import { exportToCsv } from "@/lib/exportCsv"
 import { localDateStamp } from "@/lib/dateStamp"
+import { isTrulyDoneChapter } from "@/pages/BidWorkspace/chapterCompletion"
+
+// 2026-10-20：这个「成稿章数」此前用 (c.content ?? "").trim() 判断，与编制页口径不一致。
+// 编制页（useBidWorkspace 的 doneChapterCount / techChapterTotal）用的是
+// isGenTargetChapter（只算当前 scope 的生成目标章，商务骨架章不计）+ isTrulyDoneChapter
+// （gen_status === "done" 且无待生成小节）。两套口径并存的结果是：同一个项目，列表里显示
+// 「8/20 章成稿」，点进去却写着「3/12 已生成」——用户会以为自己看错了。
+// 现在统一继承编制页口径，分母也换成同一组目标章；顺带修掉原写法的一个老问题：
+// 分母含商务骨架章，而表头合计只加技术章，两个数本来就对不上。
+// 附带收益：新判据只看 gen_status 与小节状态，不再对每章正文调 .trim()（那会复制整串），
+// 比原写法快得多。
+function chapterProgress(proj: BidProjectRecord): { done: number; total: number } {
+  const scope = normalizeBidScope(proj.gen_options)
+  const generateDemo = proj.gen_options?.generate_demo === true
+  const targets = proj.bid_chapters.filter((c) => isGenTargetChapter(c, scope, generateDemo))
+  return { done: targets.filter((c) => isTrulyDoneChapter(c)).length, total: targets.length }
+}
+
+/** 排序与展示共用同一份算法，避免两处各算一遍。
+ * 单位「章成稿」并进返回值，而不是写成 `{值} 章成稿`：JSX 里「表达式 + 空格 + 文字」是三个
+ * 相邻文本节点，格式化工具或编辑器若把换行插进去，前导空格会被折叠掉、显示成「3/129章成稿」。 */
+function chapterProgressLabel(proj: BidProjectRecord): string {
+  const p = chapterProgress(proj)
+  return `${p.done}/${p.total} 章成稿`
+}
 
 type ListView = "active" | "archived" | "trash"
 
@@ -185,7 +210,7 @@ function ProjectCard({
         )}
         {view !== "trash" && (
           <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
-            {proj.bid_chapters.filter((c) => (c.content ?? "").trim()).length}/{proj.bid_chapters.length || 0} 章成稿
+            {chapterProgressLabel(proj)}
           </span>
         )}
       </div>
@@ -281,7 +306,7 @@ export function BidProjectList(p: BidProjectListProps) {
   // R250（r2-r012 收尾）：项目列表「卡片/表格」双视图。默认仍是卡片，既有行为零变化；
   // 表格复用全站 DataTable（点表头三态排序 + 超 20 条分页），列全部取卡片已在用的字段，零新增数据。
   const [displayMode, setDisplayMode] = useState<"card" | "table">("card")
-  const chapterDoneCount = (proj: BidProjectRecord) => proj.bid_chapters.filter((c) => (c.content ?? "").trim()).length
+  const chapterDoneCount = (proj: BidProjectRecord) => chapterProgress(proj).done
   const chaptersColumn: DataTableColumn<BidProjectRecord> = {
     key: "chapters",
     header: "成稿章节",
@@ -289,7 +314,7 @@ export function BidProjectList(p: BidProjectListProps) {
     sortAccessor: chapterDoneCount,
     render: (proj) => (
       <span className="text-xs text-muted-foreground">
-        {chapterDoneCount(proj)}/{proj.bid_chapters.length || 0}
+        {chapterProgressLabel(proj)}
       </span>
     ),
   }

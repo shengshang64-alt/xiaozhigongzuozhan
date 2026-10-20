@@ -552,7 +552,11 @@ export function selectBidEvidence(
         }
         const size = chunks[cand.k].text.length
         if (selectedScore.size > 0 && used + size > budget) {
-          tried[ci] = rows.length
+          // 2026-10-20 修复：这里原本写 `tried[ci] = rows.length`，等于把该条款永久判死——
+          // 只要它排名第一的块放不进剩余预算，后续所有 round 都不会再碰它，连"退而求其次用
+          // 次优块"的机会都没有。这正是长标书条款召回率偏低的机制层原因（安中医 138810 字
+          // 实测 13/133）。cand 已在上面 tried[ci] += 1 消费掉，此处只需跳出本轮，下一轮自然
+          // 从次优块继续试；tried[ci] 单调递增，不会死循环。
           break
         }
         selectedScore.set(cand.k, cand.score)

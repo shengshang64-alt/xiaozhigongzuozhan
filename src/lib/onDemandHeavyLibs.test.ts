@@ -3,7 +3,7 @@
 // 链可达入口(main.tsx)或页级路由壳”的形式打进首载 bundle（历史事故：docx 经浮动助手
 // 静态链漏进入口 chunk，全站每一页首访都要多载数百 kB）。
 // 本用例对静态 import 图做 BFS（不含动态 import、不含 import type），钉住 R124 拆分成果。
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readFileSync, readdirSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
@@ -94,5 +94,30 @@ describe("R124 重型导出库不进静态首载图（防回潮）", () => {
   it("Knowledge 路由壳静态不可达 docx（R147：kbUpload 走 bidFiles 动态导入）", () => {
     const r = findStaticReach(path.join(SRC, "pages", "Knowledge", "index.tsx"), ["docx"])
     expect(r.hit, `静态链：${r.chain.join(" > ")}`).toBeNull()
+  })
+
+  // 2026-10-20：上面 6 条是手工维护的入口表，于是 BidCheck 长期在表外——它静态引入
+  // ./report/toExcel（xlsx）与 ./report/toAnnotatedDocx（docx），「只进一次标书检查页、
+  // 从不导出」也要下载两个数百 kB 的重库，而没有任何守卫会说话。本条把入口表改为
+  // 从文件系统派生全部路由壳：新增页面自动纳入，不再依赖有人记得来加一行。
+  it("全部路由壳（src/pages/*/index.tsx）静态不可达 docx/xlsx/pptxgenjs（入口表自动派生）", () => {
+    const pagesDir = path.join(SRC, "pages")
+    const shells = readdirSync(pagesDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => path.join(pagesDir, d.name, "index.tsx"))
+      .filter((f) => existsSync(f))
+    // 地板检查：路由壳数量下限（routeRegistry 现有 17 条），防目录扫空导致「全绿」
+    expect(shells.length, `只扫到 ${shells.length} 个路由壳，目录口径可能已变`).toBeGreaterThanOrEqual(12)
+    const offenders: string[] = []
+    for (const shell of shells) {
+      const r = findStaticReach(shell, ALL_HEAVY)
+      if (r.hit) {
+        offenders.push(`${path.relative(SRC, shell)} → ${r.hit}\n        链：${r.chain.join(" > ")}`)
+      }
+    }
+    expect(
+      offenders,
+      `以下路由壳静态可达重库——应改成点击导出时 await import()：\n  ${offenders.join("\n  ")}`,
+    ).toEqual([])
   })
 })

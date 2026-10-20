@@ -7,6 +7,12 @@
 //
 // 实测（2026-10-15，脱敏 v2）：mode=retrieval / input_complete=false / 注入 7 段约 19944 字 / 未注入 27159 字 /
 // clause_hit=56/133（全覆盖 5 章）；旧口径 clipText(12000) 只覆盖 3 章却自称 input_complete=true。
+//
+// 实测（2026-10-20，召回修复后重测）：bidVisibility.ts 的 selectBidEvidence 原把「排名第一的块放不进
+// 剩余预算」的条款**永久判死**（`tried[ci] = rows.length` 后 break），连退而求其次用次优块的机会都没有。
+// 改为只跳出本轮、下一轮从次优块继续试之后，同一夹具、同一预算下：子集 clause_hit 56→110、不可见
+// 77→23；全量 clause_hit 13→50、待核对 119→83。本文件基线随之**上调**（按文件头原则：检索变好时上调，
+// 不是为了让测试变绿而改数字）。这两组数字都是当场实跑得到的，不是推算。
 import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -72,12 +78,13 @@ const RECORDED = {
   chapters: 18,
   clauseTotal: 133,
   legacyDeviation: 82,
-  /** 子集：本次可见的条款数 / 可见且历史判定为偏离的条款数（＝新链路最多能报出的负偏离） */
-  subsetHit: 56,
-  subsetVisibleDeviation: 29,
-  subsetInvisible: 77,
-  /** 检索召回下限：当前 56/133；调优后应上调，低于 40 视为回归 */
-  hitFloor: 40,
+  /** 子集：本次可见的条款数 / 可见且历史判定为偏离的条款数（＝新链路最多能报出的负偏离）
+   *  2026-10-20 召回修复后重测：subsetHit 56→110、subsetVisibleDeviation 29→65、subsetInvisible 77→23 */
+  subsetHit: 110,
+  subsetVisibleDeviation: 65,
+  subsetInvisible: 23,
+  /** 检索召回下限：当前 110/133；调优后应上调，低于 90 视为回归（旧值 40 = 修复前 56 的保守下限） */
+  hitFloor: 90,
   /** 单条规则进体检的条数上限（与其它本地检查一致） */
   ruleCap: 30,
 }
@@ -350,14 +357,18 @@ describe.skipIf(!existsSync(FULL_PATH))("R50b §7 全量真实标书（139k 字�
     expect(f.bid_text.length).toBeGreaterThan(100000)
     expect(e2e.pack.report.mode).toBe("retrieval")
     expect(e2e.pack.report.input_complete).toBe(false)
-    expect(e2e.pack.report.clause_hit).toBeGreaterThanOrEqual(10)
+    // 2026-10-20 召回修复后实测 50/133（修复前 13/133）；下限随之上调，低于 40 视为回归
+    expect(e2e.pack.report.clause_hit).toBeGreaterThanOrEqual(40)
     expect(e2e.pack.report.clause_hit).toBeLessThan(e2e.pack.report.clause_total)
     expect(e2e.pack.report.input_chars - e2e.pack.report.omitted_chars).toBeLessThanOrEqual(BID_VISIBILITY_BUDGET_CHARS)
   })
 
-  it("全量下几乎全部条款落入「待人工核对」——长文检索召回是当前最大待办", () => {
+  // 2026-10-20 更新：召回修复后全量待核对从 119 降到 83（83/133 = 62%）。仍是大头，
+  // 「预算 ÷ 正文长度」这个瓶颈没被消除（见 backlog B25），所以本条继续盯住它，只是把阈值
+  // 从「>100」下调到「>80」——按文件头原则，检索变好时基线应上调/阈值随实测收紧，不是改绿。
+  it("全量下多数条款仍落入「待人工核对」——长文检索召回是当前最大待办", () => {
     const stats = deviationStats(e2e.table)
-    expect(stats.needs_review).toBeGreaterThan(100)
+    expect(stats.needs_review).toBeGreaterThan(80)
     expect(stats.deviation).toBe(e2e.visibleDeviation)
     expect(stats.deviation).toBeLessThan(stats.needs_review)
     const hits = deviationCommitHits(e2e.table)

@@ -2,7 +2,7 @@
 // pb_hooks/bid_projects.pb.js — 业务 collection + REST CRUD 路由 (self-contained)
 //
 // 由 mcp__rh-pb-hooks__install_business_collection 装. 不要直接 Read+Write 这个文件.
-// 业务字段: rh_user_id:text, project_name:text, tender_no:text, hospital:text, bid_open_date:date, stage:text, tender_text:text, parse_report:json, bid_outline:json, bid_chapters:json, response_map:json, dup_report:json, void_check:json, ai_review:json, manual_review:json, parse_config:json, opportunity_id:text, bid_result:text, bid_amount:number, lost_reason:text, result_synced_at:date, target_pages:number, outline_level:number, figures_enabled:bool, clause_granularity:text, section_words:number, bid_defense:json, submission_check:json, stage_gates:json, archived:bool, deleted_at:text, gen_options:json, global_facts:text, orchestration:json, max_figures:number, compilation_basis_extra:json, basis_style:text, format_settings:json, format_check_items:json, ref_template_text:text, ref_materials_text:text, identity_words:text, bid_source_mode:text, bid_external_text:text
+// 业务字段: rh_user_id:text, project_name:text, tender_no:text, hospital:text, bid_open_date:date, stage:text, tender_text:text, parse_report:json, bid_outline:json, bid_chapters:json, response_map:json, dup_report:json, void_check:json, ai_review:json, manual_review:json, parse_config:json, opportunity_id:text, bid_result:text, bid_amount:number, lost_reason:text, result_synced_at:date, target_pages:number, outline_level:number, figures_enabled:bool, clause_granularity:text, section_words:number, bid_defense:json, submission_check:json, stage_gates:json, text_audit:json, archived:bool, deleted_at:text, gen_options:json, global_facts:text, orchestration:json, max_figures:number, compilation_basis_extra:json, basis_style:text, format_settings:json, format_check_items:json, ref_template_text:text, ref_materials_text:text, identity_words:text, bid_source_mode:text, bid_external_text:text
 // 路由: list,get,create,update,delete
 // list filter 字段: rh_user_id,stage
 // list 默认排序: -updated
@@ -56,6 +56,7 @@ onBootstrap(function (e) {
       addField({ name: 'bid_defense', type: 'json' })
       addField({ name: 'submission_check', type: 'json' })
       addField({ name: 'stage_gates', type: 'json' })
+      addField({ name: 'text_audit', type: 'json' })
       addField({ name: 'archived', type: 'bool' })
       addField({ name: 'deleted_at', type: 'text' })
       addField({ name: 'gen_options', type: 'json' })
@@ -126,6 +127,7 @@ onBootstrap(function (e) {
           { name: 'bid_defense', type: 'json' },
           { name: 'submission_check', type: 'json' },
           { name: 'stage_gates', type: 'json' },
+          { name: 'text_audit', type: 'json' },
           { name: 'archived', type: 'bool' },
           { name: 'deleted_at', type: 'text' },
           { name: 'gen_options', type: 'json' },
@@ -139,6 +141,8 @@ onBootstrap(function (e) {
           { name: 'ref_template_text', type: 'text' },
           { name: 'ref_materials_text', type: 'text' },
           { name: 'identity_words', type: 'text' },
+          { name: 'bid_source_mode', type: 'text', max: 16 },
+          { name: 'bid_external_text', type: 'text' },
           { name: "created", type: "autodate", onCreate: true },
           { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
         ],
@@ -189,6 +193,7 @@ routerAdd("GET", "/api/bid_projects", function (e) {
           { name: 'bid_defense', type: 'json' },
           { name: 'submission_check', type: 'json' },
           { name: 'stage_gates', type: 'json' },
+          { name: 'text_audit', type: 'json' },
           { name: 'archived', type: 'bool' },
           { name: 'deleted_at', type: 'text' },
           { name: 'gen_options', type: 'json' },
@@ -202,6 +207,8 @@ routerAdd("GET", "/api/bid_projects", function (e) {
           { name: 'ref_template_text', type: 'text' },
           { name: 'ref_materials_text', type: 'text' },
           { name: 'identity_words', type: 'text' },
+          { name: 'bid_source_mode', type: 'text', max: 16 },
+          { name: 'bid_external_text', type: 'text' },
         { name: "created", type: "autodate", onCreate: true },
         { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
       ],
@@ -235,13 +242,36 @@ routerAdd("GET", "/api/bid_projects", function (e) {
     for (var i = 0; i < records.length; i++) {
       items.push(records[i].publicExport())
     }
+    // 2026-10-20 性能修复（照 kb_docs 的 P1-3 口径）：原实现分页查完之后又用
+    // findRecordsByFilter(..., 100000, 0) 把「该用户全部项目」整条记录加载进内存只为数个数——
+    // 而 bid_projects 单条可达 76 万字（tender_text 全文 + 全部章正文），等于每次打开列表
+    // 都把整个标书语料读一遍。改为 $app.countRecords + $dbx 表达式（SQL count，不加载记录）。
+    // 本路由的过滤只有 rh_user_id / stage 两个精确匹配（无 LIKE），与 kb_docs 里
+    // 「q 模糊搜索不能走 dbx 快速路径」的已知限制无关。
+    // 任何一步异常都回落到原实现——绝不因为计数失败就把 totalItems 退化成「只有当前一页」。
     var totalItems = items.length
     try {
-      var countRecords = filter
-        ? $app.findRecordsByFilter("bid_projects", filter, sort, 100000, 0, params)
-        : $app.findRecordsByFilter("bid_projects", "", sort, 100000, 0)
-      totalItems = countRecords.length
-    } catch (err2) {}
+      var __exprs = []
+      var __pairUser = {}
+      __pairUser["rh_user_id"] = __uid
+      __exprs.push($dbx.hashExp(__pairUser))
+      if (query.stage !== undefined && query.stage !== "") {
+        var __pairStage = {}
+        __pairStage["stage"] = String(query.stage)
+        __exprs.push($dbx.hashExp(__pairStage))
+      }
+      var __cntExpr = __exprs[0]
+      for (var __ci = 1; __ci < __exprs.length; __ci++) {
+        __cntExpr = $dbx.and(__cntExpr, __exprs[__ci])
+      }
+      var __cnt = $app.countRecords("bid_projects", __cntExpr)
+      if (typeof __cnt === "number" && __cnt >= 0) totalItems = __cnt
+    } catch (err2) {
+      try {
+        var __fallback = $app.findRecordsByFilter("bid_projects", filter, sort, 100000, 0, params)
+        totalItems = __fallback.length
+      } catch (err3) {}
+    }
     return e.json(200, { items: items, page: page, perPage: perPage, totalItems: totalItems })
   } catch (err) {
     var msg = String(err && err.message || err)
@@ -321,6 +351,7 @@ routerAdd("POST", "/api/bid_projects", function (e) {
           { name: 'bid_defense', type: 'json' },
           { name: 'submission_check', type: 'json' },
           { name: 'stage_gates', type: 'json' },
+          { name: 'text_audit', type: 'json' },
           { name: 'archived', type: 'bool' },
           { name: 'deleted_at', type: 'text' },
           { name: 'gen_options', type: 'json' },
@@ -334,6 +365,8 @@ routerAdd("POST", "/api/bid_projects", function (e) {
           { name: 'ref_template_text', type: 'text' },
           { name: 'ref_materials_text', type: 'text' },
           { name: 'identity_words', type: 'text' },
+          { name: 'bid_source_mode', type: 'text', max: 16 },
+          { name: 'bid_external_text', type: 'text' },
         { name: "created", type: "autodate", onCreate: true },
         { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
       ],
@@ -376,6 +409,7 @@ routerAdd("POST", "/api/bid_projects", function (e) {
     rec.set("bid_defense", body.bid_defense)
     rec.set("submission_check", body.submission_check)
     rec.set("stage_gates", body.stage_gates)
+    rec.set("text_audit", body.text_audit)
     rec.set("archived", !!body.archived)
     rec.set("deleted_at", body.deleted_at === undefined || body.deleted_at === null ? "" : String(body.deleted_at))
     rec.set("gen_options", body.gen_options)
@@ -389,6 +423,8 @@ routerAdd("POST", "/api/bid_projects", function (e) {
     rec.set("ref_template_text", body.ref_template_text === undefined || body.ref_template_text === null ? "" : String(body.ref_template_text))
     rec.set("ref_materials_text", body.ref_materials_text === undefined || body.ref_materials_text === null ? "" : String(body.ref_materials_text))
     rec.set("identity_words", body.identity_words === undefined || body.identity_words === null ? "" : String(body.identity_words))
+    rec.set("bid_source_mode", body.bid_source_mode === undefined || body.bid_source_mode === null ? "" : String(body.bid_source_mode))
+    rec.set("bid_external_text", body.bid_external_text === undefined || body.bid_external_text === null ? "" : String(body.bid_external_text))
     $app.save(rec)
     return e.json(200, rec.publicExport())
   } catch (err) {
@@ -407,13 +443,29 @@ routerAdd("PATCH", "/api/bid_projects/{id}", function (e) {
       var collFix = $app.findCollectionByNameOrId("bid_projects")
       if (collFix) {
         var needFix = false
-        var LTF = ["tender_text", "ref_template_text", "ref_materials_text", "global_facts", "identity_words"]
+        var LTF = ["tender_text", "ref_template_text", "ref_materials_text", "global_facts", "identity_words", "bid_external_text"]
         var WANT = 5000000
         for (var li = 0; li < LTF.length; li++) {
           var ff = collFix.fields.getByName(LTF[li])
           if (!ff) continue
           var curMax = (typeof ff.max === "number") ? ff.max : 0
           if (curMax === 0 || curMax < WANT) { ff.max = WANT; needFix = true }
+        }
+        // 2026-10-20：这三个字段此前漏在写入白名单外（text_audit 连列都没有），就地幂等补列。
+        // onBootstrap 的 addField 只在启动时跑，而本机重启 :7000 长期被挡（backlog B15），
+        // 只靠 onBootstrap 会让本次修复必须等重启才生效。与上面 max 懒修复同一范式、同样幂等。
+        var ENSURE_FIELDS = [
+          { name: "text_audit", type: "json" },
+          { name: "bid_source_mode", type: "text", max: 16 },
+          { name: "bid_external_text", type: "text" },
+        ]
+        for (var ei = 0; ei < ENSURE_FIELDS.length; ei++) {
+          try {
+            if (!collFix.fields.getByName(ENSURE_FIELDS[ei].name)) {
+              collFix.fields.add(new Field(ENSURE_FIELDS[ei]))
+              needFix = true
+            }
+          } catch (_) {}
         }
         if (needFix) $app.save(collFix)
       }
@@ -430,6 +482,18 @@ routerAdd("PATCH", "/api/bid_projects/{id}", function (e) {
     if (!__own) { try { __own = (String(rec.get("owner_id")||"") === __uid) } catch(_x) {} }
     if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     var body = e.requestInfo().body || {}
+    // 静默忽略是 text_audit 丢数据的根因：前端写入的字段若不在下面白名单里，既不报错也不落库，
+    // 前端拿到 200 以为「已存档」，刷新后读回 null（2026-10-20 修复前 text_audit 即如此）。
+    // 这里只对白名单外字段记一条 warn 留痕，不改响应语义（避免打断既有客户端）；真正的防线是
+    // pbFieldContract.test.ts 的前端写入字段 ↔ 白名单契约守卫。
+    try {
+      var KNOWN_FIELDS = ["project_name", "tender_no", "hospital", "bid_open_date", "stage", "tender_text", "parse_report", "bid_outline", "bid_chapters", "response_map", "dup_report", "void_check", "ai_review", "manual_review", "parse_config", "opportunity_id", "bid_result", "bid_amount", "lost_reason", "result_synced_at", "target_pages", "outline_level", "figures_enabled", "clause_granularity", "section_words", "bid_defense", "submission_check", "stage_gates", "text_audit", "archived", "deleted_at", "gen_options", "global_facts", "orchestration", "max_figures", "compilation_basis_extra", "basis_style", "format_settings", "format_check_items", "ref_template_text", "ref_materials_text", "identity_words", "bid_source_mode", "bid_external_text"]
+      var unknownFields = []
+      for (var bf in body) { if (KNOWN_FIELDS.indexOf(bf) === -1) unknownFields.push(bf) }
+      if (unknownFields.length) {
+        $app.logger().warn("bid_projects PATCH: 白名单外字段未落库", "id", id, "fields", unknownFields.join(","))
+      }
+    } catch (_) {}
     // IDOR fix: owner transfer disabled
     if ("project_name" in body) rec.set("project_name", body.project_name === undefined || body.project_name === null ? "" : String(body.project_name))
     if ("tender_no" in body) rec.set("tender_no", body.tender_no === undefined || body.tender_no === null ? "" : String(body.tender_no))
@@ -459,6 +523,7 @@ routerAdd("PATCH", "/api/bid_projects/{id}", function (e) {
     if ("bid_defense" in body) rec.set("bid_defense", body.bid_defense)
     if ("submission_check" in body) rec.set("submission_check", body.submission_check)
     if ("stage_gates" in body) rec.set("stage_gates", body.stage_gates)
+    if ("text_audit" in body) rec.set("text_audit", body.text_audit)
     if ("archived" in body) rec.set("archived", !!body.archived)
     if ("deleted_at" in body) rec.set("deleted_at", body.deleted_at === undefined || body.deleted_at === null ? "" : String(body.deleted_at))
     if ("gen_options" in body) rec.set("gen_options", body.gen_options)
@@ -472,6 +537,10 @@ routerAdd("PATCH", "/api/bid_projects/{id}", function (e) {
     if ("ref_template_text" in body) rec.set("ref_template_text", body.ref_template_text === undefined || body.ref_template_text === null ? "" : String(body.ref_template_text))
     if ("ref_materials_text" in body) rec.set("ref_materials_text", body.ref_materials_text === undefined || body.ref_materials_text === null ? "" : String(body.ref_materials_text))
     if ("identity_words" in body) rec.set("identity_words", body.identity_words === undefined || body.identity_words === null ? "" : String(body.identity_words))
+    // 2026-10-20：bid_source_mode / bid_external_text 此前有列但漏在写入白名单外——
+    // Q28「外部投标文件」的上传与来源切换因此静默不落库（前端 updateProject 后刷新即丢）。
+    if ("bid_source_mode" in body) rec.set("bid_source_mode", body.bid_source_mode === undefined || body.bid_source_mode === null ? "" : String(body.bid_source_mode))
+    if ("bid_external_text" in body) rec.set("bid_external_text", body.bid_external_text === undefined || body.bid_external_text === null ? "" : String(body.bid_external_text))
     $app.save(rec)
     return e.json(200, rec.publicExport())
   } catch (err) {

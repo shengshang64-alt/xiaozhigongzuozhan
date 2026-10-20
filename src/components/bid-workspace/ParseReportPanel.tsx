@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { copyTextToClipboard } from "@/lib/clipboard"
+// R118 口径：数字展示统一走 formatCount（锁定 zh-CN 分组），不用裸 toLocaleString()
+import { formatCount } from "@/lib/money"
 import { BookOpenCheck, ClipboardList, Copy, Loader2, Lock, PencilLine, RefreshCw, ScanSearch, ShieldAlert, Sparkles, Star } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -246,10 +248,10 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
     report?.scoringTruncation ? (
       <div className="mb-3 rounded-md border border-amber-300/60 bg-amber-50 px-4 py-3 shadow-sm text-amber-800">
         <p className="text-xs font-semibold leading-relaxed">
-          评分章素材已按整行截断：已收录 {report.scoringTruncation.keptChars.toLocaleString()} 字，另有 {report.scoringTruncation.droppedChars.toLocaleString()} 字未纳入
+          评分章素材已按整行截断：已收录 {formatCount(report.scoringTruncation.keptChars)} 字，另有 {formatCount(report.scoringTruncation.droppedChars)} 字未纳入
         </p>
         <p className="mt-1 text-xs leading-relaxed text-amber-700">
-          截断从第 {report.scoringTruncation.fromLine.toLocaleString()} 行起，尾部评分项可能缺失，建议人工核对或分段上传完整招标文件
+          截断从第 {formatCount(report.scoringTruncation.fromLine)} 行起，尾部评分项可能缺失，建议人工核对或分段上传完整招标文件
         </p>
       </div>
     ) : null

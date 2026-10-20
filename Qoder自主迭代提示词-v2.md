@@ -1,9 +1,12 @@
-# 小智工作站 · Qoder 自主迭代提示词 v2
+# 小智工作站 · 自主迭代提示词 v2
 
 > **给用户看的说明（不参与执行）**
 >
 > - 本文件取代旧版 `Qoder迭代提示词.md`（旧版全部指向已删除的 `AI-ITERATION.md`，已失效）。
-> - 用法：由驱动器 `scripts/autoloop.mjs` 抽取 `PROMPT-BEGIN/END` 之间的正文，注入环境变量后交给 `qodercli` 执行；也可手动整段复制给 Qoder。
+> - 用法：由驱动器 `scripts/autoloop.mjs` 抽取 `PROMPT-BEGIN/END` 之间的正文，注入环境变量后交给执行引擎。
+>   **2026-10-20 起默认引擎为 `claude`**（Claude Code 2.1.304，经 opencode zen 代理，无需交互登录）；
+>   旧引擎 `qodercli` 因本机缺 `QODER_PERSONAL_ACCESS_TOKEN` 长期不可用，保留为 `--engine qoder` 回退。
+>   文件名仍叫「Qoder…」是历史原因（驱动器按此路径读取），内容已是引擎无关的通用规程。
 > - 与 v1 的关键差异：**不依赖任何被删文件**；门禁改为「实测 + 可量化」；新增 GitHub 对标闭环；明确红线与停机条件。
 > - 状态文件：`docs/evolution/_loop_state.json`　轮报落点：`docs/evolution/R{轮次}_{日期}.md`
 
@@ -15,7 +18,11 @@
 
 ## 0 · 项目一句话
 
-小智工作站是医疗信息化售前工作台（React + TypeScript + Vite 前端 / PocketBase 后端，本地 5173 + 7000），含标书工作台、方案工作室、PPT 报价、知识库、情报竞品、大模型通道等模块。核心价值只有一条：**产出可对外交付的标书 / 方案 / PPT**。
+小智工作站是医疗信息化售前工作台（React + TypeScript + Vite 前端 / PocketBase 后端，**本地前端 8000 + 后端 7000**），含标书工作台、方案工作室、PPT 报价、知识库、情报竞品、大模型通道等模块。核心价值只有一条：**产出可对外交付的标书 / 方案 / PPT**。
+
+> 端口更正（2026-10-20）：此处原写「本地 5173 + 7000」，5173 是 Vite 的默认端口，但两个配置都已覆盖为 8000
+> （`vite.config.ts` 与 `vibex-local/vite.local.config.ts` 的 `server.port`，`start-local.cmd:75` 还显式传了 `--port 8000`，
+> `status.ps1` 也按 7000/8000 巡检）。照 5173 做浏览器验证必然扑空。日常启动走 `start-local.cmd`（它带 `/__pb` 代理）。
 
 ## 1 · 开工第一件事：读状态，不要重复劳动
 

@@ -359,6 +359,17 @@ export function ComposeStep(p: ComposeStepProps) {
     () => healMustWriteOnRead(projBidOutline ?? [], projParseReport ?? null),
     [projBidOutline, projParseReport],
   )
+  // 性能（2026-10-20）：这条「继续上次批量生成」的判据原来直接写在渲染体里，每次渲染都要跑
+  // bulkQueueLoad(proj.id)——它是 localStorage.getItem + JSON.parse + O(队列 × 章数) 的嵌套扫描
+  // （bidTypes.ts 的 bulkQueueLoad）。而正文编辑是逐键触发重渲染（setEditingContent 未防抖，
+  // 只对落库做了防抖），于是每敲一个字都要白跑一遍。deps 用 proj 而不是 proj.bid_chapters：
+  // 打字时变的是 editingContent、activeProject 的对象身份不变，正好被 memo 挡住；
+  // 生成/改章走 updateProject 会换 proj 身份，横幅该出现/该消失都能及时跟上。
+  const bulkResumePending = useMemo(() => {
+    if (!proj) return false
+    const queued = bulkQueueLoad(proj.id)
+    return queued.length > 0 && queued.some((nid) => proj.bid_chapters.some((c) => c.node_id === nid && c.gen_status !== "done"))
+  }, [proj])
   // 循环 5 A3：归档只读——编辑/生成控件禁用，导出与查看保留
   const locked = p.isArchivedLocked
   // 大纲「重新生成」覆盖前的二次确认（本地 UI 状态）
@@ -994,7 +1005,7 @@ export function ComposeStep(p: ComposeStepProps) {
           {/* 生成链路 D1：上次批量中断恢复横幅——队列残留且存在未完成任务且当前不在批量中 */}
           {hasChapters &&
             !p.bulkGenerating &&
-            bulkQueueLoad(proj.id).some((nid) => proj.bid_chapters.some((c) => c.node_id === nid && c.gen_status !== "done")) && (
+            bulkResumePending && (
               <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/40 bg-warning/10 px-4 py-2.5 text-sm text-card-foreground animate-in fade-in duration-300">
                 <span className="min-w-0 flex-1 text-xs">
                   检测到上次批量生成未完成（已生成 {p.doneChapterCount}/{p.techChapterTotal} 章）。点右侧按钮从断点继续——已完成的章不会重复生成，成稿小节按断点续跑只补缺失部分。
@@ -1609,7 +1620,7 @@ export function ComposeStep(p: ComposeStepProps) {
             <DialogTitle className="text-foreground">确认大纲会清空已生成正文</DialogTitle>
             <DialogDescription>
               「确认大纲」会按当前大纲重建章节清单，已成稿的 {confirmOutlineGuard?.chapters ?? 0} 章正文（
-              约 {(confirmOutlineGuard?.words ?? 0).toLocaleString()} 字）将被清空且需重新付费生成。
+              约 {formatCount(confirmOutlineGuard?.words ?? 0)} 字）将被清空且需重新付费生成。
               若只是调整了大纲想补几章，请关闭本弹窗，改用覆盖面板里的「一键补入 / 同步章节清单」——它们只增不删、保留既有正文。
             </DialogDescription>
           </DialogHeader>

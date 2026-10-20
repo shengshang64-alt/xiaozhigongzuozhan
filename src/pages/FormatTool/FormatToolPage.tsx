@@ -1,4 +1,6 @@
 import { useMemo, useRef, useState } from "react"
+// R118 口径：数字展示统一走 formatCount（锁定 zh-CN 分组），不用裸 toLocaleString()
+import { formatCount } from "@/lib/money"
 import {
   AlertTriangle,
   Check,
@@ -606,7 +608,7 @@ function ApplyReportPanel({ report, notes }: { report: FormatApplyReport; notes:
         {textSame ? (
           <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
             <CheckCircle2 className="h-3 w-3 text-emerald-600" />
-            正文文字 0 改动（{report.textAfter.toLocaleString()} 字符）
+            正文文字 0 改动（{formatCount(report.textAfter)} 字符）
           </span>
         ) : (
           <span className="flex items-center gap-1 text-[11px] text-warning">

@@ -33,9 +33,13 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { hasBlockingCritical } from "./bidCheckTypes"
-import { exportChecklistToExcel } from "./report/toExcel"
+// R124 口径：docx / xlsx 是数百 kB 级重库，只能点击导出时经 await import() 按需加载。
+// 本页此前静态引入 ./report/toExcel（内含 `import * as XLSX from "xlsx"`）与
+// ./report/toAnnotatedDocx（内含 `from "docx"`），于是「只进一次标书检查页、从不导出」
+// 也要下载两个重库。而 onDemandHeavyLibs.test.ts 的 BFS 入口表只覆盖 6 条路由壳
+// （main/PptQuote/IntelCenter/SolutionStudio/BidWorkspace/Knowledge），BidCheck 是漏网的，
+// 所以这个回潮一直没被守卫抓住。改回按需后两处重库不再进入本页 chunk。
 import { exportHtmlReport } from "./report/toHtml"
-import { exportAnnotatedDocx } from "./report/toAnnotatedDocx"
 import { BidCheckConfigDialog } from "./BidCheckConfigDialog"
 import { ReadingView } from "./ReadingView"
 import { RulesListPanel } from "./RulesListPanel"
@@ -75,11 +79,17 @@ export function BidCheckPage(vm: BidCheckVm) {
   const blocked = !!result && sealed && hasBlockingCritical(result)
   const hardFatal = blocked && anbidCfg.sealedViolationIsFatal
 
-  const doExport = (kind: "excel" | "html" | "docx") => {
+  const doExport = async (kind: "excel" | "html" | "docx") => {
     if (!result) return
-    if (kind === "excel") exportChecklistToExcel(result)
-    else if (kind === "html") exportHtmlReport(result)
-    else void exportAnnotatedDocx(result)
+    if (kind === "excel") {
+      const { exportChecklistToExcel } = await import("./report/toExcel")
+      exportChecklistToExcel(result)
+    } else if (kind === "html") {
+      exportHtmlReport(result)
+    } else {
+      const { exportAnnotatedDocx } = await import("./report/toAnnotatedDocx")
+      await exportAnnotatedDocx(result)
+    }
   }
 
   const tryExport = (kind: "excel" | "html" | "docx") => {
@@ -89,7 +99,7 @@ export function BidCheckPage(vm: BidCheckVm) {
       setGateOpen(true)
       return
     }
-    doExport(kind)
+    void doExport(kind)
   }
 
   const issueCount = useMemo(() => (result ? result.summary.fail + result.summary.warn : 0), [result])
@@ -278,7 +288,7 @@ export function BidCheckPage(vm: BidCheckVm) {
             <Button
               variant="destructive"
               onClick={() => {
-                if (pendingExport) doExport(pendingExport)
+                if (pendingExport) void doExport(pendingExport)
                 setGateOpen(false)
               }}
             >

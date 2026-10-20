@@ -1,11 +1,16 @@
 #!/usr/bin/env node
 'use strict'
 /**
- * 小智工作站 · Qoder 自主迭代驱动器（autoloop）
+ * 小智工作站 · 自主迭代驱动器（autoloop）
  * ================================================================
- * 定位：Qoder 是执行者，本驱动器是**监工层**——
- *   注入环境 → 调用 Qoder → **独立复验门禁** → 判定通过/失败 → 记录 → 决定是否继续。
- *   不采信 Qoder 的自述，一切以驱动器实测为准。
+ * 定位：Claude Code 是执行者，本驱动器是**监工层**——
+ *   注入环境 → 调用 Claude → **独立复验门禁** → 判定通过/失败 → 记录 → 决定是否继续。
+ *   不采信执行者的自述，一切以驱动器实测为准。
+ *
+ * 引擎切换（2026-10-20）：
+ *   原引擎 qodercli 需要 QODER_PERSONAL_ACCESS_TOKEN，本机未设置 → 预检必失败、整条自动化线
+ *   长期不可用。现改为 claude（@anthropic-ai/claude-code 2.1.304，经 ~/.claude/settings.json
+ *   指向 opencode zen 代理，无需交互登录）。可用 --engine qoder 回退到旧引擎。
  *
  * 用法：
  *   node scripts/autoloop.mjs --check                环境预检（零费用，不调用 AI）
@@ -13,6 +18,7 @@
  *   node scripts/autoloop.mjs --rounds 5             连续跑 5 轮（默认 1 轮）
  *   node scripts/autoloop.mjs --gate-only            只跑门禁复验（零费用）
  *   node scripts/autoloop.mjs --verify-state         只校验状态文件口径（零费用，不跑门禁）
+ *   node scripts/autoloop.mjs --engine qoder         回退到旧引擎
  *
  * 产物：
  *   docs/evolution/_loop_state.json   状态（轮次/基线/backlog/history）
@@ -25,6 +31,7 @@
  *   2. 必须注入 CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD，否则 vite build 清空 dist
  *      会被 safe-delete 拦截（阈值默认 50，dist/assets 有 260+ 文件）。
  *   3. 必须注入 XIAOZHI_AUTOLOOP=1，否则 guard.mjs 的 ask 在无人值守下堵死所有命令。
+ *   4. 必须清空 NODE_OPTIONS —— 宿主经它注入 safe-delete 守卫，会把 dev server 打死。
  */
 
 import { spawn } from 'node:child_process'
@@ -45,22 +52,64 @@ const RUN_LOG = path.join(EVOLUTION_DIR, '_autoloop.log')
  *   eslint：`npx eslint .`（仓库根，不是 src/ 子集）的 error 数
  * 改基线流程：改 eslint.config.js 忽略项或修代码 → 重跑命令 → 把实测数字写回此处与
  * _loop_state.json.gatesBaseline，两处必须相等（verifyStateIntegrity 会校验）。
- * 实测：2026-10-14 `npx eslint .` → 151 error / 19 warning；`npx tsc -b` → 0 error。
+ * 实测（2026-10-20 更正）：`npx eslint .` → **116 error / 11 warning**；`npx tsc -b` → 0 error。
+ *   上面这条原写 151 error / 19 warning（2026-10-14 的实测），此后 R52 降到 116 但**没同步这里**。
+ *   它与 _loop_state.json.eslintBaseline（116）、eslint-budget.json.totals.errors（116）、
+ *   根 CLAUDE.md 第 4 条（≤116）三处都不一致 —— 正是 CLAUDE.md 警告过的「151/160/163 三数字并存」
+ *   那类口径分裂。本常量只在 defaultState()（状态文件丢失/损坏时的兜底）生效，平时不参与判定，
+ *   所以它长期没被发现；但无人值守时状态文件一旦损坏，它会把门禁**放宽 35 个 error** 且不报警。
  */
-const ESLINT_BASELINE_FALLBACK = 151
+const ESLINT_BASELINE_FALLBACK = 116
 const TSC_BASELINE = 0
 const START_ROUND = 34
 
-/** 注入给 Qoder 及其所有子进程的环境（见文件头「沙箱约束」） */
+/** 注入给执行引擎及其所有子进程的环境（见文件头「沙箱约束」） */
 const CHILD_ENV = {
   XIAOZHI_AUTOLOOP: '1',
   CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD: '100000',
+  // 沙箱约束第 4 条：宿主经 NODE_OPTIONS 注入 safe-delete 守卫，会把 vite dev server 打死
+  NODE_OPTIONS: '',
 }
 
+/** 执行引擎：claude（默认，本机已配通）| qoder（旧，需 QODER_PERSONAL_ACCESS_TOKEN） */
+let ENGINE = 'claude'
+
 const QODER_ARGS = ['-p', '--permission-mode', 'accept_edits', '-o', 'json']
-const MAX_QODER_MS = 90 * 60 * 1000 // 单轮 Qoder 上限 90 分钟
+/**
+ * Claude Code 参数：
+ *   -p / --print         非交互，从 stdin 读提示词、结束即退出
+ *   --output-format json 单条 JSON 结果（含 is_error / num_turns / result / permission_denials）
+ *   --permission-mode    acceptEdits：允许改文件；Bash 类命令仍需白名单或 bypass
+ *   --allowedTools       显式放行迭代必需的 Bash 子命令（git/npx/node/npm），其余仍受管
+ *   --add-dir            允许访问仓库外的 .probe 夹具目录
+ * 注意：不要用 --dangerously-skip-permissions（会连红线一起放开），用白名单更可控。
+ */
+function claudeArgs() {
+  return [
+    '-p',
+    '--output-format', 'json',
+    '--permission-mode', 'acceptEdits',
+    // 迭代必需的只读/构建类命令：门禁四门 + git 状态与提交（不含 push/reset/clean）
+    '--allowedTools',
+    [
+      'Edit', 'Write', 'Read', 'Glob', 'Grep', 'TodoWrite',
+      'Bash(git status:*)', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git add:*)',
+      'Bash(git commit:*)', 'Bash(git checkout --:*)', 'Bash(git stash:*)',
+      'Bash(npx tsc:*)', 'Bash(npx vite:*)', 'Bash(npx vitest:*)', 'Bash(npx eslint:*)',
+      'Bash(npx vite-node:*)', 'Bash(node:*)', 'Bash(npm:*)', 'Bash(pnpm:*)',
+      'Bash(ls:*)', 'Bash(cat:*)', 'Bash(head:*)', 'Bash(tail:*)', 'Bash(wc:*)',
+      'Bash(grep:*)', 'Bash(rg:*)', 'Bash(find:*)', 'Bash(sed:*)', 'Bash(awk:*)',
+      'Bash(mkdir:*)', 'Bash(echo:*)', 'Bash(cd:*)', 'Bash(printf:*)',
+    ].join(' '),
+    // 夹具在仓库外（.probe 与 docs 都在仓内，这里只是保险）
+    '--add-dir', ROOT,
+  ]
+}
+
+const MAX_ENGINE_MS = 90 * 60 * 1000 // 单轮执行上限 90 分钟
 const MAX_GATE_MS = 30 * 60 * 1000 // 单条门禁上限 30 分钟
 const MAX_CONSECUTIVE_FAIL = 2 // 连续失败轮数上限，达到即停
+const MAX_CONSECUTIVE_EMPTY = 3 // 连续空转（没改任何文件）轮数上限，达到即停
 
 // ---------------------------------------------------------------- 基础工具
 function nowIso() {
@@ -236,6 +285,16 @@ async function gitStatusPorcelain() {
   return r.stdout.trim()
 }
 
+/**
+ * 截断长文本到 n 字符（用于把上轮 theme 这类数千字的自述压成一句摘要）。
+ * 历史 theme 动辄 3000-4000 字，原样注入会让每轮提示词的「上下文」压过「任务规则」，
+ * 且挤占可用的决策注意力。只保留开头 + 明确标注被截断（不假装完整）。
+ */
+function clip(text, n) {
+  const s = String(text || '').replace(/\s+/g, ' ').trim()
+  return s.length <= n ? s : `${s.slice(0, n)}…（截断，全文见轮报）`
+}
+
 /** 组装本轮要注入的完整提示词 = 模板正文 + 驱动器动态上下文 */
 async function buildPrompt(state, seq, total) {
   const template = loadPromptTemplate()
@@ -243,9 +302,17 @@ async function buildPrompt(state, seq, total) {
   try { dirty = await gitStatusPorcelain() } catch { dirty = '' }
   const dirtyCount = dirty ? dirty.split(/\r?\n/).length : 0
 
-  const backlogText = state.backlog && state.backlog.length
-    ? state.backlog.slice(0, 5).map((b) => `${b.id}:${b.title}(${b.priority || 'n/a'})`).join(' / ')
-    : '（空 —— 请从最近轮报、对标清单或实测缺陷中自行选题）'
+  // backlog：只给「未完成的高优先级」前 3 条，标题截断。原实现取前 5 条全文，
+  // 单条 title 就上千字，注入后大部分内容与「本轮做什么」无关。
+  const openBacklog = (state.backlog || [])
+    .filter((b) => !/【.*已完成.*】|可结/.test(b.title || ''))
+    .sort((a, b) => {
+      const rank = { high: 0, medium: 1, low: 2 }
+      return (rank[a.priority] ?? 9) - (rank[b.priority] ?? 9)
+    })
+  const backlogText = openBacklog.length
+    ? openBacklog.slice(0, 3).map((b) => `- ${b.id}（${b.priority || 'n/a'}）：${clip(b.title, 160)}`).join('\n')
+    : '- （空 —— 请从最近轮报、对标清单或实测缺陷中自行选题）'
 
   const ctx = [
     '',
@@ -256,13 +323,15 @@ async function buildPrompt(state, seq, total) {
     `- 工作区未提交改动：${dirtyCount} 项${dirtyCount ? '（开工前按 §1 第 4 条处理：与本轮无关的先提交或回滚）' : '（干净）'}`,
     `- 门禁基线（全仓口径）：tsc **≤${state.gatesBaseline.tsc} error**（绝对）/ eslint **≤${state.gatesBaseline.eslint} error**`,
     '- 判绿规则：verdict 写 pass 时 gates 每一项必须严格等于 pass（字符串）；写「本轮文件 pass / 全仓被在途文件挡」这类豁免口径会被 --verify-state 判为自我豁免并停机',
-    `- 上轮结论：${state.lastRound ? `${state.lastRound.id} · ${state.lastRound.theme} · ${state.lastRound.verdict}` : '（无，可能是首轮）'}`,
-    `- backlog 当前项：${backlogText}`,
+    `- 上轮结论：${state.lastRound ? `${state.lastRound.id}（${state.lastRound.verdict}）· ${clip(state.lastRound.theme, 300)}` : '（无，可能是首轮）'}`,
+    '',
+    `- 待办候选（按优先级，标题已截断；完整内容读 \`docs/evolution/_loop_state.json\`）：`,
+    backlogText,
     ...(state.focus
       ? [
           '',
           `- **本轮专项（必须做，优先级高于 §2 的 P1/P2）**：${state.focus}`,
-          '  若专项确实做不了（依赖缺失/前提前提不成立），先做 P1 并在轮报里写清为什么专项没做。',
+          '  若专项确实做不了（依赖缺失/前提不成立），先做 P1 并在轮报里写清为什么专项没做。',
         ]
       : []),
     '',
@@ -272,15 +341,32 @@ async function buildPrompt(state, seq, total) {
   return template + '\n' + ctx
 }
 
-// ---------------------------------------------------------------- Qoder 调用
-function parseQoderOutput(stdout) {
-  const lines = String(stdout || '').split(/\r?\n/)
+// ---------------------------------------------------------------- 执行引擎调用
+/**
+ * 解析引擎输出里的结果对象。
+ *   claude --output-format json：stdout 就是**一个**完整 JSON 对象（不是逐行流），
+ *     字段与 qoder 的 result 行高度相似：{ type:"result", is_error, num_turns, result, permission_denials, ... }
+ *   qoder -o json：stdout 是逐行流，最后一条 type=result。
+ * 两者都按「从后往前找带 { 的行 + 整体 JSON 解析」兜底。
+ */
+function parseEngineOutput(stdout) {
+  const raw = String(stdout || '').trim()
+  if (!raw) return null
+  // 先按整体 JSON 解析（claude 走这条）
+  try {
+    const whole = JSON.parse(raw)
+    if (whole && (whole.type === 'result' || 'is_error' in whole)) return whole
+  } catch {
+    /* 不是单体 JSON，退化为逐行扫描 */
+  }
+  // 再按逐行流从后往前找（qoder 走这条）
+  const lines = raw.split(/\r?\n/)
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i].trim()
     if (!line.startsWith('{')) continue
     try {
       const obj = JSON.parse(line)
-      if (obj && obj.type === 'result') return obj
+      if (obj && (obj.type === 'result' || 'is_error' in obj)) return obj
     } catch {
       /* 非 JSON 行，继续向上找 */
     }
@@ -288,9 +374,25 @@ function parseQoderOutput(stdout) {
   return null
 }
 
+/** 调 claude：-p 从 stdin 读提示词，--output-format json 出单条结果 */
+async function runClaude(prompt) {
+  const r = await run('claude', claudeArgs(), { stdin: prompt, timeoutMs: MAX_ENGINE_MS })
+  return { ...r, parsed: parseEngineOutput(r.stdout) }
+}
+
+/** 调 qoder（旧引擎，保留回退能力） */
 async function runQoder(prompt) {
-  const r = await run('qodercli', QODER_ARGS, { stdin: prompt, timeoutMs: MAX_QODER_MS })
-  return { ...r, parsed: parseQoderOutput(r.stdout) }
+  const r = await run('qodercli', QODER_ARGS, { stdin: prompt, timeoutMs: MAX_ENGINE_MS })
+  return { ...r, parsed: parseEngineOutput(r.stdout) }
+}
+
+async function runEngine(prompt) {
+  return ENGINE === 'qoder' ? runQoder(prompt) : runClaude(prompt)
+}
+
+/** 引擎自述「失败」的判据（claude 与 qoder 同形） */
+function engineFailed(q) {
+  return !(q.parsed && q.parsed.is_error === false)
 }
 
 // ---------------------------------------------------------------- 四门门禁（独立复验）
@@ -418,14 +520,44 @@ function writeStop(reason, detail) {
 // ---------------------------------------------------------------- 预检
 async function preflight() {
   const problems = []
-  const v = await run('qodercli', ['--version'], { timeoutMs: 60000 })
-  if (v.code !== 0) problems.push('qodercli 不可用（command not found 或启动失败）')
-  else log(`qodercli 版本：${v.stdout.trim()}`)
-
-  if (!process.env.QODER_PERSONAL_ACCESS_TOKEN) {
-    problems.push('环境变量 QODER_PERSONAL_ACCESS_TOKEN 未设置（headless 登录需要它）')
-  }
   if (!fs.existsSync(PROMPT_FILE)) problems.push(`提示词文件不存在：${PROMPT_FILE}`)
+
+  if (ENGINE === 'qoder') {
+    const v = await run('qodercli', ['--version'], { timeoutMs: 60000 })
+    if (v.code !== 0) problems.push('qodercli 不可用（command not found 或启动失败）')
+    else log(`qodercli 版本：${v.stdout.trim()}`)
+    if (!process.env.QODER_PERSONAL_ACCESS_TOKEN) {
+      problems.push('环境变量 QODER_PERSONAL_ACCESS_TOKEN 未设置（headless 登录需要它）')
+    }
+    return problems
+  }
+
+  // claude：只要 --version 通就说明二进制与鉴权配置（~/.claude/settings.json）在位
+  const v = await run('claude', ['--version'], { timeoutMs: 60000 })
+  if (v.code !== 0) {
+    problems.push(`claude 不可用（command not found 或启动失败）：${lastLines(v.stderr, 2)}`)
+  } else {
+    log(`claude 版本：${v.stdout.trim()}`)
+  }
+  // 代理配置检查（只报事实，不打印密钥）
+  const cfg = path.join(process.env.USERPROFILE || '', '.claude', 'settings.json')
+  if (!fs.existsSync(cfg)) {
+    problems.push(`未找到 claude 配置：${cfg}（需要 ANTHROPIC_BASE_URL / API_KEY 才能免交互调用）`)
+  } else {
+    try {
+      const j = JSON.parse(fs.readFileSync(cfg, 'utf8'))
+      const env = j.env || {}
+      if (!env.ANTHROPIC_BASE_URL && !process.env.ANTHROPIC_BASE_URL) {
+        problems.push('claude 未配置 ANTHROPIC_BASE_URL（直连官方会缺鉴权）')
+      }
+      if (!env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_API_KEY && !env.ANTHROPIC_AUTH_TOKEN && !process.env.ANTHROPIC_AUTH_TOKEN) {
+        problems.push('claude 未配置 ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN')
+      }
+      log(`claude 端点：${env.ANTHROPIC_BASE_URL || process.env.ANTHROPIC_BASE_URL}；模型：${env.ANTHROPIC_MODEL || '(默认)'}`)
+    } catch (err) {
+      problems.push(`claude 配置解析失败：${(err && err.message) || err}`)
+    }
+  }
   return problems
 }
 
@@ -514,14 +646,14 @@ async function doRun(rounds) {
     fs.writeFileSync(promptPath, prompt, 'utf8')
     log(`提示词已留档：${promptPath}（${prompt.length} 字符）`)
 
-    // 2) 调用 Qoder
-    log('调用 Qoder（headless，可能数十分钟）…')
+    // 2) 调用执行引擎
+    log(`调用 ${ENGINE}（headless，可能数十分钟）…`)
     const t0 = Date.now()
-    const q = await runQoder(prompt)
+    const q = await runEngine(prompt)
     const durSec = Math.round((Date.now() - t0) / 1000)
-    const qoderOk = !!(q.parsed && q.parsed.is_error === false)
-    log(`Qoder 返回：exit=${q.code} is_error=${q.parsed ? q.parsed.is_error : 'n/a'} turns=${q.parsed ? q.parsed.num_turns : '?'} 用时=${durSec}s`)
-    if (q.parsed && q.parsed.result) log(`Qoder 结语：${String(q.parsed.result).slice(0, 400)}`)
+    const engineOk = !engineFailed(q)
+    log(`${ENGINE} 返回：exit=${q.code} is_error=${q.parsed ? q.parsed.is_error : 'n/a'} turns=${q.parsed ? q.parsed.num_turns : '?'} 用时=${durSec}s`)
+    if (q.parsed && q.parsed.result) log(`${ENGINE} 结语：${String(q.parsed.result).slice(0, 400)}`)
     if (q.parsed && Array.isArray(q.parsed.permission_denials) && q.parsed.permission_denials.length) {
       log(`⚠ 权限被拒 ${q.parsed.permission_denials.length} 次（可能命中守卫红线）`)
     }
@@ -533,17 +665,17 @@ async function doRun(rounds) {
     const report = findReport(state.round)
     log(`轮报：${report || '未找到（异常）'}`)
 
-    const allOk = q.code === 0 && qoderOk && gates.every((g) => g.ok) && !!report
+    const allOk = q.code === 0 && engineOk && gates.every((g) => g.ok) && !!report
     log(`本轮判定：${allOk ? 'PASS' : 'FAIL'}`)
 
-    // 4) 回写状态（Qoder 未推进轮次时由驱动器兜底推进）
+    // 4) 回写状态（执行引擎未推进轮次时由驱动器兜底推进）
     const after = readState()
     after.gates = Object.fromEntries(gates.map((g) => [g.name, g.ok ? 'pass' : 'fail']))
     // 门禁基线与门禁结果同批回写，保证「数字」与「结论」出自同一次实测
     after.gatesBaseline = { tsc: TSC_BASELINE, eslint: state.gatesBaseline.eslint }
     after.eslintBaseline = state.gatesBaseline.eslint
     if (after.round <= state.round) {
-      log(`注意：Qoder 未推进轮次（仍为 ${after.round}），驱动器代为 +1`)
+      log(`注意：执行引擎未推进轮次（仍为 ${after.round}），驱动器代为 +1`)
       after.round = state.round + 1
       after.history = [...(after.history || []), {
         id: `R${state.round}`, theme: '(驱动器兜底推进)', verdict: allOk ? 'pass' : 'fail',
@@ -587,28 +719,31 @@ async function doRun(rounds) {
 
 // ---------------------------------------------------------------- 入口
 function parseArgs(argv) {
-  const out = { rounds: 1, check: false, dryRun: false, gateOnly: false, verifyState: false, help: false }
+  const out = { rounds: 1, check: false, dryRun: false, gateOnly: false, verifyState: false, help: false, engine: 'claude' }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--rounds' || a === '-r') out.rounds = Math.max(1, Number(argv[++i]) || 1)
+    else if (a === '--engine' || a === '-e') out.engine = String(argv[++i] || 'claude').toLowerCase()
     else if (a === '--check') out.check = true
     else if (a === '--dry-run') out.dryRun = true
     else if (a === '--gate-only') out.gateOnly = true
     else if (a === '--verify-state') out.verifyState = true
     else if (a === '--help' || a === '-h') out.help = true
   }
+  if (out.engine !== 'claude' && out.engine !== 'qoder') out.engine = 'claude'
   return out
 }
 
 function printHelp() {
   process.stdout.write([
-    '小智工作站 · Qoder 自主迭代驱动器',
+    '小智工作站 · 自主迭代驱动器',
     '',
     '  node scripts/autoloop.mjs --check              环境预检（零费用）',
     '  node scripts/autoloop.mjs --dry-run            组装提示词落盘，不调用 AI',
     '  node scripts/autoloop.mjs --gate-only          只跑四门门禁复验（零费用）',
     '  node scripts/autoloop.mjs --verify-state       只校验状态文件口径（零费用）',
     '  node scripts/autoloop.mjs --rounds 5           连续跑 5 轮',
+    '  node scripts/autoloop.mjs --engine qoder       回退到旧引擎（默认 claude）',
     '',
     `  提示词：${PROMPT_FILE}`,
     `  状态：  ${STATE_FILE}`,
@@ -618,6 +753,7 @@ function printHelp() {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2))
+  ENGINE = args.engine
   if (args.help) { printHelp(); return 0 }
   if (args.check) return doCheck()
   if (args.gateOnly) return doGateOnly()

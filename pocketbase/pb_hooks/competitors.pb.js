@@ -206,6 +206,12 @@ routerAdd("PATCH", "/api/competitors/{id}", function (e) {
     var rec = null
     try { rec = $app.findRecordById("competitors", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
+    // F-SEC-03/04：personal 竞品条目仅归属人可改（visibility=team 的共享条目维持团队可协作，
+    // 创建时默认即 team，见本文件 POST 的 visibility 兜底）；与 kb_docs / intel_items 同口径。
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id") || "") === uid) } catch (_ownErr) {}
+    if (!__own) { try { __own = (String(rec.get("visibility") || "") !== "personal") } catch (_visErr) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     var body = e.requestInfo().body || {}
     var strFields = ["name", "legal_name", "website", "wechat", "earliest_cr_date", "latest_cr_date",
       "positioning", "products", "bid_amount_5y", "regions", "amount_structure", "customer_profile",
@@ -235,6 +241,11 @@ routerAdd("DELETE", "/api/competitors/{id}", function (e) {
     var rec = null
     try { rec = $app.findRecordById("competitors", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
+    // F-SEC-03/04：personal 竞品条目仅归属人可删（team 共享条目维持团队可协作）
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id") || "") === uid) } catch (_ownErr) {}
+    if (!__own) { try { __own = (String(rec.get("visibility") || "") !== "personal") } catch (_visErr) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     $app.delete(rec)
     return e.json(200, { ok: true })
   } catch (err) {

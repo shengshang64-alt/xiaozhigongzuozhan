@@ -126,7 +126,16 @@ routerAdd("POST", "/api/intel/tick", (e) => {
       if (!(yy >= 2020 && yy <= 2100 && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31)) return ""
       var mmS = mm < 10 ? "0" + mm : "" + mm
       var ddS = dd < 10 ? "0" + dd : "" + dd
-      return yy + "-" + mmS + "-" + ddS
+      var iso = yy + "-" + mmS + "-" + ddS
+      // 未来日期守卫（2026-10-20）：发布时间不可能是未来。原判据只把年份卡在 2020..2100，
+      // 而 __intelPubAt 的最后一条优先级是在**全文**里扫日期（仅排除递交/截止/开标上下文），
+      // 于是源页里混着的课程日期、政策路线图年份、版权行一旦被抽中就会入库成未来时间——
+      // 实测 HIT专家网「培训班招生」页抽出 2027-04-29 / 2027-01-03。列表按 -published_at
+      // 排序，未来日期会永远置顶。留 1 天容差吸收时区差（源多为 date-only，此处按 UTC 零点解释）。
+      // 注意：本函数因此不再是纯函数（依赖当前时间）。既有 Q2 用例全部使用过去的日期，
+      // 故不受影响；将来新增用例不要用固定未来日期，否则会随真实时间变红。
+      if (iso > new Date(Date.now() + 86400000).toISOString().slice(0, 10)) return ""
+      return iso
     }
 
     // 发布时间抽取 v2（发布时间 ≠ 正文第一个日期：政采网公告正文第一个日期是投标截止时间，
@@ -919,7 +928,16 @@ routerAdd("POST", "/api/intel/fetch-now", (e) => {
       if (!(yy >= 2020 && yy <= 2100 && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31)) return ""
       var mmS = mm < 10 ? "0" + mm : "" + mm
       var ddS = dd < 10 ? "0" + dd : "" + dd
-      return yy + "-" + mmS + "-" + ddS
+      var iso = yy + "-" + mmS + "-" + ddS
+      // 未来日期守卫（2026-10-20）：发布时间不可能是未来。原判据只把年份卡在 2020..2100，
+      // 而 __intelPubAt 的最后一条优先级是在**全文**里扫日期（仅排除递交/截止/开标上下文），
+      // 于是源页里混着的课程日期、政策路线图年份、版权行一旦被抽中就会入库成未来时间——
+      // 实测 HIT专家网「培训班招生」页抽出 2027-04-29 / 2027-01-03。列表按 -published_at
+      // 排序，未来日期会永远置顶。留 1 天容差吸收时区差（源多为 date-only，此处按 UTC 零点解释）。
+      // 注意：本函数因此不再是纯函数（依赖当前时间）。既有 Q2 用例全部使用过去的日期，
+      // 故不受影响；将来新增用例不要用固定未来日期，否则会随真实时间变红。
+      if (iso > new Date(Date.now() + 86400000).toISOString().slice(0, 10)) return ""
+      return iso
     }
 
     // 发布时间抽取 v2（发布时间 ≠ 正文第一个日期：政采网公告正文第一个日期是投标截止时间，
@@ -1507,7 +1525,16 @@ routerAdd("GET", "/api/intel/items", (e) => {
       if (!(yy >= 2020 && yy <= 2100 && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31)) return ""
       var mmS = mm < 10 ? "0" + mm : "" + mm
       var ddS = dd < 10 ? "0" + dd : "" + dd
-      return yy + "-" + mmS + "-" + ddS
+      var iso = yy + "-" + mmS + "-" + ddS
+      // 未来日期守卫（2026-10-20）：发布时间不可能是未来。原判据只把年份卡在 2020..2100，
+      // 而 __intelPubAt 的最后一条优先级是在**全文**里扫日期（仅排除递交/截止/开标上下文），
+      // 于是源页里混着的课程日期、政策路线图年份、版权行一旦被抽中就会入库成未来时间——
+      // 实测 HIT专家网「培训班招生」页抽出 2027-04-29 / 2027-01-03。列表按 -published_at
+      // 排序，未来日期会永远置顶。留 1 天容差吸收时区差（源多为 date-only，此处按 UTC 零点解释）。
+      // 注意：本函数因此不再是纯函数（依赖当前时间）。既有 Q2 用例全部使用过去的日期，
+      // 故不受影响；将来新增用例不要用固定未来日期，否则会随真实时间变红。
+      if (iso > new Date(Date.now() + 86400000).toISOString().slice(0, 10)) return ""
+      return iso
     }
 
     // 发布时间抽取 v2（发布时间 ≠ 正文第一个日期：政采网公告正文第一个日期是投标截止时间，
@@ -2143,7 +2170,16 @@ routerAdd("POST", "/api/intel/enrich", (e) => {
       if (!(yy >= 2020 && yy <= 2100 && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31)) return ""
       var mmS = mm < 10 ? "0" + mm : "" + mm
       var ddS = dd < 10 ? "0" + dd : "" + dd
-      return yy + "-" + mmS + "-" + ddS
+      var iso = yy + "-" + mmS + "-" + ddS
+      // 未来日期守卫（2026-10-20）：发布时间不可能是未来。原判据只把年份卡在 2020..2100，
+      // 而 __intelPubAt 的最后一条优先级是在**全文**里扫日期（仅排除递交/截止/开标上下文），
+      // 于是源页里混着的课程日期、政策路线图年份、版权行一旦被抽中就会入库成未来时间——
+      // 实测 HIT专家网「培训班招生」页抽出 2027-04-29 / 2027-01-03。列表按 -published_at
+      // 排序，未来日期会永远置顶。留 1 天容差吸收时区差（源多为 date-only，此处按 UTC 零点解释）。
+      // 注意：本函数因此不再是纯函数（依赖当前时间）。既有 Q2 用例全部使用过去的日期，
+      // 故不受影响；将来新增用例不要用固定未来日期，否则会随真实时间变红。
+      if (iso > new Date(Date.now() + 86400000).toISOString().slice(0, 10)) return ""
+      return iso
     }
 
     // 发布时间抽取 v2（发布时间 ≠ 正文第一个日期：政采网公告正文第一个日期是投标截止时间，
@@ -2417,7 +2453,19 @@ routerAdd("POST", "/api/intel/enrich", (e) => {
       var pubOld2 = String(rec.get("published_at") || "")
       if (doRecompute) {
         var pubCalc = __intelPubAt(url, snipNew, hasBody ? artBody : "")
-        if (pubCalc && pubCalc !== pubOld2) { rec.set("published_at", pubCalc); ch.push("published_at") }
+        // 未来日期清理（2026-10-20）：旧算法没有未来守卫，源页里的课程日期/政策路线图年份会被抽成
+        // 发布日并入库（实测 HIT专家网「培训班招生」页：2027-04-29、2027-01-03）。守卫补上后
+        // __intelPubAt 对未来日期返回空串，而下面那行只在非空时才改值——所以存量坏值不会自动清掉，
+        // 必须显式处理，否则界面上那个 2027 永远修不好。拿不到可信发布日就退回该条的入库时间
+        // （created），绝不保留未来值。只在 recompute 模式生效（该模式只动机器写入的 crawl 条目）。
+        var pubToday = new Date(Date.now() + 86400000).toISOString().slice(0, 10)
+        if (pubOld2 && pubOld2.slice(0, 10) > pubToday) {
+          var pubFallback = String(rec.get("created") || "").slice(0, 10) || new Date().toISOString().slice(0, 10)
+          rec.set("published_at", pubCalc && pubCalc <= pubToday ? pubCalc : pubFallback)
+          ch.push("published_at_future_fixed")
+        } else if (pubCalc && pubCalc !== pubOld2) {
+          rec.set("published_at", pubCalc); ch.push("published_at")
+        }
       }
       if (snipNew && snipNew !== snipOld) { rec.set("content_snippet", snipNew); ch.push("snippet") }
       if (sumNew !== sumOld) { rec.set("summary", sumNew); ch.push("summary") }

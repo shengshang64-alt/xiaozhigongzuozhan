@@ -11,6 +11,10 @@
 // 突出「适合什么场景」而不是「参数多大」。禁止写死项目名/医院名。
 // ---------------------------------------------------------------------------
 
+// R118 口径：数字展示统一走 lib/money.ts 的 formatCount（锁定 zh-CN 分组），
+// 不用裸 toLocaleString()——后者跟随运行环境默认 locale，同一个人换浏览器/换系统就换一种写法。
+import { formatCount } from "./money"
+
 /** 单条内置模型画像 */
 export interface ModelProfile {
   /** 一句话擅长描述（人话，≤30 字） */
@@ -200,9 +204,9 @@ export function resolveQuotaHint(modelId: string): QuotaSuggestion | null {
   if (entry.unlimited) {
     return { tier: "unlimited", requests5h: -1, monthlyUsd: -1, display: "∞ 限时免费", displayFull: "∞ 限时免费" }
   }
-  const primary = `Go: ${entry.go5h.toLocaleString()}/5h · $${entry.goMonthly}/月`
+  const primary = `Go: ${formatCount(entry.go5h)}/5h · $${entry.goMonthly}/月`
   const full = entry.goPlus5h
-    ? `${primary} · Go Plus: ${entry.goPlus5h.toLocaleString()}/5h · $${entry.goPlusMonthly}/月`
+    ? `${primary} · Go Plus: ${formatCount(entry.goPlus5h)}/5h · $${entry.goPlusMonthly}/月`
     : primary
   return { tier: "go", requests5h: entry.go5h, monthlyUsd: entry.goMonthly, display: primary, displayFull: full }
 }
@@ -211,5 +215,5 @@ export function resolveQuotaHint(modelId: string): QuotaSuggestion | null {
 export function formatQuotaNumber(n: number | undefined, suffix = ""): string {
   if (n == null) return "—"
   if (n < 0) return "∞"
-  return n.toLocaleString() + suffix
+  return formatCount(n) + suffix
 }

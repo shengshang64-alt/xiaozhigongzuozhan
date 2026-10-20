@@ -251,6 +251,12 @@ routerAdd("PATCH", "/api/intel_items/{id}", function (e) {
     var rec = null
     try { rec = $app.findRecordById("intel_items", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
+    // F-SEC-03/04：personal 条目仅归属人可改（team 条目维持团队可协作）；
+    // 归属判断内联在本路由内（Goja 跨 routerAdd 不共享顶层函数，见 zx_guard 说明）
+    var __own = false
+    try { __own = (String(rec.get("owner_id") || "") === __uid) } catch (_ownErr) {}
+    if (!__own) { try { __own = (String(rec.get("visibility") || "") !== "personal") } catch (_visErr) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     var body = e.requestInfo().body || {}
     if ("source_id" in body) rec.set("source_id", body.source_id === undefined || body.source_id === null ? "" : String(body.source_id))
     if ("source_name" in body) rec.set("source_name", body.source_name === undefined || body.source_name === null ? "" : String(body.source_name))
@@ -263,7 +269,7 @@ routerAdd("PATCH", "/api/intel_items/{id}", function (e) {
     if ("region" in body) rec.set("region", body.region === undefined || body.region === null ? "" : String(body.region))
     if ("item_status" in body) rec.set("item_status", body.item_status === undefined || body.item_status === null ? "" : String(body.item_status))
     if ("added_by" in body) rec.set("added_by", body.added_by === undefined || body.added_by === null ? "" : String(body.added_by))
-    if ("owner_id" in body) rec.set("owner_id", body.owner_id === undefined || body.owner_id === null ? "" : String(body.owner_id))
+    // IDOR fix: owner transfer disabled（与 bid_projects / kb_docs 同口径：归属只能由创建时确定）
     if ("published_at" in body) rec.set("published_at", body.published_at === undefined || body.published_at === null ? "" : String(body.published_at))
     if ("visibility" in body) rec.set("visibility", body.visibility === undefined || body.visibility === null ? "" : String(body.visibility))
     $app.save(rec)
@@ -283,6 +289,11 @@ routerAdd("DELETE", "/api/intel_items/{id}", function (e) {
     var rec = null
     try { rec = $app.findRecordById("intel_items", id) } catch (_) { rec = null }
     if (!rec) return e.json(404, { error: "not_found" })
+    // F-SEC-03/04：personal 条目仅归属人可删（team 条目维持团队可协作）
+    var __own = false
+    try { __own = (String(rec.get("owner_id") || "") === __uid) } catch (_ownErr) {}
+    if (!__own) { try { __own = (String(rec.get("visibility") || "") !== "personal") } catch (_visErr) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
     $app.delete(rec)
     return e.json(200, { ok: true })
   } catch (err) {

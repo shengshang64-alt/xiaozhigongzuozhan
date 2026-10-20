@@ -72,7 +72,7 @@ function buildHeaders(): Record<string, string> {
   return headers
 }
 
-async function pollOnce(modelName: string, requestId: string): Promise<LlmCallResult> {
+async function pollOnce(modelName: string, requestId: string, signal?: AbortSignal): Promise<LlmCallResult> {
   let res: Response
   try {
     res = await fetch(llmUrl("poll", modelName), {
@@ -80,6 +80,7 @@ async function pollOnce(modelName: string, requestId: string): Promise<LlmCallRe
       credentials: "include",
       headers: buildHeaders(),
       body: JSON.stringify({ request_id: requestId }),
+      signal,
     })
   } catch {
     return { ok: false, status: "running", text: "", error: "" }
@@ -116,7 +117,20 @@ export async function callLlmWithFallback(modelName: string, opts: LlmCallOption
 
   const ctrl = new AbortController()
   const timeoutId = window.setTimeout(() => ctrl.abort(), CHAT_ABORT_MS)
-  if (opts.signal) opts.signal.addEventListener("abort", () => ctrl.abort())
+  // 用户主动取消 → 联动内部 ctrl.abort；用 userAborted 标记区分「用户取消」与「服务超时」
+  // （口径同 modelGateway.ts 的同名标记，错误码用 llmError 既有的 user_cancelled）
+  let userAborted = false
+  if (opts.signal) {
+    if (opts.signal.aborted) {
+      userAborted = true
+      ctrl.abort()
+    } else {
+      opts.signal.addEventListener("abort", () => {
+        userAborted = true
+        ctrl.abort()
+      }, { once: true })
+    }
+  }
 
   let initialFailed: boolean
   try {
@@ -165,12 +179,28 @@ export async function callLlmWithFallback(modelName: string, opts: LlmCallOption
     window.clearTimeout(timeoutId)
   }
 
+  if (userAborted) return { ok: false, status: "failed", text: "", error: "user_cancelled" }
   if (!initialFailed) return { ok: false, status: "failed", text: "", error: "unknown" }
 
+  // 2026-10-20：轮询必须认取消。此前这里完全不看 opts.signal —— 一旦首跳失败进入轮询，
+  // 用户点「取消」无效（ctrl 只作用于首跳的 fetch），最长要等满 POLL_ATTEMPTS × POLL_INTERVAL_MS
+  // = 200 × 3s = 10 分钟，加上首跳 240s 上限约 14 分钟，期间在飞请求照常计费。
+  //
+  // ⚠️ 轮询必须用**独立的**控制器，不能直接复用 ctrl.signal：首跳超时（CHAT_ABORT_MS）也会
+  // ctrl.abort()，而「首跳超时 → 转入轮询取结果」正是上面 CHAT_ABORT_MS 注释写明的正常路径。
+  // 一旦复用，超时后 ctrl.signal.aborted 恒为 true，每次轮询 fetch 都会被立刻中断，
+  // 等于把长生成（>240s）的恢复路径整条打死。故 pollCtrl 只绑用户取消信号。
+  const pollCtrl = new AbortController()
+  if (opts.signal) {
+    if (opts.signal.aborted) pollCtrl.abort()
+    else opts.signal.addEventListener("abort", () => pollCtrl.abort(), { once: true })
+  }
   let notFoundCount = 0
   for (let i = 0; i < POLL_ATTEMPTS; i++) {
+    if (userAborted) return { ok: false, status: "failed", text: "", error: "user_cancelled" }
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
-    const r = await pollOnce(modelName, requestId)
+    const r = await pollOnce(modelName, requestId, pollCtrl.signal)
+    if (userAborted) return { ok: false, status: "failed", text: "", error: "user_cancelled" }
     if (r.needsLogin) return r
     if (r.status === "success") return r
     if (r.status === "failed") return r

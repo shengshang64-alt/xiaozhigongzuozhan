@@ -6,6 +6,7 @@ import { pbJsonRequest, saveFailureReason } from "@/lib/pbJson"
 import { extractJsonCandidate } from "@/lib/jsonTolerant"
 import { formatDateTimeDisplay } from "@/lib/dateDisplay"
 import type { LlmMessage } from "@/lib/llm"
+import { localizeLlmError } from "@/lib/llmError"
 import {
   chatViaGateway,
   costTextForModel,
@@ -493,10 +494,11 @@ function roleForScope(scope?: SkillScope): ModelRole {
 }
 
 function llmErrorText(r: { error?: string; text?: string }): string {
-  const e = (r.error ?? "").trim()
-  if (!e) return "生成失败，请稍后重试"
-  // 后端已返回可读中文文案时直接透出真实错误，避免吞细节
-  return /[一-龥]/.test(e) ? e : "生成失败，请稍后重试"
+  // R105 口径：错误码 → 中文的**唯一真源**是 lib/llmError.ts（该轮把散在 5 个模块的副本收敛掉，
+  // 本模块这份是漏网的第 6 份）。此前它只透传中文、其余一律回落 generic，后果之一见下：
+  // 用户主动取消（user_cancelled）会被显示成「生成失败，请稍后重试」，与「已取消生成」口径不符。
+  // 收敛后 timeout / not_found / rh_login_required / insufficient_balance 也各自有了准确文案。
+  return localizeLlmError(r.error, { generic: "生成失败，请稍后重试" })
 }
 
 async function llmGenerate(
@@ -6191,8 +6193,14 @@ export function useBidWorkspace() {
       // 为什么必须作废：它们的 offset 锚在**旧正文**上——继续显示既误报（人已修好还红着）
       // 又会让徽标跳到错误位置（比不跳更坏）。这正是 R-301/R-302 注释里写的"人工修订后清空"
       // 契约（此前只在重新生成时清空，人工编辑不清，属未落地）。下次生成/重写会重跑并重写标记。
+      // 2026-10-20：判据里补上 proseLintSeverity、补丁里补上 proseLintSeverity: undefined。
+      // 此前人工编辑只清 warning/firstHit，把 severity 留在了旧正文上；而重新生成那条路径
+      // （applyAutoRepair）清的是三个字段——两条路径口径不一致。今天徽标只看 proseLintWarning
+      // 渲染（severity 仅决定红/琥珀配色），所以残留值不会当场误报；但它是挂在旧正文上的死状态，
+      // 一旦将来有消费方按 severity 显示，就会变成「人已改好还红着」。契约仍是 R55 那句：
+      // 标记必须随正文失效。
       const stale =
-        ch.sanityWarning || ch.sanityFirstHit || ch.proseLintWarning || ch.proseLintFirstHit
+        ch.sanityWarning || ch.sanityFirstHit || ch.proseLintWarning || ch.proseLintFirstHit || ch.proseLintSeverity
       updateChapter(
         nodeId,
         stale
@@ -6202,6 +6210,7 @@ export function useBidWorkspace() {
               sanityFirstHit: undefined,
               proseLintWarning: undefined,
               proseLintFirstHit: undefined,
+              proseLintSeverity: undefined,
             }
           : { content: editingContentRef.current },
         { quiet: true },

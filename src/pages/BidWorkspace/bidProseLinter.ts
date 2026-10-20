@@ -101,7 +101,11 @@ const STRUCTURAL_KINDS: ReadonlySet<LintKind> = new Set<LintKind>(["title_break"
 const AI_CLICHE_PATTERNS: ReadonlyArray<{ re: RegExp; example: string; reason: string }> = [
   // —— 动词类：纯宣传腔，去掉后换成具体措施反而更专业 ——
   { re: /赋能/g, example: "赋能", reason: "AI 套话词「赋能」" },
-  { re: /打造(?!.*方案)/g, example: "打造", reason: "AI 套话词「打造」（否定预查放行「打造方案」）" },
+  // 2026-10-20 修复：原为 /打造(?!.*方案)/g —— `.*` 不带 s 标志、不跨行，所以这条预查的含义是
+  // 「本行「打造」之后只要出现过『方案』二字就整行放过」。而标书正文几乎行行含「方案」，
+  // 于是「打造一体化解决方案」这类最典型的 AI 腔反而不报，该词实际形同失效。
+  // 改为与隔壁「生态(?!系统|圈|链)」同款的窄预查：只放行「打造」紧接着「方案」的情形。
+  { re: /打造(?!方案)/g, example: "打造", reason: "AI 套话词「打造」（否定预查仅放行紧接的「打造方案」）" },
   { re: /抓手/g, example: "抓手", reason: "AI 套话词「抓手」" },
   { re: /颠覆/g, example: "颠覆", reason: "AI 套话词「颠覆」" },
   { re: /重塑/g, example: "重塑", reason: "AI 套话词「重塑」" },
@@ -547,8 +551,11 @@ export function isTableRow(line: string): boolean {
  * 每行 200+ 字会被逐行误报成长段落（一张表刷出几十条）。
  * 单行孤立表格（正文里偶尔出现的一行 pipe）按同一规则处理，也跳过：
  * 宁可漏报一行，也不误报整表。
+ * 2026-10-20：本函数改为 export —— qualityAuditRealDb.test.ts 的质量体检要按**同一口径**
+ * 复算「段落中位长度 / 85 分位 / 超 300 字占比」并与上面的基准表对比。若在测试里另写一份
+ * 切分逻辑，两处口径必然漂移，量出来的数字就不能和 272 vs 81.5 那张表相提并论了。
  */
-function splitParagraphs(text: string): Array<{ text: string; offset: number }> {
+export function splitParagraphs(text: string): Array<{ text: string; offset: number }> {
   const lines = text.split("\n")
   const kinds: Array<"text" | "row" | "blank" | "fence"> = []
   let inFence = false
@@ -580,8 +587,9 @@ function splitParagraphs(text: string): Array<{ text: string; offset: number }> 
   return out
 }
 
-/** 句子切分（按中文句末标点 + 分号切；保留标点） */
-function splitSentences(para: string): string[] {
+/** 句子切分（按中文句末标点 + 分号切；保留标点）
+ *  2026-10-20：同 splitParagraphs 改为 export，供质量体检按同一口径量句子长度分布。 */
+export function splitSentences(para: string): string[] {
   return para
     .split(/(?<=[。！？…；!?;])/)
     .map((s) => s.trim())

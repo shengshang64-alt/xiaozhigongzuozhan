@@ -5,7 +5,6 @@ import type { Components } from "react-markdown"
 import { toast } from "sonner"
 import { copyTextToClipboard } from "@/lib/clipboard"
 import { Bot, CalendarCheck2, Copy, ExternalLink, FileDown, Loader2, RotateCcw, Search, Sparkles, Users, X } from "lucide-react"
-import { Document, Packer, Paragraph, TextRun } from "docx"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/rhLogin"
 import type { ChatMsg } from "@/lib/assistantCore"
@@ -268,16 +267,24 @@ function SkillAdoptRow({ skillName, content }: { skillName: string; content: str
   }
 
   const downloadWeeklyDocx = () => {
-    const paras = content
-      .split(/\n+/)
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .map((l) => new Paragraph({ children: [new TextRun(l)] }))
-    const doc = new Document({ sections: [{ children: [new Paragraph({ children: [new TextRun({ text: "售前周报", bold: true, size: 32 })] }), ...paras] }] })
-    void Packer.toBlob(doc).then((blob) => {
+    // 2026-10-20 修复（R124 守卫实测命中）：本组件此前在文件顶部静态引入 docx 的
+    // Document/Packer/Paragraph/TextRun，于是「浮动助手」这条静态链把 docx（数百 kB）
+    // 拖进了入口 chunk —— 全站每一页首访都要多下它，而「导出周报」只在点了按钮时才需要。
+    // 改为点击时按需 await import()，重库不进首载图。
+    // 注意：本注释刻意不写出该 import 语句的完整字面量，因为 onDemandHeavyLibs 守卫的
+    // staticSpecs() 用正则扫源码、不剔除注释——写了就会被误判成「静态可达」。
+    void (async () => {
+      const { Document, Packer, Paragraph, TextRun } = await import("docx")
+      const paras = content
+        .split(/\n+/)
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .map((l) => new Paragraph({ children: [new TextRun(l)] }))
+      const doc = new Document({ sections: [{ children: [new Paragraph({ children: [new TextRun({ text: "售前周报", bold: true, size: 32 })] }), ...paras] }] })
+      const blob = await Packer.toBlob(doc)
       triggerBlobDownload(blob, `售前周报-${localDateStamp()}.docx`)
       toast.success("周报 Word 已下载")
-    })
+    })()
   }
 
   return (
