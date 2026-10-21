@@ -50,7 +50,15 @@ function companyTemplate(): Uint8Array {
   return zipSync(entries)
 }
 
-describe("附五·交付材料生成：PPT 保真样例", () => {
+/**
+ * 2026-10-21（R63）：这份测试往**操作者本机 Downloads 的真实目录**写交付材料。在非 Windows 环境
+ * （VM 沙盒 / Linux CI）上，`"C:/Users/…"` 不是绝对路径而是相对路径——mkdirSync 会在**仓库里**
+ * 造出一个 `C:/` 目录（R63 实测踩到，已在工作区清理）。用 path.isAbsolute 判本机是否真的把它当盘符路径：
+ * 是（Windows）→ 照旧写 Downloads；否 → 整块跳过，不再污染仓库。
+ */
+const HAS_WIN_ROOT = path.isAbsolute(OUT_DIR)
+
+describe.skipIf(!HAS_WIN_ROOT)("附五·交付材料生成：PPT 保真样例", () => {
   it("① 按公司模板样张生成图文并茂 PPT（真实投标章节）", () => {
     fs.mkdirSync(OUT_DIR, { recursive: true })
     const template = companyTemplate()

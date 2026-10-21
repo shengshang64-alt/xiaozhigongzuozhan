@@ -13,6 +13,15 @@
 // 改为只跳出本轮、下一轮从次优块继续试之后，同一夹具、同一预算下：子集 clause_hit 56→110、不可见
 // 77→23；全量 clause_hit 13→50、待核对 119→83。本文件基线随之**上调**（按文件头原则：检索变好时上调，
 // 不是为了让测试变绿而改数字）。这两组数字都是当场实跑得到的，不是推算。
+//
+// 实测（2026-10-21，R63 选块策略重写后重测）：选块从「按条款轮转、先到先得」换成**两阶段最大覆盖**
+// （先最大化「有可见证据的条款数」，再用剩余预算给条款补它自己最强的块）。同一夹具、同一 20000 字预算：
+// 子集 clause_hit 110→123、不可见 23→10、可见且历史判定为偏离 65→75；全量 clause_hit 50→131、
+// 待核对 83→2。两处基线再次上调。
+// **口径提醒**：clause_hit 的判据是「任一检索词命中」（与生产一致），它衡量的是「这条条款有没有证据落在
+// 本次注入范围内」，**不等于「证据够不够判」**。按更严的判据（≥2 个不同词命中且分数 ≥ 自身最高分 50%）
+// 同一次实测只有全量 86/133、子集 77/133——全量真正剩下的瓶颈已从「选哪几块」变成「证据深度」，
+// 仍只有约 14% 的正文进得了模型（见 backlog B25）。
 import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -21,7 +30,9 @@ import {
   BID_VISIBILITY_BUDGET_CHARS,
   bidEvidenceBlock,
   chunkBidText,
+  deriveClauseTerms,
   describeBidVisibility,
+  scoreBidChunk,
   selectBidEvidence,
   type BidEvidencePack,
 } from "./bidVisibility"
@@ -79,12 +90,16 @@ const RECORDED = {
   clauseTotal: 133,
   legacyDeviation: 82,
   /** 子集：本次可见的条款数 / 可见且历史判定为偏离的条款数（＝新链路最多能报出的负偏离）
-   *  2026-10-20 召回修复后重测：subsetHit 56→110、subsetVisibleDeviation 29→65、subsetInvisible 77→23 */
-  subsetHit: 110,
-  subsetVisibleDeviation: 65,
-  subsetInvisible: 23,
-  /** 检索召回下限：当前 110/133；调优后应上调，低于 90 视为回归（旧值 40 = 修复前 56 的保守下限） */
-  hitFloor: 90,
+   *  2026-10-20 召回修复后重测：subsetHit 56→110、subsetVisibleDeviation 29→65、subsetInvisible 77→23
+   *  2026-10-21 R63 选块改为两阶段最大覆盖后重测：subsetHit 110→123、subsetVisibleDeviation 65→75、subsetInvisible 23→10 */
+  subsetHit: 123,
+  subsetVisibleDeviation: 75,
+  subsetInvisible: 10,
+  /** 检索召回下限：当前 123/133；调优后应上调，低于 115 视为回归（旧值 90 = R63 前 110 的保守下限） */
+  hitFloor: 115,
+  /** 子集下「整章没进模型」的章数（防劣化：只能变少不能变多；当前 18 章里覆盖 9 章）
+   *  2026-10-21 R63 前为 10 章，选块策略改进后降到 9 章 */
+  subsetUncoveredChapters: 9,
   /** 单条规则进体检的条数上限（与其它本地检查一致） */
   ruleCap: 30,
 }
@@ -235,9 +250,10 @@ describe("R50b §3 真实召回率基线（检索有损 → 降级链路必需�
     expect(INVISIBLE.every((ref) => PACK.note.includes(ref))).toBe(true)
   })
 
-  it("真实长文被跳过的是整章而不是几行：未覆盖章 ≥ 10 章（全量更差，见 §7）", () => {
+  it("真实长文被跳过的是整章而不是几行：未覆盖章数只许变少（当前 9 章，全量更低见 §7）", () => {
     const uncoveredChapters = ALL_CHAPTERS.filter((c) => !R.covered_chapters.includes(c))
-    expect(uncoveredChapters.length).toBeGreaterThanOrEqual(10)
+    expect(uncoveredChapters.length).toBeGreaterThan(0) // 不得空转：确实还有整章没进模型
+    expect(uncoveredChapters.length).toBeLessThanOrEqual(RECORDED.subsetUncoveredChapters)
   })
 })
 
@@ -294,7 +310,9 @@ describe("R50b §5 端到端降级链路：真实 133 条款 → 偏离表 → �
     expect(E2E.visibleDeviation).toBe(RECORDED.subsetVisibleDeviation)
   })
 
-  it("脱离证据的负偏离被真实消掉：旧口径 82 条偏离 → 本次只 29 条（均有可见证据）", () => {
+  // R63 前是「旧口径 82 → 本次 29」；选块改进后可见条款从 110 涨到 123，能报出的负偏离随之从 29 涨到 75。
+  // 这不是「偏离变多了」——是原来没证据可判的 46 条现在有证据了，不再一律落到待人工核对。
+  it("脱离证据的负偏离被真实消掉：旧口径 82 条偏离 → 本次 75 条（均有可见证据）", () => {
     expect(stats.total).toBe(RECORDED.clauseTotal)
     expect(stats.needs_review).toBe(RECORDED.subsetInvisible)
     expect(stats.deviation).toBeLessThan(RECORDED.legacyDeviation)
@@ -349,6 +367,66 @@ describe("R50b §6 证据包真的进到偏离表提示词（真实数据）", (
   })
 })
 
+/**
+ * 严格判据下的召回条数（R63 新增，用于把「有证据」与「证据够判」区分开）：
+ * 一条条款算「严格覆盖」当且仅当**本次真正注入的**某一块同时满足
+ *   ① 命中该条款 ≥2 个不同检索词（不是靠一个 2 字泛词蹭上）
+ *   ② 该块得分 ≥ 该条款自身在全部块上的最高分的 50%（不是「随便哪块命中一点」）
+ *
+ * 刻意不复用 bidVisibility 的内部实现：这里用「注入素材里真的出现的来源 id」反推选中块，
+ * 打分口径在测试侧独立复算——这样它检验的是**产物**而不是同一份代码的自我一致。
+ * 若哪天生产把 `来源：` 标头改掉，这里会先红，比「悄悄测不到东西还全绿」好。
+ */
+function countStrictlyCovered(f: RealBidFixture, pack: BidEvidencePack): number {
+  const injectedIds = new Set(Array.from(pack.text.matchAll(/来源：([^】]+)/g), (m) => m[1].trim()))
+  expect(injectedIds.size).toBeGreaterThan(0) // 防空转：没解析到来源标头就不是一条有效的严格判据
+  const chunks = chunkBidText(f.bid_text)
+  const norm = (s: string) => s.replace(/[\s|｜]/g, "")
+  const bodies = chunks.map((c) => norm(c.text))
+  const heads = chunks.map((c) => norm(c.heading))
+  const clauses = asClauses(f)
+
+  // idf 与生产同口径（1 + ln(N / (1 + df))），但在这里独立算一遍
+  const allTerms = new Set<string>()
+  const perClauseTerms = clauses.map((c) => {
+    const ts = deriveClauseTerms(c.text)
+    for (const t of ts) allTerms.add(t)
+    return ts
+  })
+  const df = new Map<string, number>()
+  for (const t of allTerms) {
+    const key = norm(t)
+    if (key.length < 2) continue
+    let n = 0
+    for (const body of bodies) if (body.includes(key)) n += 1
+    df.set(t, n)
+  }
+  const idf = (t: string) => 1 + Math.log(chunks.length / (1 + (df.get(t) ?? 0)))
+
+  let strict = 0
+  perClauseTerms.forEach((terms, i) => {
+    let best = 0
+    const rows: { k: number; score: number; terms: number }[] = []
+    for (let k = 0; k < chunks.length; k += 1) {
+      const s = scoreBidChunk(bodies[k], heads[k], terms, idf)
+      if (s > best) best = s
+      if (s <= 0) continue
+      let hitTerms = 0
+      for (const t of terms) {
+        const key = norm(t)
+        if (key.length >= 2 && (bodies[k].includes(key) || heads[k].includes(key))) hitTerms += 1
+      }
+      rows.push({ k, score: s, terms: hitTerms })
+    }
+    void i
+    const ok = rows.some(
+      (r) => injectedIds.has(chunks[r.k].id) && r.terms >= 2 && r.score >= best * 0.5,
+    )
+    if (ok) strict += 1
+  })
+  return strict
+}
+
 describe.skipIf(!existsSync(FULL_PATH))("R50b §7 全量真实标书（139k 字，本机 .probe/ 夹具，不入库）", () => {
   const f = existsSync(FULL_PATH) ? readFixture(FULL_PATH) : SUBSET
   const e2e = buildEndToEnd(f)
@@ -357,21 +435,29 @@ describe.skipIf(!existsSync(FULL_PATH))("R50b §7 全量真实标书（139k 字�
     expect(f.bid_text.length).toBeGreaterThan(100000)
     expect(e2e.pack.report.mode).toBe("retrieval")
     expect(e2e.pack.report.input_complete).toBe(false)
-    // 2026-10-20 召回修复后实测 50/133（修复前 13/133）；下限随之上调，低于 40 视为回归
-    expect(e2e.pack.report.clause_hit).toBeGreaterThanOrEqual(40)
+    // 2026-10-20 召回修复后实测 50/133；2026-10-21 R63 选块改为两阶段最大覆盖后 131/133。
+    // 下限随之上调，低于 120 视为回归。
+    expect(e2e.pack.report.clause_hit).toBeGreaterThanOrEqual(120)
     expect(e2e.pack.report.clause_hit).toBeLessThan(e2e.pack.report.clause_total)
     expect(e2e.pack.report.input_chars - e2e.pack.report.omitted_chars).toBeLessThanOrEqual(BID_VISIBILITY_BUDGET_CHARS)
   })
 
-  // 2026-10-20 更新：召回修复后全量待核对从 119 降到 83（83/133 = 62%）。仍是大头，
-  // 「预算 ÷ 正文长度」这个瓶颈没被消除（见 backlog B25），所以本条继续盯住它，只是把阈值
-  // 从「>100」下调到「>80」——按文件头原则，检索变好时基线应上调/阈值随实测收紧，不是改绿。
-  it("全量下多数条款仍落入「待人工核对」——长文检索召回是当前最大待办", () => {
+  // 2026-10-21（R63）改写：这条原来盯的是「全量下多数条款落入待人工核对」（当时 83/133），
+  // R63 之后按「任一检索词命中」的口径只剩 2 条不可见，那个断言已经不成立、也不该再成立。
+  // 但**不能**由此宣布长文检索问题已解决：同一份数据按更严判据（≥2 个不同词命中且分数 ≥ 自身最高分
+  // 50%）只有 86/133，且全量注入仍只占正文约 14%。所以本条改成两条更诚实的不变量：
+  //   ① 不可见条款数只许变少（防劣化，当前 2）；
+  //   ② 「有证据」不等于「够判」——严格判据下必须仍显著低于条款总数，否则说明判据被放宽了。
+  it("全量下仍有条款无可见证据，且「有证据」不等于「证据够判」", () => {
     const stats = deviationStats(e2e.table)
-    expect(stats.needs_review).toBeGreaterThan(80)
+    expect(stats.needs_review).toBeLessThanOrEqual(5)
     expect(stats.deviation).toBe(e2e.visibleDeviation)
-    expect(stats.deviation).toBeLessThan(stats.needs_review)
     const hits = deviationCommitHits(e2e.table)
     expect(hits.filter((h) => h.rule === "deviation_undercommit").length).toBe(Math.min(stats.deviation, 30))
+    // ② 严格判据：同一份全量正文、同一预算下，真正「关键词多次命中且接近该条款自身最强证据」的条款
+    //    必须在 60~110 之间——低于 60 说明选块又退化了，等于 133 说明判据被放宽成了「随便命中一个词」
+    const strict = countStrictlyCovered(f, e2e.pack)
+    expect(strict).toBeGreaterThanOrEqual(60)
+    expect(strict).toBeLessThan(f.clauses.length)
   })
 })

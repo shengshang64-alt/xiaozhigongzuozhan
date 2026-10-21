@@ -16,7 +16,7 @@
 // ---------------------------------------------------------------------------
 import { existsSync } from "node:fs"
 import { DatabaseSync } from "node:sqlite"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { describe, expect, it } from "vitest"
 import { missingSectionTitles, requestedKeys, type ParseConfig, type ParseReport } from "./bidTypes"
 import {
@@ -41,9 +41,32 @@ type Row = {
   outline_chars: number
 }
 
+/**
+ * 打开真实库（只读）。
+ *
+ * 2026-10-21（R63）：新增「不支持文件锁的挂载点」兜底。在 VM 沙盒 / 部分网络盘上，SQLite 普通只读
+ * 打开会因为拿不到 POSIX 锁直接抛 `disk I/O error`（实测同一份库：挂载点 FAIL、VM 本地副本 OK、
+ * 挂载点加 immutable=1 OK）。immutable=1 是明确告诉 SQLite「此库不会被写、跳过加锁与 WAL 恢复」，
+ * 因此照样能读。**只在普通打开失败时兜底**，宿主 Windows 上的行为完全不变。
+ * 代价：immutable 会忽略 WAL 里尚未 checkpoint 的内容，可能读到略旧的已提交数据——本文件只断言不变量、
+ * 统计只打印不参与断言，故可接受；若哪天这里要断言精确条数，必须先确认运行环境走的哪条分支。
+ */
+function openDb(): DatabaseSync {
+  const p = fileURLToPath(DB)
+  try {
+    return new DatabaseSync(p, { readOnly: true })
+  } catch (err) {
+    try {
+      return new DatabaseSync(`${pathToFileURL(p).href}?immutable=1`, { readOnly: true })
+    } catch {
+      throw err
+    }
+  }
+}
+
 function loadRows(): Row[] {
   // Windows 下 URL.pathname 带前导斜杠且中文会百分号编码，必须走 fileURLToPath
-  const db = new DatabaseSync(fileURLToPath(DB), { readOnly: true })
+  const db = openDb()
   try {
     return db
       .prepare(

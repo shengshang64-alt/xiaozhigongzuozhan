@@ -1,6 +1,6 @@
 // R298 扫描件 PDF 输入侧：文本层缺失必须如实报告，不能静默返回空串
 import { describe, expect, it } from "vitest"
-import { readFileSync, readdirSync, statSync } from "node:fs"
+import { readFileSync, readdirSync, statSync, existsSync } from "node:fs"
 import path from "node:path"
 import { buildNoTextLayerMessage } from "./bidFiles"
 
@@ -72,7 +72,12 @@ describe("R298 源码事实守卫（防静默回退复发）", () => {
   })
 })
 
-describe("R298 真实样本取证（55 份文件审计结论固化）", () => {
+// 2026-10-21（R63）：这段取证扫的是**操作者本机 D 盘的真实 PDF 样本目录**，不是仓库内夹具。
+// 目录不存在时（VM 沙盒 / CI / 换台机器）collectPdfs 会直接 ENOENT 打挂整个文件，
+// 而它挂掉并不说明代码坏了，还会把真正的回归淹掉。按仓内既有惯例（outlineGuardRealDb /
+// tenderStructureRealBid 都是这个形状）加 skip 门：目录不在就整块跳过。
+// 目录在时行为完全不变——照样是 55 份样本、9 份全扫描件的那套审计结论。
+describe.skipIf(!existsSync(ROOT))("R298 真实样本取证（55 份文件审计结论固化）", () => {
   // 递归收集：扫描件样本分布在多层子目录里（每个项目一个子目录）
   function collectPdfs(dir: string, out: string[] = []): string[] {
     for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -82,7 +87,9 @@ describe("R298 真实样本取证（55 份文件审计结论固化）", () => {
     }
     return out
   }
-  const ALL = collectPdfs(ROOT)
+  // 注意：describe.skipIf 只跳过用例执行，**工厂函数照跑**（Vitest 靠它收集用例名），
+  // 所以这里的 collectPdfs 必须自带存在性判断，否则文件在收集阶段就 ENOENT 打挂。
+  const ALL = existsSync(ROOT) ? collectPdfs(ROOT) : []
 
   it("样本目录里确实存在被审计判为全扫描件的文件", () => {
     // R298 审计：55 份 PDF 中 9 份 100% 无文字层

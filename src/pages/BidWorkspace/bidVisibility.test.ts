@@ -9,6 +9,7 @@ import {
   describeBidVisibility,
   parseBidTextBlocks,
   selectBidEvidence,
+  selectEvidenceChunks,
   BID_VISIBILITY_CONTRACT_DEVIATION,
   BID_VISIBILITY_CONTRACT_VOID,
 } from "./bidVisibility"
@@ -287,5 +288,61 @@ describe("P0-3 §7 不可见条款：面板 / 体检 / 导出三处口径一致"
     const hits = deviationCommitHits({ split_dim: "system", generated_at: "", rows: [rowOf()] })
     expect(hits.some((h) => h.rule === "deviation_invisible_review" && h.level === "warn")).toBe(true)
     expect(hits.some((h) => h.rule === "deviation_undercommit")).toBe(false)
+  })
+})
+
+describe("R63 选块分配器：两阶段最大覆盖（纯函数直测，不经文本切块）", () => {
+  // scores[i][k] = 第 i 条条款在第 k 块上的得分；sizes[k] = 第 k 块字数
+  it("阶段①按「每字新增覆盖」选块：词密的大块不得把预算吃光、让后面的条款永远无证据", () => {
+    // 条款0 只命中 5000 字的块0；条款1/2/3 各自只命中 500 字的块1/2/3
+    const picked = selectEvidenceChunks({
+      sizes: [5000, 500, 500, 500],
+      scores: [
+        [10, 0, 0, 0],
+        [0, 5, 0, 0],
+        [0, 0, 5, 0],
+        [0, 0, 0, 5],
+      ],
+      budget: 1600,
+      maxChunks: 12,
+    })
+    // 预算 1600 装不下块0（5000），但装得下另外三块 → 三条条款都有证据，而不是只服务得分最高的条款0
+    expect(picked).toEqual([1, 2, 3])
+  })
+
+  it("阶段②覆盖饱和后，用剩余预算把条款自己的最强块补进来", () => {
+    // 块0 对两条条款都有证据（覆盖已饱和），但条款0 的最强块是块2
+    const picked = selectEvidenceChunks({
+      sizes: [100, 100, 100],
+      scores: [
+        [10, 3, 50],
+        [10, 0, 0],
+      ],
+      budget: 200,
+      maxChunks: 12,
+    })
+    expect(picked).toEqual([0, 2])
+  })
+
+  it("确定性：同输入必得同输出，且同分按块序号取先出现的", () => {
+    const input = { sizes: [100, 100, 100], scores: [[5, 5, 5]], budget: 1000, maxChunks: 12 }
+    expect(selectEvidenceChunks(input)).toEqual([0])
+    expect(selectEvidenceChunks(input)).toEqual(selectEvidenceChunks(input))
+  })
+
+  it("块数上限生效：maxChunks 之后不再追加", () => {
+    const sizes = Array.from({ length: 10 }, () => 100)
+    const scores = Array.from({ length: 10 }, (_, i) => Array.from({ length: 10 }, (_, k) => (k === i ? 5 : 0)))
+    const picked = selectEvidenceChunks({ sizes, scores, budget: 10000, maxChunks: 3 })
+    expect(picked).toEqual([0, 1, 2])
+  })
+
+  it("全条款零分 → 返回空（绝不靠「随便塞一块」制造假证据，交由首尾节选兜底）", () => {
+    expect(selectEvidenceChunks({ sizes: [100, 100], scores: [[0, 0]], budget: 1000, maxChunks: 12 })).toEqual([])
+    expect(selectEvidenceChunks({ sizes: [], scores: [], budget: 1000, maxChunks: 12 })).toEqual([])
+  })
+
+  it("第一块允许超预算：与改前口径一致，至少给出一段正文", () => {
+    expect(selectEvidenceChunks({ sizes: [5000], scores: [[3]], budget: 100, maxChunks: 12 })).toEqual([0])
   })
 })

@@ -10,7 +10,8 @@
 //   1. 分块：先按「第N章」切章，再按标题/行边界累计成 ≤6000 字块，块间留 300 字重叠，
 //      每块带稳定来源标识（如「第3章 资质证明/块2」）——废标核销矩阵与偏离表共用同一套 id；
 //   2. 按条款定向检索：条款关键词（含同义词组、型号/数字等硬词）+ 逆文档频率加权打分，
-//      按条款轮转选取（防头几条条款吃光预算），去重后按原文顺序归并成证据包；
+//      R63 起改为「两阶段最大覆盖」选块：先在预算内把「有可见证据的条款数」做到最大，
+//      再用剩余预算给条款补上它自己最强的块（详见 selectEvidenceChunks 上方注释）；
 //   3. 输入可见性报告：完整 / 检索片段 / 首尾截断、覆盖了哪些章、哪些条款本次无可见证据、
 //      未注入字数、input_complete 标志、告警，以及随 user 消息进 Prompt 的【输入可见性】说明块。
 //
@@ -28,7 +29,8 @@ export const BID_CHUNK_SIZE = 6000
 export const BID_CHUNK_OVERLAP = 300
 /** 全局注入块数上限（与招标侧 RETRIEVAL_MAX_CHUNKS 同口径） */
 export const BID_MAX_CHUNKS = 12
-/** 单条款最多占用块数：防「头三条废标条款吃掉全部预算、后面条款永远无可见证据」 */
+/** 单条款最多保留几条证据来源：R63 起只用于「归属展示」截断（选块已由覆盖目标负责公平性），
+ *  排序按证据强度降序，所以截断掉的是最弱的那几条，不是先碰到的 */
 export const BID_MAX_CHUNKS_PER_CLAUSE = 4
 /** 单块超过此倍数的块宽即硬切（与 prompts/tenderRetrieval 同口径） */
 export const BID_HARD_SPLIT_FACTOR = 1.5
@@ -381,6 +383,121 @@ function normalizeClauses(clauses: readonly BidClauseInput[]): { ref: string; te
   return out
 }
 
+// ------------------------------ 选块（两阶段最大覆盖） ------------------------------
+//
+// R63：把「按条款轮转、先到先得」换成显式的最大覆盖目标。
+//
+// 改前的病（安中医全量 138,810 字 / 56 块 / 133 条款实测）：轮转算法**没有任何一处**在
+// 最大化「能拿到证据的条款数」，于是 20000 字预算装下 6 块、只让 50 条条款有可见证据；
+// 而同样 20000 字预算下按覆盖收益选块，可以让 131 条有可见证据——**用字反而更少**。
+// 严格判据（≥2 个不同词命中且分数 ≥ 自身最高分 50%）下 33 → 86 条，最佳块被选中的条款 13 → 74 条。
+//
+// 两个阶段各自回答一个问题：
+//   ① 「哪些块最值得放进这 20000 字？」——按「每字能新增多少条有证据的条款」贪心，
+//      把「每条条款都该有可见证据」这个原轮转算法的意图，变成可优化的目标本身；
+//   ② 「省下来的预算给谁？」——按「能让多少条款拿到自己最强的那块」贪心，把覆盖做到顶之后的
+//      余额用于加固证据质量，而不是继续堆覆盖（此时覆盖已经饱和，再堆等于浪费预算）。
+//
+// 刻意不做：「取分数最高的前 N 块」——那会让关键词密集的头几章吃光预算、后面条款永远无可见证据
+// （P0-3 §3 的轮转用例就是为这条立的）。
+
+/** 分配器入参：块字数 + 打分矩阵（scores[条款][块]） */
+export interface EvidenceChunkSelection {
+  /** 每块的字符数（注入预算按字符计） */
+  sizes: readonly number[]
+  /** 打分矩阵：scores[i][k] = 第 i 条条款在第 k 块上的得分（>0 即「该块对这条条款有证据」） */
+  scores: readonly (readonly number[])[]
+  /** 本次可注入的字符预算 */
+  budget: number
+  /** 选中块数上限 */
+  maxChunks: number
+}
+
+/**
+ * 两阶段选块（纯函数、确定性：同输入必得同输出；同分按块序号升序，不引入随机）。
+ * 返回被选中块的下标，按块序号升序（= 原文顺序）。
+ */
+export function selectEvidenceChunks(input: EvidenceChunkSelection): number[] {
+  const { sizes, scores, budget, maxChunks } = input
+  const n = sizes.length
+  if (!n) return []
+  const clauseCount = scores.length
+
+  // 覆盖关系与「每条条款的最强块」一次算好，两个阶段共用
+  const coverBy: number[][] = Array.from({ length: n }, () => [])
+  const bestOf: number[] = new Array(clauseCount).fill(-1)
+  for (let i = 0; i < clauseCount; i += 1) {
+    const row = scores[i] ?? []
+    let bk = -1
+    let bs = 0
+    for (let k = 0; k < n; k += 1) {
+      const s = row[k] ?? 0
+      if (s > 0) coverBy[k].push(i)
+      if (s > bs) {
+        bs = s
+        bk = k
+      }
+    }
+    bestOf[i] = bk
+  }
+
+  const picked: number[] = []
+  const taken = new Array<boolean>(n).fill(false)
+  const covered = new Array<boolean>(clauseCount).fill(false)
+  let used = 0
+  // 首页块允许超预算：与改前口径一致（至少给出一段正文，避免直接掉进 truncated 兜底）
+  const fits = (k: number): boolean => picked.length === 0 || used + sizes[k] <= budget
+
+  // 阶段①：最大化「有可见证据的条款数」，代价用字符数衡量
+  for (;;) {
+    if (picked.length >= maxChunks) break
+    let bestK = -1
+    let bestVal = -Infinity
+    for (let k = 0; k < n; k += 1) {
+      if (taken[k] || !fits(k)) continue
+      let gain = 0
+      for (const i of coverBy[k]) if (!covered[i]) gain += 1
+      if (gain === 0) continue
+      const v = gain / Math.max(1, sizes[k])
+      if (v > bestVal) {
+        bestVal = v
+        bestK = k
+      }
+    }
+    if (bestK < 0) break
+    taken[bestK] = true
+    picked.push(bestK)
+    used += sizes[bestK]
+    for (const i of coverBy[bestK]) covered[i] = true
+  }
+
+  // 阶段②：覆盖已饱和（或预算将尽）时，用余额给条款补上它自己的最强块——加固证据质量
+  for (;;) {
+    if (picked.length >= maxChunks) break
+    let bestK = -1
+    let bestGain = 0
+    for (let k = 0; k < n; k += 1) {
+      if (taken[k] || !fits(k)) continue
+      let gain = 0
+      for (let i = 0; i < clauseCount; i += 1) {
+        const bk = bestOf[i]
+        if (bk === k && !taken[bk]) gain += 1
+      }
+      if (gain > bestGain) {
+        bestGain = gain
+        bestK = k
+      }
+    }
+    if (bestK < 0) break
+    taken[bestK] = true
+    picked.push(bestK)
+    used += sizes[bestK]
+  }
+
+  return picked.slice().sort((a, b) => a - b)
+}
+
+
 const MODE_LABEL: Record<BidVisibilityReport["mode"], string> = {
   full: "全文完整注入（未截断）",
   retrieval: "按条款定向检索注入（未注入全文）",
@@ -498,7 +615,7 @@ export function selectBidEvidence(
     return { report, text: src, note: buildNote(report, clausesOut), clauses: clausesOut }
   }
 
-  // --- 超预算：分块 + 按条款轮转定向检索 ---
+  // --- 超预算：分块 + 两阶段定向取证（见 selectEvidenceChunks：先最大化覆盖，再用余量加固证据）---
   const perClauseTerms = normalized.map((c) => deriveClauseTerms(c.text))
   const union: string[] = []
   const unionSeen = new Set<string>()
@@ -524,56 +641,32 @@ export function selectBidEvidence(
   // 逆文档频率：几乎每块都出现的泛词权重 ≈1，只在少数块出现的关键词权重更高 → 选块不被泛词带偏
   const idf = (term: string): number => 1 + Math.log(chunks.length / (1 + (df.get(term) ?? 0)))
 
-  const scored = perClauseTerms.map((terms) => {
-    const rows: { k: number; score: number }[] = []
-    chunks.forEach((_, k) => {
-      const score = scoreBidChunk(normChunks[k], normHeadings[k], terms, idf)
-      if (score > 0) rows.push({ k, score })
-    })
-    rows.sort((a, b) => b.score - a.score || a.k - b.k)
-    return rows
+  // 打分矩阵一次算完：选块（覆盖）与归属（sources）共用，避免同一对 (条款, 块) 被打两次分
+  const sizes = chunks.map((c) => c.text.length)
+  const scores: number[][] = perClauseTerms.map((terms) => {
+    const row = new Array<number>(chunks.length)
+    for (let k = 0; k < chunks.length; k += 1) row[k] = scoreBidChunk(normChunks[k], normHeadings[k], terms, idf)
+    return row
   })
+  const bestScores = scores.map((row) => row.reduce((a, b) => (b > a ? b : a), 0))
 
-  const selectedScore = new Map<number, number>()
-  const tried = normalized.map(() => 0)
-  const clauseSources: string[][] = normalized.map(() => [])
-  let used = 0
-  for (let round = 0; round < BID_MAX_CHUNKS_PER_CLAUSE; round += 1) {
-    for (let ci = 0; ci < scored.length; ci += 1) {
-      if (selectedScore.size >= BID_MAX_CHUNKS) break
-      const rows = scored[ci]
-      while (tried[ci] < rows.length) {
-        const cand = rows[tried[ci]]
-        tried[ci] += 1
-        if (selectedScore.has(cand.k)) {
-          // 该块已被别的条款选走：同一块可为本条款共用为证据（去重只针对注入，不针对归属）
-          clauseSources[ci].push(chunks[cand.k].id)
-          continue
-        }
-        const size = chunks[cand.k].text.length
-        if (selectedScore.size > 0 && used + size > budget) {
-          // 2026-10-20 修复：这里原本写 `tried[ci] = rows.length`，等于把该条款永久判死——
-          // 只要它排名第一的块放不进剩余预算，后续所有 round 都不会再碰它，连"退而求其次用
-          // 次优块"的机会都没有。这正是长标书条款召回率偏低的机制层原因（安中医 138810 字
-          // 实测 13/133）。cand 已在上面 tried[ci] += 1 消费掉，此处只需跳出本轮，下一轮自然
-          // 从次优块继续试；tried[ci] 单调递增，不会死循环。
-          break
-        }
-        selectedScore.set(cand.k, cand.score)
-        clauseSources[ci].push(chunks[cand.k].id)
-        used += size
-        break
-      }
+  const pickedIdx = selectEvidenceChunks({ sizes, scores, budget, maxChunks: BID_MAX_CHUNKS })
+  const selected = pickedIdx.map((k) => chunks[k])
+  const used = pickedIdx.reduce((a, k) => a + sizes[k], 0)
+
+  const clausesWithHit = clausesOut.map((c, i) => {
+    const row = scores[i] ?? []
+    const hits: { k: number; s: number }[] = []
+    for (const k of pickedIdx) if ((row[k] ?? 0) > 0) hits.push({ k, s: row[k] })
+    // 证据来源按「对本条款的强度」排序：截断到 BID_MAX_CHUNKS_PER_CLAUSE 时优先保留最强的，而不是先碰到的
+    hits.sort((a, b) => b.s - a.s || a.k - b.k)
+    return {
+      ...c,
+      hit: pickedIdx.length > 0 && hits.length > 0,
+      score: bestScores[i] ?? 0,
+      sources: hits.slice(0, BID_MAX_CHUNKS_PER_CLAUSE).map((h) => chunks[h.k].id),
     }
-  }
-
-  const selected = [...selectedScore.keys()].sort((a, b) => a - b).map((k) => chunks[k])
-  const clausesWithHit = clausesOut.map((c, i) => ({
-    ...c,
-    hit: selected.length > 0 && clauseSources[i].length > 0,
-    score: scored[i][0]?.score ?? 0,
-    sources: clauseSources[i],
-  }))
+  })
   const missedRefs = clausesWithHit.filter((c) => !c.hit).map((c) => c.ref)
 
   if (!selected.length) {

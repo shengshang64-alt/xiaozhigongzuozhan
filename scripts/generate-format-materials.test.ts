@@ -19,7 +19,16 @@ function companySettings(): FormatSettings {
   return s
 }
 
-describe("附五·交付材料生成：格式刷新（模拟真实操作）", () => {
+/**
+ * 这份测试读的是**操作者本机 Downloads 里的真实投标 docx**（不是仓库内夹具），因此它天然只在
+ * 「那台机器 + 那个文件还在」时才有意义。2026-10-21（R63）按仓内既有惯例加 skip 门：
+ * 夹具不存在就整块跳过并打印原因——否则在 VM 沙盒 / CI / 换台机器上它会稳定变红，
+ * 而这个红既不说明代码坏了，还会把真正的回归淹掉（对照 outlineGuardRealDb.test.ts 的 skipIf）。
+ * 文件在时行为完全不变：照样刷格式、照样产出材料、照样断言产物大小。
+ */
+const HAS_SRC = fs.existsSync(SRC_DOCX)
+
+describe.skipIf(!HAS_SRC)("附五·交付材料生成：格式刷新（模拟真实操作）", () => {
   it("按公司模板刷新投标文件并产出交付材料", async () => {
     fs.mkdirSync(OUT_DIR, { recursive: true })
     expect(fs.existsSync(SRC_DOCX)).toBe(true)

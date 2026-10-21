@@ -15,7 +15,7 @@
 |---|---|---|
 | 1 | `npx tsc -b` | 0 error |
 | 2 | `CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD=100000 npx vite build` | 构建成功 |
-| 3 | `npx vitest run` | 全绿（基线 **297 files / 3491 passed / 2 skipped**，R59 实测） |
+| 3 | `npx vitest run` | 全绿（基线 **301 files / 3513 passed / 7 skipped**，R63 分片实测） |
 | 4 | `npx eslint .` | error ≤ **116** 且 warning ≤ **11**（存量债预算，见 `eslint-budget.json`） |
 
 > 第 3、4 条基线随轮次下降，**以 `eslint-budget.json` 与 `docs/evolution/_loop_state.json` 的 `gatesBaseline` 为准**（两者必须同源，
@@ -29,6 +29,12 @@
 > 282→295 的增量来自并行 REQ 线：B28/B29 关键项门禁 + 解析退化自检 `parseDegradation.test.ts` 11 例 +
 > `parseCoverage.test.ts` +3 例 + `useBidWorkspace.behavior.test.tsx` +2 例，及 REQ-009/010 情报/资质统计等非 loop 轮次）；R59（B32
 > 行为网第二簇正文精修）时按当场实跑同步为 **297 files / 3491 passed**（+1 文件 / +5 例：`useBidWorkspace.chapterRefine.test.tsx`）。
+> R58 的 296 / 3486 与 R62 的 300 / 3509 都只写进过轮报与账本、**本行当时没跟着改**（R63 对账时才发现）；R63 按分片实测同步为
+> **301 files / 3513 passed / 7 skipped**（+1 文件：`bidVisibilityCorpus2.test.ts` 5 例；`bidVisibility.test.ts` +6 例分配器直测；
+> 另有 5 例因「本机夹具 / 盘符路径缺失」转为 skip，见 `generate-format-materials.test.ts`、`generate-ppt-kb-materials.test.ts`、
+> `pdfScanLayer.test.ts` 里的 skip 门）。
+> **R63 的分片口径要照实理解**：本机（沙盒 2 核、单次调用约 175 秒上限）整包一次跑不完，是把 301 个文件按 jsdom/node 两组
+> 分 15 片跑完、再用文件清单做集合校验「已跑 301 / 全部 301、未覆盖为空」得到的总数。宿主上单命令复跑如有 ±数例差异，以复跑为准。
 > 数字与账本不一致时以**当场实跑**为准。
 
 **第 2 条的 `CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD` 前缀是必需的**：本机沙箱通过 `NODE_OPTIONS`
