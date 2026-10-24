@@ -108,6 +108,17 @@ export function filterQualRows<T extends Pick<QualCertRow, "cert_name" | "catego
   })
 }
 
+/**
+ * P3-6（2026-10-25）：有效期是否为自动解析（未人工核验）。批量导入的证书其有效期
+ * 常来自文件名/目录名解析（notes 里带「文件名解析」「来源：知识库」等标记）——
+ * 文件名里的日期可能是编制时间而非证书有效期，投标引用前必须人工核对原件。
+ */
+export function isAutoDerivedValidity(notes: string | null | undefined): boolean {
+  const n = notes ?? ""
+  if (!n) return false
+  return /文件名解析|来源：知识库|有效期来自源文|有效期来自.*文件名/.test(n)
+}
+
 /** 人类可读的到期描述：「已过期 12 天」「剩 25 天」「剩 2 个月」 */
 export function qualDueLabel(validTo: string | null | undefined, todayMs: number): string {
   const to = parseDay(validTo)

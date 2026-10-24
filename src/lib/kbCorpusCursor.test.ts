@@ -58,4 +58,17 @@ describe("mergeCorpusRows 增量合并（A2）", () => {
     const local = [row("a", "t1")]
     expect(mergeCorpusRows(local, [row("a", "t2")])).not.toBe(local)
   })
+  it("P1-4 墓碑：incoming 行带 deleted_at → 该 id 从语料移除（删除经增量传播）", () => {
+    const local = [row("a", "t1", "A"), row("b", "t1", "B")]
+    const tombstone = { ...row("a", "t2", "A"), deleted_at: "2026-10-25 01:00:00.000Z" }
+    const merged = mergeCorpusRows(local, [tombstone] as unknown as KbDocRow[])
+    expect(merged).toHaveLength(1)
+    expect(merged[0].id).toBe("b")
+  })
+  it("P1-4：墓碑行 id 不在语料中 → 仍返回等价语料", () => {
+    const local = [row("b", "t1")]
+    const merged = mergeCorpusRows(local, [{ ...row("zz", "t2"), deleted_at: "x" } as unknown as KbDocRow])
+    expect(merged).toHaveLength(1)
+    expect(merged[0].id).toBe("b")
+  })
 })

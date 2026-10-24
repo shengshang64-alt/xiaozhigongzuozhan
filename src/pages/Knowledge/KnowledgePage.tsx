@@ -94,6 +94,7 @@ export function KnowledgePage(p: ReturnType<typeof useKnowledge>) {
             openRenameFolder={p.openRenameFolder}
             submitDeleteFolder={p.submitDeleteFolder}
             onCollapse={toggleFolderCollapsed}
+            storageScope={`${p.userId ?? "anon"}:${p.libTab}`}
           />
         )}
         <DocListPanel

@@ -5,7 +5,8 @@ import { describe, expect, it } from "vitest"
 // 回归价值：原实现每次列表请求都全量加载 6998 条记录（含 500KB/篇的正文）只为了数个数，
 // 单请求 5.48s、35 页累计 25s+。本文件从 pocketbase/pb_hooks/kb_docs.pb.js 提取
 // __KB_PARAMS_BEGIN__ → __KB_COUNT_END__ 之间的真实代码执行（非复制品，防实现与测试漂移），锁死：
-//   ① 无过滤热路径走 $app.countRecords("kb_docs")，一次 findRecordsByFilter 都不发
+//   ① P1-4 起无过滤热路径 = deleted_at 空串等值过滤（软删除排除），仍走 countRecords+hashExp
+//      （一次 findRecordsByFilter 都不发；~190ms，正确性优先于 <1ms 的旧无过滤路径）
 //   ② 纯精确过滤走 countRecords + $dbx.hashExp/and 表达式（表达式内容与 eqs 一致）
 //   ③ q 搜索（含 q+精确组合）刻意走 load-and-count，且 filter/params 与分页同源
 //   ④ countRecords 异常/非法返回、$dbx 表达式构建失败 → 一律回落 load-and-count
@@ -140,18 +141,42 @@ function load(
 }
 
 describe("P1-3 kb_docs 列表计数（不得全量加载记录；派生与路径选择同源锁定）", () => {
-  it("无过滤热路径：走 countRecords 全表计数，一次 findRecordsByFilter 都不发", () => {
+  it("P1-4 无过滤（软删除排除）：deleted_at 空串等值进 eqs，走 countRecords+hashExp 且一次 find 不发", () => {
     const s = load()
     expect(s.run({ query: {} })).toBe(6998)
-    expect(s.countCalls).toEqual([{ coll: "kb_docs", expr: undefined }])
+    expect(s.countCalls).toHaveLength(1)
+    const expr = JSON.stringify(s.countCalls[0].expr)
+    expect(expr).toContain('deleted_at')
     expect(s.findCalls.length, "SQL count 可用时不得回落全量加载").toBe(0)
+  })
+  it("includeDeleted=1（A2 增量携带墓碑）：不加 deleted_at 条件，走无过滤全表计数", () => {
+    const s = load()
+    expect(s.run({ query: { includeDeleted: "1" } })).toBe(6998)
+    const expr = JSON.stringify(s.countCalls[0].expr ?? {})
+    expect(expr).not.toContain('deleted_at')
   })
 
   it("纯精确过滤：走 countRecords + hashExp 表达式，不发 findRecordsByFilter", () => {
-    const s = load({ countReturns: (expr) => (expr as Expr).kind === "hashExp" ? 731 : -1 })
+    // P1-4：expr 为 and 链（kb_track + deleted_at），stub 按叶子数求值（全 hashExp → 731）
+    const s = load({
+      countReturns: (expr) => {
+        const leaves: Expr[] = []
+        const walk = (e: Expr) => (e.kind === "and" ? (walk(e.a!), walk(e.b!)) : leaves.push(e))
+        walk(expr as Expr)
+        return leaves.every((l) => l.kind === "hashExp") ? 731 : -1
+      },
+    })
     expect(s.run({ query: { kb_track: "HIS系统" } })).toBe(731)
     expect(s.countCalls.length).toBe(1)
-    expect(s.countCalls[0].expr).toEqual({ kind: "hashExp", pair: { kb_track: "HIS系统" } })
+    // P1-4：expr 为 and 链（kb_track 等值 + 尾部恒有的 deleted_at 空串软删除排除）
+    const expr = s.countCalls[0].expr as Expr
+    const leaves: Expr[] = []
+    const walk = (e: Expr) => (e.kind === "and" ? (walk(e.a!), walk(e.b!)) : leaves.push(e))
+    walk(expr)
+    expect(leaves).toEqual([
+      { kind: "hashExp", pair: { kb_track: "HIS系统" } },
+      { kind: "hashExp", pair: { deleted_at: "" } },
+    ])
     expect(s.findCalls.length).toBe(0)
   })
 
@@ -169,6 +194,8 @@ describe("P1-3 kb_docs 列表计数（不得全量加载记录；派生与路径
       { kind: "hashExp", pair: { visibility: "team" } },
       { kind: "hashExp", pair: { kb_track: "HIS系统" } },
       { kind: "hashExp", pair: { kb_bucket: "方案素材" } },
+      // P1-4：尾部恒有的软删除排除（追加在路由固定检查序之后）
+      { kind: "hashExp", pair: { deleted_at: "" } },
     ])
     expect(s.findCalls.length).toBe(0)
   })
@@ -179,8 +206,9 @@ describe("P1-3 kb_docs 列表计数（不得全量加载记录；派生与路径
     expect(s.countCalls.length, "q 搜索不得走表达式计数").toBe(0)
     expect(s.findCalls.length).toBe(1)
     expect(s.findCalls[0]).toEqual({
-      filter: "(title ~ {:q_kw} || source_file_name ~ {:q_kw2})",
-      params: { q_kw: "%医院%", q_kw2: "%医院%" },
+      // P1-4：软删除排除恒在 filter 首位（eqs 先于 q 派生）
+      filter: "deleted_at = {:deleted_at} && (title ~ {:q_kw} || source_file_name ~ {:q_kw2})",
+      params: { deleted_at: "", q_kw: "%医院%", q_kw2: "%医院%" },
       sort: "-updated",
       limit: 100000,
       offset: 0,
@@ -191,8 +219,10 @@ describe("P1-3 kb_docs 列表计数（不得全量加载记录；派生与路径
     const s = load({ findReturns: 42 })
     expect(s.run({ query: { visibility: "team", q: "医院" } })).toBe(42)
     expect(s.countCalls.length).toBe(0)
-    expect(s.findCalls[0].filter).toBe("visibility = {:visibility} && (title ~ {:q_kw} || source_file_name ~ {:q_kw2})")
-    expect(s.findCalls[0].params).toEqual({ visibility: "team", q_kw: "%医院%", q_kw2: "%医院%" })
+    expect(s.findCalls[0].filter).toBe(
+      "visibility = {:visibility} && deleted_at = {:deleted_at} && (title ~ {:q_kw} || source_file_name ~ {:q_kw2})",
+    )
+    expect(s.findCalls[0].params).toEqual({ visibility: "team", deleted_at: "", q_kw: "%医院%", q_kw2: "%医院%" })
   })
 
   it("eqs → filter 派生：七个精确字段全部生成占位符与同名参数（防漏字段）", () => {
@@ -215,6 +245,8 @@ describe("P1-3 kb_docs 列表计数（不得全量加载记录；派生与路径
     walk(expr)
     expect(leaves.map((l) => Object.keys(l.pair!)[0])).toEqual([
       "rh_user_id", "visibility", "folder_path", "doc_format", "kb_track", "kb_bucket", "kb_section",
+      // P1-4：尾部恒有的软删除排除
+      "deleted_at",
     ])
   })
 
@@ -223,7 +255,8 @@ describe("P1-3 kb_docs 列表计数（不得全量加载记录；派生与路径
     expect(s.run({ query: {} })).toBe(6998)
     expect(s.countCalls.length).toBe(1)
     expect(s.findCalls.length).toBe(1)
-    expect(s.findCalls[0]).toMatchObject({ filter: "", limit: 100000, offset: 0 })
+    // P1-4：回落 load-and-count 时 filter 携带软删除排除（与分页同源）
+    expect(s.findCalls[0]).toMatchObject({ filter: "deleted_at = {:deleted_at}", limit: 100000, offset: 0 })
   })
 
   it("countRecords 返回非法值（负数/NaN/null/字符串）：回落 load-and-count", () => {
@@ -238,8 +271,8 @@ describe("P1-3 kb_docs 列表计数（不得全量加载记录；派生与路径
     const s = load({ countThrows: true, findReturns: 217 })
     expect(s.run({ query: { kb_track: "HIS系统" } })).toBe(217)
     expect(s.findCalls[0]).toEqual({
-      filter: "kb_track = {:kb_track}",
-      params: { kb_track: "HIS系统" },
+      filter: "kb_track = {:kb_track} && deleted_at = {:deleted_at}",
+      params: { kb_track: "HIS系统", deleted_at: "" },
       sort: "-updated",
       limit: 100000,
       offset: 0,

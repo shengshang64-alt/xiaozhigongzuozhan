@@ -44,6 +44,9 @@ onBootstrap(function (e) {
       addField({ name: 'kb_track', type: 'text', max: 40 })
       addField({ name: 'kb_bucket', type: 'text', max: 40 })
       addField({ name: 'kb_section', type: 'text', max: 40 })
+      // P1-4（2026-10-25）：软删除时间戳（空串=在册）。DELETE 路由置时间戳而非物理删除，
+      // 列表路由排除已删行；A2 增量同步经 since 携带墓碑（updated 随置删前进）。
+      addField({ name: 'deleted_at', type: 'text', max: 30 })
       addField({ name: "created", type: "autodate", onCreate: true })
       addField({ name: "updated", type: "autodate", onCreate: true, onUpdate: true })
       // P1-3 性能修复（2026-10-13）：列表路由默认 sort=-updated，无索引时 SQLite 对
@@ -101,6 +104,7 @@ onBootstrap(function (e) {
           { name: 'kb_track', type: 'text', max: 40 },
           { name: 'kb_bucket', type: 'text', max: 40 },
           { name: 'kb_section', type: 'text', max: 40 },
+          { name: 'deleted_at', type: 'text', max: 30 },
           { name: "created", type: "autodate", onCreate: true },
           { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
         ],
@@ -179,6 +183,12 @@ routerAdd("GET", "/api/kb_docs", function (e) {
     if (query.kb_bucket !== undefined && query.kb_bucket !== "") eqs.push({ field: "kb_bucket", value: String(query.kb_bucket) })
     if (query.kb_section !== undefined && query.kb_section !== "") eqs.push({ field: "kb_section", value: String(query.kb_section) })
     if (query.q !== undefined && String(query.q) !== "") qKw = String(query.q)
+    // P1-4（2026-10-25）：软删除语义——在册行 deleted_at 为空串。恒进 eqs（排除已删）；
+    // 计数快速路径因此从「无过滤 <1ms」变为「等值表达式 ~190ms」，正确性优先（原热路径
+    // 无法表达 != ''；见 __exprOk 处 2026-10-13 踩坑记录，hashExp 等值可用）。
+    // A2 的 since 增量拉取刻意带 includeDeleted=1 以携带墓碑行（deleted_at 非空）。
+    var __includeDeleted = String(query.includeDeleted || "") === "1"
+    if (!__includeDeleted) eqs.push({ field: "deleted_at", value: "" })
     // A2（2026-10-25）：增量同步游标——只取 updated 严格大于 since 的行（客户端语料快照
     // 增量拉取）。range 条件刻意不进 eqs：计数快速路径（dbx 等值表达式）不覆盖范围过滤，
     // since 场景一律走 load-and-count 回落（增量行数通常个位数，成本可忽略，语义与分页同源）。
@@ -569,10 +579,62 @@ routerAdd("DELETE", "/api/kb_docs/{id}", function (e) {
     try { __own = (String(rec.get("rh_user_id") || "") === __uid) } catch (_ownErr) {}
     if (!__own) { try { __own = (String(rec.get("visibility") || "") !== "personal") } catch (_visErr) {} }
     if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
-    $app.delete(rec)
-    return e.json(200, { ok: true })
+    // P1-4：软删除——置 deleted_at（updated 随 autodate 前进，A2 since 增量即携带墓碑）。
+    // 物理删除不再提供；回收站/恢复走 /api/kb_docs_deleted 与 /api/kb_docs/{id}/restore。
+    rec.set("deleted_at", new Date().toISOString().replace("T", " ").substring(0, 19) + ".000Z")
+    $app.save(rec)
+    return e.json(200, { ok: true, deletedAt: rec.getString("deleted_at") })
   } catch (err) {
     var msg = String(err && err.message || err)
     return e.json(500, { error: "delete_failed", message: msg, fingerprint: msg.substring(0, 80) })
+  }
+})
+
+// P1-4（2026-10-25）：已删文档列表（回收站数据源）——仅返回软删除行，按置删时间倒序。
+// 归属口径与主列表一致：team 行全员可见，personal 行仅归属人可见。
+routerAdd("GET", "/api/kb_docs_deleted", function (e) {
+  try {
+    var __uid = String(e.get("rhUserId") || "")
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
+    var info = e.requestInfo()
+    var query = info.query || {}
+    var page = parseInt(String(query.page || "1"), 10) || 1
+    var perPage = parseInt(String(query.perPage || "50"), 10) || 50
+    if (perPage > 200) perPage = 200
+    // personal 删除行仅归属人可见：rh_user_id = uid OR visibility != personal，
+    // 且 visibility=personal 时 rh_user_id 必须等于 uid —— 化简为两条 OR 分支
+    var filter = "deleted_at != '' && (visibility != 'personal' || rh_user_id = {:uid})"
+    var records = $app.findRecordsByFilter("kb_docs", filter, "-updated", perPage, (page - 1) * perPage, { uid: __uid })
+    var items = []
+    for (var i = 0; i < records.length; i++) items.push(records[i].publicExport())
+    var total = $app.findRecordsByFilter("kb_docs", filter, "-updated", 0, 0, { uid: __uid }).length
+    return e.json(200, { items: items, page: page, perPage: perPage, totalItems: total })
+  } catch (err) {
+    var msg = String(err && err.message || err)
+    return e.json(500, { error: "deleted_list_failed", message: msg })
+  }
+})
+
+// P1-4（2026-10-25）：恢复软删除行（deleted_at 清空；updated 前进使 A2 since 同步携带复活事件）。
+// 归属判断与 DELETE 一致（personal 仅归属人可恢复）。
+routerAdd("POST", "/api/kb_docs/{id}/restore", function (e) {
+  try {
+    var id = e.request.pathValue("id")
+    var __uid = String(e.get("rhUserId") || "")
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
+    var rec = null
+    try { rec = $app.findRecordById("kb_docs", id) } catch (_) { rec = null }
+    if (!rec) return e.json(404, { error: "not_found" })
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id") || "") === __uid) } catch (_ownErr) {}
+    if (!__own) { try { __own = (String(rec.get("visibility") || "") !== "personal") } catch (_visErr) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
+    if (String(rec.get("deleted_at") || "") === "") return e.json(200, { ok: true, restored: false, message: "该文档不在回收站中" })
+    rec.set("deleted_at", "")
+    $app.save(rec)
+    return e.json(200, { ok: true, restored: true })
+  } catch (err) {
+    var msg = String(err && err.message || err)
+    return e.json(500, { error: "restore_failed", message: msg })
   }
 })

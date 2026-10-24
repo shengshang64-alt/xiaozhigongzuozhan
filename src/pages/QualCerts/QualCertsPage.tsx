@@ -8,7 +8,7 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { Input } from "@/components/ui/input"
 import { DataTable, type DataTableColumn } from "@/components/ui/DataTable"
 import type { UseQualCerts } from "./useQualCerts"
-import { QUAL_CATEGORIES, filterQualRows, qualDueLabel, type QualBucket, type QualCertRow } from "./qualsCore"
+import { QUAL_CATEGORIES, filterQualRows, isAutoDerivedValidity, qualDueLabel, type QualBucket, type QualCertRow } from "./qualsCore"
 import { exportToCsv } from "@/lib/exportCsv"
 import { localDateStamp } from "@/lib/dateStamp"
 
@@ -86,10 +86,21 @@ export function QualCertsPage({ p }: { p: UseQualCerts }) {
       sortAccessor: (row) => row.valid_to,
       render: (row) => {
         const { due, cls } = qualDueBadge(row, todayMs)
+        // P3-6：自动解析的有效期（来自文件名/目录名解析）加「待核验」徽标——
+        // 文件名里的日期可能是编制时间而非证书有效期，投标引用前必须核对原件
+        const autoDerived = isAutoDerivedValidity(row.notes)
         return (
           <span>
             <span className={`inline-flex items-center gap-1 ${cls}`}>{row.valid_to || "未登记"}</span>
             <span className="ml-1 text-xs text-muted-foreground">{row.valid_to ? due : ""}</span>
+            {autoDerived ? (
+              <span
+                className="ml-1 inline-flex items-center rounded-full border border-warning/40 bg-warning/10 px-1.5 text-[10px] font-medium text-warning"
+                title="该有效期由文件名/目录名自动解析，可能是编制时间而非证书有效期——投标引用前请核对证书原件"
+              >
+                待核验
+              </span>
+            ) : null}
           </span>
         )
       },

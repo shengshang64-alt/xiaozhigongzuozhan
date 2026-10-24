@@ -1,6 +1,6 @@
 // 资质台账纯函数单测（分档口径是「废标风险预警」的地基，必须锁死）
 import { describe, expect, it } from "vitest"
-import { qualBucket, summarizeQuals, qualDueLabel, parseDay, qualRiskView } from "./qualsCore"
+import { isAutoDerivedValidity, qualBucket, summarizeQuals, qualDueLabel, parseDay, qualRiskView } from "./qualsCore"
 
 // 固定时钟：2026-09-28
 const TODAY = new Date("2026-09-28T00:00:00").getTime()
@@ -143,5 +143,17 @@ describe("R228 不变量自检：三档之和 == alerts.length == qualRiskView.t
     expect(riskView.total).toBe(summary.alerts.length)
     expect(riskView.urgent).toBe(summary.buckets.expired + summary.buckets.critical)
     expect(riskView.watch).toBe(summary.buckets.warning)
+  })
+})
+describe("isAutoDerivedValidity（P3-6）", () => {
+  it("notes 含文件名解析/知识库来源等标记 → true", () => {
+    expect(isAutoDerivedValidity("批量导入（来源：资质目录文件名解析）")).toBe(true)
+    expect(isAutoDerivedValidity("真实有效期（来源：知识库证书文件名）")).toBe(true)
+    expect(isAutoDerivedValidity("有效期来自源文件")).toBe(true)
+  })
+  it("人工登记的备注 → false；空备注 → false", () => {
+    expect(isAutoDerivedValidity("原件已核对")).toBe(false)
+    expect(isAutoDerivedValidity("")).toBe(false)
+    expect(isAutoDerivedValidity(null)).toBe(false)
   })
 })

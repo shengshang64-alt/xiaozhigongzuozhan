@@ -662,11 +662,20 @@ export function seedIdf(docs: KbDocRow[], snap: { N: unknown; df: unknown }): bo
 /**
  * A2（2026-10-25）：增量行按 id upsert 进语料——已有 id 整行替换（最新版）、新 id 追加；
  * 返回新数组引用（触发 scopeDocs 记忆化按新语料重建）。incoming 为空时原样返回（不换引用）。
+ * P1-4 墓碑语义：incoming 中 deleted_at 非空的行代表「该 id 已被删除」，从语料移除该 id
+ * （软删除行 updated 随置删前进，经 since 增量携带墓碑，删除即随增量传播）。
  */
 export function mergeCorpusRows(existing: KbDocRow[], incoming: KbDocRow[]): KbDocRow[] {
   if (!incoming.length) return existing
   const map = new Map(existing.map((d) => [d.id, d]))
-  for (const d of incoming) map.set(d.id, d)
+  for (const d of incoming) {
+    // P1-4 墓碑：deleted_at 非空 = 该 id 已删除，从语料移除
+    if (String((d as { deleted_at?: string }).deleted_at ?? "") !== "") {
+      map.delete(d.id)
+      continue
+    }
+    map.set(d.id, d)
+  }
   return [...map.values()]
 }
 
