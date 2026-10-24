@@ -10,11 +10,29 @@ import { parseUploadFile, isSupportedUpload } from "./kbUpload"
 
 const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
 
-/** 把一段 word/document.xml 正文包成合法 docx（zip）字节 */
+/** 把一段 word/document.xml 正文包成合法 OOXML docx（含 Content_Types 与关系文件，
+ *  mammoth 可独立解析——不依赖双路径回退） */
 function docxBytes(bodyXml: string): Uint8Array {
   const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document ${NS}><w:body>${bodyXml}</w:body></w:document>`
-  return zipSync({ "word/document.xml": strToU8(xml) }, { level: 0 })
+  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`
+  const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`
+  return zipSync(
+    {
+      "[Content_Types].xml": strToU8(contentTypes),
+      "_rels/.rels": strToU8(rels),
+      "word/document.xml": strToU8(xml),
+    },
+    { level: 0 },
+  )
 }
 const p = (text: string) => `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`
 

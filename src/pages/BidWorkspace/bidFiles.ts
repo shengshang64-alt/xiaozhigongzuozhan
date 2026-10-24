@@ -213,7 +213,13 @@ export async function extractDocxText(file: File, opts?: PageTagOptions): Promis
     return extractDocxTextFromXml(buf, opts)
   }
   const mammoth = await import("mammoth")
-  const result = await mammoth.convertToHtml({ arrayBuffer: buf })
+  // mammoth 的 browser 构建认 arrayBuffer、Node 构建只认 buffer（openZip 只枚举
+  // path/buffer/file）；vite 解析 browser 字段走前者，vitest 走后者。两个键都传
+  // （Uint8Array 视图零拷贝，运行时 JSZip.loadAsync 两者都收）。
+  const result = await mammoth.convertToHtml({
+    arrayBuffer: buf,
+    buffer: new Uint8Array(buf) as unknown as Buffer,
+  })
   const html = result.value ?? ""
   const parsed = new DOMParser().parseFromString(html, "text/html")
 
