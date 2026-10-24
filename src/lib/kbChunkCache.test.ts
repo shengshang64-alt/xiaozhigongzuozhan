@@ -3,7 +3,7 @@
 // 旧缓存只校验 updated → 空 chunks 永久缓存 → 文档静默退出全文检索（知识库问答 0/20 评测坐实）。
 import { describe, expect, it } from "vitest"
 
-import { chunkKbDoc, searchKbDocs, type KbDocRow } from "@/lib/kbCore"
+import { chunkEntriesOf, chunkKbDoc, searchKbDocs, type KbDocRow } from "@/lib/kbCore"
 
 const BASE = {
   rh_user_id: "u1",
@@ -46,5 +46,32 @@ describe("chunkKbDoc 缓存失效（R87）", () => {
     chunkKbDoc(d1)
     const d2 = { ...d1, updated: "2026-02-02 00:00:00", content: "重写后的正文关于高血压分级诊疗路径" }
     expect(chunkKbDoc(d2)).not.toBe(chunkKbDoc(d1))
+  })
+})
+
+describe("chunkEntriesOf 预小写条目缓存（A0）", () => {
+  it("与 chunkKbDoc 同源缓存：重复调用返回同一 entries 引用，chunk 引用也一致", () => {
+    const d = mkDoc("entries-hit-1", "## 标题A\n电子病历五级评审的核心要求与准备要点正文")
+    const a = chunkEntriesOf(d)
+    const b = chunkEntriesOf({ ...d })
+    expect(b).toBe(a)
+    expect(a[0].chunk).toBe(chunkKbDoc(d)[0])
+  })
+
+  it("lowerText/dl 预计算正确（小写化；dl 取小写后长度且 ≥1）", () => {
+    const d = mkDoc("entries-lower-1", "包含English Words与大写ABC的正文内容")
+    const entries = chunkEntriesOf(d)
+    for (const e of entries) {
+      expect(e.lowerText).toBe(e.chunk.text.toLowerCase())
+      expect(e.lowerHeading).toBe((e.chunk.headingPath ?? "").toLowerCase())
+      expect(e.dl).toBe(Math.max(1, e.chunk.text.toLowerCase().length))
+    }
+  })
+
+  it("slim→全文回填（R87 场景）对 entries 同样生效", () => {
+    const slim = mkDoc("entries-inv-1", "")
+    expect(chunkEntriesOf(slim)).toHaveLength(0)
+    const full = mkDoc("entries-inv-1", "补拉回填后的静脉血栓栓塞症预防护理正文")
+    expect(chunkEntriesOf(full).length).toBeGreaterThan(0)
   })
 })

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { AlertTriangle, Cpu } from "lucide-react"
 import { modelRefKey, modelRefLabel, type ModelRef } from "@/lib/modelGateway"
 import { decodeRhToken, isLocalDeployHost } from "@/lib/rhLogin"
@@ -9,6 +9,7 @@ import {
   readModelHealth,
   type ModelHealthEntry,
 } from "@/lib/modelHealth"
+import { groupModelOptions } from "./modelSelectGroups"
 
 type ModelSelectProps = {
   models: ModelRef[]
@@ -37,9 +38,17 @@ function useModelHealth(): Record<string, ModelHealthEntry> {
 }
 
 export function ModelSelect({ models, valueKey, onChange }: ModelSelectProps) {
-  const platformModels = models.filter((m) => m.source === "platform")
   const personalModels = models.filter((m) => m.source === "personal")
   const health = useModelHealth()
+  // P2-4：下拉分组整备——平台内置一组在前，个人模型按供应商细分子组，组内挂账模型沉底
+  const groups = useMemo(() => {
+    const unhealthy = new Set(
+      Object.entries(health)
+        .filter(([, e]) => !!e)
+        .map(([k]) => k),
+    )
+    return groupModelOptions(models, unhealthy)
+  }, [models, health])
   // R296：当前所选通道的「实测不可用」挂账
   const selectedHealth = health[valueKey] ?? null
   // 本地自用域禁用「平台内置」：
@@ -71,31 +80,24 @@ export function ModelSelect({ models, valueKey, onChange }: ModelSelectProps) {
         className="h-7 max-w-44 cursor-pointer rounded-md border-0 bg-transparent text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
         {models.length === 0 && <option value="">平台内置 gpt-5.5</option>}
-        {platformModels.length > 0 && (
-          <optgroup label={platformDisabled ? "平台内置（本地不可用）" : "平台内置"}>
-            {platformModels.map((m) => (
+        {groups.map((g) => (
+          <optgroup
+            key={g.key}
+            label={g.key === "platform" && platformDisabled ? "平台内置（本地不可用）" : g.label}
+          >
+            {g.items.map((m) => (
               <option
                 key={modelRefKey(m)}
                 value={modelRefKey(m)}
-                disabled={platformDisabled}
-                title={platformDisabled ? "本地部署缺少 RunningHub 登录态，该模型无法调用" : undefined}
+                disabled={g.key === "platform" && platformDisabled}
+                title={g.key === "platform" && platformDisabled ? "本地部署缺少 RunningHub 登录态，该模型无法调用" : undefined}
               >
                 {modelRefLabel(m)}
                 {statusSuffix(modelRefKey(m))}
               </option>
             ))}
           </optgroup>
-        )}
-        {personalModels.length > 0 && (
-          <optgroup label="我的模型">
-            {personalModels.map((m) => (
-              <option key={modelRefKey(m)} value={modelRefKey(m)}>
-                {modelRefLabel(m)}
-                {statusSuffix(modelRefKey(m))}
-              </option>
-            ))}
-          </optgroup>
-        )}
+        ))}
       </select>
       {selectedHealth && (
         <span

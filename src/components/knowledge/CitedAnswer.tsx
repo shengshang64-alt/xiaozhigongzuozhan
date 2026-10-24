@@ -3,6 +3,7 @@
 import { BookMarked, ExternalLink } from "lucide-react"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 import { KbMarkdown } from "@/components/knowledge/KbMarkdown"
+import { redactPii } from "@/lib/piiRedact"
 import type { QaCitation } from "@/pages/Knowledge/useKnowledge"
 
 /** 回答里是否带 [资料N] 内联引用标记（无标记走旧版底部 chips 兼容渲染） */
@@ -52,7 +53,8 @@ function CitationChip({
           </span>
         </p>
         <p className="line-clamp-4 text-xs leading-relaxed text-muted-foreground">
-          {(citation.snippet ?? "").slice(0, 200)}
+          {/* P1（2026-10-24）：悬浮摘录卡同 QaDrawer 引用列表，历史原始片段展示前强制 PII 掩码 */}
+          {redactPii(citation.snippet ?? "").slice(0, 200)}
         </p>
         <button
           type="button"

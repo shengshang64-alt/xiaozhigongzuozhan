@@ -43,6 +43,7 @@ import { exportHtmlReport } from "./report/toHtml"
 import { BidCheckConfigDialog } from "./BidCheckConfigDialog"
 import { ReadingView } from "./ReadingView"
 import { RulesListPanel } from "./RulesListPanel"
+import { dedupeProjectOptions, filterProjectOptions, sortProjectOptions } from "./projectOptions"
 import type { BidCheckVm } from "./useBidCheck"
 
 type Tab = "result" | "rules"
@@ -74,6 +75,13 @@ export function BidCheckPage(vm: BidCheckVm) {
   const [tab, setTab] = useState<Tab>("result")
   const [gateOpen, setGateOpen] = useState(false)
   const [pendingExport, setPendingExport] = useState<null | "excel" | "html" | "docx">(null)
+  // P1-6：项目下拉整备——同名去重（保最新）+ updated 倒序 + 关键字搜索（实测 30+ 选项
+  // 同名重复无排序无搜索，多人团队下不可用）
+  const [projectQuery, setProjectQuery] = useState("")
+  const projectOptions = useMemo(
+    () => filterProjectOptions(dedupeProjectOptions(sortProjectOptions(projects)), projectQuery),
+    [projects, projectQuery],
+  )
 
   const sealed = mode === "sealed"
   const blocked = !!result && sealed && hasBlockingCritical(result)
@@ -169,20 +177,45 @@ export function BidCheckPage(vm: BidCheckVm) {
             </div>
             <div className="space-y-2 rounded-md border p-3">
               <div className="text-sm font-medium">选择标书项目</div>
-              <p className="text-xs text-muted-foreground">复用项目正文做检查（无文件包，节点痕迹项标「无法检测」）。</p>
+              <p className="text-xs text-muted-foreground">复用项目正文做检查（无文件包，节点痕迹项标「无法检测」）。同名项目仅保留最近一条。</p>
+              <input
+                type="search"
+                value={projectQuery}
+                onChange={(e) => setProjectQuery(e.target.value)}
+                placeholder="搜索项目名称 / 招标编号…"
+                disabled={projectsLoading || projects.length === 0}
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm disabled:opacity-60"
+              />
               <select
                 className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm disabled:opacity-60"
                 value={source.kind === "project" ? source.record.id : ""}
-                disabled={projectsLoading || projects.length === 0}
+                disabled={projectsLoading || projectOptions.length === 0}
                 onChange={(e) => pickProject(e.target.value)}
               >
-                <option value="">{projectsLoading ? "加载中…" : projects.length ? "请选择项目" : "暂无项目"}</option>
-                {projects.map((p) => (
+                <option value="">
+                  {projectsLoading
+                    ? "加载中…"
+                    : projects.length === 0
+                      ? "暂无项目"
+                      : projectOptions.length === 0
+                        ? "无匹配项目（调整搜索词）"
+                        : "请选择项目"}
+                </option>
+                {projectOptions.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.project_name || p.id}
                   </option>
                 ))}
               </select>
+              {projects.length > projectOptions.length ? (
+                <p className="text-xs text-muted-foreground">
+                  {projectOptions.length === projects.length
+                    ? `共 ${projects.length} 个项目`
+                    : `匹配 ${projectOptions.length} / 共 ${projects.length} 个项目（同名已合并）`}
+                </p>
+              ) : projects.length > 0 ? (
+                <p className="text-xs text-muted-foreground">共 {projects.length} 个项目 · 按最近更新排序</p>
+              ) : null}
             </div>
           </div>
           <div className="flex items-center justify-between gap-2">

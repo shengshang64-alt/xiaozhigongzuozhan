@@ -24,7 +24,7 @@ import {
 } from "@/lib/modelFailover"
 // R296（r294-default-model-hygiene）：确定性失效（模型不存在 / 上游停用 / Key 失效）
 // 落长期健康档案，供配置页与模型选择器显式标注；限流 / 超时等瞬时类由会话冷却负责，不入档。
-import { recordCallFailure, recordModelSuccess } from "@/lib/modelHealth"
+import { recordCallFailure, recordModelSuccess, readModelHealth } from "@/lib/modelHealth"
 
 export const PLATFORM_MODEL_ID = "gpt-5.5"
 
@@ -234,7 +234,17 @@ export async function resolveAvailableModels(): Promise<AvailableModels> {
   // 实测导致所有页面默认落到 bailing，用户在顶部选了别的模型也会被静默改回。
   const userId = decodeRhToken()?.sub ?? null
   const preferred = resolvePreferredRef(built.models, readPreferredModelKey(userId))
-  return { configs: res.items, ...built, defaultRef: preferred ?? built.defaultRef }
+  // P0 修复（默认模型卫生）：健康档案挂账的通道（额度耗尽 / 已下线 / Key 失效）不再作为
+  // 默认模型——实测 bailing 默认模型 quota 挂账后，各页面首轮 AI 仍默认选中它、必然失败，
+  // 用户看到的就是「一发问就报错」。偏好或配置默认命中挂账时，顺位取第一个健康模型；
+  // 全部挂账时维持原口径（用户显式选择不受影响，仍可在选择器里手动选中挂账模型）。
+  const health = readModelHealth(userId)
+  const isUnhealthy = (m: ModelRef | null): boolean => !!m && modelRefKey(m) in health
+  let defaultRef = preferred ?? built.defaultRef
+  if (isUnhealthy(defaultRef)) {
+    defaultRef = built.models.find((m) => !isUnhealthy(m)) ?? built.platformRef ?? defaultRef
+  }
+  return { configs: res.items, ...built, defaultRef }
 }
 
 // ---------------------------------------------------------------------------

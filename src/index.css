@@ -313,3 +313,24 @@ body {
     width: 100%;
   }
 }
+
+/* P0 修复保险（Radix 弹窗退出态）：确认运行后 action 触发的 LLM 流式渲染可能把
+   Radix Presence 的卸载 effect 推迟数秒，期间 data-state=closed 的遮罩/内容仍挂载
+   并拦截全页点击（实测 6s+）。closed 态立即不可见且不参与命中测试，无论卸载是否
+   被延迟都不会挡住页面。全站 Radix Dialog 通用，当前无依赖 closed 态可见的弹窗。 */
+[data-radix-dialog-overlay][data-state="closed"],
+[role="dialog"][data-state="closed"] {
+  pointer-events: none !important;
+  opacity: 0 !important;
+}
+/* 同上：显式守卫钩子，覆盖 data-radix-dialog-overlay 属性在不同 Radix 版本的差异 */
+[data-dialog-exit-guard][data-state="closed"] {
+  pointer-events: none !important;
+  opacity: 0 !important;
+}
+
+/* P0 修复：问知识库抽屉打开时隐藏悬浮助手球（同右下 fixed 定位互相遮挡，实测
+   1280×720 下悬浮球盖住抽屉发送键）。QaDrawer 打开时在 body 上打 data-qa-drawer-open。 */
+body[data-qa-drawer-open] .floating-assistant-fab {
+  display: none;
+}

@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { categoryOf, effectivePolicy, KB_CATEGORIES } from "@/lib/kbPolicy"
 import { exportToCsv } from "@/lib/exportCsv"
+import { toast } from "sonner"
 import { formatRelativeTime } from "@/lib/relativeTime"
 import { localDateStamp } from "@/lib/dateStamp"
 import type { DocSortKey, LibTab } from "@/pages/Knowledge/useKnowledge"
@@ -153,6 +154,8 @@ export function DocListPanel({
       d.updated || "",
     ])
     exportToCsv(`知识库文档_${localDateStamp()}.csv`, headers, rows)
+    // P3-3：导出语义明确化——按钮标签与结果反馈都说明「只有元数据」，消除「导出全文」的预期落差
+    toast.info(`已导出 ${rows.length} 篇文档的元数据 CSV（标题/分类/目录/上传人/时间，不含正文）`)
   }
 
   return (
@@ -174,11 +177,11 @@ export function DocListPanel({
             variant="ghost"
             onClick={handleExportDocs}
             disabled={sortedDocs.length === 0}
-            title="导出当前列表为 CSV（不含正文，仅元数据）"
+            title="导出当前列表的元数据 CSV（标题/分类/目录/上传人/更新时间，不含正文）"
             className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
           >
             <Download className="h-3.5 w-3.5" />
-            导出
+            导出 CSV
           </Button>
           <Button
             size="sm"
@@ -336,6 +339,9 @@ export function DocListPanel({
               >
                 <button
                   type="button"
+                  // P2-5：显式 accessible name——渐进加载两阶段的名称计算曾出现回退
+                  // （内容派生名称在加载完成后丢失），显式标注对屏幕阅读器与自动化测试都稳定
+                  aria-label={`打开文档：${doc.title}${doc.folder_path ? `（${doc.folder_path}）` : ""}`}
                   onClick={() => (batchMode ? onToggleBatchSelect(doc.id) : selectDoc(doc))}
                   className="block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-md"
                 >

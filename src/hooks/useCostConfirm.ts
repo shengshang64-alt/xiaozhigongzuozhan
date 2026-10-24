@@ -32,6 +32,7 @@
 // 只会造成困惑 —— runWithCostConfirm 仍必须包住付费调用（发布审计依赖这个固定
 // 写法作为用户触发证据），只是内部直接放行不弹窗。
 import { useCallback, useMemo, useRef, useState } from "react"
+import { flushSync } from "react-dom"
 import { visitorPaysForAi } from "@/lib/auth"
 import { currentVibexAppId, hasCostConfirmedToday, rememberCostConfirmedToday } from "@/lib/costConfirm"
 
@@ -60,7 +61,15 @@ export function useCostConfirm() {
   )
 
   const confirmCostAction = useCallback(() => {
-    setCostConfirmOpen(false)
+    // P0 修复：必须 flushSync 先把「弹窗关闭」冲刷到 DOM，再同步执行付费动作。
+    // action 常在同一个点击里同步做重活（知识库全量检索 / 流式渲染），普通 setState
+    // 会被这些同步工作饿住——实测确认运行后 Radix 遮罩连 data-state=closed 都拿不到，
+    // 全屏拦截页面 6 秒+。flushSync 后遮罩立即进入 closed 态，由 index.css 的
+    // [data-dialog-exit-guard][data-state="closed"] 保险（pointer-events:none + opacity:0）
+    // 当场失效；action 保持同步执行（行为网测试断言「预检在 LLM 之前」同步生效）。
+    flushSync(() => {
+      setCostConfirmOpen(false)
+    })
     if (dontShowToday) rememberCostConfirmedToday(appId)
     const action = pendingActionRef.current
     pendingActionRef.current = null

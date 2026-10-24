@@ -175,19 +175,38 @@ export async function parseUploadFile(file: File, baseFolder: string): Promise<K
     const items: KbUploadItem[] = []
     for (const [entryPath, data] of Object.entries(entries)) {
       if (entryPath.endsWith("/") || isJunkEntry(entryPath)) continue
-      if (!TEXT_EXT_RE.test(entryPath)) continue
-      const content = strFromU8(data).trim()
-      if (!content) continue
       const baseName = entryPath.slice(entryPath.lastIndexOf("/") + 1)
-      items.push({
-        title: titleFromFileName(baseName),
-        content,
-        doc_format: entryPath.toLowerCase().endsWith(".txt") ? "txt" : "md",
-        folder_path: joinFolder(baseFolder, dirOfPath(entryPath)),
-        source_file_name: fileName,
-      })
+      const folderPath = joinFolder(baseFolder, dirOfPath(entryPath))
+      if (TEXT_EXT_RE.test(baseName)) {
+        const content = strFromU8(data).trim()
+        if (!content) continue
+        items.push({
+          title: titleFromFileName(baseName),
+          content,
+          doc_format: baseName.toLowerCase().endsWith(".txt") ? "txt" : "md",
+          folder_path: folderPath,
+          source_file_name: fileName,
+        })
+        continue
+      }
+      // P1（2026-10-24）：办公格式（docx/pdf/pptx/xls/xlsx）走与顶层上传完全相同的解析链
+      // （递归 parseUploadFile 复用全部抽取器与 OOM 分流）；嵌套 zip 明确跳过防递归炸弹；
+      // 单条损坏/加密只跳过该条，不炸整包。
+      if (/\.zip$/i.test(baseName)) continue
+      if (isSupportedUpload(baseName)) {
+        try {
+          // TS5.7 下 Uint8Array<ArrayBufferLike> 不满足 BlobPart 的 ArrayBufferView<ArrayBuffer>，
+          // 运行时（真实 zip 字节恒为 ArrayBuffer backing）安全，cast 收口
+          const innerItems = await parseUploadFile(new File([data as unknown as BlobPart], baseName), folderPath)
+          items.push(...innerItems.map((it) => ({ ...it, source_file_name: fileName })))
+        } catch {
+          // 单条解析失败（损坏 / 加密 / 扫描件）→ 跳过
+        }
+      }
     }
-    if (items.length === 0) throw new Error("zip 内没有 .md/.markdown/.txt 文档")
+    if (items.length === 0) {
+      throw new Error("zip 内没有可入库的文档（支持 md / markdown / txt / docx / pdf / pptx / xls / xlsx）")
+    }
     return items
   }
 

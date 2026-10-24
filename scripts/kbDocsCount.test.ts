@@ -268,4 +268,33 @@ describe("P1-3 kb_docs 列表计数（不得全量加载记录；派生与路径
     s.run({ query: { kb_track: "HIS系统" }, sort: "-created" })
     expect(s.findCalls[0].sort).toBe("-created")
   })
+
+  // A2（2026-10-25）：增量同步游标 since —— range 条件进 filter/params，计数刻意走
+  // load-and-count 回落（dbx 等值快速路径不覆盖范围过滤），语义与分页同源。
+  it("since 增量游标：filter 含 updated > {:since} 且 params.since 透传", () => {
+    const s = load({ findReturns: 3 })
+    s.run({ query: { since: "2026-10-25 00:00:00.000Z" } })
+    expect(s.findCalls).toHaveLength(1)
+    expect(s.findCalls[0].filter).toContain("updated > {:since}")
+    expect(s.findCalls[0].params.since).toBe("2026-10-25 00:00:00.000Z")
+  })
+  it("since 不走 countRecords 快速路径（连无 eqs 时也回落 load-and-count）", () => {
+    const s = load({ findReturns: 0 })
+    const total = s.run({ query: { since: "2026-10-26 00:00:00.000Z" } })
+    expect(s.countCalls).toHaveLength(0)
+    expect(total).toBe(0)
+  })
+  it("since + 精确过滤组合：回落 load-and-count，filter 为 等值+range 组合", () => {
+    const s = load({ findReturns: 5 })
+    s.run({ query: { rh_user_id: "u1", since: "2026-10-25 00:00:00.000Z" } })
+    expect(s.countCalls).toHaveLength(0)
+    expect(s.findCalls[0].filter).toContain("rh_user_id = {:rh_user_id}")
+    expect(s.findCalls[0].filter).toContain("updated > {:since}")
+  })
+  it("无 since 时行为与旧版完全一致（不出现 updated 占位符）", () => {
+    const s = load()
+    s.run({ query: { rh_user_id: "u1" } })
+    expect(s.findCalls).toHaveLength(0) // 纯精确过滤仍走 countRecords 快速路径
+    expect(s.countCalls).toHaveLength(1)
+  })
 })

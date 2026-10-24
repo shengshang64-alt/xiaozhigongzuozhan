@@ -45,7 +45,11 @@ export function CostConfirmDialog({
       }}
     >
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-[100] bg-black/50" />
+        {/* data-dialog-exit-guard：退出态保险钩子。确认运行后的 LLM 流式渲染会把
+            Radix Presence 卸载 effect 推迟数秒，期间遮罩仍拦截全页点击（实测 6s+）。
+            index.css 里对 [data-dialog-exit-guard][data-state="closed"] 立即置
+            pointer-events:none + opacity:0，卸载被延迟也不挡页面。 */}
+        <DialogPrimitive.Overlay data-dialog-exit-guard="" className="fixed inset-0 z-[100] bg-black/50" />
         <DialogPrimitive.Content
           aria-label={title}
           className="fixed left-1/2 top-1/2 z-[100] w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-card p-5 text-card-foreground shadow-lg"

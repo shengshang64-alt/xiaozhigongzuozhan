@@ -4,7 +4,7 @@
 
 import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/rhLogin"
-import { categoryOf, contextSnippetOf, effectivePolicy } from "@/lib/kbPolicy"
+import { categoryOf, contextSnippetOf, effectivePolicy, normalizeCreationWeight } from "@/lib/kbPolicy"
 import { redactPii } from "@/lib/piiRedact"
 
 // ---------------------------------------------------------------------------
@@ -244,7 +244,11 @@ export async function createKbDoc(body: {
   kb_track?: string
   kb_bucket?: string
 }): Promise<KbDocRow> {
-  const row = await kbFetch<KbDocRow>(`/api/kb_docs`, { method: "POST", body: JSON.stringify(body) })
+  // P3-4：创建时权重归一——调用方未显式传 retrieval_weight 的（全部四条创建路径实测
+  // 均未传），落分类默认而非 PB 数字缺省 0（会被 effectivePolicy 映射成最低权重 0.1，
+  // 新文档在检索里近乎隐身）。显式传入（含 0）原样保留。
+  const payload = { ...body, retrieval_weight: normalizeCreationWeight(body.doc_category, body.retrieval_weight) }
+  const row = await kbFetch<KbDocRow>(`/api/kb_docs`, { method: "POST", body: JSON.stringify(payload) })
   notifyKbMutation()
   return row
 }
@@ -490,15 +494,55 @@ function computeKbChunks(content: string): KbChunk[] {
 // 模块级缓存：doc.updated 或正文长度变化才重切
 // R87 回归修复：slim 列表 content 为空串，loadDocContent 补拉正文回填时 updated 不变；
 // 只校验 updated 会把空 chunks 永久缓存，该文档从此退出全文检索（知识库问答静默降级）
-const kbChunkCache = new Map<string, { updated: string; len: number; chunks: KbChunk[] }>()
+//
+// A0（2026-10-24 压测驱动）：缓存条目同时持有「预小写」的块文本/标题与 dl——
+// 旧评分循环对 37.6 万块每题重新 toLowerCase（约 113MB 字符串分配/题），是单题 30s CPU
+// 的主因。预小写随分块一次性算好，评分循环零分配。内存代价 ≈ 再持一份块文本小写副本
+// （全库约 +110MB 常驻），方案文档 §3.5 已列该取舍。
+interface KbChunkEntry {
+  chunk: KbChunk
+  lowerText: string
+  lowerHeading: string
+  dl: number
+}
 
-export function chunkKbDoc(doc: KbDocRow): KbChunk[] {
+const kbChunkCache = new Map<
+  string,
+  { updated: string; len: number; chunks: KbChunk[]; entries: KbChunkEntry[] }
+>()
+
+function ensureKbChunkCache(doc: KbDocRow): {
+  updated: string
+  len: number
+  chunks: KbChunk[]
+  entries: KbChunkEntry[]
+} {
   const len = (doc.content ?? "").length
   const cached = kbChunkCache.get(doc.id)
-  if (cached && cached.updated === (doc.updated ?? "") && cached.len === len) return cached.chunks
+  if (cached && cached.updated === (doc.updated ?? "") && cached.len === len) return cached
   const chunks = computeKbChunks(doc.content ?? "")
-  kbChunkCache.set(doc.id, { updated: doc.updated ?? "", len, chunks })
-  return chunks
+  const entries: KbChunkEntry[] = chunks.map((chunk) => {
+    const lowerText = chunk.text.toLowerCase()
+    return {
+      chunk,
+      lowerText,
+      lowerHeading: (chunk.headingPath ?? "").toLowerCase(),
+      // dl 与旧口径严格一致：取小写后长度（个别字符小写会变长，如土耳其 İ）
+      dl: Math.max(1, lowerText.length),
+    }
+  })
+  const built = { updated: doc.updated ?? "", len, chunks, entries }
+  kbChunkCache.set(doc.id, built)
+  return built
+}
+
+export function chunkKbDoc(doc: KbDocRow): KbChunk[] {
+  return ensureKbChunkCache(doc).chunks
+}
+
+/** A0：评分循环专用——带预小写文本的块条目（缓存键与 chunkKbDoc 同源，口径一致） */
+export function chunkEntriesOf(doc: KbDocRow): KbChunkEntry[] {
+  return ensureKbChunkCache(doc).entries
 }
 
 // ---------------------------------------------------------------------------
@@ -581,6 +625,49 @@ function getOrBuildIdf(docs: KbDocRow[]): { N: number; df: Map<string, number> }
   const built = { N, df }
   kbIdfCache.set(docs, built)
   return built
+}
+
+// ---------------------------------------------------------------------------
+// A1：IDF 随语料快照持久化——实测 df 构建是冷检索的真凶（7000 篇 30.6s，评分仅 3s），
+// 而 df 序列化仅 ~4.2MB。peek 只读（未构建返回 null），seed 仅在无缓存时注入（不覆盖），
+// 由 useKnowledge 在快照载入时配对使用，保证检索口径与现场构建逐位一致。
+// ---------------------------------------------------------------------------
+
+export interface KbIdfSnapshot {
+  N: number
+  df: [string, number][]
+}
+
+/** 只读取出 docs 数组已构建的 IDF（WeakMap 命中）；未构建返回 null，绝不触发构建。 */
+export function peekIdf(docs: KbDocRow[]): KbIdfSnapshot | null {
+  const hit = kbIdfCache.get(docs)
+  if (!hit) return null
+  return { N: hit.N, df: [...hit.df.entries()] }
+}
+
+/** 把持久化的 IDF 注入 docs 数组的缓存（已存在则忽略；脏值跳过），成功返回 true。 */
+export function seedIdf(docs: KbDocRow[], snap: { N: unknown; df: unknown }): boolean {
+  if (kbIdfCache.get(docs)) return true
+  if (!snap || typeof snap.N !== "number" || !Number.isFinite(snap.N) || !Array.isArray(snap.df)) return false
+  const df = new Map<string, number>()
+  for (const pair of snap.df) {
+    if (!Array.isArray(pair) || typeof pair[0] !== "string" || typeof pair[1] !== "number") continue
+    df.set(pair[0], pair[1])
+  }
+  if (df.size === 0) return false
+  kbIdfCache.set(docs, { N: snap.N, df })
+  return true
+}
+
+/**
+ * A2（2026-10-25）：增量行按 id upsert 进语料——已有 id 整行替换（最新版）、新 id 追加；
+ * 返回新数组引用（触发 scopeDocs 记忆化按新语料重建）。incoming 为空时原样返回（不换引用）。
+ */
+export function mergeCorpusRows(existing: KbDocRow[], incoming: KbDocRow[]): KbDocRow[] {
+  if (!incoming.length) return existing
+  const map = new Map(existing.map((d) => [d.id, d]))
+  for (const d of incoming) map.set(d.id, d)
+  return [...map.values()]
 }
 
 function idfOf(tok: string, N: number, df: Map<string, number>): number {
@@ -688,11 +775,7 @@ export function searchKbDocs(docs: KbDocRow[], question: string, topN = 5): KbSe
     if (rawQ.length >= 3 && lowerTitle.includes(rawQ)) docBonus += 15
 
     const scored: { chunk: KbChunk; chunkScore: number }[] = []
-    for (const chunk of chunkKbDoc(doc)) {
-      const lowerText = chunk.text.toLowerCase()
-      const lowerHeading = (chunk.headingPath ?? "").toLowerCase()
-      const dl = Math.max(1, lowerText.length)
-
+    for (const { chunk, lowerText, lowerHeading, dl } of chunkEntriesOf(doc)) {
       let s = 0
       const pos: { tok: string; at: number }[] = []
       for (const { tok, weight } of qTokens) {

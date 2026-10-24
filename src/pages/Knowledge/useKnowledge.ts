@@ -5,7 +5,8 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "r
 import { useDebounce } from "@/lib/useDebounce"
 import { useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
-import { decodeRhToken, type RhAccountInfo } from "@/lib/rhLogin"
+import { decodeRhToken, vibexAuthHeaders, type RhAccountInfo } from "@/lib/rhLogin"
+import { getPocketBaseUrl } from "@/lib/pb"
 import {
   chatViaGateway,
   costTextForModel,
@@ -28,14 +29,19 @@ import {
   KB_LIST_PER_PAGE,
   getKbDoc,
   listKbDocs,
+  mergeCorpusRows,
+  onKbMutation,
+  peekIdf,
   searchKbDocs,
+  seedIdf,
   updateKbDoc,
   visibleKbDocs,
   type KbDocRow,
 } from "@/lib/kbCore"
-import { getCachedVisibleDocs, prewarmKbCache } from "@/lib/kbAssemble"
+import { invalidateKbCache, prewarmKbCache, seedKbCache } from "@/lib/kbAssemble"
 import { categoryOf, contextSnippetOf, guessCategoryFromFileName, classifyKbDoc, KB_CATEGORY_POLICY } from "@/lib/kbPolicy"
-import { KB_CACHE_TTL_MS, loadKbCache, saveKbCache } from "@/lib/kbDocCache"
+import { redactPii } from "@/lib/piiRedact"
+import { KB_CACHE_TTL_MS, clearCorpusCache, computeCorpusCursor, isCorpusFresh, loadCorpusCache, loadKbCache, saveCorpusCache, saveCorpusIdf, saveKbCache } from "@/lib/kbDocCache"
 import {
   createKbQaPair,
   deleteKbQaPair,
@@ -111,6 +117,12 @@ function localId(prefix: string): string {
 // 轮次 4 B2：qa 会话 sessionStorage 持久化（按登录用户为 key，上限 50 条，失败静默降级）
 const QA_SESSION_PREFIX = "kb_qa_session_"
 const QA_SESSION_LIMIT = 50
+// 语料等待上限：冷加载实测 30-100s（kb-cap-01），90s 覆盖健康路径；超时按设计降级，
+// 不让无超时的 fetch 把整轮问答挂死（2026-10-24 实测：挂起后 qaIndexing 卡死、发送被静默吞掉）。
+const QA_CORPUS_WAIT_MS = 90_000
+// A2：每日全量对账周期——增量同步看不到删除（updated 游标只前进），跨会话删除靠
+// 周期性全量重拉兜底；本会话删除走 onKbMutation 清快照（即时正确）。
+const CORPUS_FULL_RESYNC_MS = 24 * 60 * 60 * 1000
 
 function sanitizeQaMessages(raw: unknown): QaChatMsg[] {
   if (!Array.isArray(raw)) return []
@@ -256,14 +268,102 @@ export function useKnowledge() {
   const qaCorpusRef = useRef<KbDocRow[] | null>(null)
   const qaCorpusPromiseRef = useRef<Promise<void> | null>(null)
   const [qaIndexing, setQaIndexing] = useState(false)
+  // A1：IDF 落库脏标记——语料（重）载入且尚无持久化 IDF 时置 true，首次检索构建完成后
+  // 异步写库并复位（42.9 万词条 ~4.2MB，只在变更时写一次，不是每题都写）。
+  const corpusIdfDirtyRef = useRef(false)
+  // A1：待注入的持久化 IDF——IDF 按检索范围（scope）对应的语料子集计算，注入必须落在
+  // scopeDocs 为该 scope 产出的**同一数组引用**上（IDF 缓存按引用键），否则注入失效、
+  // 检索仍会重建 30s（首版实测踩坑）。scope 匹配才注入；其它 scope 走正常构建。
+  const pendingIdfRef = useRef<{ source: KbDocRow[]; scope: string; idf: { N: number; df: [string, number][] } } | null>(null)
+
+  // A1：会内真实数据变更（增删改/移动，经 kbCore 变更函数广播）才清持久化语料快照。
+  // 首版误挂在 refreshDocs 里——页面挂载也走 refreshDocs，快照被每次刷新清空，A1 对
+  // 重载场景整体失效（实测埋点抓到重载后全量拉取）；onKbMutation 只在真实变更时广播。
+  useEffect(
+    () => onKbMutation(() => void clearCorpusCache(userIdRef.current)),
+    [],
+  )
+
+  // A1/A2（2026-10-25）：后台新鲜度校准——轻量探针（perPage=1&sort=-updated&slim=1）比对
+  // 快照游标；一致 → 零拉取。失配时两级策略：距上次「全量」同步超 24h → 全量重拉（删除
+  // 传播对账）；否则增量拉取 since=游标 的行按 id upsert 合并（hook 未生效/被忽略时 since
+  // 退化为无过滤，等价全量合并，语义仍正确）。绝不阻塞当前提问：陈旧窗口至多本轮问答。
+  const reconcileCorpusInBackground = useCallback((localCursor: string, lastFullAt: number) => {
+    void (async () => {
+      try {
+        const res = await fetch(
+          `${getPocketBaseUrl()}/api/kb_docs?page=1&perPage=1&sort=-updated&slim=1`,
+          { headers: { "Content-Type": "application/json", ...vibexAuthHeaders() } },
+        )
+        if (!res.ok) return
+        const data = (await res.json()) as { items?: { updated?: string }[] }
+        const serverMax = String(data.items?.[0]?.updated ?? "")
+        if (isCorpusFresh(localCursor, serverMax)) return
+        const fullResync = async () => {
+          invalidateKbCache() // 防共享缓存 5min TTL 把旧数据又喂回来
+          const raw = await listKbDocs()
+          const rows = visibleKbDocs(raw, userIdRef.current)
+          seedKbCache(userIdRef.current, rows)
+          qaCorpusRef.current = rows
+          corpusIdfDirtyRef.current = true
+          void saveCorpusCache(userIdRef.current, rows, { cursor: computeCorpusCursor(raw), markFull: true })
+        }
+        if (Date.now() - (lastFullAt || 0) > CORPUS_FULL_RESYNC_MS) {
+          await fullResync()
+          return
+        }
+        // A2 增量：只拉 updated > 游标 的行（含正文），翻页到短页
+        const changed: KbDocRow[] = []
+        for (let page = 1; page <= KB_LIST_MAX_PAGES; page++) {
+          const r = await fetch(
+            `${getPocketBaseUrl()}/api/kb_docs?since=${encodeURIComponent(localCursor)}&page=${page}&perPage=${KB_LIST_PER_PAGE}`,
+            { headers: { "Content-Type": "application/json", ...vibexAuthHeaders() } },
+          )
+          if (!r.ok) throw new Error("incremental_fetch_failed")
+          const j = (await r.json()) as { items?: KbDocRow[] }
+          const items = j.items ?? []
+          changed.push(...items)
+          if (items.length < KB_LIST_PER_PAGE) break
+        }
+        const local = qaCorpusRef.current ?? []
+        const merged = mergeCorpusRows(local, visibleKbDocs(changed, userIdRef.current))
+        qaCorpusRef.current = merged
+        corpusIdfDirtyRef.current = true
+        void saveCorpusCache(userIdRef.current, merged, { cursor: serverMax })
+      } catch {
+        /* 校准失败：继续用快照语料作答，下次会话探针再试 */
+      }
+    })()
+  }, [])
+
   const ensureQaCorpus = useCallback(async (): Promise<void> => {
     if (qaCorpusRef.current) return
     if (!qaCorpusPromiseRef.current) {
       setQaIndexing(true)
-      qaCorpusPromiseRef.current = getCachedVisibleDocs(userIdRef.current)
-        .then((rows) => {
-          qaCorpusRef.current = rows
-        })
+      qaCorpusPromiseRef.current = (async () => {
+        // A1：快照优先——IndexedDB 全文语料快照（7000 篇实测读 1.4s）秒级载入立即可答；
+        // 无快照才走全量路径（首次 ~8s 传输 + 31s 构建，90s 兜底覆盖）。
+        const snap = await loadCorpusCache(userIdRef.current).catch(() => null)
+        if (snap && snap.docs.length > 0) {
+          qaCorpusRef.current = snap.docs
+          // 持久化 IDF 挂起待 scopeDocs 产出同 scope 数组时精准注入（见 pendingIdfRef 注释）。
+          // 无 IDF 或 scope 不匹配的提问 → 标脏，检索现场构建后异步补写。
+          pendingIdfRef.current = snap.idf ? { source: snap.docs, scope: snap.idf.scope, idf: snap.idf } : null
+          corpusIdfDirtyRef.current = !snap.idf
+          reconcileCorpusInBackground(snap.maxUpdated, snap.lastFullAt)
+          return
+        }
+        // A2：直拉原始行（不过滤可见性）——游标必须取全量行的最大 updated，用可见子集算
+        // 会在「他人个人文档为最新」时永不追平服务器探针，每次会话重复增量拉取。
+        // 拉完 seed 进共享缓存，助手/标书等消费方仍复用同一份数据（保持 R229 去重收益）。
+        const raw = await listKbDocs()
+        const rows = visibleKbDocs(raw, userIdRef.current)
+        seedKbCache(userIdRef.current, rows)
+        qaCorpusRef.current = rows
+        corpusIdfDirtyRef.current = true
+        // 全量成功后持久化快照（fire-and-forget，实测写 2.2s，不阻塞本轮提问）
+        void saveCorpusCache(userIdRef.current, rows, { cursor: computeCorpusCursor(raw), markFull: true })
+      })()
         .catch(() => {
           /* 失败不缓存：本轮退回列表元数据通道，下一次提问自动重试（共享缓存失败时自置 null，下次重取） */
         })
@@ -272,7 +372,21 @@ export function useKnowledge() {
           setQaIndexing(false)
         })
     }
-    await qaCorpusPromiseRef.current
+    // P2 修复（2026-10-24）：全量拉取的 fetch 无超时，一旦某页请求挂起，共享 promise
+    // 永不 settle，qaIndexing 卡死、后续所有发送被前置守卫静默吞掉（实测整轮对话假死）。
+    // 限时竞速：90s 内没等到就把本轮放行为「无全文语料」的原降级语义，同时失效共享
+    // 缓存，下次提问重新拉取（挂起的那次即便最终完成也会正常回填 qaCorpusRef）。
+    const settled = await Promise.race([
+      qaCorpusPromiseRef.current.then(() => "ok" as const, () => "fail" as const),
+      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), QA_CORPUS_WAIT_MS)),
+    ])
+    if (settled === "timeout") {
+      qaCorpusPromiseRef.current = null
+      setQaIndexing(false)
+      invalidateKbCache()
+    }
+    // reconcileCorpusInBackground 是稳定引用（依赖为空），无需入 deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // T9 渐进直显：冷加载时首批数据到达即结束 loading 开始渲染，其余后台补齐（列表头部有同步提示）
@@ -384,21 +498,26 @@ export function useKnowledge() {
     return out
   }, [recentIds, myVisibleDocs])
 
+  // P2-6（2026-10-24）：目录树的数据源不含搜索词过滤——树展示的是当前库的目录结构，
+  // 搜索只过滤右侧列表。旧口径树随搜索收缩，搜不到时树区出现「还没有目录」误导文案。
+  const treeDocs = useMemo(() => {
+    return libTab === "team" ? myVisibleDocs.filter((d) => d.visibility !== "personal") : myVisibleDocs.filter((d) => d.visibility === "personal")
+  }, [libTab, myVisibleDocs])
+
   const libDocs = useMemo(() => {
-    const base = libTab === "team" ? myVisibleDocs.filter((d) => d.visibility !== "personal") : myVisibleDocs.filter((d) => d.visibility === "personal")
     const q = debouncedQuery.trim().toLowerCase()
-    if (!q) return base
+    if (!q) return treeDocs
     // 性能第一批：列表快速筛选只扫元数据（title/summary/keywords/folder），
     // 不再对每篇 content 做全文 includes（1730 篇 × 每次按键 = 卡顿主因）；
     // 全文语义检索走问答通道（R87：scopeDocs 优先全文语料，searchKbDocs 覆盖 content）。
-    return base.filter(
+    return treeDocs.filter(
       (d) =>
         d.title.toLowerCase().includes(q) ||
         (d.summary ?? "").toLowerCase().includes(q) ||
         (d.keywords ?? []).some((k) => String(k).toLowerCase().includes(q)) ||
         (d.folder_path ?? "").toLowerCase().includes(q),
     )
-  }, [libTab, myVisibleDocs, debouncedQuery])
+  }, [treeDocs, debouncedQuery])
 
   const folderScopedDocs = useMemo(() => {
     if (!activeFolderPath) return libDocs
@@ -450,7 +569,7 @@ export function useKnowledge() {
       }
       return node
     }
-    for (const d of libDocs) {
+    for (const d of treeDocs) {
       const segs = splitFolderPath(d.folder_path)
       const node = segs.length ? ensure(segs) : root
       node.count += 1
@@ -472,14 +591,14 @@ export function useKnowledge() {
       return total
     }
     for (const c of root.children) rollup(c)
-    root.count = libDocs.length
+    root.count = treeDocs.length
     const sortChildren = (node: FolderNode) => {
       node.children.sort((a, b) => a.label.localeCompare(b.label, "zh-CN"))
       node.children.forEach(sortChildren)
     }
     sortChildren(root)
     return root
-  }, [libDocs, extraFolders])
+  }, [treeDocs, extraFolders])
 
   const allFolderPaths = useMemo(() => {
     const paths = new Set<string>()
@@ -1177,17 +1296,51 @@ export function useKnowledge() {
     }
   }, [])
 
+  // scopeDocs 记忆化（A1 关键修复）：旧实现每题 visibleKbDocs 返回**新数组**，而 IDF 缓存
+  // 按数组引用（WeakMap）——实测导致每个问题重建 30s 的 df。现按「语料数组引用 × scope」
+  // 记忆化：同一语料的同一 scope 跨问题复用同一数组，IDF/分块缓存全部命中。语料被替换
+  // （reconcile/refreshDocs 换新引用）自动失效；列表回退通道（docsRef）随其引用变化失效。
+  const scopeDocsCacheRef = useRef<{ source: KbDocRow[] | null; results: Map<QaScope, KbDocRow[]> }>({
+    source: null,
+    results: new Map(),
+  })
   const scopeDocs = useCallback(
     (scope: QaScope): KbDocRow[] => {
       // R87：检索语料优先全文副本（slim 列表正文为空，仅元数据通道可用）；语料未就绪时退回列表
       const source = qaCorpusRef.current?.length ? qaCorpusRef.current : docsRef.current
+      if (scopeDocsCacheRef.current.source === source) {
+        const hit = scopeDocsCacheRef.current.results.get(scope)
+        if (hit) return hit
+      } else {
+        scopeDocsCacheRef.current = { source, results: new Map() }
+      }
       const rows = visibleKbDocs(source, userIdRef.current)
-      if (scope === "team") return rows.filter((d) => d.visibility !== "personal")
-      if (scope === "personal") return rows.filter((d) => d.visibility === "personal")
-      return rows
+      const out =
+        scope === "team"
+          ? rows.filter((d) => d.visibility !== "personal")
+          : scope === "personal"
+            ? rows.filter((d) => d.visibility === "personal")
+            : rows
+      // A1：持久化 IDF 只注入与其 scope 匹配的首个数组（注入后清除，其它 scope 正常构建）
+      const pending = pendingIdfRef.current
+      if (pending && pending.source === source && pending.scope === scope) {
+        seedIdf(out, pending.idf)
+        pendingIdfRef.current = null
+      }
+      scopeDocsCacheRef.current.results.set(scope, out)
+      return out
     },
     [],
   )
+
+  // A1：检索完成后按需落库 IDF（脏标记确保一次变更只写一次；peek 与检索用同一 scope 数组；
+  // scope 一并落库，载入时按 scope 精准注入）
+  const persistIdfIfDirty = useCallback((scopedDocs: KbDocRow[], scope: QaScope) => {
+    if (!corpusIdfDirtyRef.current) return
+    corpusIdfDirtyRef.current = false
+    const idf = peekIdf(scopedDocs)
+    if (idf) void saveCorpusIdf(userIdRef.current, { ...idf, scope })
+  }, [])
 
   // ------------------------------ 弹药库 QA 对（轮次 D-3） ------------------------------
   const [qaPairs, setQaPairs] = useState<KbQaPairRow[]>([])
@@ -1411,9 +1564,12 @@ export function useKnowledge() {
       const stdBlock = qaPair
         ? `【标准答案】（团队弹药库已审批口径，优先采用）\n问题：${qaPair.question}\n答案：${qaPair.answer}\n\n`
         : ""
+      // P1（2026-10-24）：历史消息回传云端前过 PII 掩码——修复前入库的旧回答可能回显过
+      // 原始证件号/手机号，不能因追问上下文每轮重新发往第三方云。当前轮问题与已脱敏的
+      // contextBlock 不受影响（用户显式输入的当前问题保持原样）。
       const priorMsgs: LlmMessage[] = qaMessagesRef.current
         .slice(-12)
-        .map((m) => ({ role: m.role, content: m.content }))
+        .map((m) => ({ role: m.role, content: redactPii(m.content) }))
       const messages: LlmMessage[] = [
         { role: "system", content: KB_QA_SYSTEM_PROMPT },
         ...priorMsgs,
@@ -1495,7 +1651,9 @@ export function useKnowledge() {
 
       // R87：冷启动先备好全文语料再检索（首次有网络等待，qaIndexing 期间入口已禁用）
       await ensureQaCorpus()
-      const hits = searchKbDocs(scopeDocs(qaScopeRef.current), question, 5)
+      const scoped = scopeDocs(qaScopeRef.current)
+      const hits = searchKbDocs(scoped, question, 5)
+      persistIdfIfDirty(scoped, qaScopeRef.current)
       if (hits.length === 0) {
         // D-3：检索 0 命中自动入待补答队列
         void enqueueQaGap(question)
@@ -1517,7 +1675,7 @@ export function useKnowledge() {
         void executeQaTurn(question, hits, match ? match.pair : null)
       }, costText)
     },
-    [qaInput, qaSending, qaIndexing, requireLogin, scopeDocs, costConfirm, costText, executeQaTurn, enqueueQaGap, pushQaUserMsg, ensureQaCorpus],
+    [qaInput, qaSending, qaIndexing, requireLogin, scopeDocs, persistIdfIfDirty, costConfirm, costText, executeQaTurn, enqueueQaGap, pushQaUserMsg, ensureQaCorpus],
   )
 
   /** high 直答后用户点「仍要问 AI」：跳过弹药库，走原检索 + LLM 流程 */
@@ -1527,7 +1685,9 @@ export function useKnowledge() {
       if (!q || qaSending || qaIndexing) return
       if (!requireLogin()) return
       await ensureQaCorpus()
-      const hits = searchKbDocs(scopeDocs(qaScopeRef.current), q, 5)
+      const scoped = scopeDocs(qaScopeRef.current)
+      const hits = searchKbDocs(scoped, q, 5)
+      persistIdfIfDirty(scoped, qaScopeRef.current)
       if (hits.length === 0) {
         pushQaUserMsg(q)
         setQaMessages((prev) => [
@@ -1546,7 +1706,7 @@ export function useKnowledge() {
         void executeQaTurn(q, hits, null)
       }, costText)
     },
-    [qaSending, qaIndexing, requireLogin, scopeDocs, costConfirm, costText, executeQaTurn, pushQaUserMsg, ensureQaCorpus],
+    [qaSending, qaIndexing, requireLogin, scopeDocs, persistIdfIfDirty, costConfirm, costText, executeQaTurn, pushQaUserMsg, ensureQaCorpus],
   )
 
   const openCitation = useCallback(

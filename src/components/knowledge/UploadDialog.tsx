@@ -218,7 +218,7 @@ export function UploadDialog({
           ) : null}
           <p className="flex items-center gap-1 text-xs text-muted-foreground">
             <FileArchive className="h-3.5 w-3.5" />
-            zip 包内只提取 .md / .markdown / .txt 文档；文件夹导入自动跳过代码与缓存目录
+            zip 包内支持 .md/.markdown/.txt 与 .docx/.pdf/.pptx/.xls/.xlsx（保留目录结构，损坏条目自动跳过）；文件夹导入自动跳过代码与缓存目录
           </p>
           <input
             ref={inputRef}

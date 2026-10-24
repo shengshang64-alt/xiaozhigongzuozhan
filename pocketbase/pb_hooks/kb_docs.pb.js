@@ -179,11 +179,20 @@ routerAdd("GET", "/api/kb_docs", function (e) {
     if (query.kb_bucket !== undefined && query.kb_bucket !== "") eqs.push({ field: "kb_bucket", value: String(query.kb_bucket) })
     if (query.kb_section !== undefined && query.kb_section !== "") eqs.push({ field: "kb_section", value: String(query.kb_section) })
     if (query.q !== undefined && String(query.q) !== "") qKw = String(query.q)
+    // A2（2026-10-25）：增量同步游标——只取 updated 严格大于 since 的行（客户端语料快照
+    // 增量拉取）。range 条件刻意不进 eqs：计数快速路径（dbx 等值表达式）不覆盖范围过滤，
+    // since 场景一律走 load-and-count 回落（增量行数通常个位数，成本可忽略，语义与分页同源）。
+    var qSince = ""
+    if (query.since !== undefined && String(query.since) !== "") qSince = String(query.since)
     var filterParts = []
     var params = {}
     for (var fi = 0; fi < eqs.length; fi++) {
       filterParts.push(eqs[fi].field + " = {:" + eqs[fi].field + "}")
       params[eqs[fi].field] = eqs[fi].value
+    }
+    if (qSince) {
+      filterParts.push("updated > {:since}")
+      params.since = qSince
     }
     if (qKw) {
       filterParts.push("(title ~ {:q_kw} || source_file_name ~ {:q_kw2})")
@@ -222,7 +231,7 @@ routerAdd("GET", "/api/kb_docs", function (e) {
     // __KB_COUNT_BEGIN__（测试提取锚点：scripts/kbDocsCount.test.ts 提取本标记间的代码执行，
     // 依赖作用域变量 eqs/qKw/filter/params/sort/totalItems；增改此段请同步该测试）
     try {
-      var __hasFilter = eqs.length > 0 || !!qKw
+      var __hasFilter = eqs.length > 0 || !!qKw || !!qSince
       var __cntExpr = null
       // __exprOk：仅「无过滤」与「纯精确过滤（无 q）」走 SQL count 快速路径。
       // q 搜索刻意不走——本构建 JSVM 的 dbx 表达式能力受限（2026-10-13 探针实证）：
@@ -232,7 +241,7 @@ routerAdd("GET", "/api/kb_docs", function (e) {
       //      （搜 "100%" 会计数 0 但列表实出 22 条，自相矛盾）。
       // q 为交互式搜索而非冷加载热路径，load-and-count 在 updated 索引下约 200-350ms 可接受，
       // 且与分页用同一 filter 字符串，totalItems 与实际可见条目永远一致。
-      var __exprOk = eqs.length > 0 && !qKw
+      var __exprOk = eqs.length > 0 && !qKw && !qSince
       try {
         if (__exprOk) {
           var __exprs = []

@@ -152,6 +152,10 @@ export function TeamAuthGate({ children }: { children: ReactNode }) {
         </Card>
         <p className="mt-4 text-center text-xs text-muted-foreground">
           数据保存在本机，账号与角色由管理员在工作站内维护
+          <br />
+          {/* P3-2：忘记密码指引——当前无自助重置与管理员重置入口，管理员的等效操作是
+              在「团队管理」删除账号后重新创建（账号即认证主体，无业务数据挂载） */}
+          忘记密码？请联系工作站管理员（在团队管理中删除账号后重新创建即可重置）
         </p>
       </div>
     </div>

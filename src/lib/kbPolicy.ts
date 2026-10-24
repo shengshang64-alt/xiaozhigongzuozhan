@@ -59,6 +59,20 @@ function isExplicitMode(value: unknown): value is AiContextMode {
 export const MIN_RETRIEVAL_WEIGHT = 0.1
 
 /**
+ * P3-4（2026-10-24）：创建时权重归一。PB 数字字段缺省落 0，而 effectivePolicy 把 0
+ * 映射为最低权重 0.1——四条创建路径（知识库上传×3 / 方案沉淀向导）实测全部不传
+ * retrieval_weight，导致每个新文档系统性陷在 0.1「近乎隐身」，而非其分类默认
+ * （产品资料 1.2 / 其他 1.0）。本函数在 createKbDoc 单点接线：
+ *   - 调用方未传（undefined）→ 取分类默认；
+ *   - 显式传了（含 0）→ 原样保留（尊重 R56 的「用户刻意标 0 压低」语义，不动存量）。
+ */
+export function normalizeCreationWeight(docCategory: unknown, weight: number | undefined): number {
+  if (typeof weight === "number" && Number.isFinite(weight)) return weight
+  return KB_CATEGORY_POLICY[categoryOf({ doc_category: typeof docCategory === "string" ? docCategory : "" })]
+    .retrieval_weight
+}
+
+/**
  * 文档策略：**权重字段独立可信**，分类档只做兜底；mode / is_sensitive 维持原契约。
  *
  * R56 修正（2026-10-15 真实语料实测驱动）：旧口径把 weight 的读取绑在「mode 显式」这一支里，
@@ -92,8 +106,13 @@ export function contextSnippetOf(doc: KbDocRow, hit: { snippet: string }): strin
     const keywords = (doc.keywords ?? []).map((k) => String(k)).join("、")
     return `（脱敏摘要，原文不进 AI 上下文）${redactPii(doc.title)}${keywords ? `；关键词：${redactPii(keywords)}` : ""}`
   }
-  // original 档但被显式标记敏感（is_sensitive）：原文仍进 AI，但先二次掩码 PII（AGENTS.md #7）
-  return policy.is_sensitive ? redactPii(hit.snippet) : hit.snippet
+  // original 档（无论是否标记敏感）：原文进 AI / 引用摘录前一律二次掩码 PII。
+  // 2026-10-24 P1 修复（默认路径泄漏）：原口径「仅 is_sensitive 才掩码」把 99% 未标记的
+  // 文档留在裸奔路径——实测未标记的《建设方案》把法定代表人/授权代表的真实身份证号、
+  // 手机号经引用摘录直接展示并逐字发往第三方云 LLM。redactPii 本身「宁缺勿滥」
+  // （13-14 位数字不掩、带分隔符金额/日期不命中），对标书问答的金额/日期/备案编号零影响；
+  // 与 competitorEvidence 的既有无条件脱敏先例对齐。掩码保留头尾，用户要看全号点「查看原文」。
+  return redactPii(hit.snippet)
 }
 
 // ---------------------------------------------------------------------------
@@ -155,22 +174,77 @@ export function classifyKbDoc(
   fileName: string,
   content: string,
 ): { category: KbCategory; score: number } {
+  const ex = explainKbDocClassification(fileName, content)
+  return { category: ex.category, score: ex.score }
+}
+
+export interface KbClassificationExplanation {
+  category: KbCategory
+  score: number
+  /** 判定来源：content=正文命中 / filename=仅文件名命中 / default=无命中回退（ISBN 守卫或 guess） */
+  source: "content" | "filename" | "default"
+  /** 命中的规则词（按贡献降序，最多 6 个），形如 "建设方案×3"（×N 为正文出现次数；×n 为文件名命中） */
+  matched: string[]
+}
+
+/**
+ * P3-5（2026-10-25）：分类可解释性——与 classifyKbDoc 完全同一套算术（本函数是唯一实现，
+ * classifyKbDoc 是它的薄封装，杜绝双实现漂移），额外返回命中词与判定来源，供阅读区展示
+ * 「分类依据」并引导手动纠正。
+ */
+export function explainKbDocClassification(fileName: string, content: string): KbClassificationExplanation {
   // 出版书/电子书守卫：文件名带 ISBN13（97 开头 13 位）或 ISBN 字样，属外部出版物而非公司材料，
   // 归「其他」且不进敏感档（否则正文含「软件著作权」等词会被误判资质证书并脱敏）。
-  if (/97[0-9]{11}|\bISBN\b/i.test(fileName ?? "")) return { category: "其他", score: 0 }
+  if (/97[0-9]{11}|\bISBN\b/i.test(fileName ?? "")) {
+    return { category: "其他", score: 0, matched: [], source: "default" }
+  }
   const hay = `${fileName ?? ""}\n${(content ?? "").replace(/\s+/g, "").slice(0, 4000)}`
   const nameHay = fileName ?? ""
-  let best: { category: KbCategory; score: number } = { category: "其他", score: 0 }
+  // source 判定用纯正文串（hay 含文件名部分，文件名命中也会算进 inBody）
+  const contentHay = (content ?? "").replace(/\s+/g, "").slice(0, 4000)
+  let best: { category: KbCategory; score: number; matched: string[]; nameOnly: boolean } = {
+    category: "其他",
+    score: 0,
+    matched: [],
+    nameOnly: false,
+  }
   for (const rule of CONTENT_CATEGORY_RULES) {
     let score = 0
+    const hits: string[] = []
+    let bodyHits = 0
     for (const w of rule.words) {
       // 文件名命中权重更高（×3），正文命中 ×1
       const inName = nameHay.includes(w) ? 3 : 0
       const inBody = hay.split(w).length - 1
       score += inName + inBody
+      if (inName) hits.push(`${w}×文件名`)
+      if (inBody) {
+        hits.push(`${w}×${inBody}`)
+        if (contentHay.includes(w)) bodyHits += 1
+      }
     }
-    if (score > best.score) best = { category: rule.category, score }
+    if (score > best.score) {
+      best = {
+        category: rule.category,
+        score,
+        matched: hits.sort((a, b) => b.length - a.length).slice(0, 6),
+        nameOnly: bodyHits === 0,
+      }
+    }
   }
-  if (best.score > 0) return best
-  return { category: guessCategoryFromFileName(fileName), score: 0 }
+  if (best.score > 0) {
+    return {
+      category: best.category,
+      score: best.score,
+      matched: best.matched,
+      source: best.nameOnly ? "filename" : "content",
+    }
+  }
+  const guessed = guessCategoryFromFileName(fileName)
+  return {
+    category: guessed,
+    score: 0,
+    matched: guessed === "其他" ? [] : [`文件名规则 → ${guessed}`],
+    source: guessed === "其他" ? "default" : "filename",
+  }
 }

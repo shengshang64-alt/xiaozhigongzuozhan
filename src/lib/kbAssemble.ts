@@ -88,6 +88,15 @@ export function getCachedVisibleDocs(userId: string | null): Promise<KbDocRow[]>
   return promise
 }
 
+/**
+ * A2（2026-10-25）：用刚拉取的全量可见行回填共享缓存——QA 语料通道为拿「过滤前的原始行」
+ * 计算游标而绕过 getCachedVisibleDocs 直拉 listKbDocs；seed 让助手/标书/方案等共享消费方
+ * 仍然复用同一份数据（保持 R229 的并发去重收益）。只用于「刚拉取的新鲜数据」。
+ */
+export function seedKbCache(userId: string | null, rows: KbDocRow[]): void {
+  kbCache = { userId, ts: Date.now(), promise: Promise.resolve(rows), resolved: true, data: rows }
+}
+
 // ---------------------------------------------------------------------------
 // 组装上下文
 // ---------------------------------------------------------------------------

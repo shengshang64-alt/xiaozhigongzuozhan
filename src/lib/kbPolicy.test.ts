@@ -6,8 +6,10 @@ import {
   categoryOf,
   effectivePolicy,
   contextSnippetOf,
+  normalizeCreationWeight,
   guessCategoryFromFileName,
   classifyKbDoc,
+  explainKbDocClassification,
 } from "./kbPolicy"
 import type { KbDocRow } from "./kbCore"
 
@@ -163,6 +165,47 @@ describe("guessCategoryFromFileName", () => {
   })
 })
 
+describe("normalizeCreationWeight 创建时权重归一（P3-4）", () => {
+  it("未传权重 → 落分类默认（产品资料 1.2 / 其他 1.0）", () => {
+    expect(normalizeCreationWeight("产品资料", undefined)).toBe(1.2)
+    expect(normalizeCreationWeight("其他", undefined)).toBe(1.0)
+    expect(normalizeCreationWeight(undefined, undefined)).toBe(1.0)
+  })
+  it("显式传入原样保留（含 R56 的刻意 0 压低语义）", () => {
+    expect(normalizeCreationWeight("产品资料", 0)).toBe(0)
+    expect(normalizeCreationWeight("技术方案", 1.5)).toBe(1.5)
+  })
+  it("非法分类回退「其他」默认", () => {
+    expect(normalizeCreationWeight("不存在的分类", undefined)).toBe(1.0)
+  })
+})
+
+describe("explainKbDocClassification 分类可解释性（P3-5）", () => {
+  it("与 classifyKbDoc 同口径：category/score 逐位一致", () => {
+    const cases: [string, string][] = [
+      ["产品彩页.pptx", "这里有很多建设方案技术方案的描述"],
+      ["报价单.xlsx", "普通说明文字"],
+      ["未命名文件.docx", "本项目严格按照国家卫生健康委电子病历系统应用水平分级评价标准与规范执行"],
+    ]
+    for (const [f, c] of cases) {
+      const a = classifyKbDoc(f, c)
+      const b = explainKbDocClassification(f, c)
+      expect(b.category).toBe(a.category)
+      expect(b.score).toBe(a.score)
+    }
+  })
+  it("正文命中 → source=content 且带命中词与次数", () => {
+    const ex = explainKbDocClassification("未命名.docx", "这是建设方案与建设方案的总体架构章节")
+    expect(ex.source).toBe("content")
+    expect(ex.matched.some((m) => m.startsWith("建设方案×"))).toBe(true)
+  })
+  it("仅文件名命中 → source=filename；ISBN 守卫 → source=default", () => {
+    // 文件名含规则词，正文为空（空串不产生正文命中）
+    expect(explainKbDocClassification("某某医院建设方案.docx", "").source).toBe("filename")
+    expect(explainKbDocClassification("书_9787000000000.pdf", "涉及软件著作权").source).toBe("default")
+  })
+})
+
 describe("classifyKbDoc 内容感知分类", () => {
   it("ISBN 出版物守卫：文件名含 13 位 ISBN 直接归「其他」，即便正文命中资质证书词", () => {
     const r = classifyKbDoc("软件著作权登记_9787000000000.pdf", "本材料涉及软件著作权")
@@ -207,13 +250,19 @@ describe("contextSnippetOf 敏感档 PII 逐字段脱敏（R186）", () => {
     expect(out).not.toContain("110101199003071234")
     expect(out).not.toContain("13800138000")
   })
-  it("非敏感 original 档不做逐字段脱敏（行为逐字等价）", () => {
+  it("非敏感 original 档：片段内不含 PII 时逐字等价（热线 400 号不误伤）", () => {
     const doc = mkDoc({ doc_category: "产品资料" })
     expect(contextSnippetOf(doc, { snippet: "热线400-1234567" })).toBe("热线400-1234567")
   })
+  it("非敏感 original 档也掩码手机/身份证（P1：默认路径不再裸奔）", () => {
+    const doc = mkDoc({ doc_category: "项目案例" })
+    const out = contextSnippetOf(doc, { snippet: "授权代表 王薇 身份证号：350782198510193025" })
+    expect(out).not.toContain("350782198510193025")
+    expect(out).toContain("350782********3025")
+  })
 })
 
-describe("contextSnippetOf original 敏感档二次掩码（R188）", () => {
+describe("contextSnippetOf original 档无条件 PII 掩码（2026-10-24 P1 修复）", () => {
   it("original + is_sensitive=true：命中片段 PII 被掩码，不进 AI", () => {
     const doc = mkDoc({ doc_category: "合同商务", ai_context_mode: "original", is_sensitive: true })
     const out = contextSnippetOf(doc, { snippet: "联系人 李四 手机 13800138000，邮箱 lisi@hospital.cn" })
@@ -222,8 +271,16 @@ describe("contextSnippetOf original 敏感档二次掩码（R188）", () => {
     expect(out).toContain("****")
     expect(out).not.toContain("lisi@hospital.cn")
   })
-  it("original 非敏感档：命中片段逐字原样返回（零行为变更回归锁）", () => {
+  it("非敏感 original 档同样掩码（推翻 R188 零变更锁：默认路径泄漏实测成立）", () => {
     const doc = mkDoc({ doc_category: "技术方案" })
-    expect(contextSnippetOf(doc, { snippet: "支持 13800138000 台终端" })).toBe("支持 13800138000 台终端")
+    const out = contextSnippetOf(doc, { snippet: "联系人 李四 手机 13800138000" })
+    expect(out).not.toContain("13800138000")
+    expect(out).toContain("138****8000")
+  })
+  it("标书关键数字不受掩码误伤：备案编号 / 预算金额 / 日期逐字保留", () => {
+    const doc = mkDoc({ doc_category: "政策法规" })
+    const snippet =
+      "备案编号：CGXM-2026-350401-00643[2026]00864，预算金额（元）: 23,480,000.00，编制时间：2026年10月24日"
+    expect(contextSnippetOf(doc, { snippet })).toBe(snippet)
   })
 })

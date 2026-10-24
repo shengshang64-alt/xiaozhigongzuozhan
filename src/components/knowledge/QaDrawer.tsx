@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { BookMarked, Check, Copy, HelpCircle, Loader2, MessageCircleQuestion, Send, ShieldCheck, Sparkles, Trash2, X } from "lucide-react"
 import { copyTextToClipboard } from "@/lib/clipboard"
+import { redactPii } from "@/lib/piiRedact"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { SkillPickerFor } from "@/components/common/SkillPicker"
@@ -118,6 +119,29 @@ export function QaDrawer({
     }
   }, [qaOpen, qaMessages, qaSending])
 
+  // P0 修复：抽屉打开时给 body 打标记——右下角悬浮助手球与本抽屉的发送键同为
+  // fixed 右下定位，1280×720 等视口下悬浮球会盖住发送键（点击被拦截）。
+  // index.css 里 body[data-qa-drawer-open] .floating-assistant-fab 直接隐藏悬浮球。
+  useEffect(() => {
+    if (qaOpen) document.body.setAttribute("data-qa-drawer-open", "")
+    else document.body.removeAttribute("data-qa-drawer-open")
+    return () => document.body.removeAttribute("data-qa-drawer-open")
+  }, [qaOpen])
+
+  // P2-3：非模态化的收起通道——遮罩已移除，ESC 成为键盘收起方式（输入框聚焦时不抢 Esc，
+  // 浏览器默认行为优先；仅在抽屉打开且事件目标不在输入控件内时收起）。
+  useEffect(() => {
+    if (!qaOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return
+      closeQa()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [qaOpen, closeQa])
+
   const handleReportWrong = (msgId: string) => {
     if (reportingMsgId || reportedMsgIds.includes(msgId)) return
     setReportingMsgId(msgId)
@@ -130,13 +154,9 @@ export function QaDrawer({
 
   return (
     <>
-      <div
-        className={`fixed inset-0 z-40 bg-foreground/30 backdrop-blur-sm transition-opacity ${
-          qaOpen ? "opacity-100" : "pointer-events-none opacity-0"
-        }`}
-        onClick={closeQa}
-        aria-hidden="true"
-      />
+      {/* P2-3（2026-10-25）：非模态化——移除全屏阻断遮罩（原 z-40 backdrop 会锁死背后页面，
+          「边查资料边提问」的核心售前动线被打断）。抽屉为常驻侧栏：点页面任意处不打断问答，
+          ESC / 关闭按钮收起。FAB 避让（body 标记）与费用弹窗（z-100）不受影响。 */}
       <aside
         className={`fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-border bg-card shadow-2xl transition-transform duration-300 ${
           qaOpen ? "translate-x-0" : "translate-x-full"
@@ -269,10 +289,13 @@ export function QaDrawer({
                                 已采用弹药库标准答案口径
                               </p>
                             ) : null}
+                            {/* P1（2026-10-24）：助手消息体渲染前过 PII 掩码（幂等）——修复前的
+                                旧回答可能回显过原始证件号/手机号，统一在显示侧兜底；新回答的
+                                上下文与历史均已脱敏，本层通常是 no-op */}
                             {inlineCited && m.citations ? (
-                              <CitedAnswer content={m.content} citations={m.citations} onOpenCitation={openCitation} />
+                              <CitedAnswer content={redactPii(m.content)} citations={m.citations} onOpenCitation={openCitation} />
                             ) : (
-                              <KbMarkdown content={m.content} />
+                              <KbMarkdown content={redactPii(m.content)} />
                             )}
                             {/* R59/①：复制回答出口 + 轮次 4 B1「答得不对」负反馈通道 */}
                             {m.content ? (
@@ -348,7 +371,9 @@ export function QaDrawer({
                                   {c.visibility === "personal" ? "个人" : "团队"}
                                 </span>
                               </span>
-                              <span className="mt-1 line-clamp-2 block text-xs leading-relaxed text-muted-foreground">{c.snippet}</span>
+                              {/* P1（2026-10-24）：引用摘录展示前强制 PII 掩码——历史轮次的 citations
+                                  在 contextSnippetOf 收口修复之前入库，存的是原始片段，渲染时兜底脱敏 */}
+                              <span className="mt-1 line-clamp-2 block text-xs leading-relaxed text-muted-foreground">{redactPii(c.snippet ?? "")}</span>
                             </button>
                           ))}
                         </div>
