@@ -12,6 +12,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { isSupportedUpload } from "@/pages/Knowledge/kbUpload"
+import { readKbUploadHistory, type KbUploadHistoryEntry } from "@/pages/Knowledge/kbUploadHistory"
+
 import { guessCategoryFromFileName, KB_CATEGORIES } from "@/lib/kbPolicy"
 import type { LibTab, UploadRowResult } from "@/pages/Knowledge/useKnowledge"
 
@@ -52,6 +54,14 @@ export function UploadDialog({
   const [dragOver, setDragOver] = useState(false)
   // 用户手动改过分类后，不再按文件名智能预选
   const [categoryTouched, setCategoryTouched] = useState(false)
+  // P2-8：上传历史（本机记录）——弹窗打开时读入，成败可回溯
+  const [uploadHistory, setUploadHistory] = useState<KbUploadHistoryEntry[]>([])
+  useEffect(() => {
+    if (!uploadOpen) return
+    // 微任务读入规避 set-state-in-effect 保守告警（同 DocListPanel 回收站首拉）
+    void Promise.resolve().then(() => setUploadHistory(readKbUploadHistory(null).slice(0, 10)))
+  }, [uploadOpen])
+
   useEffect(() => {
     if (uploadOpen) setCategoryTouched(false)
   }, [uploadOpen])
@@ -250,6 +260,28 @@ export function UploadDialog({
                 </span>
               </div>
             ))}
+          </div>
+        ) : null}
+
+        {/* P2-8：最近上传历史（本机记录，最近 10 条）——成败与失败原因关闭弹窗后仍可回溯 */}
+        {!uploading && uploadHistory.length > 0 ? (
+          <div className="mt-3 border-t border-border pt-2.5">
+            <p className="mb-1.5 text-xs font-medium text-muted-foreground">最近上传（本机记录，最近 10 条）</p>
+            <ul className="max-h-36 space-y-1 overflow-y-auto">
+              {uploadHistory.map((h, i) => (
+                <li key={h.at + '_' + i} className="flex items-start gap-2 text-xs">
+                  {h.failReason ? (
+                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+                  ) : (
+                    <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                  )}
+                  <span className="min-w-0 flex-1 truncate text-foreground">{h.fileName}</span>
+                  <span className={`shrink-0 ${h.failReason ? "text-destructive" : "text-muted-foreground"}`}>
+                    {h.failReason ? h.failReason : `入库 ${h.okCount} 篇`}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         ) : null}
 

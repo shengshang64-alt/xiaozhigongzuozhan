@@ -41,6 +41,7 @@ import {
 import { invalidateKbCache, prewarmKbCache, seedKbCache } from "@/lib/kbAssemble"
 import { categoryOf, contextSnippetOf, guessCategoryFromFileName, classifyKbDoc, KB_CATEGORY_POLICY } from "@/lib/kbPolicy"
 import { redactPii } from "@/lib/piiRedact"
+import { pushKbUploadHistory } from "./kbUploadHistory"
 import { KB_CACHE_TTL_MS, clearCorpusCache, computeCorpusCursor, isCorpusFresh, loadCorpusCache, loadKbCache, saveCorpusCache, saveCorpusIdf, saveKbCache } from "@/lib/kbDocCache"
 import {
   createKbQaPair,
@@ -1121,16 +1122,19 @@ export function useKnowledge() {
             }
           }
           okTotal += okCount
+          // P2-8：成败写入本机历史（弹窗关闭后仍可回溯）
+          pushKbUploadHistory(uid, { fileName: file.name, okCount, targetFolder: uploadFolder.trim() || undefined })
           setUploadResults((prev) => prev.map((r, idx) => (idx === i ? { ...r, done: true, okCount } : r)))
         } catch (err) {
           const reason = err instanceof Error ? err.message : "解析失败"
+          pushKbUploadHistory(uid, { fileName: file.name, okCount: 0, failReason: reason, targetFolder: uploadFolder.trim() || undefined })
           setUploadResults((prev) => prev.map((r, idx) => (idx === i ? { ...r, done: true, okCount: 0, failReason: reason } : r)))
         }
       }
       setUploading(false)
       await refreshDocs()
       if (okTotal > 0) {
-        toast.success(firstNewTitle ? `已入库 ${okTotal} 篇文档，已定位到《${firstNewTitle}》` : `已入库 ${okTotal} 篇文档`)
+        toast.success(firstNewTitle ? `已入库 ${okTotal} 篇并建好索引（可搜索），已定位到《${firstNewTitle}》` : `已入库 ${okTotal} 篇并建好索引（可搜索）`)
         if (firstNewId) locateDoc(firstNewId)
       }
     },
@@ -1216,6 +1220,12 @@ export function useKnowledge() {
     }
     setUploading(false)
     await refreshDocs()
+    // P2-8：文件夹整批入历史（一条汇总，含失败数）
+    pushKbUploadHistory(uid, {
+      fileName: `文件夹导入（${picked.rootName}，${picked.files.length} 个文件）`,
+      okCount: okTotal,
+      failReason: fail > 0 ? `${fail} 个失败/空` : undefined,
+    })
     const catText = Object.entries(byCat)
       .sort((a, b) => b[1] - a[1])
       .map(([c, n]) => `${c} ${n}`)
