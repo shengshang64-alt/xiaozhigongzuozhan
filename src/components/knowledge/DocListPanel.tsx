@@ -14,6 +14,7 @@ import { localDateStamp } from "@/lib/dateStamp"
 import type { DocSortKey, LibTab } from "@/pages/Knowledge/useKnowledge"
 import type { KbTrashItem } from "@/pages/Knowledge/kbTrash"
 import type { KbDocRow } from "@/lib/kbCore"
+import { listDeletedKbDocs, notifyKbMutation, restoreKbDoc } from "@/lib/kbCore"
 
 type DocListPanelProps = {
   sortedDocs: KbDocRow[]
@@ -52,6 +53,8 @@ type DocListPanelProps = {
   trashItems: KbTrashItem[]
   onRestoreTrash: (item: KbTrashItem) => void
   onPurgeTrash: (item: KbTrashItem) => void
+  /** P1-7：服务端回收站恢复成功后刷新主列表（useKnowledge.refreshDocs） */
+  onListRefresh?: () => void
 }
 
 /** 每窗渲染行数：约 3 屏高度，兼顾滚动流畅与 DOM 规模 */
@@ -105,8 +108,47 @@ export function DocListPanel({
   trashItems,
   onRestoreTrash,
   onPurgeTrash,
+  onListRefresh,
 }: DocListPanelProps) {
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false)
+  // P1-7：服务端回收站状态——弹层打开时拉取软删除行；恢复成功后经 onKbMutation
+  // （失效共享语料缓存）+ onListRefresh（主列表刷新）双通道同步。
+  const [serverDeleted, setServerDeleted] = useState<KbDocRow[] | null>(null)
+  const [serverDeletedLoading, setServerDeletedLoading] = useState(false)
+  const [serverDeletedError, setServerDeletedError] = useState(false)
+  const [restoringId, setRestoringId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!trashOpen) return
+    // 微任务启动首拉：所有 setState 落在异步回调，规避 set-state-in-effect 保守告警（同 useBidCheck）
+    void Promise.resolve().then(async () => {
+      setServerDeletedLoading(true)
+      setServerDeletedError(false)
+      try {
+        const rows = await listDeletedKbDocs()
+        setServerDeleted(rows)
+      } catch {
+        setServerDeletedError(true)
+      } finally {
+        setServerDeletedLoading(false)
+      }
+    })
+  }, [trashOpen])
+  const handleRestoreServer = (row: KbDocRow) => {
+    setRestoringId(row.id)
+    void restoreKbDoc(row.id)
+      .then((ok) => {
+        if (ok) {
+          setServerDeleted((prev) => (prev ?? []).filter((d) => d.id !== row.id))
+          notifyKbMutation()
+          onListRefresh?.()
+          toast.success(`已恢复「${row.title}」`)
+        } else {
+          toast.error("恢复失败，请稍后重试")
+        }
+      })
+      .catch(() => toast.error("恢复失败，请稍后重试"))
+      .finally(() => setRestoringId(null))
+  }
   const selectedCount = batchSelectedIds.length
   // T9 性能：窗口化渲染——一屏只挂 LIST_WINDOW 行，滚动到底自动续窗；
   // 2000+ 篇全量挂载时 5.7 万 DOM 节点会让整页交互卡死（质量台账 T9 实锤）。
@@ -464,51 +506,91 @@ export function DocListPanel({
           void onBatchDelete()
         }}
       />
-      {/* 循环 9 C1：最近删除本地回收桶弹层（仅本机可恢复，上限 20 条） */}
+      {/* P1-7：回收站弹层——本地快照（历史遗留）+ 服务端软删除行（团队删除均可恢复） */}
       <Dialog open={trashOpen} onOpenChange={(open) => !open && onCloseTrash()}>
         <DialogContent className="max-w-lg rounded-2xl border-border bg-card shadow-lg">
           <DialogHeader>
             <DialogTitle className="text-lg text-foreground">最近删除</DialogTitle>
             <DialogDescription>
-              已删除文档的快照仅保存在本机浏览器（最多最近 20 条）；恢复会新建一篇文档，彻底移除则从本列表删除。
+              已删除文档进入服务端回收站（团队全员可恢复，历史快照仅存本机）；恢复后文档回到主列表。
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-96 overflow-y-auto">
-            {trashItems.length === 0 ? (
-              <p className="py-10 text-center text-xs text-muted-foreground">暂无可恢复的文档</p>
+            {/* P1-7：服务端回收站（软删除行） */}
+            <p className="mb-1.5 text-xs font-medium text-foreground">服务端回收站</p>
+            {serverDeletedLoading ? (
+              <p className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> 加载中…
+              </p>
+            ) : serverDeletedError ? (
+              <p className="py-4 text-center text-xs text-muted-foreground">回收站加载失败，可关闭后重试</p>
+            ) : !serverDeleted || serverDeleted.length === 0 ? (
+              <p className="py-4 text-center text-xs text-muted-foreground">回收站是空的</p>
             ) : (
-              <ul className="flex flex-col gap-1.5">
-                {trashItems.map((t) => (
-                  <li key={t.trashed_at} className="flex items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-2">
+              <ul className="mb-2 flex flex-col gap-1.5">
+                {serverDeleted.map((d) => (
+                  <li key={d.id} className="flex items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-2">
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm text-foreground">{t.title}</span>
+                      <span className="block truncate text-sm text-foreground">{d.title}</span>
                       <span className="mt-0.5 block text-xs text-muted-foreground">
-                        {formatTime(t.trashed_at)}删除
-                        {t.folder_path ? ` · ${t.folder_path}` : ""}
+                        {d.updated ? `${formatTime(d.updated)}删除` : ""}
+                        {d.folder_path ? ` · ${d.folder_path}` : ""}
                       </span>
                     </span>
-                    <span className="flex shrink-0 items-center gap-1">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void onRestoreTrash(t)}
-                        className="h-7 border-primary/40 px-2 text-xs text-primary hover:bg-primary/10"
-                      >
-                        恢复
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => onPurgeTrash(t)}
-                        className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
-                      >
-                        彻底移除
-                      </Button>
-                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={restoringId === d.id}
+                      onClick={() => void handleRestoreServer(d)}
+                      className="h-7 border-primary/40 px-2 text-xs text-primary hover:bg-primary/10"
+                    >
+                      {restoringId === d.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                      恢复
+                    </Button>
                   </li>
                 ))}
               </ul>
             )}
+            {/* 本地快照（历史遗留通道，P1-4 前的删除记录） */}
+            {trashItems.length > 0 ? (
+              <>
+                <p className="mb-1.5 mt-1 border-t border-border pt-2 text-xs font-medium text-muted-foreground">本机快照（历史记录）</p>
+                <ul className="flex flex-col gap-1.5">
+                  {trashItems.map((t) => (
+                    <li key={t.trashed_at} className="flex items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-2">
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm text-foreground">{t.title}</span>
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          {formatTime(t.trashed_at)}删除
+                          {t.folder_path ? ` · ${t.folder_path}` : ""}
+                        </span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void onRestoreTrash(t)}
+                          className="h-7 border-primary/40 px-2 text-xs text-primary hover:bg-primary/10"
+                        >
+                          恢复
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => onPurgeTrash(t)}
+                          className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+                        >
+                          彻底移除
+                        </Button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+            {trashItems.length === 0 && (serverDeleted?.length ?? 0) === 0 && !serverDeletedLoading && !serverDeletedError ? (
+              <p className="py-6 text-center text-xs text-muted-foreground">暂无可恢复的文档</p>
+            ) : null}
           </div>
         </DialogContent>
       </Dialog>

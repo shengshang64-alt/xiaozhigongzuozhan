@@ -214,7 +214,8 @@ export function onKbMutation(cb: KbMutationListener): () => void {
   }
 }
 
-function notifyKbMutation(): void {
+/** 广播 kb_docs 变更（失效共享语料缓存等监听方）；P1-7 回收站恢复后复用 */
+export function notifyKbMutation(): void {
   for (const cb of kbMutationListeners) {
     try {
       cb()
@@ -677,6 +678,27 @@ export function mergeCorpusRows(existing: KbDocRow[], incoming: KbDocRow[]): KbD
     map.set(d.id, d)
   }
   return [...map.values()]
+}
+
+// ---------------------------------------------------------------------------
+// P1-7：服务端回收站——软删除行的列表与恢复（hooks 路由 /api/kb_docs_deleted、
+// /api/kb_docs/{id}/restore）。team 行全员可见可恢复；personal 行仅归属人。
+// ---------------------------------------------------------------------------
+
+/** 已删文档列表（按置删时间倒序）；失败抛错由调用方 toast 降级 */
+export function listDeletedKbDocs(): Promise<KbDocRow[]> {
+  return kbFetch<{ items: KbDocRow[] }>("/api/kb_docs_deleted?page=1&perPage=200").then(
+    (d) => d.items ?? [],
+  )
+}
+
+/** 恢复软删除行（deleted_at 清空，主列表即刻可见）；restored=false 表示本就不在回收站 */
+export async function restoreKbDoc(id: string): Promise<boolean> {
+  const d = await kbFetch<{ restored?: boolean }>(
+    `/api/kb_docs/${encodeURIComponent(id)}/restore`,
+    { method: "POST" },
+  )
+  return !!d.restored
 }
 
 function idfOf(tok: string, N: number, df: Map<string, number>): number {
