@@ -1088,6 +1088,9 @@ export function useKnowledge() {
       const uid = userIdRef.current
       if (!uid || files.length === 0) return
       setUploading(true)
+      // P2-9（2026-10-25）：个人库空目录入库默认「个人笔记」——与团队库目录命名空间分开，
+      // 消除个人文档沿用团队目录路径的归属混淆（存量不动，仅影响新上传）
+      const uploadFolderTrim = uploadVisibility === "personal" && !uploadFolder.trim() ? "个人笔记" : uploadFolder.trim()
       setUploadResults(files.map((f) => ({ fileName: f.name, done: false, okCount: 0 })))
       const fixedCategory = (category ?? "").trim()
       let okTotal = 0
@@ -1096,7 +1099,7 @@ export function useKnowledge() {
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
         try {
-          const items = await parseUploadFile(file, uploadFolder.trim())
+          const items = await parseUploadFile(file, uploadFolderTrim)
           let okCount = 0
           for (const item of items) {
             const { summary, keywords } = extractKbIndex(item.title, item.content)
@@ -1123,7 +1126,7 @@ export function useKnowledge() {
           }
           okTotal += okCount
           // P2-8：成败写入本机历史（弹窗关闭后仍可回溯）
-          pushKbUploadHistory(uid, { fileName: file.name, okCount, targetFolder: uploadFolder.trim() || undefined })
+          pushKbUploadHistory(uid, { fileName: file.name, okCount, targetFolder: uploadFolderTrim || undefined })
           setUploadResults((prev) => prev.map((r, idx) => (idx === i ? { ...r, done: true, okCount } : r)))
         } catch (err) {
           const reason = err instanceof Error ? err.message : "解析失败"
@@ -1161,7 +1164,9 @@ export function useKnowledge() {
     }
     setUploading(true)
     setUploadResults(picked.files.map((f) => ({ fileName: f.file.name, done: false, okCount: 0 })))
-    const base = uploadFolder.trim()
+    // P2-9：同上——个人库空目录默认「个人笔记」
+    const uploadFolderTrim = uploadVisibility === "personal" && !uploadFolder.trim() ? "个人笔记" : uploadFolder.trim()
+    const base = uploadFolderTrim
     const rootPrefix = base ? joinImportFolder(base, picked.rootName) : picked.rootName
     const existing = new Set(
       docsRef.current.map((d) => `${d.folder_path || ""}||${d.source_file_name || ""}`),
