@@ -73,7 +73,7 @@ export function CostConfirmDialog({
               onChange={(e) => setDontShowToday(e.target.checked)}
               className="h-4 w-4 rounded border-border"
             />
-            今天内不再提醒（仅对当前项目有效）
+            今天内不再提醒（仅对本工作站有效）
           </label>
           <div className="flex justify-end gap-2">
             <button
