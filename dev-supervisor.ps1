@@ -8,7 +8,7 @@ param(
   [int]$Port = 8000,
   [int]$PbPort = 7000,
   [int]$IntervalSec = 15,
-  [int]$DiskWarnGb = 8
+  [int]$DiskWarnGb = 4
 )
 $ErrorActionPreference = "SilentlyContinue"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
