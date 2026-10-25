@@ -116,6 +116,54 @@ export function displayizeIntel(raw: string, max = 120): string {
   return text
 }
 
+// ---------------------------------------------------------------------------
+// R64：摘要（summary）展示层清洗——剥离「站点名前缀 + JSON 元数据块」
+//
+// 实测形态（源「健康报·卫健官方媒体」，2026-10-25 库内 11 条命中 9 条）：
+//   －健康报网——健康门户 {"id":"514749","toptitle":"","title":" ","subtitle":"——论学习贯彻…",
+//   "crtime":"2026-10-22 09:49:07","condition":"来源： 健康报 ","thumb": "","topic": "0"} □本报评论员…
+// 即「站点名 + 页面 JSON 元数据 + 真正文」三段粘在一条 summary 里。
+//
+// 为什么必须单独处理（而不是直接丢给 displayizeIntel）：
+//   displayizeIntel 的 CSS_LINE_RE 判据是「整行含花括号即丢」，而这段 JSON 与正文在同一行，
+//   于是真正文会被一起丢掉 —— 首页（useHome.ts:206）对这批条目实际显示为「有摘要但空白」。
+// 本函数先把元数据块剥掉，再交给 displayizeIntel，两页口径才一致。
+// ---------------------------------------------------------------------------
+
+/** 平衡的扁平 JSON 元数据块（至少含一个 "key": 才算，避免吃掉正文里的孤立花括号） */
+const JSON_META_BLOB_RE = /\{[^{}]*"[^"]+"\s*:[^{}]*\}/g
+
+/** 被截断到字符串末尾的半截 JSON（抓取时按长度截断所致，无右花括号） */
+const JSON_META_TAIL_RE = /\{[^{}]*"[^"]+"\s*:[^{}]*$/
+
+/**
+ * 站点名前缀：仅当它**紧跟** JSON 元数据块时才算噪声。
+ * 锚在 `{` 上，所以「健康报网 我院召开…」这类正常正文不会被误剥。
+ */
+const SITE_NAME_PREFIX_RE = /^[^\n{]{0,30}?(?:网|门户|官网|首页|日报|晚报)\s*(?=\{)/
+
+/** 剥离站点名前缀与 JSON 元数据块（纯函数，不改入参） */
+export function stripIntelMetaBlobs(raw: string): string {
+  let s = String(raw ?? "")
+  s = s.replace(SITE_NAME_PREFIX_RE, " ")
+  // 连续多段元数据：逐段剥，最多 5 轮（病态输入兜底，正常 1 轮即稳定）
+  for (let i = 0; i < 5; i++) {
+    const next = s.replace(JSON_META_BLOB_RE, " ")
+    if (next === s) break
+    s = next
+  }
+  s = s.replace(JSON_META_TAIL_RE, " ")
+  return s
+}
+
+/**
+ * 摘要展示层清洗：剥元数据块 → displayizeIntel 深度清洗 → 按 max 截断。
+ * 情报中心卡片/详情面板与首页动态卡共用同一口径。
+ */
+export function cleanIntelSummary(raw: string, max = 200): string {
+  return displayizeIntel(stripIntelMetaBlobs(raw), max)
+}
+
 /**
  * R88/F23：判断一条情报条目是否"明显垃圾"（仅用于列表排序沉底，不改数据不隐藏）。
  * 保守：只命中确定性极高的残片/导航/空壳条目，宁漏不误杀。

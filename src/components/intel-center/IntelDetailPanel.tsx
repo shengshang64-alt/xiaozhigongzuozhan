@@ -1,5 +1,6 @@
 import { BriefcaseBusiness, Check, Copy, ExternalLink, FileStack, Flag, Sparkles, Star, X } from "lucide-react"
 import { copyTextToClipboard } from "@/lib/clipboard"
+import { cleanIntelSummary } from "@/pages/IntelCenter/intelBodyClean"
 import {
   fmtIntelTime,
   ITEM_STATUS_LABEL,
@@ -48,6 +49,8 @@ export function IntelDetailPanel({
       </div>
     )
   }
+  // R64：摘要统一走展示层清洗（剥站点名前缀/JSON 元数据块），与列表卡片、首页动态卡同口径
+  const summaryText = item.summary ? cleanIntelSummary(item.summary, 600) : ""
   return (
     <section className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-card shadow-md">
       <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-1.5 border-b border-border px-3.5 py-2.5">
@@ -137,14 +140,14 @@ export function IntelDetailPanel({
           </section>
         )}
 
-        {item.summary && (
+        {summaryText && (
           <section className="mt-3.5 rounded-lg border border-primary/30 bg-primary/5 p-3">
             <p className="flex items-center justify-between text-xs font-semibold text-primary">
               AI 摘要
               <button
                 type="button"
                 onClick={() => {
-                  const text = (item.title ? item.title + "\n" : "") + (item.summary ?? "")
+                  const text = (item.title ? item.title + "\n" : "") + summaryText
                   void copyTextToClipboard(text, {
                     successMessage: "已复制标题与摘要",
                     errorMessage: "复制失败，请手动选择文本",
@@ -156,7 +159,7 @@ export function IntelDetailPanel({
                 复制
               </button>
             </p>
-            <p className="mt-1.5 text-sm leading-relaxed text-foreground">{item.summary}</p>
+            <p className="mt-1.5 text-sm leading-relaxed text-foreground">{summaryText}</p>
           </section>
         )}
 

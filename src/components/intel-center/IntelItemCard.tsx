@@ -5,6 +5,7 @@ import {
   SOURCE_TYPE_LABEL,
   type IntelItemRow,
 } from "@/pages/IntelCenter/useIntelCenter"
+import { cleanIntelSummary } from "@/pages/IntelCenter/intelBodyClean"
 
 type IntelItemCardProps = {
   item: IntelItemRow
@@ -54,6 +55,8 @@ export function IntelItemCard({
   selected,
   onToggleSelect,
 }: IntelItemCardProps) {
+  // R64：摘要统一走展示层清洗（剥站点名前缀/JSON 元数据块），与首页动态卡同口径
+  const summaryText = item.summary ? cleanIntelSummary(item.summary, 160) : ""
   return (
     <article
       data-intel-card
@@ -130,8 +133,8 @@ export function IntelItemCard({
         {item.title}
       </button>
 
-      {item.summary && (
-        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted-foreground">{item.summary}</p>
+      {summaryText && (
+        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted-foreground">{summaryText}</p>
       )}
 
       {item.tags.length > 0 && (

@@ -5,29 +5,29 @@
   "canonical_state": "docs/evolution/_loop_state.json",
   "canonical_reports": "docs/evolution/R{round}_{YYYYMMDD}.md",
   "note": "本文件是 2026-10-14 自动化作业按手册要求建立的账本。本项目既有的、被 autoloop 驱动器读取的权威账本仍是 docs/evolution/_loop_state.json —— 两者已同步，若冲突以 docs/evolution/_loop_state.json 为准。作业手册点名的 AI-ITERATION.md 在本仓库不存在（项目已注明其被删除），实际执行依据为 Qoder自主迭代提示词-v2.md。 轮次说明：2026-10-15 本地自动化线为 R49（R48 已被并发执行者的「事实来源优先级」切片占用）。",
-  "round": 51,
+  "round": 64,
   "lastRoundSummary": {
-    "id": "R51",
-    "at": "2026-10-15T08:00+08:00",
-    "theme": "安中医真实标书回归夹具：把 R50 登记的「长文检索召回率未用真实标书验证」实测成数字并固化成可复跑回归（新增夹具生成器 + 27 例真实标书回归 + 修 1 处只有真实长文才暴露的闸门缺陷）",
-    "class": "B（口径缺陷修复）+ D（可复跑回归网固化）",
-    "severity": "S1（R50 的长文可见性已是全链路硬闸的一部分，但它能看见多少条款此前没有任何真实标书上的数字；无数字 = 无法判断闸门是护栏还是过滤器）",
+    "id": "R64",
+    "at": "2026-10-25T13:35+08:00",
+    "theme": "情报中心摘要显示成原始 JSON：展示层清洗口径统一（卡片/详情/首页三处同源，剥站点名前缀+JSON 元数据块）",
+    "class": "A（修：同一字段三个页面两种显示的口径缺陷）",
+    "severity": "S2（用户可见内容错误：情报摘要正文位置显示 {\"id\":\"514749\",\"toptitle\":…}）",
     "verdict": "pass",
     "gates": {
       "tsc": "pass（npx tsc -b exit 0，0 error）",
-      "vitest": "pass（npx vitest run 245 files / 2917 passed / 2 skipped；本轮贡献 +1 文件 / +27 例 bidVisibilityRealBid.test.ts）",
-      "eslint": "pass（npx eslint . = 119 error / 13 warning，等于 R50 基线，零新增）",
-      "build": "pass（CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD=100000 npx vite build，built in 3.91s，exit 0）"
+      "build": "pass（CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD=100000 npx vite build，✓ built in 9.80s，exit 0）",
+      "vitest": "pass（npx vitest run 326 files / 3785 passed / 2 skipped；开工基线 325/3774/2 → 本轮 +1 文件 / +11 例）",
+      "eslint": "pass（npx eslint . = 116 error / 11 warning，与开工基线逐项相同，零新增）"
     },
     "headline_numbers": {
-      "full_fixture": "tender 152053 字 / bid 138810 字 / 133 条款 / 预算 20000 → clause_hit 13/133 = 9.8%（注入 6 段 19542 字，未注入 119268 字；未覆盖 第4/8/9-18 章）",
-      "scrubbed_subset": "tender 32957 字 / bid 47103 字 / 18 章 / 133 条款 → clause_hit 56/133 = 42%（注入 7 段 19944 字，未注入 27159 字；未覆盖 第2/4/8-18 章）",
-      "interpretation": "同一套检索算法，正文由 138810 字缩到 47103 字后命中率涨 4 倍以上 → 瓶颈是「预算 ÷ 正文长度」而非打分算法；解法方向为压缩单位证据 / 提高预算 / 两阶段取证 / 章节摘要树，已登记 B25",
-      "old_caliber_control": "旧口径 clipText(12000) 只覆盖 2-3 章却自称 input_complete=true、clause_hit=133/133 —— 已在测试 §4 写成「不得回归」"
+      "dirty_rows": "库内 627 条情报 / 58 条有 summary / 9 条含 JSON 元数据，全部来自「健康报·卫健官方媒体」（该源 11 条脏 9 条 = 81.8%）",
+      "after_fix": "9 条全部恢复真正文（净增 531 字）；非脏 49 条零变化（无误伤）",
+      "reverse_check": "把 IntelItemCard 改回裸渲染 → 1 failed；还原 → 3 passed",
+      "browser": "/intel-center 搜「健康门户」命中 9 条且摘要为正文；详情面板 hasJsonId=false / hasBrace=false；/ 首页同；两页 0 error"
     },
-    "real_defect_fixed": "bidTypes.ts · deviationCommitHits：负偏离（deviation_undercommit，在 GATE_FATAL_RULES 硬闸黑名单）与「本次不可见」（deviation_invisible_review，warn）原共用 30 条上限。长文下不可见上百条会把负偏离整批挤出 hits → 交卷体检误判「无废标级命中」→ 硬闸形同虚设。现改为先收集负偏离（≤30）再收集不可见（独立 ≤30）；实测全量 6+30、子集 29+30。",
-    "privacy": "夹具生成器本轮加固 3 处（投标正文章节内容也脱敏 / 行级脱敏地址·联系人·电话·邮编·传真标签行与地址续行 / （…交口）与…路N号 正则）；入库前脱敏自检：安徽中医药大学=0、第一附属医院=0、梅山路=0、张老师=0、李工=0、无手机号无真实固话。",
-    "numbering_note": "本线为 Codex 主提示词线，直接承接 R50，round 50→51。全量夹具（含真实院名）只在 .probe/ 不入库；入库的是脱敏子集。"
+    "root_cause": "入库层：pb_hooks/intel_center.pb.js 摘要拼装把整段页面 JSON 元数据塞进 summary；展示层：IntelCenter 卡片/详情原样渲染 item.summary，而首页用 displayizeIntel（且其「整行含花括号即丢」判据会连正文一起丢）。",
+    "concurrency": "开工时工作区 91 个未提交文件（含 docs/23 P0 全套），本轮一个未碰、未 git add -A；全量 vitest 含对方在途用例。",
+    "numbering_note": "承接权威账本 docs/evolution/_loop_state.json：R63 → R64（写入前断言 round===63，避免并发双 bump）。"
   },
   "closed": [
     {
@@ -305,6 +305,15 @@
       "priority": "high",
       "closed_at_round": "R51",
       "summary": "新增 scripts/azhongyi-real-fixture.mjs（只读 PocketBase 项目 mfl6howomsw5i0l，脱敏加固 3 处）、src/pages/BidWorkspace/__fixtures__/azhongyiRealBid.json（脱敏子集，入库）、src/pages/BidWorkspace/bidVisibilityRealBid.test.ts（27 例）与 R50 §5 未覆盖边界第 1 条闭环。"
+    },
+    {
+      "id": "R64-intel-summary-json",
+      "at": "2026-10-25T13:35+08:00",
+      "title": "情报中心摘要显示成原始 JSON（展示层清洗口径统一）",
+      "verdict": "pass",
+      "evidence": "docs/evolution/_r64_intel_summary_scan.mjs（真实库前后对照：清洗后为空 9→0 条、非脏 49 条零变化）+ intelBodyClean.test.ts +8 例 + intelSummaryWiring.test.ts 3 例 + 浏览器实机 0 error",
+      "diff": "intelBodyClean.ts +48（stripIntelMetaBlobs/cleanIntelSummary）、IntelItemCard.tsx +7/-1、IntelDetailPanel.tsx +9/-4、useHome.ts +7/-1、测试 +11 例、取证脚本新增 1 个；业务数据/schema/pb_hooks/提示词/依赖 0 改动",
+      "report": ".loop/reports/2026-10-25-1335-r64-intel-summary-json.md + docs/evolution/R64_20261025.md"
     }
   ],
   "backlog": [
@@ -373,9 +382,60 @@
       "title": "pb_hooks 网关补丁待重启生效（**核心动作被项目 hook 挡住：禁止智能体结束进程，无法重启 :7000**）；剩下可做的一半 = 让「模型配置」的可用性提示与真实可用性一致（现依据 /models 可达性，而真正会 400 的是 /chat/completions；R296 已建实测失效档案但只有真失败过才挂账）。建议方案：把「接口可达」与「对话可用」分两行如实显示 + 提供**用户主动点击**的「试一次对话」探针（不自动跑、不产生隐形费用）——属产品决策，需点头",
       "priority": "high",
       "source": "self-found(R39) → R48 重估"
+    },
+    {
+      "id": "B36-intel-summary-ingest-guard",
+      "title": "情报入库摘要质量闸（R64 根因侧）",
+      "priority": "medium",
+      "source": "self-found(R64)",
+      "note": "病根在 pocketbase/pb_hooks/intel_center.pb.js 的摘要拼装；R64 只治展示层。改 pb_hooks 需重启 :7000（项目 hook 禁止智能体结束进程）。"
+    },
+    {
+      "id": "B37-intel-future-date",
+      "title": "情报发布日期未来值（3 条 2027）",
+      "priority": "low",
+      "source": "self-found(R64)",
+      "note": "HIT专家网 3 条 published_at=2027-04-29/2027-01-03，「按发布时刻」排序顶到最前；建议展示层标「日期异常」并沉底。"
+    },
+    {
+      "id": "B38-agents-vitest-baseline-sync",
+      "title": "AGENTS.md vitest 基线行同步（等并发批次落地后）",
+      "priority": "low",
+      "source": "self-found(R64)",
+      "note": "R64 时刻有 91 个未提交在途文件，此刻同步会把别人未提交的用例数写进仓库约定。"
     }
   ],
   "newFindings": [
+    {
+      "id": "F64-5",
+      "title": "情报搜索框必须按 Enter 才筛（只输入不生效）",
+      "level": "P3",
+      "action": "是否设计如此未定，先记账；若要做成「输入即筛」需加 debounce 并验证 627 条规模下的请求量。"
+    },
+    {
+      "id": "F64-4",
+      "title": "并发在途扩大到 91 个未提交文件（含 docs/23 P0 全套：交卷清单/证据台账/正文质量门禁），BidWorkspace 域几乎全在其中 → 高优先待办（B25/B28/B32/B35）本轮全部不可碰",
+      "level": "P1",
+      "action": "本轮改在完全干净的情报域；仍需用户拍板在途批次归属（B22 同一问题的延续）。"
+    },
+    {
+      "id": "F64-3",
+      "title": "情报发布日期存在未来值：HIT专家网 3 条 published_at 为 2027-04-29 / 2027-01-03，按发布时刻排序会顶到最前",
+      "level": "P3",
+      "action": "已开单 B37（展示层标注+沉底，不改数据）。"
+    },
+    {
+      "id": "F64-2",
+      "title": "「整行含花括号即丢」的清洗判据会把「元数据与正文同行」的条目整行丢成空白——首页 9 条情报实际表现为「有摘要但空白」，比显示 JSON 更难被发现",
+      "level": "P1",
+      "action": "已修（先剥元数据块再交 displayizeIntel）；以后凡是「同字段多页面清洗」都要检查判据粒度是「行」还是「段」。"
+    },
+    {
+      "id": "F64-1",
+      "title": "情报摘要的 JSON 元数据来自服务端拼装（pb_hooks/intel_center.pb.js），展示层清洗只是止血：存量 9 条已可读，但新抓条目仍会带 JSON",
+      "level": "P2",
+      "action": "已开单 B36；根治需改 pb_hooks 并由用户重启 :7000。"
+    },
     {
       "id": "F49-1",
       "title": "同一工作区两个执行者并发迭代 → 账本 round 被双 bump：项目权威账本 R48（factSources 事实来源优先级）与本地自动化线原记 R48 撞号；两边都在写同一份 ledger，谁后写谁覆盖",
@@ -511,11 +571,14 @@
   ],
   "noProgressStreak": 0,
   "lastRoundFiles": [
-    "scripts/azhongyi-real-fixture.mjs",
-    "src/pages/BidWorkspace/__fixtures__/azhongyiRealBid.json",
-    "src/pages/BidWorkspace/bidVisibilityRealBid.test.ts",
-    "src/pages/BidWorkspace/bidTypes.ts",
-    "docs/evolution/R51_20261015.md",
+    "src/pages/IntelCenter/intelBodyClean.ts",
+    "src/components/intel-center/IntelItemCard.tsx",
+    "src/components/intel-center/IntelDetailPanel.tsx",
+    "src/pages/Home/useHome.ts",
+    "src/pages/IntelCenter/intelBodyClean.test.ts",
+    "src/components/intel-center/intelSummaryWiring.test.ts",
+    "docs/evolution/_r64_intel_summary_scan.mjs",
+    "docs/evolution/R64_20261025.md",
     "docs/evolution/_loop_state.json"
   ]
 }

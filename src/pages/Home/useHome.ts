@@ -6,7 +6,7 @@ import type { CrmOppBrief, CrmStats } from "@/components/home/CustomerOverviewSe
 import type { BidReview } from "@/components/home/BidReviewCard"
 import { useActivityFeed } from "@/hooks/useActivityFeed"
 import { useActiveWork } from "@/hooks/useActiveWork"
-import { cleanIntelLine, displayizeIntel } from "@/pages/IntelCenter/intelBodyClean"
+import { cleanIntelLine, cleanIntelSummary, displayizeIntel } from "@/pages/IntelCenter/intelBodyClean"
 import { qualRiskView, type QualRiskView } from "@/pages/QualCerts/qualsCore"
 
 // ---------------------------------------------------------------------------
@@ -203,7 +203,10 @@ function mapIntelRow(row: IntelItemRow): IntelItem {
   // 抓取入库的 content_snippet/summary 常带被从中间截断的半截 HTML/CSS 残片；
   // 展示层走 displayizeIntel（深度清洗）而非仅去成对标签的 cleanIntelLine，避免残留乱码
   const snippet = displayizeIntel(row.content_snippet || "", 120)
-  const cleanedSummary = row.summary ? displayizeIntel(row.summary, 160) : ""
+  // R64：摘要改用 cleanIntelSummary（先剥站点名前缀/JSON 元数据块再深度清洗）——
+  // 「健康报」源的 summary 是「站点名 + 页面 JSON + 真正文」同处一行，直接用 displayizeIntel
+  // 会被「整行含花括号即丢」的判据把真正文一起丢掉，首页表现为「有摘要但空白」
+  const cleanedSummary = row.summary ? cleanIntelSummary(row.summary, 160) : ""
   return {
     id: row.id,
     title: cleanIntelLine(row.title),
