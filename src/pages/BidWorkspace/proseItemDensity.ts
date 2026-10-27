@@ -45,6 +45,26 @@ const ITEM_LINE_RE = /^[（(]\s*\d{1,3}\s*[)）]|^[（(][一二三四五六七�
 /** 标题行：纯数字多级编号（1.2 / 12.9.8.1.1.1）+ 短、不带句末标点。 */
 const HEADING_LINE_RE = /^(\d+(?:\.\d+)+)\s*[^\d.\s]/
 
+/**
+ * 中文层级链标题（2026-10-27 实测修正）：
+ *   原实现只认纯数字多级编号 `1.2`，于是真实正文里这套**非常规范的四级结构**被误判成 2 级：
+ *     11.1 项目理解与目标承接设计      ← 数字编号，原判据认（depth=2）
+ *       （一）现状痛点与核心需求研判    ← 中文括号，原判据不认
+ *         （1）系统替换与业务连续性并存  ← 数字括号，原判据不认
+ *          ① xxx                      ← 圈号，原判据不认
+ *   实测：8 个技术章全部被判 depth 2~3 → 8/8 判 NG，而实际层级是 4 级，已达金标准。
+ *   这是**判据失真**（把合格产物判成不合格），会让用户白改。
+ *
+ *   现按中文公文的标准层级链补认：数字编号在链条最上层，其后依次为
+ *   （一）→ （1）→ ①。判断方式：看该行自身的形态，取它在链条中的位置。
+ *   与 `bidFiles.contentHeadingLevel`（导出侧）保持同一套形态认知，避免判据与渲染打架。
+ */
+const HEADING_CN_LEVEL2_RE = /^[（(][一二三四五六七八九十]{1,3}[)）]\s*\S/ // （一）
+const HEADING_CN_LEVEL3_RE = /^[（(]\s*\d{1,2}\s*[)）]\s*\S/ // （1）
+const HEADING_CN_LEVEL4_RE = /^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]\s*\S/ // ①
+/** 层级链深度加成：数字编号至少 2 级（`11.1` = 2、`12.9.8` = 3），其后每层 +1 */
+const CN_CHAIN_OFFSET = { level2: 1, level3: 2, level4: 3 } as const
+
 export type ItemDensityIssue = {
   kind: "density" | "median" | "depth"
   label: string
@@ -67,10 +87,51 @@ export type ItemDensityReport = {
   ok: boolean
 }
 
-/** 从标题行取层级（`12.9.8.1.1.1` → 7）；非标题返回 0 */
+/**
+ * 从标题行取层级；非标题返回 0。
+ *
+ * 支持的形态（2026-10-27 补中文层级链）：
+ *   `12.9.8.1.1.1` → 6（纯数字，按段数）
+ *   `（一）现状痛点` → 3（数字编号 2 级 + 中文括号 1 级）
+ *   `（1）系统替换` → 4
+ *   `① xxx`        → 5
+ *
+ * 为什么中文括号要按「数字基线 + 偏移」算，而不是各算固定级别：
+ *   真实正文里中文括号是**接在数字编号下面的子层级**，`11.1` 的下一层才是 `（一）`。
+ *   若把 `（一）` 当成 2 级，那么 `11.1 → （一）` 就从 2 级到 2 级，层级断档判不出来。
+ *   取「数字基线(2) + 相对偏移」后：`（一）`=3、`（1）`=4、`①`=5，与真实文档结构一致。
+ */
 export function headingDepthOf(line: string): number {
-  const m = HEADING_LINE_RE.exec((line ?? "").trim())
-  return m ? m[1].split(".").length : 0
+  const t = (line ?? "").trim()
+  if (!t) return 0
+  const m = HEADING_LINE_RE.exec(t)
+  if (m) return m[1].split(".").length
+  // 中文层级链：以「数字编号 2 级」为基线做偏移（与真实四级结构对齐）。
+  //
+  // 2026-10-27 判据边界（实测踩过两次，这里写死原因）：
+  //   真实语料里「（1）系统替换与业务连续性并存。本项目要求…」这类是**标题与正文写在同一行**，
+  //   既带句号又很长。所以「带句末标点 = 条目行」的判据会误杀真标题（depth 从 4 掉回 3）。
+  //   同时「（1）支持换卡。」这类纯条目也不能当标题（既有单测明确要求返回 0）。
+  //   区分两者的可靠特征：**标题后紧跟的是陈述正文（长度长、含逗号等），条目是单句结束**。
+  //   判据取「冒号/序号后第一句之后是否还有内容」：有则视为标题行（标题+正文合写），无则视为条目。
+  const base = 2
+  const afterMark = (re: RegExp): number => {
+    const mm = re.exec(t)
+    if (!mm) return 0
+    const rest = t.slice(mm[0].length)
+    // 序号后首个句子结束符之后仍有实质内容 → 这行是「标题 + 正文合写」
+    const sentenceEnd = rest.search(/[。！？；]/)
+    const hasTailAfterSentence = sentenceEnd >= 0 && rest.slice(sentenceEnd + 1).trim().length > 0
+    // 序号后没有句末标点（短标题）→ 也算标题
+    const noSentenceEnd = sentenceEnd < 0
+    // 序号后紧跟的正文里出现逗号顿号等句内标点，且总长较长 → 标题+正文合写
+    const inlineBody = rest.length > 30 && /[，、]/.test(rest)
+    return hasTailAfterSentence || noSentenceEnd || inlineBody ? 1 : 0
+  }
+  if (afterMark(HEADING_CN_LEVEL2_RE)) return base + CN_CHAIN_OFFSET.level2
+  if (afterMark(HEADING_CN_LEVEL3_RE)) return base + CN_CHAIN_OFFSET.level3
+  if (afterMark(HEADING_CN_LEVEL4_RE)) return base + CN_CHAIN_OFFSET.level4
+  return 0
 }
 
 /** 是否条目行（（N）/（一） 形态）。数字多级标题不算条目。 */
