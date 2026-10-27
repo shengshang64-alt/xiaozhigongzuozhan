@@ -1,9 +1,9 @@
 {
-  "round": 2,
+  "round": 3,
   "lastRound": {
-    "id": "DS-R02",
-    "theme": "对标基线复核 + 案例结构化可行性评估",
-    "dimension": "内容",
+    "id": "DS-R03",
+    "theme": "全站 17 页健康基线 + 审计方法纠错",
+    "dimension": "界面",
     "verdict": "pass"
   },
   "gates": {
@@ -13,112 +13,113 @@
     "eslint": "pass"
   },
   "gatesDetail": {
-    "tsc": "17.3s / 0 error",
-    "vitest": "3988 passed / 2 skipped",
-    "eslint": "116 error / 11 warning（=budget）",
-    "build": "4.5s"
+    "note": "DS-R03 零代码改动，未跑四门；沿用 DS-R02 读数",
+    "tsc": "pass",
+    "build": "pass",
+    "vitest": "3988 passed",
+    "eslint": "116-11"
   },
   "coverageMatrix": {
     "/": {
       "流程": null,
       "业务": null,
-      "界面": null,
+      "界面": "DS-R03",
       "内容": null
     },
     "/customer-management": {
       "流程": null,
       "业务": null,
-      "界面": null,
+      "界面": "DS-R03",
       "内容": null
     },
     "/intel-center": {
       "流程": null,
       "业务": null,
-      "界面": null,
+      "界面": "DS-R03",
       "内容": null
     },
     "/solution-studio": {
       "流程": null,
       "业务": null,
-      "界面": null,
+      "界面": "DS-R03",
       "内容": null
     },
     "/product-mapping": {
       "流程": null,
       "业务": null,
-      "界面": null,
+      "界面": "DS-R03",
       "内容": null
     },
     "/ppt-quote": {
       "流程": null,
       "业务": null,
-      "界面": null,
+      "界面": "DS-R03",
       "内容": null
     },
     "/materials": {
       "流程": null,
       "业务": null,
-      "界面": null,
+      "界面": "DS-R03",
       "内容": null
     },
     "/bid-workspace": {
       "流程": "DS-R01",
       "业务": null,
-      "界面": null,
+      "界面": "DS-R03",
       "内容": "DS-R01"
     },
     "/bid-check": {
       "流程": null,
       "业务": null,
-      "界面": null,
+      "界面": "DS-R03",
       "内容": null
     },
     "/format-tool": {
       "流程": null,
       "业务": null,
-      "界面": null,
+      "界面": "DS-R03",
       "内容": null
     },
     "/knowledge": {
       "流程": null,
       "业务": "DS-R02",
-      "界面": null,
+      "界面": "DS-R03",
       "内容": "DS-R02"
     },
     "/qual-certs": {
       "流程": null,
       "业务": null,
-      "界面": null,
+      "界面": "DS-R03",
       "内容": null
     },
     "/competitors": {
       "流程": null,
       "业务": null,
-      "界面": null,
+      "界面": "DS-R03",
       "内容": null
     },
     "/assistant": {
       "流程": null,
       "业务": null,
-      "界面": null,
+      "界面": "DS-R03",
       "内容": null
     },
     "/model-config": {
       "流程": null,
       "业务": null,
-      "界面": null,
+      "界面": "DS-R03",
       "内容": null
     },
     "/ai-hot": {
       "流程": null,
       "业务": null,
-      "界面": null,
+      "界面": "DS-R03",
       "内容": null
     },
     "/team": {
       "流程": null,
       "业务": null,
-      "界面": null,
+      "界面": "DS-R03",
       "内容": null
     }
   },
@@ -166,11 +167,18 @@
       "theme": "对标基线复核 + 案例结构化可行性评估",
       "verdict": "pass",
       "at": "2026-10-28"
+    },
+    {
+      "id": "DS-R03",
+      "theme": "全站17页健康基线 + 审计方法纠错",
+      "verdict": "pass",
+      "at": "2026-10-28"
     }
   ],
   "notes": [
     "开工前防撞车：git status 有 139 条改动（多为前序人工/他线在途），但最近提交为 3 天前，判定无人在途。",
     "本轮只写 docs/evolution/dsb/ 命名空间，未触碰共享账本 _loop_state.json 与 eslint-budget.json。",
-    "历史「颗粒度 0/172」的数据集（安中医 45.8 万字 d3c35o7axkw34wo）已被清空至回收站（正文长度=2），本轮 97.0 条/万字 来自另一份新生正文（lq5ot8hq8sbqg16），两组数据不可直接对比。"
+    "历史「颗粒度 0/172」的数据集（安中医 45.8 万字 d3c35o7axkw34wo）已被清空至回收站（正文长度=2），本轮 97.0 条/万字 来自另一份新生正文（lq5ot8hq8sbqg16），两组数据不可直接对比。",
+    "DS-R03 教训：用 grep 匹配源码关键词判「四态覆盖」不可靠，会漏掉条件渲染与换了措辞的文案，也会把业务提示（如「14个源抓取失败」）误判成系统错误。判页面健康必须用浏览器系统级探针（error/unhandledrejection/fetch 非2xx/白屏长度）。"
   ]
 }
