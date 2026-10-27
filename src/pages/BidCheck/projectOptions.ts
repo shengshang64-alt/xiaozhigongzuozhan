@@ -48,3 +48,16 @@ export function filterProjectOptions(list: BidProjectRecord[], query: string): B
       (p.tender_no || "").toLowerCase().includes(q),
   )
 }
+
+/**
+ * 2026-10-28（DS-R04）：排除回收站项目。
+ * 后端 GET /api/bid_projects 只按 rh_user_id 过滤，不过滤 deleted_at（见 bid_projects.pb.js:239-246），
+ * 回收站过滤一直由各页面在客户端自己做（标书工作台 useBidWorkspace.ts:1833-1835）。
+ * 标书检查页原先漏了这一步：实测下拉里混进 8 个回收站项目（如「56」「13131」「福州全民健康信息平台」），
+ * 选中后检查的是空正文，会得出「0 处问题 / 可直接导出」的假放行。
+ * 归档（archived）项目属于正常已完成件，仍保留在选项里，可继续复查。
+ */
+export function excludeDeletedProjects(list: BidProjectRecord[]): BidProjectRecord[] {
+  return list.filter((p) => !(p.deleted_at ?? "").trim())
+}
+

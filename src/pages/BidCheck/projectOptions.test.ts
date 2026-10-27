@@ -1,7 +1,7 @@
 // P1-6：标书检查项目下拉整备纯函数的单元测试（排序 / 去重 / 过滤）。
 import { describe, expect, it } from "vitest"
 import type { BidProjectRecord } from "@/pages/BidWorkspace/bidTypes"
-import { dedupeProjectOptions, filterProjectOptions, sortProjectOptions } from "./projectOptions"
+import { dedupeProjectOptions, excludeDeletedProjects, filterProjectOptions, sortProjectOptions } from "./projectOptions"
 
 function rec(id: string, name: string, updated: string, tenderNo = ""): BidProjectRecord {
   // 夹具只填本模块消费的字段（排序/去重/过滤只读 project_name/tender_no/updated/created/id）
@@ -75,5 +75,45 @@ describe("filterProjectOptions", () => {
   it("空查询原样返回；无命中返回空数组", () => {
     expect(filterProjectOptions(list, "  ")).toHaveLength(2)
     expect(filterProjectOptions(list, "不存在的项目")).toHaveLength(0)
+  })
+})
+
+// 2026-10-28（DS-R04）：后端列表路由只按 rh_user_id 过滤，不过滤 deleted_at，
+// 回收站过滤必须由页面自己做。标书检查页原先漏了这一步，实测下拉混入 8 个回收站项目。
+describe("excludeDeletedProjects", () => {
+  const withDeleted = (id: string, name: string, deletedAt?: string) => {
+    const r = rec(id, name, "2026-10-20 00:00:00.000Z") as unknown as Record<string, unknown>
+    if (deletedAt !== undefined) r.deleted_at = deletedAt
+    return r as unknown as BidProjectRecord
+  }
+
+  it("deleted_at 非空的项目被剔除，正常项目保留", () => {
+    const out = excludeDeletedProjects([
+      withDeleted("live", "正常项目", ""),
+      withDeleted("trash", "回收站项目", "2026-10-22T06:24:46.891Z"),
+    ])
+    expect(out.map((p) => p.id)).toEqual(["live"])
+  })
+
+  it("deleted_at 缺失（存量记录无此列）按未删除保留", () => {
+    const out = excludeDeletedProjects([withDeleted("legacy", "存量项目")])
+    expect(out.map((p) => p.id)).toEqual(["legacy"])
+  })
+
+  it("只有空白字符的 deleted_at 视为未删除", () => {
+    const out = excludeDeletedProjects([withDeleted("blank", "空白删除位", "   ")])
+    expect(out.map((p) => p.id)).toEqual(["blank"])
+  })
+
+  it("顺序契约：先剔回收站再去重，回收站的同名新记录不能顶掉正常项目", () => {
+    // 真实数据形态——「三明市中西医结合医院」回收站件 updated 比正常件新
+    const trashNewer = withDeleted("trash", "三明市中西医结合医院", "2026-10-27T07:02:45.325Z")
+    ;(trashNewer as unknown as Record<string, unknown>).updated = "2026-10-27 07:02:45.325Z"
+    const liveOlder = withDeleted("live", "三明市中西医结合医院", "")
+    ;(liveOlder as unknown as Record<string, unknown>).updated = "2026-10-15 06:02:03.716Z"
+    const out = dedupeProjectOptions(
+      sortProjectOptions(excludeDeletedProjects([trashNewer, liveOlder])),
+    )
+    expect(out.map((p) => p.id)).toEqual(["live"])
   })
 })

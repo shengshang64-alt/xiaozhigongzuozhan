@@ -43,7 +43,7 @@ import { exportHtmlReport } from "./report/toHtml"
 import { BidCheckConfigDialog } from "./BidCheckConfigDialog"
 import { ReadingView } from "./ReadingView"
 import { RulesListPanel } from "./RulesListPanel"
-import { dedupeProjectOptions, filterProjectOptions, sortProjectOptions } from "./projectOptions"
+import { dedupeProjectOptions, excludeDeletedProjects, filterProjectOptions, sortProjectOptions } from "./projectOptions"
 import type { BidCheckVm } from "./useBidCheck"
 
 type Tab = "result" | "rules"
@@ -78,10 +78,19 @@ export function BidCheckPage(vm: BidCheckVm) {
   // P1-6：项目下拉整备——同名去重（保最新）+ updated 倒序 + 关键字搜索（实测 30+ 选项
   // 同名重复无排序无搜索，多人团队下不可用）
   const [projectQuery, setProjectQuery] = useState("")
+  // 2026-10-28（DS-R04）：先剔除回收站项目，再去重/排序/搜索。
+  // 顺序有讲究：去重是「同名保最新」，若先去掉重，回收站里更新的同名记录
+  // 会把正常项目顶掉（实测「三明市中西医结合医院」回收站件 updated 更新，正常件被隐藏）。
   const projectOptions = useMemo(
-    () => filterProjectOptions(dedupeProjectOptions(sortProjectOptions(projects)), projectQuery),
+    () =>
+      filterProjectOptions(
+        dedupeProjectOptions(sortProjectOptions(excludeDeletedProjects(projects))),
+        projectQuery,
+      ),
     [projects, projectQuery],
   )
+  /** 已排除回收站的候选总数（下方计数文案与下拉共用，避免「共 N 个」把回收站算进去） */
+  const selectableProjects = useMemo(() => excludeDeletedProjects(projects), [projects])
 
   const sealed = mode === "sealed"
   const blocked = !!result && sealed && hasBlockingCritical(result)
@@ -195,7 +204,7 @@ export function BidCheckPage(vm: BidCheckVm) {
                 <option value="">
                   {projectsLoading
                     ? "加载中…"
-                    : projects.length === 0
+                    : selectableProjects.length === 0
                       ? "暂无项目"
                       : projectOptions.length === 0
                         ? "无匹配项目（调整搜索词）"
@@ -207,14 +216,16 @@ export function BidCheckPage(vm: BidCheckVm) {
                   </option>
                 ))}
               </select>
-              {projects.length > projectOptions.length ? (
+              {selectableProjects.length > projectOptions.length ? (
                 <p className="text-xs text-muted-foreground">
-                  {projectOptions.length === projects.length
-                    ? `共 ${projects.length} 个项目`
-                    : `匹配 ${projectOptions.length} / 共 ${projects.length} 个项目（同名已合并）`}
+                  {projectOptions.length === selectableProjects.length
+                    ? `共 ${selectableProjects.length} 个项目（已隐藏回收站）`
+                    : `匹配 ${projectOptions.length} / 共 ${selectableProjects.length} 个项目（同名已合并 · 已隐藏回收站）`}
                 </p>
-              ) : projects.length > 0 ? (
-                <p className="text-xs text-muted-foreground">共 {projects.length} 个项目 · 按最近更新排序</p>
+              ) : selectableProjects.length > 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  共 {selectableProjects.length} 个项目 · 按最近更新排序（已隐藏回收站）
+                </p>
               ) : null}
             </div>
           </div>

@@ -1,9 +1,9 @@
 {
-  "round": 3,
+  "round": 4,
   "lastRound": {
-    "id": "DS-R03",
-    "theme": "全站 17 页健康基线 + 审计方法纠错",
-    "dimension": "界面",
+    "id": "DS-R04",
+    "theme": "标书检查入口两处假放行（回收站混入 + 空标书判可直接导出）",
+    "dimension": "流程",
     "verdict": "pass"
   },
   "gates": {
@@ -13,11 +13,11 @@
     "eslint": "pass"
   },
   "gatesDetail": {
-    "note": "DS-R03 零代码改动，未跑四门；沿用 DS-R02 读数",
-    "tsc": "pass",
-    "build": "pass",
-    "vitest": "3988 passed",
-    "eslint": "116-11"
+    "note": "DS-R04 四门全跑（有代码改动）",
+    "tsc": "16.8s / 0 error",
+    "build": "5.5s / exit 0 / built in 4.22s",
+    "vitest": "26.5s / 348 files / 3994 passed / 2 skipped（+6 例）",
+    "eslint": "42.5s / 127 problems (116 errors, 11 warnings) = eslint-budget.json 基线"
   },
   "coverageMatrix": {
     "/": {
@@ -69,10 +69,10 @@
       "内容": "DS-R01"
     },
     "/bid-check": {
-      "流程": null,
-      "业务": null,
+      "流程": "DS-R04",
+      "业务": "DS-R04",
       "界面": "DS-R03",
-      "内容": null
+      "内容": "DS-R04"
     },
     "/format-tool": {
       "流程": null,
@@ -125,6 +125,18 @@
   },
   "backlog": [
     {
+      "id": "DSB7",
+      "title": "GET /api/bid_projects 不过滤 deleted_at（bid_projects.pb.js:239-246），回收站过滤全靠各页面自己补：标书工作台补了、标书检查漏了。应先列全部消费点，再收敛成统一取数或后端加参数",
+      "priority": "high",
+      "source": "round-report"
+    },
+    {
+      "id": "DSB8",
+      "title": "安中医项目 lq5ot8hq8sbqg16 第 11 章「数据价值闭环核心能力设计」content 长度=0，需确认是数据丢失还是生成流程漏章（若后者属生成侧缺陷）",
+      "priority": "high",
+      "source": "self-found"
+    },
+    {
       "id": "DSB6",
       "title": "案例结构化库数据模型设计：建议 kb_docs 增补 structured JSON 字段（不新建集合），需用户确认后再动结构",
       "priority": "high",
@@ -173,12 +185,21 @@
       "theme": "全站17页健康基线 + 审计方法纠错",
       "verdict": "pass",
       "at": "2026-10-28"
+    },
+    {
+      "id": "DS-R04",
+      "theme": "标书检查入口两处假放行（回收站混入 + 空标书判可直接导出）",
+      "verdict": "pass",
+      "at": "2026-10-28"
     }
   ],
   "notes": [
     "开工前防撞车：git status 有 139 条改动（多为前序人工/他线在途），但最近提交为 3 天前，判定无人在途。",
     "本轮只写 docs/evolution/dsb/ 命名空间，未触碰共享账本 _loop_state.json 与 eslint-budget.json。",
     "历史「颗粒度 0/172」的数据集（安中医 45.8 万字 d3c35o7axkw34wo）已被清空至回收站（正文长度=2），本轮 97.0 条/万字 来自另一份新生正文（lq5ot8hq8sbqg16），两组数据不可直接对比。",
-    "DS-R03 教训：用 grep 匹配源码关键词判「四态覆盖」不可靠，会漏掉条件渲染与换了措辞的文案，也会把业务提示（如「14个源抓取失败」）误判成系统错误。判页面健康必须用浏览器系统级探针（error/unhandledrejection/fetch 非2xx/白屏长度）。"
+    "DS-R03 教训：用 grep 匹配源码关键词判「四态覆盖」不可靠，会漏掉条件渲染与换了措辞的文案，也会把业务提示（如「14个源抓取失败」）误判成系统错误。判页面健康必须用浏览器系统级探针（error/unhandledrejection/fetch 非2xx/白屏长度）。",
+    "DS-R04 实测方法：流程维度必须走真实交接动作（在 /bid-check 下拉里选项目、点开始检查），不能只读代码判断「能不能消费」。空标本盖合格章这类缺陷，读代码只会看到 cov.complete 保护存在，实际被 expected===0 短路穿透。",
+    "DS-R04 风险记录：GET /api/bid_projects 不过滤 deleted_at，回收站过滤全靠客户端各自补，已发现两个消费方口径不一致（标书工作台有、标书检查无）。未在客户端修，记 DSB7 待统一。",
+    "DS-R04 环境噪声记录：/intel-center 首轮探针报 9 条 ERR_NETWORK_CHANGED，重跑 4 轮（整页/SPA/长等待）全为 0，requestfailed 与 HTTP≥400 也都 0 → 判定为 Chromium 网络栈变化的偶发噪声，不是产品缺陷，未据它改代码。"
   ]
 }
