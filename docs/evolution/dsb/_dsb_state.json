@@ -1,33 +1,134 @@
 {
-  "round": 1,
+  "round": 2,
   "lastRound": {
-    "id": "DS-R01",
-    "theme": "质量判据失真修正 + 全库基线重算",
+    "id": "DS-R02",
+    "theme": "对标基线复核 + 案例结构化可行性评估",
     "dimension": "内容",
     "verdict": "pass"
   },
-  "gates": { "tsc": "pass", "build": "pass", "vitest": "pass", "eslint": "pass" },
-  "gatesDetail": { "tsc": "17.8s / 0 error", "vitest": "3975 passed / 2 skipped", "eslint": "116 error / 11 warning（= budget）", "build": "4.70s" },
+  "gates": {
+    "tsc": "pass",
+    "build": "pass",
+    "vitest": "pass",
+    "eslint": "pass"
+  },
+  "gatesDetail": {
+    "tsc": "17.3s / 0 error",
+    "vitest": "3988 passed / 2 skipped",
+    "eslint": "116 error / 11 warning（=budget）",
+    "build": "4.5s"
+  },
   "coverageMatrix": {
-    "/": { "流程": null, "业务": null, "界面": null, "内容": null },
-    "/customer-management": { "流程": null, "业务": null, "界面": null, "内容": null },
-    "/intel-center": { "流程": null, "业务": null, "界面": null, "内容": null },
-    "/solution-studio": { "流程": null, "业务": null, "界面": null, "内容": null },
-    "/product-mapping": { "流程": null, "业务": null, "界面": null, "内容": null },
-    "/ppt-quote": { "流程": null, "业务": null, "界面": null, "内容": null },
-    "/materials": { "流程": null, "业务": null, "界面": null, "内容": null },
-    "/bid-workspace": { "流程": "DS-R01", "业务": null, "界面": null, "内容": "DS-R01" },
-    "/bid-check": { "流程": null, "业务": null, "界面": null, "内容": null },
-    "/format-tool": { "流程": null, "业务": null, "界面": null, "内容": null },
-    "/knowledge": { "流程": null, "业务": null, "界面": null, "内容": null },
-    "/qual-certs": { "流程": null, "业务": null, "界面": null, "内容": null },
-    "/competitors": { "流程": null, "业务": null, "界面": null, "内容": null },
-    "/assistant": { "流程": null, "业务": null, "界面": null, "内容": null },
-    "/model-config": { "流程": null, "业务": null, "界面": null, "内容": null },
-    "/ai-hot": { "流程": null, "业务": null, "界面": null, "内容": null },
-    "/team": { "流程": null, "业务": null, "界面": null, "内容": null }
+    "/": {
+      "流程": null,
+      "业务": null,
+      "界面": null,
+      "内容": null
+    },
+    "/customer-management": {
+      "流程": null,
+      "业务": null,
+      "界面": null,
+      "内容": null
+    },
+    "/intel-center": {
+      "流程": null,
+      "业务": null,
+      "界面": null,
+      "内容": null
+    },
+    "/solution-studio": {
+      "流程": null,
+      "业务": null,
+      "界面": null,
+      "内容": null
+    },
+    "/product-mapping": {
+      "流程": null,
+      "业务": null,
+      "界面": null,
+      "内容": null
+    },
+    "/ppt-quote": {
+      "流程": null,
+      "业务": null,
+      "界面": null,
+      "内容": null
+    },
+    "/materials": {
+      "流程": null,
+      "业务": null,
+      "界面": null,
+      "内容": null
+    },
+    "/bid-workspace": {
+      "流程": "DS-R01",
+      "业务": null,
+      "界面": null,
+      "内容": "DS-R01"
+    },
+    "/bid-check": {
+      "流程": null,
+      "业务": null,
+      "界面": null,
+      "内容": null
+    },
+    "/format-tool": {
+      "流程": null,
+      "业务": null,
+      "界面": null,
+      "内容": null
+    },
+    "/knowledge": {
+      "流程": null,
+      "业务": "DS-R02",
+      "界面": null,
+      "内容": "DS-R02"
+    },
+    "/qual-certs": {
+      "流程": null,
+      "业务": null,
+      "界面": null,
+      "内容": null
+    },
+    "/competitors": {
+      "流程": null,
+      "业务": null,
+      "界面": null,
+      "内容": null
+    },
+    "/assistant": {
+      "流程": null,
+      "业务": null,
+      "界面": null,
+      "内容": null
+    },
+    "/model-config": {
+      "流程": null,
+      "业务": null,
+      "界面": null,
+      "内容": null
+    },
+    "/ai-hot": {
+      "流程": null,
+      "业务": null,
+      "界面": null,
+      "内容": null
+    },
+    "/team": {
+      "流程": null,
+      "业务": null,
+      "界面": null,
+      "内容": null
+    }
   },
   "backlog": [
+    {
+      "id": "DSB6",
+      "title": "案例结构化库数据模型设计：建议 kb_docs 增补 structured JSON 字段（不新建集合），需用户确认后再动结构",
+      "priority": "high",
+      "source": "benchmark"
+    },
     {
       "id": "DSB1",
       "title": "重跑真实解析生成，验证判据修正后在「新生成」内容上的效果（当前库仅剩 1 个有正文项目，样本量不足）",
@@ -51,16 +152,21 @@
       "title": "共享 backlog B37（情报发布日期未来值）与 B36（摘要入库质量闸）：DS Bot 可做，需确认 Qoder 线未在途",
       "priority": "medium",
       "source": "shared-backlog"
-    },
-    {
-      "id": "DSB5",
-      "title": "GitHub 对标：每 3 轮至少一次（本轮未做，最迟 DS-R03 前补）",
-      "priority": "low",
-      "source": "benchmark"
     }
   ],
   "history": [
-    { "id": "DS-R01", "theme": "质量判据失真修正 + 全库基线重算", "verdict": "pass", "at": "2026-10-28" }
+    {
+      "id": "DS-R01",
+      "theme": "质量判据失真修正 + 全库基线重算",
+      "verdict": "pass",
+      "at": "2026-10-28"
+    },
+    {
+      "id": "DS-R02",
+      "theme": "对标基线复核 + 案例结构化可行性评估",
+      "verdict": "pass",
+      "at": "2026-10-28"
+    }
   ],
   "notes": [
     "开工前防撞车：git status 有 139 条改动（多为前序人工/他线在途），但最近提交为 3 天前，判定无人在途。",
