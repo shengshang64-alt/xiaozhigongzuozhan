@@ -125,6 +125,12 @@
   },
   "backlog": [
     {
+      "id": "DSB9",
+      "title": "【P0 待提交】覆盖判定修复（runCheck.ts expected===0 不再算完整）+ 文案去星号，代码已在工作区生效并实测通过，但所在文件混着他人 10-24 未提交的 P0-5 在途改动（HEAD 无 computeCoverage），需先确认 P0-5 归属再单独提交",
+      "priority": "high",
+      "source": "self-found"
+    },
+    {
       "id": "DSB7",
       "title": "GET /api/bid_projects 不过滤 deleted_at（bid_projects.pb.js:239-246），回收站过滤全靠各页面自己补：标书工作台补了、标书检查漏了。应先列全部消费点，再收敛成统一取数或后端加参数",
       "priority": "high",
@@ -200,6 +206,7 @@
     "DS-R03 教训：用 grep 匹配源码关键词判「四态覆盖」不可靠，会漏掉条件渲染与换了措辞的文案，也会把业务提示（如「14个源抓取失败」）误判成系统错误。判页面健康必须用浏览器系统级探针（error/unhandledrejection/fetch 非2xx/白屏长度）。",
     "DS-R04 实测方法：流程维度必须走真实交接动作（在 /bid-check 下拉里选项目、点开始检查），不能只读代码判断「能不能消费」。空标本盖合格章这类缺陷，读代码只会看到 cov.complete 保护存在，实际被 expected===0 短路穿透。",
     "DS-R04 风险记录：GET /api/bid_projects 不过滤 deleted_at，回收站过滤全靠客户端各自补，已发现两个消费方口径不一致（标书工作台有、标书检查无）。未在客户端修，记 DSB7 待统一。",
-    "DS-R04 环境噪声记录：/intel-center 首轮探针报 9 条 ERR_NETWORK_CHANGED，重跑 4 轮（整页/SPA/长等待）全为 0，requestfailed 与 HTTP≥400 也都 0 → 判定为 Chromium 网络栈变化的偶发噪声，不是产品缺陷，未据它改代码。"
+    "DS-R04 环境噪声记录：/intel-center 首轮探针报 9 条 ERR_NETWORK_CHANGED，重跑 4 轮（整页/SPA/长等待）全为 0，requestfailed 与 HTTP≥400 也都 0 → 判定为 Chromium 网络栈变化的偶发噪声，不是产品缺陷，未据它改代码。",
+    "DS-R04 提交纪律：runCheck.ts / runCheck.test.ts / ReadingView.tsx 里混着他人 10-24 未提交的 P0-5 在途改动（HEAD 中无 computeCoverage），按红线不能整份提交。本轮只提交 100% 属于 DS 的 projectOptions.* / BidCheckPage.tsx / 两个文档（commit 587239b）。P0 覆盖判定修复状态 = 工作区已修并实测生效，但未进版本库，记入 backlog 待 P0-5 归属确认后单独提交。"
   ]
 }
