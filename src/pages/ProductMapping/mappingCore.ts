@@ -44,43 +44,207 @@ function norm(s: string): string {
   return (s ?? "").replace(/\s+/g, "").toLowerCase()
 }
 
-/** 编辑距离相似度阈值（与建设清单口径一致） */
+// ---------------------------------------------------------------------------
+// 2026-10-28（产品对照改造，用户要求「不确定的留空」）：
+// 原实现只用编辑距离（SIM_THRESHOLD=0.6）+ 包含即 0.9，对中文**语义无效**。
+// 实测证据（真实 ONE-LINK 公司库 549 行 vs 真实招标措辞）：
+//   「体检信息管理系统」→ 病理管理系统  0.75  ← 共享「信息管理系统」6 字，语义毫无关系
+//   「移动护理信息系统」→ 超声管理系统  0.625 ← 同上
+//   「医保结算清单管理系统」→ 医保对账管理系统 0.60
+// 而正确答案「电子病历系统（EMR）」→ 电子病历系统对接 只有 0.545，反被判未命中。
+// 结论：中文短名之间编辑距离区分不了语义，必须先把「通用后缀」剥掉，比语义核心词。
+// ---------------------------------------------------------------------------
+
+/**
+ * 通用后缀表（长的优先剥），剥离后剩下的就是语义核心词。
+ * 例：「移动护理信息系统」→「移动护理」、「体检信息管理系统」→「体检」。
+ * 这些词在几乎任何医院清单里都出现，不携带区分度，留着只会制造假高分。
+ */
+const GENERIC_SUFFIXES = [
+  "信息管理系统",
+  "信息管理平台",
+  "管理信息系统",
+  "信息服务系统",
+  "信息平台",
+  "管理系统",
+  "信息系统",
+  "管理平台",
+  "服务平台",
+  "支持服务",
+  "管理软件",
+  "子系统",
+  "系统",
+  "平台",
+  "模块",
+  "软件",
+  "应用",
+]
+
+/** 剥离括号注释（如「电子病历系统（EMR）」里的 EMR）与空白，再逐层剥通用后缀 */
+export function semanticCore(raw: string): string {
+  let t = norm(raw)
+  if (!t) return ""
+  // 括号里的英文缩写先摘掉，避免 EMR/CIS 这类干扰中文核心词判断
+  t = t.replace(/[（(][^）)]*[）)]/g, "")
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const suf of GENERIC_SUFFIXES) {
+      if (t.length > suf.length && t.endsWith(suf)) {
+        t = t.slice(0, -suf.length)
+        changed = true
+        break
+      }
+    }
+  }
+  return t
+}
+
+/** 括号内英文缩写（EMR/LIS/PACS/DRG…），用于匹配公司库里带同样缩写的条目 */
+function extractAbbrev(raw: string): string {
+  const m = String(raw ?? "").match(/[（(]\s*([A-Za-z][A-Za-z0-9-]{1,10})\s*[）)]/)
+  if (m) return m[1].toLowerCase()
+  // 尾部裸缩写：「检验信息系统LIS」
+  const t = String(raw ?? "").match(/([A-Za-z]{2,8})\s*$/)
+  return t ? t[1].toLowerCase() : ""
+}
+
+/**
+ * 匹配把握度分档（取代单一 0.6 阈值）：
+ *  - auto：高把握，直接填。只在「全名精确」或「语义核心词完全相等」时给
+ *  - suggest：中把握，作为候选让用户点选，不自动落
+ *  - none：无法判定，留空由用户自己配
+ */
+export type MatchConfidence = "auto" | "suggest" | "none"
+
+export type ScoredMatch = {
+  product: CheckProduct
+  /** 命中的公司字段与原文，便于界面解释「为什么配到这条」 */
+  field: "module_name" | "standard_name" | "product_name"
+  fieldValue: string
+  /** 语义核心词对照（排障与展示用） */
+  customerCore: string
+  companyCore: string
+  score: number
+  confidence: MatchConfidence
+  rule: "exact" | "core-exact" | "abbrev" | "core-contain" | "core-sim"
+}
+
+/** 自动填充门槛：只有 ≥0.95（即 exact / core-exact）才自动落 */
+export const AUTO_FILL_MIN = 0.95
+/** 候选门槛：0.75 起给候选，低于此留空 */
+export const SUGGEST_MIN = 0.75
+
+/**
+ * 旧口径阈值常量。保留导出只为不破坏既有 import；
+ * 新逻辑的分档用 AUTO_FILL_MIN / SUGGEST_MIN，请勿在新代码里用它做判定。
+ */
 export const SIM_THRESHOLD = 0.6
 
-/** 本地模糊匹配：命中客户条目最接近的公司模块行 */
+/**
+ * 给单个客户条目在公司库里打分，返回最高把握的候选（含把握度分档）。
+ * 相比旧的 matchLocalProduct：编辑距离只在核心词层面用，且差异过大直接不算。
+ */
+export function scoreProductMatch(normCustomer: string, products: CheckProduct[]): ScoredMatch | null {
+  if (!normCustomer) return null
+  const custCore = semanticCore(normCustomer)
+  const custAbbrev = extractAbbrev(normCustomer)
+  let best: ScoredMatch | null = null
+
+  for (const p of products) {
+    // 2026-10-28：**不拿 product_name 当匹配字段**。它是产品线聚合名（如「急诊移动护理」），
+    // 一条产品线底下挂着很多模块（病人管理/输液管理/文书管理…）。用产品线名去匹配客户条目，
+    // 一旦命中，展示出来的却是「该产品线的某个模块」，等于张冠李戴——
+    // 实测「移动护理信息系统」就是这样被配成「病人管理」的。
+    // 产品线名只在没有模块名/标准名时才兜底使用。
+    const cands: [ScoredMatch["field"], string][] = [
+      ["module_name", String(p.module_name ?? "")],
+      ["standard_name", String(p.standard_name ?? "")],
+    ]
+    if (!norm(String(p.module_name ?? "")) && !norm(String(p.standard_name ?? ""))) {
+      cands.push(["product_name", String(p.product_name ?? "")])
+    }
+    for (const [field, rawVal] of cands) {
+      const cn = norm(rawVal)
+      if (!cn) continue
+      const candCore = semanticCore(rawVal)
+      const push = (score: number, rule: ScoredMatch["rule"]) => {
+        const confidence: MatchConfidence =
+          score >= AUTO_FILL_MIN ? "auto" : score >= SUGGEST_MIN ? "suggest" : "none"
+        if (confidence === "none") return
+        if (!best || score > best.score) {
+          best = {
+            product: p,
+            field,
+            fieldValue: rawVal,
+            customerCore: custCore,
+            companyCore: candCore,
+            score,
+            confidence,
+            rule,
+          }
+        }
+      }
+      // ① 全名完全一致 → 最高把握
+      if (cn === normCustomer) {
+        push(1, "exact")
+        continue
+      }
+      // ② 英文缩写命中（LIS/PACS/DRG 这类，公司库里也是缩写形态）
+      if (custAbbrev && custAbbrev.length >= 2 && cn.includes(custAbbrev)) {
+        push(0.96, "abbrev")
+        continue
+      }
+      // ③ 语义核心词完全相等 → 高把握（「体检」=「体检」）
+      if (custCore && candCore && custCore === candCore) {
+        push(0.97, "core-exact")
+        continue
+      }
+      // ④ 核心词互相包含 → 按方向定档。
+      //    2026-10-28 实测校准（真实公司库 + 真实招标措辞）：
+      //      · 客户「挂号收费」⊂ 公司「门急诊挂号收费」→ 同一模块在不同清单里的粒度差，属高把握；
+      //      · 客户「移动护理」⊂ 公司「急诊移动护理」→ 同上，高把握；
+      //      · 客户「移动护理」⊃ 公司「病人管理」→ 客户名更泛，公司名更窄，语义不确定，只给候选。
+      //    旧的「包含即 0.9」不分方向，正是把「体检→病理」这类错配放进来的原因之一。
+      if (
+        custCore.length >= 2 &&
+        candCore.length >= 2 &&
+        (custCore.includes(candCore) || candCore.includes(custCore))
+      ) {
+        const ratio = Math.min(custCore.length, candCore.length) / Math.max(custCore.length, candCore.length)
+        if (candCore.includes(custCore)) {
+          // 客户核心词完整落在公司核心词里：公司在同一模块上加了限定词（门急诊/急诊…）
+          // 但比值过低说明只是恰好共享一小段（如「病人管理」⊂「移动护理病人管理」），不能当高把握。
+          const tight = ratio >= 0.5
+          push(tight ? 0.95 + 0.04 * ratio : 0.82, "core-contain")
+        } else {
+          // 反过来：客户名更宽泛，只作候选，不自动落
+          push(0.8 + 0.15 * ratio, "core-contain")
+        }
+        continue
+      }
+      // ⑤ 核心词编辑距离：仅当两者长度接近（差 ≤2）且相似度 ≥0.75 才算低分候选。
+      //    这一层比旧实现严格得多——旧实现直接拿全名算，中文短名靠共享后缀就能过 0.6。
+      if (custCore.length >= 2 && candCore.length >= 2 && Math.abs(custCore.length - candCore.length) <= 2) {
+        const cs = similarity(custCore, candCore)
+        if (cs >= 0.75) push(cs * 0.9, "core-sim")
+      }
+    }
+  }
+  return best
+}
+
+/** 精确/包含命中模块名（保留旧签名供既有调用方与单测使用，内部改走新打分） */
 export function matchLocalProduct(
   normCustomer: string,
   products: CheckProduct[],
   threshold = SIM_THRESHOLD,
 ): CheckProduct | null {
-  if (!normCustomer) return null
-  let best: CheckProduct | null = null
-  let bestScore = 0
-  for (const p of products) {
-    const candidates = [p.module_name, p.standard_name, p.product_name]
-    for (const c of candidates) {
-      const cn = norm(String(c ?? ""))
-      if (!cn) continue
-      if (cn === normCustomer) return p
-      const containment =
-        normCustomer.length >= 3 && (normCustomer.includes(cn) || cn.includes(normCustomer))
-      if (containment) {
-        const score = 0.9
-        if (score > bestScore) {
-          bestScore = score
-          best = p
-        }
-        continue
-      }
-      const score = similarity(normCustomer, cn)
-      if (score > bestScore) {
-        bestScore = score
-        best = p
-      }
-    }
-  }
-  return bestScore >= threshold ? best : null
+  const hit = scoreProductMatch(normCustomer, products)
+  if (!hit) return null
+  return hit.score >= threshold ? hit.product : null
 }
+
 
 /** 编辑距离相似度（0-1），本地实现避免依赖工程外函数行为差异 */
 export function similarity(a: string, b: string): number {
@@ -143,18 +307,21 @@ export function buildInitialRows(opts: {
         resolution: "company" as const,
       }
     }
-    const local = matchLocalProduct(normCustomer, products)
-    if (local) {
+    const local = scoreProductMatch(normCustomer, products)
+    if (local && local.confidence === "auto") {
       return {
         row_id: makeRowId(),
         raw: normCustomer,
         norm: normCustomer,
-        product_name: local.product_name,
-        product_id: local.id,
+        product_name: local.product.product_name,
+        product_id: local.product.id,
         kind: "local" as const,
         resolution: "company" as const,
       }
     }
+    // 2026-10-28：中把握（suggest）**不再自动落**，但也不丢——带着候选进 AI 阶段，
+    // 由界面作为「建议」给用户点选。这样既不会把「体检」硬配成「病理」，
+    // 也不至于让用户从 549 行里手翻。真·无法判定的仍然留空。
     return {
       row_id: makeRowId(),
       raw: normCustomer,
