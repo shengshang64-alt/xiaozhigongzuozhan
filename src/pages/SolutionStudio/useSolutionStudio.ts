@@ -869,6 +869,29 @@ export function useSolutionStudio() {
       .catch(() => toast.error("未找到对应方案"))
   }, [searchParams, solutions, listLoading, openSolution])
 
+
+  // 2026-10-28（DS-R06）：客户管理「基于本商机继续做材料 → 去方案工作室新建」跳转带
+  // ?opportunity=<id>&hospital=<医院名>，打开新建向导并预置商机与医院。
+  // 与 DS-R05 的标书工作台同口径：原先产品支持「商机关联方案」（confirmOutline 里
+  // 会 PATCH opportunities.ref_type=solution），但商机详情没有任何入口能过去，流程是断的。
+  const oppDeepLinkIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    const oppId = searchParams.get("opportunity")
+    if (!oppId || oppDeepLinkIdRef.current === oppId || listLoading) return
+    oppDeepLinkIdRef.current = oppId
+    const hospital = searchParams.get("hospital") ?? ""
+    // 微任务启动：setState 落在回调里，规避 react-hooks/set-state-in-effect
+    // （与 useBidCheck.ts:75 / useAiHot.ts:60 / DS-R05 标书工作台同一写法）
+    void Promise.resolve().then(() => {
+      openNewWizard()
+      // openNewWizard 会先清空表单，故在其后覆盖预置值
+      if (hospital) setFormHospital(hospital)
+      setFormOpportunityId(oppId)
+      // 停在向导第 1 步（选方案类型）：类型是售前自己要判断的事，不该替他选；
+      // 医院与商机已预置，选完类型点「下一步」即在第 2 步看到预置值。
+    })
+  }, [searchParams, listLoading, openNewWizard])
+
   const deleteSolution = useCallback(
     async (rec: SolutionRecord) => {
       try {

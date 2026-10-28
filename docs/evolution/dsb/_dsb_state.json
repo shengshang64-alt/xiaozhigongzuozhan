@@ -1,8 +1,8 @@
 {
-  "round": 5,
+  "round": 6,
   "lastRound": {
-    "id": "DS-R05",
-    "theme": "商机详情「关联投标」空态无入口（流程断点）+ 补 ?opportunity= 深链预置",
+    "id": "DS-R06",
+    "theme": "商机 → 方案工作室 断链修复 + 标书/方案两条入口归一",
     "dimension": "流程",
     "verdict": "pass"
   },
@@ -13,11 +13,11 @@
     "eslint": "pass"
   },
   "gatesDetail": {
-    "note": "DS-R05 四门全跑（有代码改动）",
-    "tsc": "16.2s / 0 error",
-    "build": "5.0s / exit 0 / built in 3.88s",
-    "vitest": "26.0s / 349 files / 3998 passed / 2 skipped（+4 例）",
-    "eslint": "45.4s / 127 problems (116 errors, 11 warnings) = eslint-budget.json 基线"
+    "note": "DS-R06 四门全跑（有代码改动）",
+    "tsc": "15.8s / 0 error",
+    "build": "5.2s / exit 0 / built in 4.08s",
+    "vitest": "21.9s / 350 files / 4001 passed / 2 skipped（+3 例）",
+    "eslint": "37.9s / 127 problems (116 errors, 11 warnings) = eslint-budget.json 基线"
   },
   "coverageMatrix": {
     "/": {
@@ -39,7 +39,7 @@
       "内容": null
     },
     "/solution-studio": {
-      "流程": null,
+      "流程": "DS-R06",
       "业务": null,
       "界面": "DS-R03",
       "内容": null
@@ -124,6 +124,18 @@
     }
   },
   "backlog": [
+    {
+      "id": "DSB12",
+      "title": "?hospital= 兜底口径重复实现（DS-R05、DS-R06 两处都写 customer?.hospital_name ?? opportunity.customer_name ?? ''），若第三处要用应抽成 opportunityHospitalName(customer, opportunity) 单点",
+      "priority": "medium",
+      "source": "round-report"
+    },
+    {
+      "id": "DSB13",
+      "title": "PPT 与报价 是否也是同构断点：商机详情现有方案/标书两条线，ppt-quote 也能从商机出发（usePptQuote.ts:1394 附近有 ref_type/opportunity_id），需核实是否缺 ?opportunity= 入口",
+      "priority": "high",
+      "source": "self-found"
+    },
     {
       "id": "DSB10",
       "title": "商机 → 方案工作室 同样断点：OpportunityDetailPanel.tsx:79 有 refRoute = ref_type==='solution' ? '/solution-studio' : '/bid-workspace'，但详情面板没有「去方案工作室新建」入口，应按 DS-R05 同口径补 ?opportunity= 深链",
@@ -215,6 +227,12 @@
       "theme": "商机详情「关联投标」空态无入口 + 补 ?opportunity= 深链预置",
       "verdict": "pass",
       "at": "2026-10-28"
+    },
+    {
+      "id": "DS-R06",
+      "theme": "商机 → 方案工作室 断链修复 + 标书/方案两条入口归一",
+      "verdict": "pass",
+      "at": "2026-10-28"
     }
   ],
   "notes": [
@@ -228,6 +246,8 @@
     "DS-R04 提交纪律：runCheck.ts / runCheck.test.ts / ReadingView.tsx 里混着他人 10-24 未提交的 P0-5 在途改动（HEAD 中无 computeCoverage），按红线不能整份提交。本轮只提交 100% 属于 DS 的 projectOptions.* / BidCheckPage.tsx / 两个文档（commit 587239b）。P0 覆盖判定修复状态 = 工作区已修并实测生效，但未进版本库，记入 backlog 待 P0-5 归属确认后单独提交。",
     "DS-R05 判断 UI 状态必须用稳定 DOM 锚点（如 [aria-label=\"收起商机详情\"]），不能用文案子串 includes('商机详情')——后者会命中别处的「跟进记录」等文案，我据此误判「点看板卡片打不开详情」并差点报成 bug。这是 DS-R03「grep 判页面状态」错误的同类复发。",
     "DS-R05 端到端验证写操作（新建项目）会往用户真实库插记录：本轮建了 bka8wkay83v3eep，已用产品自己的「移入回收站→彻底删除」流程清除，复核总数回 33/有效 18，删除前备份到 ds_r04/deleted_record_backup.json。以后验创建类动作要带明显的验证前缀名并当场删。",
-    "DS-R05 仓库存量 eslint 合规写法：effect 里要 setState 时用 void Promise.resolve().then(() => {...}) 包一层，可规避 react-hooks/set-state-in-effect。同款已有 4 处：useBidCheck.ts:75、useAiHot.ts:60、UploadDialog.tsx:62、DocListPanel.tsx:123。"
+    "DS-R05 仓库存量 eslint 合规写法：effect 里要 setState 时用 void Promise.resolve().then(() => {...}) 包一层，可规避 react-hooks/set-state-in-effect。同款已有 4 处：useBidCheck.ts:75、useAiHot.ts:60、UploadDialog.tsx:62、DocListPanel.tsx:123。",
+    "DS-R06 第三次踩同一个坑（DS-R03 grep 判页面状态、DS-R05 includes 判面板存在、DS-R06 includes 取错输入框）：用子串匹配定位 UI 元素一定命中不该命中的那个。本轮我报「医院没预置」三次，实际是 placeholder.includes('XX 市人民医院') 取到了「方案名称」框（它的 placeholder 也含这串），医院框排第二且 placeholder 是「如：XX 市人民医院」。必须用精确等值 === 或稳定 DOM 锚点。",
+    "DS-R06 结论：商机 → 方案 的数据链本来就完整（向导第2步有关联商机下拉、confirmOutline 回写 ref_type=solution、商机详情显示关联方案并可跳转），只缺商机侧入口和 ?opportunity= 深链。已补，且与标书线并列成「基于本商机继续做材料」区，同时撤掉 DS-R05 留在关联投标空态的重复按钮（否则两个同名按钮）。"
   ]
 }

@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import { ArrowRight, CheckCircle2, ExternalLink, FileCheck2, Loader2, Pencil, Sparkles, Trash2, XCircle } from "lucide-react"
+import { ArrowRight, CheckCircle2, ExternalLink, FileCheck2, FileText, Loader2, Pencil, Sparkles, Trash2, XCircle } from "lucide-react"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { localDateStamp } from "@/lib/dateStamp"
 import {
@@ -244,6 +244,38 @@ export function OpportunityDetailPanel({
           </p>
         )}
 
+        {/* 2026-10-28（DS-R06）：补「商机 → 下一步材料」的流程断点。
+            DS-R05 只在「关联投标」空态里补了去标书工作台的链接，但方案这条线仍是死的：
+            产品支持「商机关联方案」（建方案时选商机 → 回写 opportunities.ref_type=solution），
+            可商机详情里没有任何入口能走过去。这里独立成一个「下一步」区，两条线并列。
+            要去的两个入口都带 opportunity=<id>&hospital=<医院名> 深链，目标页据此预置。 */}
+        <div className="mt-4 border-t border-border pt-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-primary" />
+            <p className="text-xs font-semibold text-muted-foreground">基于本商机继续做材料</p>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <Link
+              to={`/solution-studio?opportunity=${encodeURIComponent(opportunity.id)}&hospital=${encodeURIComponent(
+                customer?.hospital_name ?? opportunity.customer_name ?? "",
+              )}`}
+              className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-card px-2.5 py-1 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <FileText className="h-3.5 w-3.5" /> 去方案工作室新建
+              <ExternalLink className="h-3 w-3" />
+            </Link>
+            <Link
+              to={`/bid-workspace?opportunity=${encodeURIComponent(opportunity.id)}&hospital=${encodeURIComponent(
+                customer?.hospital_name ?? opportunity.customer_name ?? "",
+              )}`}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <FileCheck2 className="h-3.5 w-3.5" /> 去标书工作台新建
+              <ExternalLink className="h-3 w-3" />
+            </Link>
+          </div>
+        </div>
+
         {/* 第二轮改造：关联投标（按 bid_projects.opportunity_id 匹配，点击跳标书工作台） */}
         <div className="mt-4 border-t border-border pt-3">
           <div className="flex items-center gap-2">
@@ -254,23 +286,9 @@ export function OpportunityDetailPanel({
             )}
           </div>
           {linkedBids.length === 0 ? (
-            <div className="mt-2 rounded-md border border-dashed border-border py-3 text-center">
-              <p className="text-xs text-muted-foreground">
-                在标书工作中关联本商机后，投标结果会自动同步到这里
-              </p>
-              {/* 2026-10-28（DS-R05）：补流程断点。原先此处只有一句静态说明、无任何可点入口——
-                  用户被提示「去标书工作台关联」，在商机里却找不到路，只能自己切页面重新选项目。
-                  带上 opportunity=<id> 与 hospital=<客户名>，标书工作台打开新建对话框并预置商机。 */}
-              <Link
-                to={`/bid-workspace?opportunity=${encodeURIComponent(opportunity.id)}&hospital=${encodeURIComponent(
-                  customer?.hospital_name ?? opportunity.customer_name ?? "",
-                )}`}
-                className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-card px-2.5 py-1 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                <FileCheck2 className="h-3.5 w-3.5" /> 去标书工作台新建
-                <ExternalLink className="h-3 w-3" />
-              </Link>
-            </div>
+            <p className="mt-2 rounded-md border border-dashed border-border py-3 text-center text-xs text-muted-foreground">
+              在标书工作中关联本商机后，投标结果会自动同步到这里（入口见上方「基于本商机继续做材料」）
+            </p>
           ) : (
             <ul className="mt-2 flex flex-col gap-1.5">
               {linkedBids.map((bid) => {
