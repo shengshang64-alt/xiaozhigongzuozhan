@@ -3475,6 +3475,27 @@ export function useBidWorkspace() {
       .catch(() => toast.error("项目不存在或无权访问"))
   }, [searchParams, projects, openProject])
 
+  // 2026-10-28（DS-R05）：客户管理「关联投标」空态跳转带 ?opportunity=<id>&hospital=<客户名>，
+  // 打开新建对话框并预置商机与医院。原先商机详情只写了「去标书工作台关联」这句说明，
+  // 没有任何可点入口，用户得自己切页面再从 160 个客户里重找——流程断在这里。
+  // 与 ?project= 同口径：ref 存「已消费值」，URL 变化才重新消费，避免每次渲染重复弹窗。
+  const deepLinkOppIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    const oppId = searchParams.get("opportunity")
+    if (!oppId || deepLinkOppIdRef.current === oppId) return
+    deepLinkOppIdRef.current = oppId
+    const hospital = searchParams.get("hospital") ?? ""
+    // 微任务启动：所有 setState 落在回调里，规避 react-hooks/set-state-in-effect 保守告警
+    // （与 useBidCheck.ts:75 / useAiHot.ts:60 / DocListPanel.tsx:123 同一写法）
+    void Promise.resolve().then(() => {
+      setMainView("projects")
+      openNewDialog()
+      // openNewDialog 会先清空表单，故在其后覆盖预置值（同一批次内 React 合并，后写生效）
+      if (hospital) setFormHospital(hospital)
+      setFormOpportunityId(oppId)
+    })
+  }, [searchParams, openNewDialog])
+
   // ------------------------------ ① 招标文件导入 ------------------------------
   const [tenderDraft, setTenderDraftState] = useState("")
   const tenderDraftRef = useRef("")

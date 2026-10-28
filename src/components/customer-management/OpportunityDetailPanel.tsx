@@ -254,9 +254,23 @@ export function OpportunityDetailPanel({
             )}
           </div>
           {linkedBids.length === 0 ? (
-            <p className="mt-2 rounded-md border border-dashed border-border py-3 text-center text-xs text-muted-foreground">
-              在标书工作中关联本商机后，投标结果会自动同步到这里
-            </p>
+            <div className="mt-2 rounded-md border border-dashed border-border py-3 text-center">
+              <p className="text-xs text-muted-foreground">
+                在标书工作中关联本商机后，投标结果会自动同步到这里
+              </p>
+              {/* 2026-10-28（DS-R05）：补流程断点。原先此处只有一句静态说明、无任何可点入口——
+                  用户被提示「去标书工作台关联」，在商机里却找不到路，只能自己切页面重新选项目。
+                  带上 opportunity=<id> 与 hospital=<客户名>，标书工作台打开新建对话框并预置商机。 */}
+              <Link
+                to={`/bid-workspace?opportunity=${encodeURIComponent(opportunity.id)}&hospital=${encodeURIComponent(
+                  customer?.hospital_name ?? opportunity.customer_name ?? "",
+                )}`}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-card px-2.5 py-1 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <FileCheck2 className="h-3.5 w-3.5" /> 去标书工作台新建
+                <ExternalLink className="h-3 w-3" />
+              </Link>
+            </div>
           ) : (
             <ul className="mt-2 flex flex-col gap-1.5">
               {linkedBids.map((bid) => {
