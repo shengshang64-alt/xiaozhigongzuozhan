@@ -129,3 +129,67 @@ describe("buildDocContextFromProject 正文清洗（R284 检查=预览=导出）
     expect(j).toContain("（含 websocket）")
   })
 })
+
+// ---------------------------------------------------------------------------
+// 2026-10-24（P0-5）：检查覆盖范围分母
+//   走查实测：13 个技术章只有 1 章有正文，检查器只看到 1 章却报「必须整改 0」。
+// ---------------------------------------------------------------------------
+import { computeCoverage } from "./runCheck"
+
+describe("computeCoverage：检查覆盖范围", () => {
+  const ctx = ctxWith([{ title: "第一章", paras: ["正文内容"] }])
+  const proj = (chapters: { title: string; content: string; part?: "tech" | "biz" }[]) =>
+    ({ bid_chapters: chapters }) as unknown as BidProjectRecord
+
+  it("① 部分章无正文 → 不完整，并在结论里给出 N/M", () => {
+    const c = computeCoverage(
+      proj([
+        { title: "章1", content: "正文".repeat(40) },
+        { title: "章2", content: "" },
+        { title: "章3", content: "短" },
+      ]),
+      ctx,
+    )
+    expect(c.expectedChapters).toBe(3)
+    expect(c.checkedChapters).toBe(1)
+    expect(c.complete).toBe(false)
+    expect(c.note).toContain("1/3")
+    expect(c.note).toContain("不能作为交卷依据")
+  })
+
+  it("② 技术章都有正文 → 完整；商务骨架章无正文不算缺", () => {
+    const c = computeCoverage(
+      proj([
+        { title: "章1", content: "正文".repeat(40) },
+        { title: "投标函", content: "", part: "biz" },
+      ]),
+      ctx,
+    )
+    expect(c.expectedChapters).toBe(1)
+    expect(c.complete).toBe(true)
+  })
+
+  it("③ 上传文件形态（无项目）→ 视为完整", () => {
+    const c = computeCoverage(null, ctx)
+    expect(c.complete).toBe(true)
+    expect(c.note).toContain("上传文件")
+  })
+
+  // 2026-10-28（DS-R04）实测缺陷：库里 17 个归档项目的 bid_chapters 是空数组，
+  // 旧口径 expected===0 直接判 complete=true，界面显示「可直接导出」「未发现问题」，
+  // 等于给空标书盖章。0 个技术章只能判「没内容可检」，不能判通过。
+  it("④ 项目形态 0 个技术章 → 不完整，且明说没有可检查内容", () => {
+    const c = computeCoverage(proj([]), ctx)
+    expect(c.expectedChapters).toBe(0)
+    expect(c.checkedChapters).toBe(0)
+    expect(c.complete).toBe(false)
+    expect(c.note).toContain("没有可检查的内容")
+    expect(c.note).toContain("不能作为交卷依据")
+  })
+
+  it("⑤ 项目形态全部是商务骨架章（无可检技术章）→ 仍判不完整", () => {
+    const c = computeCoverage(proj([{ title: "投标函", content: "", part: "biz" }]), ctx)
+    expect(c.expectedChapters).toBe(0)
+    expect(c.complete).toBe(false)
+  })
+})

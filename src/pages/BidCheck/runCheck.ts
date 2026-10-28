@@ -10,6 +10,7 @@ import {
   summarize,
   type BidCheckMode,
   type BidCheckResult,
+  type CheckCoverage,
   type CheckItem,
   type CheckLevel,
   type DocContext,
@@ -115,10 +116,48 @@ export function runCheck(
     hasPackage: ctx.hasPackage,
     items,
     summary: summarize(items),
+    coverage: computeCoverage(project, ctx),
     generatedAt: formatNow(),
     chapters: ctx.chapters,
     paragraphs: ctx.paragraphs,
     chapterOf: ctx.chapterOf,
+  }
+}
+
+/**
+ * 2026-10-24（P0-5）：计算本次检查的覆盖范围。
+ * 口径：只看**技术章**（商务骨架章本来就不生成正文，不算未覆盖）；
+ * 正文字数 <50 视为"没有实质正文"（与 L3 单薄章判定同量级），不计入已检查。
+ */
+export function computeCoverage(project: BidProjectRecord | null, ctx: DocContext): CheckCoverage {
+  if (!project) {
+    return {
+      expectedChapters: 0,
+      checkedChapters: ctx.chapters.length,
+      complete: true,
+      note: `按上传文件全文检查（${ctx.chapters.length} 章）`,
+    }
+  }
+  const tech = (project.bid_chapters ?? []).filter((c) => c.part !== "biz")
+  const withText = tech.filter((c) => (c.content ?? "").trim().length >= 50)
+  const expected = tech.length
+  // 2026-10-28（DS-R04）：项目形态下 expected===0 **不等于**「覆盖完整」。
+  // 实测缺陷：库里 17 个项目的 bid_chapters 是空数组（未上传/未生成的归档件），
+  // 旧口径把它们判成 complete=true，界面顶栏显示「可直接导出」、问题清单「未发现问题（或均已通过）」，
+  // 而正文实际为空——等于对一份空标书盖了合格章。任何有内容的技术标必然有技术章，
+  // 0 个技术章意味着「没有可检查的内容」，只能判不可用，不能判通过。
+  // 上传文件形态（project===null）在上方已单独返回，不受此处影响。
+  const complete = expected > 0 && withText.length >= expected
+  return {
+    expectedChapters: expected,
+    checkedChapters: withText.length,
+    complete,
+    note:
+      expected === 0
+        ? "该项目还没有任何技术章正文（0 个技术章），本次检查没有可检查的内容——本结论不能作为交卷依据"
+        : complete
+          ? `已覆盖全部 ${expected} 个技术章`
+          : `已检查 ${withText.length}/${expected} 章（${expected - withText.length} 章无正文或正文过短，不在检查范围内）——本结论不能作为交卷依据`,
   }
 }
 

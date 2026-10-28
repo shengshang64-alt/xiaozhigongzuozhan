@@ -325,8 +325,18 @@ export function ReadingView({ result, blocked, hardFatal, onExportExcel, onExpor
   const pageCount = estimatePages(paras.map((p) => p.text).join(""))
   const shownChapters = sevFilter === "critical" ? chapters.map((c, ci) => ({ c, ci })).filter(({ ci }) => chapterIssues[ci].critical > 0) : chapters.map((c, ci) => ({ c, ci }))
 
+  const cov = result.coverage
   return (
     <div className="flex flex-col gap-3">
+      {/* 2026-10-24（P0-5）：覆盖范围先行——检查结论的可信度 = 覆盖完整度 × 定级准确性。
+          走查实测某项目 13 个技术章只有 1 章有正文，检查器只看到 1 章却给「必须整改 0」，用户会读成「标书已安全」。 */}
+      {!cov.complete && (
+        <div className="rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+          <span className="font-semibold">检查范围不完整</span>：{cov.note}。缺失章节里的格式、暗标、
+          响应问题<strong className="font-semibold">不会被发现</strong>，
+          因此下方「必须整改 0」不代表可以交卷——请先把技术章正文补齐再跑一次检查。
+        </div>
+      )}
       {/* ---------- 顶部汇总条（点击筛选右栏 + 联动左栏 #6）---------- */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -354,6 +364,8 @@ export function ReadingView({ result, blocked, hardFatal, onExportExcel, onExpor
             <span className={cn("text-xs", hardFatal ? "text-destructive" : "text-amber-600")}>
               {hardFatal ? "存在必改项，导出已禁用" : "存在必改项，导出将需二次确认"}
             </span>
+          ) : !cov.complete ? (
+            <span className="text-xs text-amber-600">覆盖不完整，本结论仅供参考</span>
           ) : (
             <span className="flex items-center gap-1 text-xs text-primary">
               <CheckCircle2 className="h-3.5 w-3.5" /> 可直接导出

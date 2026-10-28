@@ -83,6 +83,24 @@ export type CheckSummary = {
   bySeverity: Record<Severity, number>
 }
 
+/**
+ * 2026-10-24（P0-5 整改）：检查覆盖范围。
+ *
+ * 走查实测：某项目 13 个技术章只有 1 章有正文，检查器只看到这 1 章，
+ * 却给出「必须整改 0」的结论——用户会读成「标书已安全」。
+ * 检查结论的可信度 = 覆盖完整度 × 定级准确性，覆盖不完整时必须**明说**。
+ */
+export type CheckCoverage = {
+  /** 应检查的技术章数（来自项目大纲章节；上传文件形态为 0＝不适用） */
+  expectedChapters: number
+  /** 实际有正文、进入检查范围的章数 */
+  checkedChapters: number
+  /** 覆盖是否完整（没有应检查而未检查的章） */
+  complete: boolean
+  /** 一句话结论（面板/导出直接展示） */
+  note: string
+}
+
 /** 一次检查的完整结果（可整体导出 Excel / HTML，可回显清单） */
 export type BidCheckResult = {
   mode: BidCheckMode
@@ -94,6 +112,8 @@ export type BidCheckResult = {
   hasPackage: boolean
   items: CheckItem[]
   summary: CheckSummary
+  /** 检查覆盖范围（2026-10-24） */
+  coverage: CheckCoverage
   generatedAt: string
   /** 章节数组（三栏界面左栏 + 中栏分组用；与 ctx.chapters 同源） */
   chapters: CheckChapter[]

@@ -84,7 +84,10 @@ export const DEFAULT_ANBID_CONFIG: AnbidCheckConfig = {
     maxPages: null,
     allowBulletNumbering: null,
   },
-  sealedViolationIsFatal: false,
+  // 2026-10-24（P0-9 整改）：面向「投标交卷」场景默认硬阻断。
+  // 走查实测：暗标违规默认只警告、不拦导出，而暗标违规在评标里就是 0 分/废标。
+  // 需要宽松环境时可在暗标配置里取消勾选。
+  sealedViolationIsFatal: true,
 }
 
 /** 解析多行/逗号分隔文本 → 去空白去重保序数组 */
@@ -159,7 +162,7 @@ export function normalizeAnbidConfig(raw: unknown): AnbidCheckConfig {
     honorPhrases: normList(r.honorPhrases, DEFAULT_HONOR),
     excludeTerms: normList(r.excludeTerms, []),
     formatStandard: normStandard(r.formatStandard),
-    sealedViolationIsFatal: r.sealedViolationIsFatal === true,
+    sealedViolationIsFatal: r.sealedViolationIsFatal !== false,
   }
 }
 
@@ -173,7 +176,7 @@ function structuredCloneDefault(): AnbidCheckConfig {
     honorPhrases: [...DEFAULT_HONOR],
     excludeTerms: [],
     formatStandard: { ...DEFAULT_ANBID_CONFIG.formatStandard },
-    sealedViolationIsFatal: false,
+    sealedViolationIsFatal: true,
   }
 }
 

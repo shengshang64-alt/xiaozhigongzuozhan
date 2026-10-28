@@ -32,6 +32,7 @@ function result(over: Partial<BidCheckResult> = {}): BidCheckResult {
     inputKind: "file",
     hasPackage: true,
     items,
+    coverage: { expectedChapters: 0, checkedChapters: 1, complete: true, note: "按上传文件全文检查（1 章）" },
     summary: summarize(items),
     generatedAt: "2026-10-12 10:00",
     chapters: [],
