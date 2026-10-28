@@ -1,9 +1,9 @@
 {
-  "round": 7,
+  "round": 8,
   "lastRound": {
-    "id": "DS-R07",
-    "theme": "产品映射匹配算法重写：语义核心词比对取代编辑距离，不确定留空",
-    "dimension": "业务",
+    "id": "DS-R08",
+    "theme": "产品对照闭环：候选可见+一键采纳+自动沉淀映射库+取消付费不丢结果",
+    "dimension": "流程",
     "verdict": "pass"
   },
   "gates": {
@@ -13,11 +13,11 @@
     "eslint": "pass"
   },
   "gatesDetail": {
-    "note": "DS-R07 四门全跑",
-    "tsc": "16.5s / 0 error",
-    "build": "5.2s / exit 0 / built in 4.07s",
-    "vitest": "23.2s / 351 files / 4015 passed / 2 skipped（+14 例）",
-    "eslint": "40.7s / 127 problems (116 errors, 11 warnings) = 基线"
+    "note": "DS-R08 四门全跑",
+    "tsc": "19.4s / 0 error",
+    "build": "6.0s / exit 0 / built in 4.74s",
+    "vitest": "31.2s / 352 files / 4022 passed / 2 skipped（+7 例）",
+    "eslint": "48.8s / 127 problems (116 errors, 11 warnings) = 基线"
   },
   "coverageMatrix": {
     "/": {
@@ -45,7 +45,7 @@
       "内容": null
     },
     "/product-mapping": {
-      "流程": null,
+      "流程": "DS-R08",
       "业务": "DS-R07",
       "界面": "DS-R03",
       "内容": null
@@ -125,27 +125,21 @@
   },
   "backlog": [
     {
-      "id": "DSB14",
-      "title": "产品对照：中把握候选（suggest）要在界面显示成「建议：xxx（87%）」一键采纳，现在算出来却没用上",
+      "id": "DSB18",
+      "title": "映射库要能看见和清理：现在只写不读，用户看不到系统记住了什么、也没法删错的（记错的会永久污染后续对照）",
       "priority": "high",
       "source": "round-report"
     },
     {
-      "id": "DSB15",
-      "title": "产品对照：人工确认后自动沉淀到 check_mappings（表已建好但库中 0 条），实现用户要的「后面再有类似的自动匹配」",
-      "priority": "high",
+      "id": "DSB19",
+      "title": "AI 语义匹配路径未实跑验证（applyAiPairs 只在候选标签精确命中时才落），需单独实测准确率",
+      "priority": "medium",
       "source": "round-report"
     },
     {
       "id": "DSB16",
       "title": "用用户提供的 549 行标准文件重建公司标准库：现库 579 条来源杂，与文件不一致",
       "priority": "high",
-      "source": "round-report"
-    },
-    {
-      "id": "DSB17",
-      "title": "取消 AI 付费后界面回到初始态，本地匹配结果丢失（用户白输一遍清单）",
-      "priority": "medium",
       "source": "round-report"
     },
     {
@@ -245,6 +239,12 @@
       "theme": "产品映射匹配算法重写（语义核心词）",
       "verdict": "pass",
       "at": "2026-10-28"
+    },
+    {
+      "id": "DS-R08",
+      "theme": "产品对照闭环（候选/采纳/沉淀/不丢结果）",
+      "verdict": "pass",
+      "at": "2026-10-28"
     }
   ],
   "notes": [
@@ -262,6 +262,7 @@
     "DS-R06 第三次踩同一个坑（DS-R03 grep 判页面状态、DS-R05 includes 判面板存在、DS-R06 includes 取错输入框）：用子串匹配定位 UI 元素一定命中不该命中的那个。本轮我报「医院没预置」三次，实际是 placeholder.includes('XX 市人民医院') 取到了「方案名称」框（它的 placeholder 也含这串），医院框排第二且 placeholder 是「如：XX 市人民医院」。必须用精确等值 === 或稳定 DOM 锚点。",
     "DS-R06 结论：商机 → 方案 的数据链本来就完整（向导第2步有关联商机下拉、confirmOutline 回写 ref_type=solution、商机详情显示关联方案并可跳转），只缺商机侧入口和 ?opportunity= 深链。已补，且与标书线并列成「基于本商机继续做材料」区，同时撤掉 DS-R05 留在关联投标空态的重复按钮（否则两个同名按钮）。",
     "2026-10-28 账本清理：DSB10（商机→方案工作室断点）已由 DS-R06 交付；DSB3（17页四态普查）已由 DS-R03 系统级探针覆盖（17页 0 错误 0 网络失败），均移出 backlog。",
-    "DS-R07 真实验证：用户提供的 ONE-LINK 标准文件（549行）解析 100% 成功、6层结构零空值。旧匹配算法对中文语义无效（体检→病理 0.75、移动护理→超声 0.625、正确答案电子病历→电子病历对接反而 0.545 被拒）。新算法语义核心词比对后：12条真实措辞 10正确/0错配/2留空，公司库自回测 549/549。"
+    "DS-R07 真实验证：用户提供的 ONE-LINK 标准文件（549行）解析 100% 成功、6层结构零空值。旧匹配算法对中文语义无效（体检→病理 0.75、移动护理→超声 0.625、正确答案电子病历→电子病历对接反而 0.545 被拒）。新算法语义核心词比对后：12条真实措辞 10正确/0错配/2留空，公司库自回测 549/549。",
+    "DS-R08 闭环实测通过：首次人工采纳 → POST /api/check_mappings 200 → 库 0→1 条 → 第二次同样措辞显示「历史映射」直接命中且不再请求 AI。用户要的「后面再有类似的自动去匹配」已成立。副作用：库里留下 1 条真实正确映射（医院感染管理系统→院感管理系统），有意保留。"
   ]
 }

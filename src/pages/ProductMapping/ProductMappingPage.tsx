@@ -269,6 +269,24 @@ function CompareTable({ p }: { p: UseProductMapping }) {
                       <span className="text-xs text-destructive">标为外购系统</span>
                     ) : r.resolution === "ignore" ? (
                       <span className="text-xs text-muted-foreground">已忽略</span>
+                    ) : r.suggestion ? (
+                      /* 2026-10-28（DS-R08）：中把握候选不自动落，但必须让用户看见——
+                         否则他只能从几百条公司条目里手翻。点一下即采纳。 */
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="rounded-full border border-amber-400/50 bg-amber-100 px-2 py-0.5 text-xs text-amber-700">
+                          留空待人工
+                        </span>
+                        <button
+                          type="button"
+                          title={r.suggestion.reason}
+                          onClick={() => p.setMatchProduct(r.row_id, r.suggestion!.product_id)}
+                          className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/5 px-2 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        >
+                          <Sparkles className="h-3 w-3" />
+                          建议：{r.suggestion.label}
+                          <span className="text-[10px] opacity-70">{Math.round(r.suggestion.score * 100)}%</span>
+                        </button>
+                      </div>
                     ) : (
                       <span className="rounded-full border border-amber-400/50 bg-amber-100 px-2 py-0.5 text-xs text-amber-700">留空待人工</span>
                     )}

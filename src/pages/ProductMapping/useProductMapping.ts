@@ -299,17 +299,28 @@ export function useProductMapping() {
         makeRowId: makeLineId,
         labelOf: candidateLabel,
       })
+      // 2026-10-28（DS-R08）：**先落本地匹配结果**，再去问 AI。
+      // 旧实现只在「全部命中」时才 setRows，有未命中时把 initial 挂在 AI 回调里——
+      // 用户一旦在费用确认里点取消，界面就回到初始态，本地已算好的 10 条命中全部白丢，
+      // 等于请他重输一遍清单。现在无论是否付费，本地结果都立刻可用。
+      setRows(initial)
       const unmatched = initial.filter((r) => r.kind === "none").length
       if (!unmatched) {
-        setRows(initial)
         toast.success(`已一一对照 ${initial.length} 条客户条目`)
         return
+      }
+      const suggested = initial.filter((r) => r.suggestion).length
+      if (suggested) {
+        toast.success(
+          `已对照 ${initial.length} 条：本地命中 ${initial.length - unmatched} 条，另有 ${suggested} 条给出候选建议（可一键采纳）`,
+        )
       }
       costConfirm.runWithCostConfirm(
         () => {
           void runAiAndBackfill(initial, context)
         },
-        `将对 ${unmatched} 条未命中条目做 AI 语义匹配，${currentStudioCostText()}${skillCostSuffix("product-map")}`,
+        `本地已对照 ${initial.length} 条（命中 ${initial.length - unmatched} 条，可先直接使用）。` +
+          `是否再对剩余 ${unmatched} 条未命中条目做 AI 语义匹配？${currentStudioCostText()}${skillCostSuffix("product-map")}`,
       )
     },
     [companyProducts, mappings, runAiAndBackfill, costConfirm],
@@ -346,16 +357,55 @@ export function useProductMapping() {
   )
 
   // ------------------------------ 人工调整 ------------------------------
+  /**
+   * 2026-10-28（DS-R08）：upsertMapping / loadMappings 定义在本文件下方，
+   * setMatchProduct 在其上方调用，直接引用会踩 TDZ 且让 setter 身份不稳定。
+   * 用 ref 承接最新实现，setter 依赖数组保持最小（只有 companyProducts），
+   * 下游表格不会因为 upsertMapping 重建而整表重渲染。
+   */
+  const upsertMappingRef = useRef<
+    ((norm: string, productName: string, productId: string) => Promise<void>) | null
+  >(null)
+  const loadMappingsRef = useRef<(() => Promise<void>) | null>(null)
+
   const setMatchProduct = useCallback(
     (rowId: string, productId: string) => {
+      let accepted: { norm: string; productName: string; productId: string } | null = null
       setRows((prev) =>
         prev.map((r) => {
           if (r.row_id !== rowId) return r
-          if (!productId) return { ...r, product_name: "", product_id: "", kind: "none" as const, resolution: "company" as const }
+          if (!productId) {
+            return {
+              ...r,
+              product_name: "",
+              product_id: "",
+              kind: "none" as const,
+              resolution: "company" as const,
+            }
+          }
           const p = companyProducts.find((c) => c.id === productId)
-          return { ...r, product_id: productId, product_name: p ? candidateLabel(p) : "", kind: "manual" as const, resolution: "company" as const }
+          const label = p ? candidateLabel(p) : ""
+          // 2026-10-28（DS-R08）：人工指定即视为「确认过的映射」，立刻记进团队映射库，
+          // 下次相同措辞直接命中——用户要的「后面再有类似的自动匹配」。
+          // 旧实现只在点「保存到建设清单」时才沉淀，不点就白选。
+          accepted = { norm: r.norm, productName: label, productId }
+          return {
+            ...r,
+            product_id: productId,
+            product_name: label,
+            kind: "manual" as const,
+            resolution: "company" as const,
+            // 已采纳，建议位清空
+            suggestion: undefined,
+          }
         }),
       )
+      if (accepted) {
+        const hit = accepted as { norm: string; productName: string; productId: string }
+        void upsertMappingRef.current?.(hit.norm, hit.productName, hit.productId).then(() =>
+          void loadMappingsRef.current?.(),
+        )
+      }
     },
     [companyProducts],
   )
@@ -542,6 +592,12 @@ export function useProductMapping() {
     },
     [mappings],
   )
+  // 供上方 setMatchProduct 调用（避免 TDZ，同时保持 setter 身份稳定）。
+  // 必须在 effect 里赋值：渲染期写 ref 违反 React 规则（react-hooks/refs 会报「Cannot access refs during render」）。
+  useEffect(() => {
+    upsertMappingRef.current = upsertMapping
+    loadMappingsRef.current = loadMappings
+  }, [upsertMapping, loadMappings])
 
   // ------------------------------ 落库（复用 checklists） ------------------------------
   const saveMapping = useCallback(async () => {

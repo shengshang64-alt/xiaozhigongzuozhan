@@ -147,6 +147,22 @@ export type MatchRow = {
   product_id: string
   kind: "mapping" | "local" | "ai" | "manual" | "none"
   resolution: "company" | "external" | "ignore"
+  /**
+   * 2026-10-28（DS-R08）：中把握候选（0.75~0.95），**不自动落**，供界面显示成
+   * 「建议：xxx（87%）」让用户一键采纳。只在 kind==="none" 时可能有值。
+   * 理由：产品对照实测发现本地匹配要么高把握（自动填）、要么完全不确定（留空），
+   * 中间的「看着像但不肯定」如果丢掉，用户只能从几百条里手翻。
+   */
+  suggestion?: {
+    product_id: string
+    product_name: string
+    /** 展示标签（模块名 > 标准名 > 产品名），与下拉候选一致 */
+    label: string
+    /** 0~1，界面按百分比显示 */
+    score: number
+    /** 为什么建议它（命中字段 + 语义核心词），界面上作为 tooltip */
+    reason: string
+  }
 }
 
 export const PRODUCT_STATUS_OPTIONS = ["在售", "研发中"]

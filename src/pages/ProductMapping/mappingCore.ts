@@ -18,6 +18,8 @@ export type MappingCompareRow = {
   product: CheckProduct | null
   /** 备注：一对多其余项 / 命名错位说明 / 留空原因（AI 或人工填写） */
   note: string
+  /** 2026-10-28：中把握候选，界面显示成「建议：xxx（87%）」 */
+  suggestion: MatchRow["suggestion"] | null
 }
 
 /** 取公司行展示字段（容错空串） */
@@ -319,9 +321,9 @@ export function buildInitialRows(opts: {
         resolution: "company" as const,
       }
     }
-    // 2026-10-28：中把握（suggest）**不再自动落**，但也不丢——带着候选进 AI 阶段，
-    // 由界面作为「建议」给用户点选。这样既不会把「体检」硬配成「病理」，
-    // 也不至于让用户从 549 行里手翻。真·无法判定的仍然留空。
+    // 2026-10-28：中把握（suggest）**不再自动落**，但也不丢——作为 suggestion 带在行上，
+    // 由界面显示成「建议：xxx（87%）」供用户一键采纳。这样既不会把「体检」硬配成「病理」，
+    // 也不至于让用户从几百行里手翻。真·无法判定的仍然留空（无 suggestion）。
     return {
       row_id: makeRowId(),
       raw: normCustomer,
@@ -330,6 +332,17 @@ export function buildInitialRows(opts: {
       product_id: "",
       kind: "none" as const,
       resolution: "company" as const,
+      ...(local && local.confidence === "suggest"
+        ? {
+            suggestion: {
+              product_id: local.product.id,
+              product_name: local.product.product_name,
+              label: candidateLabel(local.product),
+              score: local.score,
+              reason: `${local.rule}：客户核心「${local.customerCore}」↔ 公司核心「${local.companyCore}」（${local.field}）`,
+            },
+          }
+        : {}),
     }
   })
 }
@@ -458,6 +471,8 @@ export function toCompareRows(
     resolution: r.resolution,
     product: r.product_id ? (idToProduct.get(r.product_id) ?? null) : null,
     note: notes[r.row_id] ?? "",
+    // 已落定（有 product_id）的行不再显示建议，避免用户以为还有个待选项
+    suggestion: r.product_id ? null : (r.suggestion ?? null),
   }))
 }
 
