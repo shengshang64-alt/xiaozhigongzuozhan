@@ -5,29 +5,30 @@
   "canonical_state": "docs/evolution/_loop_state.json",
   "canonical_reports": "docs/evolution/R{round}_{YYYYMMDD}.md",
   "note": "本文件是 2026-10-14 自动化作业按手册要求建立的账本。本项目既有的、被 autoloop 驱动器读取的权威账本仍是 docs/evolution/_loop_state.json —— 两者已同步，若冲突以 docs/evolution/_loop_state.json 为准。作业手册点名的 AI-ITERATION.md 在本仓库不存在（项目已注明其被删除），实际执行依据为 Qoder自主迭代提示词-v2.md。 轮次说明：2026-10-15 本地自动化线为 R49（R48 已被并发执行者的「事实来源优先级」切片占用）。",
-  "round": 64,
+  "round": 65,
   "lastRoundSummary": {
-    "id": "R64",
-    "at": "2026-10-25T13:35+08:00",
-    "theme": "情报中心摘要显示成原始 JSON：展示层清洗口径统一（卡片/详情/首页三处同源，剥站点名前缀+JSON 元数据块）",
-    "class": "A（修：同一字段三个页面两种显示的口径缺陷）",
-    "severity": "S2（用户可见内容错误：情报摘要正文位置显示 {\"id\":\"514749\",\"toptitle\":…}）",
+    "id": "R65",
+    "at": "2026-10-28T11:55+08:00",
+    "theme": "情报「内容片段」显示成别的文章标题列表：展示层新增列表残片识别（首页 + 详情面板同源）",
+    "class": "A（修：同一字段两处渲染，一处裸渲染、一处判据粒度不够）",
+    "severity": "S2（用户可见内容错误：标题下读到的是同站其他条目的标题+日期）",
     "verdict": "pass",
     "gates": {
-      "tsc": "pass（npx tsc -b exit 0，0 error）",
-      "build": "pass（CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD=100000 npx vite build，✓ built in 9.80s，exit 0）",
-      "vitest": "pass（npx vitest run 326 files / 3785 passed / 2 skipped；开工基线 325/3774/2 → 本轮 +1 文件 / +11 例）",
-      "eslint": "pass（npx eslint . = 116 error / 11 warning，与开工基线逐项相同，零新增）"
+      "tsc": "pass（npx tsc -b exit 0）",
+      "build": "pass（CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD=100000 npx vite build，exit 0）",
+      "vitest": "pass（npx vitest run 352 files / 4033 passed / 2 skipped；含并发在途用例，本轮自身 +11 例）",
+      "eslint": "pass（116 error / 11 warning，逐文件比对零新增）"
     },
     "headline_numbers": {
-      "dirty_rows": "库内 627 条情报 / 58 条有 summary / 9 条含 JSON 元数据，全部来自「健康报·卫健官方媒体」（该源 11 条脏 9 条 = 81.8%）",
-      "after_fix": "9 条全部恢复真正文（净增 531 字）；非脏 49 条零变化（无误伤）",
-      "reverse_check": "把 IntelItemCard 改回裸渲染 → 1 failed；还原 → 3 passed",
-      "browser": "/intel-center 搜「健康门户」命中 9 条且摘要为正文；详情面板 hasJsonId=false / hasBrace=false；/ 首页同；两页 0 error"
+      "dirty_rows": "库内 728 条情报 / 672 条有 content_snippet；修前 368 条（54.8%）在把「别的条目」当摘要显示（含「更多…」166 / 含≥2 日期 345 / 两者 143）",
+      "after_fix": "归零 339 条（改显示兜底提示）、保留正文 333 条",
+      "no_false_positive": "无日期片段 262 条，新旧输出逐字一致 262 条",
+      "reverse_check": "两处接线改回旧写法 → 2 failed | 3 passed；还原 → 5 passed",
+      "browser": "/ 首页情报摘要 5 张卡「更多...」5→0，3 张从别人的标题变成兜底提示、1 张保留本文正文；/intel-center 详情面板两处（该隐藏/该保留）行为正确；0 console error"
     },
-    "root_cause": "入库层：pb_hooks/intel_center.pb.js 摘要拼装把整段页面 JSON 元数据塞进 summary；展示层：IntelCenter 卡片/详情原样渲染 item.summary，而首页用 displayizeIntel（且其「整行含花括号即丢」判据会连正文一起丢）。",
-    "concurrency": "开工时工作区 91 个未提交文件（含 docs/23 P0 全套），本轮一个未碰、未 git add -A；全量 vitest 含对方在途用例。",
-    "numbering_note": "承接权威账本 docs/evolution/_loop_state.json：R63 → R64（写入前断言 round===63，避免并发双 bump）。"
+    "root_cause": "抓取端进的是栏目列表页，content_snippet 存的是「标题+日期+标题+日期」骨架；展示层 displayizeIntel 的行级判据（导航词/URL/花括号）对全中文的标题列表零命中，详情面板则完全裸渲染。",
+    "concurrency": "开工时 138 个未提交文件（另一执行者覆盖 BidWorkspace 全域 + useIntelCenter.ts 的 B37 在途改动）；本轮未碰、未 git add -A。",
+    "numbering_note": "承接 .loop/ledger.json round 64 → 65，写入前断言 round===64。"
   },
   "closed": [
     {
@@ -314,6 +315,24 @@
       "evidence": "docs/evolution/_r64_intel_summary_scan.mjs（真实库前后对照：清洗后为空 9→0 条、非脏 49 条零变化）+ intelBodyClean.test.ts +8 例 + intelSummaryWiring.test.ts 3 例 + 浏览器实机 0 error",
       "diff": "intelBodyClean.ts +48（stripIntelMetaBlobs/cleanIntelSummary）、IntelItemCard.tsx +7/-1、IntelDetailPanel.tsx +9/-4、useHome.ts +7/-1、测试 +11 例、取证脚本新增 1 个；业务数据/schema/pb_hooks/提示词/依赖 0 改动",
       "report": ".loop/reports/2026-10-25-1335-r64-intel-summary-json.md + docs/evolution/R64_20261025.md"
+    },
+    {
+      "id": "R65-intel-snippet-listing",
+      "at": "2026-10-28T11:55+08:00",
+      "title": "情报「内容片段」显示成别的文章标题列表（展示层列表残片识别）",
+      "verdict": "pass",
+      "evidence": "docs/evolution/_r65_intel_snippet_scan.mjs（真实库 728/672 条前后对照：368→0 条误导、339 归零、262 条无日期片段逐字不变）+ intelBodyClean.test.ts +9 例 + intelSummaryWiring.test.ts +2 例（反向验证 2 红）+ 浏览器实机 0 error",
+      "diff": "intelBodyClean.ts +约 95 行（stripMoreTokens / cleanIntelSnippet / 标题 3-gram 亲和度）、useHome.ts 接线 1 处、IntelDetailPanel.tsx 接线 1 处 + 兜底文案、测试 +11 例、取证脚本 1 个；业务数据/schema/pb_hooks/提示词/依赖 0 改动",
+      "report": ".loop/reports/2026-10-28-1155-r65-intel-snippet-listing.md + docs/evolution/R65_20261028.md"
+    },
+    {
+      "id": "BUG-002-competitors-tab",
+      "at": "2026-10-28T11:50+08:00",
+      "title": "竞品分析「档案列表/图表总览」Tab 无法切换（docs/测试报告 BUG-002 / UX-002）",
+      "verdict": "pass（核对结项，非本轮实现）",
+      "evidence": "浏览器实机 /competitors：Tabs 已改为 Radix（TabsList/TabsTrigger/TabsContent），点击「厂商档案」后 aria-selected 从「市场总览」迁到「厂商档案」，面板内容随之切换",
+      "diff": "无（本轮未改代码）",
+      "report": "docs/evolution/R65_20261028.md §五"
     }
   ],
   "backlog": [
@@ -395,7 +414,7 @@
       "title": "情报发布日期未来值（3 条 2027）",
       "priority": "low",
       "source": "self-found(R64)",
-      "note": "HIT专家网 3 条 published_at=2027-04-29/2027-01-03，「按发布时刻」排序顶到最前；建议展示层标「日期异常」并沉底。"
+      "note": "2026-10-28 实测：另一位执行者已在 useIntelCenter.ts 落地「未来日期并入待修集合 + region_mode=recompute_crawl」，并新增未跟踪的 intelFuturePubDate.test.ts。本轮不重复做，等其落地后复核。"
     },
     {
       "id": "B38-agents-vitest-baseline-sync",
@@ -403,6 +422,24 @@
       "priority": "low",
       "source": "self-found(R64)",
       "note": "R64 时刻有 91 个未提交在途文件，此刻同步会把别人未提交的用例数写进仓库约定。"
+    },
+    {
+      "id": "B39-intel-summary-more-token",
+      "title": "摘要字段（summary）没有剥「更多…」导航 token：当前 66 条 summary 里 0 条命中，属预防性缺口；一旦某源把列表页骨架写进 summary 就会复现 R65 的显示问题。改它需连带更新 R64 的 cleanIntelSummary 测试锁，单独一轮做。",
+      "priority": "low",
+      "source": "self-found"
+    },
+    {
+      "id": "B40-bidwarroom-intel-snippet",
+      "title": "src/components/bid-workspace/BidWarRoom.tsx:276 用 it.summary ?? it.content_snippet 填「作战室情报」，同样会把列表残片当摘要显示；R65 未修（该目录有并发在途改动）。等 BidWorkspace 干净后接 cleanIntelSnippet。",
+      "priority": "medium",
+      "source": "self-found"
+    },
+    {
+      "id": "B41-intel-card-snippet-fallback",
+      "title": "情报中心列表卡片只渲染 summary、没有片段兜底 → 同一批条目在首页有内容、在列表卡片空白。是「要不要兜底」的产品判断，不是缺陷，需用户点头。",
+      "priority": "low",
+      "source": "self-found"
     }
   ],
   "newFindings": [
@@ -555,6 +592,18 @@
       "title": "构造样本对长文本链路「测试充分性」是假象：deviationCommitHits 的「硬闸类与非硬闸类共用命中上限」缺陷在构造样本上必然测不出（命中数太少），只有 139k 字 / 133 条款的真实标书才暴露",
       "level": "P2",
       "action": "规律已写入 _loop_state.json notes；建议真实语料夹具作为长文本链路的常规门槛"
+    },
+    {
+      "id": "F65-1",
+      "title": "抓取端仍会把列表页骨架写进 content_snippet（B36 同根，展示层只挡住不根治）",
+      "level": "P2",
+      "action": "要根治需改 pocketbase/pb_hooks/intel_center.pb.js，且改完必须用户重启 :7000（项目 hook 禁止智能体结束进程）。"
+    },
+    {
+      "id": "F65-2",
+      "title": "并发在途扩大到 138 个未提交文件，且已侵入情报域（useIntelCenter.ts + intelFuturePubDate.test.ts）",
+      "level": "P1",
+      "action": "B22 的延续：高优先待办（B28/B35）仍被堵；本轮选题被迫收到「两处渲染点」这种完全干净的边界。"
     }
   ],
   "blocked": [
@@ -572,13 +621,12 @@
   "noProgressStreak": 0,
   "lastRoundFiles": [
     "src/pages/IntelCenter/intelBodyClean.ts",
-    "src/components/intel-center/IntelItemCard.tsx",
-    "src/components/intel-center/IntelDetailPanel.tsx",
-    "src/pages/Home/useHome.ts",
     "src/pages/IntelCenter/intelBodyClean.test.ts",
+    "src/components/intel-center/IntelDetailPanel.tsx",
     "src/components/intel-center/intelSummaryWiring.test.ts",
-    "docs/evolution/_r64_intel_summary_scan.mjs",
-    "docs/evolution/R64_20261025.md",
+    "src/pages/Home/useHome.ts",
+    "docs/evolution/_r65_intel_snippet_scan.mjs",
+    "docs/evolution/R65_20261028.md",
     "docs/evolution/_loop_state.json"
   ]
 }

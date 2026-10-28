@@ -164,6 +164,107 @@ export function cleanIntelSummary(raw: string, max = 200): string {
   return displayizeIntel(stripIntelMetaBlobs(raw), max)
 }
 
+// ---------------------------------------------------------------------------
+// R65：content_snippet（内容片段）展示层清洗——剥「更多…」导航词 + 列表页残片
+//
+// 实测形态（2026-10-28，库内 728 条 / 672 条有 content_snippet）：
+//   A 形态 188 条：`更多... 更多... 2026-10-26 近日，由清华大学…`（导航词串 + 日期 + 真正文）
+//   B 形态 342 条：`甘肃省…十项措施 2026-10-27 2026-10-26 江苏省印发《…》 2026-10-23`
+//                  —— 整段是**同站其他文章的标题 + 日期**，与这条情报毫无关系。
+//
+// 为什么必须单独处理（而不是直接丢给 displayizeIntel）：
+//   ① displayizeIntel 的行级判据认的是「导航词/URL/花括号」，认不出「更多…」这种
+//      页面控件文案，也认不出「标题 + 日期」拼成的列表；
+//   ② 首页动态卡（useHome.ts）与情报详情面板（IntelDetailPanel.tsx）都把这个字段
+//      当摘要显示 —— 用户在标题下读到的其实是别人的标题列表，属于误导性内容。
+//
+// 处置原则：宁缺勿错。能确认是正文的段落留下，剩下的宁可返回空串
+// （调用方已有「暂无摘要，进入情报中心用 AI 摘要打标」的兜底文案）。
+// ---------------------------------------------------------------------------
+
+/** 页面控件文案：「更多...」「多...」「…」等孤立 token（含被截断成「多...」的形态） */
+const MORE_TOKEN_RE = /(?:^|\s)(?:更?多\s*)?(?:\.{2,}|…+)(?=\s|$)/g
+
+/** 行首的裸日期（列表页每条前面的时间戳），只剥开头，正文里的日期不动 */
+const LEADING_DATE_RE = /^(?:\d{4}-\d{2}-\d{2}|\d{4}年\d{1,2}月\d{1,2}日|\d{1,2}-\d{2})[\s|·、,，;；]+/
+
+/** 列表分隔用的日期戳（前需行首或空白、后需空白，避免把「0628-264110104017」这类编号当日期；
+ *  前导空白由本正则吃掉、尾部用前瞻，连续两个日期才都能命中） */
+const LIST_DATE_SPLIT_RE = /(?:^|\s)(?:\d{4}-\d{2}-\d{2}|\d{4}年\d{1,2}月\d{1,2}日|\d{1,2}-\d{2})(?=\s|$)/g
+
+/** 判定「像正文」的最短长度：标题一般 ≤40 字，正文段落远长于此 */
+const LIST_MIN_PROSE_CHARS = 40
+
+/** 剥「更多…」导航 token（最多 6 轮，正常 1 轮即稳定；病态输入兜底） */
+export function stripMoreTokens(raw: string): string {
+  let s = String(raw ?? "")
+  for (let i = 0; i < 6; i++) {
+    const next = s.replace(MORE_TOKEN_RE, " ").replace(/\s+/g, " ").trim()
+    if (next === s) break
+    s = next
+  }
+  return s
+}
+
+/** 中文 2/3-gram 集合（去标点空白，用于标题亲和度） */
+function charGrams(s: string, n: number): Set<string> {
+  const t = String(s ?? "").replace(/[\s\p{P}\p{S}]/gu, "")
+  const out = new Set<string>()
+  for (let i = 0; i + n <= t.length; i++) out.add(t.slice(i, i + n))
+  return out
+}
+
+function gramOverlap(a: Set<string>, b: Set<string>): number {
+  let hit = 0
+  for (const g of a) if (b.has(g)) hit++
+  return hit
+}
+
+/**
+ * 片段是否「属于这条情报」：用标题 3-gram 命中 ≥1 或 2-gram 命中 ≥2 判定。
+ * 实测（R65 取证）：属于本文的片段 3-gram 命中 42~66，属于邻篇文章的命中 0 —— 分离度足够。
+ * 标题为空时不做该判定（信息不足，不误杀）。
+ */
+function belongsToTitle(segment: string, title: string): boolean {
+  const t = String(title ?? "").trim()
+  if (!t) return true
+  const seg3 = charGrams(segment, 3)
+  const title3 = charGrams(t, 3)
+  if (gramOverlap(title3, seg3) >= 1) return true
+  return gramOverlap(charGrams(t, 2), charGrams(segment, 2)) >= 2
+}
+
+/**
+ * 内容片段展示层清洗：深度清洗 → 剥「更多…」→ 剥行首裸日期 → 列表残片只留最长正文段。
+ * 返回空串表示「这条片段里没有属于本条的正文」，调用方应显示兜底文案而不是空段落。
+ */
+export function cleanIntelSnippet(raw: string, opts: { title?: string; max?: number } = {}): string {
+  const max = opts.max ?? 120
+  const title = opts.title ?? ""
+  let s = stripMoreTokens(displayizeIntel(raw, 600))
+  // 行首裸日期（可能连续多枚）逐枚剥
+  for (let i = 0; i < 4; i++) {
+    const next = s.replace(LEADING_DATE_RE, "").trim()
+    if (next === s) break
+    s = next
+  }
+  if (!s) return ""
+  const dateCount = (s.match(LIST_DATE_SPLIT_RE) ?? []).length
+  if (dateCount >= 2) {
+    // 列表残片：按日期戳切段，只保留最长的一段，且它必须「像正文」并「属于本条」
+    const parts = s
+      .split(LIST_DATE_SPLIT_RE)
+      .map((x) => x.replace(/^[\s|·、,，;；:：]+|[\s|·、,，;；]+$/g, "").trim())
+      .filter(Boolean)
+    const best = parts.sort((a, b) => b.length - a.length)[0] ?? ""
+    if (best.length < LIST_MIN_PROSE_CHARS) return ""
+    if (!/[，。]/.test(best)) return "" // 标题型（无句读）不是正文
+    if (!belongsToTitle(best, title)) return ""
+    s = best
+  }
+  return s.length > max ? `${s.slice(0, max)}…` : s
+}
+
 /**
  * R88/F23：判断一条情报条目是否"明显垃圾"（仅用于列表排序沉底，不改数据不隐藏）。
  * 保守：只命中确定性极高的残片/导航/空壳条目，宁漏不误杀。

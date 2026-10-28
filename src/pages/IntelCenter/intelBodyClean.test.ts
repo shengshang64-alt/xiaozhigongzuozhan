@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { cleanIntelBody, cleanIntelLine, cleanIntelSummary, displayizeIntel, stripIntelMetaBlobs } from "./intelBodyClean"
+import { cleanIntelBody, cleanIntelLine, cleanIntelSnippet, cleanIntelSummary, displayizeIntel, stripIntelMetaBlobs, stripMoreTokens } from "./intelBodyClean"
 
 // R29（test-net-01）：情报入库正文清洗的行为锈死网
 // 锁死点：R26 运行时坐实过的真实脏样本行为——脚本/样式整块剥离、JSON/版权/日期行剔除、实体解码
@@ -204,5 +204,69 @@ describe("stripIntelMetaBlobs / cleanIntelSummary（R64）", () => {
   it("max 截断与空输入（与 displayizeIntel 同口径）", () => {
     expect(cleanIntelSummary("句".repeat(100), 20)).toBe(`${"句".repeat(20)}…`)
     expect(cleanIntelSummary("")).toBe("")
+  })
+})
+
+// R65（intel-snippet-listing-residue）：内容片段展示层清洗
+// 取证来源（2026-10-28 真实库，728 条 / 672 条有 content_snippet）：
+//   188 条是「更多... 更多... 日期 真正文」，342 条是「同站其他文章的标题 + 日期」。
+//   首页动态卡与详情面板都把这个字段当摘要显示 → 标题下面读到的是别人的标题列表。
+describe("stripMoreTokens / cleanIntelSnippet（R65）", () => {
+  it("剥「更多…」导航串，含被截断成「多...」的形态", () => {
+    expect(stripMoreTokens("更多... 更多... 更多... 2026-10-26 近日发布")).toBe("2026-10-26 近日发布")
+    expect(stripMoreTokens("多... 更多... 更多... 2026-10-23 正文")).toBe("2026-10-23 正文")
+  })
+
+  it("句中出现的「更多」不误伤（判据要求独立 token + 省略号）", () => {
+    const s = "患者可在小程序查看更多检查报告，并支持在线复诊"
+    expect(stripMoreTokens(s)).toBe(s)
+  })
+
+  // 真实形态 A：导航串 + 日期 + 真正文（库内 188 条）
+  const SHAPE_A = "更多... 更多... 更多... 2026-10-26 近日，由清华大学智能产业研究院（AIR）孵化的AI医疗企业在北京发布多智能体协同生态系统。该系统试图通过构建具备不同专科背景的智能体，让AI在诊疗中开展跨专科协作。"
+  it("形态 A：剥掉导航串与行首日期，保留正文", () => {
+    const out = cleanIntelSnippet(SHAPE_A, { title: "AI医生分身落地长庚医院18个科室", max: 200 })
+    expect(out).not.toContain("更多")
+    expect(out).not.toContain("...")
+    expect(out.startsWith("近日，由清华大学")).toBe(true)
+  })
+
+  // 真实形态 B：整段是「同站其他文章标题 + 日期」，与本条无关（库内 342 条）
+  const SHAPE_B =
+    "甘肃省进一步健全城市社区卫生服务体系提升服务能力的十项措施 2026-10-27 2026-10-26 江苏省印发《推进江苏省人工智能加医疗健康发展实施方案》 2026-10-23"
+  it("形态 B：纯标题列表 → 返回空串（调用方显示兜底文案，而不是把别人的标题当摘要）", () => {
+    expect(cleanIntelSnippet(SHAPE_B, { title: "浙江发布会：安诊儿已接入2000+医疗机构" })).toBe("")
+  })
+
+  // 真实形态 C：列表残片里夹着「邻篇文章的正文」（标题 3-gram 命中 0）
+  const SHAPE_C =
+    "2026新版基层医疗能力标准发布 2026-10-27 2026-10-26 罗伊氏乳杆菌DSM17648（商品名Pylopass）是一种经灭活处理的专利菌株，它通过菌体表面的特异性分子以纯物理方式识别并结合幽门螺杆菌，形成共聚物随肠道蠕动排出体外。"
+  it("形态 C：片段是邻篇文章的正文（与标题无共同词）→ 返回空串", () => {
+    expect(cleanIntelSnippet(SHAPE_C, { title: "2026新版基层医疗能力标准发布：明确信息化评价要点" })).toBe("")
+  })
+
+  // 真实形态 D：列表残片里夹着「本文自己的正文」（标题 3-gram 命中 42~66）
+  const SHAPE_D =
+    "肿瘤患者身体里的能量危机 2026-10-27 2026-10-27 10月22日，科大讯飞全球1024开发者节主论坛于北京国家会议中心举行。会上，讯飞星火医疗大模型V3.7正式发布，基于全国产算力底座实现医学语义、影像、语音深度融合的多模态技术突破。"
+  it("形态 D：保留本文正文段（标题词命中），丢掉前面的列表残片", () => {
+    const out = cleanIntelSnippet(SHAPE_D, { title: "讯飞星火医疗大模型V3.7升级，AI患者管理3.0发布", max: 200 })
+    expect(out.startsWith("10月22日，科大讯飞")).toBe(true)
+    expect(out).toContain("讯飞星火医疗大模型V3.7")
+  })
+
+  it("无日期的正常片段不误伤（不进列表分支）", () => {
+    const normal = "为深化医药卫生体制改革，省医保局发布最新目录，自下月起执行，覆盖全省二级以上医院。"
+    expect(cleanIntelSnippet(normal, { title: "省医保局发布最新目录" })).toBe(normal)
+  })
+
+  it("行首裸日期剥离（列表页时间戳），正文里的日期不动", () => {
+    const out = cleanIntelSnippet("2026-10-27 该院互联网医院上线一年，累计服务患者 12 万人次，覆盖 3 个院区。", { title: "互联网医院上线一年" })
+    expect(out.startsWith("该院互联网医院")).toBe(true)
+  })
+
+  it("空输入 / 纯噪声 → 空串；max 截断带省略号", () => {
+    expect(cleanIntelSnippet("")).toBe("")
+    expect(cleanIntelSnippet("更多... 更多...")).toBe("")
+    expect(cleanIntelSnippet("句".repeat(300), { max: 20 })).toBe(`${"句".repeat(20)}…`)
   })
 })

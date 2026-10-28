@@ -1,6 +1,6 @@
 import { BriefcaseBusiness, Check, Copy, ExternalLink, FileStack, Flag, Sparkles, Star, X } from "lucide-react"
 import { copyTextToClipboard } from "@/lib/clipboard"
-import { cleanIntelSummary } from "@/pages/IntelCenter/intelBodyClean"
+import { cleanIntelSnippet, cleanIntelSummary } from "@/pages/IntelCenter/intelBodyClean"
 import {
   fmtIntelTime,
   ITEM_STATUS_LABEL,
@@ -51,6 +51,9 @@ export function IntelDetailPanel({
   }
   // R64：摘要统一走展示层清洗（剥站点名前缀/JSON 元数据块），与列表卡片、首页动态卡同口径
   const summaryText = item.summary ? cleanIntelSummary(item.summary, 600) : ""
+  // R65：内容片段同样走展示层清洗——这条字段此前是**原样渲染**，抓取到的
+  // 「更多… 2026-10-27 别的文章标题」会整段显示成这条情报的内容。
+  const snippetText = cleanIntelSnippet(item.content_snippet || "", { title: item.title, max: 600 })
   return (
     <section className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-card shadow-md">
       <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-1.5 border-b border-border px-3.5 py-2.5">
@@ -177,7 +180,8 @@ export function IntelDetailPanel({
           <section className="mt-3.5">
             <p className="text-xs font-semibold text-muted-foreground">内容片段</p>
             <p className="mt-1.5 line-clamp-8 whitespace-pre-wrap rounded-lg border border-border bg-background p-3 text-sm leading-relaxed text-muted-foreground">
-              {item.content_snippet}
+              {snippetText ||
+                "该条抓取自栏目列表页，片段是其他条目的标题列表，与本文无关，已隐藏；请点「查看原文」阅读正文。"}
             </p>
           </section>
         )}
