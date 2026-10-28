@@ -102,7 +102,7 @@ export function OutlineCoverage({
               <span className="min-w-0">
                 大纲里另有 {driftFragments.length} 个顶层节点其实是招标条款原文（{driftFragments.slice(0, 3).join("、")}
                 {driftFragments.length > 3 ? " 等" : ""}），不是章节名。它们是早期补入留下的脏数据，
-                同步章节清单会**自动跳过**它们（不会生成「交付地点」这类无意义章节）。
+                同步章节清单会<strong className="font-semibold">自动跳过</strong>它们（不会生成「交付地点」这类无意义章节）。
               </span>
             </p>
             {/* R299：逐条人工删除入口。批量清空属破坏性操作且无法逐条复核，故只给单条删除 */}
@@ -121,7 +121,8 @@ export function OutlineCoverage({
           {fragOpen && fragNodes.length > 0 && (
             <div className="mt-2 rounded border border-border/70 bg-background/60">
               <p className="border-b border-border/60 px-2.5 py-1.5 text-[11px] leading-relaxed text-muted-foreground">
-                逐条确认后删除，每删一条立即保存。删除只动大纲节点，**已生成的正文不受影响**；
+                逐条确认后删除，每删一条立即保存。删除只动大纲节点，
+                <strong className="font-semibold">已生成的正文不受影响</strong>；
                 同名的节点各自独立（不会一次删掉多条）。
               </p>
               <ul className="max-h-64 overflow-y-auto">
