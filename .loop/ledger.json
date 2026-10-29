@@ -5,30 +5,30 @@
   "canonical_state": "docs/evolution/_loop_state.json",
   "canonical_reports": "docs/evolution/R{round}_{YYYYMMDD}.md",
   "note": "本文件是 2026-10-14 自动化作业按手册要求建立的账本。本项目既有的、被 autoloop 驱动器读取的权威账本仍是 docs/evolution/_loop_state.json —— 两者已同步，若冲突以 docs/evolution/_loop_state.json 为准。作业手册点名的 AI-ITERATION.md 在本仓库不存在（项目已注明其被删除），实际执行依据为 Qoder自主迭代提示词-v2.md。 轮次说明：2026-10-15 本地自动化线为 R49（R48 已被并发执行者的「事实来源优先级」切片占用）。",
-  "round": 66,
+  "round": 67,
   "lastRoundSummary": {
-    "id": "R66",
-    "at": "2026-10-29T09:00+08:00",
-    "theme": "资质台账「导出硬拦截」开关：界面说「关」、导出实际在拦（同一 localStorage 键两处判定、默认值相反）",
-    "class": "A（修：同一开关两处各写一套判定，默认值相反，属实现缺陷）",
-    "severity": "S2（用户可见的错误状态，落在「证书过期直接废标」这条线上）",
+    "id": "R67",
+    "at": "2026-10-30T01:00+08:00",
+    "theme": "首页「投标节点 · 未来 60 天」卡恒为空：开标日期解析只认 date-only，库里的 \"YYYY-MM-DD HH:mm:ss.SSSZ\" 被拼成非法日期后静默跳过",
+    "class": "A（修：日期解析口径错，属实现缺陷，不是产品取舍）",
+    "severity": "S2（用户可见的错误状态，落在「错过投标截止不可挽回」这条线上）",
     "verdict": "pass",
     "gates": {
       "tsc": "pass（npx tsc -b exit 0）",
-      "build": "pass（CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD=100000 npx vite build，exit 0，6.60s）",
-      "vitest": "pass（npx vitest run 356 files / 4071 passed / 2 skipped；开工基线 355 / 4061 / 2，本轮 +1 文件 / +10 例）",
-      "eslint": "pass（116 error / 11 warning = 基线零新增；useQualCerts.ts 的 1 条 set-state-in-effect 在第 81 行挂载 reload，改动前既有）"
+      "build": "pass（CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD=100000 npx vite build，exit 0，15.88s）",
+      "vitest": "pass（npx vitest run 361 files / 4137 passed / 2 skipped；R66 基线 356 / 4071 / 2，本轮自身 +2 文件 / +22 例）",
+      "eslint": "pass（116 error / 11 warning，与开工基线逐文件比对零变化）"
     },
     "headline_numbers": {
-      "divergence": "键缺失时：页面 aria-pressed=false「导出硬拦截：关」，闸门判定 true（实际在拦）",
-      "live_risk": "/api/qual_certs/summary：total 34，expired 1 / critical 3 / warning 0 / ok 5 / unknown 25 → 默认态下今天任何人导出都会被这个「关着的」开关拦一次",
-      "after_fix": "键缺失 → 按钮「开」+ aria-pressed=true + gate=true（三处一致）；点一次 → key=\"0\"、按钮「关」、gate=false；再点 → \"1\"；F5 后保持",
-      "reverse_check": "把 useQualCerts 改回 `=== \"1\"` → 1 failed | 9 passed；还原 → 10 passed，diff 只剩预期 +6/−5",
-      "scan": "全仓跨文件复用同一个 localStorage 键的只有 qual_hard_block 这一个（已扫）"
+      "before": "首页卡：「未来 60 天没有开标项目」；实测 19 个可见项目里 3 个有开标时间，3 个全部因 Invalid Date 被 continue 跳过",
+      "root": "库里 bid_open_date = \"2026-12-01 00:00:00.000Z\"；卡片把日期串拼上 T00:00:00 再 new Date() → 非法日期",
+      "after": "首页卡：「2026-12-01 【UI测试】中医院信息化建设项目 厦门市中医院 剩 32 天」+「另有 15 个项目未填开标时间」；点击跳 /bid-workspace?project=ebxc598wu8bcvpd",
+      "reverse_check": "把解析改回旧写法 → 6 failed | 10 passed；还原 → 22 passed",
+      "scan": "grep \"T00:00:00\" 全仓 5 处，其余 4 处均已 slice(0,10)/正则/纯日期输入，无第二处裸拼"
     },
-    "root_cause": "同一个 localStorage 键 qual_hard_block 被两处各写一套判定且默认值相反：台账页 `=== \"1\"`（键缺失→关），导出闸门 `!== \"0\"`（键缺失→拦）。P0-9（2026-10-24）只把闸门改成默认拦，界面那半没跟着改。",
-    "concurrency": "开工时 147 个未提交文件（BidWorkspace 域 100 个），最后一次修改 2026-10-28 17:33，已停摆 15h+；本轮未碰、未 git add -A。",
-    "numbering_note": "承接 .loop/ledger.json round 65 → 66，写入前断言 round===65。"
+    "root_cause": "BidNodesCard.tsx 内联的日期解析只认 date-only；PB 存的是日期时间串。解析失败走 continue，不报错不提示，于是「卡片永远空」这种失败方式完全不可见。",
+    "concurrency": "开工 175 个未提交文件（BidWorkspace 77 + components/bid-workspace 14 + prompts 10 + ProductMapping 17 + lib 12）；本轮只改 1 个既有文件 + 3 个新文件，未 git add -A。",
+    "numbering_note": "承接 .loop/ledger.json round 66 → 67，写入前断言 round===66。"
   },
   "closed": [
     {
@@ -376,6 +376,53 @@
         "导出闸门的资质核验是 fail-open（台账接口挂了就静默跳过、照常导出），是既有产品取舍，未改 → 已开单 B43。",
         "本轮只动 3 个文件，其中 1 个业务文件 11 行；未提交（工作区有 147 个他人在途文件，git add -A 会连带提交）。"
       ]
+    },
+    {
+      "id": "R67-bid-nodes-card-date-parse",
+      "at": "2026-10-30T01:00+08:00",
+      "title": "首页「投标节点 · 未来 60 天」卡恒显示「没有开标项目」：开标日期解析只认 date-only，库里的日期时间串被静默跳过",
+      "priority": "high",
+      "closed_at_round": "R67",
+      "summary": "库里 bid_open_date 存的是 PocketBase 日期时间串 \"2026-12-01 00:00:00.000Z\"，而首页卡内联的解析只认 \"2026-12-01\" 这种纯日期，拼接后得到非法日期 → continue 静默跳过，卡片恒为空；同一项目在标书工作台列表里却有「距开标 32 天」（那边用 daysUntil 直接 new Date()）。修法：新增 src/components/home/bidNodesLogic.ts（bidOpenDayMs 取前 10 位按本地零点重建 + 越界回读校验；buildBidNodeLists 分组/排序），卡片改为调用纯函数并只展示 YYYY-MM-DD；「未来 N 天」常量收进单一真源。",
+      "files": [
+        "src/components/home/bidNodesLogic.ts（新增）",
+        "src/components/home/bidNodesLogic.test.ts（新增 16 例）",
+        "src/components/home/bidNodesWiring.test.ts（新增 6 例源码哨兵）",
+        "src/components/home/BidNodesCard.tsx（+8/−22）",
+        ".loop/reports/2026-10-30-0100-r67-bid-nodes-card.md",
+        "docs/evolution/R67_20261030.md",
+        ".loop/ledger.json",
+        "docs/evolution/_loop_state.json",
+        ".loop/MORNING.md"
+      ],
+      "evidence": {
+        "live_before": "浏览器实机（:8000，登录态，真实数据）：卡片「未来 60 天没有开标项目。15 个项目未填开标时间…」；同批数据在页面内复算：19 个可见项目 / 3 个有开标时间 / 现逻辑 upcoming=[] / 因解析失败被跳过 3 个（含 2026-12-01 那条）",
+        "live_after": "卡片显示「2026-12-01 【UI测试】中医院信息化建设项目 厦门市中医院 剩 32 天」+「另有 15 个项目未填开标时间，补录后纳入提醒。」；点击 → /bid-workspace?project=ebxc598wu8bcvpd；控制台无 error",
+        "unit": "npx vitest run src/components/home/bidNodesLogic.test.ts src/components/home/bidNodesWiring.test.ts → 2 files / 22 passed",
+        "delete_impl_turns_red": "把 bidOpenDayMs 的 new Date(year, month-1, day) 改回「日期串拼 T00:00:00」的旧写法 → 6 failed | 10 passed；还原 → 22 passed",
+        "gates": "tsc exit 0 / vite build exit 0（15.88s）/ vitest 361 files 4137 passed 2 skipped / eslint 116 error 11 warning（零新增）",
+        "honest": "只修了首页卡这一处；开标倒计时另有一套 bidOpenDateStatus（Date.parse 口径）在开标日 00:00–08:00 会显示「距开标 1 天」，本轮未动（B45 记账）。卡片「未填开标时间」的计数口径（stage 非 archived 才算）未改。"
+      },
+      "diff_summary": {
+        "files": [
+          "src/components/home/bidNodesLogic.ts（新增）",
+          "src/components/home/bidNodesLogic.test.ts（新增）",
+          "src/components/home/bidNodesWiring.test.ts（新增）",
+          "src/components/home/BidNodesCard.tsx（+8/−22）"
+        ],
+        "new_dependencies": 0,
+        "new_collections": 0,
+        "pb_hooks_changed": 0,
+        "prompts_changed": 0,
+        "semantics_changed": false,
+        "business_code_changed": 1,
+        "bid_workspace_touched": false
+      },
+      "honest_notes": [
+        "未提交任何他人在途文件（175 个），只显式 git add 本轮 5 个文件。",
+        "全量 vitest 的 361/4137 含他人在途用例；本轮自身贡献 +2 文件 / +22 例。",
+        "B42（导出闸门接 lib/qualHardBlock）仍在 useBidWorkspace.ts 里，本轮未碰。"
+      ]
     }
   ],
   "backlog": [
@@ -497,9 +544,53 @@
       "priority": "low",
       "source": "self-found",
       "detail": "useBidWorkspace.ts:9453 catch 注释写明「台账未建或网络异常时静默跳过，核验失败不阻断导出」。属产品取舍（不能因台账抖动把人锁死），但是「废标防护」上的一个已知洞，需用户拍板是否改 fail-closed 或至少改成显式提示「本次未核验资质」。"
+    },
+    {
+      "id": "B44-qual-unknown-bucket-hidden",
+      "title": "资质台账「未登记有效期」桶在页面上不可见（34 条里 25 条不参与到期预警，页面只显示三档 + 总数）",
+      "priority": "medium",
+      "source": "self-found(R67)",
+      "detail": "/api/qual_certs/summary 实测 {expired:1, critical:3, warning:0, ok:5, unknown:25}；页面四张卡只展示前三档 + 台账总数，看不出 25 条（软著/荣誉证书等长期有效属正常，也可能含漏填）完全不参与预警。属展示口径变更，需用户点头。"
+    },
+    {
+      "id": "B45-bid-open-date-morning-off-by-one",
+      "title": "开标倒计时在开标日 00:00–08:00 显示「距开标 1 天」而非「今日开标」（bidOpenDateStatus 的 Date.parse 口径）",
+      "priority": "low",
+      "source": "self-found(R67)",
+      "detail": "实测：开标日 07:00 → daysLeft=1 / 09:00 → 今日开标。改法与 bidNodesLogic.bidOpenDayMs 同口径。"
     }
   ],
   "newFindings": [
+    {
+      "id": "F67-1",
+      "title": "「同一件事两处各写一套」第 N 次复现：开标倒计时在首页卡与标书列表各有一套日期解析，一套认得出库里的日期时间串、一套认不出 → 两页对同一项目给出相反答案（首页「没有开标项目」/列表「距开标 32 天」）",
+      "level": "P1",
+      "action": "修法即上锁：解析收进 bidNodesLogic.bidOpenDayMs + 源码哨兵钉住卡片不许再拼 T00:00:00。规律：从库里读日期再算天数，解析函数只允许一份，且必须同时吃 date-only 与日期时间串。"
+    },
+    {
+      "id": "F67-2",
+      "title": "「静默 continue」是最坏的失败方式：解析失败不报错、不提示，界面只是少了一条，谁都不会发现",
+      "level": "P1",
+      "action": "以后凡「解析→跳过」的分支，要么给出可见提示，要么至少让逻辑离开渲染体、可被单测注入数据打到（本轮做法）。"
+    },
+    {
+      "id": "F67-3",
+      "title": "全仓同类写法已核对：grep \"T00:00:00\" 共 5 处，useHome×3 先 slice(0,10)、qualsCore 先过日期正则、formQualityHits 输入来自 toIso 纯日期，只有首页卡是裸拼，无第二处",
+      "level": "info",
+      "action": "无需再修；新增此类解析一律复用 bidOpenDayMs 或先 slice(0,10)。"
+    },
+    {
+      "id": "F67-4",
+      "title": "并发在途从 147 涨到 175 个未提交文件（BidWorkspace 77 + components/bid-workspace 14 + prompts 10 + ProductMapping 17 + lib 12）",
+      "level": "P1",
+      "action": "B42/B40/B25 仍全部不可碰；B22 的延续，需用户拍板归属。"
+    },
+    {
+      "id": "F67-5",
+      "title": "docs/evolution/_loop_state.json 的 history 里缺 R66 一条（R66 收尾时只写了 lastRound 没追加 history），本轮已补记",
+      "level": "info",
+      "action": "以后收尾 checklist：round / lastRound / gates / baseline.rNNN / history / notes 六项都要写。"
+    },
     {
       "id": "F66-1",
       "title": "同一个 localStorage 键被两处各写一套判定、且默认值相反——两处单看都「对」，只有把「页面显示」和「真实行为」摆在一起才看得见",
@@ -701,11 +792,14 @@
   ],
   "noProgressStreak": 0,
   "lastRoundFiles": [
-    "src/lib/qualHardBlock.ts",
-    "src/lib/qualHardBlock.test.ts",
-    "src/pages/QualCerts/useQualCerts.ts",
-    ".loop/reports/2026-10-29-0900-r66-qual-hardblock.md",
+    "src/components/home/bidNodesLogic.ts",
+    "src/components/home/bidNodesLogic.test.ts",
+    "src/components/home/bidNodesWiring.test.ts",
+    "src/components/home/BidNodesCard.tsx",
+    ".loop/reports/2026-10-30-0100-r67-bid-nodes-card.md",
+    "docs/evolution/R67_20261030.md",
     ".loop/ledger.json",
+    "docs/evolution/_loop_state.json",
     ".loop/MORNING.md"
   ]
 }

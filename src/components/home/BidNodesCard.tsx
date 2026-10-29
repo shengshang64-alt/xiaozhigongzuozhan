@@ -7,25 +7,9 @@ import { useNavigate } from "react-router-dom"
 import { CalendarClock, Loader2 } from "lucide-react"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/rhLogin"
+import { BID_NODE_HORIZON_DAYS, buildBidNodeLists, type BidNodeRow } from "./bidNodesLogic"
 
-type BidNodeRow = {
-  id: string
-  project_name?: string
-  hospital?: string
-  bid_open_date?: string
-  stage?: string
-  deleted_at?: string
-}
-
-type UpcomingNode = {
-  id: string
-  title: string
-  hospital: string
-  date: string
-  daysLeft: number
-}
-
-const HORIZON_DAYS = 60
+const HORIZON_DAYS = BID_NODE_HORIZON_DAYS
 
 export function BidNodesCard() {
   const navigate = useNavigate()
@@ -58,30 +42,12 @@ export function BidNodesCard() {
     return h["X-Rh-User-Id"] || "local-user"
   }
 
+  // R67：开标日期解析与分档一律走 bidNodesLogic 单一真源。
+  // 旧实现是「把日期串拼上 T00:00:00 再 new Date()」，只认 date-only 串；库里 `bid_open_date`
+  // 实际是 "2026-12-01 00:00:00.000Z"，拼出来是非法日期 → 项目被静默跳过 →
+  // 卡片恒显示「未来 60 天没有开标项目」。解析口径现已收进 bidOpenDayMs（含单测）。
   const today = new Date(new Date().toDateString()).getTime()
-  const upcoming: UpcomingNode[] = []
-  const missing: BidNodeRow[] = []
-  for (const b of rows) {
-    const d = (b.bid_open_date || "").trim()
-    if (!d) {
-      // 已解析/编制中的项目才提醒补录（归档项目不再需要）
-      if (b.stage && b.stage !== "archived") missing.push(b)
-      continue
-    }
-    const t = new Date(`${d}T00:00:00`).getTime()
-    if (Number.isNaN(t)) continue
-    const days = Math.round((t - today) / 86400000)
-    if (days >= 0 && days <= HORIZON_DAYS) {
-      upcoming.push({
-        id: b.id,
-        title: b.project_name || "未命名项目",
-        hospital: b.hospital || "",
-        date: d,
-        daysLeft: days,
-      })
-    }
-  }
-  upcoming.sort((a, b) => a.daysLeft - b.daysLeft)
+  const { upcoming, missing } = buildBidNodeLists(rows, today, HORIZON_DAYS)
 
   // 无投标项目：整个卡片不渲染（首页保持聚焦）
   if (hidden || (rows.length === 0 && !loading)) return null
