@@ -5,30 +5,30 @@
   "canonical_state": "docs/evolution/_loop_state.json",
   "canonical_reports": "docs/evolution/R{round}_{YYYYMMDD}.md",
   "note": "本文件是 2026-10-14 自动化作业按手册要求建立的账本。本项目既有的、被 autoloop 驱动器读取的权威账本仍是 docs/evolution/_loop_state.json —— 两者已同步，若冲突以 docs/evolution/_loop_state.json 为准。作业手册点名的 AI-ITERATION.md 在本仓库不存在（项目已注明其被删除），实际执行依据为 Qoder自主迭代提示词-v2.md。 轮次说明：2026-10-15 本地自动化线为 R49（R48 已被并发执行者的「事实来源优先级」切片占用）。",
-  "round": 65,
+  "round": 66,
   "lastRoundSummary": {
-    "id": "R65",
-    "at": "2026-10-28T11:55+08:00",
-    "theme": "情报「内容片段」显示成别的文章标题列表：展示层新增列表残片识别（首页 + 详情面板同源）",
-    "class": "A（修：同一字段两处渲染，一处裸渲染、一处判据粒度不够）",
-    "severity": "S2（用户可见内容错误：标题下读到的是同站其他条目的标题+日期）",
+    "id": "R66",
+    "at": "2026-10-29T09:00+08:00",
+    "theme": "资质台账「导出硬拦截」开关：界面说「关」、导出实际在拦（同一 localStorage 键两处判定、默认值相反）",
+    "class": "A（修：同一开关两处各写一套判定，默认值相反，属实现缺陷）",
+    "severity": "S2（用户可见的错误状态，落在「证书过期直接废标」这条线上）",
     "verdict": "pass",
     "gates": {
       "tsc": "pass（npx tsc -b exit 0）",
-      "build": "pass（CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD=100000 npx vite build，exit 0）",
-      "vitest": "pass（npx vitest run 352 files / 4033 passed / 2 skipped；含并发在途用例，本轮自身 +11 例）",
-      "eslint": "pass（116 error / 11 warning，逐文件比对零新增）"
+      "build": "pass（CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD=100000 npx vite build，exit 0，6.60s）",
+      "vitest": "pass（npx vitest run 356 files / 4071 passed / 2 skipped；开工基线 355 / 4061 / 2，本轮 +1 文件 / +10 例）",
+      "eslint": "pass（116 error / 11 warning = 基线零新增；useQualCerts.ts 的 1 条 set-state-in-effect 在第 81 行挂载 reload，改动前既有）"
     },
     "headline_numbers": {
-      "dirty_rows": "库内 728 条情报 / 672 条有 content_snippet；修前 368 条（54.8%）在把「别的条目」当摘要显示（含「更多…」166 / 含≥2 日期 345 / 两者 143）",
-      "after_fix": "归零 339 条（改显示兜底提示）、保留正文 333 条",
-      "no_false_positive": "无日期片段 262 条，新旧输出逐字一致 262 条",
-      "reverse_check": "两处接线改回旧写法 → 2 failed | 3 passed；还原 → 5 passed",
-      "browser": "/ 首页情报摘要 5 张卡「更多...」5→0，3 张从别人的标题变成兜底提示、1 张保留本文正文；/intel-center 详情面板两处（该隐藏/该保留）行为正确；0 console error"
+      "divergence": "键缺失时：页面 aria-pressed=false「导出硬拦截：关」，闸门判定 true（实际在拦）",
+      "live_risk": "/api/qual_certs/summary：total 34，expired 1 / critical 3 / warning 0 / ok 5 / unknown 25 → 默认态下今天任何人导出都会被这个「关着的」开关拦一次",
+      "after_fix": "键缺失 → 按钮「开」+ aria-pressed=true + gate=true（三处一致）；点一次 → key=\"0\"、按钮「关」、gate=false；再点 → \"1\"；F5 后保持",
+      "reverse_check": "把 useQualCerts 改回 `=== \"1\"` → 1 failed | 9 passed；还原 → 10 passed，diff 只剩预期 +6/−5",
+      "scan": "全仓跨文件复用同一个 localStorage 键的只有 qual_hard_block 这一个（已扫）"
     },
-    "root_cause": "抓取端进的是栏目列表页，content_snippet 存的是「标题+日期+标题+日期」骨架；展示层 displayizeIntel 的行级判据（导航词/URL/花括号）对全中文的标题列表零命中，详情面板则完全裸渲染。",
-    "concurrency": "开工时 138 个未提交文件（另一执行者覆盖 BidWorkspace 全域 + useIntelCenter.ts 的 B37 在途改动）；本轮未碰、未 git add -A。",
-    "numbering_note": "承接 .loop/ledger.json round 64 → 65，写入前断言 round===64。"
+    "root_cause": "同一个 localStorage 键 qual_hard_block 被两处各写一套判定且默认值相反：台账页 `=== \"1\"`（键缺失→关），导出闸门 `!== \"0\"`（键缺失→拦）。P0-9（2026-10-24）只把闸门改成默认拦，界面那半没跟着改。",
+    "concurrency": "开工时 147 个未提交文件（BidWorkspace 域 100 个），最后一次修改 2026-10-28 17:33，已停摆 15h+；本轮未碰、未 git add -A。",
+    "numbering_note": "承接 .loop/ledger.json round 65 → 66，写入前断言 round===65。"
   },
   "closed": [
     {
@@ -333,6 +333,49 @@
       "evidence": "浏览器实机 /competitors：Tabs 已改为 Radix（TabsList/TabsTrigger/TabsContent），点击「厂商档案」后 aria-selected 从「市场总览」迁到「厂商档案」，面板内容随之切换",
       "diff": "无（本轮未改代码）",
       "report": "docs/evolution/R65_20261028.md §五"
+    },
+    {
+      "id": "B66-qual-hardblock-single-source",
+      "title": "资质「导出硬拦截」开关：页面状态与真实拦截行为相反（默认态），且点一次开关会把「关」变成「开」",
+      "priority": "high",
+      "closed_at_round": "R66",
+      "summary": "同一 localStorage 键 qual_hard_block 在两处各写一套判定且默认值相反：台账页 `=== \"1\"`（键缺失→显示「关」），导出闸门 `!== \"0\"`（键缺失→实际在拦）。默认态（从没点过开关的人）会看到「关」却被导出红字阻断，而提示让用户「关闭硬拦截」，他点一下只会写入 \"1\"（仍在拦），看起来像开关坏了。修法：新增 src/lib/qualHardBlock.ts 作唯一真源（默认拦；只有显式 \"0\" 放行；脏值一律按拦；storage 不可用按软警告），台账页改调 readQualHardBlock/writeQualHardBlock；新增 10 例单测含跨文件哨兵（台账页不许退回 === \"1\"；闸门必须仍是「只有 \"0\" 才放行」）。",
+      "files": [
+        "src/lib/qualHardBlock.ts（新增，唯一真源）",
+        "src/lib/qualHardBlock.test.ts（新增，10 例，含跨文件哨兵）",
+        "src/pages/QualCerts/useQualCerts.ts（+6/−5，改调单一真源）",
+        ".loop/reports/2026-10-29-0900-r66-qual-hardblock.md",
+        ".loop/ledger.json",
+        ".loop/MORNING.md"
+      ],
+      "evidence": {
+        "before": "浏览器实测（键为 null）：按钮 text=「导出硬拦截：关」aria-pressed=false，title=「开启后：…将直接阻断导出」；同一时刻 uiReads(=== \"1\")=false / gateReads(!== \"0\")=true",
+        "real_data": "/api/qual_certs/summary → total 34，{expired:1, critical:3, warning:0, ok:5, unknown:25}（4 条会被拦，缺陷当场可复现）",
+        "after": "键 null → 「开」+pressed=true+gate=true；点一次 → key=\"0\"「关」gate=false；再点 → key=\"1\"「开」；F5 后保持；控制台 0 error",
+        "unit": "npx vitest run src/lib/qualHardBlock.test.ts → 10 passed",
+        "delete_impl_turns_red": "useQualCerts 改回 `=== \"1\"` → 1 failed | 9 passed；还原 → 10 passed，git diff 只剩预期 +6/−5",
+        "gates": "tsc exit 0 / vite build exit 0（6.60s）/ vitest 356 files 4071 passed 2 skipped / eslint 116 error 11 warning（零新增）",
+        "honest": "未真跑一次「导出投标文件」触发拦截（会写出 Word 到用户目录，且该动作在别人的在途文件里）；闸门证据 = 它读同一个键 + 浏览器三态对照 + 共享函数单测，不写成端到端已验证。"
+      },
+      "diff_summary": {
+        "files": [
+          "src/lib/qualHardBlock.ts（新增）",
+          "src/lib/qualHardBlock.test.ts（新增）",
+          "src/pages/QualCerts/useQualCerts.ts（+6/−5）"
+        ],
+        "new_dependencies": 0,
+        "new_collections": 0,
+        "pb_hooks_changed": 0,
+        "prompts_changed": 0,
+        "semantics_changed": false,
+        "business_code_changed": 1,
+        "bid_workspace_touched": false
+      },
+      "honest_notes": [
+        "useBidWorkspace.ts:9426 仍是内联 `!== \"0\"`，未接进单一真源（该文件属他人在途批次，未碰）→ 已开单 B42。",
+        "导出闸门的资质核验是 fail-open（台账接口挂了就静默跳过、照常导出），是既有产品取舍，未改 → 已开单 B43。",
+        "本轮只动 3 个文件，其中 1 个业务文件 11 行；未提交（工作区有 147 个他人在途文件，git add -A 会连带提交）。"
+      ]
     }
   ],
   "backlog": [
@@ -440,9 +483,47 @@
       "title": "情报中心列表卡片只渲染 summary、没有片段兜底 → 同一批条目在首页有内容、在列表卡片空白。是「要不要兜底」的产品判断，不是缺陷，需用户点头。",
       "priority": "low",
       "source": "self-found"
+    },
+    {
+      "id": "B42-qual-hardblock-gate-wiring",
+      "title": "导出闸门（useBidWorkspace.ts:9426）接入 lib/qualHardBlock 单一真源，删掉内联 `!== \"0\"`",
+      "priority": "medium",
+      "source": "round-report",
+      "detail": "R66 只把台账页接进了单一真源；闸门那一半因为该文件属他人在途批次（147 个未提交文件里 BidWorkspace 占 100）没碰。接完后把 qualHardBlock.test.ts 哨兵里的 viaInline 分支删掉，改成硬断言 readQualHardBlock()。"
+    },
+    {
+      "id": "B43-qual-gate-fail-open",
+      "title": "导出闸门的资质核验是 fail-open：/api/qual_certs/summary 挂了就静默跳过、照常导出",
+      "priority": "low",
+      "source": "self-found",
+      "detail": "useBidWorkspace.ts:9453 catch 注释写明「台账未建或网络异常时静默跳过，核验失败不阻断导出」。属产品取舍（不能因台账抖动把人锁死），但是「废标防护」上的一个已知洞，需用户拍板是否改 fail-closed 或至少改成显式提示「本次未核验资质」。"
     }
   ],
   "newFindings": [
+    {
+      "id": "F66-1",
+      "title": "同一个 localStorage 键被两处各写一套判定、且默认值相反——两处单看都「对」，只有把「页面显示」和「真实行为」摆在一起才看得见",
+      "level": "P2",
+      "action": "全仓已扫：跨文件复用同一个 localStorage 键的只有 qual_hard_block 这一个，不是普遍问题；规律记进经验池（开关类配置一律「读/写单一函数 + 跨文件哨兵」）。"
+    },
+    {
+      "id": "F66-2",
+      "title": "P0-9 只改了闸门默认值、没改界面，说明「改一处默认值」时缺少「谁还在读这个值」的清单",
+      "level": "P2",
+      "action": "修法即上锁：抽 lib/qualHardBlock + 哨兵钉住两端口径；以后改任何持久化开关的默认值，先 grep 这个键的全部读取点。"
+    },
+    {
+      "id": "F66-3",
+      "title": "旧账核实：BUG-001「doc_templates 401」已不存在（带 X-Rh-User-Id 直连返回 200/2 条模板；vibexAuthHeaders 在 127.0.0.1 会带头）",
+      "level": "info",
+      "action": "测试报告里 BUG-001 可以关；BUG-002（竞品 Tab）R65 已核实不存在。"
+    },
+    {
+      "id": "F66-4",
+      "title": "并发在途仍为 147 个未提交文件（BidWorkspace 100 个），但已停摆：最后一次修改 2026-10-28 17:33",
+      "level": "P1",
+      "action": "不再「正在写」但仍是「没落地」，BidWorkspace 全域继续不可碰；需用户拍板归属（B22 延续）。"
+    },
     {
       "id": "F64-5",
       "title": "情报搜索框必须按 Enter 才筛（只输入不生效）",
@@ -620,13 +701,11 @@
   ],
   "noProgressStreak": 0,
   "lastRoundFiles": [
-    "src/pages/IntelCenter/intelBodyClean.ts",
-    "src/pages/IntelCenter/intelBodyClean.test.ts",
-    "src/components/intel-center/IntelDetailPanel.tsx",
-    "src/components/intel-center/intelSummaryWiring.test.ts",
-    "src/pages/Home/useHome.ts",
-    "docs/evolution/_r65_intel_snippet_scan.mjs",
-    "docs/evolution/R65_20261028.md",
-    "docs/evolution/_loop_state.json"
+    "src/lib/qualHardBlock.ts",
+    "src/lib/qualHardBlock.test.ts",
+    "src/pages/QualCerts/useQualCerts.ts",
+    ".loop/reports/2026-10-29-0900-r66-qual-hardblock.md",
+    ".loop/ledger.json",
+    ".loop/MORNING.md"
   ]
 }

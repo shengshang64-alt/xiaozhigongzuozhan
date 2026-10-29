@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/rhLogin"
+import { readQualHardBlock, writeQualHardBlock } from "@/lib/qualHardBlock"
 import { summarizeQuals, type QualCertRow, type QualSummary } from "./qualsCore"
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -52,13 +53,13 @@ export function useQualCerts() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   // 硬拦截开关（Q20 补全）：开启后导出标书时存在过期/临期证书会直接阻断导出（localStorage 持久化）
-  const QUAL_HARD_BLOCK_KEY = "qual_hard_block"
-  const [hardBlock, setHardBlockState] = useState<boolean>(() => {
-    try { return window.localStorage.getItem(QUAL_HARD_BLOCK_KEY) === "1" } catch { return false }
-  })
+  // R66：判定与写入一律走 lib/qualHardBlock 的单一真源。此前这里用 `=== "1"`（默认关），
+  // 而导出闸门用 `!== "0"`（默认拦）——默认态下页面显示「关」但导出实际被拦，用户点一次
+  // 开关只会把 "1" 写进去（仍在拦），看起来像开关坏了。默认值以闸门为准：默认拦。
+  const [hardBlock, setHardBlockState] = useState<boolean>(() => readQualHardBlock())
   const setHardBlock = useCallback((on: boolean) => {
     setHardBlockState(on)
-    try { window.localStorage.setItem(QUAL_HARD_BLOCK_KEY, on ? "1" : "0") } catch { /* 仅本次会话生效 */ }
+    writeQualHardBlock(on)
   }, [])
   const [editing, setEditing] = useState<QualCertRow | null>(null)
   const [formOpen, setFormOpen] = useState(false)
