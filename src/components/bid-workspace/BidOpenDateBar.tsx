@@ -4,6 +4,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
+  bidOpenDateDay,
   bidOpenDateStatus,
   normalizeBidOpenDateInput,
   type BidOpenDateStatus,
@@ -25,12 +26,17 @@ const CHIP: Record<BidOpenDateStatus["tone"], string> = {
  * 复用既有 updateProject（PATCH 已有 bid_open_date 字段，零新 collection、零迁移、零 pb_hooks）。 */
 export function BidOpenDateBar({ activeProject, isArchivedLocked, updateProject }: BidOpenDateBarProps) {
   const proj = activeProject
-  const saved = proj?.bid_open_date ?? ""
+  // R68：库里这个字段可能是 PB 的日期时间串（`2026-12-01 00:00:00.000Z`）。旧实现把它原样
+  // 塞进展示文案与 `<input type="date">`，于是界面上直出「开标时间：2026-12-01 00:00:00.000Z」，
+  // 点「修改」后日期框是**空白**的（date 输入拒绝非法值），用户会以为日期没存上。
+  // 展示与编辑一律用 YYYY-MM-DD；写回也是 YYYY-MM-DD（updateProject 只认这个格式）。
+  const savedRaw = proj?.bid_open_date ?? ""
+  const saved = bidOpenDateDay(savedRaw)
   const [draft, setDraft] = useState(saved)
   const [editing, setEditing] = useState(!saved)
 
   if (!proj) return null
-  const status = bidOpenDateStatus(saved)
+  const status = bidOpenDateStatus(savedRaw)
   const dirty = draft !== saved
   const lockTitle = isArchivedLocked ? "已归档项目为只读，解除归档后可修改开标时间" : undefined
 
@@ -102,7 +108,7 @@ export function BidOpenDateBar({ activeProject, isArchivedLocked, updateProject 
               onChange={(e) => setDraft(e.target.value)}
               className="h-9 w-40 border-border bg-background focus-visible:shadow-[var(--focus-ring)]"
             />
-            {!saved && (
+            {!savedRaw && (
               <span className="text-xs text-muted-foreground">
                 尚未登记——驾驶舱投标节点提醒、开标倒计时与截标预警都依赖它，建议补录
               </span>

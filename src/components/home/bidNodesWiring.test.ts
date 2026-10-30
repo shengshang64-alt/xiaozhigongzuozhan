@@ -9,6 +9,7 @@ import { countMatches, sourceText } from "@/testing/hookSources"
 
 const CARD = "src/components/home/BidNodesCard.tsx"
 const LOGIC = "src/components/home/bidNodesLogic.ts"
+const PARSER = "src/lib/bidOpenDay.ts"
 
 describe("BidNodesCard 开标日期解析接线", () => {
   const card = sourceText(CARD)
@@ -36,14 +37,21 @@ describe("BidNodesCard 开标日期解析接线", () => {
 
 describe("bidNodesLogic 解析口径", () => {
   const logic = sourceText(LOGIC)
+  const parser = sourceText(PARSER)
+
+  it("R68：解析实现只在 lib/bidOpenDay 一处，首页模块改为引用", () => {
+    expect(logic).toContain('from "@/lib/bidOpenDay"')
+    expect(countMatches(logic, /new Date\(year, month - 1, day\)/g)).toBe(0)
+    expect(countMatches(parser, /new Date\(year, month - 1, day\)/g)).toBe(1)
+  })
 
   it("按前 10 位（年月日）取日期，两种历史格式同口径", () => {
-    expect(countMatches(logic, /\^\(\\d\{4\}\)-\(\\d\{2\}\)-\(\\d\{2\}\)/g)).toBe(1)
-    expect(logic).toContain("bidOpenDayMs")
+    expect(countMatches(parser, /\^\(\\d\{4\}\)-\(\\d\{2\}\)-\(\\d\{2\}\)/g)).toBe(1)
+    expect(parser).toContain("bidOpenDayMs")
   })
 
   it("用本地零点重建（new Date(y, m-1, d)），不用 Date.parse 的 UTC 口径", () => {
-    expect(logic).toContain("new Date(year, month - 1, day)")
-    expect(countMatches(logic, /Date\.parse\(/g)).toBe(0)
+    expect(countMatches(parser, /Date\.parse\(/g)).toBe(0)
+    expect(countMatches(parser, /new Date\(`\$\{/g)).toBe(0)
   })
 })

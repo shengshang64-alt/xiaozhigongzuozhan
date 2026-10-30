@@ -5,30 +5,26 @@
   "canonical_state": "docs/evolution/_loop_state.json",
   "canonical_reports": "docs/evolution/R{round}_{YYYYMMDD}.md",
   "note": "本文件是 2026-10-14 自动化作业按手册要求建立的账本。本项目既有的、被 autoloop 驱动器读取的权威账本仍是 docs/evolution/_loop_state.json —— 两者已同步，若冲突以 docs/evolution/_loop_state.json 为准。作业手册点名的 AI-ITERATION.md 在本仓库不存在（项目已注明其被删除），实际执行依据为 Qoder自主迭代提示词-v2.md。 轮次说明：2026-10-15 本地自动化线为 R49（R48 已被并发执行者的「事实来源优先级」切片占用）。",
-  "round": 67,
+  "round": 68,
   "lastRoundSummary": {
-    "id": "R67",
-    "at": "2026-10-30T01:00+08:00",
-    "theme": "首页「投标节点 · 未来 60 天」卡恒为空：开标日期解析只认 date-only，库里的 \"YYYY-MM-DD HH:mm:ss.SSSZ\" 被拼成非法日期后静默跳过",
-    "class": "A（修：日期解析口径错，属实现缺陷，不是产品取舍）",
-    "severity": "S2（用户可见的错误状态，落在「错过投标截止不可挽回」这条线上）",
+    "id": "R68",
+    "at": "2026-10-31T01:15+08:00",
+    "theme": "开标倒计时每天 00:00–08:00 多算一天（date-only 被按 UTC 解析）+ 补录条直出库里的日期时间串、编辑框空白",
+    "class": "A（修：解析口径错，实现缺陷，不是产品取舍）",
+    "severity": "S2（落在「错过投标截止不可挽回」这条线上；且同一屏两个答案）",
     "verdict": "pass",
     "gates": {
       "tsc": "pass（npx tsc -b exit 0）",
-      "build": "pass（CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD=100000 npx vite build，exit 0，15.88s）",
-      "vitest": "pass（npx vitest run 361 files / 4137 passed / 2 skipped；R66 基线 356 / 4071 / 2，本轮自身 +2 文件 / +22 例）",
+      "build": "pass（CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD=100000 npx vite build，exit 0，7.63s）",
+      "vitest": "pass（npx vitest run 376 files / 4400 passed / 2 skipped；R67 基线 361/4137/2，本轮自身 +0 文件 / +13 例）",
       "eslint": "pass（116 error / 11 warning，与开工基线逐文件比对零变化）"
     },
     "headline_numbers": {
-      "before": "首页卡：「未来 60 天没有开标项目」；实测 19 个可见项目里 3 个有开标时间，3 个全部因 Invalid Date 被 continue 跳过",
-      "root": "库里 bid_open_date = \"2026-12-01 00:00:00.000Z\"；卡片把日期串拼上 T00:00:00 再 new Date() → 非法日期",
-      "after": "首页卡：「2026-12-01 【UI测试】中医院信息化建设项目 厦门市中医院 剩 32 天」+「另有 15 个项目未填开标时间」；点击跳 /bid-workspace?project=ebxc598wu8bcvpd",
-      "reverse_check": "把解析改回旧写法 → 6 failed | 10 passed；还原 → 22 passed",
-      "scan": "grep \"T00:00:00\" 全仓 5 处，其余 4 处均已 slice(0,10)/正则/纯日期输入，无第二处裸拼"
+      "before": "2026-10-31 01:00 同一项目：首页「剩 31 天」/ 流水线「距开标截止 32 天」/ 补录条「距开标 32 天 + 原始串直出」",
+      "root": "bid_open_date 是「日历日」，但 Date.parse(date-only) 走 UTC 零点 = 当地 08:00 → 每天 00:00–08:00 多算 1 天；补录条又把原始串直接渲染进 date 输入（浏览器丢弃非法值 → 空白）",
+      "after": "三面统一 31 天；开标时间显示 2026-12-01；点「修改」日期框有值；0 console error"
     },
-    "root_cause": "BidNodesCard.tsx 内联的日期解析只认 date-only；PB 存的是日期时间串。解析失败走 continue，不报错不提示，于是「卡片永远空」这种失败方式完全不可见。",
-    "concurrency": "开工 175 个未提交文件（BidWorkspace 77 + components/bid-workspace 14 + prompts 10 + ProductMapping 17 + lib 12）；本轮只改 1 个既有文件 + 3 个新文件，未 git add -A。",
-    "numbering_note": "承接 .loop/ledger.json round 66 → 67，写入前断言 round===66。"
+    "next": "B46（列表 chip 同口径，等域干净）；B42 仍被堵；B44 等点头。"
   },
   "closed": [
     {
@@ -423,6 +419,36 @@
         "全量 vitest 的 361/4137 含他人在途用例；本轮自身贡献 +2 文件 / +22 例。",
         "B42（导出闸门接 lib/qualHardBlock）仍在 useBidWorkspace.ts 里，本轮未碰。"
       ]
+    },
+    {
+      "id": "B45-bid-open-countdown-utc",
+      "at": "2026-10-31T01:15+08:00",
+      "title": "开标倒计时每天 00:00–08:00 多算一天 + 补录条把库里的日期时间串直接打到界面上（编辑框空白）",
+      "priority": "high",
+      "closed_at_round": "R68",
+      "summary": "同一个 bid_open_date 在四处各写一套解析：① 补录条 BidOpenDateBar 用 Date.parse(iso)+Math.ceil，date-only 串走 UTC 零点=当地 08:00，于是每天 00:00–08:00 多算一天（开标当天凌晨显示「距开标 1 天」而不是「今日开标」；2026-12-01 在 07:59 说 32 天、08:00 变 31 天）；② 同一组件把 proj.bid_open_date 原样塞进文案与 input[type=date]，库里是「2026-12-01 00:00:00.000Z」，界面直出该串、点「修改」后日期框空白；③ 流水线 PipelineStepper 用 bidTypes.daysUntil（同样 UTC 口径），且 daysLeft<=0 一律渲染「已过期 N 天」，开标当天会变成「已过期 0 天」；④ 首页卡（R67）已用本地零点。修法：解析上收到 src/lib/bidOpenDay.ts 单一真源（bidOpenDayMs / bidOpenDateDay / daysUntilLocalDay），三处消费者全部改调它，倒计时改「本地日历日差值」。",
+      "files": [
+        "src/lib/bidOpenDay.ts（新增，唯一真源：本地零点解析 + 日历日差值 + 展示串）",
+        "src/components/bid-workspace/bidOpenDate.ts（status 改日历日口径，normalize 改用同一解析器）",
+        "src/components/bid-workspace/BidOpenDateBar.tsx（savedRaw/saved 分离，展示与编辑恒 YYYY-MM-DD）",
+        "src/components/bid-workspace/PipelineStepper.tsx（改调 bidOpenDateStatus，开标当天显「今日开标」）",
+        "src/components/home/bidNodesLogic.ts（删本地解析实现，改 re-export lib）",
+        "src/components/bid-workspace/bidOpenDate.test.ts（6→18 例，含 00:00–08:00 回归网与接线哨兵）",
+        "src/components/home/bidNodesWiring.test.ts（哨兵跟随解析器搬到 lib，6→7 例）"
+      ],
+      "evidence": {
+        "before": "浏览器 2026-10-31 01:00 实测同一项目（ebxc598wu8bcvpd，bid_open_date=2026-12-01 00:00:00.000Z）：首页卡「剩 31 天」，标书工作台流水线「距开标截止 32 天」，补录条「距开标 32 天 / 开标时间：2026-12-01 00:00:00.000Z」；点「修改」后日期输入的 value 为空（HTML 属性是非法值被浏览器丢弃），保存按钮 disabled。",
+        "real_data": "PB 直连：28 条投标项目 / 可见 19 条 / 有开标时间 3 条，3 条全部是 PocketBase 日期时间串（不是 date-only）→ 3/3 都会直出原始串。",
+        "after": "浏览器同一时刻：首页「剩 31 天」、流水线「距开标截止 31 天」、补录条「距开标 31 天 / 开标时间：2026-12-01」，rawLeak=false，点「修改」后日期框 value=2026-12-01、保存按钮正确 disabled（不脏），0 console error。",
+        "counter_evidence": "把 bidOpenDateStatus 临时改回 Date.parse+Math.ceil → 4 failed | 14 passed（失败项正是 00:00–08:00 与 08:00 跳变）；还原 → 18 passed。",
+        "table": "固定时钟网格（基准日 2026-10-31）：2026-10-31 在 00:30/07:59/08:00/12:00/23:00 全部「今日开标」；2026-12-01 全部「距开标 31 天」；PB 串与 date-only 同答案。"
+      },
+      "diff_summary": "+1 新文件（src/lib/bidOpenDay.ts，约 70 行）+ 6 个文件改动；净增约 +40/−50 行；未改 bidTypes.ts / useBidWorkspace.ts / 数据模型 / 提示词 / 导出 / 认证；未加依赖。",
+      "honest_notes": [
+        "只修了三个干净面（首页卡、流水线、补录条）。项目列表的倒计时 chip（BidProjectList.tsx → bidTypes.daysUntil）仍是 UTC 口径，实测同一时刻仍显示「距开标 32 天」——该文件在他人 248 个未提交批次里，按纪律未碰，已开单 B46。",
+        "「今日开标」这一档没有用真实业务数据端到端复现（要改库里的开标日期再改回来），证据 = 注入时钟的单测 4 例 + 改回旧口径即变红的反证。",
+        "本轮 vitest 376 files / 4400 passed 含他人在途用例；本轮自身 +0 文件 / +13 例。"
+      ]
     }
   ],
   "backlog": [
@@ -553,11 +579,11 @@
       "detail": "/api/qual_certs/summary 实测 {expired:1, critical:3, warning:0, ok:5, unknown:25}；页面四张卡只展示前三档 + 台账总数，看不出 25 条（软著/荣誉证书等长期有效属正常，也可能含漏填）完全不参与预警。属展示口径变更，需用户点头。"
     },
     {
-      "id": "B45-bid-open-date-morning-off-by-one",
-      "title": "开标倒计时在开标日 00:00–08:00 显示「距开标 1 天」而非「今日开标」（bidOpenDateStatus 的 Date.parse 口径）",
-      "priority": "low",
-      "source": "self-found(R67)",
-      "detail": "实测：开标日 07:00 → daysLeft=1 / 09:00 → 今日开标。改法与 bidNodesLogic.bidOpenDayMs 同口径。"
+      "id": "B46-bid-list-countdown-utc",
+      "title": "投标项目列表倒计时 chip 仍走 UTC 口径：bidTypes.daysUntil 用 new Date(dateStr)，每天 00:00–08:00 多算 1 天（实测同一时刻 32 vs 31）",
+      "priority": "medium",
+      "source": "self-found(R68)",
+      "detail": "文件属他人在途批次，本轮未碰。改法：daysUntil 内部改调 src/lib/bidOpenDay.ts 的 daysUntilLocalDay，或 BidProjectList 直接用它。注意 daysUntil 还用于回收站保留天数（30+daysUntil(deleted_at)），改口径会让负数档位差 1 天，需一并核对文案。"
     }
   ],
   "newFindings": [
@@ -776,6 +802,18 @@
       "title": "并发在途扩大到 138 个未提交文件，且已侵入情报域（useIntelCenter.ts + intelFuturePubDate.test.ts）",
       "level": "P1",
       "action": "B22 的延续：高优先待办（B28/B35）仍被堵；本轮选题被迫收到「两处渲染点」这种完全干净的边界。"
+    },
+    {
+      "id": "F68-1",
+      "title": "项目列表倒计时 chip 仍是 UTC 口径（bidTypes.daysUntil），与已修的三个面在同一时刻差 1 天",
+      "level": "P2",
+      "action": "已开单 B46：等 BidWorkspace 域干净后把 daysUntil 换成 lib/bidOpenDay.daysUntilLocalDay（一行），或让 daysUntil 内部改调它。"
+    },
+    {
+      "id": "F68-2",
+      "title": "工作区未提交文件 175 → 248（第五轮连续上涨），BidWorkspace 79 + PptQuote 28 + ProductMapping 17",
+      "level": "P1",
+      "action": "B22 的延续。B42（导出闸门接单一真源）与 B46 都被堵在同一个域。"
     }
   ],
   "blocked": [
@@ -792,14 +830,17 @@
   ],
   "noProgressStreak": 0,
   "lastRoundFiles": [
+    "src/lib/bidOpenDay.ts",
+    "src/components/bid-workspace/bidOpenDate.ts",
+    "src/components/bid-workspace/bidOpenDate.test.ts",
+    "src/components/bid-workspace/BidOpenDateBar.tsx",
+    "src/components/bid-workspace/PipelineStepper.tsx",
     "src/components/home/bidNodesLogic.ts",
-    "src/components/home/bidNodesLogic.test.ts",
     "src/components/home/bidNodesWiring.test.ts",
-    "src/components/home/BidNodesCard.tsx",
-    ".loop/reports/2026-10-30-0100-r67-bid-nodes-card.md",
-    "docs/evolution/R67_20261030.md",
+    ".loop/reports/2026-10-31-0115-r68-bid-open-countdown.md",
+    "docs/evolution/R68_20261031.md",
     ".loop/ledger.json",
-    "docs/evolution/_loop_state.json",
-    ".loop/MORNING.md"
+    ".loop/MORNING.md",
+    "docs/evolution/_loop_state.json"
   ]
 }

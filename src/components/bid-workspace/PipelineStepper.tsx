@@ -1,6 +1,7 @@
 import { Check } from "lucide-react"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
-import { PIPELINE_STEPS, daysUntil, stepEntryMissing, stepGateConfirmed, type BidProjectRecord } from "@/pages/BidWorkspace/bidTypes"
+import { PIPELINE_STEPS, stepEntryMissing, stepGateConfirmed, type BidProjectRecord } from "@/pages/BidWorkspace/bidTypes"
+import { bidOpenDateStatus } from "@/components/bid-workspace/bidOpenDate"
 
 type PipelineStepperProps = Pick<UseBidWorkspace, "activeStep" | "requestStep" | "activeProject"> & {
   /** 重构轮：未响应条款数（第③步橙色角标，缺失橙） */
@@ -24,10 +25,11 @@ function stepDone(step: number, proj: BidProjectRecord | null): boolean {
 /** 重构轮：开标倒计时（天）；无日期/非法日期返回 null */
 export function PipelineStepper({ activeStep, requestStep, activeProject, missCount = 0, riskCount = 0 }: PipelineStepperProps) {
   // 重构轮：开标前倒计时徽标（≤7 天红，其余中性；无日期不显）
-  // R52（2026-10-16）：原先此处有一份与 bidTypes.daysUntil 重名的私有副本 daysUntilOpen，
-  // 而本文件本来就在从 bidTypes 取其它符号——两个实现两个活跃消费者（BidProjectList 用的是 bidTypes 版），
-  // 口径分叉风险大于收益，已收敛回单一真源。
-  const daysLeft = daysUntil(activeProject?.bid_open_date)
+  // R68：改用 bidOpenDateStatus（本地日历日口径，与下方「开标时间补录条」同一函数）。
+  // 旧实现走 bidTypes.daysUntil → date-only 串被按 UTC 解析成当地 08:00，每天 00:00–08:00
+  // 都多算一天；且 `daysLeft <= 0` 一律渲染「已过期 N 天」，开标当天会变成「已过期 0 天」。
+  const openStatus = bidOpenDateStatus(activeProject?.bid_open_date)
+  const daysLeft = openStatus.daysLeft
   return (
     <nav aria-label="投标流程步骤" className="mx-auto max-w-7xl px-4 pt-5">
       <ol className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-border bg-card p-2 shadow-md">
@@ -112,10 +114,10 @@ export function PipelineStepper({ activeStep, requestStep, activeProject, missCo
       {(daysLeft !== null || missCount > 0 || riskCount > 0) && (
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5 px-1 text-xs">
           {daysLeft !== null &&
-            (daysLeft <= 0 ? (
+            (openStatus.tone === "past" && daysLeft < 0 ? (
               <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 font-medium text-destructive">已过期 {Math.abs(daysLeft)} 天</span>
-            ) : daysLeft <= 7 ? (
-              <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 font-medium text-destructive">距开标截止 {daysLeft} 天</span>
+            ) : openStatus.tone === "urgent" || daysLeft === 0 ? (
+              <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 font-medium text-destructive">{daysLeft === 0 ? "今日开标" : `距开标截止 ${daysLeft} 天`}</span>
             ) : (
               <span className="rounded-full border border-border px-2 py-0.5 text-muted-foreground">距开标截止 {daysLeft} 天</span>
             ))}
