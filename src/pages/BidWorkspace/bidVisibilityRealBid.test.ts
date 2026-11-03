@@ -77,7 +77,18 @@ const SUBSET_PATH = path.join(DIR, "__fixtures__", "azhongyiRealBid.json")
 const FULL_PATH = path.join(DIR, "..", "..", "..", ".probe", "az-fixture", "azhongyi.full.json")
 
 const readFixture = (p: string): RealBidFixture => JSON.parse(readFileSync(p, "utf8")) as RealBidFixture
-const SUBSET = readFixture(SUBSET_PATH)
+/**
+ * 本仓库快照已去掉 `src/pages/BidWorkspace/__fixtures__/` 里的真实标书。
+ * 文件不在时整组跳过，不重新制造客户数据；夹具还在的环境仍照常跑。
+ */
+const hasSubset = existsSync(SUBSET_PATH)
+const SUBSET = hasSubset ? readFixture(SUBSET_PATH) : (null as unknown as RealBidFixture)
+
+describe.skipIf(hasSubset)("真实标书夹具不在本快照中", () => {
+  it("已跳过安中医回归：__fixtures__/azhongyiRealBid.json 被移除，不重造真实数据", () => {
+    expect(hasSubset).toBe(false)
+  })
+})
 
 const norm = (s: string): string => s.replace(/[\s|｜]/g, "")
 const allText = (f: RealBidFixture): string => `${f.tender_text}\n${f.bid_text}\n${f.clauses.map((c) => c.text).join("\n")}`
@@ -132,16 +143,16 @@ function buildEndToEnd(f: RealBidFixture): { pack: BidEvidencePack; table: Devia
   return { pack, table: { split_dim: "system", generated_at: "", rows: marked }, invisible, visibleDeviation }
 }
 
-const E2E = buildEndToEnd(SUBSET)
-const PACK = E2E.pack
-const R = PACK.report
-const INVISIBLE = E2E.invisible
+const E2E = hasSubset ? buildEndToEnd(SUBSET) : (null as unknown as ReturnType<typeof buildEndToEnd>)
+const PACK = hasSubset ? E2E.pack : (null as unknown as BidEvidencePack)
+const R = hasSubset ? PACK.report : (null as unknown as BidEvidencePack["report"])
+const INVISIBLE = hasSubset ? E2E.invisible : []
 const INVISIBLE_SET = new Set(INVISIBLE)
-const INJECTED = R.input_chars - R.omitted_chars
-const ALL_CHAPTERS = chapterRefs(SUBSET.bid_text)
-const MISSED = PACK.clauses.filter((c) => !c.hit)
+const INJECTED = hasSubset ? R.input_chars - R.omitted_chars : 0
+const ALL_CHAPTERS = hasSubset ? chapterRefs(SUBSET.bid_text) : []
+const MISSED = hasSubset ? PACK.clauses.filter((c) => !c.hit) : []
 
-describe("R50b §0 夹具自洽与脱敏（安中医真实标书 → 可入库夹具）", () => {
+describe.skipIf(!hasSubset)("R50b §0 夹具自洽与脱敏（安中医真实标书 → 可入库夹具）", () => {
   it("真实规模：18 章 / 4.7 万字正文 / 133 条款，meta 与实际逐项一致", () => {
     expect(SUBSET.meta.subset).toBe(true)
     expect(SUBSET.meta.chapter_count).toBe(RECORDED.chapters)
@@ -172,7 +183,7 @@ describe("R50b §0 夹具自洽与脱敏（安中医真实标书 → 可入库�
   })
 })
 
-describe("R50b §1 4.7 万字真实正文：定向检索 + 如实报告可见范围", () => {
+describe.skipIf(!hasSubset)("R50b §1 4.7 万字真实正文：定向检索 + 如实报告可见范围", () => {
   it("mode=retrieval 且 input_complete=false（不得再声称注入完整）", () => {
     expect(R.mode).toBe("retrieval")
     expect(R.input_complete).toBe(false)
@@ -212,9 +223,9 @@ describe("R50b §1 4.7 万字真实正文：定向检索 + 如实报告可见范
   })
 })
 
-describe("R50b §2 未覆盖章 = 真的没进模型输入（不是「没写」）", () => {
-  const injectedNorm = norm(PACK.text)
-  const chunks = chunkBidText(SUBSET.bid_text)
+describe.skipIf(!hasSubset)("R50b §2 未覆盖章 = 真的没进模型输入（不是「没写」）", () => {
+  const injectedNorm = hasSubset ? norm(PACK.text) : ""
+  const chunks = hasSubset ? chunkBidText(SUBSET.bid_text) : []
   const uncovered = chunks.filter((c) => !R.covered_chapters.includes(c.chapter_ref))
   const covered = chunks.filter((c) => R.covered_chapters.includes(c.chapter_ref))
 
@@ -236,7 +247,7 @@ describe("R50b §2 未覆盖章 = 真的没进模型输入（不是「没写」�
   })
 })
 
-describe("R50b §3 真实召回率基线（检索有损 → 降级链路必需）", () => {
+describe.skipIf(!hasSubset)("R50b §3 真实召回率基线（检索有损 → 降级链路必需）", () => {
   it("命中率有下限（防劣化），且不可能是 100%——否则降级链路就没存在意义", () => {
     expect(R.clause_total).toBe(RECORDED.clauseTotal)
     expect(R.clause_hit).toBeGreaterThanOrEqual(RECORDED.hitFloor)
@@ -257,10 +268,12 @@ describe("R50b §3 真实召回率基线（检索有损 → 降级链路必需�
   })
 })
 
-describe("R50b §4 旧口径对照：静默截断（clipText + 自称完整）不得回归", () => {
-  const oldText = clipText(SUBSET.bid_text, MAX_BID_CHARS)
-  const oldPack = selectBidEvidence(oldText, asClauses(SUBSET).map((c) => ({ id: c.id, text: c.text })))
-  const oldChapters = chapterRefs(oldText)
+describe.skipIf(!hasSubset)("R50b §4 旧口径对照：静默截断（clipText + 自称完整）不得回归", () => {
+  const oldText = hasSubset ? clipText(SUBSET.bid_text, MAX_BID_CHARS) : ""
+  const oldPack = hasSubset
+    ? selectBidEvidence(oldText, asClauses(SUBSET).map((c) => ({ id: c.id, text: c.text })))
+    : (null as unknown as BidEvidencePack)
+  const oldChapters = hasSubset ? chapterRefs(oldText) : []
 
   it("旧路径把截断后的 1.2 万字当「输入完整」——这正是本轮要消灭的病", () => {
     expect(oldText.length).toBeGreaterThan(MAX_BID_CHARS) // 尾部还留着「后文因篇幅截断」标记
@@ -288,10 +301,10 @@ describe("R50b §4 旧口径对照：静默截断（clipText + 自称完整）�
   })
 })
 
-describe("R50b §5 端到端降级链路：真实 133 条款 → 偏离表 → 交卷体检 → 导出", () => {
-  const rows = E2E.table.rows
-  const stats = deviationStats(E2E.table)
-  const hits = deviationCommitHits(E2E.table)
+describe.skipIf(!hasSubset)("R50b §5 端到端降级链路：真实 133 条款 → 偏离表 → 交卷体检 → 导出", () => {
+  const rows = hasSubset ? E2E.table.rows : []
+  const stats = hasSubset ? deviationStats(E2E.table) : (null as unknown as ReturnType<typeof deviationStats>)
+  const hits = hasSubset ? deviationCommitHits(E2E.table) : []
   const undercommit = hits.filter((h) => h.rule === "deviation_undercommit")
   const invisibleHits = hits.filter((h) => h.rule === "deviation_invisible_review")
 
@@ -342,8 +355,8 @@ describe("R50b §5 端到端降级链路：真实 133 条款 → 偏离表 → �
   })
 })
 
-describe("R50b §6 证据包真的进到偏离表提示词（真实数据）", () => {
-  const messages = buildDeviationMapMessages(asClauses(SUBSET), [], PACK)
+describe.skipIf(!hasSubset)("R50b §6 证据包真的进到偏离表提示词（真实数据）", () => {
+  const messages = hasSubset ? buildDeviationMapMessages(asClauses(SUBSET), [], PACK) : []
   const user = typeof messages[1]?.content === "string" ? messages[1].content : ""
   const item = (rows: DeviationRow[]) => rows[0]
 
@@ -427,8 +440,9 @@ function countStrictlyCovered(f: RealBidFixture, pack: BidEvidencePack): number 
   return strict
 }
 
-describe.skipIf(!existsSync(FULL_PATH))("R50b §7 全量真实标书（139k 字，本机 .probe/ 夹具，不入库）", () => {
-  const f = existsSync(FULL_PATH) ? readFixture(FULL_PATH) : SUBSET
+describe.skipIf(!hasSubset || !existsSync(FULL_PATH))("R50b §7 全量真实标书（139k 字，本机 .probe/ 夹具，不入库）", () => {
+  if (!existsSync(FULL_PATH)) return
+  const f = readFixture(FULL_PATH)
   const e2e = buildEndToEnd(f)
 
   it("全量更长 → 命中率更差，但「不谎称完整」的行为不变", () => {

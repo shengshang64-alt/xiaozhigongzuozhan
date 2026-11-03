@@ -111,33 +111,30 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
           )}
           {p.activeStep === 2 && (
             <section className="pb-10">
-              <header className="rounded-xl border border-border bg-card px-6 py-5 shadow-md animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">AI 解析报告</h1>
-                    <p className="mt-1.5 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-                      解析报告只包含你在解析配置中勾选的分区，每个分区内容都可人工修改补充——后续编制、检查、评标都以这份核对过的报告为准。
-                    </p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={p.startParse}
-                    disabled={p.parseLoading || p.isArchivedLocked}
-                    className="shrink-0 border-primary/40 text-primary hover:bg-primary/10"
-                  >
-                    {p.parseLoading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ScanSearch className="mr-1.5 h-4 w-4" />}
-                    {p.parseLoading
-                      ? p.parseChunkProgress
-                        ? `正在解析第 ${p.parseChunkProgress.current}/${p.parseChunkProgress.total} 项…`
-                        : "解析中…"
-                      : p.activeProject.parse_report
-                        ? "重新解析"
-                        : "运行 AI 解析"}
-                  </Button>
+              <header className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-md">
+                <div className="min-w-0">
+                  <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">AI 解析报告</h1>
+                  <p className="mt-0.5 text-xs text-muted-foreground">先看下面这一条结论，再决定下一步。明细按组收着。</p>
                 </div>
+                <Button
+                  variant="outline"
+                  onClick={p.startParse}
+                  disabled={p.parseLoading || p.isArchivedLocked}
+                  className="shrink-0 border-primary/40 text-primary hover:bg-primary/10"
+                >
+                  {p.parseLoading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ScanSearch className="mr-1.5 h-4 w-4" />}
+                  {p.parseLoading
+                    ? p.parseChunkProgress
+                      ? `正在解析第 ${p.parseChunkProgress.current}/${p.parseChunkProgress.total} 项…`
+                      : "解析中…"
+                    : p.activeProject.parse_report
+                      ? "重新解析"
+                      : "运行 AI 解析"}
+                </Button>
               </header>
-              <div className="mt-5">
+              <div className="mt-4">
                 <ParseReportPanel
+                  key={p.activeProject.id}
                   report={p.activeProject.parse_report}
                   onChange={p.updateParseReport}
                   onReparse={p.reparseSection}
@@ -153,6 +150,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                   modelRefForRole={p.modelRefForRole}
                   restoredTables={p.activeProject.tender_tables ?? null}
                   onExportPurchaseList={p.exportPurchaseListWord}
+                  onContinue={() => p.requestStep(3)}
                 />
               </div>
               {/* R005（B-1 阶段一）：实质性条款覆盖矩阵——解析报告本地推导，零 AI 费用 */}
