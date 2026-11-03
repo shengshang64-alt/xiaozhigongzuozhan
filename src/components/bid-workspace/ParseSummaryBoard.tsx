@@ -3,10 +3,10 @@ import { Card } from "@/components/ui/card"
 import type { SummaryColumn } from "@/pages/BidWorkspace/parseSummary"
 
 const STATUS_TONE: Record<string, string> = {
-  ok: "bg-primary/10 text-primary",
-  failed: "bg-destructive/10 text-destructive",
-  pending: "bg-muted text-muted-foreground",
-  miss: "bg-amber-500/10 text-amber-600",
+  ok: "badge-success",
+  failed: "badge-danger",
+  pending: "badge-neutral",
+  miss: "badge-warning",
 }
 
 export function ParseSummaryBoard({
