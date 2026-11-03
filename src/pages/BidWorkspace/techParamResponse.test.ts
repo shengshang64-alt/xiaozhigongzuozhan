@@ -397,3 +397,115 @@ describe("resolveDeviationClauses：先招标原文、未命中才回退解析�
     expect(r.clauses.map((c) => c.text)).toEqual(["终端须支持双频 Wi-Fi"])
   })
 })
+
+// ---------------------------------------------------------------------------
+// 2026-10-22（用户实测：技术参数表抽出来是页脚/表头）
+//   版式噪声行必须过滤：页脚、表头拼接行、纯编号/符号。
+// ---------------------------------------------------------------------------
+describe("技术参数行装配：版式噪声过滤（2026-10-22）", () => {
+  it("页脚/表头/纯符号不建行，真参数保留且原文逐字", () => {
+    const rows = buildParamResponseRows(
+      [
+        "第 215 页 共 256 页",
+        "序号 技术参数及要求",
+        "★1、系统应支持国产数据库，并兼容达梦、人大金仓等主流产品。",
+        "— — —",
+        "▲2、支持不少于 5000 并发用户，平均响应时间不超过 3 秒。",
+      ].join("\n"),
+    )
+    expect(rows).toHaveLength(2)
+    expect(rows[0].original).toContain("国产数据库")
+    expect(rows[0].kind).toBe("star")
+    expect(rows[1].original).toContain("5000 并发")
+  })
+})
+
+describe("技术参数行装配：重复页眉过滤（2026-10-22）", () => {
+  it("同一短句重复 ≥3 次视为版式页眉，不建行；真参数按原文保留", () => {
+    const H = "政府采购项目公开招标文件示范文本（服务类）"
+    const rows = buildParamResponseRows(
+      [H, "★1、真实参数一，支持国产数据库。", H, "★2、真实参数二，支持不少于 5000 并发。", H].join("\n"),
+    )
+    expect(rows.map((r) => r.original)).toEqual([
+      "★1、真实参数一，支持国产数据库。",
+      "★2、真实参数二，支持不少于 5000 并发。",
+    ])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// B4 回填（2026-10-22）：原表逐行 → 响应行（行边界来自原表，不按行文本猜）
+// ---------------------------------------------------------------------------
+import { paramRowsFromTable } from "./techParamResponse"
+
+describe("paramRowsFromTable：原表逐行响应", () => {
+  it("原文逐字保留、表内编号保留、要求类字眼改为陈述式", () => {
+    const rows = paramRowsFromTable([
+      { no: "5.3.2", text: "系统应支持国产数据库，并兼容达梦、人大金仓。" },
+      { no: "5.3.3", text: "▲并发用户数不少于 5000。" },
+    ])
+    expect(rows).toHaveLength(2)
+    expect(rows[0].no).toBe("5.3.2")
+    expect(rows[0].original).toBe("系统应支持国产数据库，并兼容达梦、人大金仓。")
+    expect(rows[0].response).not.toBe(rows[0].original)
+    expect(rows[1].kind).toBe("star")
+    // 数值与限定语不得被改写
+    expect(rows[1].response).toContain("5000")
+  })
+
+  it("空文本不建行；cap 生效", () => {
+    expect(paramRowsFromTable([{ no: "1", text: "  " }])).toEqual([])
+    const many = Array.from({ length: 5 }, (_, i) => ({ no: String(i + 1), text: `参数${i}` }))
+    expect(paramRowsFromTable(many, { cap: 3 })).toHaveLength(3)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 2026-10-23（用户实测：「★8 系统集成、培训」被拆成碎片当参数打勾）
+//   条款合并要两层：★ 头开后，其下（1）① 都属于同一条；不在 ★ 段内才按编号切。
+//   作答类型：方案型不能用「完全响应」概括。
+// ---------------------------------------------------------------------------
+import { classifyParamClause, mergeClauseLines } from "./techParamResponse"
+
+describe("条款合并与作答类型（2026-10-23）", () => {
+  it("★ 条款吞掉其下的（1）（2）①～⑤，遇到下一个 ★ 才结束", () => {
+    const clauses = mergeClauseLines([
+      "★8. 系统集成、培训",
+      "（1）系统集成实施服务",
+      "①中标人须承担全部软件系统的系统集成工作。",
+      "②部署与配置：负责所有系统的安装部署。",
+      "（2）培训服务",
+      "①提供系统化、分层次的培训服务。",
+      "★9. 数据互通互联、数据质量提升",
+      "（1）对标电子病历五级、互联互通五乙。",
+    ])
+    expect(clauses).toHaveLength(2)
+    expect(clauses[0]).toContain("★8")
+    expect(clauses[0]).toContain("培训服务")
+    expect(clauses[0]).not.toContain("★9")
+    expect(clauses[1]).toContain("★9")
+  })
+
+  it("不在 ★ 段内时，编号行才起新条", () => {
+    const clauses = mergeClauseLines(["1. 支持国产数据库", "2. 支持达梦、人大金仓"])
+    expect(clauses).toHaveLength(2)
+  })
+
+  it("作答类型：★ 长条款=方案型；功能参数=参数型（长也不行）", () => {
+    expect(classifyParamClause("★8. 系统集成、培训 " + "①培训对象与内容 ".repeat(20))).toBe("proposal")
+    expect(classifyParamClause("★9. 数据互通互联、数据质量提升 " + "（1）对标电子病历五级、互联互通五乙、智慧服务三级。".repeat(8))).toBe("proposal")
+    // 200 多字的功能要求仍是参数——逐条满足即可，不需要成文
+    expect(classifyParamClause("要求支持门急诊挂号、收费、住院医嘱、护理记录、检查检验申请与报告回传等全流程闭环管理，".repeat(5))).toBe("param")
+    expect(classifyParamClause("支持国产数据库")).toBe("param")
+  })
+
+  it("buildParamResponseRows：★8 只产出一行且标为方案型，原文完整保留", () => {
+    const rows = buildParamResponseRows(
+      ["★8. 系统集成、培训", "（1）系统集成实施服务", "①承担全部系统集成工作，费用包干。", "②提供培训教材与操作手册。"].join("\n"),
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0].clauseKind).toBe("proposal")
+    expect(rows[0].original).toContain("费用包干")
+    expect(rows[0].original).toContain("培训教材")
+  })
+})

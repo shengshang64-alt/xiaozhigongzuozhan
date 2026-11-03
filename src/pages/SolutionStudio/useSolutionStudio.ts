@@ -5,6 +5,7 @@ import { toast } from "sonner"
 // 此处仅保留编译期擦除的类型引用，SolutionStudio 路由 chunk 不再静态打包 docx。
 import type { Paragraph, Table, TableOfContents } from "docx"
 import { getPocketBaseUrl } from "@/lib/pb"
+import { buildVersionedFileName } from "@/lib/fileName"
 import { decodeRhToken, vibexAuthHeaders, type RhAccountInfo } from "@/lib/rhLogin"
 import { modelRefKey, resolveAvailableModels, type ModelRef } from "@/lib/modelGateway"
 import {
@@ -868,7 +869,6 @@ export function useSolutionStudio() {
       })
       .catch(() => toast.error("未找到对应方案"))
   }, [searchParams, solutions, listLoading, openSolution])
-
 
   // 2026-10-28（DS-R06）：客户管理「基于本商机继续做材料 → 去方案工作室新建」跳转带
   // ?opportunity=<id>&hospital=<医院名>，打开新建向导并预置商机与医院。
@@ -1839,7 +1839,9 @@ export function useSolutionStudio() {
       // R007（B-4 阶段一）：页眉文字与目录自动更新域按导出模板生效
       const pageOpts = pageOptsFromFormatSettings(ssFmt, { pageNumber: ssFmt.pageNumber })
       await downloadDocx(
-        `${sol.solution_name}.docx`,
+        // 2026-10-26：方案导出原先用 `${sol.solution_name}.docx`——连日期和版本号都没有，
+        // 与投标文件是同一个毛病。统一走 buildVersionedFileName（公司规范：日期-标题-版本号）。
+        buildVersionedFileName(sol.solution_name, "方案"),
         children,
         {
           ...pageOpts,

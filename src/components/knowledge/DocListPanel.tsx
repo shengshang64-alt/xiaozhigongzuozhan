@@ -201,7 +201,7 @@ export function DocListPanel({
   }
 
   return (
-    <section className="flex h-full min-h-0 flex-col rounded-xl border border-border bg-card shadow-md">
+    <section className="flex min-h-0 flex-col rounded-xl border border-border bg-card shadow-md lg:h-[calc(100vh-17rem)]">
       <header className="flex min-h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-3">
         <h2 className="truncate text-sm font-semibold text-foreground">
           {searchQuery.trim() ? `搜索“${searchQuery.trim()}”` : "文档"}

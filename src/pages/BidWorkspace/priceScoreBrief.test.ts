@@ -270,6 +270,60 @@ describe("buildPriceScoreView · 废标区间守护与天花板取数", () => {
   })
 })
 
+// R64：此前 checkPriceValidity 只挂在「建议价」与阶梯上，现价自身不校验，于是出现
+// 「现价 800 万 < 限价 45%（1125 万）会废标，面板却给满分 30 并写『无需再降』」的自相矛盾。
+describe("R64 · 现价自身的报价有效性（废标价拿满分没有意义）", () => {
+  it("现价低于无效标比例：置 ourPriceInvalid，且建议价文案不再说「无需再降」", () => {
+    const v = buildPriceScoreView(
+      baseInput({
+        factLines: FACTS_LIMIT_2500,
+        ourPriceText: "800万",
+        competitorText: "1200万\n1500万",
+        minValidRatioText: "45",
+      }),
+    )
+    // 事实：这个报价确实会被判无效
+    expect(v.ourPriceInvalid).toContain("低于最高限价的 45%")
+    expect(v.ourPriceInvalid).toContain("无效投标")
+    // 且它的价格分仍然是满分——正是「满分 + 废标」这对矛盾要被点破
+    expect(v.result?.score).toBe(30)
+    expect(v.target?.text).toContain("先解决废标")
+    expect(v.target?.text).not.toContain("无需再降")
+    // 阶梯里现价那一档本来就标了无效，两者不得各说各话
+    const anchor = v.steps.find((s) => s.isAnchor)
+    expect(anchor?.invalidReason).toContain("无效投标")
+  })
+
+  it("现价超最高限价：同样置 ourPriceInvalid（超限价也是废标）", () => {
+    const v = buildPriceScoreView(
+      baseInput({ factLines: FACTS_LIMIT_2500, ourPriceText: "2600万", competitorText: "1200万\n1500万" }),
+    )
+    expect(v.ourPriceInvalid).toContain("超过最高限价")
+    expect(v.target?.text).toContain("先解决废标")
+  })
+
+  it("现价合法时不误报：门槛之上照旧给「已拿满价格分」", () => {
+    const v = buildPriceScoreView(
+      baseInput({
+        factLines: FACTS_LIMIT_2500,
+        ourPriceText: "1200万",
+        competitorText: "1500万\n1800万",
+        minValidRatioText: "45",
+      }),
+    )
+    expect(v.ourPriceInvalid).toBeNull()
+    expect(v.target?.text).toContain("已拿满价格分")
+  })
+
+  it("没限价可校验时不出判定（门槛填了但没有天花板 → 无法算地板，不乱贴废标标签）", () => {
+    const v = buildPriceScoreView(
+      baseInput({ factLines: [], ourPriceText: "800万", competitorText: "1200万\n1500万", minValidRatioText: "45" }),
+    )
+    expect(v.minValidRatioPct).toBe(45)
+    expect(v.ourPriceInvalid).toBeNull()
+  })
+})
+
 describe("金额与分值回显", () => {
   it("万元为主读法、括号内给到分的元值", () => {
     expect(fmtPriceText(25_000_000)).toBe("2,500.00 万元（25,000,000.00 元）")

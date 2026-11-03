@@ -317,6 +317,19 @@ export function PriceScorePanel({ activeProject, quoteRefs, goParseStep }: Price
         </p>
       )}
 
+      {/* R64：现价触犯报价有效性条款（超限价 / 低于无效标比例）时置顶提示。
+          此前只在「建议价」与阶梯上做有效性守护，于是出现过「现价 800 万低于限价 45%（1125 万）
+          会废标，面板却写『已拿满价格分，无需再降』」——废标价拿满分毫无意义，先说这一句。 */}
+      {view.ourPriceInvalid && (
+        <p className="mt-3 flex items-start gap-1.5 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs leading-relaxed text-foreground">
+          <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+          <span>
+            <span className="font-medium text-destructive">我方当前报价{view.ourPriceInvalid}。</span>
+            价格分是相对分：这个报价的价格分再高也拿不到，请先把报价调整到有效区间，再谈拿满分。
+          </span>
+        </p>
+      )}
+
       {!showResult && view.formula && view.note && (
         <p className="mt-3 rounded-md border border-dashed border-border bg-background px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
           {view.note}

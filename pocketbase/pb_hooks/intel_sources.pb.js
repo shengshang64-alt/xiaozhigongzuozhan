@@ -37,6 +37,9 @@ onBootstrap(function (e) {
       addField({ name: 'last_status', type: 'text', max: 20 })
       addField({ name: 'last_error', type: 'text', max: 500 })
       addField({ name: 'fetched_count', type: 'number' })
+      // 2026-11-02 信息源健康：连续失败计数与最近成功时间，供死链自动停用与面板诊断
+      addField({ name: 'failure_count', type: 'number' })
+      addField({ name: 'last_success_at', type: 'text', max: 40 })
       addField({ name: "created", type: "autodate", onCreate: true })
       addField({ name: "updated", type: "autodate", onCreate: true, onUpdate: true })
       if (changed) {
@@ -59,6 +62,8 @@ onBootstrap(function (e) {
           { name: 'last_status', type: 'text', max: 20 },
           { name: 'last_error', type: 'text', max: 500 },
           { name: 'fetched_count', type: 'number' },
+          { name: 'failure_count', type: 'number' },
+          { name: 'last_success_at', type: 'text', max: 40 },
           { name: "created", type: "autodate", onCreate: true },
           { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
         ],

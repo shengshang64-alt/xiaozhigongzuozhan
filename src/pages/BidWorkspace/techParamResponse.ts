@@ -76,6 +76,7 @@ export function locateTenderSection(text: string, hint: string): { heading: stri
     for (let j = i + 1; j < lines.length; j += 1) {
       const lv = headingLevel(lines[j])
       if (lv > 0 && lv <= level) break
+      if (isTopicSwitch(lines[j])) break
       body.push(lines[j])
     }
     const joined = body.join("\n").trim()
@@ -92,6 +93,20 @@ export type TechParamSource = {
   label: string
   /** 命中章节标题本身（无前缀说明，供条款 source 分组等场景用；none 时为空串） */
   heading: string
+}
+
+/**
+ * 2026-10-23（真实项目实测：技术参数章节串到第六章）：定位「第三章 采购需求」时，
+ * 第六章里的「6、投标人的资格要求 / 6.1 法定条件」等条目会被当成参数吃进来——
+ * 因为章级（level=1）循环只在下一条「第X章」才停，而 PDF 里第六章标题行常常没被识别成标题。
+ * 这里补一道**话题切换**边界：短标题行里出现资格审查/符合性/评标/合同/投标人须知，就结束当前章节。
+ */
+const TOPIC_SWITCH_RE =
+  /^(?:第[一二三四五六七八九十百]+[章节]|[0-9]+(?:\.[0-9]+)*\s*[、.．]|[一二三四五六七八九十]+、)?\s*.{0,12}(?:资格要求|资格审查|符合性审查|评标办法|评分办法|合同条款|投标人须知)/
+
+function isTopicSwitch(line: string): boolean {
+  const t = (line ?? "").trim()
+  return t.length > 0 && t.length <= 40 && TOPIC_SWITCH_RE.test(t)
 }
 
 /** 章内技术参数子章节标题关键词（**只认行首标题形态**，正文里引用这些词的句子不算，同 locateTenderSection 的判据） */
@@ -131,6 +146,7 @@ export function narrowToTechParamSubsection(body: string): { heading: string; bo
     for (let j = i + 1; j < lines.length; j += 1) {
       const lj = headingLevel(lines[j])
       if (lj > 0 && lj <= lv) break
+      if (isTopicSwitch(lines[j])) break
       out.push(lines[j])
     }
     const sub = out.join("\n").trim()
@@ -258,12 +274,36 @@ export function resolveDeviationClauses(
   }
 }
 
+/** 条款作答类型：参数型＝逐条可判「满足/不满足」；方案型＝须成文作答（方案+承诺函） */
+export type ParamClauseKind = "param" | "proposal"
+
+/**
+ * 2026-10-23（用户实测：「★8 系统集成、培训」这类被当成参数逐条响应）：
+ * 判「这条能不能用一句『完全响应』过关」。
+ *   方案型：长条款（≥120 字）/ 带 ①②③ 分点 / 明写承诺函·专项方案·培训·驻场·实施服务——
+ *   这类内容评委看的是方案写没写透，不是参数表里打勾，按「完全响应」处理等于主动丢分。
+ */
+export function classifyParamClause(text: string): ParamClauseKind {
+  const t = (text ?? "").replace(/\s/g, "")
+  // 纯长度不能判：功能清单里的「要求支持…」也常 200~300 字，但它仍是参数（逐条满足即可）。
+  // 判据看「是不是要成文」：服务/方案/承诺类措辞，或 ★ 实质条款且成段/分点。
+  const serviceWord = /(承诺函|专项方案|实施方案|培训方案|服务方案|培训服务|系统集成实施|驻场|运维服务)/.test(t)
+  const numbered = /[①②③④⑤⑥⑦⑧⑨⑩]/.test(t)
+  const isStar = /(^|[\d.、)）])\s*[★☆▲△]/.test(t)
+  if (serviceWord && t.length >= 100) return "proposal"
+  if (isStar && (numbered || t.length >= 200)) return "proposal"
+  if (numbered && t.length >= 300) return "proposal"
+  return "param"
+}
+
 export type ParamResponseRow = {
   /** 招标文件行内原编号（5.3.2 / （一）/ ①），无则空串 */
   no: string
   /** 1 起的表内序号 */
   index: number
   kind: ParamKind
+  /** 作答类型：参数型逐条响应 / 方案型须成文作答（2026-10-23） */
+  clauseKind: ParamClauseKind
   /** 招标要求原文（逐字，保留 ★/▲ 标记）——原文响应要求「招标要求」列必须是原文 */
   original: string
   /** 响应式表述（只调整要求类字眼；未改写时与原文一致） */
@@ -280,24 +320,59 @@ export type StarParamClause = { no: string; text: string }
 const PARAM_LINE_MIN = 6
 
 /**
+ * 2026-10-22（用户实测：技术参数表抽出来是页脚/表头）：
+ * 招标原文里的**版式噪声行**——页脚「第 215 页 共 256 页」、表头「序号 技术参数及要求」、
+ * 纯编号/纯符号行——都不是参数，逐条建行会把响应表灌成垃圾。
+ */
+function isLayoutNoise(line: string): boolean {
+  const t = line.replace(/\s/g, "")
+  if (/^第\d+页共\d+页$/.test(t)) return true
+  if (/^第[一二三四五六七八九十百\d]+[章节部篇]?$/.test(t)) return true
+  if (/^(?:序号|名称|参数|要求|指标|备注|单位|数量|内容|项目)+$/.test(t)) return true
+  // 表头拼接行（「序号 技术参数及要求」这类只有列名没有内容的行）
+  if (t.length <= 14 && /^(?:序号|名称|参数|要求|指标|备注|单位|数量|内容|项目)/.test(t) && !/[，。；：,.;:]/.test(t) && t.length <= 12) {
+    return true
+  }
+  if (!/[\u4e00-\u9fa5A-Za-z]/.test(t)) return true
+  return false
+}
+
+/**
  * 逐行装配参数响应行：保持招标原文顺序，逐条做字眼转换。
  * 过滤：过短行、纯编号行、以及「以“★”标示…」这类标记说明行（与 starClauseNoise 同口径的轻量判定）。
  */
 export function buildParamResponseRows(sourceText: string, opts?: { cap?: number }): ParamResponseRow[] {
   const cap = Math.max(1, opts?.cap ?? 400)
-  const out: ParamResponseRow[] = []
+  // 2026-10-22：页眉页脚在 PDF 抽取里每页重复一次——同一短句重复 ≥3 次即视为版式重复行
+  const freq = new Map<string, number>()
+  for (const raw of (sourceText ?? "").split(/\r?\n/)) {
+    const k = raw.trim()
+    if (k) freq.set(k, (freq.get(k) ?? 0) + 1)
+  }
+  const usable: string[] = []
   for (const raw of (sourceText ?? "").split(/\r?\n/)) {
     const line = raw.trim()
     // \s 已覆盖全角空格，字符类里不再写字面量（那会触发 no-irregular-whitespace）
     if (line.replace(/\s/g, "").length < PARAM_LINE_MIN) continue
     // 标记说明行（「注：以“★”标示的为实质性条款」）不是参数，不建行
     if (/^[（(【]?\s*注\s*[：:）)】]/.test(line) || /以.{0,3}[★☆▲△].{0,6}(标示|标注|标记)/.test(line)) continue
-    const rw = rewriteRequirementToResponse(line)
+    if (isLayoutNoise(line)) continue
+    if (line.length <= 30 && (freq.get(line) ?? 0) >= 3) continue
+    usable.push(line)
+  }
+  // 2026-10-23：**先并条款、再建行**。原实现一个物理行一条，
+  // 于是「★8. 系统集成、培训」下面的（1）（2）①～⑤ 各自变成一条"参数"，
+  // 一律标「完全响应」——方案型内容被当参数打勾，评委按方案给分时等于零分。
+  const clauses = mergeClauseLines(usable)
+  const out: ParamResponseRow[] = []
+  for (const clause of clauses) {
+    const rw = rewriteRequirementToResponse(clause)
     out.push({
-      no: leadingClauseNo(line),
+      no: leadingClauseNo(clause),
       index: out.length + 1,
-      kind: classifyKind(line),
-      original: line,
+      kind: classifyKind(clause),
+      clauseKind: classifyParamClause(clause),
+      original: clause,
       response: rw.response,
       changes: rw.changes,
       rewritten: rw.rewritten,
@@ -306,6 +381,66 @@ export function buildParamResponseRows(sourceText: string, opts?: { cap?: number
     })
     if (out.length >= cap) break
   }
+  return out
+}
+
+/** 条款起始行：多级编号 / 括号号 / 中文序号 / 圈码 */
+const CLAUSE_HEAD_RE = /^\s*(?:\d+(?:\.\d+)*[.、)）]|[（(]\d+[)）]|[一二三四五六七八九十]+、|[①-⑳])/
+
+/** ★/▲ 实质条款头（可能带编号前缀，如「8. ★…」） */
+const STAR_HEAD_RE = /^\s*(?:\d+(?:\.\d+)*[.、)）]\s*)?[★☆▲△]/
+
+/** 章节边界：遇到就结束当前条款，不论是否在 ★ 段内 */
+const CLAUSE_BOUNDARY_RE = /^\s*(?:第[一二三四五六七八九十百]+[章节部分篇]|[一二三四五六七八九十]+、|附[件表])/
+
+/** 合并后单条上限（防一条吞掉整章） */
+const CLAUSE_MAX_CHARS = 2000
+
+/**
+ * 把一个章节里的物理行**合并成条款**。
+ *
+ * 2026-10-23（用户实测「★8 系统集成、培训」被拆碎）：合并必须**两层**——
+ *   ① 顶层的 ★/▲ 条款一旦开始，其下的（1）（2）①～⑤ 都属于同一条，不能再按编号切；
+ *   ② 不在 ★ 段内时，编号行才是新条款的起点。
+ * 边界判据不依赖 ★ 是否幸存：PDF 抽取常把 ★ 丢掉，但编号（8. / （1） / ①）丢不掉。
+ */
+export function mergeClauseLines(lines: string[]): string[] {
+  const out: string[] = []
+  let buf = ""
+  let inStar = false
+  const flush = () => {
+    const t = buf.trim()
+    if (t) out.push(t)
+    buf = ""
+    inStar = false
+  }
+  for (const line of lines ?? []) {
+    const l = String(line ?? "").trim()
+    if (!l) continue
+    if (CLAUSE_BOUNDARY_RE.test(l)) {
+      flush()
+      buf = l
+      continue
+    }
+    if (STAR_HEAD_RE.test(l)) {
+      flush()
+      buf = l
+      inStar = true
+      continue
+    }
+    if (!inStar && CLAUSE_HEAD_RE.test(l)) {
+      flush()
+      buf = l
+      continue
+    }
+    if (!buf) {
+      buf = l
+      continue
+    }
+    buf = `${buf}${/[,，;；]$/.test(buf) ? "" : " "}${l}`
+    if (buf.length >= CLAUSE_MAX_CHARS) flush()
+  }
+  flush()
   return out
 }
 
@@ -363,4 +498,53 @@ export function checkParamResponseCoverage(clauseTexts: string[], rows: ParamRes
     return !hay.some((h) => h.includes(key) || key.includes(h))
   })
   return { clause_count: (clauseTexts ?? []).length, row_count: (rows ?? []).length, missing }
+}
+
+/**
+ * 2026-10-22（用户需求：技术参数要能按投标文件格式输出）
+ * 响应行 → 投标文件「技术参数响应表」的表格数据。列按投标常用五列，
+ * 「招标要求原文」逐字取 original（不改写），「投标响应」取 response（只换要求类字眼），
+ * 需人工确认的行在偏离列如实标注，证明材料留待人工挂载（不编造编号）。
+ */
+export function techParamTableRows(rows: ParamResponseRow[]): string[][] {
+  const head = ["序号", "招标文件技术参数要求（原文）", "投标响应", "偏离情况", "证明材料/页码"]
+  return [
+    head,
+    ...(rows ?? []).map((r) => [
+      r.no || String(r.index),
+      r.original,
+      r.clauseKind === "proposal" ? "须成文作答：编制专项方案并附承诺函（本条为方案型要求，不能以「完全响应」概括）" : r.response,
+      r.clauseKind === "proposal" ? "须方案作答" : r.needs_review ? "需人工确认" : "完全响应",
+      "【待填写】",
+    ]),
+  ]
+}
+
+/**
+ * 2026-10-22（B4 回填）：技术参数**原表** → 响应行。
+ * 与 buildParamResponseRows 的区别：行边界来自原表，不是按行文本猜；
+ * 因此「一条参数 = 原表一行」，导出的响应表与招标原表逐行对得上。
+ */
+export function paramRowsFromTable(items: { no: string; text: string }[], opts?: { cap?: number }): ParamResponseRow[] {
+  const cap = Math.max(1, opts?.cap ?? 400)
+  const out: ParamResponseRow[] = []
+  for (const it of items ?? []) {
+    const original = String(it.text ?? "").trim()
+    if (!original) continue
+    const rw = rewriteRequirementToResponse(original)
+    out.push({
+      no: String(it.no ?? ""),
+      index: out.length + 1,
+      kind: classifyKind(original),
+      clauseKind: classifyParamClause(original),
+      original,
+      response: rw.response,
+      changes: rw.changes,
+      rewritten: rw.rewritten,
+      needs_review: rw.needs_review,
+      reason: rw.reason,
+    })
+    if (out.length >= cap) break
+  }
+  return out
 }

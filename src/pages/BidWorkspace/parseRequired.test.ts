@@ -6,14 +6,17 @@ describe("R-030 必选解析项分级与失败判定（R256）", () => {
   it("parseSectionTier：关键项=required、其他项=optional、本地产出区=other", () => {
     expect(parseSectionTier("overview")).toBe("required")
     expect(parseSectionTier("tech_score")).toBe("required")
-    expect(parseSectionTier("void_items")).toBe("optional")
+    // 2026-10-22：废标三件套升必选（先锁废标项）
+    expect(parseSectionTier("void_items")).toBe("required")
+    expect(parseSectionTier("qualification")).toBe("required")
+    expect(parseSectionTier("compliance")).toBe("required")
     expect(parseSectionTier("lots")).toBe("optional")
     expect(parseSectionTier("star_clauses")).toBe("other")
     expect(parseSectionTier("req_structure")).toBe("other")
   })
 
-  it("8 关键项全部标 required=true（数据驱动既有「必选不可取消」口径）", () => {
-    expect(PARSE_KEY_SECTIONS.filter((d) => d.required)).toHaveLength(8)
+  it("11 关键项全部标 required=true（数据驱动既有「必选不可取消」口径）", () => {
+    expect(PARSE_KEY_SECTIONS.filter((d) => d.required)).toHaveLength(11)
   })
 
   it("缺席/空/降级/failed 判失败；正常内容与「原文未提及」不判失败", () => {

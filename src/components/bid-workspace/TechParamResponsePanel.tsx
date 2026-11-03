@@ -1,11 +1,14 @@
 import { useMemo, useState } from "react"
 import { ChevronDown, ChevronRight, FileCheck2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 import { sectionText, type ParseReport } from "@/pages/BidWorkspace/bidTypes"
 import { PARAM_KIND_LABEL, type ParamKind } from "@/pages/BidWorkspace/techParamCoverage"
+import { pickTableOfKind, tableToParamItems, type TenderTableRecord } from "@/pages/BidWorkspace/tenderTables"
 import {
   DEVIATION_MIN_SECTION_CHARS,
   buildParamResponseRows,
+  paramRowsFromTable,
   checkParamResponseCoverage,
   resolveDeviationClauses,
   resolveTechParamSource,
@@ -38,9 +41,14 @@ const KIND_BADGE: Record<ParamKind, string> = {
 type TechParamResponsePanelProps = {
   tenderText: string | null | undefined
   report: ParseReport | null | undefined
+  /** 2026-10-22：导出「技术参数响应表」Word（与偏离表同一来源口径） */
+  onExport?: () => void
+  exportBusy?: boolean
+  /** B4（2026-10-22）：上传 docx 时本地还原的原始表格——有技术参数原表时按原表逐行响应 */
+  restoredTables?: TenderTableRecord[] | null
 }
 
-export function TechParamResponsePanel({ tenderText, report }: TechParamResponsePanelProps) {
+export function TechParamResponsePanel({ tenderText, report, onExport, exportBusy, restoredTables }: TechParamResponsePanelProps) {
   // 用户对参数所在章节的描述（本地 UI 状态，不落库）：这就是「这种情况我可以自己描述」的入口
   const [customHint, setCustomHint] = useState("")
   // 展开的表格行（本地 UI 状态），与偏离表同款：默认折叠两行，点开看全文
@@ -63,7 +71,15 @@ export function TechParamResponsePanel({ tenderText, report }: TechParamResponse
     clauseResolution.how === "parse" && source.how !== "parse"
       ? sectionText(report ?? null, "delivery_req")
       : source.text
-  const rows = useMemo(() => buildParamResponseRows(sourceText, { cap: ROW_CAP }), [sourceText])
+  // B4：docx 原表优先——一条参数=原表一行，行序与编号都跟招标原件一致
+  const restoredParamTable = pickTableOfKind(restoredTables, "tech_params")
+  const rows = useMemo(
+    () =>
+      restoredParamTable
+        ? paramRowsFromTable(tableToParamItems(restoredParamTable.rows), { cap: ROW_CAP })
+        : buildParamResponseRows(sourceText, { cap: ROW_CAP }),
+    [restoredParamTable, sourceText],
+  )
   const summary = useMemo(() => summarizeParamResponse(rows), [rows])
   const coverage = useMemo(
     () => checkParamResponseCoverage(clauseResolution.clauses.map((c) => c.text), rows),
@@ -104,7 +120,7 @@ export function TechParamResponsePanel({ tenderText, report }: TechParamResponse
       {/* 来源区：显示**实际**用了哪一处（含「你的描述没找到」这类回退说明），并提供自己描述的入口 */}
       <div className="border-b border-border px-4 py-3">
         <p className="text-xs leading-relaxed text-muted-foreground">
-          参数来源：<span className="text-foreground">{clauseResolution.label}</span>；条款与「技术偏离表」同一来源口径，逐条对照不重不漏。
+          参数来源：<span className="text-foreground">{restoredParamTable ? `docx 原表（${restoredParamTable.file} 第 ${restoredParamTable.index + 1} 张，${restoredParamTable.rows.length} 行）` : clauseResolution.label}</span>；条款与「技术偏离表」同一来源口径，逐条对照不重不漏。
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <label htmlFor="tech-param-source-hint" className="text-xs font-medium text-muted-foreground">
@@ -125,6 +141,17 @@ export function TechParamResponsePanel({ tenderText, report }: TechParamResponse
             >
               清除，回到自动定位
             </button>
+          )}
+          {onExport && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onExport}
+              disabled={!rows.length || exportBusy}
+              className="h-7"
+            >
+              导出技术参数响应表 Word
+            </Button>
           )}
         </div>
         <p className="mt-2 text-xs leading-relaxed text-muted-foreground">

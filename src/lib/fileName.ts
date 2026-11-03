@@ -32,3 +32,32 @@ export function sanitizeFileBase(name: string, emptyBase = ""): string {
 export function buildSafeFileName(name: string, ext: string, emptyBase = ""): string {
   return `${sanitizeFileBase(name, emptyBase)}.${ext}`
 }
+
+/**
+ * 按公司《投标文件编写规范》生成「日期-标题-文档类型-V版本号.ext」形式的文件名。
+ *
+ * 规范原文要求文件名含**日期、文档标题、版本号**三要素，
+ * 形如 `2026.09.17-某医院投标文件-V2.1.docx`（校验见 bidWritingRules.checkFileName）。
+ *
+ * 为什么版本号用导出时刻而不是人工版本号：项目/方案表上都没有版本字段，
+ * 硬造一个「V1.0」是假的；用 `V<年月日>.<时分>` 至少诚实——多次导出必得不同版本号，
+ * 用户能按文件名排序分出哪份最新。要人工版本号，得先在数据模型上加字段。
+ *
+ * 2026-10-26：从 bidFiles.buildExportFileName 下沉到这里，让**投标文件与方案**共用一套口径。
+ * 下沉前方案导出还是 `${solution_name}.docx`（连日期都没有），同一个毛病犯在两个模块。
+ *
+ * @param name 项目名 / 方案名（经 sanitizeFileBase 清洗非法字符、控制字符、保留设备名）
+ * @param docTitle 文档类型，如「投标文件」「技术偏离表」「方案」
+ * @param now 导出时刻（测试可注入）
+ * @param ext 扩展名，不含前导点
+ */
+export function buildVersionedFileName(name: string, docTitle: string, now: Date = new Date(), ext = "docx"): string {
+  const pad = (n: number) => String(n).padStart(2, "0")
+  const date = `${now.getFullYear()}.${pad(now.getMonth() + 1)}.${pad(now.getDate())}`
+  const version = `V${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}.${pad(now.getHours())}${pad(now.getMinutes())}`
+  // 日期与版本号都是纯数字+点，天然安全；只有「名称-文档类型」需要清洗
+  const safeName = sanitizeFileBase(String(name ?? "").trim())
+  const safeTitle = sanitizeFileBase(String(docTitle ?? "").trim(), "文档")
+  const base = safeName ? `${safeName}-${safeTitle}` : safeTitle
+  return `${date}-${base}-${version}.${ext}`
+}

@@ -269,4 +269,11 @@ describe("stripMoreTokens / cleanIntelSnippet（R65）", () => {
     expect(cleanIntelSnippet("更多... 更多...")).toBe("")
     expect(cleanIntelSnippet("句".repeat(300), { max: 20 })).toBe(`${"句".repeat(20)}…`)
   })
+
+  it("招标列表前缀元数据（代理机构/公告类型/地区）不冒充摘要", () => {
+    const raw = "院 | 代理机构：吉林省弘懿招投标代理有限公司 中标公告 | 吉林 | 一、项目基本情况：采购项目编号 HBZZ-2026-245，采购人邯郸市第一医院智慧医院等级评审系统采购项目。"
+    const out = cleanIntelSnippet(raw, { title: "邯郸市第一医院智慧医院等级评审系统采购项目", max: 200 })
+    expect(out.startsWith("一、项目基本情况")).toBe(true)
+    expect(out).not.toContain("代理机构")
+  })
 })

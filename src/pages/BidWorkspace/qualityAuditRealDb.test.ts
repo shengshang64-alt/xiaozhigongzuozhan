@@ -31,13 +31,14 @@
 //       比 ② 的段落中位/超 300 占比。注意默认是全库，别把过滤后的结果当成全库结论。
 //   Windows cmd 里设环境变量：set XZ_AUDIT_PROJECT=安中医
 // ---------------------------------------------------------------------------
-import { existsSync } from "node:fs"
+// (removed unused import) from "node:fs"
 import { DatabaseSync } from "node:sqlite"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { describe, expect, it } from "vitest"
 import { lintProse, splitParagraphs, splitSentences } from "./bidProseLinter"
 import { crossCheckScores } from "./scoreItemsScan"
 import { normalizeGenOptions, numberScoringItems, type GenOptions, type ParseReport } from "./bidTypes"
+import { hasRealChapters } from "./realDbFixture"
 
 const DB = new URL("../../../pocketbase/pb_data/data.db", import.meta.url)
 
@@ -76,9 +77,39 @@ type Row = {
   gen_options: string | null
 }
 
+/**
+ * 打开真实库（只读）。与 outlineGuardRealDb.test.ts 同一范式：
+ * 2026-10-21：不支持 POSIX 文件锁的挂载点（VM 沙盒 / 部分网络盘）上，构造函数不抛、
+ * 首次查询才抛 `disk I/O error`，所以这里**探一次读取**再决定是否退到 immutable=1。
+ * 只在普通打开读不了时兜底，宿主 Windows 行为不变；断言口径一字未改。
+ */
+function openDb(): DatabaseSync {
+  const p = fileURLToPath(DB)
+  try {
+    const db = new DatabaseSync(p, { readOnly: true })
+    try {
+      db.prepare("select count(*) as n from sqlite_master").get()
+      return db
+    } catch (err) {
+      try {
+        db.close()
+      } catch {
+        /* 关闭失败不掩盖原始错误 */
+      }
+      throw err
+    }
+  } catch (err) {
+    try {
+      return new DatabaseSync(`${pathToFileURL(p).href}?immutable=1`, { readOnly: true })
+    } catch {
+      throw err
+    }
+  }
+}
+
 function loadRows(): Row[] {
   // Windows 下 URL.pathname 带前导斜杠且中文会百分号编码，必须走 fileURLToPath
-  const db = new DatabaseSync(fileURLToPath(DB), { readOnly: true })
+  const db = openDb()
   try {
     return db
       .prepare(
@@ -143,7 +174,7 @@ function percentile(sorted: number[], p: number): number {
   return sorted[idx]
 }
 
-describe.skipIf(!existsSync(DB))("输出质量体检（真实库只读）", () => {
+describe.skipIf(!hasRealChapters())("输出质量体检（真实库只读）", () => {
   it("① 生成配置：三个开关的实际分布（它们决定素材进不进正文）", () => {
     const rows = auditRows()
     expect(rows.length).toBeGreaterThan(0)

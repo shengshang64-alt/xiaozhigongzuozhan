@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom"
 import { decodeRhToken } from "@/lib/rhLogin"
 import { pbJsonGet } from "@/lib/pbJson"
 import { listKbDocs, visibleKbDocs } from "@/lib/kbCore"
+import { searchAnytxt, type AnytxtSearchResult } from "@/lib/anytxtClient"
 import { STAGE_LABEL, type OppStage } from "@/pages/CustomerManagement/customerTypes"
 
 // ---------------------------------------------------------------------------
@@ -18,7 +19,7 @@ export type SearchResultItem = {
 }
 
 export type SearchResultGroup = {
-  key: "customer" | "opportunity" | "intel" | "bid" | "solution" | "deck" | "quote" | "kb"
+  key: "customer" | "opportunity" | "intel" | "bid" | "solution" | "deck" | "quote" | "kb" | "local"
   label: string
   moreRoute: string
   items: SearchResultItem[]
@@ -137,7 +138,7 @@ export function useGlobalSearch() {
     const nextGroups: SearchResultGroup[] = []
     if (uid) {
       const enc = encodeURIComponent(uid)
-      const [custRes, oppRes, intelRes, bidRes, solRes, deckRes, quoteRes, kbRows] = await Promise.all([
+      const [custRes, oppRes, intelRes, bidRes, solRes, deckRes, quoteRes, kbRows, localRes] = await Promise.all([
         apiFetch<ListResponse<{ id: string; hospital_name: string; hospital_type: string; region: string }>>(
           `/api/customers?rh_user_id=${enc}&perPage=${SEARCH_PER_ENTITY}&sort=-updated&q=${encodeURIComponent(kw)}`,
         ),
@@ -167,6 +168,9 @@ export function useGlobalSearch() {
           perPage: 20,
           fields: "id,title,folder_path,summary,visibility,rh_user_id,source_file_name,updated,created",
         }).catch(() => null),
+        // 本机文件（AnyTXT 离线索引）：搜知识库之外的历史标书/方案/扫描件。
+        // 失败不抛错，AnyTXT 未启用时这一组静默消失，不影响其他分组。
+        searchAnytxt({ pattern: kw, limit: 8 }).catch((): null => null) as Promise<AnytxtSearchResult | null>,
       ])
       if (seq !== searchSeqRef.current) return
 
@@ -301,6 +305,23 @@ export function useGlobalSearch() {
             title: d.title || "未命名文档",
             subtitle: d.folder_path || (d.visibility === "personal" ? "个人笔记" : "团队知识库"),
             route: `/knowledge?doc=${d.id}`,
+          })),
+        })
+      }
+
+      // 本机文件组：来自 AnyTXT 离线索引（知识库之外的历史标书/方案/扫描件）。
+      // 点击跳到知识库页并用关键词预填「本机资料检索」，用户可在那儿纳入知识库。
+      const locals = (localRes && localRes.ok ? localRes.files : []).slice(0, PER_GROUP_LIMIT)
+      if (locals.length > 0) {
+        nextGroups.push({
+          key: "local",
+          label: "本机文件",
+          moreRoute: `/knowledge?local=${encodeURIComponent(kw)}`,
+          items: locals.map((f) => ({
+            id: f.id,
+            title: f.name || "（未命名文件）",
+            subtitle: f.path ? f.path.split(/[\\/]/).slice(-2).join("/") : "",
+            route: `/knowledge?local=${encodeURIComponent(f.name)}`,
           })),
         })
       }

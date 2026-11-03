@@ -38,9 +38,12 @@ export type ChapterGenStatus = "pending" | "generating" | "done" | "failed"
 
 /** 章节配图结构化数据（标书工作页生成；方案编制页不使用，可选字段不破坏既有接口） */
 
+/** 架构图层（2026-10-30 扩展 arrowLabel：层间箭头上的协议/调用说明） */
+export type ArchLayer = { name: string; modules: string[]; arrowLabel?: string }
+
 export type FigureSpec =
 
-  | { type: "architecture"; title: string; layers: { name: string; modules: string[] }[]; caption?: string }
+  | { type: "architecture"; title: string; layers: ArchLayer[]; crossCutting?: string[]; caption?: string }
 
   | { type: "flow"; title: string; steps: { name: string; desc?: string }[]; branches?: string[]; caption?: string }
 
@@ -53,6 +56,34 @@ export type FigureSpec =
   /** 位图（章节内上传截图/图模板库插入；url 已 persistMediaUrl 落 PocketBase。历史数据里也可能有早期 AI 生图产出的位图） */
 
   | { type: "image"; title: string; url: string; prompt?: string; caption?: string }
+
+  /**
+   * 表格图（2026-10-30）：四列对照表 / 指标进度表——售前汇报最高频版式。
+   * compare：表头按语义色循环着色，斑马纹行，适合「依据/要求/动作/边界」对照；
+   * progress：首列为指标名，其余列为年度/目标值，单元格内数值自动渲染横向进度条。
+   */
+  | {
+      type: "table"
+      title: string
+      columns: string[]
+      rows: string[][]
+      variant?: "compare" | "progress"
+      caption?: string
+    }
+
+  /**
+   * 图标矩阵（2026-10-30）：4-6 条并列要点的视觉化版式。
+   * 每条要点 = 一个象限块（图标位 + 标题 + 一句说明），
+   * 用于「无数据、无结构、纯论点」的页面——这类页最难视觉化，
+   * 图标矩阵能避免它们退化成"文字墙"。
+   */
+  | {
+      type: "iconGrid"
+      title: string
+      /** 每项：label 是块标题，desc 是补充说明（可选） */
+      items: { label: string; desc?: string }[]
+      caption?: string
+    }
 
 
 
@@ -134,6 +165,17 @@ export type Chapter = {
    *  纯本地零 AI、不改正文——靠正则改写散文会切出半句话（proseEnumListifier 已论证过）。
    */
   itemDensityWarning?: string
+  /** 2026-10-26：图表题注编号检查结果（成稿后由 bidWritingRules.checkCaptionNumbering 写入）
+   *
+   *  依据公司《投标文件编写规范》：表题在上、图注在下，删改后须更新域；断号或重号即违规。
+   *
+   *  ⚠️ 为什么单独一个字段而不并进 proseLintWarning：
+   *     题注编号是**格式硬伤**（评审对照「图1-1、图1-2、图1-3」发现跳号会质疑文档严谨性），
+   *     与 proseLint 那套「文风观感」不同源；并在 proseLintWarning 里会被 AI 套话等
+   *     高频命中淹没，用户看不到。这里只报断号/重号，量很小，单独展示才有意义。
+   *  只提示不阻断；UI 按琥珀色徽标展示（不是废标项）。
+   */
+  captionNumberingWarning?: string
 }
 
 

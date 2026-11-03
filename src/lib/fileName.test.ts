@@ -4,7 +4,7 @@
 // asserted equal across illegal chars, truncation, empty-base and ext-join.
 import { describe, expect, it } from "vitest"
 
-import { buildSafeFileName, sanitizeFileBase } from "./fileName"
+import { buildSafeFileName, buildVersionedFileName, sanitizeFileBase } from "./fileName"
 
 // verbatim clones of the three removed implementations
 function prevIntel(name: string): string {
@@ -101,5 +101,68 @@ describe("R183 sanitizeFileBase 加固", () => {
   it("普通名逐字节等价不回归（R116 契约守护的补充断言）", () => {
     expect(sanitizeFileBase("医院-三甲-信息化项目_2026")).toBe("医院-三甲-信息化项目_2026")
     expect(buildSafeFileName("季度报价  ", "xlsx", "报价单")).toBe("季度报价.xlsx")
+  })
+})
+
+
+// ---------------------------------------------------------------------------
+// 2026-10-26 新增：buildVersionedFileName（公司规范「日期-标题-版本号」三要素）
+//
+// 起因：投标文件与方案两个导出模块**各犯了一次同一个毛病**——文件名不带日期与版本号，
+// 用户下载多个版本后在自己电脑上分不清新旧。本函数是两处唯一真源。
+// 与 bidWritingRules.checkFileName 互相咬合：生成的名字必须过得了那个校验。
+// ---------------------------------------------------------------------------
+describe("buildVersionedFileName：公司规范三要素", () => {
+  const AT = new Date(2026, 8, 17, 14, 30) // 2026-09-17 14:30
+
+  it("日期-名称-文档类型-版本号 四段齐全，扩展名在最后", () => {
+    const n = buildVersionedFileName("安庆二院智慧医院项目", "投标文件", AT)
+    expect(n).toBe("2026.09.17-安庆二院智慧医院项目-投标文件-V20260917.1430.docx")
+  })
+
+  it("生成的名字必须能通过 checkFileName 校验（否则改了等于白改）", async () => {
+    const { checkFileName } = await import("@/pages/BidWorkspace/bidWritingRules")
+    for (const name of ["某某医院", "厦门市海沧医院互联互通测评（四级甲等）项目", ""]) {
+      const f = buildVersionedFileName(name, "投标文件", AT)
+      const r = checkFileName(f)
+      expect(r.ok, `「${name}」生成的文件名未过规范：${r.reason}（${f}）`).toBe(true)
+    }
+  })
+
+  it("Windows 保留设备名被中和（CON 会让下载静默失败，这是 sanitizeFileBase 的既有能力）", () => {
+    const n = buildVersionedFileName("CON", "投标文件", AT)
+    expect(n).toContain("_CON")
+  })
+
+  it("ASCII 控制字符被清掉（项目名里粘贴进制表符的常见事故）", () => {
+    const n = buildVersionedFileName("某某\u0009医院\u0000项目", "投标文件", AT)
+    // 用 codePoint 判定而不是控制字符正则字面量：eslint no-control-regex 会拦后者。
+    // 被测源文件 fileName.ts 那处是有 disable 注释的正当清洗场景，测试这边不该再引一条新债。
+    const hasControl = [...n].some((ch) => {
+      const code = ch.codePointAt(0) ?? 0
+      return code <= 0x1f || code === 0x7f
+    })
+    expect(hasControl).toBe(false)
+  })
+
+  it("名称与类型都为空时仍产出合法名字（兜底不崩）", () => {
+    const n = buildVersionedFileName("", "", AT)
+    expect(n).toBe("2026.09.17-文档-V20260917.1430.docx")
+  })
+
+  it("月份/日期/时分补零", () => {
+    const n = buildVersionedFileName("某院", "方案", new Date(2026, 0, 1, 3, 5))
+    expect(n).toBe("2026.01.01-某院-方案-V20260101.0305.docx")
+  })
+
+  it("不同时刻导出必得不同版本号（用户能按名排序分新旧）", () => {
+    const a = buildVersionedFileName("某院", "投标文件", new Date(2026, 8, 17, 14, 30))
+    const b = buildVersionedFileName("某院", "投标文件", new Date(2026, 8, 17, 15, 5))
+    expect(a).not.toBe(b)
+  })
+
+  it("扩展名可换（同一套口径给非 docx 产物用）", () => {
+    const n = buildVersionedFileName("某院", "偏离表", AT, "xlsx")
+    expect(n.endsWith(".xlsx")).toBe(true)
   })
 })

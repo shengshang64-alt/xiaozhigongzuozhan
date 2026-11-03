@@ -5,6 +5,8 @@ import { getPocketBaseUrl } from "@/lib/pb"
 import { decodeRhToken, vibexAuthHeaders, type RhAccountInfo } from "@/lib/rhLogin"
 import { buildIntelToOppQuery } from "@/lib/intelToOpp"
 import { cleanIntelBody, cleanIntelLine, looksJunkIntel } from "./intelBodyClean"
+import { groupIntelItems } from "./intelDedup"
+import { selectDailyIntel, selectWeeklyIntelItems } from "./intelDaily"
 import { triggerBlobDownload } from "@/lib/download"
 import {
   canProceedToDelete,
@@ -45,6 +47,10 @@ export interface IntelSourceRow {
   last_status: string
   last_error: string
   fetched_count: number
+  /** 连续失败次数（后端记账；死链连续 3 次自动停用） */
+  failure_count?: number
+  /** 最近一次抓取成功时间（与 last_fetch_at=最近尝试区分） */
+  last_success_at?: string
   created: string
 }
 
@@ -69,6 +75,11 @@ export interface IntelItemRow {
   summary: string
   tags: string[]
   structured?: IntelStructured | null
+  /** 展示层同题聚合信息（仅 groupIntelItems 生成，不落库） */
+  duplicate_count?: number
+  duplicate_sources?: string[]
+  /** 今日工作队列的推荐理由（展示层计算，不落库） */
+  priority_reason?: string[]
   region: string
   item_status: "pending" | "confirmed" | "ignored" | ""
   added_by: string
@@ -652,8 +663,15 @@ export function useIntelCenter() {
       const kind = listSortKey === "added" ? "added" : "published"
       return timeOf(b, kind).localeCompare(timeOf(a, kind))
     })
-    return arr
+    // 同 URL / 同题跨源转载只聚合展示，不删库内记录；保留全部来源与最完整字段
+    return groupIntelItems(arr)
   }, [itemList, isItemFocused, listSortKey])
+
+  // 今日工作（2026-11-02）：必看/临期/待分诊，基于已去重且当前筛选可见的条目
+  const dailyWork = useMemo(
+    () => selectDailyIntel(displayItems, new Date(), isItemFocused, 10),
+    [displayItems, isItemFocused],
+  )
 
   // 区域下拉选项：全部 + 我的区域（非空置顶）+ 已加载条目出现过的区域去重
   // 循环 12：省份级固定筛选清单（按省筛政策/需求）；计划单列市在服务端归并到归属省；
@@ -996,12 +1014,23 @@ export function useIntelCenter() {
   // 每请求 40 条、时间预算 95s，最多 3 轮（≈120 条封顶，未跑完的提示再点一次）；零 AI 费用。
   const [enriching, setEnriching] = useState(false)
   const [enrichPhase, setEnrichPhase] = useState("")
+  // 同一会话内已尝试回填的条目不重复抓：反爬/证书失败导致字段仍缺时，
+  // 旧筛选会把同一批 120 条无限重选，用户点「续跑」永远撞同一堵墙。刷新页面可重新尝试。
+  const enrichAttemptedRef = useRef<Set<string>>(new Set())
   const runIntelEnrich = useCallback(async () => {
     if (!requireLogin() || enriching) return
     setEnriching(true)
     setEnrichPhase("正在扫描待修复条目…")
     try {
       const todo: string[] = []
+      // 发布时间不可能是未来（2026-10-27 补）：抓取端旧实现会从源页正文里抽出课程日期 /
+      // 政策实施日期当发布日入库，实测 3 条 HIT专家网条目被写成 2027-04-29 / 2027-01-03。
+      // 列表按 -published_at 排序，这类条目会永远置顶，而用户看到的「2027 年」其实不是发布日。
+      // 后端 __intelValidDate 早已补了未来守卫，但存量坏值只在 recompute_crawl 模式下才清，
+      // 而这里的筛选条件只看「缺摘要 / 缺区域」——实测 3 条里只有 1 条满足，另外 2 条
+      // 摘要区域都正常、永远修不到。故把「发布日在未来」并入待修集合。
+      const todayStamp = new Date(Date.now() + 86400000).toISOString().slice(0, 10)
+      let hasFuturePub = false
       for (let page = 1; page <= 6 && todo.length < 120; page++) {
         const data = await apiFetch<ItemsResponse>(
           `/api/intel/items?page=${page}&per_page=50&item_status=pending,confirmed`,
@@ -1010,7 +1039,19 @@ export function useIntelCenter() {
         for (const it of rows) {
           const sum = (it.summary || "").trim()
           const junkSum = !!sum && /<a\s|href=|https?:\/\//i.test(sum)
-          if (!sum || junkSum || !(it.region || "").trim()) todo.push(it.id)
+          const pubFuture = (it.published_at || "").slice(0, 10) > todayStamp
+          if (pubFuture) hasFuturePub = true
+          // 2026-11-03 招标正文补齐：旧筛选只看摘要/区域，导致「采购人已抽到但正文仍是列表残片」
+          // 的招标条目永远进不了回填——实测 210 条招标仅 2 条正文 ≥500 字，截止/预算几乎为零。
+          // 任一关键要素缺失即需重抓原文；手动录入不重抓（与既有保护一致）。
+          const st = it.structured ?? {}
+          const needsBidBody = it.item_type === "bid" && it.added_by !== "manual" &&
+            (!st.deadline || !st.budget || !st.code || !st.buyer)
+          const alreadyTried = enrichAttemptedRef.current.has(it.id)
+          if (!alreadyTried && (!sum || junkSum || !(it.region || "").trim() || pubFuture || needsBidBody)) {
+            todo.push(it.id)
+            enrichAttemptedRef.current.add(it.id)
+          }
           if (todo.length >= 120) break
         }
         if (rows.length < 50) break
@@ -1038,7 +1079,14 @@ export function useIntelCenter() {
           message?: string
         }>("/api/intel/enrich", {
           method: "POST",
-          body: JSON.stringify({ item_ids: batch, budget_ms: 95000 }),
+          // recompute_crawl（2026-10-27）：上面新增了「发布日在未来」这一待修项，而未来日期
+          // 的清理只存在于后端的 recompute_crawl 分支（fill 模式只补空不覆盖）。
+          // 该模式后端只动机器写入（added_by='crawl'）的条目，manual 条目永不触碰。
+          body: JSON.stringify(
+            hasFuturePub
+              ? { item_ids: batch, budget_ms: 95000, region_mode: "recompute_crawl" }
+              : { item_ids: batch, budget_ms: 95000 },
+          ),
         })
         if (!r.ok) {
           toast.error(r.message || "回填请求失败，请稍后重试")
@@ -1201,6 +1249,29 @@ export function useIntelCenter() {
     setItemList((prev) => prev.map((it) => (it.id === itemId ? { ...it, ...patch } : it)))
     setDetailItem((prev) => (prev && prev.id === itemId ? { ...prev, ...patch } : prev))
   }, [])
+
+  /** 招标要素人工补正：只提交白名单字段，成功后同步列表与详情；失败不覆盖本地现状 */
+  const saveStructured = useCallback(async (item: IntelItemRow, structured: IntelStructured): Promise<boolean> => {
+    if (!requireLogin()) return false
+    try {
+      const rec = await apiFetch<IntelItemRow>(`/api/intel_items/${encodeURIComponent(item.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ structured }),
+      })
+      if (!rec?.id) {
+        toast.error("招标要素保存失败：服务未返回记录")
+        return false
+      }
+      patchItemLocal(item.id, { structured: rec.structured ?? structured })
+      toast.success("招标要素已保存，后续新建标书任务将按修正后的要素预填")
+      return true
+    } catch (err) {
+      const e = err as Error & { httpStatus?: number }
+      if (e.httpStatus === 401) setNeedsRhLogin(true)
+      toast.error("招标要素保存失败，请稍后重试")
+      return false
+    }
+  }, [patchItemLocal, requireLogin])
 
   const setItemStatus = useCallback(
     async (item: IntelItemRow, nextStatus: "confirmed" | "ignored") => {
@@ -1649,7 +1720,7 @@ export function useIntelCenter() {
     [requireLogin, userId, navigate],
   )
 
-  // AI 情报周报：汇总近 7 天（剔除已忽略）条目生成 Markdown 周报，可复制
+  // AI 情报周报：只汇总近 7 天高分待办、临期与已确认条目，避免「垃圾进垃圾出」
   const [reportOpen, setReportOpen] = useState(false)
   const [reportLoading, setReportLoading] = useState(false)
   const [reportText, setReportText] = useState("")
@@ -1658,19 +1729,22 @@ export function useIntelCenter() {
     setReportLoading(true)
     setReportText("")
     try {
-      const cutoff = Date.now() - 7 * 86400_000
-      const weekItems = itemList
-        .filter((it) => it.my_status !== "ignored" && new Date(it.published_at || it.created).getTime() >= cutoff)
-        .slice(0, 40)
+      const weekItems = selectWeeklyIntelItems(itemList, new Date(), isItemFocused, 20)
       if (weekItems.length === 0) {
         setReportText("近 7 天没有可汇总的情报（已忽略条目不计入）。可调整筛选时间范围，或先到信息源管理补充采集源。")
         return
       }
       const ctx = weekItems
-        .map(
-          (it, i) =>
-            `${i + 1}. [${SOURCE_TYPE_LABEL[it.item_type] || "其他"}] ${it.title}（${it.source_name || "来源未知"}${it.region ? `｜${it.region}` : ""}｜${fmtIntelTime(it.published_at || it.created)}）${it.summary ? ` 摘要：${it.summary.slice(0, 120)}` : ""}`,
-        )
+        .map((it, i) => {
+          const st = it.structured ?? {}
+          const facts = [
+            st.buyer ? `采购人=${st.buyer}` : "",
+            st.budget ? `预算=${st.budget}` : "",
+            st.deadline ? `截止=${st.deadline}` : "",
+            st.code ? `编号=${st.code}` : "",
+          ].filter(Boolean).join("；")
+          return `${i + 1}. [${SOURCE_TYPE_LABEL[it.item_type] || "其他"}] ${it.title}（${it.source_name || "来源未知"}${it.region ? `｜${it.region}` : ""}｜${fmtIntelTime(it.published_at || it.created)}）${facts ? `【${facts}】` : ""}${it.summary ? ` 摘要：${it.summary.slice(0, 120)}` : ""}`
+        })
         .join("\n")
       const messages: LlmMessage[] = [
         {
@@ -1698,7 +1772,7 @@ export function useIntelCenter() {
     } finally {
       setReportLoading(false)
     }
-  }, [itemList])
+  }, [itemList, isItemFocused])
 
   const generateWeeklyReport = useCallback(() => {
     if (!requireLogin()) return
@@ -1752,6 +1826,8 @@ export function useIntelCenter() {
     prefsSourceNames,
     // 关注置顶
     displayItems,
+    // 今日工作队列
+    dailyWork,
     // 循环 10 小改 1：排序口径
     listSortKey,
     setListSortKey,
@@ -1781,6 +1857,7 @@ export function useIntelCenter() {
     convertToOpportunity,
     confirmItem,
     ignoreItem,
+    saveStructured,
     // 重构轮：线索 / 建标 / 周报
     leadIds,
     isLead,

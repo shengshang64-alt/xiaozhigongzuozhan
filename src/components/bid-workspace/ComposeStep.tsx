@@ -79,6 +79,9 @@ type ComposeStepProps = Pick<
   | "bizRemoveCount"
   | "confirmRemoveBizChapters"
   | "cancelRemoveBizChapters"
+  // 2026-10-31：为空商务章补填写框架
+  | "fillBizSkeletons"
+  | "emptyBizChapters"
   | "globalFactsSource"
   | "factDraft"
   | "setFactDraft"
@@ -178,6 +181,7 @@ type ComposeStepProps = Pick<
   | "deviationSummary"
   | "jumpToResponseNode"
   | "exportDeviationWord"
+  | "exportTechParamWord"
   | "exportBusy"
   | "bidOutlineSkills"
   | "bidChapterSkills"
@@ -220,6 +224,8 @@ function OutlineNavTree({
   onFocusSection,
   doneChapterCount,
   techChapterTotal,
+  emptyBizCount,
+  onFillBizSkeletons,
   onRegenerateOutline,
 }: {
   outline: OutlineNode[]
@@ -240,6 +246,9 @@ function OutlineNavTree({
   /** 编制阶段（已有章节）的大纲重生成入口；不传则不渲染按钮（大纲未确认时的旧行为不变） */
   onRegenerateOutline?: () => void
   generateDemo: boolean
+  /** 2026-10-31：空商务章数量与补框架入口（商务材料由用户填，系统只给骨架） */
+  emptyBizCount: number
+  onFillBizSkeletons: () => void
 }) {
   // 复刻方案编制 ChapterNavTree 形态：扁平章列表 + 仅当前章展开小节 + 右侧状态图标（无徽标 / 无折叠箭头）
   // 章号/小节号按整本正文编号（商务章占前 12 章，技术章自「第13章」起），与正文标题、Word 预览、导出完全一致，按号即可查询
@@ -288,6 +297,25 @@ function OutlineNavTree({
           <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${pct}%` }} />
         </div>
       </div>
+      {/* 2026-10-31：空商务章提示——商务材料由你方填写，系统给框架不给内容 */}
+      {emptyBizCount > 0 && (
+        <div className="mx-2 mt-2 rounded-md border border-warning/40 bg-warning/5 px-2.5 py-2">
+          <p className="text-[11px] leading-relaxed text-foreground">
+            <span className="font-medium text-warning">{emptyBizCount} 个商务章还没有内容</span>
+            <br />
+            <span className="text-muted-foreground">
+              投标函/授权书/报价表属法律文件，需按招标文件范本填真实信息并盖章，系统不代写。
+            </span>
+          </p>
+          <button
+            type="button"
+            onClick={onFillBizSkeletons}
+            className="mt-1.5 w-full rounded border border-warning/50 bg-background px-2 py-1 text-[11px] font-medium text-warning transition-colors hover:bg-warning/10"
+          >
+            一键补上填写框架
+          </button>
+        </div>
+      )}
       <nav className="mt-2 flex-1 overflow-y-auto p-2">
         {chapters.map((ch, idx) => {
           const isActive = ch.node_id === activeChapterId
@@ -1201,6 +1229,22 @@ export function ComposeStep(p: ComposeStepProps) {
                                 条目?
                               </button>
                             )}
+                            {ch.captionNumberingWarning && (
+                              // 2026-10-26：图表题注断号/重号（公司规范：删除或调整图表后须更新域，
+                              // 断号或重号即违规）。一律琥珀色——评审会当成文档不严谨，但不是废标项，
+                              // 与「条目?」那类真缺陷（红色）分开，别把格式瑕疵说成废标。
+                              <button
+                                type="button"
+                                className="ml-1 cursor-pointer text-warning underline-offset-2 hover:underline"
+                                title={`${ch.captionNumberingWarning} — 点击切到该章编辑态核对题注编号`}
+                                onClick={() => {
+                                  setViewMode("edit")
+                                  p.selectChapter(ch.node_id)
+                                }}
+                              >
+                                题注?
+                              </button>
+                            )}
                           </span>
                           {ch.gen_status === "failed" && !locked && !p.bulkGenerating && (
                             <Button
@@ -1287,6 +1331,8 @@ export function ComposeStep(p: ComposeStepProps) {
                 onSelectChapter={p.selectChapter}
                 onFocusSection={p.focusSectionInChapter}
                 onRegenerateSection={p.regenerateSection}
+                emptyBizCount={p.emptyBizChapters.length}
+                onFillBizSkeletons={p.fillBizSkeletons}
                 onRegenerateOutline={() => {
                   // 编制阶段的重生成：先切到大纲视图（确认弹窗后面能看到大纲），确认后按当前生成设置重跑
                   setOutlineViewOpen(true)
@@ -1497,6 +1543,9 @@ export function ComposeStep(p: ComposeStepProps) {
             key={proj.id}
             tenderText={proj.tender_text ?? ""}
             report={proj.parse_report ?? null}
+            onExport={p.exportTechParamWord}
+            exportBusy={p.exportBusy === "deviation"}
+            restoredTables={p.activeProject?.tender_tables ?? null}
           />
         </>
       )}

@@ -7,8 +7,13 @@ import { sanitizeMermaidCode } from "./mermaidFigure"
 import { sanitizeConsistencyIssues, type ConsistencyIssue } from "./prompts/consistencyGuard"
 // R144：★/▲ 重点条款噪声判定的单一真源（本地扫描 / AI 整文通道 / 合规矩阵共用口径）
 import { cleanStarClauseContent, isStarClauseNoiseLine } from "./starClauseNoise"
+// 2026-10-26：导出侧兜底归一（标书官 P0-A）。bidWritingRules 是纯函数模块、不 import bidTypes，
+// 故此处引用不构成循环依赖（已核）。
+import { convertMarkdownTables, normalizeTableSeparators } from "./bidWritingRules"
 // 第3轮 G1/G2：合规风险 AI 深度体检发现（type-only，无运行时环）
 import type { RiskFinding } from "./tenderComplianceRisk"
+// 2026-10-21 多份招标文件：文件清单元信息（type-only，tenderFiles 不反向依赖本文件，无环）
+import type { TenderFileMeta } from "./tenderFiles"
 // R69 搬迁：BidSectionPromptOpts 定义随 buildBidChapterMessages 移至 prompts/bidChapter，本地仍引用（type-only 不产生运行时环）
 
 // ---------------------------------------------------------------------------
@@ -39,7 +44,8 @@ export type ParseSectionDef = {
   required?: boolean
 }
 
-/** 关键项 8 项：必选不可取消（2026-09-23 用户反馈轮：商务评分与投标文件目录要求升档，修「评分办法解析不到」「目录不一致」） */
+/** 关键项 11 项：必选不可取消（2026-09-23 用户反馈轮：商务评分与投标文件目录要求升档；
+ *  2026-10-22 用户反馈轮：资格性审查/符合性检查/无效标与废标项升档——废标项默认解析） */
 export const PARSE_KEY_SECTIONS: ParseSectionDef[] = [
   {
     key: "overview",
@@ -48,7 +54,7 @@ export const PARSE_KEY_SECTIONS: ParseSectionDef[] = [
     // 用户反馈轮（2026-09-18）：项目概述=完整项目画像六维度（用户口径：只要识别项目概述，提取这六类）
     // 2026-09-21 用户口径补充：基本信息需含项目类型/预算/地址，且只提要点禁止整段拉原文
     guide:
-      "项目概述按六个维度提取，每行一条「字段名：内容」：项目基本信息（名称/招标编号/项目类型/采购人/预算金额/项目地址）、背景目的（建设背景与采购目的一句话）、规模预算（建设规模/投资/预算金额，保留原文表述）、时间安排（工期/投标截止/开标/关键节点）、实施内容（建设内容与范围要点）、技术特点（核心系统与关键技术要求要点）；只提上述重点字段，禁止把招标正文整段抄入",
+      "项目概述按六个维度提取，每行一条「字段名：内容」：项目基本信息（名称/招标编号/项目类型/采购人/预算金额/项目地址）、背景目的（建设背景与采购目的一句话）、规模预算（建设规模/投资/预算金额，保留原文表述）、时间安排（工期/投标截止/开标/关键节点）、实施内容（建设内容与范围要点）、技术特点（核心系统与关键技术要求要点）；只提上述重点字段，禁止把招标正文整段抄入；**每条控制在 80 字以内**，同一维度内容过多时按子维度拆成多条（如「建设内容（平台层）」「建设内容（临床层）」「建设内容（AI 与中医特色）」「建设内容（对接与迁移）」），禁止一条写成数百字的整段——解析结果按行渲染，一行即一个节点；「技术特点」只写 3-5 条关键能力，「交货和服务要求」里的功能明细与逐条参数不搬入本项（已由该分区承担）；",
   },
   {
     key: "tech_score",
@@ -73,7 +79,7 @@ export const PARSE_KEY_SECTIONS: ParseSectionDef[] = [
     key: "delivery_req",
     title: "交货和服务要求",
     required: true,
-    guide: "技术需求与交货/服务要求（建设内容、功能要求、性能指标、交货期、质保与运维），每行一条",
+    guide: "技术需求与交货/服务要求（建设内容、功能要求、性能指标、架构与兼容性、安全与等保、容灾与备份、数据迁移与集成对接、交货期、质保与运维），每行一条",
   },
   {
     key: "response_req",
@@ -81,12 +87,44 @@ export const PARSE_KEY_SECTIONS: ParseSectionDef[] = [
     required: true,
     guide: "投标（响应）文件的组成、格式、签字盖章、装订与递交等实质性要求，每行一条",
   },
+  // 2026-10-22 用户口径（解析第一优先级：先锁废标项）：
+  // 资格性审查 / 符合性检查 / 无效标与废标项 原在 PARSE_EXTRA_SECTIONS（默认 key 档不解析），
+  // 实测「一路点下去」的项目废标项一条都没解析——不通过即出局，必须默认解析并纳入 requiredParseFailures。
+  {
+    key: "qualification",
+    title: "资格性审查",
+    required: true,
+    guide:
+      "投标人资格要求逐条提取，每行一条，强制（不满足即无效投标）加「[强制]」前缀；须覆盖：①主体资格（营业执照、独立法人、分支机构授权）②特定资格（行业许可证/经营许可、认证、注册资金、成立年限）③信用记录（信用中国、政府采购严重违法失信名单、重大税收违法、行贿犯罪记录）④是否接受联合体投标（原文明确「不接受联合体」也是一条实质要求）⑤政策性资格（中小企业、监狱企业、残疾人福利单位）",
+  },
+  {
+    key: "compliance",
+    title: "符合性检查",
+    required: true,
+    guide:
+      "符合性（实质性）审查要点逐条提取，每行一条；须覆盖：★/▲ 技术参数的负偏离后果、商务实质条款（付款方式、服务期/交付期、质保期、服务地点）的负偏离后果、投标有效期、报价唯一性与最高限价、投标文件格式与签章要求；保留原文的判定措辞（如「不满足即投标无效」）",
+  },
+  {
+    key: "void_items",
+    title: "无效标与废标项",
+    required: true,
+    // 2026-11-01（P0 解析根因）：补收录口径——一条=一句完整的话（跨行断句先拼回）、只收带废标/无效
+    // 后果的条款、禁输出标题行。实测安中医 void_items 800 行 93% 为噪音（VOID_ITEMS_TASK 同口径）。
+    guide:
+      "废标/无效投标条款原文摘录，一条=一句完整的话（原文被物理换行切断的须先拼回完整句，禁止输出没有句末标点的残句），只收带「投标无效/否决/不予受理/按无效响应处理/导致废标/视为串通投标」等明确后果的条款，通用程序性条文与标题行一律不收，每条末尾须标注原文出处（条款号/章节），无出处的泛化模板句禁止输出；须覆盖：未密封/未盖章/资格不符/报价超预算或最高限价/串通投标认定（含机器码、CPU 序列号、网卡 MAC、文件属性作者、上传 IP 雷同等电子雷同判据）/CA 有效期/电子签章/加密上传/解密时限/投标文件雷同/模板占位文字残留",
+  },
   // 2026-09-23 用户反馈轮：商务评分随技术评分同档解析（评分办法整体不再依赖「完整档」勾选）
   {
     key: "biz_score",
     title: "商务评分要求",
     required: true,
-    guide: "评分办法中商务部分逐项分值表，每行一条「评分项名（分值 分）：评分标准摘要」",
+    // 2026-10-21 用户反馈（解析界面重复）：本项只写商务口径。原 guide 只说「商务部分逐项分值表」，
+    // 而安中医 2026BFAFZ50845 的评分细则把资信项和技术项排在同一张表里，模型分不清边界，
+    // 把「履约能力/综合实力/类似项目业绩/项目团队配备」四项同时写进商务评分——它们已在
+    // 「技术评分要求」里完整出现一次，用户在解析界面看到两遍（实测：biz_score.content 5 条，
+    // 而 biz_score.structured.items 只有「价格分」1 条，文本层与结构层对不上）。
+    guide:
+      "评分办法中**商务评分**部分逐项分值表，每行一条「评分项名（分值 分）：评分标准摘要」；履约能力、综合实力、类似项目业绩与案例、项目团队配备、资质认证等资信/证明材料类评分项属技术资信部分，已在「技术评分要求」中解析，**本项不得重复输出**（本项通常只有价格分）；",
   },
   // 2026-09-23 用户反馈轮：投标文件目录要求升档，大纲生成默认有招标目录锚点可遵循（防自造目录漂移）
   {
@@ -97,7 +135,7 @@ export const PARSE_KEY_SECTIONS: ParseSectionDef[] = [
   },
 ]
 
-/** 其他项 11 项：完整解析模式下自由勾选 */
+/** 其他项 9 项：完整解析模式下自由勾选 */
 export const PARSE_EXTRA_SECTIONS: ParseSectionDef[] = [
   { key: "purchase_list", title: "采购清单", guide: "采购货物/服务清单（名称、数量、关键参数），每行一条" },
   { key: "agency_info", title: "代理机构信息", guide: "采购代理机构名称、联系人、联系方式、地址，每行一条" },
@@ -105,11 +143,9 @@ export const PARSE_EXTRA_SECTIONS: ParseSectionDef[] = [
   { key: "bid_nodes", title: "投标关键节点", guide: "报名、答疑、保证金缴纳、投标文件递交截止、开标、质疑/异议截止、公示等关键时间节点，逐条保留招标文件的时间原文表述，每行一条「节点：时间」" },
   // 循环 2 批 2-3：原 bid_bond 升级为 bid_deposit（补账户与退还条件口径）
   { key: "bid_deposit", title: "投标保证金", guide: "投标保证金金额、缴纳形式（转账/支票/保函等）、收款账户、缴纳截止时间、退还条件与时限，每行一条" },
-  { key: "qualification", title: "资格性审查", guide: "投标人资格要求（营业执照、行业资质、业绩、认证证书、信用等），每行一条，强制要求加「[强制]」前缀" },
-  { key: "compliance", title: "符合性检查", guide: "符合性审查要点（资格与格式之外的无效投标审查项），每行一条" },
   { key: "bid_open_req", title: "开标要求", guide: "开标流程、场地、纪律与解密要求，每行一条" },
   { key: "eval_req", title: "评标要求", guide: "评标方法、评标程序与评标委员会组成要求，每行一条" },
-  { key: "void_items", title: "无效标与废标项", guide: "废标/无效投标条款原文摘录（未密封、未盖公章、报价超预算、资质不符、串通投标认定，以及电子标 CA 有效期/签章/加密上传/解密要求、模板占位文字残留等废标条款），每行一条" },
+  // 2026-10-22：void_items 已升入 PARSE_KEY_SECTIONS（废标项默认解析）
   // 循环 2 批 2-3：原 contract_award + contract_end 合并升级为 contract_terms（补质保衔接口径）
   { key: "contract_terms", title: "合同关键条款", guide: "合同授予条件、签订时限与履约保证金、合同解除与终止条款、质保期与缺陷责任期衔接，每行一条" },
   // 第十七轮 17B：编制依据与规范编号清单（规范库补选与正文注入依据）
@@ -996,6 +1032,20 @@ const VOID_PATTERNS: RegExp[] = [
   /分项报价表.*漏列/,
   /不良信用记录/,
   /联合体.*重复投标/,
+  // 2026-10-22 用户口径：废标项要覆盖「资格审查 + 电子标防雷同」，原清单缺这几类（解析侧零规则）
+  /(不接受|不得|禁止|不允许).*联合体/,
+  /联合体.*(不接受|不得|禁止|不允许|无效)/,
+  /失信被执行人/,
+  /严重违法失信/,
+  /重大税收违法/,
+  /行贿犯罪/,
+  /机器码/,
+  /CPU\s*序列号/i,
+  /(MAC\s*地址|网卡.*地址)/i,
+  /文件属性.*(一致|相同|雷同)/,
+  /IP\s*地址.*(一致|相同|雷同)/i,
+  /不同投标人.*(一致|相同|雷同)/,
+  /解密.*(失败|超时)/,
 ]
 
 /** 定位最近章节/条号（如「20.2 符合性审查」），纯文本扫描 */
@@ -1467,6 +1517,210 @@ function scoringCompositionLineValid(value: string): boolean {
   return Math.abs(sum - total) <= 0.51
 }
 
+/** PDF 版式噪声行（页眉 / 页脚 / 页码）——整行匹配、且必须不含冒号，避免误杀「招标文件：……」式真实字段行。
+ *  形态来自安中医 2026BFAFZ50845 实测：`政府采购项目公开招标文件示范文本（服务类）` × 26、`第 8 页 共 256 页` × 十余处。
+ *  这些行既不是字段也不是条款，混在解析结果里只会让分区看起来「乱」。 */
+const PARSE_PAGE_NOISE_RE =
+  /^(?:第\s*\d+\s*页\s*(?:[/／]\s*)?(?:共\s*\d+\s*页)?|(?:政府采购|竞争性磋商|竞争性谈判|询价采购|单一来源)[^\n：:]{0,24}(?:示范文本|采购文件|招标文件)(?:[（(][^\n）)]{0,12}[）)])?)$/
+
+// ------------------------------ 废标项断句重接（2026-10-27） ------------------------------
+
+/**
+ * 废标项「PDF 硬换行」重接（2026-10-27 用户反馈「解析内容为啥还是这么长」）。
+ *
+ * 实测安中医项目 `void_items` 原始 800 行、清洗后仍有 669 行，其中**只有 2 行**符合
+ * prompt 要求的「条款：」/「重点补充：」格式。其余全是模型把招标原文按 PDF 的物理换行
+ * 原样抄下来的半截句子：
+ *
+ *   （1）本项目评审时将查询投标文件制作机器码、投标
+ *   文件上传 IP 地址、投标文件创建标识码、投标人联系
+ *   方式（联系人、联系人电话），如不同投标文件的投标
+ *
+ * 一句完整条款被切成 4~5 行，再被覆盖矩阵逐行当成「一条废标项」→ 809 行 × 全「未覆盖」，
+ * 面板看起来就是「这么长」。根子在解析产出的形态，不在矩阵本身。
+ *
+ * 本函数做两件事：
+ *   ① 把被物理换行切断的行接回去——上一行没有句末标点（。；！？）且不是标题/字段行时，并入下一行；
+ *   ② 按「一行一条」重新归条：每条以句末标点或行首序号（（1）/1./①）为界。
+ *
+ * 保留 `条款：` / `重点补充：` 前缀行不动（那是模型按 prompt 正确输出的形态）。
+ */
+/**
+ * 只丢弃 PDF 页眉页脚噪声行（2026-10-27）：供废标项的独立清洗管线使用。
+ * 与 cleanParseSectionContent 里的判断同源（PARSE_PAGE_NOISE_RE），但**不做字段拆分**——
+ * 废标项是「一行一条条款」的叙述文本，按冒号拆字段会把「[出处：36.5] 责解释。」这类行切碎。
+ */
+export function dropParsePageNoise(content: string): string {
+  const src = (content ?? "").trim()
+  if (!src) return ""
+  return src
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !PARSE_PAGE_NOISE_RE.test(l))
+    .join("\n")
+}
+
+/**
+ * 废标语义判据（2026-10-27）：一条内容必须以「废标/无效」后果收口，才算废标项。
+ * 实测安中医 800 行里只有 35 行含废标语义，其余 765 行是招标文件通用条款
+ * （「4.1 采购人已获得…资金」「9.4 往来通知均用中文表述」「政采贷融资指引」…）
+ * 被模型一股脑塞进 void_items。它们进入覆盖矩阵后就是 765 条永远「未覆盖」的噪音。
+ * 2026-11-01 P0 增补：不通过（资格/符合性审查不通过）、拒收、拒不（拒不签约）同样是硬后果。
+ */
+const VOID_SEMANTIC_RE =
+  /无效|废标|否决|不予受理|不合格|不予接受|拒绝其投标|不通过|拒收|拒不|视为(?:未|放弃|拒绝|无效|撤回)|串通|重大偏差|实质性偏离|实质性响应|作无效|按无效|取消(?:其)?(?:投标|中标)资格|不得参加|不能参加/
+
+/**
+ * 废标项正文规整（2026-10-27 用户反馈「解析内容为啥还是这么长」）。
+ *
+ * 实测安中医项目 `void_items` 原始 800 行、清洗后仍有 669 行，但**只有 35 行真的含废标语义**。
+ * 三重毛病叠加，导致覆盖矩阵撑出 809 行、全部「未覆盖」：
+ *   ① PDF 物理换行把一句条款切成 4~5 行（「…投标」/「文件上传 IP 地址、投标」/…）；
+ *   ② 模型顺带把招标文件通用条款（资金落实、语言表述、计量单位、政采贷指引…）也抄进来；
+ *   ③ markdown 标题行（`## 一、资格与响应类`）被当成条款。
+ *
+ * 处理顺序：先逐行丢弃标题行 → 把断句接回去 → 再按废标语义过滤。
+ * 只在**有足够多行**时才做语义过滤（<8 行时保守放行，避免把人工精修过的短清单误滤空）。
+ *
+ * 2026-11-01 P0 修正：「条款：」前缀不再豁免语义过滤——新 prompt（收录四条铁律）要求模型给
+ * **每一行**都加「条款：」前缀，实测复跑时模型把 45 条系统对接需求、评分标准、合同违约责任
+ * 全部以前缀行混入（清洗后 124 行、语义占比仅 20%），旧豁免让语义过滤整体失效。
+ * 现在只有「重点补充：」行（模型显式声明的经验补充，最多 3 条）保留豁免。
+ */
+export function rejoinVoidItemLines(content: string): string {
+  const src = (content ?? "").trim()
+  if (!src) return ""
+  const SENTENCE_END = /[。；;！？!?]$/
+  const STRUCT_LINE = /^(?:#|条款[:：]|重点补充[:：]|\[出处[:：]|（\d+）|\(\d+\)|\d+[.、．]|[一二三四五六七八九十]+、|[①-⑳])/
+  const wrapped: string[] = []
+  let buf = ""
+  for (const rawLine of src.split("\n")) {
+    const line = rawLine.trim()
+    if (!line) continue
+    if (!buf) {
+      buf = line
+    } else if (SENTENCE_END.test(buf)) {
+      // 上一条已完整收句 → 当前行另起一条
+      wrapped.push(buf)
+      buf = line
+    } else if (STRUCT_LINE.test(line)) {
+      // 上一条没收句，但当前行是新的结构行（新条款/新标题）→ 上一条按不完整收尾，
+      // 当前行另起。若不判这一条，新的「（2）…」会被硬接到上一条尾巴上
+      // （实测：上一条结尾「…投标文件创」+ 下一条「36.6 特别提醒」拼成畸形长句）。
+      wrapped.push(buf)
+      buf = line
+    } else {
+      // 上一条未收句且当前行是普通续行 → 接回去（中文行间不加空格，避免「的 系统」这类断字）
+      buf += line
+    }
+    if (SENTENCE_END.test(buf)) {
+      wrapped.push(buf)
+      buf = ""
+    }
+  }
+  if (buf.trim()) wrapped.push(buf)
+  // ② markdown 标题行是小节骨架，不是废标条款
+  const noHeadings = wrapped.filter((l) => !(/^#{1,6}\s/.test(l) && !/[。；;！？!?]/.test(l)))
+  // ③ 按废标语义过滤：整行都在讲通用要求（资金落实/语言/计量单位…）的，不是废标项。
+  //    「重点补充：」前缀行是模型按 prompt 显式声明的经验补充（最多 3 条），一律保留；
+  //    「条款：」前缀不豁免——2026-11-01 起新 prompt 让每行都带此前缀，豁免会让语义过滤失效
+  //    （实测复跑：45 条系统对接需求/评分标准以前缀行混入，语义占比仅 20%）。
+  //
+  //    触发条件用「含废标语义的行占比 < 40%」而不是绝对行数：
+  //    实测正品是 800 行里仅 35 行有废标语义（4%），必须滤；
+  //    而人工精修过的废标清单通常每条都带后果词，占比自然很高，不该被滤。
+  const explicit = (l: string) => /^重点补充[:：]/.test(l)
+  const hitCount = noHeadings.filter((l) => explicit(l) || VOID_SEMANTIC_RE.test(l)).length
+  const looksMostlyNoise = noHeadings.length >= 8 && hitCount / noHeadings.length < 0.4
+  if (looksMostlyNoise) {
+    const kept = noHeadings.filter((l) => explicit(l) || VOID_SEMANTIC_RE.test(l))
+    // 兜底：过滤后若一条不剩，说明这批内容不适用本口径，原样返回
+    if (kept.length > 0) return kept.join("\n")
+  }
+  return noHeadings.join("\n")
+}
+
+/**
+ * 废标项出处核验（2026-11-01 P0 第四道防线）：模型按「收录四条铁律」会给每条贴「（第X.Y条）」出处，
+ * 但实测（安中医复跑）模型会对凭空编造的通用条款**编造顺序假编号**（第4.1.1条→第4.1.241条，
+ * 内容循环重复）——prompt 只能塑形，幻觉要靠确定性校验兜底：
+ * 行内「（第N[.N[.N]]条）」的编号必须在招标文件原文中真实存在，查无此号即删该行。
+ *
+ * 规则：
+ * - 只核验「第N条」式数字编号出处；「（第六章…）」「（第一章八、3）」等非数字编号行保守保留；
+ * - 编号匹配带边界（前后不得是数字或点），防「120.2」误供「20.2」；
+ * - 原文与行都先剥空白再比（原文排版常有「第 20.2 条」带空格）；
+ * - 无出处行保留（本地扫描补录行、人工精修行没有「第N条」式出处，不能被误杀）；
+ * - 编号真实存在但**条款内容不在编号附近**（±800 字窗口内 4 字指纹命中率 <25%）同样删除——
+ *   杀「编号碰巧存在、内容是别处或编造」的二次幻觉（实测：假「第4.1.1条密封无效」编号 4.1.1
+ *   在技术参数章节真实存在，但该处根本不谈密封）。
+ */
+export function verifyVoidItemCitations(content: string, tenderText: string): string {
+  const src = (content ?? "").trim()
+  const text = (tenderText ?? "").replace(/\s+/g, "")
+  if (!src || !text) return src
+  const CITE_RE = /（第([0-9]+(?:\.[0-9]+)*)条[）)]/
+  // 2026-11-01（P1 门禁实测·安庆二院）：模型对「无出处即视为臆造」的第二轮投机——
+  // 不再编假编号，而是贴「（第X条）」占位符或「（原文出处：招标文件第3/5段，未提及具体条款号，
+  // 需结合全文定位）」这种**自认无出处**的标记。这两类都是模型自认编造，直接删行。
+  const PLACEHOLDER_CITE_RE = /（第X条）|（第\s*X\s*条）|未提及具体条款号|需结合全文定位|无法确定具体条款|具体条款号不详/
+  const out: string[] = []
+  for (const line of src.split("\n")) {
+    if (PLACEHOLDER_CITE_RE.test(line)) continue // 占位/自认无出处 → 编造
+    const m = CITE_RE.exec(line)
+    if (!m) {
+      out.push(line)
+      continue
+    }
+    const num = m[1]
+    const escaped = num.replace(/\./g, "\\.")
+    const numRe = new RegExp(`(?<![\\d.])${escaped}(?![\\d.])`)
+    const numMatch = numRe.exec(text)
+    if (!numMatch) continue // 编号在原文查无此号 → 编造
+    // 内容邻域核验：条款正文（剥前缀/出处/标点）的 4 字指纹须有一定比例落在编号 ±800 字窗口内
+    const core = line
+      .replace(/^(?:条款|重点补充)[:：]/, "")
+      .replace(/（[^（）]*）/g, "")
+      .replace(/[\s，。；：、！？（）()「」《》""'']/g, "")
+    if (core.length >= 8) {
+      const winStart = Math.max(0, numMatch.index - 800)
+      const window = text.slice(winStart, numMatch.index + num.length + 800)
+      let hit = 0
+      let total = 0
+      for (let i = 0; i + 4 <= core.length; i += 4) {
+        total += 1
+        if (window.includes(core.slice(i, i + 4))) hit += 1
+      }
+      if (total > 0 && hit / total < 0.25) continue // 内容不在编号邻域 → 贴牌编造
+    }
+    out.push(line)
+  }
+  return out.join("\n")
+}
+
+/**
+ * 废标项内容级去重（2026-11-01 P0 第五道防线）：分段解析×合并后实测出现**同一条款重复 5 遍**
+ * （合并模型没去重干净）。按「剥前缀/出处/标点后的正文」作签名去重，保留首个出现行。
+ */
+export function dedupeVoidItemLines(content: string): string {
+  const src = (content ?? "").trim()
+  if (!src) return ""
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const line of src.split("\n")) {
+    const sig = line
+      .replace(/^(?:条款|重点补充)[:：]/, "")
+      .replace(/（[^（）]*）/g, "")
+      .replace(/[\s，。；：、！？（）()「」《》""'']/g, "")
+      .slice(0, 60)
+    if (!sig) continue
+    if (seen.has(sig)) continue
+    seen.add(sig)
+    out.push(line)
+  }
+  return out.join("\n")
+}
+
 /**
  * 解析章节内容清洗（共享纯函数，mergeChunkReports / sanitizeParseSections / normalizeParseReport 读路径三处共用）：
  * 1. 字段名归一去重（取「：」前文本，全角/半角冒号归一）：同名字段只保留首个有效值——首现是脏值/未明确行时
@@ -1490,6 +1744,11 @@ export function cleanParseSectionContent(content: string): string {
   for (const rawLine of src.split("\n")) {
     const line = rawLine.trim()
     if (!line) continue
+    // 2026-10-21 用户反馈（解析界面内容混乱）：PDF 版式噪声行逐行丢弃。
+    // 实证（安中医 2026BFAFZ50845 void_items 原始 18193 字）：页眉「政府采购项目公开招标文件示范文本（服务类）」
+    // 出现 26 次、页脚「第 8 页 共 256 页」十余处——它们不含冒号、不是任何字段，却混在废标条款里。
+    // 只认「整行就是一个纯页眉/页脚」的形态，且要求无冒号，避免误杀「招标文件：……」这类真实字段行。
+    if (PARSE_PAGE_NOISE_RE.test(line)) continue
     // URL 行不按字段解析（半角冒号是协议分隔符）
     if (/^https?:\/\//i.test(line)) {
       const urlNorm = line.replace(/\s+/g, "")
@@ -1541,7 +1800,8 @@ export function cleanParseSectionContent(content: string): string {
     const shown = rest.slice(0, PARSE_UNCLEAR_MAX_FIELDS).join("、")
     outLines.push(`原文未提及：${shown}${rest.length > PARSE_UNCLEAR_MAX_FIELDS ? "等" : ""}`)
   }
-  return outLines.join("\n")
+  const joined = outLines.join("\n")
+  return joined
 }
 
 // ------------------------------ parse-validator-01（docs/07 §4.1 缺口1）：解析输出本地硬兜底 ------------------------------
@@ -1609,13 +1869,46 @@ export function clampParseSectionContent(key: string, content: string): string {
 }
 
 /**
+ * 近重复判据（2026-10-21 用户反馈：解析界面「很多是重复的」）
+ *
+ * 原来的跨分区去重只认「归一后完全相等的行」，抓不到**同源改写**：
+ * 安中医 2026BFAFZ50845 把同一段建设内容写了三遍——
+ *   overview「建设内容」1186 字 / project_info「建设内容概况」1172 字 / delivery_req「交付范围」893 字，
+ * 三段同源、措辞微差，norm 后都不相等，于是一条都没被去掉。
+ *
+ * 边界（为什么只放这两个分区）：清单型分区（采购清单、功能清单、条款清单）内部天然有大量同构句式
+ * （"支持新增、修改、删除、查询"之类），把近重复判据放进 delivery_req 会误删真实的功能要求行，
+ * 数据损失不可逆。故只在 overview / project_info 这两个「画像摘要型」分区上做丢弃，
+ * 且它们按 sections 顺序后出现者被丢——内容在首个分区里仍然保留一份。
+ */
+const NEAR_DUP_SECTIONS = new Set(["overview", "project_info"])
+const NEAR_DUP_WINDOW = 24
+const NEAR_DUP_MIN_LEN = 120
+const NEAR_DUP_MIN_HITS = 3
+
+/** 24 字滑窗——窗口 24 字可以避开「支持新增、修改、删除」这类通用短语。
+ *
+ *  ⚠️ 索引侧必须**逐字滑动（step=1）**，候选侧才抽样（step=8）：
+ *  两段同源文本的字段名与句首措辞常有差异（「建设内容：包含门诊服务…」vs「建设内容概况：项目包含门诊服务…」），
+ *  两侧用同一套固定偏移时窗口会整体错位，一个都对不上——第一版就是这么在真实数据上 0 命中的。 */
+function nearDupGrams(t: string, step: number, max = 40): string[] {
+  const s = t.replace(/\s+/g, "")
+  const out: string[] = []
+  for (let i = 0; i + NEAR_DUP_WINDOW <= s.length && out.length < max; i += step) out.push(s.slice(i, i + NEAR_DUP_WINDOW))
+  return out
+}
+
+/**
  * 用户反馈轮：解析报告重复部分不展示——跨 section 行级去重：
  * 按 sections 顺序遍历，归一化（去空白）后相同的行只保留在首个出现的 section，后续 section 删除该行。
  * 豁免：star_clauses（原文摘录重复于其他项是其价值）、human_edited（尊重手改，既不删也不作去重源）；
  * 「原文未提及：…」汇总行不参与去重（各 section 缺失口径不同）。
+ * 2026-10-21 增：画像型分区的**近重复**判据（见 NEAR_DUP_SECTIONS 注释）。
  */
 export function dedupeAcrossSections(report: ParseReport): ParseReport {
   const seen = new Set<string>()
+  // 近重复窗口索引：只收录画像型分区里「已保留」的长行
+  const nearIndex = new Set<string>()
   // 归一口径增强（2026-09-23 用户反馈轮：同一信息多条措辞微差重复提取）：去空白 + 去行尾（出处：…）回指后缀 + 全角标点归一，仅措辞/出处不同的重复行也收敛到首条
   const norm = (t: string) =>
     t
@@ -1625,6 +1918,7 @@ export function dedupeAcrossSections(report: ParseReport): ParseReport {
       .toLowerCase()
   const sections = report.sections.map((s) => {
     if (s.key === STAR_CLAUSE_SECTION.key || s.human_edited || !s.content.trim()) return s
+    const nearOn = NEAR_DUP_SECTIONS.has(s.key)
     const kept: string[] = []
     for (const line of s.content.split("\n")) {
       const t = line.trim()
@@ -1635,6 +1929,18 @@ export function dedupeAcrossSections(report: ParseReport): ParseReport {
       }
       const key = norm(t)
       if (!key || seen.has(key)) continue
+      if (nearOn && t.length >= NEAR_DUP_MIN_LEN) {
+        const ws = nearDupGrams(t, 8)
+        let hits = 0
+        for (const w of ws) if (nearIndex.has(w)) hits += 1
+        // 命中 ≥3 个不同窗口 = 与已保留内容共享 ≥3 段 24 字连续文本 → 判为同源改写，丢弃。
+        // ⚠️ kept.length > 0 是防回归闸：两个分区都是 required，若某分区内容**只有**这一条同源行，
+        //    删完就变成空分区 → requiredParseFailures 判「必选项解析失败」→ 界面弹红条。
+        //    宁可留下一条重复，也不能把必选分区清空（§红线：宁可多一条，不可误报失败）。
+        if (hits >= NEAR_DUP_MIN_HITS && kept.length > 0) continue
+        // 索引侧逐字收录（上限 3000 字，避免超长行把索引撑爆）
+        for (const w of nearDupGrams(t, 1, 3000)) nearIndex.add(w)
+      }
       seen.add(key)
       kept.push(t)
     }
@@ -1670,6 +1976,16 @@ export function normalizeParseReport(raw: unknown): ParseReport | null {
       // 用户反馈轮项 1：读路径统一清洗（存量脏数据打开即清洗）；人工手改过的 section 跳过、尊重手改
       const humanEdited = r.human_edited === true
       let content = humanEdited ? rawContent : clampParseSectionContent(key, cleanParseSectionContent(rawContent))
+      // 2026-10-27 用户反馈「解析内容为啥还是这么长」：废标项按 PDF 物理换行被切成半句，
+      // 覆盖矩阵逐行当条款 → 实测安中医 809 行全部「未覆盖」。
+      //
+      // 注意：这里必须直接从 rawContent 出发，**不能拿 cleanParseSectionContent 的结果**——
+      // 那一步会把「[出处：36.5 解释权] 责解释。」这类行按冒号当字段拆开、丢弃半句，
+      // 实测喂进去 669 行只剩 13 条，真正含废标语义的 29 条被切没了大半。
+      // 所以走独立管线：先做页眉页脚清洗 → 断句重接 → 按废标语义过滤。
+      if (!humanEdited && key === "void_items") {
+        content = rejoinVoidItemLines(dropParsePageNoise(rawContent))
+      }
       // R144：AI 整文通道可能把目录行/标注含义句当重点条款入库；读路径按同一口径清洗
       // （本地扫描产出无噪声行，cleanStarClauseContent 幂等；人工手改段豁免）
       if (!humanEdited && key === STAR_CLAUSE_SECTION.key) content = cleanStarClauseContent(content)
@@ -1841,7 +2157,9 @@ export function sanitizeParseSections(raw: unknown, keys: string[]): ParseReport
 
 export function sectionText(report: ParseReport | null, key: string): string {
   if (!report) return ""
-  return report.sections.find((s) => s.key === key)?.content ?? ""
+  // 2026-10-22：容忍缺 sections 的残缺/历史报告——交卷闸门会拿 activeProject 直接跑编制门禁，
+  // 一条 fixture 或旧数据没有 sections 数组时，原实现在这里抛 TypeError，整个闸门卡白屏。
+  return (report.sections ?? []).find((s) => s.key === key)?.content ?? ""
 }
 
 /** 循环 2 批 2-3：按 key 优先级取第一个非空项文本（新 key 优先、旧 key 兜底，存量报告兼容） */
@@ -1897,9 +2215,13 @@ export function extractScoringFromText(text: string): ScoringItem[] {
   for (const rawLine of text.split(/\n+/)) {
     const line = rawLine.trim().replace(/^\d+[.、]\s*/, "")
     if (!line) continue
-    const m1 = line.match(/^(.+?)[（(]\s*(\d+(?:\.\d+)?)\s*分\s*[）)]\s*[：:]?\s*(.*)$/)
+    // 2026-11-01（P1 门禁实测）：安中医 tech_score 输出「（0-5分）」区间分值，旧正则只认单值
+    // `(\d+(\.\d+)?)` → 「0-5」匹配失败 → 8 个评分项全部丢、门禁实测 0 条。
+    // 区间取上限为分值（0-5 → 5），与 flattenParseItemJson 的「分值必须与原文一致」口径不冲突
+    // （摊平层输出的是单值；区间分值只在模型直出行里出现）。
+    const m1 = line.match(/^(.+?)[（(]\s*(\d+(?:\.\d+)?)(?:\s*[-~—～]\s*(\d+(?:\.\d+)?))?\s*分\s*[）)]\s*[：:]?\s*(.*)$/)
     if (m1) {
-      out.push({ item: m1[1].trim(), score: Number(m1[2]), criteria: (m1[3] ?? "").trim() })
+      out.push({ item: m1[1].trim(), score: Number(m1[3] ?? m1[2]), criteria: (m1[4] ?? "").trim() })
       continue
     }
     const m2 = line.match(/^(.+?)[：:]\s*(\d+(?:\.\d+)?)\s*分\s*$/)
@@ -1936,7 +2258,7 @@ export function classifySubjective(item: ScoringItem): boolean {
  */
 /** R-026（R253）：评分项结构化优先读——section.structured（whole JSON 通道）在则按结构取分值/出处，缺失回退行文本 extractScoringFromText（老数据兼容） */
 function scoringItemsFromSection(report: ParseReport | null, key: string): ScoringItem[] {
-  const st = report?.sections.find((s) => s.key === key)?.structured as
+  const st = (report?.sections ?? []).find((s) => s.key === key)?.structured as
     | { kind?: string; items?: { name?: unknown; score?: unknown; criteria?: unknown; source?: unknown }[] }
     | undefined
   if (st && st.kind === "scoring" && Array.isArray(st.items)) {
@@ -1984,7 +2306,7 @@ export function parseSectionFields(sec: ParseSection | null | undefined): ParseF
 
 /** R55：按标签取字段值（下游统一入口；同标签多条取首条，与摊平文本「首行携带标签」口径一致） */
 export function parseSectionFieldValue(report: ParseReport | null, key: string, label: string): string {
-  const sec = report?.sections.find((s) => s.key === key)
+  const sec = (report?.sections ?? []).find((s) => s.key === key)
   return parseSectionFields(sec).find((f) => f.label === label)?.value ?? ""
 }
 
@@ -2048,23 +2370,40 @@ export function validateScoringSections(report: ParseReport | null): ScoringVali
     }
     result.sectionSums[key] = sum
   }
-  // 4. 声明覆写：从 score_composition 提取总分声明值并与实际合计比对
+  // 4. 声明比对：从 score_composition 提取声明分并与实际合计比对（**分区口径**）
   for (const key of scoringKeys) {
-    const sec = report.sections.find((s) => s.key === key)
+    const sec = (report.sections ?? []).find((s) => s.key === key)
     if (!sec?.structured) continue
-    const st = sec.structured as { score_composition?: string; declared_total?: number; items?: { score: number }[] }
+    const st = sec.structured as {
+      score_composition?: string
+      declared_total?: number
+      weights?: { tech: number | null; biz: number | null; price: number | null } | null
+      items?: { score: number }[]
+    }
     if (st.declared_total != null && st.items?.length) {
       const actualSum = st.items.reduce((a, it) => a + (Number(it.score) || 0), 0)
-      if (Math.abs(actualSum - st.declared_total) > 0.01) {
+      // 2026-10-22（真实项目实测）：分区不能拿自己的合计去比**全局总分**——
+      // 技术 90 + 价格 10 = 100 本来就是对的，原实现却报「技术 90 ≠ 100」「商务 10 ≠ 90」两条假警。
+      const w = st.weights
+      let target = st.declared_total
+      let label = "声明总分"
+      if (key === "tech_score" && w?.tech != null) {
+        target = w.tech
+        label = "技术分区声明分"
+      } else if (key === "biz_score" && (w?.biz != null || w?.price != null)) {
+        target = (w.biz ?? 0) + (w.price ?? 0)
+        label = "商务+价格分区声明分"
+      }
+      if (Math.abs(actualSum - target) > 0.01) {
         const title = sec.title || key
         result.mismatchWarnings.push(
-          `${title}：条目分值合计 ${actualSum} ≠ 声明总分 ${st.declared_total}（差 ${Math.abs(actualSum - st.declared_total).toFixed(1)} 分），请复核是否漏行或错值`
+          `${title}：条目分值合计 ${actualSum} ≠ ${label} ${target}（差 ${Math.abs(actualSum - target).toFixed(1)} 分），请复核是否漏行或错值`
         )
-        // R-031 P4：用重算值覆写声明，不信任 AI 生成的声明文本
-        st.declared_total = actualSum
-        if (st.score_composition) {
-          st.score_composition = st.score_composition.replace(/\d+(?:\.\d+)?\s*分/, `${actualSum} 分`)
-        }
+        // 2026-10-22（得分地图口径）：**不再用重算值覆写声明**。
+        // 原逻辑把 declared_total 与 score_composition 里的数字改成条目合计，
+        // 等于「AI 抄错的原文被系统改对」——用户再也看不到招标文件到底写了多少分，
+        // 得分地图的权重随之失真。声明值保持原样，重算值放 result.sectionSums 与告警里，
+        // 两者并列呈现（谁对谁错由人判断，而不是被静默抹平）。
       }
     }
   }
@@ -2208,8 +2547,117 @@ export function findUncoveredScoringIds(
 ): string[] {
   return buildScoringCoverageMatrix(outline, items)
     // 资格/业绩/团队类不计入（落点在商务材料，不由技术章节承接，见 isNonChapterScoringItem）
-    .filter((e) => !e.coveredBy.length && !isNonChapterScoringItem(e.item.item))
+    // 演示/答辩类评分项不设章节（现场实机演示计分），不计入「未承接」
+    .filter((e) => !e.coveredBy.length && !isNonChapterScoringItem(e.item.item) && !isDemoScoreTitle(e.item.item))
     .map((e) => e.item.id)
+}
+
+// ---------------------------------------------------------------------------
+// 2026-10-22（用户口径：评分办法一级项一一对应成章，禁止合并）
+//
+// 背景：`findUncoveredScoringIds` 只回答「有没有落点」，一个章把三个评分项「都覆盖」也算绿——
+// 而用户明确否掉的正是这种合并（安中医 2026BFAFZ50845：13 个一级评分项被合成 12 章，
+// 「总体技术解决方案」与「统分结合架构」揉成一章）。覆盖 ≠ 对应，必须单独有判据。
+//
+// 口径：
+//   · itemsWithoutChapter：方案类评分项没有任何顶层技术章承接（真缺章，要告警）；
+//   · objectiveWithoutChapter：资信类（业绩/团队/证书）评分项——按既有设计落点在商务材料，
+//     不并入缺章告警，只单独计数供人核对；
+//   · mergedChapters：一个顶层技术章同时承接 ≥2 个评分项 = 合并章，这是用户明令禁止的形态。
+// ---------------------------------------------------------------------------
+
+export type OutlineAlignmentItem = { id: string; name: string; score: number }
+
+export type OutlineAlignment = {
+  techItemCount: number
+  techChapterCount: number
+  /** 方案类评分项里没有任何顶层技术章承接的 */
+  itemsWithoutChapter: OutlineAlignmentItem[]
+  /** 资信类评分项（落点在商务材料，不计入缺章告警） */
+  objectiveWithoutChapter: OutlineAlignmentItem[]
+  /** 一个顶层技术章同时承接 ≥2 个评分项（合并章） */
+  mergedChapters: { title: string; items: OutlineAlignmentItem[] }[]
+  ok: boolean
+}
+
+export function outlineChapterScoringAlignment(
+  nodes: import("../SolutionStudio/solutionTypes").OutlineNode[],
+  items: NumberedScoringItem[],
+): OutlineAlignment {
+  const techItems = (items ?? []).filter((it) => it.category === "tech")
+  const chapters = techOutlineNodes(nodes ?? [])
+  const toItem = (it: NumberedScoringItem): OutlineAlignmentItem => ({ id: it.id, name: it.item, score: it.score })
+  const chapterHits = chapters.map((c) => {
+    const desc = String(c.description ?? "")
+    return {
+      title: c.title,
+      items: techItems.filter((it) => scoringItemMatchesLeaf(it.item, c.title) || desc.includes(`[响应:${it.id}]`)),
+    }
+  })
+  const hitIds = new Set<string>()
+  for (const h of chapterHits) for (const it of h.items) hitIds.add(it.id)
+  // 演示/答辩项由现场演示计分，不要求有章节（2026-10-23 用户口径）
+  const missing = techItems.filter((it) => !hitIds.has(it.id) && !isDemoScoreTitle(it.item))
+  const mergedChapters = chapterHits
+    .filter((h) => h.items.length >= 2)
+    .map((h) => ({ title: h.title, items: h.items.map(toItem) }))
+  const itemsWithoutChapter = missing.filter((it) => !isNonChapterScoringItem(it.item)).map(toItem)
+  const objectiveWithoutChapter = missing.filter((it) => isNonChapterScoringItem(it.item)).map(toItem)
+  return {
+    techItemCount: techItems.length,
+    techChapterCount: chapters.length,
+    itemsWithoutChapter,
+    objectiveWithoutChapter,
+    mergedChapters,
+    ok: techItems.length > 0 && itemsWithoutChapter.length === 0 && mergedChapters.length === 0,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 2026-10-22（用户反馈：最基础的招标文件要求都没对齐）
+//
+// 真实库实测（三个有解析报告的项目）：招标文件第三章「定制软件开发清单」解析出的子系统
+// 安中医 45 个、安庆 18 个，而**大纲标题命中 0 个**——一个都没落。
+// 根因：子系统清单（req_structure）只注入了单次生成路径（bidOutline），长标书默认走
+// 分步路径（outlineLevel1 + outlineChildren），那条路径根本没注入；也没有任何覆盖校验。
+// 后果：投标文件最基础的「建设内容逐项响应」整块缺失，技术方案写成评分项的通用骨架。
+// ---------------------------------------------------------------------------
+
+export type SubsystemCoverage = {
+  total: number
+  coveredCount: number
+  /** 在大纲（含子节点）标题里找不到落点的子系统 */
+  missing: string[]
+}
+
+/** 采购需求子系统清单（req_structure 为本地扫描产物，一行一个系统） */
+export function parseSubsystems(report: ParseReport | null): string[] {
+  return sectionText(report, "req_structure")
+    .split(/\r?\n/)
+    .map((s) => s.replace(/^[\s·•\-—]+/, "").trim())
+    .filter((s) => s.length >= 2 && s.length <= 40)
+}
+
+/** 子系统落点覆盖：标题级判定（含子节点），子系统名与标题互相包含即算落点 */
+export function subsystemCoverage(
+  report: ParseReport | null,
+  nodes: import("../SolutionStudio/solutionTypes").OutlineNode[],
+): SubsystemCoverage {
+  const sys = parseSubsystems(report)
+  if (!sys.length) return { total: 0, coveredCount: 0, missing: [] }
+  const titles: string[] = []
+  const walk = (list: import("../SolutionStudio/solutionTypes").OutlineNode[]) => {
+    for (const n of list ?? []) {
+      titles.push(String(n.title ?? "").replace(/\s+/g, ""))
+      if (n.children?.length) walk(n.children)
+    }
+  }
+  walk(nodes ?? [])
+  const missing = sys.filter((s) => {
+    const n = s.replace(/\s+/g, "")
+    return !titles.some((t) => t.includes(n) || (n.length >= 3 && t.length >= 3 && n.includes(t)))
+  })
+  return { total: sys.length, coveredCount: sys.length - missing.length, missing }
 }
 
 /**
@@ -2241,6 +2689,14 @@ export function ensureSubjectiveScoringChapters(
   const out = [...list]
   for (const it of items ?? []) {
     if (it.category !== "tech" || !it.isSubjective) continue
+    // 2026-10-21 用户反馈（大纲里凭空多出空章）：资格/业绩/团队/认证类评分项的落点在商务材料，
+    // 不由技术章节承接——findUncoveredScoringIds 早已按 isNonChapterScoringItem 排除（见 2213 行），
+    // 本函数却漏了同一道闸，于是给这类项补出「履约能力」「项目团队配备」式的**零子节点裸章**：
+    // 建的章没有小节、不产正文、与已有章节语义重复，正是用户看到的「莫名其妙的内容」。
+    // 补章只为「评委按章打分」的主观方案项服务，资信类不在此列。
+    if (isNonChapterScoringItem(it.item)) continue
+    // 演示/答辩项不从大纲补齐（现场演示计分，标书不设章节）
+    if (isDemoScoreTitle(it.item)) continue
     const covered =
       (annotated.get(it.id) ?? []).length > 0 || nodeTexts.some((t) => scoringItemMatchesLeaf(it.item, t))
     if (covered) continue
@@ -2253,6 +2709,88 @@ export function ensureSubjectiveScoringChapters(
     added.push(it.item)
   }
   return { nodes: added.length ? out : list, added }
+}
+
+/**
+ * 2026-10-23（用户要求：方案型条款要有地方写）：把「方案型实质性条款」补成大纲里的节。
+ *
+ * 背景：★8 系统集成、培训 / ★9 数据互通互联 这类条款，在技术参数响应表里已被判为「须成文作答」，
+ * 但大纲若没有对应节，正文仍然无处落笔——等于把「须方案作答」写进表里却没地方写方案。
+ *
+ * 规则（确定性、零 AI）：逐条取标题（首个换行 / 去 ★N 与编号 / 截 24 字）；
+ *   · 已在任一节点标题里出现 → 跳过；
+ *   · 否则挂到标题含「参数响应 / 技术参数 / 技术响应」的顶层章下；
+ *   · 没有这样的章 → 新建顶层章「方案型实质性条款响应」，把这些条款都做成它的节。
+ */
+/**
+ * 从一条方案型条款里取一个能当节名的短标题。
+ * 合并后的条款是一整段长文本（表格行还可能带「|」），不能直接截前 24 字——
+ * 先剥 ★/编号、再切掉「（1）」「①」之后的分点内容，表格行取最长中文段，最后按句读截止。
+ */
+export function proposalClauseTitle(clause: string): string {
+  let t = String(clause ?? "").split(/\n/)[0].trim()
+  // 表格行（「5 | 虚拟化集中式存储 | 1 | 台 | …」）先取最长中文段，否则会被编号/空格切没
+  if (t.includes("|")) {
+    const segs = t
+      .split("|")
+      .map((x) => x.trim())
+      .filter((x) => x && !/^[\d.]+$/.test(x) && !/^(台|套|项|个|年|月)$/.test(x))
+    t = segs.sort((a, b) => b.length - a.length)[0] ?? t
+  }
+  t = t
+    .replace(/^\s*[★☆▲△]\s*/, "")
+    .replace(/^\s*\d+(?:\s*\.\s*\d+)*\s*[.、)）]\s*/, "")
+    .replace(/^\s*[（(]\d+[)）]\s*/, "")
+  t = t.split(/[（(①]/)[0].trim()
+  // 标题段与后续正文之间常有空格分隔（「系统集成、培训 投标人应完成…」）
+  t = t.replace(/\s{1,}[\u4e00-\u9fa5].*$/, "")
+  const cut = t.split(/[。；;，,：:]/)[0].trim()
+  return (cut || t).slice(0, 24)
+}
+
+export function ensureProposalClauseSections(
+  nodes: import("../SolutionStudio/solutionTypes").OutlineNode[],
+  clauses: string[],
+): { nodes: import("../SolutionStudio/solutionTypes").OutlineNode[]; added: string[] } {
+  const list = nodes ?? []
+  const titles: string[] = []
+  const walk = (ns: import("../SolutionStudio/solutionTypes").OutlineNode[]) => {
+    for (const n of ns) {
+      titles.push(String(n.title ?? ""))
+      if (n.children?.length) walk(n.children)
+    }
+  }
+  walk(list)
+  const norm = (t: string) => t.replace(/\s+/g, "").toLowerCase()
+  const added: string[] = []
+  const pending: string[] = []
+  for (const raw of clauses ?? []) {
+    const title = proposalClauseTitle(String(raw ?? ""))
+    if (!title) continue
+    const key = norm(title).slice(0, 10)
+    if (titles.some((t) => norm(t).includes(key) || key.includes(norm(t).slice(0, 6)))) continue
+    if (added.includes(title)) continue
+    added.push(title)
+    pending.push(title)
+  }
+  if (!pending.length) return { nodes: list, added: [] }
+  const anchorIdx = list.findIndex((n) => /(参数响应|技术参数|技术响应|实质性响应)/.test(String(n.title ?? "")))
+  if (anchorIdx >= 0) {
+    const target = list[anchorIdx]
+    const next = list.slice()
+    next[anchorIdx] = {
+      ...target,
+      children: [...(target.children ?? []), ...pending.map((t) => ({ id: makeUid(), title: t, children: [] }))],
+    }
+    return { nodes: next, added }
+  }
+  return {
+    nodes: [
+      ...list,
+      { id: makeUid(), title: "方案型实质性条款响应", children: pending.map((t) => ({ id: makeUid(), title: t, children: [] })) },
+    ],
+    added,
+  }
 }
 
 /**
@@ -3450,8 +3988,14 @@ export const INTRA_DUP_THRESHOLD_DEFAULT = 0.35
 
 export function defaultGenOptions(): GenOptions {
   return {
-    clause_response: false,
-    material_boost: false,
+    // 2026-10-22（用户口径：★/▲ 实质性条款不能漏）：新建项目默认开启逐条应答强化。
+    // 原默认关闭 → ★块根本不进正文，A3「★响应缺失」体检必然大面积命中，实质性响应名存实亡。
+    // 存量项目不受影响：normalizeGenOptions 仍按存储值（=== true）读，老项目保持原状。
+    clause_response: true,
+    // 2026-10-23（P0-4）：新建项目默认开启素材注入。
+    // 真实库实测 17 个有正文的项目里开启数 **0** —— 知识库建了、文档也进了，却从未进过任何一份正文。
+    // 存量项目不受影响：normalizeGenOptions 仍按存储值（=== true）读，老项目保持原状。
+    material_boost: true,
     include_biz: true,
     scope: "both",
     compliance_mode: COMPLIANCE_MODE_DEFAULT,
@@ -3533,7 +4077,7 @@ export function complianceModeRule(mode: ComplianceMode | undefined): string {
   if (mode === "full") {
     return "生成模式=大量充实（合并稿三档之大量模式）：① 先完成对标响应骨架与项目应用场景描述（两者必须先写、写全）；② 在此之上允许写入与本节技术/项目/功能/流程相关的充实性材料：行业背景与趋势、通用技术原理与方法论、管理体系与制度框架、通用工作流程与规范、风险识别与应对框架、质量保障体系、培训方法论、服务承诺体系等；③ 充实材料定位是「通用能力描述」，用「通常」「一般」「我公司建立了……体系」等表述，严禁把通用材料包装成本项目已发生的事实；④ 严禁虚构具体事实：不编造项目名称、合同金额、客户名称、证书编号、量化指标（招标文件或素材中已有的除外），字段值处沿用【待填写】占位；佐证材料（截图/软著/检测报告/证书/业绩）按商务材料指针口径处理，不写「证明材料见【待填写】」；⑤ 充实材料必须与章节主题相关，拒绝无关堆砌，不与同级章节重复同类表述，篇幅可充分展开但段落结构清晰、语言克制；⑥ ★/▲ 重点条款不受本档扩展授权，一律按严格响应句式原文响应（只改人称语气、不动数值与限定语）；"
   }
-  return "生成模式=严格响应（合并稿三档之严格模式）：① 本节正文以「对标响应」为唯一目标，逐条响应本章/小节对应的招标要求与评分细项原文；② 标准响应句式：引述招标要求并将要求类字眼改为响应表述（「投标人应具备……」改为「我公司具备……」，「应提供……」改为「我公司提供……，完全满足招标文件要求」），改写只动人称与语气、不动任何数值与限定语；③ 响应内容只允许来自：招标文件原文的响应式改写、用户提供的素材资料、主观材料描述（对本项目的理解、服务承诺、配合意愿）；④ 功能界面截图、软件著作权、检测报告、人员证书、业绩证明等佐证材料由商务标部分统一编制，技术正文严禁出现「证明材料见【待填写】」式内联占位（字段值占位不受此限）；确需指引时只写一句「相关……证明材料详见《第X章 ……》」，章名以【全文大纲】中商务章实际标题为准；大纲中没有对应商务章时不写指引句，正文不得因此虚构材料内容；⑤ 禁止扩展：不写招标文件未要求的技术细节展开、行业背景、通用方法论等充实性内容；⑥ 篇幅从简，以响应完整、表述清晰为限；⑦ ★/▲ 重点条款不受本档扩展授权，一律按严格响应句式原文响应（只改人称语气、不动数值与限定语）；"
+  return "生成模式=严格响应（合并稿三档之严格模式）：① 本节正文以「对标响应」为唯一目标，逐条响应本章/小节对应的招标要求与评分细项原文；② 标准响应句式：引述招标要求并将要求类字眼改为响应表述（「投标人应具备……」改为「我公司具备……」，「应提供……」改为「我公司提供……，完全满足招标文件要求」），改写只动人称与语气、不动任何数值与限定语；③ 响应内容只允许来自：招标文件原文的响应式改写、用户提供的素材资料、主观材料描述（对本项目的理解、服务承诺、配合意愿）；④ 功能界面截图、软件著作权、检测报告、人员证书、业绩证明等佐证材料由商务标部分统一编制，技术正文严禁出现「证明材料见【待填写】」式内联占位（字段值占位不受此限）；**技术正文一律不向其他章节做指引或分派**——不得写「详见《第X章 ……》」「由第 X 章承接」「其余内容见第 X 章」，也不得写「我公司对本条款/本小节的响应结论为」式引导语；投标文件是评标专家手上的一本实体文件，跨章联系靠目录体现，正文只写本节自身做什么、达到什么指标；正文不得因此虚构材料内容；⑤ 禁止扩展：不写招标文件未要求的技术细节展开、行业背景、通用方法论等充实性内容；⑥ 篇幅从简，以响应完整、表述清晰为限；⑦ ★/▲ 重点条款不受本档扩展授权，一律按严格响应句式原文响应（只改人称语气、不动数值与限定语）；"
 }
 
 /** 05 三模式·大纲侧（§5.4）：骨架宽度随模式切换；strict/缺省 返回空串（不追加，大纲 prompt 与现状字节级一致）；
@@ -4149,6 +4693,15 @@ export type FormatCheckRule =
   | "project_residue"
   | "writing_voice"
   | "dedicated_section"
+  // 2026-10-26（用户硬要求落地）：表格必须有表题 / 正文禁 LaTeX。
+  // 补齐前全仓核对：图注已有 figureAnnotation.ts 闭环；表题与 LaTeX **零实现**（导出侧也不插表题段）。
+  | "table_caption_missing"
+  | "latex_residue"
+  // 2026-10-26（标书官复核）：凭证类断言必须有出处，否则评标无从核对＝虚假应答风险
+  | "credential_claim_no_evidence"
+  // 2026-10-22（假绿治理）：格式检查项被用户全部关闭时，体检实际上没跑——
+  // 原实现 hits=0，面板显示「全部通过」，把「未运行」显示成了「通过」。
+  | "format_check_not_run"
 
 export const FORMAT_RULE_LABEL: Record<FormatCheckRule, string> = {
   ...FORMAT_CHECK_LABEL,
@@ -4176,6 +4729,10 @@ export const FORMAT_RULE_LABEL: Record<FormatCheckRule, string> = {
   project_residue: "其他项目残留（文中出现别的医院名 / 别的项目编号）",
   writing_voice: "写作规范（自称口径、模糊参数表述、暗标身份信息泄漏）",
   dedicated_section: "必备专用章（承诺函 / 偏离表须在投标文件大纲内单独成章）",
+  table_caption_missing: "表格表题（每个表格上方须有一行表题「表N-M 标题」，用户硬要求）",
+  latex_residue: "LaTeX 残留（正文禁 LaTeX，公式改用普通文字 + <sup>/<sub>）",
+  credential_claim_no_evidence: "凭证类断言无出处（正文称「已通过/已获证书」但未写「详见附件N」或证书编号）",
+  format_check_not_run: "格式体检未实际运行（检查项全部关闭，无命中 ≠ 已通过）",
 }
 
 export type FormatCheckHit = { chapter: string; rule: FormatCheckRule; quote: string; level: "warn" | "info" }
@@ -5280,6 +5837,13 @@ export type BidProjectRecord = {
   bid_open_date: string
   stage: BidStage
   tender_text: string
+  /** 2026-10-21 多份招标文件：上传文件清单（名称/角色/字数）。合并文本里每个文件块前有
+   *  〖附件N｜角色｜文件名〗来源标记；清单缺失（存量项目）或全是「招标正文」时，
+   *  解析行为与改造前完全一致（见 tenderFiles.parseTextForItem）。 */
+  tender_files: TenderFileMeta[]
+  /** B4（2026-10-22）：上传 docx 时本地还原的表格（原表行列，用于采购清单/技术参数按原样呈现）。
+   *  体积受 tenderTables.TENDER_TABLES_MAX_BYTES 约束——PB json 列有 1MB 上限。 */
+  tender_tables?: import("./tenderTables").TenderTableRecord[] | null
   parse_report: ParseReport | null
   parse_config: ParseConfig | null
   bid_outline: OutlineNode[]
@@ -5359,7 +5923,9 @@ export function emptyProjectPatch(): Partial<BidProjectRecord> {
 }
 
 export function deriveStage(rec: Partial<BidProjectRecord> & { stage?: BidStage }): BidStage {
-  if (rec.stage === "archived") return "archived"
+  // 2026-10-24（P0-10）：archived 标志优先于 stage——真实库存在 archived=1 但 stage 仍为 composing 的记录，
+  // 于是卡片显示「编制中」、页面又提示「已归档只读」，用户无法判断能不能编辑。
+  if (rec.archived === true || rec.stage === "archived") return "archived"
   if (rec.ai_review) return "evaluated"
   if (rec.dup_report || rec.void_check) return "checking"
   if ((rec.bid_chapters?.length ?? 0) > 0 || (rec.bid_outline?.length ?? 0) > 0) return "composing"
@@ -5376,7 +5942,11 @@ export function deriveStage(rec: Partial<BidProjectRecord> & { stage?: BidStage 
 
 /** R45/F4（体验审计）：视图层显示阶段——stage 仍为 pending_parse 但已有解析产物时不再显示「待解析」。
  * 阶段状态机不变（BidStage 枚举、deriveStage、归档/闸门判定均不动），仅消卡片「待解析」与解析报告已存在的矛盾文案 */
-export function displayStageLabel(rec: Pick<BidProjectRecord, "stage"> & Partial<Pick<BidProjectRecord, "parse_report">>): string {
+export function displayStageLabel(
+  rec: Pick<BidProjectRecord, "stage"> & Partial<Pick<BidProjectRecord, "parse_report">> & { archived?: boolean },
+): string {
+  // 归档标志优先：归档即只读，不能再显示「编制中」（P0-10）
+  if (rec.archived === true) return STAGE_LABEL.archived ?? "已归档"
   if (rec.stage === "pending_parse" && (rec.parse_report?.sections?.length ?? 0) > 0) return "已解析 · 待编制"
   return STAGE_LABEL[rec.stage] ?? "待解析"
 }
@@ -5386,7 +5956,7 @@ export function displayStageLabel(rec: Pick<BidProjectRecord, "stage"> & Partial
 export function parseBackfillFields(report: ParseReport | null): { hospital: string; tender_no: string; bid_open_date: string } {
   const blank = { hospital: "", tender_no: "", bid_open_date: "" }
   if (!report) return blank
-  const all = report.sections.map((s) => s.content).join("\n")
+  const all = (report.sections ?? []).map((s) => s.content).join("\n")
   const labelValue = (re: RegExp): string => {
     const m = all.match(re)
     const v = (m?.[1] ?? "").replace(/\s*[（(]?\s*出处[：:].*$/, "").trim()
@@ -5510,6 +6080,13 @@ export function gateCondition(rec: Partial<BidProjectRecord> | null, kind: GateK
     // check 闸视为未满足（仍可强制放行并留痕），「检查做过」不再等于「检查结果干净」
     const fatal = (rec.submission_check?.format_report?.hits ?? []).filter((h) => GATE_FATAL_RULES.has(h.rule)).length
     if (fatal) lacks.push(`${fatal} 条废标级体检项待处置（引文保真/占位/报价上限/工期时序等，修复或强制放行留痕）`)
+    // 2026-10-22（用户口径：废标项不通过即出局）：原判据只问「废标检查做没做过」，
+    // 一条 critical 都没核销也算做过——「做过」不等于「干净」。改为按未核销条数判，
+    // 仍可强制放行（须填备注留痕），但不能再无痕通过。
+    const voidCritical = (rec.void_check?.items ?? []).filter(
+      (it) => effectiveVoidStatus(it) !== "compliant" && it.severity === "critical" && it.review_status === "pending",
+    ).length
+    if (voidCritical) lacks.push(`${voidCritical} 条废标级条款未核销（逐条核对，或填备注强制放行留痕）`)
     return lacks.length ? { met: false, missing: `还缺：${lacks.join("、")}` } : { met: true, missing: "" }
   }
   return rec.ai_review ? { met: true, missing: "" } : { met: false, missing: "还没有模拟评标报告" }
@@ -5546,7 +6123,17 @@ export function stepEntryMissing(step: number, proj: Partial<BidProjectRecord> |
     return (proj.tender_text ?? "").trim() ? "" : "请先在第 1 步导入招标文件文本，才能进入 AI 解析"
   }
   if (step === 3) {
-    return proj.parse_report ? "" : "还没有 AI 解析报告，解析报告就绪后即可进入大纲与编制"
+    if (!proj.parse_report) return "还没有 AI 解析报告，解析报告就绪后即可进入大纲与编制"
+    // 2026-10-23（P0-4 整改）：必选项解析失败时**不允许进入编制**。
+    // 走查实测：某项目解析报告缺资格性审查/符合性检查/无效标/投标目录（响应要求仅 5 个字、目录为空），
+    // 第 2 步明确报「必选项解析失败」，第 3 步却照样生成 49 页正文——用残缺解析生成的标书从根上就是错的。
+    // 判据只认 failed/pending/降级（requiredParseFailures 口径），「原文未提及」属正常结果不拦。
+    const failed = requiredParseFailures(proj.parse_report.sections ?? [])
+    if (failed.length) {
+      const names = failed.slice(0, 4).map((f) => f.title).join("、")
+      return `必选项解析失败：${names}${failed.length > 4 ? ` 等 ${failed.length} 项` : ""}。请先回「AI 解析报告」逐项重新解析——用残缺解析生成的标书从根上就是错的`
+    }
+    return ""
   }
   if (step === 4 || step === 5) {
     return (proj.bid_chapters ?? []).some((c) => (c.content ?? "").trim())
@@ -5859,7 +6446,13 @@ export function sanitizeVoidCheck(raw: unknown, clauses: string[]): VoidCheck {
     const clause = asString(r.clause ?? r.text).trim()
     if (!clause) continue
     // 新契约读 status；旧契约 verdict 容错映射
-    const status = asVoidStatus(r.status, legacyVerdictToStatus(r.verdict) || "partial")
+    const rawStatus = asVoidStatus(r.status, legacyVerdictToStatus(r.verdict) || "partial")
+    const evidence = asString(r.evidence).trim().slice(0, 140)
+    // 2026-10-22：「合规」必须带支撑证据。AI 在条款未被注入 / 检索不到时也会给 compliant，
+    // 而下游只把「非 compliant」计入未核销风险 —— 一条没证据的「合规」会把废标风险静默抹平。
+    // 无证据一律降为 partial（待人工核对），不改变「漏答补 partial」的既有口径。
+    const status = rawStatus === "compliant" && !evidence ? "partial" : rawStatus
+    const downgraded = status !== rawStatus
     items.push({
       id: makeUid(),
       clause,
@@ -5871,8 +6464,10 @@ export function sanitizeVoidCheck(raw: unknown, clauses: string[]): VoidCheck {
       severity: status === "compliant" ? asSeverity(r.severity, "minor") : asSeverity(r.severity, "critical"),
       kind: asVoidKind(r.kind),
       suggestion: asString(r.suggestion).trim().slice(0, 80),
-      evidence: asString(r.evidence).trim().slice(0, 140),
-      reason: asString(r.reason),
+      evidence,
+      reason: downgraded
+        ? `${asString(r.reason).trim()}${asString(r.reason).trim() ? "；" : ""}AI 判合规但未给出支撑证据，按待核对处理`
+        : asString(r.reason),
       manual_checked: false,
       manual_status: "",
       review_status: "pending",
@@ -6140,8 +6735,33 @@ export function sanitizeFigures(raw: unknown): FigureSpec[] {
  */
 export function sanitizeChapterText(text: string): string {
   if (!text) return ""
+  // 0) 2026-10-26（标书官 P0-A）：表格分隔符归一必须在**所有清洗之前**做。
+  //
+  // 为什么不能放在最后（我第一版放最后，测试直接红）：本函数第 3 步会调
+  // `stripAuditAnnotations`，它内部有一行 `replace(/[ \t]{2,}/g, " ")` 把连续半角空格
+  // 压成单个 → 等轮到我归一的时候，`序号  招标参数` 已经变成 `序号 招标参数`，
+  // 再也认不出列分隔。这是实测出来的，不是推测。
+  //
+  // 为什么必须在导出这一层做（标书官指出的三种绕过生成侧的输入）：
+  //   ① 库里**历史正文**（本次修复前生成的，仍是 markdown 竖线表或半角空格分列）；
+  //   ② 用户**手工粘贴/编辑**进来的正文；
+  //   ③ 方案工坊也走 sanitizeChapterText（useSolutionStudio:1741），自动一并覆盖。
+  // 实测证据（标书官解 5 份历史导出件）：637KB 那份有 **157 根裸露 `|`**；
+  // 「天坛」那份 **211 行连续半角空格、0 个全角空格** —— 存量稿全在漏。
+  // 实测效果（本人 2026-10-26 跑真实库 17 个项目）：重新导出后 w:tbl 由 26 → 128 张。
+  //
+  // 顺序：先转 markdown 竖线（结构转换），再归一半角空格（分隔符统一），最后才做清洗。
+  const normalized = (() => {
+    try {
+      return normalizeTableSeparators(convertMarkdownTables(text).text).text
+    } catch {
+      // 归一失败绝不阻断导出——最多是表格退化成文字，不能整份文件导不出来
+      return text
+    }
+  })()
+  let out = normalized
   // 1) 剥成对 ``` 代码围栏（含 lang 行整块删除），再删残留的孤立围栏行
-  let out = text.replace(/```[\s\S]*?```/g, "")
+  out = out.replace(/```[\s\S]*?```/g, "")
   // 2) 剥独立 JSON 块：行首为 { 或 [ 时做平衡括号截取，可 parse 且为数组/非散文键对象 → 删除该 span
   out = stripStandaloneJsonBlocks(out)
   // 3) 逐行剥 markdown 残留
@@ -6659,25 +7279,155 @@ export function rebuildSectionContent(pieces: string[]): string {
   return (pieces ?? []).filter((p) => p.length > 0).join("\n\n")
 }
 
+// ---------------------------------------------------------------------------
+// 2026-10-25（A7）：篇幅按评分项分值分配
+//
+// 背景（真实库实测 + 外部调研）：
+//  - `chapterWordBudgets` 的章节权重只有「1 + 小节数 + 标题关键词加分」，**不含评分项分值**；
+//    真实项目 w8eqvkh08q6e1lr 十三章正文长度 11,124 / 13,399 / 15,592 / 6,945 / 15,490 / 15,476 / 0 /
+//    11,126 / 13,303 / 15,570 / 8,879 / 8,891 / 2,186 —— 十章挤在 11k~15.5k 的窄带里。
+//  - 评委侧的判据恰好相反：行业复盘里「重难点分析」决定分差、有明显优势的部分该写厚、
+//    「每段长度差不多」是模板特征。均匀分配等于在结构层面自证模板。
+//
+// 匹配口径刻意复用 `scoringItemMatchesLeaf`（评分项↔章承接的单一真源），不另写第二套相似度，
+// 否则「合并章」在篇幅加权与承接判定上会给出两套结论。
+// 纯函数、零 AI；无评分项时返回全 0，`chapterWordBudgets` 据此保持旧口径逐字不变。
+// ---------------------------------------------------------------------------
+
+/** 分值对篇幅的最大加权幅度：满分章权重 ×(1+0.8)，零分章不加成。 */
+export const SCORE_TILT = 0.8
+/**
+ * 评分项覆盖技术章的比例低于此值 → 不做倾斜。
+ * 真实库校准（7 个 target_pages>0 的项目）：覆盖 80% / 71% 的两个项目匹配可信；
+ * 45% / 33% / 17% / 0% 的四个项目存在「评分项名与章名用词不同」，此时倾斜会把没匹配上的章
+ * 相对削薄（实测 s50nd2n3m3590dv 的「核心业务系统升级改造详细技术方案」17,015→13,630）。
+ * 匹配不可信时宁可均分——错误削薄比均匀更难被发现。
+ */
+export const SCORE_COVERAGE_MIN = 0.5
+
+/** 参与篇幅加权的评分项（tech 且分值 > 0） */
+export type ScorableScoreItem = { item: string; score: number; category?: string }
+export type ScorableChapter = { title?: string | null; part?: string | null }
+
+/**
+ * 评分项 → 章的分值归集（数组与 chapters 等长，按章下标取）。
+ *
+ * 匹配分两层（都是本仓既有口径，不引入第二套相似度）：
+ *  ① 直接比章名（`scoringItemMatchesLeaf`）——一个评分项 = 一个技术章时命中；
+ *  ② 命中不到时退到**大纲叶子**：评分项常对应叶子节点（如「系统架构」），其所属顶层章才是承接章；
+ *     叶子→顶层通过大纲父子链确定性回溯，不做模糊匹配。
+ * 允许「多对一」：一个章承接多个评分项时把分值累加——这正是「合并章」的真实形态；
+ * 一个评分项命中多个章时均摊，避免同一笔分算进两章虚增总权重。
+ * 覆盖不足（见 SCORE_COVERAGE_MIN）时返回全 0，调用方据此保持旧口径逐字不变。
+ */
+export function chapterScoreWeights(
+  chapters: ScorableChapter[] | null | undefined,
+  items: ScorableScoreItem[] | null | undefined,
+  outline?: OutlineNode[] | null,
+): number[] {
+  const raw = scoreWeightsRaw(chapters, items, outline)
+  return scoreCoverage(chapters, raw) >= SCORE_COVERAGE_MIN ? raw : (new Array(raw.length).fill(0) as number[])
+}
+
+/**
+ * 不带覆盖率闸门的原始归集（`chapterScoreWeights` 的内核）。
+ * 单独导出是为了让闸门的触发可被观测与单测——否则「匹配不上」与「被闸门关掉」两种情形无法区分，
+ * 调 SCORE_COVERAGE_MIN 就只能靠猜。
+ */
+export function scoreWeightsRaw(
+  chapters: ScorableChapter[] | null | undefined,
+  items: ScorableScoreItem[] | null | undefined,
+  outline?: OutlineNode[] | null,
+): number[] {
+  const chs = chapters ?? []
+  const zero = () => new Array(chs.length).fill(0) as number[]
+  if (!chs.length) return zero()
+  const tech = (items ?? []).filter((it) => it && Number(it.score) > 0 && (it.category ?? "tech") === "tech")
+  if (!tech.length) return zero()
+
+  const nodes = outline ?? []
+  // 大纲节点标题 → 所属顶层章标题（归一化键），用于叶子命中后的确定性回溯
+  const ownerOf = new Map<string, string>()
+  const indexOwners = (list: OutlineNode[], top: string) => {
+    for (const n of list ?? []) {
+      const title = String(n?.title ?? "")
+      const owner = top || title
+      const key = normalizeForCoverage(title)
+      if (key) ownerOf.set(key, normalizeForCoverage(owner))
+      const kids = (n as { children?: OutlineNode[] })?.children
+      if (kids?.length) indexOwners(kids, owner)
+    }
+  }
+  if (nodes.length) indexOwners(nodes, "")
+
+  const out = zero()
+  for (const it of tech) {
+    let hit = chs.map((c, i) => (scoringItemMatchesLeaf(it.item, String(c?.title ?? "")) ? i : -1)).filter((i) => i >= 0)
+    if (!hit.length && nodes.length) {
+      const owners = new Set<string>()
+      const walk = (list: OutlineNode[]) => {
+        for (const n of list ?? []) {
+          if (scoringItemMatchesLeaf(it.item, String(n?.title ?? ""))) {
+            const owner = ownerOf.get(normalizeForCoverage(String(n?.title ?? "")))
+            if (owner) owners.add(owner)
+          }
+          const kids = (n as { children?: OutlineNode[] })?.children
+          if (kids?.length) walk(kids)
+        }
+      }
+      walk(nodes)
+      if (owners.size) {
+        hit = chs.map((c, i) => (owners.has(normalizeForCoverage(String(c?.title ?? ""))) ? i : -1)).filter((i) => i >= 0)
+      }
+    }
+    if (!hit.length) continue
+    const share = (Number(it.score) || 0) / hit.length
+    for (const i of hit) out[i] += share
+  }
+
+  return out
+}
+
+/** 评分项对技术章的覆盖率（0~1）；无技术章时为 0。 */
+export function scoreCoverage(chapters: ScorableChapter[] | null | undefined, weights: number[] | null | undefined): number {
+  const chs = chapters ?? []
+  const tech = chs.map((c, i) => ({ c, i })).filter((x) => x.c?.part !== "biz")
+  if (!tech.length) return 0
+  return tech.filter((x) => (weights?.[x.i] ?? 0) > 0).length / tech.length
+}
+
+/**
+ * 权重乘子：未匹配到分值（或本次没有可比最高分）时返回 1，保持旧口径。
+ * 归一化用「本次参与加权的最高章分值」，所以分值绝对值大小不影响倾斜幅度，只看相对高低。
+ */
+export function scoreTiltFactor(score: number, maxScore: number): number {
+  if (!maxScore || !(score > 0)) return 1
+  return 1 + SCORE_TILT * (score / maxScore)
+}
+
 /**
  * 整份目标页数按章节权重（小节数 + 标题关键词）折算每章字数预算（每页字数取 DEFAULT_CHARS_PER_PAGE 校准值）；页数不设上限（1-9999 防呆）。
  * 第十三轮改造 4：商务骨架章不占预算不计字数（预算恒 0，权重不参与分配），预算全部分给技术章。
+ * 2026-10-25（A7）：`scoreByChapter` 非空时按评分项分值加权——高分章写厚、低分章写薄。
+ * 缺省（或全 0）时**与旧口径逐字一致**，存量调用与既有快照不受影响。总预算不因加权而变，只改分配比例。
  */
 export function chapterWordBudgets(
   chapters: { title: string; sections?: string[]; part?: string }[],
   targetPages: number,
   charsPerPage = DEFAULT_CHARS_PER_PAGE,
   generateDemo = true,
+  scoreByChapter?: number[],
 ): number[] {
   const pages = Math.max(1, Math.min(9999, Math.round(targetPages) || 1))
   const total = pages * charsPerPage
-  const weights = chapters.map((c) => {
+  const maxScore = (scoreByChapter ?? []).reduce((m, s) => (Number(s) > m ? Number(s) : m), 0)
+  const weights = chapters.map((c, i) => {
     if (isBizPart(c)) return 0
     // R-019/R-024 演示分节点默认不占预算不计字数（开启生成后正常参与分配）
     if (!generateDemo && isDemoScoreTitle(c.title)) return 0
     const leaves = (c.sections ?? []).length
     const bonus = /方案|设计|实施|建设|技术|系统/.test(c.title) ? 2 : 0
-    return 1 + leaves + bonus
+    return (1 + leaves + bonus) * scoreTiltFactor(Number(scoreByChapter?.[i]) || 0, maxScore)
   })
   const sum = weights.reduce((a, b) => a + b, 0) || 1
   return weights.map((w) => (w <= 0 ? 0 : Math.max(400, Math.round((total * w) / sum))))
@@ -6811,6 +7561,69 @@ export type TenderFragmentQuery = {
 const RETRIEVE_MIN_SCORE = 0.2
 
 /**
+ * 2026-10-31 修复：检索专用段落切分。
+ *
+ * 真实缺陷（实测）：
+ *   原实现用 splitParagraphs(text, 40, 2000)，它按换行切分。
+ *   但 PDF/Word 转出来的招标正文常常整篇没有换行——实测「安徽中医药大学第一附属医院
+ *   一体化核心」的 152,240 字招标正文被切成 1 个段落，于是：
+ *     · 检索只能选到这 1 个巨型段落
+ *     · 被 maxChars 截断 → 只拿到开头（目录/章节标题）
+ *     · 结果是「培训方案」检索到 0 字，而原文实际有 10 处「培训」+ 明确的培训评分项
+ *
+ * 修法：按「句末标点 + 长度」二次切块，保证即使原文无换行也能得到有语义的检索单元。
+ */
+const RETRIEVAL_PARA_MAX = 600
+const RETRIEVAL_PARA_MIN = 40
+
+import { extendQueryWithSynonyms } from "./techChapterTerms"
+
+export function splitForRetrieval(text: string): string[] {
+  // 2026-10-31 二次修正：PDF/Word 转出的招标正文每行都很短（实测 6986 个换行、平均每行 22 字），
+  // 若按「短行丢弃」会把 96% 的原文丢掉（首版实测覆盖率仅 3.4%）。
+  // 正确做法是**短行合并、长行再按句切**：先按换行累积到接近上限再落块。
+  const out: string[] = []
+  let buf = ""
+  const flush = () => {
+    const t = buf.trim()
+    if (t.length >= RETRIEVAL_PARA_MIN) out.push(t)
+    buf = ""
+  }
+  const pushLong = (s: string) => {
+    // 超长行按句末标点切，句太长再硬切
+    let seg = ""
+    for (const ch of s) {
+      seg += ch
+      if ("。；！？".includes(ch) && seg.trim().length >= RETRIEVAL_PARA_MIN) {
+        const t = seg.trim()
+        if (t.length <= RETRIEVAL_PARA_MAX) out.push(t)
+        else for (let i = 0; i < t.length; i += RETRIEVAL_PARA_MAX) out.push(t.slice(i, i + RETRIEVAL_PARA_MAX).trim())
+        seg = ""
+      }
+    }
+    const rest = seg.trim()
+    if (rest.length >= RETRIEVAL_PARA_MIN) out.push(rest)
+  }
+
+  for (const rawLine of String(text ?? "").split(/\n+/)) {
+    const line = rawLine.trim()
+    if (!line) continue
+    if (line.length > RETRIEVAL_PARA_MAX) {
+      flush()
+      pushLong(line)
+      continue
+    }
+    // 累积：合并到接近上限再落块
+    if (buf && buf.length + line.length + 1 > RETRIEVAL_PARA_MAX) flush()
+    buf = buf ? buf + line : line
+    if (buf.length >= RETRIEVAL_PARA_MAX) flush()
+  }
+  flush()
+  return out
+}
+
+
+/**
  * 改造 2：招标原文片段检索（纯本地零 AI）——把 tender_text 按段落切分，
  * 对每段用 bigramOverlap 与查询词（章标题、小节名、条款文本）计算相关度，
  * 取 top 段落按原文顺序拼接至 maxChars；全部低于阈值或原文为空时返回空串（调用方静默降级）。
@@ -6819,11 +7632,17 @@ const RETRIEVE_MIN_SCORE = 0.2
 export function retrieveTenderFragments(tenderText: string, query: TenderFragmentQuery, maxChars = 4000, maxParas = 12): string {
   const text = (tenderText ?? "").trim()
   if (!text) return ""
-  const keywords = [query.title, ...(query.sections ?? []), ...(query.clauses ?? [])]
-    .map((k) => (k ?? "").trim())
-    .filter((k) => k.length >= 2)
+  // 2026-10-31 优化：把章节标题扩展为该主题在招标文件里的实际措辞（同义词），
+  // 提升召回。原有 title/sections/clauses 仍排在最前，不改变既有命中。
+  // 例：「培训方案」→ 追加 "培训/考核/培训计划/培训内容/培训教材…"，
+  //     因为真实招标文件里这些词比"培训方案"本身更常出现（实测 53 次 vs 5 次）。
+  const keywords = extendQueryWithSynonyms({
+    title: query.title,
+    sections: query.sections,
+    clauses: query.clauses,
+  })
   if (!keywords.length) return ""
-  const paras = splitParagraphs(text, 40, 2000)
+  const paras = splitForRetrieval(text)
   const scored = paras
     .map((p, i) => {
       let best = 0
@@ -6971,6 +7790,14 @@ export const PROSE_LINT_RULES: string[] = [
   //   而 c1 是本工具的注入编号，招标原文里没有这个编号，真实标书里也不会出现。
   "禁任务分派与章节自指：正文不得出现「由第 X 章……承接/承担/负责」「详细设计详见第 X 章」「其余内容见第 X 章」「本小节/本章/本节将……」「本节内容由……」等分派或自指表述——投标文件是评标专家手上的一本实体文件，不存在「第几章负责」的第二人称分工；要写的是本节内**具体做什么**（措施、参数、责任人、时限），不写内容被派到哪一章；跨章重复靠写作时避开，不靠正文里互相指认；",
   "禁条款编号进正文：条款清单前的序号（1./2./3.）只是清单排列，正文不得回指该序号或任何内部编号（c1/c2/R3/R7 等）——禁止写成「满足 c1 条款要求」「响应第 3 条」「响应第 2 与第 3 条」；响应时直接写条款的实质内容，确需点明依据时只写真实出处（如「招标文件第三章 3.2 条」），不用清单序号；",
+  // ─── 2c. 禁元话语 / 禁应答套话（2026-10-21 用户反馈：「我公司响应投标文件XX内容，针对这个项目做到XXX」）───
+  // 实证（bid_projects d3c35o7axkw34wo，45.8 万字真稿 2026-10-18 生成）：
+  //   「我公司……响应结论为」27 处、「第X章」246 处、「承接」150 处、「本小节/本节」295 处，
+  //   而真实交付的中标标书这四项都是 0。
+  // 病根不是「我公司」本身（中文标书第一人称正常），而是把**评标过程的话**写进了方案正文：
+  //   「响应结论为：满足招标文件要求」这类引导语是写给评委看的应答腔，
+  //   真实标书只写「系统支持……，并发不低于 5000 用户」这种断言式事实。
+  "禁元话语与应答套话：正文不得出现「我公司对本条款/本小节……的响应结论为」「就本条作出响应」「以上为本条响应」「针对本项目，我公司将……」这类引导语——响应直接写具体做法与量化指标，不给「应答结论」套壳；★/▲ 重点条款仍须在句末给出「满足招标文件要求」或「优于招标文件要求（具体说明）」的明确结论（这是评审要求，必须写），但结论直接承接在事实陈述之后，不加「响应结论为」式引导语；「针对本项目」「就本项目而言」等以项目名开头的填充式状语全篇不超过 3 次，改写为具体的院区、科室、系统或数据范围；",
   // ─── 3. 标题层级（编号要连续，禁止同级跳号）───
   // REQ-052（2026-10-18）：原第 3 条写「3 级为「N.M.K 小节名」…小节标题用「N.M.K 名称」纯文本行」，
   //   与导出端直接冲突：contentHeadingLevel 刻意不认 1./1.1（bidFiles.ts:545），N.M.K 走的是
@@ -6993,7 +7820,17 @@ export const PROSE_LINT_RULES: string[] = [
   //      因为真跑实测模型对区间取下端（要 45-65 实际出 38），中值必须留出上偏余量。
   "段落首句必须给结论或事实，禁止「在……/通过……/为了……/随着……/基于……」等套话开头；首句超过 30 字还没出现数字/系统名/措施的，重写为先给结论；每段控制在 200 字以内，长段落拆为 2-3 段；每句 45-65 字：一句话只讲一件事，超过 65 字就断句，不足 45 字的短句要并回上一句；",
   // ─── 5. 关键章强制出表（启发式识别）───
-  "关键章强制出表（识别以下章节标题关键词时，必须用 markdown 表格呈现，列间用 | 分隔、首行表头）— ①「技术参数/参数响应/实质性响应」章：参数响应表（序号|招标参数|响应值|偏离|证明材料）；②「评分/响应承诺/响应映射」章：评分点承诺表（评分项|承诺内容|对应章节|页码）；③「售后服务/SLA/故障分级/响应时限」章：SLA 响应表（故障级别|响应时间|到场时间|恢复时间|备品备件）；④「应急预案/业务连续性/演练」章：应急场景矩阵（场景|影响范围|响应流程|恢复时间|责任人）；不强制出表的章节也鼓励在数据集中处用表呈现；",
+  //
+  // ⚠️ 2026-10-26 修矛盾：本条此前要求「必须用 markdown 表格呈现，列间用 | 分隔」，
+  //    而 bidSection.ts:243 / bidChapter.ts:305 的小节提示词要求「列间用两个全角空格分隔、
+  //    禁止 markdown 表格符号」——同一份请求里两条互斥指令，模型只能挑一条。
+  //    导出的真实代价：bidFiles.splitTableRow **只认全角空格 U+3000**（行内不含它就返回 null），
+  //    模型若照本条出 markdown 表格，导出时整张表会退化成一堆带 `|` 的普通文字段落，
+  //    在 Word 里就是散文——比不出表更难解释。
+  //    真实库实测（74 章真生成稿）：含表格行的仅 3 章、含 markdown 竖线表 0 章——
+  //    说明模型实际挑了「不出表」这条最小阻力路径，表格压根没写出来。
+  //    故本条统一到全仓唯一的导出真源：全角空格分列。
+  "关键章强制出表（识别以下章节标题关键词时，必须用纯文本表格行呈现：每行一行文本、列间用两个全角空格分隔、首行为表头，禁止 markdown 竖线表格）— ①「技术参数/参数响应/实质性响应」章：参数响应表（序号　招标参数　响应值　偏离　证明材料）；②「评分/响应承诺/响应映射」章：评分点承诺表（评分项　承诺内容　对应章节　页码）；③「售后服务/SLA/故障分级/响应时限」章：SLA 响应表（故障级别　响应时间　到场时间　恢复时间　备品备件）；④「应急预案/业务连续性/演练」章：应急场景矩阵（场景　影响范围　响应流程　恢复时间　责任人）；每张表上方必须有一行表题（形如「表1-1 参数响应表」）；不强制出表的章节也鼓励在数据集中处用表呈现；",
   // ─── 6. 实施章强制出甘特图/进度图 ───
   "实施/进度章强制出可视化（识别「实施计划/进度计划/工期/里程碑/甘特/WBS」章标题时）— 用 mermaid gantt 语法输出甘特图，列出关键里程碑、起止时间、责任岗位；工期超过 6 个月的必须有月度里程碑，每里程碑 1-2 行交付物；纯文字进度描述（「项目分三期实施」）不算可视化，必须有图；",
   // ─── 7. 数字与量纲 ───
@@ -7101,6 +7938,34 @@ export const PRE_OUTPUT_SELFCHECK_RULES: string[] = [
 const IMPLICIT_CONSTRAINT_PATTERN = /(不得超过|不得少于|不低于|至少|必须包含|必须涵盖|视为|总页数|页数不|份数)/
 
 /**
+ * 技术参数类噪声排除（2026-10-27 用户反馈「隐式硬约束 40 条内容混乱、没重点」）：
+ * 原正则含裸「至少 / 不低于」，会把产品参数整段吸进来——实测三明项目 40 条里有
+ * 「至少支持 RAID0/1/5/6 模式」「SSL 每秒新建连接数不小于 10000 个/秒」「≥4GB 缓存」
+ * 「TPC-C 测试成功率 ≥99.99%」这类**软硬件规格指标**。它们属于技术偏离表/★▲ 重点参数
+ * 的职责，不是「页数/份数/装订/格式」这类投标形式约束，混在一起看反而淹没了真正会废标的几条。
+ * 这里按「整句是否在描述产品规格」剔除；带实质废标后果的句子（含视为/无效/废标/不合格）
+ * 一律保留，不受本过滤影响。
+ */
+const IMPLICIT_TECH_SPEC_RE =
+  /RAID|SSL|TPS|QPS|TPC-?C|PCIe|Gb|Gbps|Mbps|TB|GB|CPU|内存|硬盘|磁盘|端口|槽位|核数|主频|并发|吞吐|时延|延迟|响应时间|可用性|成功率|缓存|副本|接口协议|操作系统|芯片|密钥|算法|加密|集群|虚拟化|新建连接数|连接数|QPS|IOPS/i
+
+/**
+ * 投标形式约束的强信号（2026-10-27）：出现这些词说明整句在讲「怎么交标」，
+ * 即使句中也带了「副本」「GB」这类技术词，也**不得**被技术规格过滤误杀。
+ * 实测踩坑：`投标文件份数不得少于正本一份副本四份` 因含「副本」被判成技术参数，
+ * 而「份数」恰是最典型的投标形式约束——技术过滤必须先让位于形式信号。
+ */
+const IMPLICIT_FORM_STRONG_RE =
+  /页数|份数|装订|密封|加盖公章|签字|签署|签章|正本|副本|目录|格式要求|字体|字号|页边距|上传投标|电子投标文件|投标文件解密|投标有效期|投标保证金|电子保函/
+
+/** 该句是否带明确废标/无效后果——带后果的一律保留，不被技术规格过滤误杀 */
+const IMPLICIT_VOID_CONSEQUENCE_RE = /废标|无效投标|投标无效|视为无效|不合格|拒绝其投标|不予受理|作无效|取消(?:其)?(?:投标|中标)资格/
+
+/** 隐式硬约束的分类（供面板分组展示，避免 40 条堆成一锅） */
+export type ImplicitConstraintKind = "format" | "void" | "other"
+
+
+/**
  * R51/F6：把被换行切断的句子接回来——上一行未以句末标点收尾时并入下一行。
  * PDF 转译常在字中间换行（如「截止时间」被拆成两行），不接回就会产出
  * 「止时间前未完成…」「知书，中标…」这类碎片句。缓冲超 300 字强制落段，防表格行粘连成巨段。
@@ -7156,12 +8021,38 @@ export function extractImplicitConstraints(tenderText: string, limit = 40): stri
       const m = s.match(IMPLICIT_CONSTRAINT_PATTERN)
       if (!m || m.index === undefined) continue
       if (s.slice(Math.max(0, m.index - 1), m.index) === "备") continue
+      // 技术规格句剔除（2026-10-27）：判断依据用整句，而不是命中关键词附近——
+      // 「至少支持RAID0/1/5/6」这类整句都在讲产品规格，属技术参数范畴。
+      // 但投标形式强信号（份数/装订/签章…）优先，绝不被误杀；
+      // 带明确废标后果的句子同样一律保留。
+      const isTechSpec = IMPLICIT_TECH_SPEC_RE.test(s)
+      const isFormStrong = IMPLICIT_FORM_STRONG_RE.test(s)
+      const hasVoidConsequence = IMPLICIT_VOID_CONSEQUENCE_RE.test(s)
+      if (isTechSpec && !isFormStrong && !hasVoidConsequence) continue
       const excerpt = clipAround(s, m.index)
       if (seen.has(excerpt)) continue
       seen.add(excerpt)
       out.push(excerpt)
     }
   }
+  return out
+}
+
+/**
+ * 隐式硬约束分类（2026-10-27）：把抽出来的约束按「投标形式 / 废标后果 / 其他」分组，
+ * 供面板分区展示——用户看这 40 条的诉求是「哪些会让我废标、哪些只是格式要求」，
+ * 一堆无差别平铺的句子读不出重点。
+ */
+export function classifyImplicitConstraint(s: string): ImplicitConstraintKind {
+  if (IMPLICIT_VOID_CONSEQUENCE_RE.test(s)) return "void"
+  if (/页数|份数|装订|格式|编制|签署|盖章|密封|装订|目录|字体|字号|页边距|电子|上传|解密|签章/.test(s)) return "format"
+  return "other"
+}
+
+/** 批量分组（保持原顺序） */
+export function groupImplicitConstraints(list: string[]): Record<ImplicitConstraintKind, string[]> {
+  const out: Record<ImplicitConstraintKind, string[]> = { format: [], void: [], other: [] }
+  for (const s of list ?? []) out[classifyImplicitConstraint(s)].push(s)
   return out
 }
 
@@ -7821,7 +8712,7 @@ export function factSettingsSourceText(report: ParseReport | null): string {
   const keys = [...FACT_SOURCE_KEYS, ...extraKeys]
   const blocks: string[] = []
   for (const key of keys) {
-    const sec = report.sections.find((s) => s.key === key)
+    const sec = (report.sections ?? []).find((s) => s.key === key)
     const text = (sec?.content ?? "").trim()
     if (!text) continue
     blocks.push(`【${sec?.title ?? key}】\n${text}`)

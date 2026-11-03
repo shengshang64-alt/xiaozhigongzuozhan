@@ -15,7 +15,10 @@ import { baselineLabelFromText, extractBaselineSegment, extractFragmentSegment }
 // 源头抑制「照抄途中改写」——L2 摸底引文级改写 34 处均产自生成环节；对比报告 .loop/reports/2026-10-13-r287-*.md
 // R47（B20）v6→v7：新增「商务模板要求」注入槽与规则条（templateRequirements 空数组时输出与 v6 逐字一致）
 // REQ-052 v7→v8：BID_STYLE_RULES 新增「正文编号层次」条（（一）分组 /（1）条目 /① 细则）
-export const PROMPT_VERSION = 8
+// 2026-10-21 v8→v9：去 AI 味——① complianceModeRule(strict) 删掉「确需指引时只写一句『详见《第X章》』」
+//   的授权（该句与 PROSE_LINT_RULES「禁任务分派与章节自指」直接冲突，真稿 246 处「第X章」的主要来源）；
+//   ② PROSE_LINT_RULES 新增「禁元话语与应答套话」条（「响应结论为」式引导语）。
+export const PROMPT_VERSION = 9
 
 export function buildBidSectionMessages(
   projectName: string,

@@ -108,6 +108,34 @@ function Wait-PocketBase($Process) {
 
 Ensure-PocketBase
 $pb = Start-Process -FilePath $PbBin -ArgumentList @("serve", "--http=127.0.0.1:7000", "--dir=$PbDir\pb_data", "--hooksDir=$PbDir\pb_hooks") -WorkingDirectory $PbDir -RedirectStandardOutput (Join-Path $PbLogDir "stdout.log") -RedirectStandardError (Join-Path $PbLogDir "stderr.log") -PassThru
+
+# 2026-10-27：后端服务（sidecar）——承担解析/导出/大文件处理
+# 为什么单独起进程而不是塞进 PocketBase：PB 的 JSVM 是 goja，装不了 docx/mammoth/pdfjs 这些 Node 库。
+# 为什么失败不阻断启动：前端有降级路径（调不通就退回浏览器端导出），sidecar 挂了平台仍可用。
+$sidecar = $null
+$sidecarLog = Join-Path $PbLogDir "sidecar.log"
+$sidecarErr = Join-Path $PbLogDir "sidecar.err.log"
+try {
+  $sidecar = Start-Process -FilePath "node" -ArgumentList @("vibex-local/sidecar/server.mjs") `
+    -WorkingDirectory $Root -RedirectStandardOutput $sidecarLog -RedirectStandardError $sidecarErr -PassThru -WindowStyle Hidden
+  $sidecarOk = $false
+  for ($i = 0; $i -lt 15; $i++) {
+    if ($sidecar.HasExited) { break }
+    try {
+      $h = Invoke-RestMethod "http://127.0.0.1:7001/health" -TimeoutSec 1
+      if ($h.ok) { $sidecarOk = $true; break }
+    } catch {}
+    Start-Sleep -Milliseconds 400
+  }
+  if ($sidecarOk) {
+    Write-Host "Sidecar (解析/导出后端): http://127.0.0.1:7001"
+  } else {
+    Write-Warning "Sidecar 未就绪，导出将退回浏览器端（功能不受影响）。日志: $sidecarErr"
+  }
+} catch {
+  Write-Warning "Sidecar 启动失败，导出将退回浏览器端。原因: $($_.Exception.Message)"
+}
+
 try {
   Wait-PocketBase $pb
   $vite = Ensure-NodePm
@@ -121,4 +149,5 @@ try {
   & $cmd @args
 } finally {
   if ($pb -and !$pb.HasExited) { Stop-Process -Id $pb.Id -Force }
+  if ($sidecar -and !$sidecar.HasExited) { Stop-Process -Id $sidecar.Id -Force }
 }

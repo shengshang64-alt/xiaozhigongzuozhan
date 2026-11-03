@@ -66,6 +66,8 @@ for (const file of walk(join(ROOT, "src"))) {
 const ALLOW: Record<string, string> = {
   "src/lib/kbCore.ts": "定义处本身",
   "src/lib/kbAssemble.ts": "共享缓存的唯一包装点：getCachedVisibleDocs 内部就是那一次全库拉取",
+  "src/lib/kbCorpusLazy.ts":
+    "2026-10-31 新增的渐进加载入口：只拉元数据(slim，省 94% 体积)再按 query 补正文，被 kbAssemble.getDocsForQuery 统一收口，不构成旁路",
   "src/pages/Knowledge/useKnowledge.ts":
     "知识库列表通道：slim=1 服务端置空 content + onBatch 渐进直显，与共享缓存的「含正文全量」形态互斥",
   "src/components/shell/useGlobalSearch.ts":

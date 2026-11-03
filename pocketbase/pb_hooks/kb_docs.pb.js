@@ -43,10 +43,27 @@ onBootstrap(function (e) {
       addField({ name: 'is_sensitive', type: 'bool' })
       addField({ name: 'kb_track', type: 'text', max: 40 })
       addField({ name: 'kb_bucket', type: 'text', max: 40 })
+      addField({ name: 'kb_scenes', type: 'text', max: 200 })
+      addField({ name: 'kb_audience', type: 'text', max: 30 })
+      addField({ name: 'scene_reason', type: 'text', max: 300 })
+      addField({ name: 'scene_risks', type: 'text', max: 300 })
+      addField({ name: 'extract_score', type: 'number' })
       addField({ name: 'kb_section', type: 'text', max: 40 })
       // P1-4（2026-10-25）：软删除时间戳（空串=在册）。DELETE 路由置时间戳而非物理删除，
       // 列表路由排除已删行；A2 增量同步经 since 携带墓碑（updated 随置删前进）。
       addField({ name: 'deleted_at', type: 'text', max: 30 })
+      // 2026-10-28（DSB6，用户已授权改表结构）：案例/素材的结构化字段。
+      // 现状：kb_docs 7,002 条全是纯文本，项目案例 320 篇里能抽出金额/年份/医院名的有 287 篇（89.7%），
+      // 但没有字段可存，检索只能靠全文模糊匹配。本字段存抽取结果 JSON（金额/年份/医院/系统清单等）。
+      //
+      // 类型选 json 而非 text：PocketBase 对 json 字段做合法 JSON 校验，能挡住「写进一个坏 JSON 字符串」；
+      // 而 text 会原样收下任何内容（2026-10-27 归档页白屏事故就是 JSON 数组列被写成空字符串导致的）。
+      //
+      // 兼容性：可空、无默认值、不 required。既有 7002 行保持 NULL，前端一律按「无结构化数据」处理，
+      // 不改变任何现有读写路径（6 个写路由 + kbCore 全部不读此字段，属纯增量）。
+      addField({ name: 'structured', type: 'json' })
+      // 抽取版本：同一篇文档重抽时可判断结果新旧，避免用旧抽取器结果覆盖新口径
+      addField({ name: 'structured_ver', type: 'text', max: 20 })
       addField({ name: "created", type: "autodate", onCreate: true })
       addField({ name: "updated", type: "autodate", onCreate: true, onUpdate: true })
       // P1-3 性能修复（2026-10-13）：列表路由默认 sort=-updated，无索引时 SQLite 对
@@ -103,8 +120,16 @@ onBootstrap(function (e) {
           { name: 'is_sensitive', type: 'bool' },
           { name: 'kb_track', type: 'text', max: 40 },
           { name: 'kb_bucket', type: 'text', max: 40 },
+        { name: 'kb_scenes', type: 'text', max: 200 },
+        { name: 'kb_audience', type: 'text', max: 30 },
+        { name: 'scene_reason', type: 'text', max: 300 },
+        { name: 'scene_risks', type: 'text', max: 300 },
+        { name: 'extract_score', type: 'number' },
           { name: 'kb_section', type: 'text', max: 40 },
           { name: 'deleted_at', type: 'text', max: 30 },
+          // 2026-10-28（DSB6）：案例/素材结构化抽取结果（见上方 existing 分支同名注释）
+          { name: 'structured', type: 'json' },
+          { name: 'structured_ver', type: 'text', max: 20 },
           { name: "created", type: "autodate", onCreate: true },
           { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
         ],
@@ -146,6 +171,11 @@ routerAdd("GET", "/api/kb_docs", function (e) {
           { name: 'is_sensitive', type: 'bool' },
           { name: 'kb_track', type: 'text', max: 40 },
           { name: 'kb_bucket', type: 'text', max: 40 },
+        { name: 'kb_scenes', type: 'text', max: 200 },
+        { name: 'kb_audience', type: 'text', max: 30 },
+        { name: 'scene_reason', type: 'text', max: 300 },
+        { name: 'scene_risks', type: 'text', max: 300 },
+        { name: 'extract_score', type: 'number' },
           { name: 'kb_section', type: 'text', max: 40 },
         { name: "created", type: "autodate", onCreate: true },
         { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
@@ -480,6 +510,11 @@ routerAdd("POST", "/api/kb_docs", function (e) {
           { name: 'is_sensitive', type: 'bool' },
           { name: 'kb_track', type: 'text', max: 40 },
           { name: 'kb_bucket', type: 'text', max: 40 },
+        { name: 'kb_scenes', type: 'text', max: 200 },
+        { name: 'kb_audience', type: 'text', max: 30 },
+        { name: 'scene_reason', type: 'text', max: 300 },
+        { name: 'scene_risks', type: 'text', max: 300 },
+        { name: 'extract_score', type: 'number' },
           { name: 'kb_section', type: 'text', max: 40 },
         { name: "created", type: "autodate", onCreate: true },
         { name: "updated", type: "autodate", onCreate: true, onUpdate: true },

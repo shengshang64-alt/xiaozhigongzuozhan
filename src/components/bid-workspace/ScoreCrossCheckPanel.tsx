@@ -1,7 +1,8 @@
 import { useMemo } from "react"
 import { ListChecks } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import type { ParseReport } from "@/pages/BidWorkspace/bidTypes"
+import { numberScoringItems, type ParseReport } from "@/pages/BidWorkspace/bidTypes"
+import { parseDeclaredTotal, parseScoreWeights, type ScoreWeights } from "@/pages/BidWorkspace/parseSchemas"
 import {
   crossCheckScores,
 } from "@/pages/BidWorkspace/scoreItemsScan"
@@ -19,6 +20,41 @@ export function ScoreCrossCheckPanel({
   report: ParseReport | null
 }) {
   const cc = useMemo(() => crossCheckScores(tenderText ?? "", report), [tenderText, report])
+
+  // 2026-10-22（用户口径「先绘得分地图」）：总分构成原文 + 技术/商务/价格权重 + 主观/客观拆分。
+  // 权重只在原文明写时展示，不做推算；老报告没有 structured 时回落到原文正则解析。
+  const map = useMemo(() => {
+    const sections = report?.sections ?? []
+    const comp =
+      sections
+        .map((s) => (s.structured as { score_composition?: string } | undefined)?.score_composition ?? "")
+        .find((t) => t.trim().length > 0) ?? ""
+    const stored =
+      sections
+        .map((s) => (s.structured as { weights?: ScoreWeights | null } | undefined)?.weights)
+        .find((w) => !!w) ?? null
+    const weights = stored ?? parseScoreWeights(comp)
+    const declared =
+      sections
+        .map((s) => (s.structured as { declared_total?: number | null } | undefined)?.declared_total)
+        .find((v) => typeof v === "number") ?? parseDeclaredTotal(comp)
+    const items = numberScoringItems(report)
+    const sumOf = (arr: typeof items) => Math.round(arr.reduce((a, i) => a + (Number(i.score) || 0), 0) * 10) / 10
+    const subjective = items.filter((i) => i.isSubjective)
+    const subjectiveScore = sumOf(subjective)
+    return {
+      comp,
+      weights,
+      // 价格权重低（≤20% 或 ≤ 总分的 20%）⇒ 排名主要由技术/商务决定
+      lowPrice:
+        weights?.price != null &&
+        (weights.percent ? weights.price <= 20 : declared ? weights.price <= declared * 0.2 : false),
+      subjectiveCount: subjective.length,
+      subjectiveScore,
+      objectiveCount: items.length - subjective.length,
+      objectiveScore: Math.round((sumOf(items) - subjectiveScore) * 10) / 10,
+    }
+  }, [report])
 
   if (!tenderText?.trim()) {
     return (
@@ -67,6 +103,32 @@ export function ScoreCrossCheckPanel({
           原文总分：{totalText}
         </Badge>
       </div>
+
+      {(map.comp || map.weights || map.subjectiveCount + map.objectiveCount > 0) && (
+        <div className="mt-4 rounded-lg border border-primary/20 bg-primary/5 px-3 py-3">
+          <div className="flex flex-wrap items-baseline gap-2">
+            <h4 className="text-xs font-semibold text-foreground">得分地图</h4>
+            {map.comp && <span className="text-[11px] leading-relaxed text-muted-foreground">原文：{map.comp}</span>}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            {map.weights && (
+              <>
+                <WeightChip label="技术" value={map.weights.tech} percent={map.weights.percent} />
+                <WeightChip label="商务" value={map.weights.biz} percent={map.weights.percent} />
+                <WeightChip label="价格" value={map.weights.price} percent={map.weights.percent} />
+              </>
+            )}
+            <span className="text-muted-foreground">
+              主观 {map.subjectiveCount} 项 {map.subjectiveScore} 分 · 客观 {map.objectiveCount} 项 {map.objectiveScore} 分
+            </span>
+          </div>
+          {map.lowPrice && (
+            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+              价格权重低：排名主要由技术 / 商务分决定，编制精力应压在技术标与证明材料上。
+            </p>
+          )}
+        </div>
+      )}
 
       {cc.totalSumWarn && (
         <p className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
@@ -125,6 +187,19 @@ export function ScoreCrossCheckPanel({
         扫描为逐行启发式（「名称 N 分」模式），PDF 表格抽取可能丢行——本面板用于交叉复核，评分项真值以招标文件原文为准。
       </p>
     </section>
+  )
+}
+
+function WeightChip({ label, value, percent }: { label: string; value: number | null; percent: boolean }) {
+  if (value == null) return null
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-background px-2 py-0.5 text-[11px] text-foreground ring-1 ring-border">
+      {label}
+      <span className="font-semibold text-primary">
+        {value}
+        {percent ? "%" : " 分"}
+      </span>
+    </span>
   )
 }
 

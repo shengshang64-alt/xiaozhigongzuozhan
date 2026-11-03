@@ -86,7 +86,7 @@ export function DocReaderPanel({
   }, [citationFocus, selectedDoc, editMode])
 
   return (
-    <section className="flex h-full min-h-0 flex-col rounded-xl border border-border bg-card shadow-md">
+    <section className="flex min-h-0 flex-col rounded-xl border border-border bg-card shadow-md lg:h-[calc(100vh-17rem)]">
       {selectedDoc ? (
         <>
           <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2">

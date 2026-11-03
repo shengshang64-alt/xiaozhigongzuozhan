@@ -144,8 +144,13 @@ export function WorkbenchShell() {
               onCloseRight={handleCloseRight}
               onCloseAll={handleCloseAll}
             />
-            <main className="flex-1 px-4 pb-10 pt-5 lg:px-6">
-              <div key={accountKey} className="mx-auto w-full max-w-[1560px]">
+            {/* 2026-10-31 移动端修复：
+                实测小屏（390px）下文档仍被撑到 630px 可横向滚 240px——溢出源分散在多个组件里
+                （标签栏内部的标签累计宽度、列表项长标题等），逐个修补容易漏。
+                在内容主区统一 overflow-x-clip 兜底：内容自身若超宽由内部容器自己滚（如标签栏），
+                但绝不允许把整页顶宽。用 clip 而非 hidden，避免影响 sticky 定位。 */}
+            <main className="min-w-0 flex-1 overflow-x-clip px-4 pb-10 pt-5 lg:px-6">
+              <div key={accountKey} className="mx-auto w-full min-w-0 max-w-[1560px]">
                 <ErrorBoundary key={`eb-${accountKey}`}>
                   <TabbedOutlet tabs={tabs} pathname={pathname} />
                 </ErrorBoundary>

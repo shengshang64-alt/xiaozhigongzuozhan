@@ -47,9 +47,19 @@ export function TeamAuthGate({ children }: { children: ReactNode }) {
           }
         }
         if (!cancelled) setState("login")
-      } catch {
+      } catch (e) {
         // 后端没起来/网络抖动：不把人锁在门外，退回登录表单
-        if (!cancelled) setState("login")
+        //
+        // 2026-10-31 改进：原来静默退回登录页，用户会误以为"账号失效了"（实测阻断后端时
+        // 只会看到登录表单，没有任何说明）。这里加一条明确提示，说明是连接问题。
+        if (!cancelled) {
+          setState("login")
+          setError(
+            "无法连接本机服务（PocketBase 7000 端口）。如果你刚才断网或服务未启动，请启动后重试；账号本身没有问题。",
+          )
+        }
+        // 保留原始错误到控制台便于排查
+        console.warn("[TeamAuthGate] 会话校验失败：", e)
       }
     })()
     return () => {
@@ -113,41 +123,47 @@ export function TeamAuthGate({ children }: { children: ReactNode }) {
                   : "使用管理员创建的团队账号登录。"}
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {state === "setup" && (
-              <Input
-                placeholder="姓名"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                autoComplete="name"
-              />
-            )}
-            <Input
-              placeholder="邮箱"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="username"
-            />
-            <Input
-              placeholder="密码（至少 8 位）"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete={state === "setup" ? "new-password" : "current-password"}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void submit()
+          <CardContent>
+            {/* form 包裹：修复浏览器「密码框不在 form 中」告警，回车原生提交、密码管理器可识别 */}
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault()
+                void submit()
               }}
-            />
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button className="w-full" disabled={busy || !email || !password || (state === "setup" && !name)} onClick={() => void submit()}>
-              {busy ? "请稍候…" : state === "setup" ? "创建并开始使用" : "登录"}
-            </Button>
-            {state === "login" && needsSetup && (
-              <p className="text-center text-xs text-muted-foreground">
-                系统尚未初始化，请联系管理员创建账号
-              </p>
-            )}
+            >
+              {state === "setup" && (
+                <Input
+                  placeholder="姓名"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  autoComplete="name"
+                />
+              )}
+              <Input
+                placeholder="邮箱"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="username"
+              />
+              <Input
+                placeholder="密码（至少 8 位）"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={state === "setup" ? "new-password" : "current-password"}
+              />
+              {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+              <Button type="submit" className="w-full" disabled={busy || !email || !password || (state === "setup" && !name)}>
+                {busy ? "请稍候…" : state === "setup" ? "创建并开始使用" : "登录"}
+              </Button>
+              {state === "login" && needsSetup && (
+                <p className="text-center text-xs text-muted-foreground">
+                  系统尚未初始化，请联系管理员创建账号
+                </p>
+              )}
+            </form>
           </CardContent>
         </Card>
         <p className="mt-4 text-center text-xs text-muted-foreground">

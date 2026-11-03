@@ -128,7 +128,11 @@ const RULES: RuleDef[] = [
     reason: "「包括但不限于」等开放表述使功能范围无限扩充，履约边界不清。",
     legalBasis: "规范 4.3 红线 06",
     suggestion: "合同阶段清晰界定实施模块与服务范围，超出部分另行计费。",
-    re: /包括但不限于/,
+    // 2026-10-27：原正则是裸「包括但不限于」，实测三明项目命中 44 次——绝大多数是
+    // 技术参数表里的功能点描述（「支持对数据库（包括但不限于 SQLServer、Oracle、Mysql）…」），
+    // 那不是风险条款，是产品功能清单的常规写法，摊成 44 张黄卡把真正的风险全淹了。
+    // 收窄为「出现在合同/范围/服务期等履约语境」才算范围蔓延风险。
+    re: /(实施范围|服务范围|建设范围|采购范围|合同范围|工作内容|服务内容)[^。\n]{0,20}(包括但不限于|等)/,
   },
   {
     id: "RL-api", category: "redline", level: "yellow",
@@ -167,6 +171,25 @@ const RULES: RuleDef[] = [
 function clip(s: string, max = 68): string {
   const t = (s ?? "").replace(/\s+/g, " ").trim()
   return t.length > max ? `${t.slice(0, max)}…` : t
+}
+
+/**
+ * 去重指纹（2026-10-27）：同一份声明在招标文件里重复出现 N 次（投标函/资格声明模板被
+ * 复制多份），逐处都会命中同一条规则，此前只按 `ruleId|excerpt 前 40 字` 去重——
+ * 而这些重复行的差异恰好落在第 40 字之后（或只有一个空格 / 上标 ¹ 的区别），
+ * 于是 8 处原文变成 4 张内容几乎一模一样的风险卡，用户看到的就是「同一条重复四遍」。
+ * 实测三明项目 L3420/L3442/L3682/L3704 四行「…资产总额为｜万元…属于（中型企业…）」。
+ *
+ * 现改为「规则 + 归一化正文」判重：全半角统一、去掉所有空白与标点、删掉纯数字占位
+ * （模板里的「｜万元」这类空格位），只保留实质汉字。这样模板复制件会被合并成一条，
+ * 而「首付款 20%」与「首付款 10%」这类数字不同的命中仍各自保留。
+ */
+export function riskFingerprint(ruleId: string, excerpt: string): string {
+  const normalized = String(excerpt ?? "")
+    .replace(/[\uFF01-\uFF5E]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/[\s\u3000]/g, "")
+    .replace(/[\d.,，。；;：:、（）()【】[\]「」《》\-—_/／|｜%％¹²³⁴⁵⁶⁷⁸⁹⁰]/g, "")
+  return `${ruleId}|${normalized}`
 }
 
 function detectPercentRules(lines: string[]): RiskFinding[] {
@@ -223,7 +246,7 @@ export function scanTenderComplianceRisk(text: string | null | undefined): RiskF
   const findings: RiskFinding[] = []
   const seen = new Set<string>()
   const push = (f: RiskFinding) => {
-    const k = `${f.ruleId}|${f.excerpt.slice(0, 40)}`
+    const k = riskFingerprint(f.ruleId, f.excerpt)
     if (seen.has(k)) return
     seen.add(k)
     findings.push(f)
@@ -299,12 +322,12 @@ export function parseAiRiskFindings(raw: unknown): RiskFinding[] {
   return out
 }
 
-/** 合并规则命中与 AI 兜底：按 ruleId+excerpt 去重，规则项优先保留 */
+/** 合并规则命中与 AI 兜底：按归一化指纹去重，规则项优先保留 */
 export function mergeRiskFindings(ruleFindings: RiskFinding[], aiFindings: RiskFinding[]): RiskFinding[] {
   const out: RiskFinding[] = []
   const seen = new Set<string>()
   for (const f of [...ruleFindings, ...aiFindings]) {
-    const k = `${f.ruleId}|${f.excerpt.slice(0, 40)}`
+    const k = riskFingerprint(f.ruleId, f.excerpt)
     if (seen.has(k)) continue
     seen.add(k)
     out.push(f)

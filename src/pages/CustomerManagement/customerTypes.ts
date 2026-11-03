@@ -335,7 +335,7 @@ export interface AiProfileResult {
   leadership: Array<{ name: string; title: string; role: string }> | null
 }
 
-const PROFILE_JSON_SPEC = `{"level":"医院等级，如 三级甲等 / 二级甲等，不确定填 null","hospital_type":"综合医院 / 中医院 / 妇幼保健院 / 专科医院 / 基层医疗 / 其他 之一，不确定填 null","region":"所在省市，如 江苏省苏州市，不确定填 null","address":"医院地址，不确定填 null","website":"官网地址，不确定填 null","outpatient_daily":日门诊量数字或null,"outpatient_yearly":年门诊量数字或null,"beds_total":开放床位数数字或null,"beds_icu":ICU床位数数字或null,"beds_or":手术间数数字或null,"annual_revenue":年营业收入数字(单位万元，如 收入 12.5亿元 填 125000)，不确定填 null,"president":"院长姓名，不确定填 null","party_secretary":"党委书记姓名，不确定填 null","it_lead":"信息化负责人/信息中心主任/CIO 姓名，不确定填 null","key_departments":["重点科室名，最多8个"]或null,"leadership":[{"name":"姓名","title":"职务，如 院长/党委书记/副院长/总会计师","role":"分工或兼任职务，可省"}]，只列文字里明确点名的人，没有则 null}`
+const PROFILE_JSON_SPEC = `{"level":"医院等级，如 三级甲等 / 二级甲等，不确定填 null","hospital_type":"综合医院 / 中医院 / 妇幼保健院 / 专科医院 / 基层医疗 / 其他 之一，不确定填 null","region":"所在省市，如 江苏省苏州市，不确定填 null","address":"医院地址，不确定填 null","website":"官网地址，不确定填 null","outpatient_daily":日均门诊量数字或null,"outpatient_yearly":年门诊量数字或null,"beds_total":开放床位数数字（原文同时给出「编制床位」与「实际开放」两个数时取实际开放；只给编制床位时才填编制）或null,"beds_icu":ICU床位数数字或null,"beds_or":手术间数数字或null,"annual_revenue":年营业收入数字(单位万元，如 收入 12.5亿元 填 125000)，不确定填 null,"president":"院长姓名，不确定填 null","party_secretary":"党委书记姓名，不确定填 null","it_lead":"信息化负责人/信息中心主任/CIO 姓名，不确定填 null","key_departments":["重点科室名，最多8个"]或null,"leadership":[{"name":"姓名","title":"职务，如 院长/党委书记/副院长/总会计师","role":"分工或兼任职务，可省"}]，只列文字里明确点名的人，没有则 null}`
 
 const PROFILE_SYSTEM_PROMPT = `你是医疗信息化行业的资深售前顾问，熟悉全国各级医院的公开信息。用户给你医院名称或一段医院介绍文字，你输出该医院的结构化档案，只输出一个 JSON 对象，不要输出任何其他文字、解释或 markdown 围栏之外的内容。JSON 结构：${PROFILE_JSON_SPEC}
 硬性要求：

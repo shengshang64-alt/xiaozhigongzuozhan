@@ -168,17 +168,56 @@ routerAdd("POST", "/api/customers/fetch-site", (e) => {
     return out.slice(0, 16)
   }
 
-  // Bing 搜索发现官网（best-effort；被拦则失败）
-  var discoverSite = function (name) {
-    var q = encodeURIComponent(name + " 官网")
-    var html = fetchHtml("https://www.bing.com/search?q=" + q)
-    if (!html) return ""
-    var re = /<h2[^>]*>\s*<a[^>]*?href\s*=\s*["'](https?:\/\/[^"']+)["']/gi
+  // Bing 搜索结果（url + 标题）：标题用于判断这条结果是不是真的目标医院
+  var bingResults = function (query) {
+    var html = fetchHtml("https://www.bing.com/search?q=" + encodeURIComponent(query))
+    if (!html) return []
+    var out = []
+    var re = /<h2[^>]*>\s*<a[^>]*?href\s*=\s*["'](https?:\/\/[^"']+)["'][^>]*>([\s\S]{1,300}?)<\/a>/gi
     var m
     while ((m = re.exec(html)) !== null) {
       var u = unesc(m[1])
-      if (/bing\.com|microsoft|\.msn\.|baike\.|baidu|sohu|so\.com|zhihu|weixin|gov\.cn\/navi/i.test(u)) continue
-      return u
+      var t = unesc(String(m[2]).replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim()
+      out.push({ url: u, title: t })
+      if (out.length >= 10) break
+    }
+    return out
+  }
+  // 搜索结果标题是否命中目标医院：全名命中，或去掉「人民/中心/中医/医院」「市/县/区」等尾缀后的
+  // 核心词（≥4 字）命中。避免把「广德市」（城市词条）误判成「广德市人民医院」。
+  var titleMatchesHospital = function (title, name) {
+    var t = String(title || "")
+    if (!t) return false
+    if (t.indexOf(name) >= 0) return true
+    var core = String(name).replace(/(人民|中心|中医|妇幼保健|专科)?医院$/, "").replace(/(市|县|区|省)$/, "")
+    return core.length >= 4 && t.indexOf(core) >= 0
+  }
+  // Bing 搜索发现官网（best-effort；被拦则失败）。
+  // 2026-10-29 修复：原先只搜「医院名 官网」，县级医院常被市政府门户抢占（实测「广德市人民医院 官网」
+  // 首条就是 guangde.gov.cn 政府首页），抓回来全是政务导航噪音、抽不出门诊量/床位。
+  // 改为多条「数据型关键词」查询（门诊量/简介/床位），并要求结果标题命中医院名才采纳——
+  // 实测「广德市人民医院 门诊量」首条即医院官网 gdxyy.org.cn。
+  // 二轮补充：中文分词会把「安庆市第二人民医院」切成「安庆市」，「门诊量」这类词也救不回来
+  // （实测三条查询返回的全是安庆市城市词条/旅游攻略）。故再加一层「精确短语」检索
+  // （整名加引号 + site 限定），仍以标题命中为准，避免任何噪音被采纳。
+  var discoverSite = function (name) {
+    var queries = [
+      name + " 门诊量",
+      name + " 医院简介 床位",
+      '"' + name + '"',
+      name + " 卫生健康委员会 医院",
+    ]
+    var badHost = /bing\.com|microsoft|\.msn\.|baike\.|baidu\.|sohu|so\.com|zhihu|weixin|toutiao|qcc|tianyancha|aiqicha|360\.com|map\.baidu|thepaper|ifeng|sina\.com|163\.com/i
+    var seen = {}
+    for (var qi = 0; qi < queries.length; qi++) {
+      var results = bingResults(queries[qi])
+      for (var ri = 0; ri < results.length; ri++) {
+        var u = results[ri].url
+        if (badHost.test(u) || seen[u]) continue
+        seen[u] = true
+        if (!titleMatchesHospital(results[ri].title, name)) continue
+        return u
+      }
     }
     return ""
   }
@@ -325,8 +364,11 @@ routerAdd("POST", "/api/customers/fetch-site", (e) => {
       if (t && t.length > 15) { text += (text ? "\n" : "") + "【" + label + "】\n" + t; if (sources.indexOf(label) < 0) sources.push(label) }
     }
 
-    // 概况（首页正文兜底 + 最多 2 个概况内链）
-    var introUrls = findLinksByHints(homeHtml, site, /医院概况|医院简介|医院介绍|走进医院|走进我们|医院情况|概况|简介|About/i, /gywm|yygk|about|jianjie|introduce|profile/i, 2)
+    // 概况（首页正文兜底 + 最多 2 个概况内链）。
+    // href 兜底规则必须覆盖「gaikuang/gaishu/gk/jj/overview」：GBK 老站中文标签在未解码的 HTML
+    // 里是乱码，只能靠 href 拼音命中；实测广德市人民医院官网的简介页是 /gaikuang，
+    // 旧规则只认 gywm|yygk|about|jianjie，导致载有床位/门诊量的简介页从未被抓取。
+    var introUrls = findLinksByHints(homeHtml, site, /医院概况|医院简介|医院介绍|走进医院|走进我们|医院情况|概况|简介|About/i, /gywm|yygk|about|jianjie|introduce|profile|gaikuang|gaishu|gk-|overview|jianjie|jj-|yyjj/i, 2)
     var introOk = false
     for (var ii = 0; ii < introUrls.length; ii++) {
       var iobj = fetchPageObj(introUrls[ii])
@@ -353,22 +395,23 @@ routerAdd("POST", "/api/customers/fetch-site", (e) => {
     var finUrls = findLinksByHints(homeHtml, site, /信息公开|预决算|部门决算|决算公开|财务公开|年度预算|预算决算/, /xxgk|ysjs|juesuan|budget|finance|annual|report/i, 2)
     for (var fi = 0; fi < finUrls.length; fi++) pushObj("信息公开·预决算", fetchPageObj(finUrls[fi]), 2500)
 
-    // 多来源兜底（best-effort：百科/公示/年报），失败只跳过、不阻塞官网主路径
+    // 多来源兜底（best-effort：百科/公示/年报），失败只跳过、不阻塞官网主路径。
+    // 2026-10-29 修复：原先取「第一条非排除结果」，实测搜「医院名 百度百科」首条是「XX市」城市词条，
+    // 抓回来毫无医院信息。改为遍历结果、要求标题命中医院名（titleMatchesHospital）后再抓。
     var searchFetch = function (query, label) {
       try {
-        var r = fetchPageObj("https://www.bing.com/search?q=" + encodeURIComponent(query))
-        if (!r || !r.html) return
-        var re = /<h2[^>]*>\s*<a[^>]*?href\s*=\s*["'](https?:\/\/[^"']+)["']/gi
-        var m
-        while ((m = re.exec(r.html)) !== null) {
-          var u = unesc(m[1])
-          if (/bing\.com|microsoft|\.msn\.|aiqicha|qcc|tianyancha|360\.com|so\.com|weixin|\/privacy|\/settings|\/account/i.test(u)) continue
+        var results = bingResults(query)
+        for (var ri = 0; ri < results.length; ri++) {
+          var u = results[ri].url
+          if (/bing\.com|microsoft|\.msn\.|aiqicha|qcc|tianyancha|360\.com|so\.com|weixin|toutiao|zhihu|\/privacy|\/settings|\/account/i.test(u)) continue
+          if (!titleMatchesHospital(results[ri].title, name)) continue
           pushObj(label, fetchPageObj(u), 2500)
-          break
+          return
         }
       } catch (_) {}
     }
-    if (text.length < TOTAL) searchFetch(name + " 百度百科 医院 等级 床位", "百科")
+    if (text.length < TOTAL) searchFetch(name + " 门诊量 床位 职工 简介", "数据")
+    if (text.length < TOTAL) searchFetch(name + " 百度百科", "百科")
     if (text.length < TOTAL) searchFetch(name + " 卫生健康委 医院等级 评审 公示", "公示")
     if (text.length < TOTAL) searchFetch(name + " 部门决算 预算公开 收支", "年报")
 

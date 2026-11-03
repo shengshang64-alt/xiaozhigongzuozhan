@@ -267,6 +267,26 @@ routerAdd("PATCH", "/api/intel_items/{id}", function (e) {
     if ("summary" in body) rec.set("summary", body.summary === undefined || body.summary === null ? "" : String(body.summary))
     if ("tags" in body) rec.set("tags", body.tags)
     if ("region" in body) rec.set("region", body.region === undefined || body.region === null ? "" : String(body.region))
+    // 2026-11-03 招标要素人工补正：只接受固定白名单键，禁止任意 JSON 字段写入。
+    // 空对象允许用于整体清空重填；键值统一转 string 并限长，手动录入与机抽条目都可修正。
+    if ("structured" in body) {
+      var rawStructured = body.structured
+      if (typeof rawStructured === "string") {
+        try { rawStructured = JSON.parse(rawStructured) } catch (errStructured) { rawStructured = {} }
+      }
+      var cleanStructured = {}
+      var allowedKeys = ["buyer", "budget", "deadline", "code", "winner", "won_amount"]
+      if (rawStructured && typeof rawStructured === "object" && !Array.isArray(rawStructured)) {
+        for (var si = 0; si < allowedKeys.length; si++) {
+          var sk = allowedKeys[si]
+          var sv = rawStructured[sk]
+          if (sv === undefined || sv === null) continue
+          var text = String(sv).replace(/\s+/g, " ").trim()
+          if (text) cleanStructured[sk] = text.slice(0, sk === "buyer" || sk === "winner" ? 80 : 120)
+        }
+      }
+      rec.set("structured", cleanStructured)
+    }
     if ("item_status" in body) rec.set("item_status", body.item_status === undefined || body.item_status === null ? "" : String(body.item_status))
     if ("added_by" in body) rec.set("added_by", body.added_by === undefined || body.added_by === null ? "" : String(body.added_by))
     // IDOR fix: owner transfer disabled（与 bid_projects / kb_docs 同口径：归属只能由创建时确定）

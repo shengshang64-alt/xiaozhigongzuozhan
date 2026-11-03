@@ -348,7 +348,11 @@ async function main() {
       rh_user_id: LOCAL_USER,
       title: f.name.replace(SUPPORTED_EXT_RE, ""),
       folder_path,
-      content: text.slice(0, 50000),
+      // 2026-11-01 修复：原值 50000 是**脚本自己拍的**，与 kb_docs.content 的实际上限
+      // （500000，见 anytxtIngest.ts 注释「与 kb_docs.content 的 max 一致」）差 10 倍。
+      // 实测后果：1205 篇文档（占可抽取的 20%）正文被截在 50000 字，
+      // 后半部分内容永久丢失——抽取时看不到，生成时也检索不到。
+      content: text.slice(0, 500000),
       doc_format: ext,
       visibility: sensitive ? "personal" : "team",
       summary: summary.slice(0, 1000),

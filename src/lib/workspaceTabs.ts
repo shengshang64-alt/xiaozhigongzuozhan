@@ -12,8 +12,9 @@
 
 import { HOME_PATH, hasRoute } from "./routeRegistry"
 
-/** 标签上限：超过后按最久未用回收（保活要占内存，必须有硬上限） */
-export const TAB_LIMIT = 10
+/** 标签上限：超过后按最久未用回收（保活要占内存，必须有硬上限）。
+ *  6 个：1600px 屏宽标签栏内可完整露出，再多就要横向滚动条，可读性骤降。 */
+export const TAB_LIMIT = 6
 
 /** 持久化键：换账号会在 resetForAccount 后重写 */
 const STORAGE_KEY = "xz_workspace_tabs"

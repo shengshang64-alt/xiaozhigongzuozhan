@@ -121,8 +121,85 @@ export function clearDeckTemplate(st?: ThemeStorage): void {
   if (s) s.removeItem(TEMPLATE_KEY)
 }
 
-// ---------------------- R189 模板字节 base64（纯实现，node/浏览器通用） ----------------------
+// ---------------------------------------------------------------------------
+// 内置主题预设（2026-10-30，借鉴 Gamma / iSlide「同稿换风格」）
+//
+// 场景：同一份内容要投给不同客户/不同场合——给院长看要稳重深藏青，给技术负责人看要
+// 清爽科技蓝。以前只能重新生成整册（时间长、内容还会变），现在选个预设直接重导即可。
+//
+// 取值依据：docs/architecture-ppt-playbook.md 的医疗售前视觉基调
+// （深藏青主色 + 墨绿/赭石/紫灰/中灰辅色，每页 ≤4 色，一色一义）。
+// accents 顺序与 OOXML accent1..6 对齐，导出层按 accent 索引取色，无需改渲染逻辑。
+// ---------------------------------------------------------------------------
+export interface DeckThemePreset {
+  key: string
+  /** 展示名（中文，直接进下拉框） */
+  label: string
+  /** 一句话说明适用场合 */
+  desc: string
+  theme: DeckThemeTokens
+}
 
+export const DECK_THEME_PRESETS: DeckThemePreset[] = [
+  {
+    key: "navy",
+    label: "深藏青（默认）",
+    desc: "稳重专业，适合院领导汇报、正式评审",
+    theme: {
+      accents: ["1B3A5C", "4A6FA5", "2D6E6E", "8B6F47", "5B5B7A", "707070"],
+      headFont: "微软雅黑",
+      bodyFont: "微软雅黑",
+    },
+  },
+  {
+    key: "tech-blue",
+    label: "科技蓝",
+    desc: "清爽锐利，适合技术方案、架构评审",
+    theme: {
+      accents: ["1E40AF", "2563EB", "0EA5E9", "0D9488", "6D28D9", "475569"],
+      headFont: "微软雅黑",
+      bodyFont: "微软雅黑",
+    },
+  },
+  {
+    key: "medical-green",
+    label: "医疗绿",
+    desc: "温和可信，适合临床/护理/患者服务类主题",
+    theme: {
+      accents: ["0F766E", "059669", "14B8A6", "2D6E6E", "65A30D", "64748B"],
+      headFont: "微软雅黑",
+      bodyFont: "微软雅黑",
+    },
+  },
+  {
+    key: "warm-earth",
+    label: "赭石暖调",
+    desc: "沉稳厚重，适合运营管理、成本绩效类主题",
+    theme: {
+      accents: ["8B4513", "B45309", "A16207", "9A3412", "78350F", "57534E"],
+      headFont: "微软雅黑",
+      bodyFont: "微软雅黑",
+    },
+  },
+  {
+    key: "violet",
+    label: "紫灰学术",
+    desc: "克制理性，适合科研申报、方法论讲解",
+    theme: {
+      accents: ["5B21B6", "6D28D9", "7C3AED", "4C1D95", "6366F1", "52525B"],
+      headFont: "微软雅黑",
+      bodyFont: "微软雅黑",
+    },
+  },
+]
+
+/** 按 key 取预设；未知 key 返回 null（调用方保持原有模板主题） */
+export function findThemePreset(key: string | null | undefined): DeckThemePreset | null {
+  if (!key) return null
+  return DECK_THEME_PRESETS.find((p) => p.key === key) ?? null
+}
+
+// ---------------------- R189 模板字节 base64（纯实现，node/浏览器通用） ----------------------
 const B64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
 /** bytes → base64；空字节或超过 MAX_TEMPLATE_BYTES 返回 null（调用方降级仅套主题） */

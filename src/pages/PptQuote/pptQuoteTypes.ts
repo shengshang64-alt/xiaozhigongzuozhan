@@ -2,6 +2,15 @@ import type { LlmMessage } from "@/lib/llm"
 import { extractJsonCandidate, parseJsonTolerant } from "@/lib/jsonTolerant"
 import { makeUid, outlineToText, type Chapter, type FigureSpec, type OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
 import type { CheckProduct, ChecklistLine } from "@/pages/SolutionStudio/checklistTypes"
+import {
+  KIND_LABEL,
+  SlideKindSchema,
+  SlideRoleSchema,
+  SourceRefSchema,
+  type SlideKindZ,
+  type SlideRoleZ,
+  type SourceRefZ,
+} from "./deckSchema"
 
 // ---------------------------------------------------------------------------
 // PPT 与报价页：领域类型、常量、LLM prompt 构造与 JSON 容错解析（Logic 层专用，无 JSX）
@@ -33,6 +42,30 @@ export type SlideChart = {
 /** 数字亮点卡（一页 2-4 个大数字 + 说明） */
 export type SlideKpi = { value: string; label: string }
 
+/** 页面在汇报故事中的角色（2026-10-30 SCQA 叙事骨架） */
+export type SlideRole =
+  | "context" // 背景情境
+  | "problem" // 冲突痛点
+  | "question" // 核心问题
+  | "answer" // 核心主张
+  | "evidence" // 论据支撑
+  | "approach" // 实现路径
+  | "plan" // 实施计划
+  | "value" // 价值收益
+  | "close" // 收尾
+
+export const SLIDE_ROLE_LABEL: Record<SlideRole, string> = {
+  context: "背景",
+  problem: "痛点",
+  question: "问题",
+  answer: "主张",
+  evidence: "论据",
+  approach: "路径",
+  plan: "计划",
+  value: "价值",
+  close: "收尾",
+}
+
 export type Slide = {
   id: string
   title: string
@@ -40,6 +73,8 @@ export type Slide = {
   notes: string
   /** 版式；缺省/“auto” 由内容自适应（有图无图都能渲染） */
   layout?: SlideLayout
+  /** 该页在汇报故事中的角色（SCQA）；用于渲染层的视觉区分与叙事检查 */
+  role?: SlideRole
   /** 图片：dataURL（导出与预览直接内嵌，无跨域） */
   image?: string
   /** 图注 / 图片来源 */
@@ -52,6 +87,12 @@ export type Slide = {
   kpi?: SlideKpi[]
   /** AI 结构化图示（架构/流程/界面示意）：预览内联 SVG，导出时转 PNG 嵌入；没有真实配图时代替 image 走图文版式 */
   figures?: FigureSpec[]
+  /** 本页引用的素材（2026-10-30：可追溯到具体素材段落） */
+  sourceRefs?: SourceRefZ[]
+  /** 待补充字段（缺事实时由模型标注，禁止编造） */
+  pendingFields?: string[]
+  /** 该页既定 kind（来自大纲，渲染与校验用） */
+  kind?: SlideKindZ
 }
 
 /** 页面切换动画（deck 级，导出时注入 OOXML <p:transition>；应用内放映同步） */
@@ -542,10 +583,39 @@ export function normalizeSlideFigures(raw: unknown): FigureSpec[] {
           const lr = (l && typeof l === "object" ? l : {}) as Record<string, unknown>
           const name = String(lr.name ?? "").trim()
           const modules = (Array.isArray(lr.modules) ? lr.modules : []).map((m) => String(m).trim()).filter(Boolean)
-          return name ? { name, modules } : null
+          const arrowLabel = lr.arrowLabel != null ? String(lr.arrowLabel).trim() || undefined : undefined
+          return name ? { name, modules, ...(arrowLabel ? { arrowLabel } : {}) } : null
         })
-        .filter(Boolean) as { name: string; modules: string[] }[]
-      if (layers.length) out.push({ type: "architecture", title, layers: layers.slice(0, 6), caption })
+        .filter(Boolean) as { name: string; modules: string[]; arrowLabel?: string }[]
+      const crossCutting = (Array.isArray(r.crossCutting) ? r.crossCutting : [])
+        .map((c) => String(c).trim())
+        .filter(Boolean)
+      if (layers.length) {
+        out.push({
+          type: "architecture",
+          title,
+          layers: layers.slice(0, 6),
+          ...(crossCutting.length ? { crossCutting: crossCutting.slice(0, 6) } : {}),
+          caption,
+        })
+      }
+    } else if (r.type === "table" && Array.isArray(r.columns) && Array.isArray(r.rows)) {
+      // 表格图（2026-10-30）：四列对照表 / 指标进度表
+      const columns = (r.columns as unknown[]).map((c) => String(c).trim()).filter(Boolean)
+      const rows = (r.rows as unknown[])
+        .map((row) => (Array.isArray(row) ? row.map((c) => String(c ?? "").trim()) : null))
+        .filter((row): row is string[] => Array.isArray(row) && row.some(Boolean))
+      const variant = r.variant === "progress" ? "progress" : r.variant === "compare" ? "compare" : undefined
+      if (columns.length >= 2 && rows.length) {
+        out.push({
+          type: "table",
+          title,
+          columns: columns.slice(0, 6),
+          rows: rows.slice(0, 10),
+          ...(variant ? { variant } : {}),
+          caption,
+        })
+      }
     } else if (r.type === "flow" && Array.isArray(r.steps)) {
       const steps = (r.steps as unknown[])
         .map((s) => {
@@ -706,26 +776,94 @@ function pickArray(raw: unknown, keys: string[]): unknown[] {
   throw new Error("AI 返回格式解析失败，请重试")
 }
 
-export type SlidePlan = { title: string; intent: string }
+/**
+ * 大纲条目（2026-10-30 重构）。
+ *
+ * 原实现只有 { title, intent }，导致大纲阶段模型给出的 role/kind 被**静默丢弃**，
+ * 逐页生成时没有任何类型约束 → 全部退化成 bullets（这就是"纯文字页过多"的根因）。
+ * 现补全为完整契约，逐页生成必须遵守 kind。
+ */
+export type SlidePlan = {
+  /** 稳定 id，逐页生成时复用（便于单页重试与 sourceRefs 追溯） */
+  id: string
+  title: string
+  intent: string
+  /** 页面类型：cover/agenda/section/bullets/kpi/chart/table/flow/architecture/image/summary */
+  kind: SlideKindZ
+  /** 叙事角色（SCQA） */
+  role?: SlideRoleZ
+  /** 引用的素材块 */
+  sourceRefs?: SourceRefZ[]
+  /** 预估内容量（字） */
+  estimatedContent?: number
+}
 
+/** kind → 中文名（提示用） */
+export const KIND_LABEL_CN: Record<SlideKindZ, string> = KIND_LABEL
+
+/**
+ * 大纲归一化：**改用 Zod 校验，完整保留全部字段**。
+ *
+ * 兼容旧数据/旧模型输出：缺 kind 时按标题与位置推断（而非直接丢弃），
+ * 但推断结果会在返回值里标注 `inferred: true`，供界面提示用户复核。
+ */
 export function normalizeSlidePlan(raw: unknown, expect: number): SlidePlan[] {
   const arr = pickArray(raw, ["slides", "outline", "pages"])
   const out: SlidePlan[] = []
-  for (const it of arr) {
+  arr.forEach((it, idx) => {
     if (typeof it === "string") {
       const title = it.trim()
-      if (title) out.push({ title, intent: "" })
-      continue
+      if (title) out.push({ id: `s${idx + 1}`, title, intent: "", kind: inferKindFromTitle(title, idx, expect) })
+      return
     }
-    if (!it || typeof it !== "object") continue
+    if (!it || typeof it !== "object") return
     const rec = it as Record<string, unknown>
     const title = String(rec.title ?? rec.name ?? "").trim()
-    if (!title) continue
-    out.push({ title, intent: String(rec.intent ?? rec.summary ?? "").trim() })
-    if (out.length >= expect + 4) break
-  }
+    if (!title) return
+    // 用 Zod 宽松校验单条：非法 kind 不丢弃整条，而是推断后保留（避免"全军覆没"）
+    const kindRaw = SlideKindSchema.safeParse(rec.kind)
+    const roleRaw = SlideRoleSchema.safeParse(rec.role)
+    const refsRaw = Array.isArray(rec.sourceRefs)
+      ? rec.sourceRefs
+          .map((r) => (r && typeof r === "object" ? SourceRefSchema.safeParse(r) : null))
+          .filter((r): r is { success: true; data: SourceRefZ } => Boolean(r?.success))
+          .map((r) => r.data)
+      : []
+    out.push({
+      id: String(rec.id ?? `s${idx + 1}`).slice(0, 40) || `s${idx + 1}`,
+      title,
+      intent: String(rec.intent ?? rec.summary ?? "").trim().slice(0, 200),
+      kind: kindRaw.success ? kindRaw.data : inferKindFromTitle(title, idx, expect),
+      ...(roleRaw.success ? { role: roleRaw.data } : {}),
+      ...(refsRaw.length ? { sourceRefs: refsRaw.slice(0, 8) } : {}),
+      estimatedContent: Number(rec.estimatedContent) > 0 ? Math.min(2000, Number(rec.estimatedContent)) : 0,
+    })
+    if (out.length >= expect + 4) return
+  })
   if (!out.length) throw new Error("AI 返回的大纲为空，请重试")
   return out.slice(0, expect + 4)
+}
+
+/**
+ * 从标题与位置推断 kind（仅在模型没给/给错时兜底）。
+ * 推断遵循"宁简不错"：**只有明确信号才推断成结构化 kind**，
+ * 含糊的一律给 bullets —— 绝不为了视觉丰富而编造图表/架构图。
+ */
+export function inferKindFromTitle(title: string, idx: number, total: number): SlideKindZ {
+  const t = title
+  // 结构信号优先于位置判断（否则单页大纲里"实施路径"会被误判成封面）
+  if (/目录|议程|agenda/i.test(t)) return "agenda"
+  if (/^(第[一二三四五六七八九十]+部分|Part|章节|小结)/i.test(t)) return "section"
+  if (/(架构|技术栈|总体设计|分层|系统组成)/.test(t)) return "architecture"
+  if (/(流程|步骤|实施路径|阶段划分|实施计划|推进计划)/.test(t)) return "flow"
+  if (/(对照|对比表|清单|矩阵|指标表|里程碑表)/.test(t)) return "table"
+  if (/(趋势|增长|占比|对比分析|数据表现|年度指标)/.test(t)) return "chart"
+  if (/(成效|价值|亮点|规模|数量|实力)/.test(t)) return "kpi"
+  if (/(场景|环境|现场|实景)/.test(t)) return "image"
+  // 位置信号兜底（结构信号都没有时）
+  if (idx === 0) return "cover"
+  if (idx === total - 1) return "summary"
+  return "bullets"
 }
 
 function normalizeBulletList(raw: unknown): string[] {
@@ -761,6 +899,12 @@ export function trimSlidesToTarget<T extends { title: string }>(slides: T[], tar
   ]
 }
 
+/** 归一化页面角色：非法值一律丢弃（渲染层按 undefined 走中性样式） */
+export function normalizeSlideRole(raw: unknown): SlideRole | undefined {
+  const v = String(raw ?? "").trim().toLowerCase()
+  return v in SLIDE_ROLE_LABEL ? (v as SlideRole) : undefined
+}
+
 export function normalizeSlides(raw: unknown, plan: SlidePlan[] | null, maxPages?: number): Slide[] {
   const arr = pickArray(raw, ["slides", "pages"])
   const out: Slide[] = []
@@ -769,7 +913,8 @@ export function normalizeSlides(raw: unknown, plan: SlidePlan[] | null, maxPages
     const title = String(rec.title ?? plan?.[i]?.title ?? "").trim() || `第 ${i + 1} 页`
     const bullets = normalizeBulletList(rec.bullets ?? rec.points ?? rec.items)
     const notes = String(rec.notes ?? rec.note ?? rec.speech ?? "").trim()
-    out.push({ id: makeUid(), title, bullets: bullets.length ? bullets : [title], notes, ...slideVisual(rec) })
+    const role = normalizeSlideRole(rec.role)
+    out.push({ id: makeUid(), title, bullets: bullets.length ? bullets : [title], notes, ...(role ? { role } : {}), ...slideVisual(rec) })
   })
   if (!out.length) throw new Error("AI 返回的页面内容为空，请重试")
   return maxPages === undefined ? out : trimSlidesToTarget(out, maxPages)
@@ -892,7 +1037,7 @@ const DECK_PERSONA: Record<DeckTypeKey, string> = {
     "专题汇报 PPT：单一主题深度汇报（如等级评审、智慧服务、电子病历评级、互联互通测评），突出问题分析、建设思路、落地路径与成效指标",
 }
 
-type DeckContext = {
+export type DeckContext = {
   deckType: DeckTypeKey
   topic: string
   audience: string
@@ -935,14 +1080,121 @@ function deckSystem(ctx: DeckContext): string {
   ].join("\n")
 }
 
-// 图文并茂：让模型在文字之外按需给出视觉字段（版式/图表/KPI/配图关键词）
+// 架构图专用规则（2026-10-29 从 4 篇行业范文提炼，见 docs/architecture-ppt-playbook.md）
+// 目的：让模型画出来的分层图「能看出架构决策」，而不是把模块名堆成几行横条。
+const ARCH_RULES = [
+  "【架构图画法铁律】（画 architecture 图时必须遵守，来自行业范本）：",
+  "1. 分层顺序固定：渠道/接入层 → 业务服务层 → 平台能力层 → 数据与中间件层（可按项目裁剪，但必须自下而上逐层支撑）；",
+  "2. 层名要短（≤6 字）且职责单一：如「渠道层」「接入层」「业务层」「能力层」「数据层」，不要出现「其他」「支撑」这类空泛层名；",
+  "3. 每层 3-6 个模块为宜，模块名用行业真实系统名（HIS/EMR/LIS/PACS/CDSS/集成平台/主索引/数据中台…），禁止编造不存在的产品名；",
+  "4. 业务层要体现「业务域」分片思路：按 门诊/住院/医技/药事/管理 等真实业务域组织，而不是把所有系统平铺；",
+  "5. 必须体现非功能能力：接入层的网关/鉴权、能力层的监控/日志/配置、数据层的数据治理与安全，这些「业务图不会说但架构必须有」——把安全/运维/监控放进 crossCutting 数组（右侧竖条渲染）；",
+  "6. 层间调用关系用 arrowLabel 标注协议/方式（如「HTTPS/REST」「消息队列」「数据同步」），让架构图看得出关键质量属性（并发、一致性、可用性、合规），只画业务功能的图等于没画架构；",
+  "7. 层数控制在 4-6 层，超过 7 层说明分层没收敛；",
+  "8. 画完自检：同一层内的模块是否同粒度？跨层调用关系是否单向（上层调下层）？有没有出现「孤儿模块」无处挂靠？",
+].join("\n")
+
+// ---------------------------------------------------------------------------
+// 汇报叙事骨架（2026-10-30，用户反馈「没有汇报思路」的根因修复）
+//
+// 问题：原来只让模型输出「标题+3-5条要点」，模型就退化成逐页罗列信息，
+// 全册读完不知道想说服听众什么。售前汇报的本质是「讲一个有主张的故事」，
+// 不是「把资料分页」。
+//
+// 解法：强制 SCQA（情境-冲突-问题-答案）叙事主线 + 金字塔原理（结论先行），
+// 并把每页在故事中的角色（role）显式输出，让页面之间有因果推进而不是并列罗列。
+// ---------------------------------------------------------------------------
+const NARRATIVE_RULES = [
+  "【汇报叙事铁律】（这决定了全册有没有『思路』，比单页好看更重要）",
+  "",
+  "▎整体骨架：用 SCQA 讲一个有主张的故事",
+  "  S 情境：先讲双方都认可的现状（医院规模/评级基础/已有系统），建立共识；",
+  "  C 冲突：指出打破现状的变化（政策要求/评级周期/业务压力/技术代差）；",
+  "  Q 问题：把冲突收敛成 1-3 个必须回答的问题（如「5级怎么过」「数据孤岛怎么破」）；",
+  "  A 答案：给出我们的主张与路径（架构/方案/实施/保障），逐层展开论证。",
+  "  → 全册必须能一句话概括主张，且第 1-3 页就要亮出来（结论先行，金字塔原理）。",
+  "",
+  "▎每页必须标明在故事中的角色 role，取值：",
+  "  context=背景情境  problem=冲突痛点  question=核心问题  answer=核心主张",
+  "  evidence=论据支撑  approach=实现路径  plan=实施计划  value=价值收益  close=收尾",
+  "  role 决定这页该用什么版式（见下），不允许全册清一色 problem/bullets。",
+  "",
+  "▎页与页之间要有推进关系：",
+  "  - 每页标题应能接住上一页的结论（念下来像一段连贯的话，而不是目录条目）；",
+  "  - problem 页之后必须紧跟 answer 或 question，不能连续三页都在骂现状；",
+  "  - 每 3-4 页要有一个『小结论』页（answer/value），把前面的论据收一下。",
+  "",
+  "▎禁止的写法：",
+  "  ✗ 全册 70% 以上是「标题 + 4条要点」的纯文字页；",
+  "  ✗ 要点之间没有逻辑关系，只是把资料拆成短句；",
+  "  ✗ 每页都在讲『是什么』，没有『所以呢』（So what）。",
+].join("\n")
+
+// ---------------------------------------------------------------------------
+// 版式选择指引（2026-10-30 重构：**取消硬配额**）
+//
+// 用户明确要求：「删除"视觉页必须占 60%"等硬配额，页面形式由内容决定，
+// 禁止为了凑图表而编造数据。」
+//
+// 原规则的问题：它给模型下"必须产出 N 个图表"的死指标，模型没数据时就会编数字 ——
+// 这是售前 PPT 最危险的事故源。现改为**决策树**：只告诉模型"什么内容配什么形态"，
+// 不规定各类页面的数量。够不够好看由内容质量决定，不靠凑数。
+// ---------------------------------------------------------------------------
+function layoutGuideRules(): string {
+  return [
+    "【页面形式怎么选】（按内容决定，**不设数量配额**）",
+    "先看这一页要传达什么：",
+    "  · 有并列对照（现状/目标、我方/友商、依据/要求）→ table(compare)",
+    "  · 有分阶段/分年度指标 → table(progress)",
+    "  · 有可比较的真实数值序列（且 ≥3 个、同量纲、有出处）→ chart",
+    "  · 有 2-4 个不同量纲的关键成效数字 → kpi",
+    "  · 有系统分层/技术组成 → architecture（3-6 层，每层 2-6 模块）",
+    "  · 有实施步骤/业务流程 → flow（3-7 步）",
+    "  · 有真实场景/设备/环境且能配到图 → image",
+    "  · 以上都没有、是论点/论证 → bullets（这是**正常且常见**的选择）",
+    "",
+    '重要：bullets 不是"低配"。一份好的售前汇报里，论述性内容本来就该用要点表达。',
+    '**不要为了"看起来图文并茂"而把没有结构的内容硬套成图表。**',
+  ].join("\n")
+}
+
+// ---------------------------------------------------------------------------
+// 禁止编造规则（2026-10-30 替代原「视觉页必须占 60%」硬配额）
+//
+// 用户明确要求：页面形式由内容决定，禁止为了凑图表而编造数据。
+// 原配额规则的问题：它逼着模型"必须产出 N 个图表"，模型没数据时就会编，
+// 这是售前 PPT 最危险的事故源（编出来的数字会被客户当场问穿）。
+// ---------------------------------------------------------------------------
+const NO_FABRICATION_RULES = [
+  '【禁止编造铁律】（比"好看"更重要，违反即整页作废）',
+  "1. 没有素材依据的数字、百分比、金额、客户名称、政策名称一律不得写；",
+  "2. 需要数据但素材里没有时：不要生成 chart/kpi，改用 bullets，并在 pendingFields 里写【待补充：具体字段】；",
+  '3. 不得把"行业常识"包装成"本项目的具体数据"（如无出处不得写"提升 30%"）；',
+  "4. 不得编造医院/客户名称、产品型号、资质证书、认证等级；",
+  '5. 页面形式由内容决定：内容适合要点就用 bullets，适合结构才用架构图/流程图，没有可靠数据就不用图表。**不要为了"图文并茂"硬塞图表。**',
+  "6. 拿不准的一律写【待补充：xxx】并提醒用户补，不要猜。",
+].join("\n")
+
+// 页标题规则（2026-10-30，借鉴 Gamma）：标题必须是完整结论句/观点句，不是名词短语。
+// 名词短语标题（如「建设方案」「系统架构」）听众看完不知道你想说什么；
+// 结论句标题（如「一体化平台是评级达标的最短路径」）3 秒读懂观点，汇报可直接念。
+const TITLE_RULE = [
+  "【页标题铁律】",
+  "1. 每页标题必须是「观点/结论句」——看完能知道这页想说什么，如「数据孤岛是互联互通失败的头号原因」；",
+  "2. 禁止纯名词短语标题，如「建设方案」「系统架构」「项目背景」——这类标题信息量≈0；",
+  "3. 章节过渡页(section 版式)可用短语，但内容页（bullets/chart/kpi/图文页）必须结论句；",
+  "4. 拿不准时自检：把标题念给同事听，对方能复述出这页的核心观点吗？不能就重写。",
+].join("\n")
+
+// 图文并茂：视觉字段说明（2026-10-30 从"可选"改为"按配额必给"——模型对"建议"几乎不执行）
 const VISUAL_RULES = [
-  "【图文并茂】每页可附加以下可选视觉字段（合适才给，宁缺毋滥）：",
+  "【视觉字段用法】以下字段按上一节的版式配额**必须给出**（不是可选）：",
   '- "layout"：版式，取值 bullets(纯要点) / section(章节过渡大字页) / image-right 或 image-left(图文左右分栏) / banner(顶部通栏大图+下方要点) / chart(数据图表页) / kpi(大数字卡)；不填按内容自适应。',
   '- "chart"：当且仅当该页有可量化数据（门诊量、床位数、投资额、占比、分期计划等）时给出，格式 {"type":"bar|pie|line","title":"图标题","unit":"单位","categories":["类目1","类目2"],"series":[{"name":"系列名","data":[10,20]}]}；数字优先取自素材，素材没有把握的不要编造。',
   '- "kpi"：突出关键成效数字时给出，格式 [{"value":"35%","label":"护理效率提升"}]，2-4 个。',
   '- "imageHint"：该页适合配一张真实照片（医院环境/建筑/场景/设备）时，给一个中文配图关键词（如「医院门诊大楼」「智慧病房」「一体化手术部」）。',
-  '- "figures"：当该页讲的是系统分层架构、业务流程或系统界面时，输出结构化图示数据（最多 2 个，应用内会自动绘制成矢量图并随导出嵌入）：架构图 {"type":"architecture","title":"图名","layers":[{"name":"层名","modules":["模块名"]}]}；流程图 {"type":"flow","title":"图名","steps":[{"name":"步骤","desc":"可选说明"}],"branches":["可选分支说明"]}；界面示意 {"type":"demo","title":"图名","sidebar":["菜单项"],"main":[{"block":"区块名","desc":"可选说明"}]}。层/步骤/模块名必须来自素材或行业真实系统名称，每个不超过 12 字；没有合适图型就输出空数组，不要硬凑。',
+  '- "figures"：当该页讲的是系统分层架构、业务流程、对照关系或系统界面时，输出结构化图示数据（最多 2 个，应用内会自动绘制成矢量图并随导出嵌入）：架构图 {"type":"architecture","title":"图名","layers":[{"name":"层名","modules":["模块名"],"arrowLabel":"层间调用协议（可选）"}],"crossCutting":["信息安全","运维管理"]}——crossCutting 是横切关注点（安全/运维/监控/标准规范），强烈建议给出；流程图 {"type":"flow","title":"图名","steps":[{"name":"步骤","desc":"可选说明"}],"branches":["可选分支说明"]}；表格 {"type":"table","title":"图名","columns":["列1","列2","列3","列4"],"rows":[["值","值","值","值"]],"variant":"compare|progress"}——「依据/要求/动作/边界」这类四列对照用 variant=compare，年度目标/指标达成用 variant=progress（数值如 95% 会自动画进度条）；界面示意 {"type":"demo","title":"图名","sidebar":["菜单项"],"main":[{"block":"区块名","desc":"可选说明"}]}。层/步骤/模块名必须来自素材或行业真实系统名称，每个不超过 12 字；没有合适图型就输出空数组，不要硬凑。',
+  ARCH_RULES,
   "带 chart 或 kpi 的页，把 layout 设为对应类型，并把重复的数字从要点里去掉；视觉字段合适才给，宁缺毋滥、不为凑数硬塞。",
 ].join("\n")
 
@@ -950,10 +1202,13 @@ export function buildDeckSingleMessages(ctx: DeckContext, pageCount: number): Ll
   const system = [
     deckSystem(ctx),
     `输出铁律：只输出一个 JSON 对象，不要 markdown 围栏以外的任何解释。格式：`,
-    `{"slides":[{"title":"页标题(≤16字)","bullets":["要点1","要点2","要点3"],"notes":"该页讲稿备注(80-150字)","layout":"bullets","chart":null,"imageHint":"..."}]}`,
-    `共生成 ${pageCount} 页（含开场页与收尾致谢页），每页要点 3-5 条、每条 ≤32 字；讲稿备注面向「${ctx.audience || "院领导"}」的口吻。`,
+    `{"slides":[{"title":"页标题(≤16字)","role":"context|problem|question|answer|evidence|approach|plan|value|close","bullets":["要点1","要点2"],"notes":"该页讲稿备注(80-150字)","layout":"bullets|chart|kpi|table|image-right|banner","chart":null,"kpi":null,"imageHint":"..."}]}`,
+    NARRATIVE_RULES,
+    TITLE_RULE,
+    layoutGuideRules(),
     VISUAL_RULES,
-    "整份配额（本次一次性生成全部页，请全局统筹达标）：全篇至少 2 页用 chart 或 kpi、至少 2 页给出 imageHint、至少 1-2 页在讲架构/流程/界面时给出 figures 图示（开场/目录/致谢页除外），做到图文并茂。",
+    `共生成 ${pageCount} 页（含开场页与收尾致谢页）；纯文字页要点 3-4 条、每条 ≤26 字（越短越像汇报、越不像文档）；讲稿备注面向「${ctx.audience || "院领导"}」的口吻，讲稿可详细但**页面上要少字**。`,
+    "最后自检（不达标就重写这几页）：① 全册念下来是不是一个有主张的故事？② 纯文字页是否超过配额？③ 有没有连续三页以上都在罗列现状？④ 每页标题是不是结论句？",
   ].join("\n")
   return [
     { role: "system", content: system },
@@ -965,8 +1220,12 @@ export function buildDeckOutlineMessages(ctx: DeckContext, pageCount: number): L
   const system = [
     deckSystem(ctx),
     "输出铁律：只输出一个 JSON 对象。格式：",
-    `{"slides":[{"title":"页标题(≤16字)","intent":"该页要讲什么(一句话)"}]}`,
+    `{"slides":[{"title":"页标题(≤16字)","role":"context|problem|question|answer|evidence|approach|plan|value|close","intent":"该页要讲什么(一句话)","visualHint":"建议用什么形态呈现：chart|kpi|table|architecture|flow|image|text"}]}`,
+    NARRATIVE_RULES,
+    TITLE_RULE,
+    layoutGuideRules(),
     `共 ${pageCount} 页（含开场页与收尾致谢页），页与页之间逻辑递进、不重复。`,
+    "大纲阶段就要把 SCQA 骨架排好：哪些页是问题、哪些页是答案、哪些页是论据，并给每页标 visualHint。",
   ].join("\n")
   return [
     { role: "system", content: system },
@@ -974,16 +1233,101 @@ export function buildDeckOutlineMessages(ctx: DeckContext, pageCount: number): L
   ]
 }
 
+// ---------------------------------------------------------------------------
+// 各 kind 的输出示例（2026-10-30 修复问题 2）
+//
+// 原实现把 `"layout":"bullets"` 写死在示例里 —— 等于告诉模型"所有页都输出要点"，
+// 这是"纯文字页过多"的直接原因。现改为**按该页既定 kind 给出对应示例**。
+// ---------------------------------------------------------------------------
+const KIND_EXAMPLE: Record<SlideKindZ, string> = {
+  cover: `{"id":"s1","title":"页标题","kind":"cover","bullets":["副标题或汇报对象"],"notes":"讲稿"}`,
+  agenda: `{"id":"s2","title":"目录","kind":"agenda","bullets":["一、现状与挑战","二、总体方案","三、实施路径"],"notes":"讲稿"}`,
+  section: `{"id":"s3","title":"第一部分 现状分析","kind":"section","bullets":[],"notes":"讲稿"}`,
+  bullets: `{"id":"s4","title":"结论式标题","kind":"bullets","bullets":["要点1","要点2","要点3"],"notes":"详细讲稿"}`,
+  kpi: `{"id":"s5","title":"结论式标题","kind":"kpi","bullets":[],"kpi":[{"value":"5级","label":"电子病历目标"},{"value":"12个月","label":"建设周期"}],"notes":"讲稿"}`,
+  chart: `{"id":"s6","title":"结论式标题","kind":"chart","bullets":[],"chart":{"type":"bar","title":"图标题","unit":"%","categories":["2024","2025"],"series":[{"name":"指标","data":[78,96]}],"dataSource":"来自客户提供的历史数据"},"notes":"讲稿"}`,
+  table: `{"id":"s7","title":"结论式标题","kind":"table","bullets":[],"table":{"columns":["维度","现状","目标"],"rows":[["电子病历","4级","5级"],["互联互通","未测评","四级甲等"]],"variant":"compare"},"notes":"讲稿"}`,
+  flow: `{"id":"s8","title":"结论式标题","kind":"flow","bullets":[],"flow":{"steps":[{"name":"调研","desc":"2周"},{"name":"建设","desc":"6个月"},{"name":"验收","desc":"1个月"}]},"notes":"讲稿"}`,
+  architecture: `{"id":"s9","title":"结论式标题","kind":"architecture","bullets":[],"architecture":{"layers":[{"name":"业务层","modules":["HIS","EMR"],"arrowLabel":"服务调用"},{"name":"平台层","modules":["集成平台","主索引"]},{"name":"数据层","modules":["业务库","数据仓"]}],"crossCutting":["信息安全","运维监控"]},"notes":"讲稿"}`,
+  image: `{"id":"s10","title":"结论式标题","kind":"image","bullets":["要点1","要点2"],"imageHint":"医院门诊大厅","notes":"讲稿"}`,
+  summary: `{"id":"s11","title":"总结与展望","kind":"summary","bullets":["核心结论1","核心结论2"],"notes":"讲稿"}`,
+}
+
+/** 单页生成消息（2026-10-30：默认 1 页/批，从"批"降到"页"以隔离失败） */
+export function buildSlideContentMessages(ctx: DeckContext, plan: SlidePlan, allTitles: string[]): LlmMessage[] {
+  const example = KIND_EXAMPLE[plan.kind] ?? KIND_EXAMPLE.bullets
+  // 页码：优先按 title 找回索引；找不到（标题被改过）时兜底为 1，避免出现"第 0 页"
+  const foundIdx = allTitles.indexOf(plan.title)
+  const pageNo = foundIdx >= 0 ? foundIdx + 1 : 1
+  const isDataKind = plan.kind === "chart" || plan.kind === "kpi"
+  const contentRules = [
+    "内容要求：",
+    "1. 标题必须是结论句（≤20 字），不能是名词短语；",
+    "2. bullets 默认 2-4 条、每条 ≤32 字（kind 为 cover/section/kpi/chart/table/flow/architecture 时可留空）；",
+    "3. 详细内容写进 notes（80-200 字），页面要少字；",
+    "4. 不得输出坐标、字号、颜色、HTML 或任何排版指令；",
+    "5. 缺事实/数据时，在 pendingFields 里列出「待补充：具体字段」，不要编造；",
+  ]
+  if (isDataKind) {
+    contentRules.push(
+      `6. 本页要求数据。素材里没有可靠数字时，不要生成 ${plan.kind}，改为 kind="bullets" 并在 pendingFields 写明待补充项，notes 里说明需要客户提供什么。`,
+    )
+  }
+  if (plan.sourceRefs?.length) {
+    contentRules.push(`7. 本页引用素材：${plan.sourceRefs.map((r) => r.materialName || r.chunkId).join("、")}；内容须来自这些素材。`)
+  }
+  const system = [
+    deckSystem(ctx),
+    `整体大纲（共 ${allTitles.length} 页）：\n${allTitles.map((t, i) => `${i + 1}. ${t}`).join("\n")}`,
+    "",
+    `【本页任务】只生成第 ${pageNo} 页「${plan.title}」，不要输出其它页。`,
+    `- 页面类型 kind 已由大纲确定为「${KIND_LABEL[plan.kind]}」，必须原样使用 kind="${plan.kind}"，不得改回 bullets。`,
+    plan.role ? `- 该页叙事角色：${plan.role}` : "",
+    plan.intent ? `- 该页要讲什么：${plan.intent}` : "",
+    plan.estimatedContent ? `- 预估正文约 ${plan.estimatedContent} 字` : "",
+    "",
+    "输出铁律：只输出一个 JSON 对象，格式：",
+    `{"slides":[${example}]}`,
+    "",
+    contentRules.join("\n"),
+    NO_FABRICATION_RULES,
+  ]
+    .filter(Boolean)
+    .join("\n")
+  return [
+    { role: "system", content: system },
+    {
+      role: "user",
+      content: `${deckContextLines(ctx)}${plan.sourceRefs?.length ? `\n\n【本页可用素材片段】\n${plan.sourceRefs.map((r) => `- ${r.excerpt}`).join("\n")}` : ""}\n\n【本页标题（已定）】${plan.title}`,
+    },
+  ]
+}
+
 export function buildDeckBatchMessages(ctx: DeckContext, batch: SlidePlan[], allTitles: string[]): LlmMessage[] {
-  const batchLines = batch.map((p, i) => `${i + 1}. ${p.title}${p.intent ? `（${p.intent}）` : ""}`).join("\n")
+  // 2026-10-30 修复（问题 2）：不再用 bullets 作统一示例，改为按各页既定 kind 给示例
+  const batchLines = batch
+    .map((p, i) => {
+      const role = p.role ? `，角色 ${p.role}` : ""
+      const intent = p.intent ? `，意图：${p.intent}` : ""
+      return `${i + 1}. [kind=${p.kind}${role}] ${p.title}${intent}`
+    })
+    .join("\n")
+  const examples = Array.from(new Set(batch.map((p) => p.kind)))
+    .map((k) => `- kind="${k}" 的示例：${KIND_EXAMPLE[k] ?? KIND_EXAMPLE.bullets}`)
+    .join("\n")
   const system = [
     deckSystem(ctx),
     `整体 PPT 的页面大纲已确定：\n${allTitles.map((t, i) => `${i + 1}. ${t}`).join("\n")}`,
-    "现在请为下面这一批页面生成详细内容。输出铁律：只输出一个 JSON 对象，格式：",
-    `{"slides":[{"title":"页标题(与给定标题一致)","bullets":["要点1","要点2"],"notes":"讲稿备注(80-150字)","layout":"bullets","chart":null,"imageHint":"..."}]}`,
-    `本批共 ${batch.length} 页，按给定顺序输出，每页要点 3-5 条、每条 ≤32 字。`,
-    VISUAL_RULES,
-    "分批生成说明：本批只需为内容确实适合配图表/大数字/配图/结构化图示的页面添加 chart/kpi/imageHint/figures，合适才加；整份 PPT 的图文配额由页面大纲阶段统一预分配、生成后代码校验兜底，不要在本批为凑数硬塞。",
+    "",
+    "现在请为下面这一批页面生成详细内容。**每页的 kind 已由大纲确定，必须原样保留，不得改回 bullets。**",
+    "",
+    "各 kind 的输出示例（只列本批出现的类型）：",
+    examples,
+    "",
+    '输出铁律：只输出一个 JSON 对象，格式 {"slides":[...]}，顺序与本批一致，每页必须带 id/title/kind。',
+    `本批共 ${batch.length} 页；bullets 默认 2-4 条、每条 ≤32 字；详细内容写 notes。`,
+    layoutGuideRules(),
+    NO_FABRICATION_RULES,
   ].join("\n")
   return [
     { role: "system", content: system },
@@ -1003,7 +1347,7 @@ export function buildSlideRefineMessages(kind: RefineKind, deck: DeckRecord, sli
   const system = [
     `你是医疗信息化行业资深售前顾问，正在精修「${deck.deck_name}」（${deckTypeLabel(deck.deck_type)}，汇报对象：${deck.audience || "院领导"}）中的第 ${slide.title} 页。`,
     `请对该页执行「${action}」。讲稿备注同步调整，与要点保持一致。`,
-    "输出铁律：只输出一个 JSON 对象，格式：{\"title\":\"页标题\",\"bullets\":[\"要点\"],\"notes\":\"讲稿备注\"}，title 除非明显有问题否则保持不变。",
+    '输出铁律：只输出一个 JSON 对象，格式：{"title":"页标题","bullets":["要点"],"notes":"讲稿备注"}，title 除非明显有问题否则保持不变。',
   ].join("\n")
   const user = [
     `【页标题】${slide.title}`,
@@ -1016,8 +1360,71 @@ export function buildSlideRefineMessages(kind: RefineKind, deck: DeckRecord, sli
   ]
 }
 
-export function buildQuoteDraftMessages(refName: string, materialText: string, catalog: CheckProduct[]): LlmMessage[] {
-  const MAX_CATALOG = 200
+// ---------------------------------------------------------------------------
+// 文字润色（2026-10-30，借鉴 ChatPPT / iSlide 的「AI 润色选中文字」）
+//
+// 与 refineSlide 的区别：
+//   refineSlide = 整页重写（标题+要点+讲稿一起改），适合"这页整体不行"；
+//   polishText  = 只打磨一段文字（单条要点/讲稿/标题），适合"其它都好就这句别扭"。
+//   后者改动面小、可逆、不需要重新审整页，是日常编辑里更高频的操作。
+// ---------------------------------------------------------------------------
+export type PolishKind = "tighten" | "expand" | "professional" | "plain"
+
+export const POLISH_LABEL: Record<PolishKind, string> = {
+  tighten: "精简",
+  expand: "扩写",
+  professional: "专业化",
+  plain: "说人话",
+}
+
+const POLISH_ACTION: Record<PolishKind, string> = {
+  tighten: "精简：删掉冗余修饰与重复表述，保留全部事实信息，字数压到原文的 60% 左右",
+  expand: "扩写：补上支撑这个观点的具体做法/数据/场景，字数约为原文 1.6 倍，不编造无出处的数字",
+  professional: "专业化：换成医疗信息化售前汇报的书面表达，用词精准、去掉口语和感叹，长度与原文相当",
+  plain: "说人话：把术语堆叠拆成人能听懂的说法，保留专业性但降低理解成本，长度与原文相当",
+}
+
+/**
+ * 单段文字润色消息。
+ *
+ * @param text    待润色的文字（要点/讲稿/标题）
+ * @param kind    润色方向
+ * @param context 该页标题与要点，帮助模型不跑题（可选）
+ */
+export function buildPolishMessages(text: string, kind: PolishKind, context?: { title?: string; bullets?: string[] }): LlmMessage[] {
+  const system = [
+    "你是医疗信息化行业资深售前顾问，擅长把方案文字打磨到汇报级表达。",
+    `本次任务：对用户给出的「${POLISH_LABEL[kind]}」——${POLISH_ACTION[kind]}。`,
+    context?.title ? `所属页面标题：${context.title}` : "",
+    context?.bullets?.length ? `该页其它要点（仅供理解上下文，不要重复或改写它们）：\n${context.bullets.map((b) => `- ${b}`).join("\n")}` : "",
+    '输出铁律：只输出一个 JSON 对象 {"text":"润色后的文字"}；只润色用户给的那段文字，不要输出解释、不要加引号、不要换行分点。',
+    "硬约束：不得凭空新增医院名称、具体金额、具体百分比等无出处的事实；原文没有的数据不要编。",
+  ]
+    .filter(Boolean)
+    .join("\n")
+  return [
+    { role: "system", content: system },
+    { role: "user", content: text },
+  ]
+}
+
+/** 从润色结果里取文本：优先 JSON 的 text 字段，退化到原文修剪 */
+export function parsePolishResult(raw: string, fallback: string): string {
+  const trimmed = String(raw ?? "").trim()
+  if (!trimmed) return fallback
+  // 去掉可能的 markdown 围栏
+  const unfenced = trimmed.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim()
+  try {
+    const obj = JSON.parse(unfenced) as { text?: unknown }
+    const t = String(obj?.text ?? "").trim()
+    if (t) return t
+  } catch {
+    /* 非 JSON：按下面的兜底处理 */
+  }
+  return unfenced || fallback
+}
+
+export function buildQuoteDraftMessages(refName: string, materialText: string, catalog: CheckProduct[]): LlmMessage[] {  const MAX_CATALOG = 200
   const list = (catalog ?? []).slice(0, MAX_CATALOG)
   const catalogLines = list
     .map((p) => {
@@ -1030,11 +1437,11 @@ export function buildQuoteDraftMessages(refName: string, materialText: string, c
   const system = [
     "你是医疗信息化行业资深售前商务经理，正在根据建设内容为医院项目拟定报价清单初稿。",
     "【硬约束】只能引用 USER 消息中「产品目录」列出的 product_id；不允许编造未在目录中的产品、系统、模块、单位或价格。",
-    "【输出格式】只输出一个 JSON 对象：{\"items\":[{\"product_id\":\"...\",\"qty\":1}]}；qty 为正整数，同一 product_id 仅出现一次。",
+    '【输出格式】只输出一个 JSON 对象：{"items":[{"product_id":"...","qty":1}]}；qty 为正整数，同一 product_id 仅出现一次。',
     "【价格与备注】价格、折扣、备注一律留空，由人工后录。不允许你输出 price / unit_price / discount / remark 字段。",
     "【分组不手写】分组由系统根据 product_id 对应的产品类别自动归类，你不需输出 group / category。",
     "【覆盖度】从素材中识别主要建设内容，尽量在目录中找到匹配项；目录里没有对应产品时直接跳过，不要生造。总条数 8-40 条之间。",
-    "【目录为空】若产品目录为空，输出 {\"items\":[]}，不要自行补充。",
+    '【目录为空】若产品目录为空，输出 {"items":[]}，不要自行补充。',
   ].join("\n")
   const user = [
     `【关联项目】${refName}`,

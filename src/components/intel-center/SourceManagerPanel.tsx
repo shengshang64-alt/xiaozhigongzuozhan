@@ -9,6 +9,7 @@ import {
   type IntelSourceRow,
   type IntelSourceType,
 } from "@/pages/IntelCenter/useIntelCenter"
+import { intelSourceErrorText } from "@/pages/IntelCenter/intelSourceHealth"
 
 type SourceManagerPanelProps = {
   open: boolean
@@ -38,15 +39,7 @@ type SourceManagerPanelProps = {
 
 // T3：把 Go 底层网络错误翻成售前看得懂的结论；原始明细保留在 title 悬浮里便于排查
 function humanizeSourceError(raw: string): string {
-  const s = raw || ""
-  if (/dial tcp: lookup/i.test(s)) return "域名解析失败（站点可能已改名或停用）"
-  if (/connection refused/i.test(s)) return "对方拒绝连接（服务器在线但未开放访问）"
-  if (/dial tcp/i.test(s)) return "连不上对方服务器（可能宕机或本机网络限制）"
-  if (/HTTP (403|412)/.test(s)) return "对方拒绝机器抓取（反爬验证，人工浏览器访问正常）"
-  if (/HTTP 404/.test(s)) return "页面地址失效（对方网站可能已改版）"
-  if (/HTTP 5\d\d/.test(s)) return "对方服务器故障（通常是暂时的，可稍后重试）"
-  if (/tls|x509/i.test(s)) return "对方证书异常（加密连接失败）"
-  return s || "未知原因"
+  return intelSourceErrorText(raw)
 }
 
 function statusHint(source: IntelSourceRow): { text: string; detail: string; className: string } {
@@ -60,8 +53,10 @@ function statusHint(source: IntelSourceRow): { text: string; detail: string; cla
     }
   }
   if (source.last_status === "error") {
+    const streak = (source.failure_count ?? 0) > 1 ? `（连续 ${source.failure_count} 次）` : ""
+    const autoDisabled = !source.enabled && /自动停用/.test(source.last_error || "")
     return {
-      text: `抓取失败：${humanizeSourceError(source.last_error)}`,
+      text: `${autoDisabled ? "已自动停用：" : "抓取失败："}${humanizeSourceError(source.last_error)}${streak}`,
       detail: source.last_error || "",
       className: "text-destructive",
     }
@@ -145,6 +140,9 @@ function SourceRow({
           <span className="text-muted-foreground">
             {source.last_status === "error" ? "最近尝试" : "上次成功"} {fmtIntelTime(source.last_fetch_at)}
           </span>
+        )}
+        {source.last_status === "error" && source.last_success_at && (
+          <span className="text-muted-foreground">上次成功 {fmtIntelTime(source.last_success_at)}</span>
         )}
       </div>
       <p className={`mt-1 truncate text-xs ${hint.className}`} title={hint.detail || undefined}>

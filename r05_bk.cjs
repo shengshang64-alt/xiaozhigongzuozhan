@@ -1,0 +1,6 @@
+const { DatabaseSync } = require('node:sqlite')
+const fs = require('fs')
+const db = new DatabaseSync('D:/重要文件/工作的小程序/xiaozhigongzuozhan/pocketbase/pb_data/data.db', { readOnly: true })
+const r = db.prepare("select * from bid_projects where id='bka8wkay83v3eep'").get()
+fs.writeFileSync('C:/Users/Administrator/.dsh/bot/workspace/ds_r04/deleted_record_backup.json', JSON.stringify(r, null, 2), 'utf8')
+console.log('已备份，字段数=' + Object.keys(r).length + '，字节=' + JSON.stringify(r).length)

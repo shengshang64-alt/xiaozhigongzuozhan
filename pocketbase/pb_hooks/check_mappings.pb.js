@@ -2,7 +2,8 @@
 // pb_hooks/check_mappings.pb.js — 业务 collection + REST CRUD 路由 (self-contained)
 //
 // 由 mcp__rh-pb-hooks__install_business_collection 装. 不要直接 Read+Write 这个文件.
-// 业务字段: customer_norm:text, company_product_name:text, product_id:text, hit_count:number
+// 业务字段: customer_norm:text, company_product_name:text, product_id:text, hit_count:number,
+//           custom_name:text（2026-10-29：自定义模块名——公司能做但产品清单里没有的条目）
 // 路由: list,get,create,update,delete
 // list filter 字段: (none)
 // list 默认排序: -hit_count
@@ -31,6 +32,9 @@ onBootstrap(function (e) {
       addField({ name: 'company_product_name', type: 'text', required: true })
       addField({ name: 'product_id', type: 'text' })
       addField({ name: 'hit_count', type: 'number' })
+      // 2026-10-29：自定义模块名。公司实际能做、但 ONE-LINK 产品清单里没有的条目，
+      // 人工写一个名字沉淀在这里；product_id 留空表示「非公司库行」。
+      addField({ name: 'custom_name', type: 'text' })
       addField({ name: "created", type: "autodate", onCreate: true })
       addField({ name: "updated", type: "autodate", onCreate: true, onUpdate: true })
       if (changed) {
@@ -47,6 +51,7 @@ onBootstrap(function (e) {
           { name: 'company_product_name', type: 'text', required: true },
           { name: 'product_id', type: 'text' },
           { name: 'hit_count', type: 'number' },
+          { name: 'custom_name', type: 'text' },
           { name: "created", type: "autodate", onCreate: true },
           { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
         ],
@@ -130,7 +135,7 @@ routerAdd("GET", "/api/check_mappings/{id}", function (e) {
     return e.json(500, { error: "get_failed", message: msg, fingerprint: msg.substring(0, 80) })
   }
 })
-// POST /api/check_mappings  body 字段: customer_norm, company_product_name, product_id, hit_count
+// POST /api/check_mappings  body 字段: customer_norm, company_product_name, product_id, hit_count, custom_name
 routerAdd("POST", "/api/check_mappings", function (e) {
   function ensureCollLocal() {
     try { return $app.findCollectionByNameOrId("check_mappings") } catch (_) {}
@@ -160,6 +165,8 @@ routerAdd("POST", "/api/check_mappings", function (e) {
     rec.set("company_product_name", body.company_product_name === undefined || body.company_product_name === null ? "" : String(body.company_product_name))
     rec.set("product_id", body.product_id === undefined || body.product_id === null ? "" : String(body.product_id))
     rec.set("hit_count", (body.hit_count === undefined || body.hit_count === null) ? 0 : Number(body.hit_count))
+    // 2026-10-29：自定义模块名（公司能做但产品清单没有的条目），product_id 留空
+    rec.set("custom_name", body.custom_name === undefined || body.custom_name === null ? "" : String(body.custom_name))
     $app.save(rec)
     return e.json(200, rec.publicExport())
   } catch (err) {
@@ -183,6 +190,7 @@ routerAdd("PATCH", "/api/check_mappings/{id}", function (e) {
     if ("company_product_name" in body) rec.set("company_product_name", body.company_product_name === undefined || body.company_product_name === null ? "" : String(body.company_product_name))
     if ("product_id" in body) rec.set("product_id", body.product_id === undefined || body.product_id === null ? "" : String(body.product_id))
     if ("hit_count" in body) rec.set("hit_count", (body.hit_count === undefined || body.hit_count === null) ? 0 : Number(body.hit_count))
+    if ("custom_name" in body) rec.set("custom_name", body.custom_name === undefined || body.custom_name === null ? "" : String(body.custom_name))
     $app.save(rec)
     return e.json(200, rec.publicExport())
   } catch (err) {

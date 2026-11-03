@@ -58,7 +58,19 @@ export function TabbedOutlet({ tabs, pathname }: TabbedOutletProps) {
         const active = path === tabs.active
         return (
           // hidden 属性 = display:none：保留 DOM 与状态，但不占布局、不可聚焦
-          <div key={path} hidden={!active} data-tab-panel={path}>
+          //
+          // 2026-10-31 无障碍修复：hidden 只影响视觉，隐藏标签页里的 <h1> 仍在 DOM 中，
+          // 导致「同屏多个 h1」——读屏软件会读出多个一级标题，自动化/爬虫也会混淆
+          // （实测 6 个标签页 = 6 个 h1）。
+          // 加 inert + aria-hidden：
+          //   · aria-hidden 让读屏软件跳过整棵子树
+          //   · inert 让隐藏面板内的元素不可聚焦、不可点击（浏览器原生能力）
+          <div
+            key={path}
+            hidden={!active}
+            data-tab-panel={path}
+            {...(!active ? { inert: "" as unknown as boolean, "aria-hidden": true } : {})}
+          >
             <ErrorBoundary key={`eb-${path}`}>
               <Suspense fallback={<RouteFallback />}>
                 <Page />

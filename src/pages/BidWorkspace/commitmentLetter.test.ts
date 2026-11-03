@@ -79,3 +79,24 @@ describe("章节 upsert", () => {
     expect(r2.outline.length).toBe(1)
   })
 })
+
+// 2026-10-23（用户要求：所有承诺函按原文先响应）——★条款 + 技术参数里的承诺型条款都要进承诺函
+import { collectCommitmentClauses } from "./commitmentLetter"
+import type { ParseReport } from "./bidTypes"
+
+describe("collectCommitmentClauses：★条款 + 承诺型方案条款", () => {
+  it("两类来源合并去重，原文不动", () => {
+    const rep = {
+      scope: "full",
+      sections: [{ key: "star_clauses", title: "★/▲", content: "★1. 未加盖公章的投标无效\n★2. 报价超预算无效" }],
+    } as unknown as ParseReport
+    const out = collectCommitmentClauses(rep, [
+      "须提供《第三方接口费用承诺函》，承诺不向采购人转收接口费。",
+      "本条规定了培训场地要求，与承诺无关。",
+    ])
+    expect(out).toHaveLength(3)
+    expect(out[0]).toContain("未加盖公章")
+    expect(out[2]).toContain("第三方接口费用承诺函")
+    expect(out.some((c) => c.includes("培训场地"))).toBe(false)
+  })
+})

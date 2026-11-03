@@ -9,7 +9,7 @@
 
 import type { Chapter, OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
 import type { ParseReport, NumberedScoringItem } from "./bidTypes"
-import { numberScoringItems, sectionText, STAR_CLAUSE_SECTION, BID_OUTLINE_REQ_KEY } from "./bidTypes"
+import { isDemoScoreTitle, isNonChapterScoringItem, numberScoringItems, sectionText, STAR_CLAUSE_SECTION, BID_OUTLINE_REQ_KEY } from "./bidTypes"
 
 // ==================== A1: 大纲重复章检测与合并建议 ====================
 
@@ -150,38 +150,160 @@ export function detectStarFidelityGaps(report: ParseReport | null, chapters: Cha
 
 // ==================== A4: 规定目录强制落点 ====================
 
+/** 目录项类别：商务固定格式 / 技术标必须承载 / 无明确归属 */
+export type CatalogItemKind = "biz_fixed" | "tech_required" | "neutral"
+
 export interface CatalogGap {
   /** 规定目录条目 */
   item: string
   /** 大纲中是否有对应章节 */
   found: boolean
+  /** 该目录项属于哪一侧（决定仅技术模式下算不算缺） */
+  kind: CatalogItemKind
+}
+
+/** 商务固定格式（第一篇，投标人线下填写／商务分册承载，技术标不承载） */
+const BIZ_FIXED_ITEM_RE =
+  /开标一览|投标函|报价表|分项报价|资格声明|授权书|授权委托|法定代表人|中小企业声明|残疾人福利|诚信(履约|投标)承诺|业绩承诺函|商务响应表|投标保证金|投标响应|其他材料/
+
+/** 技术标必须承载（服务方案／人员／承诺／响应表／证明材料——不单独成章，评标专家按目录就翻不到） */
+const TECH_REQUIRED_ITEM_RE = /人员配备|项目团队|服务方案|服务承诺|技术响应|技术偏离|响应表|证明材料/
+
+export function classifyCatalogItem(name: string): CatalogItemKind {
+  const n = (name ?? "").replace(/\s+/g, "")
+  if (!n) return "neutral"
+  // 先判商务：像「投标响应表（商务响应表、其他材料）」这类同时沾边的，按商务固定格式处理
+  if (BIZ_FIXED_ITEM_RE.test(n)) return "biz_fixed"
+  if (TECH_REQUIRED_ITEM_RE.test(n)) return "tech_required"
+  return "neutral"
+}
+
+/**
+ * 目录原文 → 条目。剥掉三种编号：中文序号（一／十一／（一））、阿拉伯多级号（6.1／1.）、括号号（（1））。
+ *
+ * 为什么必须剥：原实现只剥 `^\d+[.、)）]`，对「一 开标一览表」这类中文序号完全无效 →
+ * 真实库三个项目实测 **16/16 项全部判缺**（见 2026-10-22 复核），A4 于是常年全红，
+ * 「目录没对齐」这件真事被淹没在噪音里，用户和系统都不知道到底差哪几条。
+ */
+export function parseCatalogItems(catalogText: string): string[] {
+  return (catalogText ?? "")
+    .split(/[\n;；]+/)
+    .map((raw) =>
+      raw
+        // 括号序号：（一）／（1）——括号本身即分隔，后面不需要再跟分隔符
+        .replace(/^\s*[（(][一二三四五六七八九十百]+[)）][、.．\s]*/, "")
+        .replace(/^\s*[（(]\d+(?:\s*[.．]\s*\d+)*[)）][、.．\s]*/, "")
+        // 中文裸序号：一、／十一.  —— 后面必须跟分隔符，防「一体化平台」被误剥
+        .replace(/^\s*[一二三四五六七八九十百]+[、.．\s]+/, "")
+        // 阿拉伯多级号：6.1／1.
+        .replace(/^\s*\d+(?:\s*[.．]\s*\d+)*[、.．\s]+/, "")
+        .replace(/[：:].*$/, "")
+        .trim(),
+    )
+    .filter((s) => s.length >= 2 && s.length <= 30)
+}
+
+/** 目录项在大纲里的落点下标（逐字包含 + 语义等价两条路） */
+function catalogItemLandingIdx(item: string, norms: string[]): number[] {
+  const n = normTitle(item)
+  if (!n) return []
+  const hit: number[] = []
+  norms.forEach((t, i) => {
+    if (t.includes(n) || (n.length >= 3 && t.length >= 3 && n.includes(t))) hit.push(i)
+  })
+  if (hit.length) return hit
+  const alias = (re: RegExp): number[] => {
+    const out: number[] = []
+    norms.forEach((t, i) => {
+      if (re.test(t)) out.push(i)
+    })
+    return out
+  }
+  // 语义等价：评委按目录找的是「这一部分在不在」，不是标题逐字相同。
+  // 但只认「目录项本身的名字」，不认宽泛关键词——实测「业务连续性承诺与保障」会把
+  // 「服务承诺」判成已承载，「★…证明材料清单」会把「其他相关证明材料」判成已承载，
+  // 都是假绿。宁可多报一条，也不能让缺失的目录章静默过关。
+  if (/人员配备|项目团队/.test(n)) return alias(/团队|人员配备/)
+  // 「服务方案」在招标文件里是一整个部分，技术标按评分项拆成多章即可视为已承载
+  if (/服务方案/.test(n)) {
+    const m = alias(/方案|实施|培训|售后|应急/)
+    return m.length >= 3 ? m : []
+  }
+  if (/服务承诺/.test(n)) return alias(/服务承诺/)
+  if (/证明材料/.test(n)) return alias(/证明材料|材料索引/)
+  if (/响应表|偏离/.test(n)) return alias(/响应表|偏离表/)
+  return []
+}
+
+/** 大纲全部节点的标题 + 归一化 + 所属顶层章标题（目录落点与索引表共用） */
+function collectTitles(nodes: OutlineNode[]): { title: string; norm: string; chapter: string }[] {
+  const out: { title: string; norm: string; chapter: string }[] = []
+  const walk = (list: OutlineNode[], chapter: string) => {
+    for (const n of list ?? []) {
+      const title = String(n.title ?? "")
+      out.push({ title, norm: normTitle(title), chapter: chapter || title })
+      if (n.children?.length) walk(n.children, chapter || title)
+    }
+  }
+  walk(nodes ?? [], "")
+  return out
 }
 
 /**
  * A4（安中医 2026BFAFZ50845）：bid_outline_req 规定目录逐项在大纲中有落点。
- * 判据：大纲顶层章标题（含子章标题）归一化后包含目录条目关键词。
+ *
+ * `scope` 决定口径：仅技术模式（scope=tech）下，商务固定格式项（开标一览表/投标函/报价表…）
+ * 由商务分册线下承载，不算技术标缺章；否则每份技术标都会背着 11 条永远补不上的红字。
  */
-export function detectCatalogGaps(report: ParseReport | null, outline: OutlineNode[]): CatalogGap[] {
+export function detectCatalogGaps(
+  report: ParseReport | null,
+  outline: OutlineNode[],
+  opts?: { scope?: "biz" | "tech" | "both" },
+): CatalogGap[] {
+  return buildCatalogIndex(report, outline, opts).map(({ item, found, kind }) => ({ item, found, kind }))
+}
+
+export type CatalogIndexRow = {
+  /** 目录项（已剥序号） */
+  item: string
+  kind: CatalogItemKind
+  found: boolean
+  /** 承载该目录项的顶层章标题（去重；可能多项 = 整组承载） */
+  chapters: string[]
+}
+
+/**
+ * 招标目录 → 本册章节的对照表（纯函数、零 AI）。
+ *
+ * 用途有两个，判据完全同源：
+ *  ① 编制门禁 A4 判「有没有落点」（detectCatalogGaps 只是它的投影）；
+ *  ② 导出时生成《投标文件目录对照表》——技术标不按招标目录另起章（评标按评分表找章），
+ *     但评委按目录翻不到也会丢分，用一张对照表同时满足两种找法。
+ */
+export function buildCatalogIndex(
+  report: ParseReport | null,
+  outline: OutlineNode[],
+  opts?: { scope?: "biz" | "tech" | "both" },
+): CatalogIndexRow[] {
   const catalogText = sectionText(report, BID_OUTLINE_REQ_KEY).trim()
   if (!catalogText) return [] // 无目录要求 → 不检查
-  // 从目录文本提取条目（逐行/分号/顿号）
-  const items = catalogText
-    .split(/[\n;；]+/)
-    .map((l) => l.replace(/^\d+[.、)）\s]*/, "").replace(/[：:].*$/, "").trim())
-    .filter((l) => l.length >= 2 && l.length <= 30)
+  const items = parseCatalogItems(catalogText)
   if (!items.length) return []
-  const allTitles: string[] = []
-  const walk = (nodes: OutlineNode[]) => {
-    for (const n of nodes ?? []) {
-      allTitles.push(normTitle(n.title))
-      if (n.children?.length) walk(n.children)
+  const nodes = collectTitles(outline ?? [])
+  const norms = nodes.map((n) => n.norm)
+  const rows: CatalogIndexRow[] = items.map((item) => {
+    const idx = catalogItemLandingIdx(item, norms)
+    const chapters: string[] = []
+    for (const i of idx) {
+      const c = nodes[i]?.chapter ?? ""
+      if (c && !chapters.includes(c)) chapters.push(c)
     }
-  }
-  walk(outline ?? [])
-  return items.map((item) => ({
-    item,
-    found: allTitles.some((t) => t.includes(normTitle(item))),
-  }))
+    return { item, kind: classifyCatalogItem(item), found: idx.length > 0, chapters }
+  })
+  const scope = opts?.scope ?? "both"
+  if (scope === "tech") return rows.filter((r) => r.kind !== "biz_fixed")
+  if (scope === "biz") return rows.filter((r) => r.kind !== "tech_required")
+  return rows
 }
 
 // ==================== A5: 数字一致性冲突 ====================
@@ -256,7 +378,14 @@ export function detectScoringLandingGaps(
   report: ParseReport | null,
   chapters: Chapter[],
 ): ScoringLandingGap[] {
-  const items = numberScoringItems(report)
+  // 2026-10-23（真实项目实测）：A6 原来把**所有**评分项都要求有技术章，于是
+  //   · 商务评分项（价格分/商务分）——落点在商务分册，永远不会有技术章 → 每个项目恒假阻断；
+  //   · 资信类（业绩/团队/证书）——落点在证明材料；
+  //   · 演示项——现场演示计分（用户已裁定不进大纲）。
+  // 这三类都排除，A6 只判「方案类技术评分项」有没有正文落点。
+  const items = numberScoringItems(report).filter(
+    (it) => it.category === "tech" && !isNonChapterScoringItem(it.item) && !isDemoScoreTitle(it.item),
+  )
   if (!items.length) return []
   const nonEmptyChapters = (chapters ?? []).filter((ch) => (ch.content ?? "").trim().length > 50)
   const normalizedContents = nonEmptyChapters.map((ch) => ({
@@ -357,21 +486,23 @@ export interface ComposeGateResult {
  * 对当前项目的 outline/chapters/parse_report 执行 A1-A6 全量检查，返回结构化结果。
  * blockingCount > 0 时 UI 应展示红幅阻断导出/归档（S0 不过夜）。
  */
-export function runComposeGates(
-  outline: OutlineNode[],
+export function runComposeGates(  outline: OutlineNode[],
   chapters: Chapter[],
   report: ParseReport | null,
+  scope: "biz" | "tech" | "both" = "both",
 ): ComposeGateResult {
   const A1 = detectDuplicateChapters(outline)
   const A2 = detectGenStatusViolations(chapters)
   const A3 = detectStarFidelityGaps(report, chapters)
-  const A4 = detectCatalogGaps(report, outline)
+  const A4 = detectCatalogGaps(report, outline, { scope })
   const A5 = detectNumberConflicts(chapters)
   const A6 = detectScoringLandingGaps(report, chapters)
   const blocking =
     A2.filter((v) => v.reason.includes("为空但标记 done")).length +
     A3.reduce((a, g) => a + g.missingClauses.length, 0) +
-    A4.filter((g) => !g.found).length +
+    // 2026-10-22：只把「技术标必须承载」的目录项算阻断。商务固定格式（开标一览表/投标函…）
+    // 由商务分册线下承载，把它们也算成缺章会让每份技术标永远卡在闸门上。
+    A4.filter((g) => !g.found && g.kind === "tech_required").length +
     A6.filter((g) => !g.hasLanding).length
   return {
     round: "R-031",
@@ -384,4 +515,37 @@ export function runComposeGates(
     A6_scoringLandingGaps: A6,
     blockingCount: blocking,
   }
+}
+
+/**
+ * 2026-10-22（用户口径：废标项/评分落点不能只靠生成后 toast）：
+ * 编制门禁 A1-A6 的**阻断级**问题原本只在批量生成结束后弹一条 toast，导出与交卷都不看它——
+ * 也就是说「知道有问题」和「能不能交卷」之间没有接线。本函数把同一判据暴露给交卷闸门，
+ * 让阻断级问题变成「闸门未满足 → 必须修复或填备注强制放行留痕」。
+ */
+export function composeGateBlockingReason(rec: {
+  bid_outline?: OutlineNode[] | null
+  bid_chapters?: Chapter[] | null
+  parse_report?: ParseReport | null
+  gen_options?: { scope?: string; include_biz?: boolean } | null
+} | null): string {
+  if (!rec) return ""
+  const scope: "biz" | "tech" | "both" =
+    rec.gen_options?.scope === "biz" || rec.gen_options?.scope === "tech" || rec.gen_options?.scope === "both"
+      ? rec.gen_options.scope
+      : rec.gen_options?.include_biz === false
+        ? "tech"
+        : "both"
+  const r = runComposeGates(rec.bid_outline ?? [], rec.bid_chapters ?? [], rec.parse_report ?? null, scope)
+  if (r.blockingCount <= 0) return ""
+  const parts: string[] = []
+  if (r.A3_starFidelityGaps.length)
+    parts.push(`★响应缺失 ${r.A3_starFidelityGaps.reduce((a, g) => a + g.missingClauses.length, 0)} 条`)
+  const catalogMiss = r.A4_catalogGaps.filter((g) => !g.found).length
+  if (catalogMiss) parts.push(`规定目录缺落点 ${catalogMiss} 项`)
+  const scoringMiss = r.A6_scoringLandingGaps.filter((g) => !g.hasLanding).length
+  if (scoringMiss) parts.push(`评分无落点 ${scoringMiss} 项`)
+  const emptyDone = r.A2_genStatusViolations.filter((v) => v.reason.includes("为空但标记 done")).length
+  if (emptyDone) parts.push(`空章标完成 ${emptyDone} 个`)
+  return `编制门禁 ${r.blockingCount} 项阻断级问题待处置（${parts.join("、")}；修复后重跑编制门禁，或填备注强制放行留痕）`
 }

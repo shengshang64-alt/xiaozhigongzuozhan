@@ -6,6 +6,7 @@ import {
   FileCheck2,
   FilePlus2,
   FileText,
+  HardDrive,
   History,
   LayoutGrid,
   Loader2,
@@ -57,6 +58,8 @@ const GROUP_ICONS: Record<SearchResultGroup["key"], LucideIcon> = {
   deck: Monitor,
   quote: Calculator,
   kb: BookOpen,
+  // 本机文件：硬盘里的历史标书/方案（AnyTXT 离线索引）
+  local: HardDrive,
 }
 
 const ACTION_ICONS: Record<string, LucideIcon> = {

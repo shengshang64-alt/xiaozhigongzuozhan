@@ -13,6 +13,7 @@ import {
   GATE_LABEL,
   type GateKind,
 } from "@/pages/BidWorkspace/bidTypes"
+import { composeGateBlockingReason } from "@/pages/BidWorkspace/composeGates"
 
 type GateChecklistProps = Pick<
   UseBidWorkspace,
@@ -60,7 +61,11 @@ export function GateChecklist({ activeProject, confirmGate, resetGate, voidCriti
       <ul className="mt-4 flex flex-col gap-2.5">
         {GATE_KINDS.map((kind) => {
           const record = findGateRecord(gates, kind)
-          const cond = gateCondition(activeProject, kind)
+          const baseCond = gateCondition(activeProject, kind)
+          // 2026-10-22：编制门禁 A1-A6 的阻断级问题并入 check 闸——原来只在生成后弹 toast，
+          // 交卷与导出都不看它，「知道有问题」和「能不能交卷」之间没有接线。
+          const composeReason = kind === "check" ? composeGateBlockingReason(activeProject) : ""
+          const cond = baseCond.met && composeReason ? { met: false, missing: composeReason } : baseCond
           const noting = notingGate === kind
           return (
             <li

@@ -121,6 +121,50 @@ describe("图表题注编号（断号/重号）", () => {
   it("连续编号不报", () => {
     expect(checkCaptionNumbering(LINES("图1-1 架构", "图1-2 流程", "表1-1 清单", "表1-2 清单"))).toEqual([])
   })
+
+  // -------------------------------------------------------------------------
+  // 2026-10-26 标书官复核后的重大修正回归
+  // 原实现只认「表N-M」带横杠，而金标准件（池州主-1129上午修订，34.3 万字）实测：
+  // 「表N」全书顺序号 69 处、带横杠 0 处 → 原实现对金标准风格稿件**永远报零问题**，
+  // 徽标全绿但根本没检查，比不检查更坏。
+  // -------------------------------------------------------------------------
+  describe("全书顺序号形态（金标准主流写法）", () => {
+    it("金标准真实的「表N」形态：断号能报出来", () => {
+      const issues = checkCaptionNumbering(
+        LINES("表1 门诊病人诊病信息（挂号记录表）", "表2 门诊医嘱主表", "表5 收款员结帐主表"),
+      )
+      expect(issues.join("；"), "「表1→表2→表5」的断号没报出来，等于没检查").toContain("断号")
+      expect(issues.join("；")).toContain("表2 与 表5")
+    })
+
+    it("金标准真实的「表N」形态：重号能报出来", () => {
+      const issues = checkCaptionNumbering(LINES("表1 挂号记录", "表2 医嘱主表", "表2 收费主表"))
+      expect(issues.join("；")).toContain("表2 编号重复")
+    })
+
+    it("图题「图N：」带冒号形态也支持", () => {
+      const issues = checkCaptionNumbering(LINES("图1：云电脑总体架构", "图2：网络拓扑", "图4：部署图"))
+      expect(issues.join("；")).toContain("断号")
+    })
+
+    it("全书顺序号连续时不报", () => {
+      expect(checkCaptionNumbering(LINES("表1 挂号", "表2 医嘱", "表3 收费"))).toEqual([])
+    })
+
+    it("只有一张表时不判「断号」（单张表本来就没有序列）", () => {
+      expect(checkCaptionNumbering(LINES("表1 唯一的一张表"))).toEqual([])
+    })
+
+    it("分章式与全书式混写各算各的序列，互不干扰", () => {
+      const issues = checkCaptionNumbering(LINES("表1-1 甲", "表1-2 乙", "表7 丙", "表8 丁"))
+      expect(issues).toEqual([])
+    })
+
+    it("带横杠的「表1-1」不会被重复算进全书序列（否则会造出假重号）", () => {
+      const issues = checkCaptionNumbering(LINES("表1-1 甲", "表1-2 乙"))
+      expect(issues.join("；")).not.toContain("表1 编号重复")
+    })
+  })
 })
 
 describe("文件命名（日期+标题+版本）", () => {

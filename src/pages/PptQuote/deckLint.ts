@@ -10,9 +10,13 @@ import type { Slide } from "./pptQuoteTypes"
 // 让用户在下载前就知道哪几页要人工加强，而非导出后打开才发现。
 //
 // 全部为非阻断告警（不拦截导出），只在 toast 给一句可执行的改进清单。
+//
+// 2026-10-30 更新（用户第 6 条要求）：新增 `error` 级别用于**严重问题**，
+// 这类问题会**阻断导出**（空白页、占位符残留、图表数据不匹配、无来源数据）。
+// 理由：这些缺陷一旦导出就是"给客户看的废品"，必须拦在下载前。
 // ---------------------------------------------------------------------------
 
-export type DeckLintLevel = "warn" | "info"
+export type DeckLintLevel = "error" | "warn" | "info"
 
 export interface DeckLintIssue {
   level: DeckLintLevel
@@ -20,6 +24,8 @@ export interface DeckLintIssue {
   page: number
   code: string
   msg: string
+  /** 是否阻断导出（level=error 时为 true，由 lintDeck 统一填充） */
+  blocking?: boolean
 }
 
 /** 名词标签式标题的常见结尾词（这类标题往往不带结论，建议改写成陈述句） */
@@ -91,7 +97,7 @@ export function lintDeck(slides: Slide[]): DeckLintIssue[] {
 
     // 1) 空页：既无要点又无图表/KPI/配图
     if (!bullets.length && !hasVisual && !hasImage && (s.layout ?? "auto") !== "section") {
-      issues.push({ level: "warn", page, code: "empty_page", msg: `第 ${page} 页几乎无内容（无要点/图表/配图），建议删除或补充` })
+      issues.push({ level: "error", page, code: "empty_page", msg: `第 ${page} 页几乎无内容（无要点/图表/配图），导出前请删除或补充` })
       return
     }
 
@@ -110,7 +116,7 @@ export function lintDeck(slides: Slide[]): DeckLintIssue[] {
     if (s.chart && (s.chart.categories?.length ?? 0) > 0) {
       const bad = (s.chart.series ?? []).find((sr) => (sr.data?.length ?? 0) !== s.chart!.categories.length)
       if (bad) {
-        issues.push({ level: "warn", page, code: "chart_len_mismatch", msg: `第 ${page} 页图表数据点数与类目数不一致，导出可能画错，请核对` })
+        issues.push({ level: "error", page, code: "chart_len_mismatch", msg: `第 ${page} 页图表数据点数与类目数不一致，导出会画错，请核对后再导出` })
       }
     }
 
@@ -134,10 +140,10 @@ export function lintDeck(slides: Slide[]): DeckLintIssue[] {
     const leftoverHits = Array.from(new Set(leftoverHaystack.flatMap(findPlaceholderLeftovers)))
     if (leftoverHits.length) {
       placeholderIssues.push({
-        level: "warn",
+        level: "error",
         page,
         code: "placeholder_leftover",
-        msg: `第 ${page} 页残留模板/占位文本（${leftoverHits.slice(0, 3).join("、")}），导出前请替换为真实内容`,
+        msg: `第 ${page} 页残留模板/占位文本（${leftoverHits.slice(0, 3).join("、")}），导出前必须替换为真实内容`,
       })
     }
   })
@@ -165,8 +171,30 @@ export function lintDeck(slides: Slide[]): DeckLintIssue[] {
   }
 
   // 6) 整份层面：图文并茂占比不足（呼应 Anthropic「别让 PPT 只有一堆文字框」）
-  if (slides.length >= 4 && visualPages === 0) {
-    issues.push({ level: "warn", page: 0, code: "no_visual", msg: "整份没有图表/KPI 页，纯文字观感偏弱，可让 AI 补数据可视化页" })
+  if (slides.length >= 4) {
+    // 2026-10-30 用户反馈「文字占很大篇幅、没有美观性」：原来只检查"完全没有"视觉页，
+    // 而真实 deck 是 20/29 页纯文字却零告警。改为按比例报，纯文字超过 60% 即告警。
+    const contentPages = Math.max(1, slides.length - 2) // 去掉封面与致谢
+    const textOnlyPages = slides.filter((s) => {
+      if (s.chart) return false
+      if (s.kpi?.length) return false
+      if (s.image) return false
+      if (s.figures?.length) return false
+      const lay = s.layout ?? "auto"
+      return lay === "bullets" || lay === "auto"
+    }).length
+    const ratio = textOnlyPages / contentPages
+    if (visualPages === 0) {
+      issues.push({ level: "warn", page: 0, code: "no_visual", msg: "整份没有图表/KPI 页，纯文字观感偏弱，可让 AI 补数据可视化页" })
+    } else if (ratio > 0.6) {
+      const need = Math.max(1, Math.ceil(contentPages * 0.6) - visualPages)
+      issues.push({
+        level: "warn",
+        page: 0,
+        code: "text_heavy",
+        msg: `全册 ${textOnlyPages}/${contentPages} 页是纯文字（${Math.round(ratio * 100)}%），观感偏「资料汇编」；建议至少再补 ${need} 页图表/表格/架构图`,
+      })
+    }
   }
   // 6b) R56：结构化图示覆盖不足——按比例报，不再只看"完全没有"。
   // 阈值 1/3：4 页至少 2 页、7 页至少 3 页有结构图；这类图**系统能自己画**，是最该补的一类。
@@ -197,12 +225,44 @@ export function lintDeck(slides: Slide[]): DeckLintIssue[] {
 
 /** 把告警清单压成一句给 toast 用的摘要 */
 export function lintSummaryText(issues: DeckLintIssue[]): string {
+  const err = issues.filter((i) => i.level === "error").length
   const warn = issues.filter((i) => i.level === "warn").length
-  const info = issues.length - warn
+  const info = issues.filter((i) => i.level === "info").length
   const bits: string[] = []
+  if (err) bits.push(`${err} 处必须修复`)
   if (warn) bits.push(`${warn} 处需注意`)
   if (info) bits.push(`${info} 处可优化`)
   return bits.join("，") || "未发现结构问题"
+}
+
+// ---------------------------------------------------------------------------
+// 导出门禁（2026-10-30，用户第 6 条要求）
+//
+// 严重问题必须**阻止导出**，并显示「页码 + 问题 + 修复入口」。
+// 与原有"只 toast 提示"的区别：这里返回结构化的阻断清单，调用方据此中止导出。
+// ---------------------------------------------------------------------------
+
+export type ExportGateResult =
+  | { ok: true; issues: DeckLintIssue[] }
+  | { ok: false; blocking: DeckLintIssue[]; others: DeckLintIssue[]; summary: string }
+
+/**
+ * 导出前门禁：有 error 级问题则拦截。
+ *
+ * @param slides 全册页面
+ * @param extraErrors 额外错误（如模板版式缺失、图片违规，由调用方传入）
+ */
+export function gateExport(slides: Slide[], extraErrors: DeckLintIssue[] = []): ExportGateResult {
+  const all = [...lintDeck(slides), ...extraErrors]
+  const blocking = all.filter((i) => i.level === "error")
+  if (!blocking.length) return { ok: true, issues: all }
+  const others = all.filter((i) => i.level !== "error")
+  const pages = Array.from(new Set(blocking.map((i) => i.page).filter((p) => p > 0))).sort((a, b) => a - b)
+  const summary =
+    `有 ${blocking.length} 个严重问题必须先修复才能导出` +
+    (pages.length ? `（涉及第 ${pages.join("、")} 页）` : "") +
+    `：${blocking[0].msg}${blocking.length > 1 ? ` 等 ${blocking.length} 项` : ""}`
+  return { ok: false, blocking, others, summary }
 }
 // ---------------------------------------------------------------------------
 // R166：编辑期常驻自检的页级聚合（页面列表圆点与自检面板共用，避免两处各算各的）。
@@ -214,7 +274,8 @@ export function groupIssuesByPage(issues: DeckLintIssue[]): Map<number, DeckLint
   const byPage = new Map<number, DeckLintLevel>()
   for (const it of issues) {
     const prev = byPage.get(it.page)
-    if (!prev || (prev === "info" && it.level === "warn")) byPage.set(it.page, it.level)
+    const rank: Record<DeckLintLevel, number> = { info: 0, warn: 1, error: 2 }
+    if (!prev || rank[it.level] > rank[prev]) byPage.set(it.page, it.level)
   }
   return byPage
 }

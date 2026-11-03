@@ -136,6 +136,13 @@ export type CheckMapping = {
   company_product_name: string
   product_id: string
   hit_count: number
+  /**
+   * 2026-10-29：自定义模块名。
+   * 场景：客户要的东西公司确实能做，但 ONE-LINK 产品清单里没有对应模块行。
+   * 人工写一个名字沉淀在此，product_id 为空表示「非公司库行」。
+   * 下次同类条目自动命中该自定义名。
+   */
+  custom_name?: string
 }
 
 /** 路径 B 匹配表行 */
@@ -163,6 +170,29 @@ export type MatchRow = {
     /** 为什么建议它（命中字段 + 语义核心词），界面上作为 tooltip */
     reason: string
   }
+  /**
+   * 2026-10-28 产品映射重构：上传 Excel 来源的「原表整行单元格文本」，
+   * 与项目级 sourceColumns（表头）按列对齐；粘贴/招标/方案来源无此字段。
+   * 对照表界面据此做到「原表样式展示 + 右侧追加映射列」。
+   */
+  cells?: string[]
+  /** 本地/记忆命中的分数（0~1，展示用；AI/人工指定无） */
+  score?: number
+  /** 命中规则标识（memory/exact/core-exact/abbrev/core-contain/core-sim），解释「为什么命中」 */
+  rule?: string
+  /**
+   * 2026-10-28 多对多：本行完整命中的公司模块 id 列表（含主干）。
+   * 不变式：非空时 product_ids[0] === product_id（product_id 始终是主干）。
+   * 缺省/空 = 旧口径单命中（仅 product_id）或未命中。多对一由多行进同一 product 天然支持。
+   */
+  product_ids?: string[]
+  /**
+   * 2026-10-29：自定义模块名（一对多，保序）。
+   * 场景：公司能做但 ONE-LINK 产品清单里没有的条目，由人工填写。
+   * 与 product_ids 并存：一行可以既挂公司库模块、又追加若干自定义模块。
+   * 非空时该行状态视为「已命中」（自定义），并沉淀进映射记忆库供下次自动命中。
+   */
+  custom_names?: string[]
 }
 
 export const PRODUCT_STATUS_OPTIONS = ["在售", "研发中"]

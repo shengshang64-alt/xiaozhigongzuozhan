@@ -153,7 +153,7 @@ describe("deadlineDateHits", () => {
 })
 
 import { scheduleConsistencyHits } from "./formQualityHits"
-import { gateCondition, type BidProjectRecord, type FormatCheckHit } from "./bidTypes"
+import { gateCondition, sanitizeVoidCheck, type BidProjectRecord, type FormatCheckHit, type VoidItem } from "./bidTypes"
 
 describe("scheduleConsistencyHits（评审 A2 根修）", () => {
   it("总工期承诺与计划里程碑天数矛盾 → warn 并给超出天数", () => {
@@ -212,6 +212,64 @@ describe("gateCondition check 质量闸（r277 切片2）", () => {
   })
   it("形式类命中（markdown）不进质量闸黑名单", () => {
     expect(gateCondition(baseRec([{ chapter: "z", rule: "markdown_residue", quote: "q", level: "warn" }]), "check").met).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 2026-10-22（用户口径：废标项不通过即出局）
+//   ① 「废标检查做过」≠「废标检查干净」：critical 且未核销的条款必须让 check 闸不满足；
+//   ② AI 判「合规」但没有支撑证据的，一律降为 partial——否则一条没证据的合规会把风险静默抹平。
+// 反向验证（删实现即变红）：
+//   · 去掉 gateCondition 里的 voidCritical 判据 → 用例①红；
+//   · 去掉 sanitizeVoidCheck 的 evidence 判据 → 用例③红。
+// ---------------------------------------------------------------------------
+describe("check 闸：废标级条款未核销不得无痕通过（2026-10-22）", () => {
+  const item = (over: Partial<VoidItem> = {}): VoidItem =>
+    ({
+      id: "v1",
+      clause: "未加盖公章的投标无效",
+      source_location: "",
+      response: "",
+      response_location: "",
+      status: "non_compliant",
+      severity: "critical",
+      suggestion: "",
+      evidence: "未见盖章页",
+      reason: "",
+      manual_checked: false,
+      manual_status: "",
+      review_status: "pending",
+      skip_reason: "",
+      ...over,
+    }) as VoidItem
+  const recWith = (items: VoidItem[]) =>
+    ({
+      dup_report: {},
+      void_check: { items, checked_at: "" },
+      submission_check: { items: [{ index: 0 }], checked_at: "", format_report: { hits: [], checked_at: "" } },
+    }) as unknown as Partial<BidProjectRecord>
+
+  it("① 有 critical 且 review_status=pending → check 闸不满足并点名条数", () => {
+    const g = gateCondition(recWith([item()]), "check")
+    expect(g.met).toBe(false)
+    expect(g.missing).toContain("1 条废标级条款未核销")
+  })
+
+  it("② 已核销（addressed）→ 满足；AI 判 compliant 的条目不计入未核销", () => {
+    expect(gateCondition(recWith([item({ review_status: "addressed" })]), "check").met).toBe(true)
+    expect(gateCondition(recWith([item({ status: "compliant", severity: "minor" })]), "check").met).toBe(true)
+  })
+
+  it("③ sanitizeVoidCheck：compliant 无证据降 partial，有证据保持 compliant", () => {
+    const noEvidence = sanitizeVoidCheck([{ clause: "未盖章的投标无效", status: "compliant", reason: "已盖章" }], [])
+    expect(noEvidence.items[0].status).toBe("partial")
+    expect(noEvidence.items[0].reason).toContain("未给出支撑证据")
+
+    const withEvidence = sanitizeVoidCheck(
+      [{ clause: "未盖章的投标无效", status: "compliant", evidence: "投标函第 3 页盖章", reason: "已盖章" }],
+      [],
+    )
+    expect(withEvidence.items[0].status).toBe("compliant")
   })
 })
 

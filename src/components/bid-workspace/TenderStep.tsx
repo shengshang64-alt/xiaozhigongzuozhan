@@ -1,8 +1,11 @@
-import { useRef } from "react"
-import { FileUp, Loader2, ScanSearch, Save, ClipboardPaste } from "lucide-react"
+import { useRef, useState } from "react"
+import { ArrowDown, ArrowUp, FileUp, Loader2, ScanSearch, Save, ClipboardPaste, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
+import { classifyTenderTable, summarizeTenderTables } from "@/pages/BidWorkspace/tenderTables"
+import { TENDER_FILE_ROLE_HINTS, TENDER_FILE_ROLE_LABELS, TENDER_FILE_ROLES, type TenderFileRole } from "@/pages/BidWorkspace/tenderFiles"
 
 type TenderStepProps = Pick<
   UseBidWorkspace,
@@ -10,7 +13,11 @@ type TenderStepProps = Pick<
   | "tenderDraft"
   | "setTenderDraft"
   | "fileBusy"
-  | "handleTenderFile"
+  | "handleTenderFiles"
+  | "tenderFiles"
+  | "removeTenderFileAt"
+  | "moveTenderFileAt"
+  | "setTenderFileRoleAt"
   | "saveTenderText"
   | "refTemplateDraft"
   | "setRefTemplateDraft"
@@ -30,7 +37,11 @@ export function TenderStep({
   tenderDraft,
   setTenderDraft,
   fileBusy,
-  handleTenderFile,
+  handleTenderFiles,
+  tenderFiles,
+  removeTenderFileAt,
+  moveTenderFileAt,
+  setTenderFileRoleAt,
   saveTenderText,
   refTemplateDraft,
   setRefTemplateDraft,
@@ -47,13 +58,20 @@ export function TenderStep({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const refTemplateInputRef = useRef<HTMLInputElement>(null)
   const refMaterialsInputRef = useRef<HTMLInputElement>(null)
+  const [dragActive, setDragActive] = useState(false)
   const saved = (activeProject?.tender_text ?? "").trim().length > 0
+  // B4（2026-10-22）：上传 docx 时本地还原的表格——原文件不上传，只有行列数据
+  const restoredTables = activeProject?.tender_tables ?? []
+  const tableSummary = summarizeTenderTables(restoredTables)
+  const previewTable =
+    restoredTables.find((t) => classifyTenderTable(t.rows) === "purchase_list") ?? restoredTables[0] ?? null
+  const previewRows = previewTable ? previewTable.rows.slice(0, 8) : []
   return (
     <section className="mx-auto max-w-7xl px-4 pb-14 pt-5">
       <header className="rounded-2xl border border-border bg-gradient-to-br from-background via-secondary to-card px-6 py-6 shadow-md animate-in fade-in slide-in-from-bottom-4 duration-500">
         <h1 className="text-xl font-semibold tracking-tight text-foreground lg:text-2xl">导入招标文件</h1>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-          支持 .docx / .pdf / .txt，文件在浏览器本地解析成文本，<span className="font-medium text-primary">原文件不会上传</span>；扫描版 PDF 提取不到文字时，可直接粘贴招标文件文本。导入后点「AI 解析」提取评分办法、资质要求与废标条款。
+          支持 .docx / .pdf / .txt，<span className="font-medium text-primary">可一次导入多份</span>（招标正文 + 技术附件 + 评分办法…），文件在浏览器本地解析成文本，<span className="font-medium text-primary">原文件不会上传</span>；扫描版 PDF 提取不到文字时，可直接粘贴招标文件文本。每份文件标好角色后点「AI 解析」——解析时会按角色只读相关文件，技术附件不会被每个解析项重复读取。
         </p>
       </header>
 
@@ -72,10 +90,24 @@ export function TenderStep({
               if (isArchivedLocked) return
               if (e.key === "Enter") fileInputRef.current?.click()
             }}
-            className={`flex flex-col items-center gap-3 rounded-lg border-2 border-dashed border-border bg-card p-8 text-center shadow-md transition-colors ${
+            onDragOver={(e) => {
+              if (isArchivedLocked) return
+              e.preventDefault()
+              setDragActive(true)
+            }}
+            onDragLeave={() => setDragActive(false)}
+            onDrop={(e) => {
+              e.preventDefault()
+              setDragActive(false)
+              if (isArchivedLocked) return
+              void handleTenderFiles(e.dataTransfer.files)
+            }}
+            className={`flex flex-col items-center gap-3 rounded-lg border-2 border-dashed bg-card p-8 text-center shadow-md transition-colors ${
               isArchivedLocked
-                ? "cursor-not-allowed opacity-60"
-                : "cursor-pointer hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                ? "cursor-not-allowed border-border opacity-60"
+                : dragActive
+                  ? "cursor-pointer border-primary bg-primary/10"
+                  : "cursor-pointer border-border hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             }`}
           >
             {fileBusy ? (
@@ -84,20 +116,130 @@ export function TenderStep({
               <FileUp className="h-8 w-8 text-primary" />
             )}
             <div>
-              <p className="text-sm font-medium text-foreground">{fileBusy ? "正在本地解析文件…" : "点击上传招标文件"}</p>
-              <p className="mt-1 text-xs text-muted-foreground">.docx / .pdf / .txt，解析在浏览器内完成</p>
+              <p className="text-sm font-medium text-foreground">
+                {fileBusy ? "正在本地解析文件…" : "点击或拖拽上传招标文件（可多选）"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">.docx / .pdf / .txt / .md，解析在浏览器内完成</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">正文、技术附件、评分办法可一次全选，下面逐份标角色</p>
             </div>
             <input
               ref={fileInputRef}
               type="file"
+              multiple
               accept=".docx,.pdf,.txt,.md"
               className="hidden"
               onChange={(e) => {
-                void handleTenderFile(e.target.files?.[0])
+                void handleTenderFiles(e.target.files)
                 e.target.value = ""
               }}
             />
           </div>
+
+          {tenderFiles.length > 0 && (
+            <div className="rounded-lg border border-border bg-card p-4 shadow-md">
+              <div className="flex flex-wrap items-baseline justify-between gap-1">
+                <p className="text-sm font-semibold text-foreground">文件清单（{tenderFiles.length} 份）</p>
+                <span className="text-[11px] text-muted-foreground">角色决定解析时哪些项会读这份文件</span>
+              </div>
+              <ul className="mt-2 flex flex-col gap-2">
+                {tenderFiles.map((file, index) => (
+                  <li key={`${file.name}-${index}`} className="rounded-md border border-border bg-background px-2.5 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground" title={file.name}>
+                        {index + 1}. {file.name}
+                      </span>
+                      <span className="shrink-0 text-[11px] text-muted-foreground">{file.chars} 字</span>
+                    </div>
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      <Select
+                        value={file.role}
+                        disabled={isArchivedLocked}
+                        onValueChange={(value) => setTenderFileRoleAt(index, value as TenderFileRole)}
+                      >
+                        <SelectTrigger className="h-7 flex-1 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {TENDER_FILE_ROLES.map((role) => (
+                            <SelectItem key={role} value={role} className="text-xs">
+                              {TENDER_FILE_ROLE_LABELS[role]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 shrink-0 p-0"
+                        disabled={index === 0 || isArchivedLocked}
+                        onClick={() => moveTenderFileAt(index, -1)}
+                        title="上移"
+                        aria-label="上移"
+                      >
+                        <ArrowUp className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 shrink-0 p-0"
+                        disabled={index === tenderFiles.length - 1 || isArchivedLocked}
+                        onClick={() => moveTenderFileAt(index, 1)}
+                        title="下移"
+                        aria-label="下移"
+                      >
+                        <ArrowDown className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 shrink-0 p-0 text-muted-foreground hover:text-destructive"
+                        disabled={isArchivedLocked}
+                        onClick={() => removeTenderFileAt(index)}
+                        title="移除这份文件"
+                        aria-label="移除这份文件"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{TENDER_FILE_ROLE_HINTS[file.role]}</p>
+                  </li>
+                ))}
+              </ul>
+              {restoredTables.length > 0 && (
+                <div className="mt-3 rounded-md border border-primary/25 bg-primary/5 px-3 py-2">
+                  <p className="text-[11px] leading-relaxed text-foreground">
+                    已从 docx 还原 <span className="font-semibold text-primary">{tableSummary.total}</span> 张表格
+                    （采购清单 {tableSummary.purchaseList} · 技术参数 {tableSummary.techParams}）——原文件未上传，只保留表格行列。
+                  </p>
+                  {previewTable && (
+                    <details className="mt-1">
+                      <summary className="cursor-pointer text-[11px] text-muted-foreground">
+                        查看「{previewTable.file}」第 {previewTable.index + 1} 张表（前 {previewRows.length} 行）
+                      </summary>
+                      <div className="mt-2 max-h-64 overflow-auto">
+                        <table className="w-full text-left text-[11px]">
+                          <tbody>
+                            {previewRows.map((r, ri) => (
+                              <tr key={ri} className={ri === 0 ? "bg-muted/40 font-medium" : ""}>
+                                {r.map((c, ci) => (
+                                  <td key={ci} className="whitespace-nowrap border-b border-border/50 px-2 py-1">
+                                    {c || "—"}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </details>
+                  )}
+                </div>
+              )}
+              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                合并文本里每份文件前有「〖附件N｜角色｜文件名〗」来源标记；删除或调序按文件块重建，块内正文与手工修订都会保留。
+              </p>
+            </div>
+          )}
 
           <div className="rounded-lg border border-border bg-card p-4 shadow-md">
             <p className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
@@ -151,7 +293,11 @@ export function TenderStep({
           <div className="flex min-h-14 shrink-0 items-center justify-between border-b border-border px-4">
             <div>
               <p className="text-sm font-semibold text-foreground">招标文件文本</p>
-              <p className="text-xs text-muted-foreground">上传解析或粘贴后，可在此人工核对修正</p>
+              <p className="text-xs text-muted-foreground">
+                {tenderFiles.length > 0
+                  ? "多份文件已按来源标记合并；补充内容请加在对应文件的标记之后"
+                  : "上传解析或粘贴后，可在此人工核对修正"}
+              </p>
             </div>
             <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
               {tenderDraft.length} 字

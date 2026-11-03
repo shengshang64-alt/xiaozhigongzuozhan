@@ -30,7 +30,18 @@ export type ScoringBlockJSON = {
   score_composition: string
   /** 从 score_composition 解析出的声明总分；未声明/解析不出为 null */
   declared_total: number | null
+  /** 2026-10-22：从 score_composition 解析出的技术/商务/价格权重（分值或百分比）；解析不出为 null */
+  weights: ScoreWeights | null
   items: ScoringItemJSON[]
+}
+
+/** 得分地图的权重拆分：技术 / 商务 / 价格，各自的分值或百分比数字 */
+export type ScoreWeights = {
+  tech: number | null
+  biz: number | null
+  price: number | null
+  /** 原文用的是百分比口径（如「技术 90% 价格 10%」）而非分值 */
+  percent: boolean
 }
 
 const missing = (s: string): boolean => !s || /没有提及|未提及|暂无|^[-—\s]*$/.test(s.trim())
@@ -43,6 +54,36 @@ export function parseDeclaredTotal(comp: string): number | null {
   if (missing(t)) return null
   const m = t.match(/总分[^0-9]{0,6}(\d+(?:\.\d+)?)/) ?? t.match(/(\d+(?:\.\d+)?)\s*分/)
   return m ? Number(m[1]) : null
+}
+
+/**
+ * 2026-10-22（用户口径：先绘「得分地图」）：从总分构成原句拆技术/商务/价格权重。
+ *
+ * 为什么需要：解析层只保留了「总分构成」整句，下游无从判断「胜负在哪」——安中医
+ * 2026BFAFZ50845 实测技术资信 90 分 / 价格 10 分，价格基本拉不开差距，资源该压技术标；
+ * 这一判断必须由结构化权重支撑，而不是让模型每次重读原句。
+ *
+ * 口径：只认原文明写的数字，不做推算；同一维度按「分」优先于「%」；三项全空返回 null。
+ */
+export function parseScoreWeights(comp: string): ScoreWeights | null {
+  const t = (comp ?? "").trim()
+  if (missing(t)) return null
+  const pick = (word: RegExp): { v: number; percent: boolean } | null => {
+    const m = t.match(new RegExp(`${word.source}[^0-9%]{0,10}(\\d+(?:\\.\\d+)?)\\s*(分|%)`))
+    return m ? { v: Number(m[1]), percent: m[2] === "%" } : null
+  }
+  const tech = pick(/技术(?:资信|部分|标)?/)
+  const biz = pick(/商务(?:部分|标)?/)
+  const price = pick(/价格(?:分|部分|标)?/)
+  if (!tech && !biz && !price) return null
+  const units = [tech, biz, price].filter(Boolean) as { percent: boolean }[]
+  return {
+    tech: tech?.v ?? null,
+    biz: biz?.v ?? null,
+    price: price?.v ?? null,
+    // 全部命中项都是百分比才按百分比口径展示（混写时按分值展示更稳）
+    percent: units.length > 0 && units.every((u) => u.percent),
+  }
 }
 
 /**
@@ -71,7 +112,13 @@ export function buildScoringStructured(key: string, obj: unknown): ScoringBlockJ
   if (!items.length) return undefined
   const compRaw = str(rec.score_composition).trim()
   const score_composition = missing(compRaw) ? "" : compRaw
-  return { kind: "scoring", score_composition, declared_total: parseDeclaredTotal(score_composition), items }
+  return {
+    kind: "scoring",
+    score_composition,
+    declared_total: parseDeclaredTotal(score_composition),
+    weights: parseScoreWeights(score_composition),
+    items,
+  }
 }
 
 /** 结构化 → 下游 ScoringItem[]（criteria 合并出处，与 extractScoringFromText 行文本口径一致） */
@@ -113,6 +160,11 @@ export const PARSE_FIELD_LABELS: Record<string, Record<string, string>> = {
     award_notice: "中标公示",
     signing_deadline: "签订时限",
     performance_bond: "履约保证金",
+    // 2026-10-22（商务账）：付款节点、驻场人数、质保期外报价口径原先没有字段，
+    // 商务风险只能靠 AI 在正文里自由发挥；拆成三张信息卡后可在解析报告直接核对。
+    payment_terms: "付款方式与节点",
+    onsite_requirement: "驻场要求",
+    out_of_warranty_price: "质保期外报价口径",
     termination: "解除与终止",
     warranty_linkage: "质保衔接",
     disputes: "争议解决",
@@ -191,13 +243,78 @@ export function buildParseStructured(key: string, obj: unknown): ScoringBlockJSO
   }))
 }
 
-/** schema 级自检：评分项合计 vs 原文声明总分；偏差返回人话提示，一致/无声明返回 null */
-export function selfCheckScoringTotal(b: ScoringBlockJSON): string | null {
+/**
+ * schema 级自检：评分项合计 vs 声明分；偏差返回人话提示，一致/无声明返回 null。
+ *
+ * 2026-10-22（真实项目实测）：原实现拿**每个分区**的合计去比**全局总分**——
+ * 安中医 2026BFAFZ50845 因此报出两条假警：「技术 90 ≠ 100」「商务 10 ≠ 90」，
+ * 而 90（技术）+ 10（价格）= 100 本来就是对的。传入 key 后按分区口径比：
+ * 技术分区对 `技术 N 分`，商务分区对 `商务 N 分 + 价格 N 分`；拿不到分项权重时回退总分。
+ */
+export function selfCheckScoringTotal(b: ScoringBlockJSON, key?: string): string | null {
   if (b.declared_total == null) return null
   const sum = b.items.reduce((acc, it) => acc + it.score, 0)
   if (sum <= 0) return null
-  if (Math.abs(sum - b.declared_total) > 0.01) {
-    return `评分项合计 ${sum} 分 ≠ 招标文件声明总分 ${b.declared_total} 分，请复核评分表是否漏行/错值`
+  const w = b.weights
+  let target = b.declared_total
+  let label = "招标文件声明总分"
+  if (key === "tech_score" && w?.tech != null) {
+    target = w.tech
+    label = "技术分区声明分"
+  } else if (key === "biz_score" && (w?.biz != null || w?.price != null)) {
+    target = (w.biz ?? 0) + (w.price ?? 0)
+    label = "商务+价格分区声明分"
+  }
+  if (Math.abs(sum - target) > 0.01) {
+    return `评分项合计 ${sum} 分 ≠ ${label} ${target} 分，请复核评分表是否漏行/错值`
   }
   return null
+}
+
+// ---------------------------------------------------------------------------
+// 2026-10-22（用户反馈：采购清单应按表格体现）
+//
+// 采购清单原文是「序号 | 子系统名称 | 数量 | 单位 | 备注」的表格，解析后落库成
+// 「名称：X｜规格型号：Y｜数量：Z｜备注：W」的行文本（见 wholeParse.flattenPurchaseList）。
+// 面板原来把这些行渲染成一行一张卡片——217 行的项目根本没法扫读，也看不出列之间的关系。
+// 这里把行文本还原成表：列按招标原表来，全空的列（如本项目没有规格型号）自动隐藏。
+// ---------------------------------------------------------------------------
+
+/** 采购清单行文本 → 表格数据；不足两行有效数据时返回 null（交回普通行渲染） */
+export function buildPurchaseListRows(lines: string[]): { columns: string[]; rows: string[][] } | null {
+  const rows: string[][] = []
+  let seq = 0
+  for (const raw of lines ?? []) {
+    const line = String(raw ?? "").trim()
+    if (!line || !line.includes("：")) continue
+    const map = new Map<string, string>()
+    for (const seg of line.split("｜")) {
+      const i = seg.indexOf("：")
+      if (i > 0) map.set(seg.slice(0, i).trim(), seg.slice(i + 1).trim())
+      else if (!map.has("名称")) map.set("名称", seg.trim())
+    }
+    const name = map.get("名称") ?? ""
+    if (!name) continue
+    seq += 1
+    const qtyRaw = map.get("数量") ?? ""
+    // 「1套」「3 套」「1 项」→ 数量与单位分列；纯数字也兜住
+    const m = qtyRaw.match(/^([\d.]+)\s*(.*)$/)
+    const note = map.get("备注") ?? ""
+    rows.push([
+      String(seq),
+      name,
+      map.get("规格型号") ?? "",
+      m ? m[1] : qtyRaw,
+      m ? m[2] : "",
+      note,
+    ])
+  }
+  if (rows.length < 2) return null
+  const columns = ["序号", "名称", "规格型号/关键参数", "数量", "单位", "备注"]
+  // 全空的列不展示（本项目招标原表就没有规格型号列，硬留一列空白反而难读）
+  const keep = columns.map((_, ci) => ci < 2 || rows.some((r) => (r[ci] ?? "").trim().length > 0))
+  return {
+    columns: columns.filter((_, ci) => keep[ci]),
+    rows: rows.map((r) => r.filter((_, ci) => keep[ci])),
+  }
 }

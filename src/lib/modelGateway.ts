@@ -344,31 +344,55 @@ export function shouldDegradeRetry(resultOk: boolean, error?: string): boolean {
 //   且是唯一声明了 default_model 的配置，于是任何未显式传 modelRef 的调用都被静默改道到 bailing。
 //   现改为「用户偏好优先，其次声明了默认模型的配置，最后才退到首个可用配置」，
 //   并对同一配置的模型做可用性校验，保证选中的一定是enabled 且真实存在的模型。
+/**
+ * 从个人配置里挑一条「能直接发」的通道（纯函数，单测锁口径）。
+ *
+ * 排序口径：
+ *   ① 用户偏好命中的配置 —— 用户长期用哪个就优先用哪个
+ *   ② 显式声明了 default_model 的配置 —— 配置者主动指定，语义强于数组顺序
+ *   ③ 其余保持接口返回顺序 —— 不引入额外不确定性
+ *
+ * R302：在此之上叠加健康档案过滤——原实现只做上面的排序，从不看
+ * `getModelHealth`，于是这台浏览器上已实测「已停用 / 模型不存在 / Key 失效」的通道
+ * 依然会被挑中，用户看到的就是「刚修好又报同一个错」。健康档案本身是「失败后才记账」，
+ * 所以从未成功过的新模型不会被它挡掉（那是对的：没证据就不判它坏），
+ * 这里只负责把**已有确凿坏证据**的通道排到最后。
+ */
+export function pickUsablePersonalRef(
+  configs: GatewayConfig[],
+  isUnhealthy: (key: string) => boolean,
+  preferredKey: string | null = null,
+): ModelRef | null {
+  const personal = (configs || []).filter((c) => c && !c.is_platform && c.has_key)
+  const rank = (c: GatewayConfig): number => {
+    if (preferredKey && preferredKey.startsWith(`personal:${c.id}:`)) return 0
+    return c.default_model ? 1 : 2
+  }
+  const ordered = [...personal].sort((a, b) => rank(a) - rank(b))
+  let fallback: ModelRef | null = null
+  for (const c of ordered) {
+    const enabled = (c.models || []).filter((m) => m && m.enabled !== false)
+    const modelId = c.default_model || (enabled[0] && enabled[0].id) || ""
+    if (!modelId) continue
+    // 默认模型已从启用列表中移除时不能硬发（下游会返回 model_disabled），退回该配置首个可用模型
+    const live = enabled.length ? enabled.some((m) => m.id === modelId) : false
+    const useId = live ? modelId : enabled.length ? enabled[0].id : ""
+    if (!useId) continue
+    const ref: ModelRef = { source: "personal", configId: c.id, configName: c.config_name || c.id, modelId: useId }
+    if (!isUnhealthy(modelRefKey(ref))) return ref
+    if (!fallback) fallback = ref
+  }
+  // 全部挂账时仍返回首选（用户显式使用不受影响；总比直接报"没有可用通道"好）
+  return fallback
+}
+
 async function pickFirstPersonalModelRef(): Promise<ModelRef | null> {
   try {
     const cfgs = await gwFetch<{ items: GatewayConfig[] }>(`/api/model-gw/configs`)
     if (!cfgs.ok) return null
-    const personal = (cfgs.items || []).filter((c) => c && !c.is_platform && c.has_key)
-    // 候选排序口径（纯函数，单测锁死）：
-    //   ① 用户偏好命中的配置 —— 用户长期用哪个就优先用哪个
-    //   ② 显式声明了 default_model 的配置 —— 配置者主动指定，语义强于数组顺序
-    //   ③ 其余按接口返回顺序 —— 保持原有兜底行为，不引入额外不确定性
-    const preferredKey = readPreferredModelKey(decodeRhToken()?.sub ?? null)
-    const rank = (c: GatewayConfig): number => {
-      if (preferredKey && preferredKey.startsWith(`personal:${c.id}:`)) return 0
-      return c.default_model ? 1 : 2
-    }
-    const ordered = [...personal].sort((a, b) => rank(a) - rank(b))
-    for (const c of ordered) {
-      const enabled = (c.models || []).filter((m) => m && m.enabled !== false)
-      const modelId = c.default_model || (enabled[0] && enabled[0].id) || ""
-      if (!modelId) continue
-      // 默认模型已从启用列表中移除时不能硬发（下游会返回 model_disabled），退回该配置首个可用模型
-      const live = enabled.length ? enabled.some((m) => m.id === modelId) : false
-      const useId = live ? modelId : enabled.length ? enabled[0].id : ""
-      if (!useId) continue
-      return { source: "personal", configId: c.id, configName: c.config_name || c.id, modelId: useId }
-    }
+    const userId = decodeRhToken()?.sub ?? null
+    const health = readModelHealth(userId)
+    return pickUsablePersonalRef(cfgs.items || [], (key) => key in health, readPreferredModelKey(userId))
   } catch {
     /* 配置拉取失败则放弃兜底 */
   }

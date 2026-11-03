@@ -1106,11 +1106,22 @@ ${lead.url}`,
     const derived = deriveFlatFromLeadership(profile.leadership)
     const patch: Record<string, unknown> = {}
     const marks = new Set<string>(row.ai_generated_fields ?? [])
+    // 2026-10-29：区分「人工核实过」与「上一轮 AI 填的」。
+    // 原规则「已填字段一律不覆盖」会让上一轮 AI 抽错的数永远改不回来——实测
+    // 「广德市人民医院」被填成编制床位 800（应为实际开放 600），补齐简介页后重跑也刷不动。
+    // 现在：AI 标记字段仍可被新证据纠正（值变了才改，仍标 AI 待核实）；人工改过的字段永不动。
+    const aiOwned = (key: string) => marks.has(key)
     const putStr = (key: string, val: string | null, cur: string) => {
-      if (val != null && val !== "" && !cur.trim()) { patch[key] = val; marks.add(key) }
+      if (val == null || val === "") return
+      const curText = (cur ?? "").trim()
+      if (!curText) { patch[key] = val; marks.add(key); return }
+      if (aiOwned(key) && curText !== val) { patch[key] = val; marks.add(key) }
     }
     const putNum = (key: string, val: number | null, cur: number) => {
-      if (val != null && !(typeof cur === "number" && cur > 0)) { patch[key] = val; marks.add(key) }
+      if (val == null || !Number.isFinite(val) || val <= 0) return
+      const curNum = typeof cur === "number" && Number.isFinite(cur) ? cur : 0
+      if (curNum <= 0) { patch[key] = val; marks.add(key); return }
+      if (aiOwned(key) && curNum !== val) { patch[key] = val; marks.add(key) }
     }
     putStr("level", profile.level, row.level)
     putStr("hospital_type", profile.hospital_type, row.hospital_type)

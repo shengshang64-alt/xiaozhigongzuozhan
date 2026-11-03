@@ -18,6 +18,8 @@ type DeckLintPanelProps = {
 }
 
 const LEVEL_BADGE: Record<DeckLintLevel, { label: string; tone: string }> = {
+  // 2026-10-30：新增 error 级——这类问题会阻断导出，用最强视觉提示
+  error: { label: "必须修复", tone: "bg-destructive text-destructive-foreground" },
   warn: { label: "需注意", tone: "bg-destructive/10 text-destructive" },
   info: { label: "可优化", tone: "bg-muted text-muted-foreground" },
 }

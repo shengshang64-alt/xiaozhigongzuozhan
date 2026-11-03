@@ -4599,6 +4599,28 @@ migrate((app) => {
         {
           "help": "",
           "hidden": false,
+          "id": "json2719046226",
+          "maxSize": 0,
+          "name": "tender_files",
+          "presentable": false,
+          "required": false,
+          "system": false,
+          "type": "json"
+        },
+        {
+          "help": "",
+          "hidden": false,
+          "id": "json6607128843",
+          "maxSize": 0,
+          "name": "tender_tables",
+          "presentable": false,
+          "required": false,
+          "system": false,
+          "type": "json"
+        },
+        {
+          "help": "",
+          "hidden": false,
           "id": "json3442230640",
           "maxSize": 0,
           "name": "parse_report",

@@ -90,7 +90,11 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               tenderDraft={p.tenderDraft}
               setTenderDraft={p.setTenderDraft}
               fileBusy={p.fileBusy}
-              handleTenderFile={p.handleTenderFile}
+              handleTenderFiles={p.handleTenderFiles}
+              tenderFiles={p.tenderFiles}
+              removeTenderFileAt={p.removeTenderFileAt}
+              moveTenderFileAt={p.moveTenderFileAt}
+              setTenderFileRoleAt={p.setTenderFileRoleAt}
               saveTenderText={p.saveTenderText}
               refTemplateDraft={p.refTemplateDraft}
               setRefTemplateDraft={p.setRefTemplateDraft}
@@ -147,6 +151,8 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                   runWithCostConfirm={p.costConfirm.runWithCostConfirm}
                   archived={p.isArchivedLocked}
                   modelRefForRole={p.modelRefForRole}
+                  restoredTables={p.activeProject.tender_tables ?? null}
+                  onExportPurchaseList={p.exportPurchaseListWord}
                 />
               </div>
               {/* R005（B-1 阶段一）：实质性条款覆盖矩阵——解析报告本地推导，零 AI 费用 */}
@@ -354,6 +360,9 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               bizRemoveCount={p.bizRemoveCount}
               confirmRemoveBizChapters={p.confirmRemoveBizChapters}
               cancelRemoveBizChapters={p.cancelRemoveBizChapters}
+              // 2026-10-31：为空商务章补填写框架
+              fillBizSkeletons={p.fillBizSkeletons}
+              emptyBizChapters={p.emptyBizChapters}
               formatSettings={p.formatSettings}
               effectiveFormatSettings={p.effectiveFormatSettings}
               formatCheckItems={p.formatCheckItems}
@@ -384,7 +393,6 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               outlineSetPart={p.outlineSetPart}
               outlineMove={p.outlineMove}
               confirmOutline={p.confirmOutline}
-              generateCommitmentLetter={p.generateCommitmentLetter}
               importDialogOpen={p.importDialogOpen}
               setImportDialogOpen={p.setImportDialogOpen}
               importCandidates={p.importCandidates}
@@ -450,6 +458,8 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               deviationSummary={p.deviationSummary}
               jumpToResponseNode={p.jumpToResponseNode}
               exportDeviationWord={p.exportDeviationWord}
+              exportTechParamWord={p.exportTechParamWord}
+              generateCommitmentLetter={p.generateCommitmentLetter}
               exportBusy={p.exportBusy}
               bidOutlineSkills={p.bidOutlineSkills}
               bidChapterSkills={p.bidChapterSkills}
@@ -618,6 +628,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               exportReport={p.exportReport}
               exportDeviationWord={p.exportDeviationWord}
               exportAllDocs={p.exportAllDocs}
+              splitProseLongParagraphs={p.splitProseLongParagraphs}
               archiveProject={p.archiveProject}
               unarchiveActiveProject={p.unarchiveActiveProject}
               isArchivedLocked={p.isArchivedLocked}

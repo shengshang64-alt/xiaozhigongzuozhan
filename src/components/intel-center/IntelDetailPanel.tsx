@@ -1,4 +1,5 @@
 import { BriefcaseBusiness, Check, Copy, ExternalLink, FileStack, Flag, Sparkles, Star, X } from "lucide-react"
+import { IntelStructuredEditor } from "./IntelStructuredEditor"
 import { copyTextToClipboard } from "@/lib/clipboard"
 import { cleanIntelSnippet, cleanIntelSummary } from "@/pages/IntelCenter/intelBodyClean"
 import {
@@ -6,6 +7,7 @@ import {
   ITEM_STATUS_LABEL,
   SOURCE_TYPE_LABEL,
   type IntelItemRow,
+  type IntelStructured,
 } from "@/pages/IntelCenter/useIntelCenter"
 
 type IntelDetailPanelProps = {
@@ -21,6 +23,7 @@ type IntelDetailPanelProps = {
   onToggleLead: (item: IntelItemRow) => void
   onCreateBidTask: (item: IntelItemRow) => void
   onConvertToOpp: (item: IntelItemRow) => void
+  onSaveStructured: (item: IntelItemRow, structured: IntelStructured) => Promise<boolean>
 }
 
 /** 右栏固定详情面板：未选中时展示引导空态（对齐重构原型三栏布局，取代原overlay抽屉） */
@@ -37,6 +40,7 @@ export function IntelDetailPanel({
   onToggleLead,
   onCreateBidTask,
   onConvertToOpp,
+  onSaveStructured,
 }: IntelDetailPanelProps) {
   if (!item) {
     return (
@@ -142,6 +146,8 @@ export function IntelDetailPanel({
             </dl>
           </section>
         )}
+
+        <IntelStructuredEditor key={item.id} item={item} onSave={onSaveStructured} />
 
         {summaryText && (
           <section className="mt-3.5 rounded-lg border border-primary/30 bg-primary/5 p-3">

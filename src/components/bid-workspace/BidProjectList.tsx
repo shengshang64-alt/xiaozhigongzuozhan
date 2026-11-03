@@ -257,6 +257,8 @@ function ProjectCard({
 
 export function BidProjectList(p: BidProjectListProps) {
   const [pendingDelete, setPendingDelete] = useState<BidProjectRecord | null>(null)
+  // 撤销提醒条折叠态：>3 条时默认只显示前 3 条，避免把项目列表顶出首屏
+  const [undoExpanded, setUndoExpanded] = useState(false)
   // ux-03：新建投标唯一必填「项目名称」——hook 已有 toast 兼底但一闪而过、不落字段；此处补行内红框+红字提示+自动聚焦
   const [projNameErr, setProjNameErr] = useState("")
   const projNameRef = useRef<HTMLInputElement>(null)
@@ -507,14 +509,27 @@ export function BidProjectList(p: BidProjectListProps) {
           </span>
         </div>
 
-        {/* 第十一轮改造 1：近 7 天删除撤销提醒条（仅进行中视图显示，逐项撤销） */}
+        {/* 第十一轮改造 1：近 7 天删除撤销提醒条（仅进行中视图显示，逐项撤销）。
+            折叠优化：删除项目超过 3 个时默认只显示前 3 个，点「展开全部」看其余——
+            避免大量删除项把项目列表顶出首屏。 */}
         {p.listView === "active" && p.recentDeleted.length > 0 && (
           <div className="mt-4 rounded-xl border border-border bg-card p-3 shadow-sm">
-            <p className="text-xs font-medium text-foreground">
-              最近删除了 {p.recentDeleted.length} 个项目，7 天内可直接撤销：
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-medium text-foreground">
+                最近删除了 {p.recentDeleted.length} 个项目，7 天内可直接撤销：
+              </p>
+              {p.recentDeleted.length > 3 && (
+                <button
+                  type="button"
+                  onClick={() => setUndoExpanded(!undoExpanded)}
+                  className="text-xs text-primary transition-colors hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  {undoExpanded ? "收起 ▲" : `展开全部 ${p.recentDeleted.length} 项 ▼`}
+                </button>
+              )}
+            </div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              {p.recentDeleted.map((rec) => (
+              {(undoExpanded ? p.recentDeleted : p.recentDeleted.slice(0, 3)).map((rec) => (
                 <span key={rec.id} className="flex items-center gap-1.5 rounded-full bg-muted py-1 pl-3 pr-1 text-xs text-muted-foreground">
                   {rec.project_name}
                   <button
@@ -526,6 +541,11 @@ export function BidProjectList(p: BidProjectListProps) {
                   </button>
                 </span>
               ))}
+              {!undoExpanded && p.recentDeleted.length > 3 && (
+                <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground/70">
+                  还有 {p.recentDeleted.length - 3} 项…
+                </span>
+              )}
             </div>
           </div>
         )}

@@ -42,3 +42,25 @@ export function summarizeDemoNodes(nodes: OutlineNode[] | null | undefined): Dem
 /** 线下准备演示提示语：演示 / 答辩按招标评分细则现场计取，正文不替代实机演示 */
 export const DEMO_OFFLINE_HINT =
   "以下为演示 / 答辩评分节点：AI 正文无法替代现场实机演示与讲标答辩。请线下准备演示环境、演示脚本与答辩材料（数据脱敏、备用录屏、设备与网络预案），得分按招标评分细则现场计取。如需在标书中放占位应答，可在「生成设置」开启「演示分节点生成正文」。"
+
+/**
+ * 2026-10-23（用户口径：演示不该出现在技术方案大纲里，演示只要准备好就行）：
+ * 从大纲里**直接剔除**演示/答辩顶层章（商务章不动）。
+ * 与「保留节点但不生成正文」的旧策略不同：演示是现场环节，占着章号会让评委以为标书里该有内容。
+ */
+export function stripDemoNodes(nodes: OutlineNode[] | null | undefined): {
+  nodes: OutlineNode[]
+  removed: string[]
+} {
+  const removed: string[] = []
+  const kept = (nodes ?? []).filter((n) => {
+    if (!n) return false
+    if (n.part === "biz") return true
+    if (isDemoScoreTitle(n.title)) {
+      removed.push(String(n.title ?? "").trim())
+      return false
+    }
+    return true
+  })
+  return { nodes: kept, removed }
+}

@@ -9,6 +9,7 @@ import {
   Packer,
   PageNumber,
   Paragraph,
+  ShadingType,
   Table,
   TableCell,
   TableOfContents,
@@ -25,8 +26,10 @@ import { triggerBlobDownload } from "@/lib/download"
 import { DEFAULT_RUN_FONT } from "@/lib/exportFont"
 import { unzipSync, strFromU8 } from "fflate" // REQ-057：大文件只读 document.xml 用（项目既有依赖，mammoth 未导出 zip 能力）
 import { formatDateTimeDisplay } from "@/lib/dateDisplay"
+import { buildVersionedFileName } from "@/lib/fileName"
 import {
   CLAUSE_GRANULARITY_LABEL,
+  DEFAULT_FORMAT_SETTINGS,
   RESPONSE_LEVEL_LABEL,
   deviationExportSummary,
   REVIEW_STATUS_LABEL,
@@ -35,6 +38,7 @@ import {
   effectiveVoidStatus,
   isBizPart,
   normalizeBidScope,
+  sectionText,
   normalizeBasisPlaceholders,
   normalizeDeviationTable,
   parseFixedLineSpacing,
@@ -48,6 +52,11 @@ import {
   type FormatSettings,
   type HeadingFormat,
 } from "./bidTypes"
+import { buildCatalogIndex } from "./composeGates"
+import { buildPurchaseListRows } from "./parseSchemas"
+import { DEVIATION_MIN_SECTION_CHARS, buildParamResponseRows, paramRowsFromTable, resolveTechParamSource, techParamTableRows } from "./techParamResponse"
+import { pickTableOfKind, purchaseListExportRows, tableToParamItems } from "./tenderTables"
+import { evidenceLedgerOf, evidenceLedgerTableRows } from "./evidenceLedger"
 
 /** R206 切片 1（R-002）：按内容范围三模式决定导出分册收录哪些章——
  *  biz 仅商务章 / tech 仅技术章 / both 全部（商务骨架章保留占位供线下填写） */
@@ -202,7 +211,65 @@ export function peekDocumentXmlSize(arrayBuffer: ArrayBuffer): number {
  * extractDocxTextFromXml（只读 document.xml，不解压图片）；小文件维持本函数原行为，一字未改。
  * 判据是 **xml 大小而非文件大小**——图片压缩率差异极大，按文件大小会把 274MB(过) 和
  * 24MB(OOM) 判反（详见 DOCX_XML_SIZE_THRESHOLD 注释里的 55 份全量实测）。 */
+/**
+ * 2026-10-24（走查 P1-3：docx 解析丢字约 21%）：**两条解析路径都跑，取更全的那一份**。
+ *
+ * 背景：走查实测同一份招标文件，原 docx 66,699 字、工作台文本区只有 52,631 字（丢 21%），
+ * 而「必选项解析失败」正是建立在这份残缺文本上的。仓库里其实有两条 docx 文本抽取路径：
+ *   · mammoth（HTML 中间态）：表格排版好，但**文本框内容会整块丢**；
+ *   · 直接读 word/document.xml：对文本框 / 制表符 / 段内换行 / 合并单元格都有专门处理，涵盖更全。
+ * 谁更全不该靠猜——两个都算，按非空白字符数取长的；XML 路径抛错（老格式/损坏）时回退 mammoth。
+ * 代价：小文件多解一次包（毫秒级）；大文件本来就走 XML 路径，不变。
+ */
 export async function extractDocxText(file: File, opts?: PageTagOptions): Promise<string> {
+  const buf = await file.arrayBuffer()
+
+  let xmlText = ""
+  try {
+    xmlText = await extractDocxTextFromXml(buf, opts)
+  } catch {
+    // XML 路径失败（极老/损坏的包）→ 只走 mammoth
+  }
+
+  const { xmlSize, mediaSize } = peekDocxSizes(buf)
+  const tooBigForMammoth = xmlSize > DOCX_XML_SIZE_THRESHOLD || mediaSize > DOCX_MEDIA_SIZE_THRESHOLD
+  if (tooBigForMammoth) {
+    if (xmlText.trim()) return xmlText
+    return extractDocxTextViaMammoth(file, opts) // 大文件 XML 也失败时最后兜底
+  }
+
+  let mammothText = ""
+  try {
+    mammothText = await extractDocxTextViaMammoth(file, opts)
+  } catch {
+    // mammoth 失败（如超长 html 转换）→ 用 XML 结果
+  }
+  return pickRicherDocxText(xmlText, mammothText)
+}
+
+/** 2026-10-24（P1-3）：切到 XML 结果的门槛——相对差 ≥3% 且绝对差 ≥300 字。
+ *  为什么不是「谁长用谁」：实测 4 份仓内 docx（含一份 142KB 真实招标文件 R142_tender_sanming.docx），
+ *  mammoth 的非空白字符数与 document.xml 里全部 w:t 之和**完全相等**（58,412 = 58,412）——
+ *  说明 mammoth 并不丢正文；XML 路反而会多出 684 字，那是 vMerge 纵向合并格向上填充的重复文本（故意的）。
+ *  所以「长一点就换」会把表格更好读的 mammoth 结果换成重复文本更多的 XML 结果，属负优化。
+ *  真正的差异只可能出现在 mammoth 整块吃不到的结构（文本框等），那类缺口通常是成段成篇的，不会只差 1%。
+ *  这个函数因此是**安全网**而非主路径：默认继续用 mammoth（既有行为、既有用例不动）。 */
+export const DOCX_RICHER_MIN_RATIO = 1.03
+export const DOCX_RICHER_MIN_CHARS = 300
+
+export function pickRicherDocxText(xmlText: string, mammothText: string): string {
+  const nonWs = (t: string) => (t ?? "").replace(/\s+/g, "").length
+  const x = xmlText ?? ""
+  const m = mammothText ?? ""
+  if (!x.trim()) return m
+  if (!m.trim()) return x
+  const nx = nonWs(x)
+  const nm = nonWs(m)
+  const materiallyRicher = nx - nm >= DOCX_RICHER_MIN_CHARS && nx >= nm * DOCX_RICHER_MIN_RATIO
+  return materiallyRicher ? x : m
+}
+
+export async function extractDocxTextViaMammoth(file: File, opts?: PageTagOptions): Promise<string> {
   // REQ-057：按「document.xml 大小」**或**「media 总量」分流，任一超限即走新路径。
   // 只读 zip 中央目录，不解压（274MB 文件 55ms）。
   // 两个条件缺一不可：只卡 xml 会漏掉「正文不大、图片极多」的一类（池州 xml 18.8MB 但
@@ -215,7 +282,9 @@ export async function extractDocxText(file: File, opts?: PageTagOptions): Promis
   const mammoth = await import("mammoth")
   // mammoth 的 browser 构建认 arrayBuffer、Node 构建只认 buffer（openZip 只枚举
   // path/buffer/file）；vite 解析 browser 字段走前者，vitest 走后者。两个键都传
-  // （Uint8Array 视图零拷贝，运行时 JSZip.loadAsync 两者都收）。
+  // （Uint8Array 视图零拷贝，运行时 JSZip.loadAsync 两者都收），此前 Node 侧该路径
+  // 恒拒绝，测试里表现为 unhandled rejection。类型上 Node 侧 buffer 声明为 Node Buffer，
+  // 运行时传视图即可，cast 收口。
   const result = await mammoth.convertToHtml({
     arrayBuffer: buf,
     buffer: new Uint8Array(buf) as unknown as Buffer,
@@ -658,13 +727,89 @@ export async function extractPdfText(file: File, opts?: PageTagOptions): Promise
   return text
 }
 
+/**
+ * 康熙部首 / CJK 兼容字形归一为标准汉字（2026-10-27 实测发现的系统性缺陷）。
+ *
+ * 现象：三明项目 23.5 万字招标原文里，有 **69 种字符落在 U+2E80–U+2FDF（CJK 部首补充/
+ * 康熙部首）区间、合计数千处**——最常见的是 `⼈`(U+2F08, 1024 次)、`⽂`(U+2F42, 453 次)、
+ * `⼀`(U+2F00, 265 次)。它们在肉眼看与「人/文/一」一模一样，但**不是同一个码点**。
+ *
+ * 后果（全部实测确认）：
+ *   - 所有中文正则对不上：`/一致$/` 匹配不到「完全⼀致」，因为那个「一」是 U+2F00；
+ *   - 评分项残片过滤器漏掉「前述表述完全⼀致」；
+ *   - 关键词命中、区域识别、★▲ 条款匹配、断句规则同理全受污染。
+ *   这解释了「解析内容看起来怪、判据说不上」的一大类现象。
+ *
+ * 为什么在解析入口做：`extractTenderFileText` 是招标原文进入系统的唯一入口
+ * （docx/pdf/txt 三条分支都经过它），在这一处归一可一次性修好所有下游规则；
+ * 在几十个正则里各打补丁既不彻底也维护不了。
+ *
+ * 归一方式：手写映射表而不依赖 `String.prototype.normalize("NFKC")`——
+ * NFKC 会把全角标点、全角数字、罗马数字、上下标等一并改写（如 ①→1、Ⅰ→I、
+ * ％→%），那会破坏「按中文标点断句」「全角空格分列」等既有依赖原文形态的逻辑。
+ * 这里只做「部首/兼容汉字 → 对应统一汉字」这一件事，其余字符原样保留。
+ */
+const CJK_RADICAL_MAP: Record<string, string> = {
+  "⼀": "一", "⼁": "丨", "⼂": "丶", "⼃": "丿", "⼄": "乙", "⼅": "亅", "⼆": "二", "⼇": "亠",
+  "⼈": "人", "⼉": "儿", "⼊": "入", "⼋": "八", "⼌": "冂", "⼍": "冖", "⼎": "冫", "⼏": "几",
+  "⼐": "凵", "⼑": "刀", "⼒": "力", "⼓": "勹", "⼔": "匕", "⼕": "匚", "⼖": "匸", "⼗": "十",
+  "⼘": "卜", "⼙": "卩", "⼚": "厂", "⼛": "厶", "⼜": "又", "⼝": "口", "⼞": "囗", "⼟": "土",
+  "⼠": "士", "⼡": "夂", "⼢": "夊", "⼣": "夕", "⼤": "大", "⼥": "女", "⼦": "子", "⼧": "宀",
+  "⼨": "寸", "⼩": "小", "⼪": "尢", "⼫": "尸", "⼬": "屮", "⼭": "山", "⼮": "巛", "⼯": "工",
+  "⼰": "己", "⼱": "巾", "⼲": "干", "⼳": "幺", "⼴": "广", "⼵": "廴", "⼶": "廾", "⼷": "弋",
+  "⼸": "弓", "⼹": "彐", "⼺": "彡", "⼻": "彳", "⼼": "心", "⼽": "戈", "⼾": "戶", "⼿": "手",
+  "⽀": "支", "⽁": "攴", "⽂": "文", "⽃": "斗", "⽄": "斤", "⽅": "方", "⽆": "无", "⽇": "日",
+  "⽈": "曰", "⽉": "月", "⽊": "木", "⽋": "欠", "⽌": "止", "⽍": "歹", "⽎": "殳", "⽏": "毋",
+  "⽐": "比", "⽑": "毛", "⽒": "氏", "⽓": "气", "⽔": "水", "⽕": "火", "⽖": "爪", "⽗": "父",
+  "⽘": "爻", "⽙": "爿", "⽚": "片", "⽛": "牙", "⽜": "牛", "⽝": "犬", "⽞": "玄", "⽟": "玉",
+  "⽠": "瓜", "⽡": "瓦", "⽢": "甘", "⽣": "生", "⽤": "用", "⽥": "田", "⽦": "疋", "⽧": "疒",
+  "⽨": "癶", "⽩": "白", "⽪": "皮", "⽫": "皿", "⽬": "目", "⽭": "矛", "⽮": "矢", "⽯": "石",
+  "⽰": "示", "⽱": "禸", "⽲": "禾", "⽳": "穴", "⽴": "立", "⽵": "竹", "⽶": "米", "⽷": "糸",
+  "⽸": "缶", "⽹": "网", "⽺": "羊", "⽻": "羽", "⽼": "老", "⽽": "而", "⽾": "耒", "⽿": "耳",
+  "⾀": "聿", "⾁": "肉", "⾂": "臣", "⾃": "自", "⾄": "至", "⾅": "臼", "⾆": "舌", "⾇": "舛",
+  "⾈": "舟", "⾉": "艮", "⾊": "色", "⾋": "艸", "⾌": "虍", "⾍": "虫", "⾎": "血", "⾏": "行",
+  "⾐": "衣", "⾑": "襾", "⾒": "見", "⾓": "角", "⾔": "言", "⾕": "谷", "⾖": "豆", "⾗": "豕",
+  "⾘": "豸", "⾙": "貝", "⾚": "赤", "⾛": "走", "⾜": "足", "⾝": "身", "⾞": "車", "⾟": "辛",
+  "⾠": "辰", "⾡": "辵", "⾢": "邑", "⾣": "酉", "⾤": "釆", "⾥": "里", "⾦": "金", "⾧": "長",
+  "⾨": "門", "⾩": "阜", "⾪": "隶", "⾫": "隹", "⾬": "雨", "⾭": "青", "⾮": "非", "⾯": "面",
+  "⾰": "革", "⾱": "韋", "⾲": "韭", "⾳": "音", "⾴": "頁", "⾵": "風", "⾶": "飛", "⾷": "食",
+  "⾸": "首", "⾹": "香", "⾺": "馬", "⾻": "骨", "⾼": "高", "⾽": "髟", "⾾": "鬥", "⾿": "鬯",
+  "⿀": "鬲", "⿁": "鬼", "⿂": "魚", "⿃": "鳥", "⿄": "鹵", "⿅": "鹿", "⿆": "麥", "⿇": "麻",
+  "⿈": "黃", "⿉": "黍", "⿊": "黑", "⿋": "黹", "⿌": "黽", "⿍": "鼎", "⿎": "鼓", "⿏": "鼠",
+  "⿐": "鼻", "⿑": "齊", "⿒": "齒", "⿓": "龍", "⿔": "龜", "⿕": "龠",
+  // 常见兼容汉字（U+F900 区），实测样本里出现频率高的几个
+  "⻚": "页", "⻓": "长", "⻔": "门", "⻅": "见", "⻉": "贝", "⻋": "车", "⻛": "风", "⻢": "马",
+  "⻰": "龙", "⻤": "鬼", "⻥": "鱼", "⻦": "鸟", "⻩": "黄", "⻬": "齐",
+  // 康熙部首补充区（U+2E80–U+2EFF）里**NFKC 不会转换**的几个，实测三明原文仍残留：
+  // ⺠(U+2EA0 «民», 46 次)、⻝(U+2EDD «食», 1 次)。这类必须手写，不能指望 normalize("NFKC")。
+  "⺠": "民", "⻝": "食", "⻜": "飞", "⻄": "西", "⺟": "母",
+  "⺩": "王", "⺪": "疋", "⺫": "目", "⺬": "示", "⺭": "示", "⺮": "竹", "⺯": "糸",
+}
+
+/** 归一招标原文里的康熙部首/兼容汉字；无命中时原样返回（零分配快路径） */
+export function normalizeCjkGlyphs(text: string): string {
+  if (!text) return text
+  let changed = false
+  let out = ""
+  for (const ch of text) {
+    const mapped = CJK_RADICAL_MAP[ch]
+    if (mapped) {
+      out += mapped
+      changed = true
+    } else {
+      out += ch
+    }
+  }
+  return changed ? out : text
+}
+
 /** 按扩展名分发解析招标文件；失败抛中文错误并引导改用粘贴文本 */
 export async function extractTenderFileText(file: File, opts?: PageTagOptions): Promise<string> {
   const lower = file.name.toLowerCase()
   try {
-    if (lower.endsWith(".docx")) return await extractDocxText(file, opts)
-    if (lower.endsWith(".pdf")) return await extractPdfText(file, opts)
-    if (lower.endsWith(".txt") || lower.endsWith(".md")) return (await file.text()).trim()
+    if (lower.endsWith(".docx")) return normalizeCjkGlyphs(await extractDocxText(file, opts))
+    if (lower.endsWith(".pdf")) return normalizeCjkGlyphs(await extractPdfText(file, opts))
+    if (lower.endsWith(".txt") || lower.endsWith(".md")) return normalizeCjkGlyphs((await file.text()).trim())
     throw new Error("暂不支持该格式")
   } catch (e) {
     const detail = e instanceof Error ? e.message : "未知原因"
@@ -695,6 +840,35 @@ export type DocxExportOptions = {
    */
   allTextBlack?: boolean
   updateFields?: boolean
+}
+
+/**
+ * 2026-10-26：按公司规范生成导出的文件名（日期-标题-版本号 三要素）。
+ *
+ * 依据公司《投标文件编写规范》：文件名须含「日期、文档标题、版本号」，
+ * 形如 `2026.09.17-某医院投标文件-V2.1.docx`。校验规则见 bidWritingRules.checkFileName。
+ *
+ * 为什么需要它：接线前所有导出都是 `${project_name}-投标文件.docx`（无日期、无版本号），
+ * 用户下载多个版本后在自己电脑上根本无法区分哪份是最新的——而 checkFileName 这个
+ * 校验函数**写好了却从没被生产代码调用过**（2026-10-26 审计发现）。
+ *
+ * 版本号从哪来：项目上没有版本号字段（bid_projects 无此列），所以用导出时刻生成
+ * `V<年月日>.<时分>` 作为版本标识——这比硬造一个假的「V1.0」诚实：
+ * 同一个项目多次导出会得到不同版本号，用户能按时间排序分出新旧。
+ *
+ * @param projectName 项目名（会去掉文件名非法字符）
+ * @param docTitle 文档类型，如「投标文件」「技术偏离表」
+ * @param now 当前时间（测试注入用，默认 new Date()）
+ *
+ * 2026-10-26 两次自查补正：
+ *   ① 清洗改用 `lib/fileName.sanitizeFileBase`（它还能处理 ASCII 控制字符与 Windows 保留设备名，
+ *      自己写那份 replace 覆盖不到，项目名叫 CON 或粘进制表符会让下载静默失败）；
+ *   ② 实现下沉到 `lib/fileName.buildVersionedFileName`，因为**方案导出**有同一个毛病
+ *      （`useSolutionStudio` 用 `${solution_name}.docx`，连日期都没有）。
+ *      本函数保留为薄委托，既有 11 处调用点与测试不用改。
+ */
+export function buildExportFileName(projectName: string, docTitle: string, now: Date = new Date()): string {
+  return buildVersionedFileName(projectName, docTitle, now)
 }
 
 export async function downloadDocx(
@@ -1119,6 +1293,12 @@ export function createFormatDocxKit(fmt: FormatSettings): FormatDocxKit {  const
           children: Array.from({ length: colCount }, (_, ci) =>
             new TableCell({
               margins: { top: 60, bottom: 60, left: 100, right: 100 },
+              // 2026-10-26（公司强制标尺 C-04）：表格「标题行灰底、表头加粗、重复标题行」三项。
+              // 加粗与重复标题行早有（bold: ri===0 / tableHeader: ri===0），**灰底一直缺**——
+              // 标书官复核时点出来的，规范原文见《公司强制标书检查标尺》C-04（编写规范PPT P18）。
+              // 用 D9D9D9（Word「白色，背景 1，深色 15%」标准浅灰）：黑白打印仍能分辨表头，
+              // 暗标（sealed）场景也是灰阶，不会引入彩色。
+              ...(ri === 0 ? { shading: { type: ShadingType.CLEAR, fill: "D9D9D9", color: "auto" } } : {}),
               children: [
                 new Paragraph({
                   spacing: { after: 0, line: 276, lineRule: "auto" },
@@ -1144,9 +1324,194 @@ export async function exportBidDocx(project: BidProjectRecord): Promise<void> {
   await exportBidDocxFormatted(project, fmt)
 }
 
+/** 2026-10-22（用户反馈：最基础的招标文件要求没对齐）：技术标开头的《投标文件目录对照表》。
+ *  技术标按评分办法一级项成章、不按招标目录另起章，但评委按目录翻不到同样会丢分——
+ *  用一张对照表同时满足两种找法（判据与 A4 门禁同源：buildCatalogIndex）。 */
+function catalogIndexBlock(project: BidProjectRecord): (Paragraph | Table)[] {
+  if (!(project.bid_outline ?? []).length) return []
+  const rows = buildCatalogIndex(project.parse_report ?? null, project.bid_outline ?? [], {
+    scope: normalizeBidScope(project.gen_options),
+  })
+  if (!rows.length) return []
+  const cell = (text: string, bold = false): TableCell =>
+    new TableCell({
+      margins: { top: 60, bottom: 60, left: 100, right: 100 },
+      children: [
+        new Paragraph({
+          spacing: { after: 0 },
+          children: [new TextRun({ text, bold, size: 21, font: DEFAULT_RUN_FONT.body })],
+        }),
+      ],
+    })
+  const table = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: [
+      new TableRow({
+        tableHeader: true,
+        children: [cell("招标文件目录项", true), cell("本册对应章节", true), cell("说明", true)],
+      }),
+      ...rows.map(
+        (r) =>
+          new TableRow({
+            children: [
+              cell(r.item),
+              cell(r.chapters.length ? `${r.chapters.slice(0, 3).join("、")}${r.chapters.length > 3 ? " 等" : ""}` : "—"),
+              cell(r.kind === "biz_fixed" ? "商务分册" : r.found ? "已覆盖" : "待补章节"),
+            ],
+          }),
+      ),
+    ],
+  })
+  return [
+    new Paragraph({
+      spacing: { before: 240, after: 120 },
+      children: [new TextRun({ text: "投标文件目录对照表", bold: true, size: 28, font: DEFAULT_RUN_FONT.heading })],
+    }),
+    table,
+    new Paragraph({
+      spacing: { after: 120 },
+      children: [
+        new TextRun({
+          text: "说明：本册按评分办法一级评分项成章（评委按评分表逐项对应）；上表给出招标文件目录项与本册章节的对应关系，商务固定格式文件见商务分册。",
+          size: 21,
+          font: DEFAULT_RUN_FONT.body,
+        }),
+      ],
+    }),
+  ]
+}
+
+/** 模块级通用表（无格式设置依赖）：表头加粗、逐格一个段落 */
+function plainTable(rows: string[][]): Table {
+  const cell = (text: string, bold = false): TableCell =>
+    new TableCell({
+      margins: { top: 60, bottom: 60, left: 100, right: 100 },
+      children: [
+        new Paragraph({
+          spacing: { after: 0 },
+          children: [new TextRun({ text: String(text ?? "").replace(/\s*\n\s*/g, " "), bold, size: 21, font: DEFAULT_RUN_FONT.body })],
+        }),
+      ],
+    })
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: rows.map(
+      (r, ri) =>
+        new TableRow({
+          ...(ri === 0 ? { tableHeader: true } : {}),
+          children: r.map((c) => cell(c, ri === 0)),
+        }),
+    ),
+  })
+}
+
+/**
+ * 2026-10-22（用户需求：技术参数按投标文件格式输出）
+ * 技术参数响应表 Word：参数来源与「技术参数响应表」面板同口径（resolveTechParamSource），
+ * 逐条原文响应（buildParamResponseRows），列：序号｜原文｜响应｜偏离｜证明材料。
+ * 定位不到参数时抛错（不导出一张空表充数）。
+ */
+export async function exportTechParamDocx(project: BidProjectRecord): Promise<void> {
+  const src = resolveTechParamSource(project.tender_text ?? "", project.parse_report ?? null, "", {
+    minBodyChars: DEVIATION_MIN_SECTION_CHARS,
+  })
+  // B4：有 docx 原表就按原表逐行响应（与面板同一条判据），否则回退到原文行抽取
+  const restored = pickTableOfKind(project.tender_tables, "tech_params")
+  const rows = restored
+    ? paramRowsFromTable(tableToParamItems(restored.rows), { cap: 400 })
+    : buildParamResponseRows(src.text ?? "", { cap: 400 })
+  if (!rows.length) throw new Error("没有从招标原文定位到技术参数，请先在「技术参数响应表」里填写参数所在章节的描述")
+  const children: (Paragraph | Table)[] = []
+  children.push(titlePara(`${project.project_name} 技术参数响应表`))
+  children.push(
+    new Paragraph({
+      spacing: { after: 160 },
+      children: [
+        new TextRun({
+          text: `参数来源：${src.label}；共 ${rows.length} 条。招标要求列逐字取自原文，「投标响应」只把要求类字眼改为陈述式，数值与限定语一字未动。`,
+          size: 21,
+          font: DEFAULT_RUN_FONT.body,
+        }),
+      ],
+    }),
+  )
+  children.push(plainTable(techParamTableRows(rows)))
+  const doc = new Document({ sections: [{ children }] })
+  triggerBlobDownload(await Packer.toBlob(doc), buildExportFileName(project.project_name, "技术参数响应表"))
+}
+
+/**
+ * 2026-10-22（B4）：采购清单 Word —— 有 docx 原表就按原表导出（列与单元格一字不改），
+ * 否则用解析行还原的表；末尾统一追加「投标响应」列填「完全响应」。
+ */
+export async function exportPurchaseListDocx(project: BidProjectRecord): Promise<void> {
+  const restored = pickTableOfKind(project.tender_tables, "purchase_list")
+  const parsed = buildPurchaseListRows(
+    sectionText(project.parse_report, "purchase_list")
+      .split(/\r?\n/)
+      .filter((l: string) => l.trim()),
+  )
+  const rows = purchaseListExportRows(restored, parsed)
+  if (!rows.length) throw new Error("还没有采购清单：请先上传含清单表的 docx，或等解析出「采购清单」分区")
+  const children: (Paragraph | Table)[] = []
+  children.push(titlePara(`${project.project_name} 采购清单`))
+  children.push(
+    new Paragraph({
+      spacing: { after: 160 },
+      children: [
+        new TextRun({
+          text: `来源：${restored ? `${restored.file} 第 ${restored.index + 1} 张表（docx 原表，未经 AI 改写）` : "解析报告「采购清单」分区（行还原）"}；共 ${rows.length - 1} 条。`,
+          size: 21,
+          font: DEFAULT_RUN_FONT.body,
+        }),
+      ],
+    }),
+  )
+  children.push(plainTable(rows))
+  const doc = new Document({ sections: [{ children }] })
+  triggerBlobDownload(await Packer.toBlob(doc), buildExportFileName(project.project_name, "采购清单"))
+}
+
+/**
+ * 2026-10-23（P0-2）：《评分点与证明材料索引表》——与《投标文件目录对照表》并列放在技术标开头。
+ * 评委按评分表找分时，靠这张表回答「这个评分点的证明材料在哪、编号是多少」。
+ */
+function evidenceLedgerBlock(project: BidProjectRecord): (Paragraph | Table)[] {
+  const ledger = evidenceLedgerOf(project)
+  if (!ledger.rows.length) return []
+  const rows = evidenceLedgerTableRows(ledger)
+  return [
+    new Paragraph({
+      spacing: { before: 240, after: 120 },
+      children: [new TextRun({ text: "评分点与证明材料索引表", bold: true, size: 28, font: DEFAULT_RUN_FONT.heading })],
+    }),
+    new Paragraph({
+      spacing: { after: 120 },
+      children: [
+        new TextRun({
+          text: `共 ${ledger.rows.length} 个评分点；待挂载 ${ledger.pendingCount} 项。材料编号 M1、M2… 按评分项顺序编排，挂载材料时请在对应位置标注同一编号。`,
+          size: 21,
+          font: DEFAULT_RUN_FONT.body,
+        }),
+      ],
+    }),
+    plainTable(rows),
+  ]
+}
+
 /** 现状默认导出（存量项目 format_settings=null 走此路径） */
 async function exportBidDocxDefaults(project: BidProjectRecord): Promise<void> {
-  const children: Paragraph[] = []
+  // 2026-10-27 L3 真产物验证发现的缺陷（P0 交付质量）：
+  //   本项目 format_settings 为空 → 走本函数，而本函数**原本完全没有表格转换**，
+  //   正文里的表格（行间用全角空格 U+3000 分列）全部退化成普通段落。
+  //   实测：项目正文有 7 个完整表格块（46 行），导出件里 w:tbl = 0 张，
+  //   只剩「场景<U+3000><U+3000>影响范围<U+3000><U+3000>保障措施」这种带全角空格的成段文字。
+  //   影响面：18 个有效项目中 16 个 format_settings 为空，都会走这条路。
+  // 修法：复用 exportBidDocxFormatted 同一套 kit（默认格式），
+  //   表格判定与构建完全同源，避免两套实现分叉。
+  const kit = createFormatDocxKit(DEFAULT_FORMAT_SETTINGS)
+  const { splitTableRow, buildFmtTable } = kit
+  const children: (Paragraph | Table)[] = []
   children.push(titlePara(`${project.project_name} ${bidVolumeTitle(project)}`))
   children.push(
     new Paragraph({
@@ -1161,6 +1526,8 @@ async function exportBidDocxDefaults(project: BidProjectRecord): Promise<void> {
       ],
     }),
   )
+  children.push(...catalogIndexBlock(project))
+  children.push(...evidenceLedgerBlock(project))
   for (const [idx, ch] of bidExportChapters(project).entries()) {
     const chapter: Chapter = ch
     children.push(h1(`第${idx + 1}章 ${chapter.title}`))
@@ -1176,7 +1543,7 @@ async function exportBidDocxDefaults(project: BidProjectRecord): Promise<void> {
       })
       continue
     }
-    const paras: Paragraph[] = []
+    const paras: (Paragraph | Table)[] = []
     let firstBodyAt = -1
     // 2026-10-07 图位锚点：正文行「【图：标题】」= 该图的插入位置（按标题精确匹配，每图一次）；
     // 未匹配到图的锚点行直接丢弃（不把标记文字带进 Word）；剩余未锚定图回落到旧聚合位置
@@ -1185,9 +1552,31 @@ async function exportBidDocxDefaults(project: BidProjectRecord): Promise<void> {
     // 第十轮修复 1/4：导出前整体净化正文（存量脏数据——围栏/JSON 块/markdown 残留——导出也干净）
     // 交付物治理：依据表「编号」列的无编号占位（【待填写】）规整为「／」，不动库内原文
     const cleanContent = normalizeBasisPlaceholders(sanitizeChapterText(chapter.content || ""))
-    for (const rawLine of cleanContent.split("\n")) {
-      const line = rawLine.trim()
+    // 2026-10-27：改为索引循环，以便识别「连续 ≥2 行全角空格分列」的表格块（与 Formatted 路径同口径）
+    const contentLines = cleanContent
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+    for (let ci = 0; ci < contentLines.length; ci++) {
+      const line = contentLines[ci]
       if (!line) continue
+      // 表格块：连续 ≥2 行可拆分 → 转 docx Table（孤立单行仍按正文段落）
+      const headCols = splitTableRow(line)
+      if (headCols) {
+        const block: string[][] = [headCols]
+        let cj = ci + 1
+        while (cj < contentLines.length) {
+          const nextCols = splitTableRow(contentLines[cj])
+          if (!nextCols) break
+          block.push(nextCols)
+          cj++
+        }
+        if (block.length >= 2) {
+          paras.push(buildFmtTable(block))
+          ci = cj - 1
+          continue
+        }
+      }
       const anchorMatch = /^【图[:：](.+?)】$/.exec(line)
       if (anchorMatch) {
         const spec = figsAll.find((f) => f.title === anchorMatch[1].trim() && !usedFigTitles.has(f.title))
@@ -1290,7 +1679,29 @@ async function exportBidDocxDefaults(project: BidProjectRecord): Promise<void> {
     }
     children.push(...paras)
   }
-  await downloadDocx(`${project.project_name}-投标文件.docx`, children)
+  // 2026-10-27 L3 真产物验证发现的第二处缺陷（比表格丢失更严重）：
+  //   本函数原本 `downloadDocx(fileName, children)` 什么选项都不传，
+  //   而 downloadDocx 不传 opts 时**不生成 footer → 整份投标文件没有页码**。
+  //   实测修复前产物：footer 文件 0 个、页码域 PAGE 不存在、上边距 1440(2.54cm 库默认)。
+  //   投标文件缺页码是**格式不符**，评审会扣分甚至判无效，属交付级缺陷。
+  //   影响面：16/18 个有效项目 format_settings 为空，都走这条路。
+  // 修法：传 DEFAULT_FORMAT_SETTINGS 推导出的页面与页码选项，与 Formatted 路径同口径
+  //   （纸型/页边距/页码/目录域）。暗标相关项（headerText/allTextBlack/footerPageNumberBare）
+  //   依赖 fmt.sealed，而 sealed 为真时必然有 format_settings、不会走到本函数，故此处不处理。
+  await downloadDocx(buildExportFileName(project.project_name, "投标文件"), children, {
+    page: {
+      size: PAPER_TWIPS[DEFAULT_FORMAT_SETTINGS.paper] ?? PAPER_TWIPS.A4,
+      margin: {
+        top: cmToTwips(DEFAULT_FORMAT_SETTINGS.margins.top),
+        bottom: cmToTwips(DEFAULT_FORMAT_SETTINGS.margins.bottom),
+        left: cmToTwips(DEFAULT_FORMAT_SETTINGS.margins.left),
+        right: cmToTwips(DEFAULT_FORMAT_SETTINGS.margins.right),
+      },
+    },
+    headerText: DEFAULT_FORMAT_SETTINGS.headerFooter ? `${project.project_name} 投标文件` : "",
+    footerPageNumber: DEFAULT_FORMAT_SETTINGS.pageNumber,
+    updateFields: DEFAULT_FORMAT_SETTINGS.toc,
+  })
 }
 
 /**
@@ -1356,6 +1767,42 @@ async function exportBidDocxFormatted(project: BidProjectRecord, fmt: FormatSett
     // 目录级别跟随实际会产出的标题层级（现在正文可到 5 级），否则四/五级标题不进目录
     children.push(new TableOfContents("目录", { hyperlink: !fmt.sealed, headingStyleRange: "1-5" }))
     breakBeforeNext = true
+  }
+  // 2026-10-22（用户反馈：最基础的招标文件要求没对齐）：技术标按评分办法一级项成章，不按招标目录另起章，
+  // 于是「评委按目录翻不到」与「不为无分目录项建章」缺一座桥——在目录后插一张对照表，两种找法都满足。
+  {
+    const catRows = (project.bid_outline ?? []).length
+      ? buildCatalogIndex(project.parse_report ?? null, project.bid_outline ?? [], {
+          scope: normalizeBidScope(project.gen_options),
+        })
+      : []
+    if (catRows.length) {
+      const tableRows: string[][] = [
+        ["招标文件目录项", "本册对应章节", "说明"],
+        ...catRows.map((r) => [
+          r.item,
+          r.chapters.length ? `${r.chapters.slice(0, 3).join("、")}${r.chapters.length > 3 ? " 等" : ""}` : "—",
+          r.kind === "biz_fixed" ? "商务分册" : r.found ? "已覆盖" : "待补章节",
+        ]),
+      ]
+      children.push(
+        new Paragraph({
+          spacing: { before: 240, after: 120 },
+          children: [fontRun("投标文件目录对照表", { font: fmt.body.font, size: fmt.body.size, bold: true })],
+        }),
+      )
+      children.push(buildFmtTable(tableRows))
+      children.push(
+        bodyPara("说明：本册按评分办法一级评分项成章（评委按评分表逐项对应）；上表给出招标文件目录项与本册章节的对应关系，商务固定格式文件见商务分册。"),
+      )
+      breakBeforeNext = true
+    }
+    // P0-2：评分点与证明材料索引表（与《投标文件目录对照表》并列）
+    const evidenceBlock = evidenceLedgerBlock(project)
+    if (evidenceBlock.length) {
+      children.push(...evidenceBlock)
+      breakBeforeNext = true
+    }
   }
   // 标题编号样式：数字层级 "1 / 1.1"；章—节式 "第1章 / 1.1"（现状默认）；无编号
   const chapterPrefix = (idx: number) =>
@@ -1423,6 +1870,10 @@ async function exportBidDocxFormatted(project: BidProjectRecord, fmt: FormatSett
       .map((l) => l.trim())
       .filter(Boolean)
     let li = 0
+    // 2026-10-26：显式跟踪「上一步推进 paras 的是哪一行、是不是普通正文段」，
+    // 供表格前的表题识别使用（不能用位置猜，见下方注释）。
+    let lastPushedLine: string | null = null
+    let lastPushedWasBody = false
     while (li < contentLines.length) {
       const line = contentLines[li]
       const anchorMatch = /^【图[:：](.+?)】$/.exec(line)
@@ -1433,6 +1884,8 @@ async function exportBidDocxFormatted(project: BidProjectRecord, fmt: FormatSett
           if (firstBodyAt === -1) firstBodyAt = paras.length
           paras.push(...(await renderAnchoredFig(spec)))
         }
+        lastPushedLine = null
+        lastPushedWasBody = false
         li++
         continue
       }
@@ -1449,7 +1902,36 @@ async function exportBidDocxFormatted(project: BidProjectRecord, fmt: FormatSett
         }
         if (block.length >= 2) {
           if (firstBodyAt === -1) firstBodyAt = paras.length
+          // 2026-10-26（用户硬要求「表格必须有表题」）：表格块上方紧邻的那一行若形如表题，
+          // 从正文段落里摘出来，改渲染为**居中题注**（表题在上、表格在下），而不是普通左对齐正文。
+          // 为什么必须在这里做、而不是让模型多写一行：
+          //   ① 题注要居中、要与表体保持一体（before 间距小），普通 bodyPara 做不到；
+          //   ② 用户要求「表题在上」，Word 里题注与表体必须紧邻，模型把表题写成正文段时
+          //      中间一旦夹空行就会出现分页把表题和表格拆开。
+          // 识别口径与 bidWritingRules.findTableCaptionStatus 同源（正则同一条思路），
+          // 不认「表」字开头但不带编号的普通句子（如「表面上看…」）。
+          //
+          // ⚠️ 必须显式跟踪「上一行是不是刚按正文推进去的表题」，不能拿 `contentLines[li-1]`
+          //    或 `paras.length-1` 猜：contentLines 已过滤空行、paras 里还混着图与标题段，
+          //    猜错会把别人的段落 pop 掉（历史上同类「按位置猜元素」的改动出过事）。
+          const looksCaption =
+            lastPushedLine !== null &&
+            lastPushedWasBody &&
+            /^\s*(?:\*\*)?\s*(?:表|表格)\s*[0-9一二三四五六七八九十]{1,3}\s*[-–—.．]\s*[0-9一二三四五六七八九十]{1,3}/.test(lastPushedLine)
+          if (looksCaption) {
+            // 摘掉刚才按正文推进去的那一行（它就是表题），换成居中题注
+            paras.pop()
+            paras.push(
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 120, after: 60 },
+                children: [fontRun(String(lastPushedLine).replace(/\*\*/g, ""), { font: fmt.body.font, size: fmt.body.size, bold: true })],
+              }),
+            )
+          }
           paras.push(buildFmtTable(block))
+          lastPushedLine = null
+          lastPushedWasBody = false
           li = lj
           continue
         }
@@ -1458,6 +1940,8 @@ async function exportBidDocxFormatted(project: BidProjectRecord, fmt: FormatSett
       const hLevel = contentHeadingLevel(line)
       if (!isSubHeading && hLevel === 0 && firstBodyAt === -1) firstBodyAt = paras.length
       paras.push(isSubHeading ? headingPara(1, line) : hLevel ? headingPara(hLevel, line) : bodyPara(line))
+      lastPushedLine = hLevel || isSubHeading ? null : line
+      lastPushedWasBody = !hLevel && !isSubHeading
       li++
     }
     const figs = figsAll.filter((f) => !usedFigTitles.has(f.title))
@@ -1502,7 +1986,7 @@ async function exportBidDocxFormatted(project: BidProjectRecord, fmt: FormatSett
     }
     children.push(...paras)
   }
-  await downloadDocx(`${project.project_name}-投标文件.docx`, children, {
+  await downloadDocx(buildExportFileName(project.project_name, "投标文件"), children, {
     page: {
       size: PAPER_TWIPS[fmt.paper] ?? PAPER_TWIPS.A4,
       margin: {
@@ -1531,26 +2015,37 @@ export type ReportKind = "parse" | "dup_void" | "eval"
  * 正文标题/段落仍用各报告既有固定样式（最小改动，只补页面设置）。
  */
 function pageOptsOf(project: BidProjectRecord, pageNumber: boolean): DocxExportOptions | undefined {
-  return pageOptsFromFormatSettings(project.format_settings ?? null, { pageNumber })
+  // 2026-10-27：fmt 为空时页码应跟随产品默认（DEFAULT_FORMAT_SETTINGS.pageNumber=true），
+  // 而不是被 `!!fmt?.pageNumber` 判成 false —— 否则报告导出即使补了页面设置也没有页码。
+  const wantPageNumber = project.format_settings ? pageNumber : DEFAULT_FORMAT_SETTINGS.pageNumber
+  return pageOptsFromFormatSettings(project.format_settings ?? null, { pageNumber: wantPageNumber })
 }
 
 /**
  * 循环 9 C2：纯函数——由 FormatSettings 生成页面级导出选项（方案工作台 localStorage 方案复用）；
- * fmt 空 → undefined（导出走现状默认）。sealedAware：密封口径由调用方在 pageNumber 入参体现，此函数不感知。
+ * sealedAware：密封口径由调用方在 pageNumber 入参体现，此函数不感知。
+ *
+ * 2026-10-27 L3 实测修正（与第 5 轮 exportBidDocxDefaults 同一类缺陷）：
+ *   原实现 `if (!fmt) return undefined` —— format_settings 为空时直接放弃页面设置，
+ *   导出件回到 docx 库默认（无页码、左右边距 2.54cm）。
+ *   实测：解析报告/查重废标检查报告/模拟评标报告 三份产物 footer 均为 0 个、无 PAGE 域。
+ *   而 18 个有效项目里 16 个 format_settings 为空 —— 绝大多数报告导出都没有页码。
+ *   现改为：fmt 为空时回落到 DEFAULT_FORMAT_SETTINGS，与投标文件导出同口径
+ *   （页码跟随调用方的 pageNumber 入参，纸型/边距用产品默认值）。
  */
 export function pageOptsFromFormatSettings(
   fmt: FormatSettings | null | undefined,
   opts?: { pageNumber?: boolean },
 ): DocxExportOptions | undefined {
-  if (!fmt) return undefined
+  const f = fmt ?? DEFAULT_FORMAT_SETTINGS
   return {
     page: {
-      size: PAPER_TWIPS[fmt.paper] ?? PAPER_TWIPS.A4,
+      size: PAPER_TWIPS[f.paper] ?? PAPER_TWIPS.A4,
       margin: {
-        top: cmToTwips(fmt.margins.top),
-        bottom: cmToTwips(fmt.margins.bottom),
-        left: cmToTwips(fmt.margins.left),
-        right: cmToTwips(fmt.margins.right),
+        top: cmToTwips(f.margins.top),
+        bottom: cmToTwips(f.margins.bottom),
+        left: cmToTwips(f.margins.left),
+        right: cmToTwips(f.margins.right),
       },
     },
     ...(opts?.pageNumber ? { footerPageNumber: true } : {}),
@@ -1583,7 +2078,7 @@ export async function exportReportDocx(kind: ReportKind, project: BidProjectReco
         else lines.forEach((line) => children.push(body(line)))
       })
     }
-    await downloadDocx(`${project.project_name}-解析报告.docx`, children, pageOpts)
+    await downloadDocx(buildExportFileName(project.project_name, "解析报告"), children, pageOpts)
     return
   }
   if (kind === "dup_void") {
@@ -1625,7 +2120,7 @@ export async function exportReportDocx(kind: ReportKind, project: BidProjectReco
         if (item.reason) children.push(body(`说明：${item.reason}`))
       })
     }
-    await downloadDocx(`${project.project_name}-检查报告.docx`, children, pageOpts)
+    await downloadDocx(buildExportFileName(project.project_name, "检查报告"), children, pageOpts)
     return
   }
   children.push(titlePara(`${project.project_name} 模拟评标报告`))
@@ -1653,7 +2148,7 @@ export async function exportReportDocx(kind: ReportKind, project: BidProjectReco
       children.push(body(`${i + 1}. ${item.scoring_item}：${item.manual_score} / ${item.max_score} 分${item.comment ? `（${item.comment}）` : ""}`))
     })
   }
-  await downloadDocx(`${project.project_name}-评标报告.docx`, children, pageOpts)
+  await downloadDocx(buildExportFileName(project.project_name, "评标报告"), children, pageOpts)
 }
 
 /** T18+：文本审计报告导出（错别字 + 逻辑谬误清单成档，交卷前留痕用） */
@@ -1689,7 +2184,7 @@ export async function exportTextAuditDocx(project: BidProjectRecord): Promise<vo
         children.push(body(`修改建议：${l.suggestion}`))
       })
   }
-  await downloadDocx(`${project.project_name}-文本审计报告.docx`, children, pageOpts)
+  await downloadDocx(buildExportFileName(project.project_name, "文本审计报告"), children, pageOpts)
 }
 
 function deviationCell(text: string, opts?: { bold?: boolean; width?: number }): TableCell {
@@ -1719,7 +2214,7 @@ export async function exportDeviationDocx(project: BidProjectRecord): Promise<vo
   children.push(titlePara(`${project.project_name} 技术偏离表`))
   if (!table || !table.rows.length) {
     children.push(body("尚未生成技术偏离表，请先在「投标文件编制」环节生成。"))
-    await downloadDocx(`${project.project_name}-技术偏离表.docx`, children, pageOpts)
+    await downloadDocx(buildExportFileName(project.project_name, "技术偏离表"), children, pageOpts)
     return
   }
   const full = table.rows.filter((r) => r.response_level === "full").length
@@ -1782,6 +2277,6 @@ export async function exportDeviationDocx(project: BidProjectRecord): Promise<vo
       }),
     )
   })
-  await downloadDocx(`${project.project_name}-技术偏离表.docx`, children, pageOpts)
+  await downloadDocx(buildExportFileName(project.project_name, "技术偏离表"), children, pageOpts)
 }
 

@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest"
 import { zipSync, strToU8 } from "fflate"
-import { extractDocxTextFromXml, DOCX_XML_SIZE_THRESHOLD } from "./bidFiles"
+import {
+  extractDocxTextFromXml,
+  DOCX_XML_SIZE_THRESHOLD,
+  pickRicherDocxText,
+  DOCX_RICHER_MIN_RATIO,
+  DOCX_RICHER_MIN_CHARS,
+} from "./bidFiles"
 
 /**
  * REQ-057（2026-10-18）：大文件 docx 文本提取（只读 word/document.xml，不解压图片）的针对性单测。
@@ -132,5 +138,53 @@ describe("REQ-057 extractDocxTextFromXml：页码锚点与降级", () => {
 describe("REQ-057 分流阈值常量", () => {
   it("阈值为 20MB（低于此值走旧路径 mammoth，避免改动既有行为）", () => {
     expect(DOCX_XML_SIZE_THRESHOLD).toBe(20 * 1024 * 1024)
+  })
+})
+
+/**
+ * 2026-10-24（P1-3）：走查报告称「docx 解析丢字约 21%」。实测证伪了一半，另一半做成安全网。
+ *
+ * **实测**（`_eval/R142_tender_sanming.docx`，142KB 真实招标文件）：
+ * `document.xml` 里全部 `<w:t>` 文本非空白字符合计 **58,412**，与 mammoth 输出**完全相等**——
+ * mammoth 并不丢正文；我们的 XML 路多出 684 字（+1.17%），那是 vMerge 合并格向上填充的重复文本。
+ * 另外 3 份仓内 docx 同样吻合（1446/1464、20299/20305、137436/137436）。
+ * 所以这个包装器**不是主路径**，只是安全网：只有 XML 路显著更全（≥300 字且 ≥3%）才替换，
+ * 避免把表格更好读的 mammoth 结果换成重复文本更多的 XML 结果。
+ * 这里脱离 File/DOMParser 直测「怎么选」这条判定；两条路径各自的抽取效果由上面几组用例覆盖。
+ */
+describe("P1-3 pickRicherDocxText：docx 双路径取舍（安全网，默认仍用 mammoth）", () => {
+  it("XML 路显著更全时才替换（≥300 字且 ≥3%）", () => {
+    const mammoth = "招标文件第三章采购需求"
+    const xml = mammoth + "参数".repeat(200) // +400 字
+    expect(pickRicherDocxText(xml, mammoth)).toBe(xml)
+  })
+
+  it("只多一点点（<300 字）不替换——避免用重复填充文本换掉表格排版", () => {
+    // 真实招标文件实测就是这种情况：+684 字 / +1.17%（vMerge 向上填充），仍用 mammoth
+    const mammoth = "a".repeat(58412)
+    const xml = mammoth + "b".repeat(684)
+    expect(pickRicherDocxText(xml, mammoth)).toBe(mammoth)
+  })
+
+  it("多绝对字数够但比例不足（大文件里多 400 字只占 0.3%）也不替换", () => {
+    const mammoth = "a".repeat(200000)
+    const xml = mammoth + "b".repeat(400)
+    expect(pickRicherDocxText(xml, mammoth)).toBe(mammoth)
+  })
+
+  it("一条路径彻底失败（空串/纯空白）时用另一条，不做比较", () => {
+    expect(pickRicherDocxText("", "mammoth 结果")).toBe("mammoth 结果")
+    expect(pickRicherDocxText("   \n ", "只有空白")).toBe("只有空白")
+    expect(pickRicherDocxText("XML 结果", "")).toBe("XML 结果")
+    expect(pickRicherDocxText("XML 结果", "\n\t")).toBe("XML 结果")
+  })
+
+  it("两条都空时返回空串（不抛错）", () => {
+    expect(pickRicherDocxText("", "")).toBe("")
+  })
+
+  it("阈值常量就是上面几组用例的依据（≥300 字且 ≥3%）", () => {
+    expect(DOCX_RICHER_MIN_CHARS).toBe(300)
+    expect(DOCX_RICHER_MIN_RATIO).toBe(1.03)
   })
 })

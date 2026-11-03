@@ -168,6 +168,48 @@ routerAdd("POST", "/api/intel/tick", (e) => {
       return ""
     }
 
+    // 招标/中标结构化字段（零 AI，2026-11-02 起随抓取直接写入 structured）。
+    // 只写明确命中的键；无命中返回 {}，调用方不落成空对象。字段口径与 /api/intel/extract-bid 一致。
+    var __intelExtractBid = function (title, text) {
+      var out = {}
+      var full = String(title || "") + "\n" + String(text || "")
+      var grab = function (resList) {
+        for (var gi = 0; gi < resList.length; gi++) {
+          var mm = full.match(resList[gi])
+          if (mm && mm[1]) return String(mm[1]).replace(/\s+/g, " ").trim().slice(0, 160)
+        }
+        return ""
+      }
+      var ORG_TAIL = "医院|卫生院|保健院|卫健委|卫生健康委|公司|集团|大学|学院|中心|研究院|研究所|事务所|银行|学校|委员会|管委会|管理局|管理处|政府|局|厅|部|厂|站"
+      // 采购人：正文显式标签最强；没有再取标题开头机构名（贪婪到机构尾词，避免只取到「北京大学」）
+      var buyer = grab([
+        /(?:采购人|招标人|招标单位|采购单位|采购人名称|招标人名称|项目建设单位)\s*[:：为]\s*(?:名称)?\s*([^\s，。；;:：、()（）]{2,40}(?:医院|卫生院|保健院|卫健委|卫生健康委|公司|集团|大学|学院|中心|研究院|研究所|事务所|银行|学校|委员会|管委会|管理局|管理处|政府|局|厅|部|厂|站))/,
+        new RegExp("^([\\u4e00-\\u9fa5A-Za-z0-9（）()·]{2,45}(?:" + ORG_TAIL + "))"),
+      ])
+      if (buyer && buyer.length >= 4) out.buyer = buyer.replace(/^关于/, "").slice(0, 60)
+      var budget = grab([
+        /(?:预算金额|采购预算|最高限价|控制价|估算价|预算总价|项目预算|资金预算|概算|预算)\s*[:：为]?\s*(?:人民币)?\s*([\d,，.]+\s*(?:万元|亿元|元))/,
+      ])
+      if (budget) out.budget = budget.replace(/\s+/g, "")
+      var deadline = grab([
+        /(?:投标截止|递交截止|报名截止|获取[^\n]{0,8}?截止|开标时间|截止时间|截止日期|响应文件截止)\s*[:：为至]?\s*(20\d{2}[-/年.]\d{1,2}[-/月.]\d{1,2}\s*日?(?:\s*\d{1,2}[:：]\d{1,2}(?:[:：]\d{1,2})?\s*(?:时|分)?)?)/,
+      ])
+      if (deadline) out.deadline = deadline.replace(/\s+/g, "")
+      var code = grab([
+        /(?:招标编号|采购编号|项目编号|谈判编号|询价编号|比选编号|证券项目编号)\s*[:：为]?\s*([A-Za-z0-9][A-Za-z0-9\-_./·]{3,39})/,
+      ])
+      if (code) out.code = code
+      var winner = grab([
+        /(?:中标(?:人|单位|供应商|公司)|成交(?:供应商|人|单位)|第一中标(?:候选人|供应商))\s*[:：为]\s*([^\s，。；;:：、]{2,40}(?:公司|集团|医院|中心|研究院|事务所|大学|厂|行))/,
+      ])
+      if (winner) out.winner = winner
+      var won = grab([
+        /(?:中标金额|成交金额|中标价|成交价格|合同金额)\s*[:：为]?\s*(?:人民币)?\s*([\d,，.]+\s*(?:万元|亿元|元))/,
+      ])
+      if (won) out.won_amount = won.replace(/\s+/g, "")
+      return out
+    }
+
     // 标题历史污染清洗（存量数据）：抓取端旧实现把高亮标签剥成空格，标题里留下「医院」两侧空格。
     // 中文排版中汉字之间的空格几乎不可能是刻意的，汉字/中文标点之间的空格安全折叠；
     // 英文/数字之间的空格保留（"CT MRI"这类不吃掉）。
@@ -190,6 +232,39 @@ routerAdd("POST", "/api/intel/tick", (e) => {
       }
     }
     // ===INTEL-SHARED-END===
+
+    // 信息源健康（2026-11-02）：死链（404/DNS/拒连）连续 3 次自动停用；
+    // 反爬 403/412、5xx、超时绝不自动停用——可恢复错误不能误判成死链。
+    var __intelFailureKind = function (msg) {
+      var s = String(msg || "")
+      if (/HTTP 404|no such host|NXDOMAIN|connection refused|No connection could be made/i.test(s)) return "dead"
+      if (/HTTP (403|412)|HTTP 5\d\d|timeout|deadline|tls|x509|超时/i.test(s)) return "transient"
+      return "other"
+    }
+    var __intelNoteFetchError = function (src, msg) {
+      var n = Number(src.get("failure_count") || 0) + 1
+      var kind = __intelFailureKind(msg)
+      var note = String(msg || "抓取失败").slice(0, 360)
+      if (kind === "dead" && n >= 3) {
+        src.set("enabled", false)
+        note += "；连续 " + n + " 次失效，已自动停用（更换网址后可手动启用）"
+      }
+      src.set("failure_count", n)
+      src.set("last_fetch_at", new Date().toISOString())
+      src.set("last_status", "error")
+      src.set("last_error", note)
+      $app.save(src)
+      return { kind: kind, count: n, disabled: kind === "dead" && n >= 3 }
+    }
+    var __intelNoteFetchOk = function (src, added) {
+      src.set("failure_count", 0)
+      src.set("last_success_at", new Date().toISOString())
+      src.set("last_fetch_at", new Date().toISOString())
+      src.set("last_status", "ok")
+      src.set("last_error", "")
+      src.set("fetched_count", Number(src.get("fetched_count") || 0) + Number(added || 0))
+      $app.save(src)
+    }
 
     // 单源冷却期（分钟）：与 UI 文案「每 30 分钟自动抓取一轮到期的启用源」保持一致
     var FETCH_INTERVAL_MIN = 30
@@ -404,17 +479,11 @@ routerAdd("POST", "/api/intel/tick", (e) => {
         })
       } catch (err) {
         var emsg = String((err && err.message) || err || "")
-        src.set("last_fetch_at", new Date().toISOString())
-        src.set("last_status", "error")
-        src.set("last_error", (/timeout|deadline/i.test(emsg) ? "抓取超时（15s），该网站可能无法访问" : "无法连接：" + emsg).slice(0, 400))
-        $app.save(src)
+        __intelNoteFetchError(src, (/timeout|deadline/i.test(emsg) ? "抓取超时（15s），该网站可能无法访问" : "无法连接：" + emsg).slice(0, 400))
         return 0
       }
       if (res.statusCode !== 200) {
-        src.set("last_fetch_at", new Date().toISOString())
-        src.set("last_status", "error")
-        src.set("last_error", "对方返回 HTTP " + res.statusCode)
-        $app.save(src)
+        __intelNoteFetchError(src, "对方返回 HTTP " + res.statusCode)
         return 0
       }
       var html = typeof res.raw === "string" ? res.raw.slice(0, 600000) : ""
@@ -478,6 +547,13 @@ routerAdd("POST", "/api/intel/tick", (e) => {
         item.set("content_snippet", finalSnippet)
         item.set("item_type", String(src.get("source_type") || "policy"))
         item.set("summary", hasBody ? makeSummary(body, title) : "")
+        // 招标结构化随抓取落库：不再等用户手动点「存量抽取」，新条目天然可按预算/截止筛选
+        if (String(src.get("source_type") || "") === "bid" || /招标|中标|成交|采购|磋商|询价|开标/.test(title)) {
+          var bs = __intelExtractBid(title, hasBody ? body : snippet)
+          var bsKeys = 0
+          for (var bk in bs) bsKeys++
+          if (bsKeys > 0) item.set("structured", bs)
+        }
         item.set("tags", extractTags(enrichText))
         item.set("region", __intelRegion(title, snippet))
         item.set("item_status", "pending")
@@ -489,11 +565,7 @@ routerAdd("POST", "/api/intel/tick", (e) => {
         existing[full] = true
         added++
       }
-      src.set("last_fetch_at", new Date().toISOString())
-      src.set("last_status", "ok")
-      src.set("last_error", "")
-      src.set("fetched_count", Number(src.get("fetched_count") || 0) + added)
-      $app.save(src)
+      __intelNoteFetchOk(src, added)
       $app.logger().info("intel-center crawled", "source", String(src.get("source_name") || ""), "added", added, "skipped_irrelevant", skippedIrrelevant)
       return added
     }
@@ -706,6 +778,8 @@ routerAdd("GET", "/api/intel/sources", (e) => {
         last_status: String(rec.get("last_status") || ""),
         last_error: String(rec.get("last_error") || ""),
         fetched_count: Number(rec.get("fetched_count") || 0),
+        failure_count: Number(rec.get("failure_count") || 0),
+        last_success_at: String(rec.get("last_success_at") || ""),
         created: String(rec.get("created") || "")
       }
     }
@@ -804,6 +878,12 @@ routerAdd("PATCH", "/api/intel/sources/{id}", (e) => {
       }
       if (body.enabled === true || body.enabled === false) rec.set("enabled", body.enabled)
     }
+    // 手动重新启用 = 明确的人工复核动作：清除连续失败计数，给源一次重新证明机会
+    if (body.enabled === true) {
+      rec.set("failure_count", 0)
+      rec.set("last_status", "")
+      rec.set("last_error", "")
+    }
     $app.save(rec)
     return e.json(200, {
       ok: true,
@@ -813,6 +893,7 @@ routerAdd("PATCH", "/api/intel/sources/{id}", (e) => {
         owner_id: String(rec.get("owner_id") || ""), enabled: !!rec.get("enabled"),
         last_fetch_at: String(rec.get("last_fetch_at") || ""), last_status: String(rec.get("last_status") || ""),
         last_error: String(rec.get("last_error") || ""), fetched_count: Number(rec.get("fetched_count") || 0),
+        failure_count: Number(rec.get("failure_count") || 0), last_success_at: String(rec.get("last_success_at") || ""),
         created: String(rec.get("created") || "")
       }
     })
@@ -970,6 +1051,48 @@ routerAdd("POST", "/api/intel/fetch-now", (e) => {
       return ""
     }
 
+    // 招标/中标结构化字段（零 AI，2026-11-02 起随抓取直接写入 structured）。
+    // 只写明确命中的键；无命中返回 {}，调用方不落成空对象。字段口径与 /api/intel/extract-bid 一致。
+    var __intelExtractBid = function (title, text) {
+      var out = {}
+      var full = String(title || "") + "\n" + String(text || "")
+      var grab = function (resList) {
+        for (var gi = 0; gi < resList.length; gi++) {
+          var mm = full.match(resList[gi])
+          if (mm && mm[1]) return String(mm[1]).replace(/\s+/g, " ").trim().slice(0, 160)
+        }
+        return ""
+      }
+      var ORG_TAIL = "医院|卫生院|保健院|卫健委|卫生健康委|公司|集团|大学|学院|中心|研究院|研究所|事务所|银行|学校|委员会|管委会|管理局|管理处|政府|局|厅|部|厂|站"
+      // 采购人：正文显式标签最强；没有再取标题开头机构名（贪婪到机构尾词，避免只取到「北京大学」）
+      var buyer = grab([
+        /(?:采购人|招标人|招标单位|采购单位|采购人名称|招标人名称|项目建设单位)\s*[:：为]\s*(?:名称)?\s*([^\s，。；;:：、()（）]{2,40}(?:医院|卫生院|保健院|卫健委|卫生健康委|公司|集团|大学|学院|中心|研究院|研究所|事务所|银行|学校|委员会|管委会|管理局|管理处|政府|局|厅|部|厂|站))/,
+        new RegExp("^([\\u4e00-\\u9fa5A-Za-z0-9（）()·]{2,45}(?:" + ORG_TAIL + "))"),
+      ])
+      if (buyer && buyer.length >= 4) out.buyer = buyer.replace(/^关于/, "").slice(0, 60)
+      var budget = grab([
+        /(?:预算金额|采购预算|最高限价|控制价|估算价|预算总价|项目预算|资金预算|概算|预算)\s*[:：为]?\s*(?:人民币)?\s*([\d,，.]+\s*(?:万元|亿元|元))/,
+      ])
+      if (budget) out.budget = budget.replace(/\s+/g, "")
+      var deadline = grab([
+        /(?:投标截止|递交截止|报名截止|获取[^\n]{0,8}?截止|开标时间|截止时间|截止日期|响应文件截止)\s*[:：为至]?\s*(20\d{2}[-/年.]\d{1,2}[-/月.]\d{1,2}\s*日?(?:\s*\d{1,2}[:：]\d{1,2}(?:[:：]\d{1,2})?\s*(?:时|分)?)?)/,
+      ])
+      if (deadline) out.deadline = deadline.replace(/\s+/g, "")
+      var code = grab([
+        /(?:招标编号|采购编号|项目编号|谈判编号|询价编号|比选编号|证券项目编号)\s*[:：为]?\s*([A-Za-z0-9][A-Za-z0-9\-_./·]{3,39})/,
+      ])
+      if (code) out.code = code
+      var winner = grab([
+        /(?:中标(?:人|单位|供应商|公司)|成交(?:供应商|人|单位)|第一中标(?:候选人|供应商))\s*[:：为]\s*([^\s，。；;:：、]{2,40}(?:公司|集团|医院|中心|研究院|事务所|大学|厂|行))/,
+      ])
+      if (winner) out.winner = winner
+      var won = grab([
+        /(?:中标金额|成交金额|中标价|成交价格|合同金额)\s*[:：为]?\s*(?:人民币)?\s*([\d,，.]+\s*(?:万元|亿元|元))/,
+      ])
+      if (won) out.won_amount = won.replace(/\s+/g, "")
+      return out
+    }
+
     // 标题历史污染清洗（存量数据）：抓取端旧实现把高亮标签剥成空格，标题里留下「医院」两侧空格。
     // 中文排版中汉字之间的空格几乎不可能是刻意的，汉字/中文标点之间的空格安全折叠；
     // 英文/数字之间的空格保留（"CT MRI"这类不吃掉）。
@@ -992,6 +1115,37 @@ routerAdd("POST", "/api/intel/fetch-now", (e) => {
       }
     }
     // ===INTEL-SHARED-END===
+
+    // 与 tick 同口径的信息源健康记账：死链连续 3 次自动停用，瞬时错误只累计不封杀
+    var __intelFailureKind = function (msg) {
+      var s = String(msg || "")
+      if (/HTTP 404|no such host|NXDOMAIN|connection refused|No connection could be made/i.test(s)) return "dead"
+      if (/HTTP (403|412)|HTTP 5\d\d|timeout|deadline|tls|x509|超时/i.test(s)) return "transient"
+      return "other"
+    }
+    var __intelNoteFetchError = function (src, msg) {
+      var n = Number(src.get("failure_count") || 0) + 1
+      var kind = __intelFailureKind(msg)
+      var note = String(msg || "抓取失败").slice(0, 360)
+      if (kind === "dead" && n >= 3) {
+        src.set("enabled", false)
+        note += "；连续 " + n + " 次失效，已自动停用（更换网址后可手动启用）"
+      }
+      src.set("failure_count", n)
+      src.set("last_fetch_at", new Date().toISOString())
+      src.set("last_status", "error")
+      src.set("last_error", note)
+      $app.save(src)
+    }
+    var __intelNoteFetchOk = function (src, added) {
+      src.set("failure_count", 0)
+      src.set("last_success_at", new Date().toISOString())
+      src.set("last_fetch_at", new Date().toISOString())
+      src.set("last_status", "ok")
+      src.set("last_error", "")
+      src.set("fetched_count", Number(src.get("fetched_count") || 0) + Number(added || 0))
+      $app.save(src)
+    }
 
     var norm = function (s) { return String(s == null ? "" : s).trim() }
     var h = (e.requestInfo() || {}).headers || {}
@@ -1206,17 +1360,11 @@ routerAdd("POST", "/api/intel/fetch-now", (e) => {
     } catch (err2) {
       var emsg = String((err2 && err2.message) || err2 || "")
       var failMsg = /timeout|deadline/i.test(emsg) ? "抓取超时（15s），该网站可能无法访问" : "无法连接该网站：" + emsg.slice(0, 200)
-      src.set("last_fetch_at", new Date().toISOString())
-      src.set("last_status", "error")
-      src.set("last_error", failMsg.slice(0, 400))
-      $app.save(src)
+      __intelNoteFetchError(src, failMsg.slice(0, 400))
       return e.json(200, { ok: false, code: "fetch_failed", message: failMsg, added: 0, source_id: src.id })
     }
     if (res.statusCode !== 200) {
-      src.set("last_fetch_at", new Date().toISOString())
-      src.set("last_status", "error")
-      src.set("last_error", "对方返回 HTTP " + res.statusCode)
-      $app.save(src)
+      __intelNoteFetchError(src, "对方返回 HTTP " + res.statusCode)
       return e.json(200, { ok: false, code: "fetch_failed", message: "抓取失败：对方网站返回 HTTP " + res.statusCode, added: 0, source_id: src.id })
     }
     var html = typeof res.raw === "string" ? res.raw.slice(0, 600000) : ""
@@ -1286,6 +1434,12 @@ routerAdd("POST", "/api/intel/fetch-now", (e) => {
       item.set("content_snippet", finalSnippet)
       item.set("item_type", String(src.get("source_type") || "policy"))
       item.set("summary", hasBody ? makeSummary(artBody, title) : "")
+      if (String(src.get("source_type") || "") === "bid" || /招标|中标|成交|采购|磋商|询价|开标/.test(title)) {
+        var bs = __intelExtractBid(title, hasBody ? artBody : snippet)
+        var bsKeys = 0
+        for (var bk in bs) bsKeys++
+        if (bsKeys > 0) item.set("structured", bs)
+      }
       item.set("tags", extractTags(enrichText))
       item.set("region", __intelRegion(title, snippet))
       item.set("item_status", "pending")
@@ -1297,11 +1451,7 @@ routerAdd("POST", "/api/intel/fetch-now", (e) => {
       existing[full] = true
       added++
     }
-    src.set("last_fetch_at", new Date().toISOString())
-    src.set("last_status", "ok")
-    src.set("last_error", "")
-    src.set("fetched_count", Number(src.get("fetched_count") || 0) + added)
-    $app.save(src)
+    __intelNoteFetchOk(src, added)
     $app.logger().info("intel-center fetch-now", "user", userId, "source", String(src.get("source_name") || ""), "added", added, "skipped_irrelevant", skippedIrrelevant)
     return e.json(200, {
       ok: true,
@@ -1565,6 +1715,48 @@ routerAdd("GET", "/api/intel/items", (e) => {
         if (d3) return d3
       }
       return ""
+    }
+
+    // 招标/中标结构化字段（零 AI，2026-11-02 起随抓取直接写入 structured）。
+    // 只写明确命中的键；无命中返回 {}，调用方不落成空对象。字段口径与 /api/intel/extract-bid 一致。
+    var __intelExtractBid = function (title, text) {
+      var out = {}
+      var full = String(title || "") + "\n" + String(text || "")
+      var grab = function (resList) {
+        for (var gi = 0; gi < resList.length; gi++) {
+          var mm = full.match(resList[gi])
+          if (mm && mm[1]) return String(mm[1]).replace(/\s+/g, " ").trim().slice(0, 160)
+        }
+        return ""
+      }
+      var ORG_TAIL = "医院|卫生院|保健院|卫健委|卫生健康委|公司|集团|大学|学院|中心|研究院|研究所|事务所|银行|学校|委员会|管委会|管理局|管理处|政府|局|厅|部|厂|站"
+      // 采购人：正文显式标签最强；没有再取标题开头机构名（贪婪到机构尾词，避免只取到「北京大学」）
+      var buyer = grab([
+        /(?:采购人|招标人|招标单位|采购单位|采购人名称|招标人名称|项目建设单位)\s*[:：为]\s*(?:名称)?\s*([^\s，。；;:：、()（）]{2,40}(?:医院|卫生院|保健院|卫健委|卫生健康委|公司|集团|大学|学院|中心|研究院|研究所|事务所|银行|学校|委员会|管委会|管理局|管理处|政府|局|厅|部|厂|站))/,
+        new RegExp("^([\\u4e00-\\u9fa5A-Za-z0-9（）()·]{2,45}(?:" + ORG_TAIL + "))"),
+      ])
+      if (buyer && buyer.length >= 4) out.buyer = buyer.replace(/^关于/, "").slice(0, 60)
+      var budget = grab([
+        /(?:预算金额|采购预算|最高限价|控制价|估算价|预算总价|项目预算|资金预算|概算|预算)\s*[:：为]?\s*(?:人民币)?\s*([\d,，.]+\s*(?:万元|亿元|元))/,
+      ])
+      if (budget) out.budget = budget.replace(/\s+/g, "")
+      var deadline = grab([
+        /(?:投标截止|递交截止|报名截止|获取[^\n]{0,8}?截止|开标时间|截止时间|截止日期|响应文件截止)\s*[:：为至]?\s*(20\d{2}[-/年.]\d{1,2}[-/月.]\d{1,2}\s*日?(?:\s*\d{1,2}[:：]\d{1,2}(?:[:：]\d{1,2})?\s*(?:时|分)?)?)/,
+      ])
+      if (deadline) out.deadline = deadline.replace(/\s+/g, "")
+      var code = grab([
+        /(?:招标编号|采购编号|项目编号|谈判编号|询价编号|比选编号|证券项目编号)\s*[:：为]?\s*([A-Za-z0-9][A-Za-z0-9\-_./·]{3,39})/,
+      ])
+      if (code) out.code = code
+      var winner = grab([
+        /(?:中标(?:人|单位|供应商|公司)|成交(?:供应商|人|单位)|第一中标(?:候选人|供应商))\s*[:：为]\s*([^\s，。；;:：、]{2,40}(?:公司|集团|医院|中心|研究院|事务所|大学|厂|行))/,
+      ])
+      if (winner) out.winner = winner
+      var won = grab([
+        /(?:中标金额|成交金额|中标价|成交价格|合同金额)\s*[:：为]?\s*(?:人民币)?\s*([\d,，.]+\s*(?:万元|亿元|元))/,
+      ])
+      if (won) out.won_amount = won.replace(/\s+/g, "")
+      return out
     }
 
     // 标题历史污染清洗（存量数据）：抓取端旧实现把高亮标签剥成空格，标题里留下「医院」两侧空格。
@@ -2212,6 +2404,48 @@ routerAdd("POST", "/api/intel/enrich", (e) => {
       return ""
     }
 
+    // 招标/中标结构化字段（零 AI，2026-11-02 起随抓取直接写入 structured）。
+    // 只写明确命中的键；无命中返回 {}，调用方不落成空对象。字段口径与 /api/intel/extract-bid 一致。
+    var __intelExtractBid = function (title, text) {
+      var out = {}
+      var full = String(title || "") + "\n" + String(text || "")
+      var grab = function (resList) {
+        for (var gi = 0; gi < resList.length; gi++) {
+          var mm = full.match(resList[gi])
+          if (mm && mm[1]) return String(mm[1]).replace(/\s+/g, " ").trim().slice(0, 160)
+        }
+        return ""
+      }
+      var ORG_TAIL = "医院|卫生院|保健院|卫健委|卫生健康委|公司|集团|大学|学院|中心|研究院|研究所|事务所|银行|学校|委员会|管委会|管理局|管理处|政府|局|厅|部|厂|站"
+      // 采购人：正文显式标签最强；没有再取标题开头机构名（贪婪到机构尾词，避免只取到「北京大学」）
+      var buyer = grab([
+        /(?:采购人|招标人|招标单位|采购单位|采购人名称|招标人名称|项目建设单位)\s*[:：为]\s*(?:名称)?\s*([^\s，。；;:：、()（）]{2,40}(?:医院|卫生院|保健院|卫健委|卫生健康委|公司|集团|大学|学院|中心|研究院|研究所|事务所|银行|学校|委员会|管委会|管理局|管理处|政府|局|厅|部|厂|站))/,
+        new RegExp("^([\\u4e00-\\u9fa5A-Za-z0-9（）()·]{2,45}(?:" + ORG_TAIL + "))"),
+      ])
+      if (buyer && buyer.length >= 4) out.buyer = buyer.replace(/^关于/, "").slice(0, 60)
+      var budget = grab([
+        /(?:预算金额|采购预算|最高限价|控制价|估算价|预算总价|项目预算|资金预算|概算|预算)\s*[:：为]?\s*(?:人民币)?\s*([\d,，.]+\s*(?:万元|亿元|元))/,
+      ])
+      if (budget) out.budget = budget.replace(/\s+/g, "")
+      var deadline = grab([
+        /(?:投标截止|递交截止|报名截止|获取[^\n]{0,8}?截止|开标时间|截止时间|截止日期|响应文件截止)\s*[:：为至]?\s*(20\d{2}[-/年.]\d{1,2}[-/月.]\d{1,2}\s*日?(?:\s*\d{1,2}[:：]\d{1,2}(?:[:：]\d{1,2})?\s*(?:时|分)?)?)/,
+      ])
+      if (deadline) out.deadline = deadline.replace(/\s+/g, "")
+      var code = grab([
+        /(?:招标编号|采购编号|项目编号|谈判编号|询价编号|比选编号|证券项目编号)\s*[:：为]?\s*([A-Za-z0-9][A-Za-z0-9\-_./·]{3,39})/,
+      ])
+      if (code) out.code = code
+      var winner = grab([
+        /(?:中标(?:人|单位|供应商|公司)|成交(?:供应商|人|单位)|第一中标(?:候选人|供应商))\s*[:：为]\s*([^\s，。；;:：、]{2,40}(?:公司|集团|医院|中心|研究院|事务所|大学|厂|行))/,
+      ])
+      if (winner) out.winner = winner
+      var won = grab([
+        /(?:中标金额|成交金额|中标价|成交价格|合同金额)\s*[:：为]?\s*(?:人民币)?\s*([\d,，.]+\s*(?:万元|亿元|元))/,
+      ])
+      if (won) out.won_amount = won.replace(/\s+/g, "")
+      return out
+    }
+
     // 标题历史污染清洗（存量数据）：抓取端旧实现把高亮标签剥成空格，标题里留下「医院」两侧空格。
     // 中文排版中汉字之间的空格几乎不可能是刻意的，汉字/中文标点之间的空格安全折叠；
     // 英文/数字之间的空格保留（"CT MRI"这类不吃掉）。
@@ -2538,7 +2772,7 @@ routerAdd("POST", "/api/intel/extract-bid", (e) => {
       ])
       if (code) out.code = code
       var winner = grab(full, [
-        /(?:中标(?:人|单位|供应商|公司)|成交(?:供应商|人|单位)|第一中标(?:候选人|供应商))\s*[:：为]\s*([^\s，。；;:：、]{2,30}?(?:公司|集团|医院|中心|研究院|事务所|大学|厂|行))/,
+        /(?:中标(?:人|单位|供应商|公司)|成交(?:供应商|人|单位)|第一中标(?:候选人|供应商))\s*[:：为]\s*([^\s，。；;:：、]{2,40}(?:公司|集团|医院|中心|研究院|事务所|大学|厂|行))/,
       ])
       if (winner) out.winner = winner
       var won = grab(full, [

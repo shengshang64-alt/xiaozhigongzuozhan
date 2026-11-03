@@ -125,7 +125,9 @@ describe("lintDeck", () => {
     const issues = lintDeck([mk({ title: "建设目标", bullets: ["为XX医院部署一体化平台"] })])
     const pl = find(issues, "placeholder_leftover")
     expect(pl).toBeTruthy()
-    expect(pl?.level).toBe("warn")
+    // 2026-10-30 行为变更：占位符残留升级为 error（会阻断导出）——
+    // "XX医院"出现在交付给客户的 PPT 里是事故，必须拦在下载前。
+    expect(pl?.level).toBe("error")
     expect(pl?.page).toBe(1)
     expect(pl?.msg).toContain("XX")
   })

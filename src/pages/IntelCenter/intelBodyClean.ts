@@ -249,6 +249,13 @@ export function cleanIntelSnippet(raw: string, opts: { title?: string; max?: num
     s = next
   }
   if (!s) return ""
+  // 招标列表页前缀元数据（代理机构/公告类型/地区）不是摘要。只在头部证据齐全时剥到最后一枚竖线，
+  // 防止把「院 | 代理机构：X 中标公告 | 吉林 |」直接展示给用户；正文里的代理机构表述不受影响。
+  const head = s.slice(0, 180)
+  if (/代理机构[：:]/.test(head) && /公告|公示/.test(head) && /[|｜]/.test(head)) {
+    const pipe = Math.max(head.lastIndexOf("|"), head.lastIndexOf("｜"))
+    if (pipe >= 0) s = s.slice(pipe + 1).trim()
+  }
   const dateCount = (s.match(LIST_DATE_SPLIT_RE) ?? []).length
   if (dateCount >= 2) {
     // 列表残片：按日期戳切段，只保留最长的一段，且它必须「像正文」并「属于本条」

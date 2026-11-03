@@ -39,6 +39,17 @@ export const KNOWN_MODEL_PROFILES: Record<string, ModelProfile> = {
   "deepseek-chat": { specialty: "通用对话，中文表达自然", tags: ["对话", "通用"] },
   "deepseek-reasoner": { specialty: "推理链模式，数学/逻辑题", tags: ["推理"] },
 
+  // ---- 2026-10-31 本地实测补充（scripts/model-bench.py / model-deep-test.py）----
+  // 实测环境：本机网关 + ange/Intern/sensenova 三个配置，4 个模型可用、22 个不可用。
+  // 只收录**实测通过全部用例**的模型，并按其真实表现打标签——避免路由选中不可用模型。
+  //   minimax-m3           : 4/4 用例通过，总延迟 13.3s（最快），长文 1960 字、长上下文提取正常
+  //   agnes-3.0-flash      : 4/4 通过，总延迟 29.2s，长文 1627 字
+  //   sensenova-6.8-flash-lite: 4/4 通过，总延迟 54.9s（慢，作兜底）
+  //   deepseek-v4-flash-vision: 实测 429 限流不可用 → 不在此表标记为高优先级（见下方 unavailable 说明）
+  "minimax-m3": { specialty: "实测最快（13.3s/4用例）、长文 1960 字最佳、长上下文提取正常", tags: ["长文", "中文", "写作", "通用", "长上下文", "快速"] },
+  "agnes-3.0-flash": { specialty: "实测稳定（29.2s/4用例），长文 1600+ 字，指令遵循好", tags: ["中文", "写作", "通用", "长文"] },
+  "sensenova-6.8-flash-lite": { specialty: "商汤日日新，实测可用但较慢（54.9s/4用例），适合兜底", tags: ["中文", "通用"] },
+
   // ---- GLM 智联系 ----
   "glm-5.1": { specialty: "通用中文对话与写作", tags: ["中文", "通用"] },
   "glm-5.2": { specialty: "长文档理解，标书/方案友好", tags: ["长文档", "中文"] },

@@ -78,6 +78,8 @@ export const CRITICAL_SECTION_KEYS: readonly string[] = [
   "response_req", // 响应文件要求（大纲硬依赖）
   "biz_score", // 商务评分要求（大纲硬依赖）
   "void_items", // 无效标与废标项（漏一条即废标）
+  "qualification", // 资格性审查（不通过即出局；2026-10-22 升为必选并要求门禁覆盖）
+  "compliance", // 符合性检查（实质性偏离即废标；同上）
   "bid_outline_req", // 投标文件目录要求（大纲/正文编排依赖）
 ]
 
@@ -114,19 +116,23 @@ export function isBlockingMissingStatus(status: ParseSection["status"] | undefin
  */
 function isSectionMissing(s: ParseSection | undefined): boolean {
   if (!s) return true
+  const text = String(s.content ?? "").trim()
+  // 2026-10-22：降级交付（〔系统降级…）是 AI 没解析成功的产物，不是「本文没有这一项」——
+  // 原判据只看 status（解析批次未落 status 时为 undefined）与空态正则，降级内容会被当成「有内容」放行，
+  // 生成门禁因此在废标项降级时仍判 green。此判据优先于 status，与 requiredParseFailures 口径对齐。
+  if (text.startsWith("〔系统降级")) return true
   // miss = 原文本就没有这一项，是正确完整的解析结果 → 不算缺失（见 isBlockingMissingStatus 注释）
   if (s.status === "miss") return false
   if (isBlockingMissingStatus(s.status)) return true
-  const text = String(s.content ?? "").trim()
   return !text || EMPTY_SECTION_RE.test(text)
 }
 
 /**
  * 返回「缺失」的关键解析项 key 列表（顺序同 keys）。判据见 isSectionMissing。
  *
- * R58（B28）：增加 `requestedKeys` 参数。默认关键项里 `void_items` 属于完整档附加项，
- * 默认 key 档解析并不请求它；若不看请求范围就判缺，会把大量 key 档项目误拦。
- * 调用方应传入该项目 `parse_config` 实际请求的 keys，未请求的关键项不算缺失。
+ * R58（B28）：增加 `requestedKeys` 参数。**存量项目**的 key 档解析并不请求 void_items
+ * （2026-10-22 起新解析已把它升为必选，但历史报告仍可能没有）；若不看请求范围就判缺，
+ * 会把大量旧 key 档项目误拦。调用方应传入该项目 `parse_config` 实际请求的 keys，未请求的关键项不算缺失。
  */
 export function missingCriticalSections(
   sections: ParseSection[],
@@ -257,7 +263,7 @@ function countNonEmptyLines(text: string | undefined | null): number {
  *    仅靠规模阈值不告警，而生成门禁却判其缺项（两份判据在同一份数据上结论相反）。故新增
  *    「关键项无有效内容」触发，与门禁同判据（missingCriticalSections）。
  * ② 「非空分区」不再用「content 非空白字符 > 0」，改为复用门禁的 isSectionMissing（占位文字不算有内容）。
- * ③ 必须传 `requestedKeys`：不传就会把根本没请求过的项（key 档不请求 void_items）当缺失，
+ * ③ 必须传 `requestedKeys`：不传就会把根本没请求过的项（2026-10-22 之前的 key 档项目不请求 void_items）当缺失，
  *    实测会给 11 条 key 档项目里的 5 条发假告警。`requestedKeys` 只影响「关键项/废标项是否被判缺」，
  *    不影响非空分区计数（见函数内注释）。
  * ④ 全部触发受 PARSE_DEGRADED_MIN_SOURCE_CHARS 门槛约束，小标书不告警。

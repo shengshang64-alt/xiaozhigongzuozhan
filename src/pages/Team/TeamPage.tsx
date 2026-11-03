@@ -89,11 +89,13 @@ export function TeamPage(p: UseTeam) {
                       {m.name.slice(0, 1).toUpperCase()}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="flex items-center gap-2 truncate text-sm font-medium text-foreground">
+                      {/* 2026-10-31 修：原来是 <p> 内含 <Badge>（Badge 渲染为 div），
+                          属非法嵌套（p 只能含行内元素），React 会报 hydration 错误。改 div。 */}
+                      <div className="flex items-center gap-2 truncate text-sm font-medium text-foreground">
                         {m.name}
                         {isSelf && <span className="text-xs text-muted-foreground">（我）</span>}
                         {!m.active && <Badge variant="neutral">已停用</Badge>}
-                      </p>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <span title={lockReason ?? undefined}>
@@ -120,7 +122,7 @@ export function TeamPage(p: UseTeam) {
                         {m.active ? "停用" : "启用"}
                       </Button>
                     </div>
-                    <Badge variant={ROLE_BADGE_VARIANT[m.role] ?? "neutral"} className="w-[52px] justify-center">
+                    <Badge variant={ROLE_BADGE_VARIANT[m.role] ?? "neutral"} className="min-w-[52px] shrink-0 justify-center whitespace-nowrap">
                       {TEAM_ROLE_LABELS[m.role] ?? m.role}
                     </Badge>
                   </div>

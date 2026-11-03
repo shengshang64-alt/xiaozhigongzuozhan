@@ -2,6 +2,7 @@ import { Archive, ArrowRight, ClipboardList, Download, FileCheck2, Loader2, Rota
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { GateChecklist } from "@/components/bid-workspace/GateChecklist"
+import { SubmissionReadinessPanel } from "@/components/bid-workspace/SubmissionReadinessPanel"
 import {
   archiveCardGuidance,
   type ArchiveExportKey,
@@ -14,6 +15,7 @@ type ArchivePanelProps = Pick<
   UseBidWorkspace,
   | "activeProject"
   | "requestStep"
+  | "splitProseLongParagraphs"
   | "exportBusy"
   | "exportBidWord"
   | "exportReport"
@@ -154,6 +156,12 @@ export function ArchivePanel(p: ArchivePanelProps) {
         />
       </div>
 
+      {/* 2026-10-23（P0-1 交卷清单）：跨步骤汇总——用户走完前三步就不走了，
+          这里把"离交卷还差什么"摊平成一件事一行，每行都能跳去处理 */}
+      <div className="mt-5">
+        <SubmissionReadinessPanel project={activeProject} onGo={(step) => p.requestStep(step)} onSplitProse={p.splitProseLongParagraphs} />
+      </div>
+
       {/* 第九轮改造 1：交卷闸门卡（结果登记之后、导出卡片上方） */}
       <div className="mt-5">
         <GateChecklist
@@ -214,7 +222,7 @@ export function ArchivePanel(p: ArchivePanelProps) {
                   className="w-full border-border text-card-foreground shadow-sm hover:bg-secondary disabled:opacity-60"
                 >
                   {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Download className="mr-1.5 h-4 w-4" />}
-                  {busy ? "导出中…" : g.ready ? "导出 Word" : "内容未就绪"}
+                  {busy ? "导出中…" : g.ready ? "导出 Word" : (g.shortLabel ?? "内容未就绪")}
                 </Button>
                 {!g.ready && !busy && (
                   <button

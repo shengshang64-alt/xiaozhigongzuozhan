@@ -1,8 +1,10 @@
 import { useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { ArrowLeftRight, Database, Download, FileUp, ListChecks, Loader2, Save, Sparkles, Table2, Trash2, Upload } from "lucide-react"
+import { ArrowLeftRight, Brain, Database, Download, FileUp, ListChecks, Loader2, Save, ShieldCheck, Sparkles, Table2, Trash2, Upload } from "lucide-react"
 import { CompanyLibraryDialog } from "./CompanyLibraryDialog"
-import { toast } from "sonner"
+import { CompareTable } from "./CompareTable"
+import { MappingMemoryDialog } from "./MappingMemoryDialog"
+import { UploadWizardDialog } from "./UploadWizardDialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -18,17 +20,19 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent } from "@/components/ui/card"
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
 import { SkillPickerFor } from "@/components/common/SkillPicker"
-import { MatchKindBadge } from "@/components/solution-studio/checklist/ChecklistBadges"
-import { calcTotal, fmtMoney, type ChecklistLine, type MatchRow } from "@/pages/SolutionStudio/checklistTypes"
-import { candidateLabel, fieldText } from "./mappingCore"
+import { calcTotal, fmtMoney, RATING_GROUPS, type ChecklistLine } from "@/pages/SolutionStudio/checklistTypes"
+import { ratingSelectionText } from "./ratingCoverage"
 import type { UseProductMapping } from "./useProductMapping"
 
 // ---------------------------------------------------------------------------
-// 产品映射 View：三来源建设清单输入 + ONE-LINK 一一对照 + 公司格式展示/导出
+// 产品映射 View（2026-10-28 重构）：
+//   上传向导（任意 Excel 原表保留）→ 离线匹配（记忆库/规则）→ 对照表（原表列+映射列组）
+//   → 人工调整（可搜索目录选择器）→ 记忆库沉淀 → 导出（对照表 / 覆盖视角 / 骨架回填）
+//   AI 语义匹配为可选手动触发（离线优先，数据出不出本机由用户决定）。
 // ---------------------------------------------------------------------------
 
 const SOURCE_TABS: { key: UseProductMapping["sourceTab"]; label: string }[] = [
-  { key: "paste", label: "粘贴 / Excel" },
+  { key: "paste", label: "上传 / 粘贴" },
   { key: "bid", label: "从招标文件" },
   { key: "solution", label: "从方案 / 需求" },
 ]
@@ -36,19 +40,6 @@ const SOURCE_TABS: { key: UseProductMapping["sourceTab"]; label: string }[] = [
 const VIEWS: { key: "compare" | "checklist"; label: string; icon: typeof Table2 }[] = [
   { key: "compare", label: "一一对照", icon: ArrowLeftRight },
   { key: "checklist", label: "建设清单", icon: ListChecks },
-]
-
-/** 公司规范展示列（对齐 ONE-LINK《按公司规范》） */
-const COMPANY_COLS: { key: Parameters<typeof fieldText>[1]; label: string }[] = [
-  { key: "product_belong", label: "产品归属" },
-  { key: "category", label: "产品类别" },
-  { key: "product_name", label: "产品名称" },
-  { key: "module_category", label: "模块分类" },
-  { key: "module_name", label: "模块名称" },
-  { key: "standard_name", label: "标准名称" },
-  { key: "module_attr", label: "模块属性" },
-  { key: "coefficient", label: "系数" },
-  { key: "recommendation", label: "建议" },
 ]
 
 function NumCell({ value, ariaLabel, onCommit }: { value: number; ariaLabel: string; onCommit: (n: number) => void }) {
@@ -77,20 +68,6 @@ function SourcePanel({ p }: { p: UseProductMapping }) {
   const [bidId, setBidId] = useState("")
   const [solId, setSolId] = useState("")
 
-  const handleUpload = async (file: File) => {
-    try {
-      const { parseCustomerLinesFile } = await import("@/pages/SolutionStudio/checklistExports")
-      const lines = await parseCustomerLinesFile(file)
-      if (!lines.length) {
-        toast.error("未从文件中解析到清单条目")
-        return
-      }
-      p.startMatch(lines, lines.join("\n"))
-    } catch {
-      toast.error("Excel 解析失败，请检查文件内容")
-    }
-  }
-
   return (
     <Card className="mb-5 shadow-sm">
       <CardContent className="p-5">
@@ -114,35 +91,41 @@ function SourcePanel({ p }: { p: UseProductMapping }) {
 
         {p.sourceTab === "paste" && (
           <div>
-            <Textarea
-              rows={8}
-              value={p.rawText}
-              onChange={(e) => p.setRawText(e.target.value)}
-              placeholder={"每行一个系统 / 模块条目，如：\n1. 电子病历系统（含质控）\n2、集成平台 V3.0\n(3) 门急诊挂号收费"}
-            />
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Button variant="outline" onClick={() => fileRef.current?.click()} className="border-border text-muted-foreground hover:text-foreground">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <Button onClick={() => fileRef.current?.click()} disabled={p.productsLoading}>
                 <FileUp className="mr-1 h-4 w-4" />
-                上传建设清单 Excel
+                上传清单 Excel（推荐）
               </Button>
               <input
                 ref={fileRef}
                 type="file"
-                accept=".xlsx,.xls"
+                accept=".xlsx,.xls,.csv"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0]
-                  if (file) void handleUpload(file)
+                  if (file) p.openWizard(file)
                   e.target.value = ""
                 }}
               />
+              <span className="text-xs text-muted-foreground">
+                支持任意格式的业主清单：向导里确认表头行和名称列，原表所有列会保留进对照表。
+              </span>
+            </div>
+            <Textarea
+              rows={6}
+              value={p.rawText}
+              onChange={(e) => p.setRawText(e.target.value)}
+              placeholder={"或者直接粘贴文本，每行一个系统 / 模块条目：\n1. 电子病历系统（含质控）\n2、集成平台 V3.0\n(3) 门急诊挂号收费"}
+            />
+            <div className="mt-3 flex flex-wrap items-center gap-2">
               <SkillPickerFor scope="product-map" source={p.matchSkills} />
               <Button
+                variant="outline"
                 onClick={() => p.startMatch(p.rawText.split("\n"), p.rawText)}
                 disabled={p.busy || p.productsLoading || !p.rawText.trim()}
               >
                 {p.busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1 h-4 w-4" />}
-                开始一一对照
+                按粘贴文本对照
               </Button>
             </div>
           </div>
@@ -232,123 +215,6 @@ function SourcePanel({ p }: { p: UseProductMapping }) {
   )
 }
 
-function CompareTable({ p }: { p: UseProductMapping }) {
-  return (
-    <div className="overflow-x-auto rounded-lg border border-border">
-      <table className="w-full min-w-[1120px] border-collapse text-left text-sm">
-        <thead className="sticky top-0 bg-secondary/80 backdrop-blur">
-          <tr className="border-b border-border text-xs text-muted-foreground">
-            <th className="px-3 py-2 font-medium">客户条目</th>
-            <th className="px-3 py-2 font-medium">匹配方式</th>
-            {COMPANY_COLS.map((c) => (
-              <th key={c.key} className="whitespace-nowrap px-3 py-2 font-medium">
-                {c.label}
-              </th>
-            ))}
-            <th className="px-3 py-2 font-medium">备注</th>
-            <th className="px-3 py-2 font-medium">调整</th>
-          </tr>
-        </thead>
-        <tbody>
-          {p.compareRows.map((r) => (
-            <tr key={r.row_id} className={`border-b border-border/60 last:border-0 ${r.resolution === "ignore" ? "opacity-50" : ""}`}>
-              <td className="px-3 py-2 text-foreground">{r.customer}</td>
-              <td className="px-3 py-2">
-                <MatchKindBadge kind={r.kind} />
-              </td>
-              {r.product ? (
-                COMPANY_COLS.map((c) => (
-                  <td key={c.key} className="whitespace-nowrap px-3 py-2 text-foreground">
-                    {fieldText(r.product, c.key) || <span className="text-muted-foreground">—</span>}
-                  </td>
-                ))
-              ) : (
-                <>
-                  <td className="px-3 py-2" colSpan={COMPANY_COLS.length}>
-                    {r.resolution === "external" ? (
-                      <span className="text-xs text-destructive">标为外购系统</span>
-                    ) : r.resolution === "ignore" ? (
-                      <span className="text-xs text-muted-foreground">已忽略</span>
-                    ) : r.suggestion ? (
-                      /* 2026-10-28（DS-R08）：中把握候选不自动落，但必须让用户看见——
-                         否则他只能从几百条公司条目里手翻。点一下即采纳。 */
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="rounded-full border border-amber-400/50 bg-amber-100 px-2 py-0.5 text-xs text-amber-700">
-                          留空待人工
-                        </span>
-                        <button
-                          type="button"
-                          title={r.suggestion.reason}
-                          onClick={() => p.setMatchProduct(r.row_id, r.suggestion!.product_id)}
-                          className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/5 px-2 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                        >
-                          <Sparkles className="h-3 w-3" />
-                          建议：{r.suggestion.label}
-                          <span className="text-[10px] opacity-70">{Math.round(r.suggestion.score * 100)}%</span>
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="rounded-full border border-amber-400/50 bg-amber-100 px-2 py-0.5 text-xs text-amber-700">留空待人工</span>
-                    )}
-                  </td>
-                </>
-              )}
-              <td className="px-3 py-2">
-                <Input
-                  className="h-8 w-40"
-                  value={p.rowNotes[r.row_id] ?? ""}
-                  onChange={(e) => p.setRowNote(r.row_id, e.target.value)}
-                  placeholder="一对多其余/命名错位说明"
-                  aria-label="备注"
-                />
-              </td>
-              <td className="px-3 py-2">
-                <div className="flex items-center gap-1">
-                  <Select value={r.product?.id ?? ""} onValueChange={(v) => p.setMatchProduct(r.row_id, v)}>
-                    <SelectTrigger className="h-8 w-40">
-                      <SelectValue placeholder="指定公司条目" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {p.companyProducts.map((prod) => (
-                        <SelectItem key={prod.id} value={prod.id}>
-                          {candidateLabel(prod)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <ResolutionButtons row={r} onSet={(res) => p.setMatchResolution(r.row_id, res)} />
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function ResolutionButtons({ row, onSet }: { row: { resolution: MatchRow["resolution"] }; onSet: (r: MatchRow["resolution"]) => void }) {
-  return (
-    <span className="flex gap-1">
-      {row.resolution !== "company" && (
-        <Button size="sm" variant="ghost" onClick={() => onSet("company")} className="px-2 text-muted-foreground hover:text-foreground">
-          公司
-        </Button>
-      )}
-      {row.resolution !== "external" && (
-        <Button size="sm" variant="ghost" onClick={() => onSet("external")} className="px-2 text-muted-foreground hover:text-destructive">
-          外购
-        </Button>
-      )}
-      {row.resolution !== "ignore" && (
-        <Button size="sm" variant="ghost" onClick={() => onSet("ignore")} className="px-2 text-muted-foreground hover:text-foreground">
-          忽略
-        </Button>
-      )}
-    </span>
-  )
-}
-
 function ChecklistTable({ p }: { p: UseProductMapping }) {
   const kept = p.checklistLines.filter((l) => l.checked !== false)
   return (
@@ -408,11 +274,94 @@ function ChecklistTable({ p }: { p: UseProductMapping }) {
   )
 }
 
+/**
+ * 评级筛选条（2026-10-29）
+ *
+ * 用户需求：公司清单导出要先按评级要求筛一遍，再把客户提到的要求补进来，
+ * 并明确标注三方/公司/自定义；评级必选项必须体现。
+ * 这里既是筛选控件的入口，也是「当前会导出什么」的实时预览。
+ */
+function RatingFilterBar({ p }: { p: UseProductMapping }) {
+  const st = p.ratingStats
+  const selectedText = ratingSelectionText(p.ratingSel)
+  const hasSel = Boolean(selectedText)
+  return (
+    <div className="mb-4 rounded-lg border border-border bg-secondary/30 px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="flex items-center gap-1 text-xs font-medium text-foreground">
+          <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+          评级要求
+        </span>
+        <span className="text-[11px] text-muted-foreground">选中后按评级筛模块，「必选」强制带出</span>
+        {hasSel && (
+          <button type="button" onClick={p.clearRating} className="text-[11px] text-primary hover:underline">
+            清除
+          </button>
+        )}
+        <label className="ml-auto flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={p.includeRatingOptional}
+            onChange={(e) => p.setIncludeRatingOptional(e.target.checked)}
+            className="h-3 w-3 accent-primary"
+          />
+          含「可选」评级模块
+        </label>
+      </div>
+
+      <div className="mt-2 space-y-1.5">
+        {RATING_GROUPS.map((g) => {
+          const picked = p.ratingSel[g.key] ?? []
+          return (
+            <div key={g.key} className="flex flex-wrap items-center gap-1.5">
+              <span className="w-20 shrink-0 text-[11px] text-muted-foreground">{g.short}</span>
+              {g.levels.map((lv) => {
+                const on = picked.includes(lv.value)
+                return (
+                  <button
+                    key={lv.value}
+                    type="button"
+                    onClick={() => p.toggleRating(g.key, lv.value)}
+                    aria-pressed={on}
+                    className={`rounded-full border px-2 py-0.5 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                      on
+                        ? "border-primary bg-primary/10 font-medium text-primary"
+                        : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                    }`}
+                  >
+                    {lv.label}
+                  </button>
+                )
+              })}
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-border/60 pt-2 text-[11px] text-muted-foreground">
+        <span className="text-foreground">将导出 {st.total} 项</span>
+        <span>·</span>
+        <span className="font-medium text-destructive">评级必选 {st.required}</span>
+        <span>·</span>
+        <span className="text-emerald-600">公司 {st.company}</span>
+        <span>·</span>
+        <span className="text-orange-600">三方 {st.thirdparty}</span>
+        <span>·</span>
+        <span className="text-violet-600">自定义 {st.custom}</span>
+        <span>·</span>
+        <span>客户清单已覆盖 {st.coveredByCustomer}</span>
+      </div>
+    </div>
+  )
+}
+
 function ResultSection({ p }: { p: UseProductMapping }) {
   const skeletonRef = useRef<HTMLInputElement | null>(null)
+  const aiLeft = p.rows.filter((r) => r.kind === "none" && r.resolution === "company").length
   return (
     <Card className="shadow-sm">
       <CardContent className="p-5">
+        <RatingFilterBar p={p} />
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex w-fit items-center gap-1 rounded-full bg-muted p-0.5">
             {VIEWS.map((v) => {
@@ -434,15 +383,35 @@ function ResultSection({ p }: { p: UseProductMapping }) {
             })}
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span>命中 {p.matchedCount}</span>
+            <span className="text-emerald-600">命中 {p.matchedCount}</span>
             <span>·</span>
-            <span>待人工 {p.unmatchedCount}</span>
+            <span className="text-amber-600">待确认 {p.suggestedCount}</span>
+            <span>·</span>
+            <span className="text-red-600">无匹配 {p.unmatchedCount}</span>
             <span>·</span>
             <span>外购 {p.externalCount}</span>
             <span>·</span>
             <span>忽略 {p.ignoredCount}</span>
           </div>
         </div>
+
+        {(p.suggestedCount > 0 || aiLeft > 0) && p.view === "compare" && (
+          <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-secondary/40 px-3 py-2">
+            {p.suggestedCount > 0 && (
+              <Button size="sm" variant="outline" onClick={() => void p.adoptAllSuggestions()}>
+                <Sparkles className="mr-1 h-3.5 w-3.5" />
+                一键采纳全部建议（{p.suggestedCount}）
+              </Button>
+            )}
+            {aiLeft > 0 && (
+              <Button size="sm" variant="outline" onClick={p.runAiMatch} disabled={p.busy}>
+                {p.busy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Brain className="mr-1 h-3.5 w-3.5" />}
+                AI 语义匹配剩余 {aiLeft} 条（可选）
+              </Button>
+            )}
+            <span className="text-xs text-muted-foreground">离线规则与记忆库已完成第一轮对照；AI 仅在你点击后运行。</span>
+          </div>
+        )}
 
         {p.busy && (
           <p className="mb-3 flex items-center gap-2 rounded-lg border border-border bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">
@@ -471,7 +440,15 @@ function ResultSection({ p }: { p: UseProductMapping }) {
           </Button>
           <Button variant="outline" onClick={() => void p.exportCompare()} className="border-border text-muted-foreground hover:text-foreground">
             <Download className="mr-1 h-4 w-4" />
-            导出一一对照
+            导出对照表
+          </Button>
+          <Button variant="outline" onClick={() => void p.exportCoverage()} className="border-border text-muted-foreground hover:text-foreground">
+            <Download className="mr-1 h-4 w-4" />
+            导出覆盖视角
+          </Button>
+          <Button onClick={() => void p.exportRatingCoverage()} className="bg-primary text-primary-foreground hover:bg-primary/90">
+            <Download className="mr-1 h-4 w-4" />
+            导出评级覆盖清单
           </Button>
           <Button variant="outline" onClick={() => void p.exportCompanyStandard()} className="border-border text-muted-foreground hover:text-foreground">
             <Download className="mr-1 h-4 w-4" />
@@ -503,8 +480,8 @@ function ResultSection({ p }: { p: UseProductMapping }) {
 }
 
 export function ProductMappingPage(p: UseProductMapping) {
-  // R-006 公司库查看入口：当前生效清单的浏览/查询/导出
   const [companyLibOpen, setCompanyLibOpen] = useState(false)
+  const [memoryOpen, setMemoryOpen] = useState(false)
   const oneLinkRef = useRef<HTMLInputElement | null>(null)
   return (
     <div className="animate-in fade-in duration-500 text-foreground">
@@ -512,10 +489,15 @@ export function ProductMappingPage(p: UseProductMapping) {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">产品映射</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            输入信息化「建设清单」，与我公司《智慧医院 ONE-LINK》标准清单逐条一一对照，AI 先匹配、未命中人工调整，支持公司格式展示与导出。
+            上传业主清单（Excel 原表保留），系统按「记忆库 → 离线规则」自动对照公司 ONE-LINK 标准清单；
+            匹配不上的人工指定并自动记忆，下次同类条目自动命中。支持对照表与目录覆盖视角导出。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setMemoryOpen(true)} className="border-border text-muted-foreground hover:text-foreground">
+            <Brain className="mr-1 h-4 w-4" />
+            记忆库
+          </Button>
           <Button variant="outline" onClick={() => setCompanyLibOpen(true)} className="border-border text-muted-foreground hover:text-foreground">
             <Database className="mr-1 h-4 w-4" />
             公司库
@@ -551,11 +533,20 @@ export function ProductMappingPage(p: UseProductMapping) {
         <ResultSection p={p} />
       ) : (
         <p className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
-          选择来源并「开始一一对照」后，此处将展示客户条目与我公司标准模块的对照结果。
+          上传清单或选择来源开始对照后，此处将按「原表列 + 映射列」展示对照结果。
         </p>
       )}
 
       <CostConfirmDialog {...p.costConfirm} />
+
+      <UploadWizardDialog file={p.wizardFile} onClose={p.closeWizard} onConfirm={p.confirmWizard} />
+
+      <MappingMemoryDialog
+        open={memoryOpen}
+        onOpenChange={setMemoryOpen}
+        products={p.companyProducts}
+        onChanged={p.reloadMappings}
+      />
 
       <Dialog open={Boolean(p.oneLinkSummary)} onOpenChange={(open) => !open && p.cancelOneLink()}>
         <DialogContent>

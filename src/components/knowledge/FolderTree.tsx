@@ -165,7 +165,7 @@ export function FolderTree({
   }, [filteredTree, searching])
   const rootActive = activeFolderPath === null
   return (
-    <aside className="flex h-full min-h-0 flex-col rounded-xl border border-border bg-card shadow-md">
+    <aside className="flex min-h-0 flex-col rounded-xl border border-border bg-card shadow-md lg:h-[calc(100vh-17rem)]">
       <header className="flex min-h-14 shrink-0 items-center justify-between border-b border-border px-3">
         <h2 className="text-sm font-semibold text-foreground">目录</h2>
         <span className="flex items-center gap-1">

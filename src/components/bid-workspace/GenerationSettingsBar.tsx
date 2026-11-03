@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Check, Gauge, Loader2 } from "lucide-react"
+import { Check, ChevronDown, Gauge, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import {
   CLAUSE_GRANULARITY_LABEL,
@@ -77,6 +77,9 @@ const SCOPE_HINT: Record<BidScope, string> = {
  * 估算页数只作参考小字，不再顶替用户设置。
  */
 export function GenerationSettingsBar(p: GenerationSettingsBarProps) {
+  // 2026-10-27 P1：生成设置默认收起（减少首屏控件过载）。用户点「调整」才展开。
+  // 不持久化：这是「当前这一屏的展开态」，不是用户偏好；每次进项目默认收起最清爽。
+  const [open, setOpen] = useState(false)
   const [pagesDraft, setPagesDraft] = useState(p.targetPages === null ? "" : String(p.targetPages))
   const [wordsDraft, setWordsDraft] = useState(String(p.sectionWords))
   // 第十六轮 B2：全文配图上限草稿（空=不限）
@@ -166,16 +169,37 @@ export function GenerationSettingsBar(p: GenerationSettingsBarProps) {
           生成设置
           <span className="text-xs font-normal text-muted-foreground">自动保存到项目，刷新或重进不丢</span>
         </h2>
-        <span
-          className={`flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-            p.settingsSaved ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-          }`}
-        >
-          {p.settingsSaved ? <Check className="h-3 w-3" /> : <Loader2 className="h-3 w-3 animate-spin" />}
-          {p.settingsSaved ? "已保存" : "保存中…"}
-        </span>
+        <div className="flex items-center gap-2">
+          <span
+            className={`flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+              p.settingsSaved ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {p.settingsSaved ? <Check className="h-3 w-3" /> : <Loader2 className="h-3 w-3 animate-spin" />}
+            {p.settingsSaved ? "已保存" : "保存中…"}
+          </span>
+          {/* 2026-10-27 P1：生成设置默认收起。
+              实测第 3 步一屏有 197 个可交互控件（174 按钮 + 17 输入 + 6 开关），
+              其中生成设置全部平铺展开；而绝大多数用户用默认值即可。
+              收起后头部仍用 summary 一行展示「当前生效」口径，不丢信息。 */}
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            aria-controls="gen-settings-body"
+            title={open ? "收起生成设置" : "展开生成设置（调整页数、字数、配图等）"}
+            className="flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            {open ? "收起" : "调整"}
+            <ChevronDown className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`} />
+          </button>
+        </div>
       </div>
 
+      {/* 收起态：一行说明当前生效口径，用户不必展开也知道按什么生成 */}
+      {!open && <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{summary}</p>}
+
+      <div id="gen-settings-body" hidden={!open}>
       {/* 用户反馈轮项 2：原 xl:grid-cols-7 挤行改分组两行——第一行数值/选择组、第二行开关组，
           「技术章生成强化」双 checkbox 卡独立全宽行；控件高度统一 h-9、label 间距统一 gap-1.5 */}
       <div className="mt-3 grid gap-3">
@@ -378,6 +402,7 @@ export function GenerationSettingsBar(p: GenerationSettingsBarProps) {
               <span className="text-xs leading-snug">
                 <span className="font-medium text-foreground">素材优先注入</span>
                 <span className="block text-muted-foreground">开启后生成时加大招标原文检索量，并检索知识库素材注入（注明来源，检索为空时静默跳过）；关闭则仅用招标原文与自有资料，不检索知识库</span>
+                <span className="mt-0.5 block text-[11px] text-warning/90">依赖「素材库 / 知识库」有内容：没有素材时开启也不会命中，只是照常生成（不会报错）</span>
               </span>
             </label>
             <label className="flex cursor-pointer items-start gap-2">
@@ -432,7 +457,9 @@ export function GenerationSettingsBar(p: GenerationSettingsBarProps) {
         </div>
       </div>
 
+      {/* 展开态：完整设置区。summary 在展开时也保留一份（用户调整时能看到当前生效口径） */}
       <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{summary}</p>
+      </div>
     </div>
   )
 }

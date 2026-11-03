@@ -50,7 +50,11 @@ const BAD_PREV = new Set(["得", "加", "减", "扣", "每", "值", "足"])
 // 区间取上界、带上限取上限。单位一律仅认「分」，排除「分钟/分数」（R47/F7）。
 const RE_CAP = /(?:最高|最多|至多|上限|不超过)[^0-9]{0,4}(\d+(?:\.\d+)?)\s*分(?!数|钟)/
 const RE_FULLMARK = /满分[^0-9]{0,4}(\d+(?:\.\d+)?)\s*分(?!数|钟)/
-const RE_PERUNIT = /每\s*[个项类条种次]?[^0-9，,。]{0,6}?(\d+(?:\.\d+)?)\s*分(?!数|钟)/
+// 逐条计量（每…N分）：N 可以是「每增加 1 名…得 0.5 分」这种中间夹数字的写法。
+// 原式 [^0-9，,。]{0,6} 遇到数字即断，实测三明项目「每增加 1 名驻点运维⼈员得 0.5 分，满分 1 分」
+// 因此判不出逐条计量，落进总分分支，把 0.5 记成了「原文总分」（真实总分 100）。
+// 现允许中间出现阿拉伯数字（最多 3 位，避免跨句吞并），并在前缀里显式收「每增加/每多」。
+const RE_PERUNIT = /每\s*(?:增加|多|少)?\s*[个项类条种次名人家]?(?:[\s\d]{0,6})[^0-9，,。；;]{0,12}(\d+(?:\.\d+)?)\s*分(?!数|钟)/
 const RE_PAREN = /[（(]\s*(\d+(?:\.\d+)?)\s*分\s*[)）]/
 const RE_COLON = /[:：]\s*(\d+(?:\.\d+)?)\s*分(?!数|钟)/
 const RE_RANGE = /(\d+(?:\.\d+)?)\s*[-–—~～－]\s*(\d+(?:\.\d+)?)\s*分(?!数|钟)/
@@ -197,8 +201,23 @@ function hasPerUnit(line: string): boolean {
 
 /** 从计分描述之前的片段提取项名：切首个分隔标点或空格（R194：竖线/制表符单元格归一后的列边界）、去序号前缀、去空白 */
 function nameFromHead(head: string): string {
-  return head
-    .split(/[（(：:，,、；;]/)[0]
+  // 2026-10-27：原实现按第一个「：」切（与括号/逗号同在一组分隔符里），实测
+  // 「技术评分要求：总体技术方案（10 分）」会把项名切成类目前缀「技术评分要求」，
+  // 而不是真正的评分项「总体技术方案」。
+  // 但「同类项目业绩：每个5分」里的冒号又**不该**切（项名在冒号前）。
+  // 判据：冒号前若只是「类目/章节」性短语（评分要求/评分标准/技术部分…），
+  // 说明冒号后才是项名；否则冒号属于项名与该行计分说明的分隔，保留冒号前内容。
+  const byComma = head.split(/[，,、；;]/)[0]
+  let src = byComma
+  const colonIdx = byComma.search(/[：:]/)
+  if (colonIdx >= 0) {
+    const before = byComma.slice(0, colonIdx).trim()
+    const after = byComma.slice(colonIdx + 1).trim()
+    const isCategoryPrefix = /(评分要求|评分标准|评分办法|评标办法|技术部分|商务部分|价格部分|评审因素|评分因素|评分项)$/.test(before)
+    if (isCategoryPrefix && after) src = after
+  }
+  return src
+    .split(/[（(：:]/)[0]
     .replace(/^[（([]*[0-9一二三四五六七八九十]{1,3}[）)]*/, "")
     .replace(/^[、.．\s\u3000]+/, "")
     .replace(/[\s\u3000]+/g, "")
@@ -330,6 +349,22 @@ export function scanScoreItems(text: string): {
       if (c !== "other") cat = c
       continue
     }
+    // 总分公式行（2026-10-27）：真实三明招标的总分声明是「F1×A1 ＋ F2×A2 ＋ F3×A3=100 分（满分时）」
+    // ——全行不含「合计/总分」字样，因此原判据根本认不出总分，而随手一行的
+    // 「每增加 1 名驻点运维人员得 0.5 分，满分 1 分」却被当成了总分。
+    // 只认两类**强**总分声明，不碰逐条上限（「满分15分」/「得满分10分」是评分行，交下面入项）：
+    //   ① 「=N 分（满分时）」公式式 —— 必须显式带「满分时/满分制」后缀；
+    //   ② 「合计/总计/总分：N 分」—— 必须带冒号或直接紧跟分值，且前面不是「得/每」。
+    const totalDecl = line.match(/[=＝]\s*(\d{2,3}(?:\.\d+)?)\s*分\s*[（(]\s*满分(?:时|制)/) ||
+      line.match(/(?:^|[^得每])(?:合计|总计|总分)\s*[:：]?\s*(\d{2,3}(?:\.\d+)?)\s*分(?!数|钟)/)
+    if (totalDecl) {
+      const v = Number(totalDecl[1])
+      if (Number.isFinite(v) && v > 0 && v <= 1000 && total.value === null) {
+        total.value = v
+        total.raw = line
+      }
+      continue
+    }
     if (
       (/合计|总分|满分/.test(line) || /^(?:合计|总分)$/.test(prevLine)) &&
       !hasPerUnit(line) &&
@@ -357,6 +392,32 @@ export function scanScoreItems(text: string): {
     const name = nameFromHead(line.slice(0, hit.cut))
     if (!name || name.length < 2) continue
     if (/^(序号|评分因素|评分项|评审因素|分值|评分标准)$/.test(name)) continue
+    // 正文扣分条款剔除（2026-10-27 实测大发现）：三明项目扫描出 29 条「评分项」，只有第 1 条是真的。
+    // 其余 28 条全是合同/服务条款里「每次扣 1 分」「缺一次扣 2 分」的**扣分规则断片**，
+    // 被 RE_PERUNIT / RE_ATTACHED 当成了「项名 + 分值」——例如
+    //   RAW「时扣 1 分；」→ 项名「时扣」 分值 1
+    //   RAW「致投诉的，每次扣 1 分。」→ 项名「致投诉的」分值 1
+    // 这些既不是评分项，还会让「报告漏抽 31 项」这类计数完全失真。
+    // 判据：① 该行/项名含「扣分」语义；② 项名以动词、连词、量词或标点残片开头；
+    // ③ 项名不像一个评审因素（长度过短 / 无名词性结尾）。
+    const lineIsDeduction = /扣\s*[\d一二三四五六七八九十.]|扣完为止|不加分|每次扣|每超时|缺.?次扣/.test(line)
+    if (lineIsDeduction) continue
+    // 项名必须「像个评审因素」。判据只看「明显不像项名」的形态：
+    // ① 以虚词/动词收尾（…的 / …得 / …一致 / …满足）——句子片段；
+    // ② 极短（≤3 字）且以虚词/动词开头（「为一项」「时扣」「求得」）——被拦腰切断的残片。
+    // 刻意的克制：不设正向白名单、不按单个起始字封杀。项名命名自由度大
+    // （「总体技术方案」「同类项目业绩」「若评标价格…得满分」都可能出现），
+    // 过严会把正常项名一并误杀——本功能迭代中已因此红过两次。
+    const nameEndsLikeClause = /(的|得|并|与|和|则|而|也|都|就|即|一致|满足|提供|增加|评议|评分|评分。)$/.test(name)
+    const nameShortAndFragmenty =
+      name.length <= 3 && /^(?:时|为|致|度|检|线|示|足|求|规|容|体|细|到|超|点|扣|每|再|且|或|及|其|该|此|由|经|按|逐|凡|若|如)/.test(name)
+    // 含「每…分」「得…分」这类计分动作的是评分规则片段，不是项名（实测「基础上每增加1名…得0.5分」）
+    const nameIsScoringAction = /每.{0,12}分|得\s*\d|扣\s*\d/.test(name)
+    if (nameEndsLikeClause || nameShortAndFragmenty || nameIsScoringAction) continue
+    const looksLikeFragment =
+      /^(?:[时为致度检与线示足求规容体细到超点]|.*[扣得⽰⾜求]$)/.test(name) ||
+      /扣|得分|满分|偏离|不加分/.test(name)
+    if (looksLikeFragment) continue
     items.push({ name, score, raw: line.slice(0, 120), cat })
     categorySums[cat] += score
   }

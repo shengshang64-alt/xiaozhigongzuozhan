@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { copyTextToClipboard } from "@/lib/clipboard"
 // R118 口径：数字展示统一走 formatCount（锁定 zh-CN 分组），不用裸 toLocaleString()
 import { formatCount } from "@/lib/money"
-import { BookOpenCheck, ClipboardList, Copy, Loader2, Lock, PencilLine, RefreshCw, ScanSearch, ShieldAlert, Sparkles, Star } from "lucide-react"
+import { BookOpenCheck, ChevronDown, ClipboardList, Copy, FileDown, Loader2, Lock, PencilLine, RefreshCw, ScanSearch, ShieldAlert, Sparkles, Star } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -10,6 +10,8 @@ import {
   basisItemKey,
   COMPILATION_BASIS_KEY,
   extractImplicitConstraints,
+  groupImplicitConstraints,
+  type ImplicitConstraintKind,
   PARSE_KEY_SECTIONS,
   PARSE_STATUS_LABEL,
   parseSectionTier,
@@ -27,6 +29,8 @@ import {
   type StandardItem,
 } from "@/pages/BidWorkspace/bidTypes"
 import { COVERAGE_WARN, coveragePercent, parseCoverageRatio } from "@/pages/BidWorkspace/parseCoverage"
+import { buildPurchaseListRows } from "@/pages/BidWorkspace/parseSchemas"
+import { pickTableOfKind, type TenderTableRecord } from "@/pages/BidWorkspace/tenderTables"
 import { buildParseSummary, summarizeParseHealth } from "@/pages/BidWorkspace/parseSummary"
 import { ParseSummaryBoard } from "./ParseSummaryBoard"
 import { countMarkerLossLines, lineHasMarkerLoss } from "@/pages/BidWorkspace/materialIntegrity"
@@ -79,6 +83,10 @@ type ParseReportPanelProps = {
   archived?: boolean
   /** R47（B19）：按环节取模型（自动档=该环节选型；手选档=用户选的模型）；不传则维持平台内置口径 */
   modelRefForRole?: (role: ModelRole) => ModelRef | null
+  /** B4（2026-10-22）：上传 docx 时本地还原的原始表格——采购清单优先用原表呈现，而不是 AI 摘要行 */
+  restoredTables?: TenderTableRecord[] | null
+  /** B4：导出采购清单 Word（有 docx 原表时按原表导） */
+  onExportPurchaseList?: () => void
 }
 
 const STATUS_BADGE: Record<ParseSectionStatus, string> = {
@@ -162,10 +170,59 @@ function renderDetailLine(line: string, isStar: boolean): ReactNode {
 }
 
 /**
+ * 可折叠分析区标题（2026-10-27）：默认折叠时只显示「图标 + 标题 + 计数徽标 + 一句结论」，
+ * 点整行展开明细。用于隐式硬约束 / 合规风险 / 参数研判三个重区，
+ * 让用户先看到「有几条废标、几条风险」的结论，而不是一屏几十条明细平铺。
+ */
+function CollapsibleSectionHeader({
+  icon,
+  title,
+  badges,
+  hint,
+  open,
+  onToggle,
+}: {
+  icon: ReactNode
+  title: string
+  badges?: ReactNode
+  hint?: string
+  open: boolean
+  onToggle: () => void
+}) {
+  return (
+    <header
+      role="button"
+      tabIndex={0}
+      aria-expanded={open}
+      onClick={onToggle}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          onToggle()
+        }
+      }}
+      className="flex min-h-14 cursor-pointer flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 transition-colors hover:bg-secondary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        {icon}
+        <h2 className="text-sm font-semibold text-card-foreground">{title}</h2>
+        {badges}
+      </div>
+      <div className="flex items-center gap-2">
+        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </div>
+    </header>
+  )
+}
+
+/**
  * 解析报告主详情布局：左栏项列表（进度 N/M + 进度条 + 每项一句摘要与状态徽标，点选高亮），
  * 右栏选中项详情（状态徽标 + 重新解析此项 + 复制 + 结构化内容 + 人工编辑保存）。
  */
-export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, skillPickerSlot, tenderText, warnings, onRescanStar, basisMerged, onOpenStandardsPicker, runWithCostConfirm, archived, modelRefForRole }: ParseReportPanelProps) {
+export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, skillPickerSlot, tenderText, warnings, onRescanStar, basisMerged, onOpenStandardsPicker, runWithCostConfirm, archived, modelRefForRole, restoredTables, onExportPurchaseList }: ParseReportPanelProps) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   // R56（对标喜鹊解析首屏）：默认三栏摘要（基本信息/评分要求/招标需求），
@@ -175,6 +232,18 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
   const parseHealth = useMemo(() => summarizeParseHealth(report), [report])
   // 用户反馈轮：完整解析报告默认只看关键项（关键项 + 重点条款），可一键展开全部项
   const [keyOnly, setKeyOnly] = useState(false)
+  // 2026-10-27「解析内容不用展示太细节」：四个重分析区（隐式硬约束/合规风险/参数研判/
+  // 实质性条款矩阵在页面层另有面板）默认折叠，只留标题+计数+一句结论；
+  // 用户点标题才展开明细。理由：一屏塞 40 条约束 + 63 条风险 + 参数表，用户读不出重点，
+  // 真正该先看的是「有几条会废标、有几条风险」这种结论数字。
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set())
+  const toggleSection = (key: string) =>
+    setOpenSections((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
   // Q26 切片A：降级分区原文默认折叠（节选前若干行），按项 key 记忆展开态，防 2 万字碎片铺满列表
   const [expandedDegraded, setExpandedDegraded] = useState<Set<string>>(new Set())
   useEffect(() => {
@@ -340,6 +409,10 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
   // R55（对标易标）：信息卡类解析项有结构化字段时按「标签 → 值」两列呈现，比一行行「字段名：值」好读得多；
   // 老报告/检索通道产物无 fields，自动回退下面的行式列表，行为不变。
   const fieldPairs = parseSectionFields(selected)
+  // 2026-10-22（用户反馈：采购清单应按表格体现）：列表型分区按招标原表的列渲染，不再一行一张卡片。
+  const listTable = selected.key === "purchase_list" ? buildPurchaseListRows(detailLines) : null
+  // B4：docx 原表优先——AI 摘要行会丢列，原表才是评委看到的那个表
+  const restoredTable = selected.key === "purchase_list" ? pickTableOfKind(restoredTables, "purchase_list") : null
   const isDegradedDetail = selected.content.startsWith("〔系统降级")
   const degradedCollapsed = isDegradedDetail && !expandedDegraded.has(selected.key) && detailLines.length > DEGRADED_FOLD_LIMIT
   const shownDetailLines = degradedCollapsed ? detailLines.slice(0, DEGRADED_FOLD_LIMIT) : detailLines
@@ -682,6 +755,17 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
               <Copy className="mr-1 h-3.5 w-3.5" />
               复制
             </Button>
+            {selected.key === "purchase_list" && onExportPurchaseList && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onExportPurchaseList}
+                className="border-border text-muted-foreground shadow-sm hover:text-foreground"
+              >
+                <FileDown className="mr-1 h-3.5 w-3.5" />
+                导出采购清单 Word
+              </Button>
+            )}
           </div>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -721,6 +805,56 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
                         {f.label}
                       </th>
                       <td className="px-3 py-2 text-sm leading-relaxed text-foreground">{f.value}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : restoredTable ? (
+            <div>
+              <p className="mb-2 text-[11px] leading-relaxed text-muted-foreground">
+                直接来自上传的 docx 原表：{restoredTable.rows.length} 行 × {restoredTable.rows[0]?.length ?? 0} 列，未经 AI 改写
+                （来源：{restoredTable.file} 第 {restoredTable.index + 1} 张表）。
+              </p>
+              <div className="max-h-[28rem] overflow-auto rounded-md border border-border">
+                <table className="w-full text-left text-sm">
+                  <tbody>
+                    {restoredTable.rows.map((r, ri) => (
+                      <tr key={ri} className={ri === 0 ? "sticky top-0 bg-muted/60 font-medium" : "border-t border-border/60 align-top"}>
+                        {r.map((c, ci) => (
+                          <td key={ci} className="whitespace-pre-wrap px-3 py-2 text-sm text-foreground/90">
+                            {c || "—"}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : listTable ? (
+            <div className="overflow-x-auto rounded-md border border-border">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="bg-muted/40">
+                    {listTable.columns.map((c) => (
+                      <th key={c} className="whitespace-nowrap px-3 py-2 text-xs font-medium text-muted-foreground">
+                        {c}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {listTable.rows.map((r, i) => (
+                    <tr key={i} className="border-t border-border/60 align-top">
+                      {r.map((cell, j) => (
+                        <td
+                          key={j}
+                          className={`px-3 py-2 text-sm ${j === 1 ? "font-medium text-foreground" : "text-foreground/90"}`}
+                        >
+                          {cell || "—"}
+                        </td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>
@@ -814,42 +948,86 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
         </div>
       </section>
     </div>
-    {implicitList.length > 0 && (
+    {implicitList.length > 0 && (() => {
+      const grouped = groupImplicitConstraints(implicitList)
+      const open = openSections.has("implicit")
+      return (
       <section className="mt-4 rounded-lg border border-border bg-card shadow-md">
-        <header className="flex min-h-14 flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <ShieldAlert className="h-4 w-4 shrink-0 text-destructive" />
-            <h2 className="text-sm font-semibold text-card-foreground">隐式硬约束</h2>
-            <span className="rounded-full bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive">
-              {implicitList.length} 条
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground">从招标文件本地抽取（零 AI），已自动注入大纲与章节生成</p>
-        </header>
+        <CollapsibleSectionHeader
+          icon={<ShieldAlert className="h-4 w-4 shrink-0 text-destructive" />}
+          title="隐式硬约束"
+          badges={
+            <>
+              {grouped.void.length > 0 && (
+                <span className="rounded-full bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive">
+                  废标 {grouped.void.length}
+                </span>
+              )}
+              <span className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                共 {implicitList.length} 条
+              </span>
+            </>
+          }
+          hint={open ? "点标题收起" : "点标题展开明细"}
+          open={open}
+          onToggle={() => toggleSection("implicit")}
+        />
+        {open ? (
         <div className="p-4">
           <p className="text-xs leading-relaxed text-muted-foreground">
-            页数 / 份数 / 装订 / 格式 / 「视为无效」类刚性要求，任何一条被违反都可能废标，请人工核对正文是否逐条满足。
+            页数 / 份数 / 装订 / 格式 / 「视为无效」类刚性要求。已按「违反后果」分组——
+            先看红色「会废标」，再看格式要求，其余为一般性约束。
           </p>
-          <ul className="mt-3 grid grid-cols-1 gap-1.5 lg:grid-cols-2">
-            {implicitList.map((t, i) => (
-              <li
-                key={i}
-                className="rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs leading-relaxed text-card-foreground"
-              >
-                {i + 1}. {t}
-              </li>
-            ))}
-          </ul>
+          {(() => {
+            const groups: { key: ImplicitConstraintKind; label: string; hint: string; items: string[]; tone: string }[] = ([
+              {
+                key: "void", label: "违反即废标", hint: "带「视为无效 / 不合格 / 作废标处理」等明确后果",
+                items: grouped.void, tone: "border-destructive/30 bg-destructive/5 text-card-foreground",
+              },
+              {
+                key: "format", label: "投标形式要求", hint: "页数 / 份数 / 装订 / 签署 / 上传解密",
+                items: grouped.format, tone: "border-amber-500/30 bg-amber-500/5 text-card-foreground",
+              },
+              {
+                key: "other", label: "其他约束", hint: "合规性、报价口径、资格条件等一般性要求",
+                items: grouped.other, tone: "border-border bg-background text-card-foreground",
+              },
+            ] as const).filter((g) => g.items.length > 0)
+            return (
+              <div className="mt-3 space-y-3">
+                {groups.map((g) => (
+                  <div key={g.key}>
+                    <div className="mb-1.5 flex flex-wrap items-baseline gap-2">
+                      <span className="text-xs font-semibold text-card-foreground">{g.label}</span>
+                      <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground">{g.items.length} 条</span>
+                      <span className="text-[11px] text-muted-foreground">{g.hint}</span>
+                    </div>
+                    <ul className="grid grid-cols-1 gap-1.5 lg:grid-cols-2">
+                      {g.items.map((t, i) => (
+                        <li key={`${g.key}-${i}`} className={`rounded-md border px-3 py-2 text-xs leading-relaxed ${g.tone}`}>
+                          {t}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
         </div>
+        ) : null}
       </section>
-    )}
-    {tenderText?.trim() && (
+      )
+    })()}
+    {tenderText?.trim() && (() => {
+      const riskOpen = openSections.has("risk")
+      return (
       <section className="mt-4 rounded-lg border border-border bg-card shadow-md">
-        <header className="flex min-h-14 flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <ShieldAlert className="h-4 w-4 shrink-0 text-destructive" />
-            <h2 className="text-sm font-semibold text-card-foreground">合规风险与红线扫描</h2>
-            {riskSummary.total > 0 ? (
+        <CollapsibleSectionHeader
+          icon={<ShieldAlert className="h-4 w-4 shrink-0 text-destructive" />}
+          title="合规风险与红线扫描"
+          badges={
+            riskSummary.total > 0 ? (
               <>
                 {riskSummary.red > 0 && (
                   <span className="rounded-full bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive">
@@ -871,9 +1049,14 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
               <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
                 未发现确定性风险
               </span>
-            )}
-          </div>
-          {runWithCostConfirm && (
+            )
+          }
+          hint={riskOpen ? "点标题收起" : "点标题展开明细"}
+          open={riskOpen}
+          onToggle={() => toggleSection("risk")}
+        />
+        {runWithCostConfirm && (
+          <div className="flex justify-end border-b border-border px-4 py-2">
             <button
               type="button"
               onClick={runAiRiskCheck}
@@ -884,8 +1067,9 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
               {riskScanning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
               {riskScanning ? "AI 体检中…" : "AI 深度体检"}
             </button>
-          )}
-        </header>
+          </div>
+        )}
+        {riskOpen ? (
         <div className="p-4">
           <p className="text-xs leading-relaxed text-muted-foreground">
             依据《医疗信息化投标全流程规范》：八大禁止情形（差别待遇/歧视）、六类隐形陷阱、七条量化红线。规则引擎本地扫描招标文件（零 AI、即时），命中项可作为投标决策与质疑依据；「AI 深度体检」补充规则难以命中的语义级风险（标注为 AI 提示，须人工确认）。
@@ -962,27 +1146,40 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
             </ul>
           )}
         </div>
+        ) : null}
       </section>
-    )}
-    {tenderText?.trim() && paramRows.length > 0 && (
+      )
+    })()}
+    {tenderText?.trim() && paramRows.length > 0 && (() => {
+      const paramOpen = openSections.has("param")
+      return (
       <section className="mt-4 rounded-lg border border-border bg-card shadow-md">
-        <header className="flex min-h-14 flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <ClipboardList className="h-4 w-4 shrink-0 text-primary" />
-            <h2 className="text-sm font-semibold text-card-foreground">参数匹配四类研判</h2>
-            {paramSummary.overall === "reject" ? (
-              <span className="rounded-full bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive">建议放弃投标</span>
-            ) : paramSummary.overall === "caution" ? (
-              <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-700">谨慎投标</span>
-            ) : paramSummary.overall === "pending" ? (
-              <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">待研判</span>
-            ) : (
-              <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">可正常投标</span>
-            )}
-            <span className="text-xs text-muted-foreground">已研判 {paramSummary.typed}/{paramSummary.total}</span>
-          </div>
+        <CollapsibleSectionHeader
+          icon={<ClipboardList className="h-4 w-4 shrink-0 text-primary" />}
+          title="参数匹配四类研判"
+          badges={
+            <>
+              {paramSummary.overall === "reject" ? (
+                <span className="rounded-full bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive">建议放弃投标</span>
+              ) : paramSummary.overall === "caution" ? (
+                <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-700">谨慎投标</span>
+              ) : paramSummary.overall === "pending" ? (
+                <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">待研判</span>
+              ) : (
+                <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">可正常投标</span>
+              )}
+              <span className="text-xs text-muted-foreground">已研判 {paramSummary.typed}/{paramSummary.total}</span>
+            </>
+          }
+          hint={paramOpen ? "点标题收起" : "点标题展开明细"}
+          open={paramOpen}
+          onToggle={() => toggleSection("param")}
+        />
+        {paramOpen ? (
+        <div className="p-4">
           {runWithCostConfirm && (
-            <button
+            <div className="mb-3 flex justify-end">
+              <button
               type="button"
               onClick={runAiParamAssist}
               disabled={paramBusy || archived}
@@ -992,9 +1189,8 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
               {paramBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
               {paramBusy ? "AI 研判中…" : "AI 兜底研判"}
             </button>
+            </div>
           )}
-        </header>
-        <div className="p-4">
           <p className="text-xs leading-relaxed text-muted-foreground">
             依据《医疗信息化投标全流程规范》4.1：对每条技术参数标注「01 完全满足 / 02 部分不满足 / 03 替代方案 / 04 完全不满足」，系统按 ★/▲ 标注自动给出应对策略与红线提示，并聚合投/不投决策。★ 完全不满足建议放弃；★ 部分不满足或替代须重点论证完全响应/等效。研判须结合技术实力、成本与风险综合评估，不得凭感觉承诺。
           </p>
@@ -1084,8 +1280,10 @@ export function ParseReportPanel({ report, onChange, onReparse, reparseBusyKey, 
             })}
           </ul>
         </div>
+        ) : null}
       </section>
-    )}
+      )
+    })()}
       </>
     )}
     </>

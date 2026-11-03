@@ -8,7 +8,7 @@
 import { AlignmentType, Document, HeadingLevel, Packer, Paragraph, TextRun } from "docx"
 import { DOCX_DEFAULT_STYLES } from "@/lib/exportFont"
 import { triggerBlobDownload } from "@/lib/download"
-import { buildSafeFileName } from "@/lib/fileName"
+import { buildSafeFileName, buildVersionedFileName } from "@/lib/fileName"
 import { localDateStamp } from "@/lib/dateStamp"
 import type { BidDefense } from "./bidTypes"
 
@@ -98,9 +98,20 @@ export function buildDefenseHandbookBlocks(projectName: string, defense: BidDefe
   return blocks
 }
 
-/** 导出文件名：项目名-讲标答辩手册-本地日期.docx（非法字符清洗走全局单一源） */
-export function handbookFileName(projectName: string, stamp = localDateStamp()): string {
-  return buildSafeFileName(`${projectName.trim() || "投标项目"}-讲标答辩手册-${stamp}`, "docx", "讲标答辩手册")
+/**
+ * 导出文件名：统一走「日期-项目名-类型-V版本号」口径。
+ *
+ * 2026-10-26（验收官复核 A/B 中的 B）：原来用
+ * `buildSafeFileName(\`${项目名}-讲标答辩手册-${localDateStamp()}\`)`，
+ * 与投标文件 / 方案的「日期-名称-类型-V版本号」口径不一致——同一项目下几份产物
+ * 命名规则各不相同，用户没法按名字判断归属与新旧。现统一到 buildVersionedFileName。
+ *
+ * `stamp` 参数保留：既有调用与单测传了就用（兼容老行为），没传就用当前时刻。
+ */
+export function handbookFileName(projectName: string, stamp?: string): string {
+  const name = projectName.trim() || "投标项目"
+  if (stamp) return buildSafeFileName(`${name}-讲标答辩手册-${stamp}`, "docx", "讲标答辩手册")
+  return buildVersionedFileName(name, "讲标答辩手册")
 }
 
 function blocksToParagraphs(blocks: HandbookBlock[]): Paragraph[] {

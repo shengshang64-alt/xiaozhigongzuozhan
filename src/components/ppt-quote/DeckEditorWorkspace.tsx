@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react"
 import { useNavigate } from "react-router-dom"
-import { ArrowLeft, Download, Eye, FileText, Images, Loader2, Pencil, Play, Sparkles, Upload } from "lucide-react"
+import { ArrowLeft, Download, Eye, FileText, Images, Loader2, Palette, Pencil, Play, Sparkles, Upload , ShieldCheck } from "lucide-react"
 import { MaterialPickerDialog } from "./MaterialPickerDialog"
 import { deckTypeLabel, TRANSITION_LABEL, type DeckRecord, type DeckTransition, type RefineKind, type Slide } from "@/pages/PptQuote/pptQuoteTypes"
 import type { ImageSearchProvider } from "@/pages/PptQuote/imageSearch"
@@ -9,7 +9,17 @@ import { SlideEditor } from "./SlideEditor"
 import { SlidePreviewGrid } from "./SlidePreviewGrid"
 import { DeckPresent } from "./DeckPresent"
 import { DeckLintPanel } from "./DeckLintPanel"
+import { DeckSourcePanel } from "./DeckSourcePanel"
+import { DeckTemplateMappingPanel } from "./DeckTemplateMappingPanel"
+import { DeckRenderCheckPanel } from "./DeckRenderCheckPanel"
+import { DeckVisualPlanPanel } from "./DeckVisualPlanPanel"
+import type { DeckVisualPlan } from "@/pages/PptQuote/deckVisualPlan"
+import type { RenderReport } from "@/pages/PptQuote/deckRenderCheck"
+import { BookOpen, LayoutTemplate, Image as ImageIcon } from "lucide-react"
+import type { TemplateMappingZ } from "@/pages/PptQuote/deckSchema"
+import type { TemplateOutline } from "@/pages/PptQuote/templateLayouts"
 import { groupIssuesByPage, lintDeck } from "@/pages/PptQuote/deckLint"
+import { DECK_THEME_PRESETS } from "@/pages/PptQuote/deckTheme"
 import { TemplateFidelityPanel } from "./TemplateFidelityPanel"
 import type { TemplateFacts } from "@/pages/PptQuote/deckFidelityProbe"
 
@@ -20,8 +30,8 @@ type DeckEditorWorkspaceProps = {
   currentSlide: Slide | null
   currentSlideIndex: number
   setCurrentSlideIndex: (index: number) => void
-  editorTab: "edit" | "preview"
-  setEditorTab: (tab: "edit" | "preview") => void
+  editorTab: "edit" | "preview" | "check"
+  setEditorTab: (tab: "edit" | "preview" | "check") => void
   slideAiKind: RefineKind | null
   onBack: () => void
   onRename: (value: string) => void
@@ -37,6 +47,25 @@ type DeckEditorWorkspaceProps = {
   /** R169：公司模板主题——当前模板名（null=内置版式）、上传 .pptx/.potx、清除 */
   deckTemplateName?: string | null
   onUploadDeckTemplate: (file: File) => void
+  /** 2026-10-30 补齐：全册视觉计划 */
+  visualPlan?: DeckVisualPlan | null
+  /** 2026-10-30 补齐：渲染质检（真实把 pptx 渲染成图检查） */
+  renderReport?: { report: RenderReport; thumbs: { page: number; dataUrl: string; inkRatio: number }[] } | null
+  renderChecking?: boolean
+  renderCapability?: { ok: boolean; hint: string } | null
+  onCheckRenderQuality?: () => void
+  /** 2026-10-30 补齐：检查页签用的模板版式与映射 */
+  templateOutline?: TemplateOutline | null
+  layoutMapping?: TemplateMappingZ
+  onMappingChange?: (m: TemplateMappingZ) => void
+  /** 2026-10-30 同稿换风格：当前配色预设 key */
+  deckThemePreset?: string
+  /** 切换配色预设（只改导出配色，不重新生成内容） */
+  onSelectThemePreset?: (key: string) => void
+  /** 2026-10-30 AI 润色单段文字（field="bullet:N" | "notes" | "title"） */
+  onPolishText?: (field: string, kind: import("@/pages/PptQuote/pptQuoteTypes").PolishKind) => void
+  /** 正在润色的字段 key，用于禁用按钮 */
+  polishingKey?: string | null
   onClearDeckTemplate: () => void
   /** R190（r169 切片三）：模板保真体检事实，非空即在编辑期展示体检卡片 */
   deckTemplateProbe?: TemplateFacts | null
@@ -90,7 +119,19 @@ export function DeckEditorWorkspace({
   onExportPptx,
   onExportSpeech,
   deckTemplateName,
+  templateOutline,
+  layoutMapping,
+  onMappingChange,
+  visualPlan = null,
+  renderReport = null,
+  renderChecking = false,
+  renderCapability = null,
+  onCheckRenderQuality = () => {},
   onUploadDeckTemplate,
+  deckThemePreset = "navy",
+  onSelectThemePreset,
+  onPolishText,
+  polishingKey = null,
   onClearDeckTemplate,
   deckTemplateProbe,
   refinePickerSlot,
@@ -118,6 +159,9 @@ export function DeckEditorWorkspace({
   // R166：导出前自检接入编辑期（同一套 deckLint 规则，memo 随 slides 重算，非阻断）
   const lintIssues = useMemo(() => lintDeck(deck.slides), [deck.slides])
   // warn 级命中页集合（页面列表圆点用；info 不打点，避免正常编辑满屏红点）
+  // 2026-10-30：阻断导出的严重问题数（与导出门禁同一口径：level === "error"）
+  const blockingCount = useMemo(() => lintIssues.filter((i) => i.level === "error").length, [lintIssues])
+
   const lintWarnPages = useMemo(() => {
     const set = new Set<number>()
     for (const [page, level] of groupIssuesByPage(lintIssues)) if (level === "warn" && page > 0) set.add(page - 1)
@@ -221,6 +265,27 @@ export function DeckEditorWorkspace({
                 模板：{deckTemplateName}
               </button>
             ) : null}
+            {/* 2026-10-30 同稿换风格：内置配色预设（未上传公司模板时生效，只换风格不换内容） */}
+            {!deckTemplateName && (
+              <label
+                className="flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-card-foreground shadow-sm transition-colors hover:border-primary"
+                title="同一份内容换个配色再投：给院领导用深藏青，技术评审用科技蓝。只改配色与字体，不动内容"
+              >
+                <Palette className="h-3.5 w-3.5" />
+                <select
+                  value={deckThemePreset}
+                  onChange={(e) => onSelectThemePreset?.(e.target.value)}
+                  aria-label="配色方案"
+                  className="bg-transparent text-xs outline-none"
+                >
+                  {DECK_THEME_PRESETS.map((t) => (
+                    <option key={t.key} value={t.key}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <button
               type="button"
               onClick={() => navigate("/materials")}
@@ -245,6 +310,8 @@ export function DeckEditorWorkspace({
             [
               { key: "edit" as const, label: "逐页编辑", icon: Pencil },
               { key: "preview" as const, label: "页面预览", icon: Eye },
+              // 2026-10-30 补齐：素材来源 / 模板映射 / 页面检查 三面板合一
+              { key: "check" as const, label: "检查与来源", icon: ShieldCheck },
             ]
           ).map((tab) => {
             const Icon = tab.icon
@@ -331,7 +398,88 @@ export function DeckEditorWorkspace({
         }}
       />
 
-      {editorTab === "edit" ? (
+      {editorTab === "check" ? (
+        // 2026-10-30 补齐：素材来源 / 模板映射 / 页面检查 三面板
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
+            <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-foreground">
+              <BookOpen className="h-4 w-4 text-primary" />
+              素材来源
+            </h3>
+            <DeckSourcePanel deck={deck} currentSlideIndex={currentSlideIndex} onJumpToPage={setCurrentSlideIndex} />
+          </section>
+
+          <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
+            <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-foreground">
+              <LayoutTemplate className="h-4 w-4 text-primary" />
+              模板映射
+            </h3>
+            <DeckTemplateMappingPanel
+              templateName={deckTemplateName ?? null}
+              outline={templateOutline ?? null}
+              mapping={layoutMapping ?? {}}
+              onMappingChange={onMappingChange ?? (() => {})}
+              slideKinds={(deck.slides ?? []).map((s) => kindOfSlideForPanel(s))}
+            />
+          </section>
+
+          <section className="rounded-lg border border-border bg-card p-4 shadow-sm lg:col-span-2">
+            <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-foreground">
+              <Sparkles className="h-4 w-4 text-primary" />
+              配图计划
+              <span className="text-[10px] font-normal text-muted-foreground">（每页配什么图、为什么）</span>
+            </h3>
+            <DeckVisualPlanPanel
+              plan={visualPlan}
+              onJumpToPage={(index) => {
+                setCurrentSlideIndex(index)
+                setEditorTab("edit")
+              }}
+            />
+          </section>
+
+          <section className="rounded-lg border border-border bg-card p-4 shadow-sm lg:col-span-2">
+            <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-foreground">
+              <ImageIcon className="h-4 w-4 text-primary" />
+              渲染质检
+              <span className="text-[10px] font-normal text-muted-foreground">
+                （把 PPTX 渲染成图，看真实效果）
+              </span>
+            </h3>
+            <DeckRenderCheckPanel
+              report={renderReport?.report ?? null}
+              thumbs={renderReport?.thumbs ?? []}
+              checking={renderChecking}
+              capability={renderCapability}
+              onCheck={onCheckRenderQuality}
+              onJumpToPage={(index) => {
+                setCurrentSlideIndex(index)
+                setEditorTab("edit")
+              }}
+            />
+          </section>
+
+          <section className="rounded-lg border border-border bg-card p-4 shadow-sm lg:col-span-2">
+            <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-foreground">
+              <ShieldCheck className="h-4 w-4 text-primary" />
+              页面检查
+              {blockingCount > 0 && (
+                <span className="rounded bg-destructive px-1.5 py-0.5 text-[10px] font-medium text-destructive-foreground">
+                  {blockingCount} 项严重问题会阻断导出
+                </span>
+              )}
+            </h3>
+            <DeckLintPanel
+              issues={lintIssues}
+              currentIndex={currentSlideIndex}
+              onJumpToPage={(index) => {
+                setCurrentSlideIndex(index)
+                setEditorTab("edit")
+              }}
+            />
+          </section>
+        </div>
+      ) : editorTab === "edit" ? (
         <div className="mt-5 grid gap-5 lg:grid-cols-[280px_1fr]">
           <SlideListNav
             slides={deck.slides}
@@ -349,6 +497,8 @@ export function DeckEditorWorkspace({
             slideAiKind={slideAiKind}
             persistFailed={persistFailed}
             onTitleChange={(value) => updateSlide({ title: value })}
+            onPolishBullet={onPolishText ? (i, kind) => onPolishText(`bullet:${i}`, kind) : undefined}
+            polishingKey={polishingKey}
             onLayoutChange={(layout) => updateSlide({ layout })}
             onBulletsChange={(value) =>
               updateSlide({
@@ -409,4 +559,18 @@ export function DeckEditorWorkspace({
       />
     </section>
   )
+}
+
+
+/** 从 Slide 反推 kind（检查面板统计"本册用到的页面类型"用） */
+function kindOfSlideForPanel(s: { kind?: string; chart?: unknown; kpi?: unknown[]; figures?: { type: string }[]; image?: string; layout?: string }): never {
+  if (s.kind) return s.kind as never
+  if (s.chart) return "chart" as never
+  if (s.kpi?.length) return "kpi" as never
+  if (s.figures?.some((f) => f.type === "table")) return "table" as never
+  if (s.figures?.some((f) => f.type === "flow")) return "flow" as never
+  if (s.figures?.some((f) => f.type === "architecture")) return "architecture" as never
+  if (s.image) return "image" as never
+  if (s.layout === "section") return "section" as never
+  return "bullets" as never
 }

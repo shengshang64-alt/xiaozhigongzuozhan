@@ -39,7 +39,10 @@ export function SidebarNav({ accountInfo, collapsed = false }: SidebarNavProps) 
       className={
         "sticky top-0 z-50 flex h-screen shrink-0 flex-col border-r border-sidebar-border text-sidebar-foreground transition-[width] duration-200 " +
         "[background:linear-gradient(180deg,hsl(177_55%_11%)_0%,hsl(var(--sidebar-background))_100%)] " +
-        (collapsed ? "w-[72px]" : "w-[236px]")
+        // 2026-10-31 移动端修复：原来只有 collapsed 开关，小屏（390px）仍占 236px = 60% 视口，
+        // 内容区只剩 150px 完全不可用（实测各页横向溢出 400~1100px）。
+        // 小屏强制走折叠宽度 72px；sm 以上才允许 236px。
+        (collapsed ? "w-[72px]" : "w-[72px] sm:w-[236px]")
       }
     >
       {/* Logo */}

@@ -104,6 +104,8 @@ describe("R288+ 生成前门禁：关键解析项缺失判据（真实场景实�
       mk("response_req", "暂无内容", "pending"), // 真未产出 → 阻断
       mk("biz_score", "总分100分…", "ok"),
       mk("void_items", "未密封/未盖章", "ok"),
+      mk("qualification", "营业执照/信用中国查询", "ok"),
+      mk("compliance", "★负偏离即投标无效", "ok"),
       mk("bid_outline_req", "原文未提及", "miss"), // 原文无此专章 → 放行
     ]
     expect(missingCriticalSections(sections)).toEqual(["response_req"])
@@ -116,8 +118,8 @@ describe("R288+ 生成前门禁：关键解析项缺失判据（真实场景实�
 
 // ---------------------------------------------------------------------------
 // R58（B28）关键项门禁的两处修正（真实数据复算驱动）
-//   ① 未请求的关键项不算缺失：默认 key 档解析不请求 void_items（它在 PARSE_EXTRA_SECTIONS 里），
-//      而门禁把它当关键项 → 25 条真实记录里 5 条 key 档项目被假拦。
+//   ① 未请求的关键项不算缺失：存量 key 档解析不请求废标项（2026-10-22 起新解析已升必选，
+//      但历史报告仍可能没有），而门禁把它们当关键项 → 25 条真实记录里 5 条被假拦。
 //   ② 已有非空大纲时不硬拦，改二次确认（默认取消）；无大纲保持硬拦。
 // 反向验证（删实现即变红）：
 //   · 去掉 missingCriticalSections 的 requestedKeys 过滤 → 用例①红；
@@ -127,20 +129,33 @@ describe("R58（B28）关键项门禁：作用域感知 + 已有大纲不硬拦"
   const mk = (key: string, content: string, status?: ParseSection["status"]): ParseSection =>
     ({ key, title: key, content, ...(status ? { status } : {}) }) as ParseSection
 
-  /** 关键项档实际请求的 8 项（不含 void_items） */
-  const keyKeys = requestedKeys({ scope: "key", extra_keys: [] })
-  /** 完整档实际请求的项（含 void_items） */
+  /** 存量项目形态：2026-10-22 之前的关键项档只请求这 8 项（不含废标三件套） */
+  const legacyKeyKeys = [
+    "overview",
+    "tech_score",
+    "project_info",
+    "purchaser_info",
+    "delivery_req",
+    "response_req",
+    "biz_score",
+    "bid_outline_req",
+  ]
+  /** 完整档实际请求的项（含废标三件套） */
   const fullKeys = requestedKeys({ scope: "full", extra_keys: ["void_items"] })
 
-  it("① 未请求的关键项不算缺失：key 档不请求 void_items，就不该因它缺失被拦", () => {
-    const sections = keyKeys.map((k) => mk(k, "有内容", "ok"))
-    // 不传 requestedKeys（旧口径）：把没请求过的 void_items 也算成缺失 → 假拦
-    expect(missingCriticalSections(sections)).toEqual(["void_items"])
+  it("① 未请求的关键项不算缺失：存量 key 档不请求废标项，就不该因它缺失被拦", () => {
+    const sections = legacyKeyKeys.map((k) => mk(k, "有内容", "ok"))
+    // 不传 requestedKeys（旧口径）：把没请求过的废标项也算成缺失 → 假拦
+    expect(missingCriticalSections(sections)).toEqual(["void_items", "qualification", "compliance"])
     // 传该项目的实际请求范围：反馈为空，放行
-    expect(missingCriticalSections(sections, CRITICAL_SECTION_KEYS, keyKeys)).toEqual([])
-    expect(missingCriticalSectionTitles({ scope: "key", sections }, CRITICAL_SECTION_KEYS, keyKeys)).toEqual([])
-    // 反向对照：同一份数据在完整档（请求了 void_items）下判缺是正确的，不是被放掉
-    expect(missingCriticalSections(sections, CRITICAL_SECTION_KEYS, fullKeys)).toEqual(["void_items"])
+    expect(missingCriticalSections(sections, CRITICAL_SECTION_KEYS, legacyKeyKeys)).toEqual([])
+    expect(missingCriticalSectionTitles({ scope: "key", sections }, CRITICAL_SECTION_KEYS, legacyKeyKeys)).toEqual([])
+    // 反向对照：同一份数据在完整档（请求了废标三件套）下判缺是正确的，不是被放掉
+    expect(missingCriticalSections(sections, CRITICAL_SECTION_KEYS, fullKeys)).toEqual([
+      "void_items",
+      "qualification",
+      "compliance",
+    ])
   })
 
   it("①b 请求过的关键项真缺失时照旧判缺（作用域感知不得放掉真拦截）", () => {

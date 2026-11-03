@@ -9,7 +9,7 @@ import { contextSnippetOf } from "@/lib/kbPolicy"
 // 本模块只做组合与打分，便于单测锈死。React 侧 BidMaterialAmmoPanel 仅消费导出函数。
 // ---------------------------------------------------------------------------
 
-export type BidMaterialTab = "kb" | "ammo" | "sibling"
+export type BidMaterialTab = "kb" | "ammo" | "sibling" | "history"
 
 export type BidMaterialKbHit = {
   key: string
@@ -56,7 +56,16 @@ const AMMO_LIMIT = 20
 export function pickKbHits(docs: KbDocRow[], userId: string | null, query: string, limit = KB_LIMIT): BidMaterialKbHit[] {
   const q = (query || "").trim()
   if (!q) return []
-  const hits: KbSearchHit[] = searchKbDocs(visibleKbDocs(docs, userId), q, Math.max(3, Math.min(limit, 8)))
+  // 2026-10-30 场景归位接入：编标书时只取「标书弹药 + 方案素材」且可对客的材料。
+  // 内部参考类（含报价/失标/内部制度）不进正文，避免把敏感内容写进投标文件。
+  const scoped = visibleKbDocs(docs, userId).filter((d) => {
+    // 未归位的材料（历史数据）不拦，保持向后兼容
+    if (!d.kb_scenes) return true
+    if (d.kb_audience === "internal_only") return false
+    const scenes = String(d.kb_scenes)
+    return scenes.includes("bid") || scenes.includes("proposal") || scenes.includes("faq")
+  })
+  const hits: KbSearchHit[] = searchKbDocs(scoped, q, Math.max(3, Math.min(limit, 8)))
   return hits.map((h) => {
     const snippet = contextSnippetOf(h.doc, { snippet: h.snippet })
     return {

@@ -62,6 +62,21 @@ describe("buildSectionParseMessages（逐项独立提示词）", () => {
     expect(sys).toContain("最多 3 条")
     expect(sys).toContain("电子标")
   })
+
+  it("void_items：收录三条铁律——完整句/废标后果/禁标题行（P0 解析根因 2026-11-01）", () => {
+    const sys = buildSectionParseMessages("void_items", text)[0].content
+    // ① 一条=一句完整的话：物理换行切断的先拼回，禁止半截残句当一条
+    expect(sys).toContain("一句完整的话")
+    expect(sys).toContain("拼回完整句")
+    expect(sys).toContain("残句")
+    // ② 只收带废标/无效后果的条款：通用程序性条文（资金落实/通知语言/融资指引/解释权）一律不收
+    expect(sys).toContain("明确后果表述")
+    expect(sys).toContain("资金落实")
+    expect(sys).toContain("融资指引")
+    // ③ 禁止输出标题行：markdown 标题与小节/分类标题不收
+    expect(sys).toContain("禁止输出任何标题行")
+    expect(sys).toContain("markdown 标题")
+  })
 })
 
 describe("buildOutlineFixMessages（承接标注保留与补齐，OpenBidKit 评审→修复闭环）", () => {
@@ -113,6 +128,21 @@ describe("extractScoringFromText（兼容【】分块格式）", () => {
     expect(items.map((i) => i.item)).toEqual(["响应时间", "数据安全"])
     expect(items[0].score).toBe(15)
     expect(items[1].score).toBe(10)
+  })
+
+  it("区间分值「（0-5分）」解析为上限 5（2026-11-01 门禁实测：安中医 8 个评分项曾因区间格式全丢）", () => {
+    const lines = [
+      "总体技术解决方案（0-5分）：按方案完整性评分",
+      "历史数据治理、迁移与集成方案（0-5 分）：按迁移严谨性评分",
+      "培训方案（0~3分）：按培训深度评分",
+      "价格分（30 分）：最低价法",
+    ].join("\n")
+    const items = extractScoringFromText(lines)
+    expect(items).toHaveLength(4)
+    expect(items[0]).toMatchObject({ item: "总体技术解决方案", score: 5 })
+    expect(items[1]).toMatchObject({ item: "历史数据治理、迁移与集成方案", score: 5 })
+    expect(items[2]).toMatchObject({ item: "培训方案", score: 3 })
+    expect(items[3]).toMatchObject({ item: "价格分", score: 30 })
   })
 })
 
@@ -190,12 +220,16 @@ describe("extractScoringSectionExcerpt（评分章节本地定位，修「评分
   })
 })
 
-describe("关键项 8 项档与配置兼容（2026-09-23 用户反馈轮）", () => {
+describe("关键项 11 项档与配置兼容（2026-09-23 用户反馈轮；2026-10-22 废标三件套升档）", () => {
   it("默认关键项档含商务评分与投标文件目录要求（评分办法整体+目录锚点不再依赖完整档）", () => {
     const keys = requestedKeys({ scope: "key", extra_keys: [] })
-    expect(keys).toHaveLength(8)
+    expect(keys).toHaveLength(11)
     expect(keys).toContain("biz_score")
     expect(keys).toContain("bid_outline_req")
+    // 2026-10-22：废标三件套默认解析（不勾完整档也必须解析）
+    expect(keys).toContain("void_items")
+    expect(keys).toContain("qualification")
+    expect(keys).toContain("compliance")
   })
 
   it("老配置 extra_keys 仍含已升档 key 时不重复输出", () => {

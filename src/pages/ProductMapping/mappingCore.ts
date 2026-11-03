@@ -20,6 +20,113 @@ export type MappingCompareRow = {
   note: string
   /** 2026-10-28：中把握候选，界面显示成「建议：xxx（87%）」 */
   suggestion: MatchRow["suggestion"] | null
+  /** 2026-10-28 重构：上传原表整行单元格（与项目 sourceColumns 对齐）；非 Excel 来源为空 */
+  cells?: string[]
+  /** 本地/记忆命中分数（0~1） */
+  score?: number
+  /** 命中规则（memory/exact/core-exact/abbrev/core-contain/core-sim） */
+  rule?: string
+  /** 多对多：本行全部命中的公司模块（主干在首位）；未命中为 []。product = products[0] ?? null */
+  products?: CheckProduct[]
+  /** 2026-10-29：自定义模块名（公司能做但产品清单没有的条目，人工填写），与 products 并存 */
+  customNames?: string[]
+}
+
+/** 行的完整命中 id 列表（缺省回落单命中口径） */
+export function rowProductIds(r: Pick<MatchRow, "product_id" | "product_ids">): string[] {
+  if (r.product_ids?.length) return r.product_ids
+  return r.product_id ? [r.product_id] : []
+}
+
+// ---------------------------------------------------------------------------
+// 2026-10-28 重构：行状态口径（界面色块 / 筛选 / 导出共用一个真源）
+// 外购、忽略（resolution）优先于匹配方式（kind）；none 且带建议 = 待确认。
+// ---------------------------------------------------------------------------
+export type MappingRowStatus =
+  | "auto" // 本地自动命中（绿）
+  | "memory" // 记忆库命中（蓝）
+  | "ai" // AI 命中（青）
+  | "manual" // 人工指定（紫）
+  | "custom" // 自定义模块（公司能做但清单没有，人工填写）
+  | "suggest" // 待确认：有候选建议（黄）
+  | "none" // 无匹配（红）
+  | "external" // 外购（橙）
+  | "ignore" // 忽略（灰）
+
+export function rowStatus(
+  r: Pick<MappingCompareRow, "kind" | "resolution" | "suggestion" | "product" | "customNames">,
+): MappingRowStatus {
+  if (r.resolution === "external") return "external"
+  if (r.resolution === "ignore") return "ignore"
+  // 2026-10-29：自定义模块也算「已命中」——公司确实能做，只是清单里没有
+  if (r.customNames && r.customNames.length > 0) return "custom"
+  if (r.product) {
+    if (r.kind === "mapping") return "memory"
+    if (r.kind === "ai") return "ai"
+    if (r.kind === "manual") return "manual"
+    return "auto"
+  }
+  return r.suggestion ? "suggest" : "none"
+}
+
+export const STATUS_LABEL: Record<MappingRowStatus, string> = {
+  auto: "自动",
+  memory: "记忆",
+  ai: "AI",
+  manual: "手动",
+  custom: "自定义",
+  suggest: "待确认",
+  none: "无匹配",
+  external: "外购",
+  ignore: "忽略",
+}
+
+export const RULE_LABEL: Record<string, string> = {
+  memory: "记忆库",
+  exact: "全名一致",
+  "core-exact": "核心词一致",
+  abbrev: "缩写命中",
+  "core-contain": "核心词包含",
+  "core-sim": "核心词相似",
+}
+
+// ---------------------------------------------------------------------------
+// 2026-10-28 匹配度五档（对齐公司《匹配对照表》交付口径：芜湖眼科样例）：
+//   完全匹配 = 可直接进方案报价；基本匹配 = 产品可覆盖但名称/形态不同；
+//   部分匹配 = 需多模块组合（一对多）或涉及定制；第三方产品 = 非自研/外购；
+//   待确认 = 目录无对应或未经人工确认。
+// ---------------------------------------------------------------------------
+export type MatchGrade = "full" | "basic" | "partial" | "thirdparty" | "pending"
+
+export const GRADE_LABEL: Record<MatchGrade, string> = {
+  full: "完全匹配",
+  basic: "基本匹配",
+  partial: "部分匹配",
+  thirdparty: "第三方产品",
+  pending: "待确认",
+}
+
+function isThirdpartyProduct(p: CheckProduct): boolean {
+  const blob = `${p.product_belong ?? ""}|${p.category ?? ""}|${p.product_name ?? ""}`
+  return blob.includes("第三方") || String(p.product_name ?? "").includes("外购")
+}
+
+/** 计算行匹配度：resolution 优先 → 命中数 → 第三方归属 → 分数/方式 */
+export function matchGrade(
+  r: Pick<MappingCompareRow, "resolution" | "kind" | "score" | "product" | "products" | "customNames">,
+): MatchGrade {
+  if (r.resolution === "external") return "thirdparty"
+  const plist = r.products?.length ? r.products : r.product ? [r.product] : []
+  const hasCustom = (r.customNames?.length ?? 0) > 0
+  // 2026-10-29：纯自定义（公司能做、清单没有）按「部分匹配」计——
+  // 不是完全对齐公司标准清单，但也不是待确认（公司确实能交付）。
+  if (!plist.length) return hasCustom ? "partial" : "pending"
+  if (hasCustom) return "partial"
+  if (plist.length > 1) return "partial"
+  if (plist.every(isThirdpartyProduct)) return "thirdparty"
+  if (r.kind === "manual" || r.kind === "mapping") return "full"
+  if ((r.score ?? 0) >= 0.95) return "full"
+  return "basic"
 }
 
 /** 取公司行展示字段（容错空串） */
@@ -31,6 +138,200 @@ export function fieldText(p: CheckProduct | null | undefined, key: keyof CheckPr
   if (typeof v === "boolean") return v ? "是" : ""
   if (typeof v === "string") return v
   return ""
+}
+
+/** 我司对应产品线：产品类别-产品名称（缺类别仅产品名），去重保序，「 / 」拼接（界面与导出共用） */
+export function productLineText(products: CheckProduct[]): string {
+  const vals: string[] = []
+  for (const p of products) {
+    const cat = fieldText(p, "category")
+    const name = fieldText(p, "product_name")
+    const v = cat && name ? `${cat}-${name}` : name || cat
+    if (v && !vals.includes(v)) vals.push(v)
+  }
+  return vals.join(" / ")
+}
+
+/** 我司对应模块/标准名称：模块名（标准名不同则括注），「 + 」拼接（一对多组合口径，界面与导出共用）。
+ *  2026-10-29：可选追加自定义模块名（公司能做但清单没有的条目），保证导出的 Excel 也看得到。 */
+export function moduleText(products: CheckProduct[], customNames?: string[]): string {
+  const vals: string[] = []
+  for (const p of products) {
+    const mod = fieldText(p, "module_name")
+    const std = fieldText(p, "standard_name")
+    const v = std && std !== mod ? `${mod}（${std}）` : mod
+    if (v && !vals.includes(v)) vals.push(v)
+  }
+  for (const c of customNames ?? []) {
+    const v = String(c ?? "").trim()
+    if (v && !vals.includes(v)) vals.push(v)
+  }
+  return vals.join(" + ")
+}
+
+// ---------------------------------------------------------------------------
+// 2026-10-29：公司库「同身份重复行」去重
+//
+// 起因（用户实测反馈）：模块选择器里同一条「胸痛中心」出现两次，勾选口无法区分。
+// 根因是两个批次导入的数据叠在一起，字段完整度不同但身份相同：
+//   2026-10-08 早期导入：只有 category/product_name/module_name（共 3 个非空字段）
+//   2026-10-28 ONE-LINK 完整导入：belong/category/product_name/module_category
+//                               /standard_name/recommendation 齐全（7 个）
+// 全库 1175 行里这类「完全同 产品名+模块名+标准名」的重复有 37 组、78 行，
+// standard_name 为空的历史行另有 626 行 —— 不只某一条，是整个候选池的重影。
+//
+// 口径：身份 = 模块名 + 标准名 + 产品名（三者都做 trim+小写归一）。
+// 同身份保留「信息最完整」的一行：非空业务字段数多者优先，字段数相同取较新 created。
+// 不按 id 删数据，只在候选池这一层收敛 —— 既有 check_mappings / checklists
+// 引用的仍是原始 id，不会因去重产生悬空引用。
+// ---------------------------------------------------------------------------
+
+/** 判断一行信息完整度的字段（业务列，不含 id/时间戳） */
+const COMPLETENESS_FIELDS: (keyof CheckProduct)[] = [
+  "product_belong",
+  "category",
+  "product_line",
+  "product_name",
+  "module_name",
+  "module_func",
+  "standard_name",
+  "module_category",
+  "module_attr",
+  "recommendation",
+  "charge_mode",
+  "unit_price",
+  "description",
+]
+
+/** 一行的非空业务字段数：信息越全越可靠 */
+function completenessScore(p: CheckProduct): number {
+  let n = 0
+  for (const k of COMPLETENESS_FIELDS) {
+    const v = p[k]
+    if (v === null || v === undefined) continue
+    if (typeof v === "string" && v.trim() === "") continue
+    if (typeof v === "number" && !v) continue
+    n += 1
+  }
+  return n
+}
+
+/** 模块身份键：同键视为同一个可勾选模块（避免重影成两项）。
+ *
+ *  口径 = 模块名 + 产品名 + 产品类别（module_category），但**任一段为空则不参与比较**：
+ *    实测真实库「电子签名 + 院内移动诊疗系统」有 8 行，module_category 分别是
+ *    移动医生 / 移动护理 / 门诊移动输液 / 掌上医护 —— 这是 4 个不同产品线下的同名模块，
+ *    若把空值与有值分开、或忽略该段，都会把它们误并成 1 个。
+ *    而 10-08 早期遗留行的 module_category 是空串，需与 10-28 完整行认成同一身份，
+ *    所以空段用「通配」语义：一方为空时按「更具体的那个键」匹配（见 sameIdentity）。
+ */
+export function productIdentity(p: CheckProduct): string {
+  const norm = (v: unknown) => String(v ?? "").replace(/\s+/g, "").toLowerCase()
+  return [norm(p.module_name), norm(p.product_name), norm(p.module_category)].join("§")
+}
+
+/** 身份段拆分（空段记为空串） */
+function identityParts(p: CheckProduct): string[] {
+  const norm = (v: unknown) => String(v ?? "").replace(/\s+/g, "").toLowerCase()
+  return [norm(p.module_name), norm(p.product_name), norm(p.module_category)]
+}
+
+/**
+ * 两行是否同一模块身份：
+ *  - 前两段（模块名 / 产品名）必须完全一致；
+ *  - 第三段（产品类别）若一方为空则视为匹配（历史遗留行缺该字段），双方都有值时必须相等。
+ * 这样 10-08 残缺行能与 10-28 完整行合并，同时不会把 4 个不同产品线上的「电子签名」并成 1 个。
+ */
+export function sameIdentity(a: CheckProduct, b: CheckProduct): boolean {
+  const pa = identityParts(a)
+  const pb = identityParts(b)
+  if (pa[0] !== pb[0] || pa[1] !== pb[1]) return false
+  if (!pa[2] || !pb[2]) return true
+  return pa[2] === pb[2]
+}
+
+/**
+ * 收敛候选池的重复行：同身份只留信息最全的一行。
+ * 保序：按首次出现的位置输出（界面/导出顺序稳定，不因去重跳位）。
+ * 若同身份内存在 keepIds 里的 id，优先保留它 —— 保证「当前已选中的那条」
+ * 不会因为去重而从候选中消失（否则用户已勾的项会变成找不到的幽灵）。
+ *
+ * 实现说明：因为 sameIdentity 允许「产品类别为空则通配」，等价关系不是严格等价
+ * （a≡b、b≡c 不必然 a≡c），不能用 Map 单键分组。这里按「模块名+产品名」粗分组，
+ * 组内再做 sameIdentity 的贪心归并——组规模通常 ≤ 8，代价可忽略。
+ */
+export function dedupeProducts(products: CheckProduct[], keepIds?: Iterable<string>): CheckProduct[] {
+  const keep = new Set(keepIds ?? [])
+  const coarseKey = (p: CheckProduct) => {
+    const norm = (v: unknown) => String(v ?? "").replace(/\s+/g, "").toLowerCase()
+    return `${norm(p.module_name)}§${norm(p.product_name)}`
+  }
+
+  // 粗分组（保序）
+  const groupOrder: string[] = []
+  const groups = new Map<string, CheckProduct[]>()
+  for (const p of products) {
+    const k = coarseKey(p)
+    if (!groups.has(k)) {
+      groups.set(k, [])
+      groupOrder.push(k)
+    }
+    groups.get(k)!.push(p)
+  }
+
+  const pickBetter = (cur: CheckProduct, cand: CheckProduct): CheckProduct => {
+    const curKept = keep.has(cur.id)
+    const candKept = keep.has(cand.id)
+    if (candKept && !curKept) return cand
+    if (curKept && !candKept) return cur
+    const candScore = completenessScore(cand)
+    const curScore = completenessScore(cur)
+    if (candScore > curScore) return cand
+    if (candScore < curScore) return cur
+    // 完整度相同：类别更具体的优先，其次较新的
+    const candCat = String(cand.module_category ?? "").trim()
+    const curCat = String(cur.module_category ?? "").trim()
+    if (candCat && !curCat) return cand
+    if (curCat && !candCat) return cur
+    const candTime = String(cand.updated ?? cand.created ?? "")
+    const curTime = String(cur.updated ?? cur.created ?? "")
+    return candTime > curTime ? cand : cur
+  }
+
+  const out: CheckProduct[] = []
+  for (const k of groupOrder) {
+    const bucket = groups.get(k)!
+    // 组内贪心：每遇到一行，找是否已有 sameIdentity 的代表行
+    const reps: CheckProduct[] = []
+    for (const p of bucket) {
+      const idx = reps.findIndex((r) => sameIdentity(r, p))
+      if (idx < 0) reps.push(p)
+      else reps[idx] = pickBetter(reps[idx], p)
+    }
+    out.push(...reps)
+  }
+  return out
+}
+
+/**
+ * 把「已映射 id」映射到去重后的等价 id：去重若把某个 id 收掉了，
+ * 同一个模块身份仍应能正确定位到保留下来的那一行（否则对照表会显示"未匹配"）。
+ */
+export function remapIdsToDeduped(
+  ids: string[],
+  original: CheckProduct[],
+  deduped: CheckProduct[],
+): string[] {
+  const byId = new Map(original.map((p) => [p.id, p]))
+  const out: string[] = []
+  for (const id of ids) {
+    const src = byId.get(id)
+    if (!src) continue
+    const target = deduped.find((d) => sameIdentity(d, src))
+    const id2 = target?.id ?? id
+    if (!out.includes(id2)) out.push(id2)
+  }
+  return out
 }
 
 /** AI/下拉候选标签：模块名优先，缺则标准名，再缺则产品名 */
@@ -267,58 +568,89 @@ export function similarity(a: string, b: string): number {
   return 1 - prev[n] / Math.max(m, n)
 }
 
-/** 组装一一对照初始行：精确映射 → 本地模糊 → 留空（none） */
+/** 组装一一对照初始行：记忆库 → 本地打分（自动落/候选）→ 留空（none）；cellsList 与 norms 按下标对齐 */
 export function buildInitialRows(opts: {
   norms: string[]
   products: CheckProduct[]
-  mappings: { customer_norm: string; company_product_name: string; product_id: string }[]
+  mappings: { customer_norm: string; company_product_name: string; product_id: string; custom_name?: string }[]
   makeRowId: () => string
   labelOf: (p: CheckProduct) => string
+  /** 2026-10-28 重构：每行对应的上传原表单元格（可选，按下标对齐） */
+  cellsList?: (string[] | undefined)[]
+  /** 每行对应的客户条目原文（可选；缺省用 norm 充当） */
+  raws?: string[]
 }): MatchRow[] {
-  const { norms, products, mappings, makeRowId, labelOf } = opts
+  const { norms, products, mappings, makeRowId, labelOf, cellsList, raws } = opts
   const idToProduct = new Map(products.map((p) => [p.id, p]))
   const labelToProduct = new Map<string, CheckProduct>()
   for (const p of products) {
     const key = norm(labelOf(p))
     if (key && !labelToProduct.has(key)) labelToProduct.set(key, p)
   }
-  return norms.map((normCustomer) => {
-    const exact = mappings.find((m) => norm(m.customer_norm) === normCustomer)
-    if (exact) {
-      const byId = exact.product_id ? idToProduct.get(exact.product_id) : undefined
-      const byLabel = byId ?? labelToProduct.get(norm(exact.company_product_name))
-      if (byId || byLabel) {
-        const hit = byId ?? byLabel!
+  return norms.map((normCustomer, idx) => {
+    const cells = cellsList?.[idx]
+    const rawText = raws?.[idx] || normCustomer
+    // 记忆库命中：同一外部名可能沉淀了多对（一对多），全部恢复，首条为主干
+    const memoryHits = mappings.filter((m) => norm(m.customer_norm) === normCustomer)
+    if (memoryHits.length) {
+      const resolved: CheckProduct[] = []
+      // 2026-10-29：记忆里可能同时有公司库 pair 和自定义名，两者都要恢复
+      const customNames: string[] = []
+      for (const m of memoryHits) {
+        const custom = String(m.custom_name ?? "").trim()
+        if (custom) {
+          if (!customNames.includes(custom)) customNames.push(custom)
+          continue
+        }
+        const byId = m.product_id ? idToProduct.get(m.product_id) : undefined
+        const hit = byId ?? labelToProduct.get(norm(m.company_product_name))
+        if (hit && !resolved.some((x) => x.id === hit.id)) resolved.push(hit)
+      }
+      const primary = resolved[0]
+      if (primary || customNames.length) {
         return {
           row_id: makeRowId(),
-          raw: normCustomer,
+          raw: rawText,
           norm: normCustomer,
-          product_name: hit.product_name,
-          product_id: hit.id,
+          product_name: primary?.product_name ?? customNames[0] ?? memoryHits[0].company_product_name,
+          product_id: primary?.id ?? "",
+          ...(resolved.length ? { product_ids: resolved.map((x) => x.id) } : {}),
+          ...(customNames.length ? { custom_names: customNames } : {}),
           kind: "mapping" as const,
           resolution: "company" as const,
+          score: 1,
+          rule: "memory",
+          ...(cells ? { cells } : {}),
         }
       }
+      // 记忆指向的公司条目已不在库：保留旧口径（展示记忆里的名字，id 空）
       return {
         row_id: makeRowId(),
-        raw: normCustomer,
+        raw: rawText,
         norm: normCustomer,
-        product_name: exact.company_product_name,
+        product_name: memoryHits[0].company_product_name,
         product_id: "",
         kind: "mapping" as const,
         resolution: "company" as const,
+        score: 1,
+        rule: "memory",
+        ...(cells ? { cells } : {}),
       }
     }
     const local = scoreProductMatch(normCustomer, products)
     if (local && local.confidence === "auto") {
       return {
         row_id: makeRowId(),
-        raw: normCustomer,
+        raw: rawText,
         norm: normCustomer,
         product_name: local.product.product_name,
         product_id: local.product.id,
+        product_ids: [local.product.id],
         kind: "local" as const,
         resolution: "company" as const,
+        score: local.score,
+        rule: local.rule,
+        ...(cells ? { cells } : {}),
       }
     }
     // 2026-10-28：中把握（suggest）**不再自动落**，但也不丢——作为 suggestion 带在行上，
@@ -326,12 +658,13 @@ export function buildInitialRows(opts: {
     // 也不至于让用户从几百行里手翻。真·无法判定的仍然留空（无 suggestion）。
     return {
       row_id: makeRowId(),
-      raw: normCustomer,
+      raw: rawText,
       norm: normCustomer,
       product_name: "",
       product_id: "",
       kind: "none" as const,
       resolution: "company" as const,
+      ...(cells ? { cells } : {}),
       ...(local && local.confidence === "suggest"
         ? {
             suggestion: {
@@ -416,15 +749,16 @@ export function applyAiPairs(
       kind: "ai" as const,
       product_name: product.product_name,
       product_id: product.id,
+      product_ids: [product.id],
       resolution: "company" as const,
     }
   })
 }
 
-/** AI 后仍未命中的，用映射库模糊回填（≥0.8） */
+/** AI 后仍未命中的，用映射库模糊回填（≥0.8；同一外部名的多对记忆全部恢复） */
 export function backfillFromMappings(
   rows: MatchRow[],
-  mappings: { customer_norm: string; company_product_name: string; product_id: string }[],
+  mappings: { customer_norm: string; company_product_name: string; product_id: string; custom_name?: string }[],
   products: CheckProduct[],
 ): MatchRow[] {
   const idToProduct = new Map(products.map((p) => [p.id, p]))
@@ -435,7 +769,7 @@ export function backfillFromMappings(
   }
   return rows.map((r) => {
     if (r.kind !== "none") return r
-    const hit = mappings.find((m) => {
+    const hits = mappings.filter((m) => {
       const mn = norm(m.customer_norm)
       if (!mn) return false
       return (
@@ -444,46 +778,94 @@ export function backfillFromMappings(
         similarity(r.norm, mn) >= 0.8
       )
     })
-    if (!hit) return r
-    const product = idToProduct.get(hit.product_id) ?? labelToProduct.get(norm(hit.company_product_name))
+    if (!hits.length) return r
+    // 2026-10-29：记忆里可能同时存公司库 pair 和自定义名，两者都要恢复
+    const resolved: CheckProduct[] = []
+    const customNames: string[] = []
+    for (const h of hits) {
+      const custom = String(h.custom_name ?? "").trim()
+      if (custom) {
+        if (!customNames.includes(custom)) customNames.push(custom)
+        continue
+      }
+      const p = idToProduct.get(h.product_id) ?? labelToProduct.get(norm(h.company_product_name))
+      if (p && !resolved.some((x) => x.id === p.id)) resolved.push(p)
+    }
+    const primary = resolved[0]
+    // 只命中自定义名：状态算「自定义」，不算公司库命中
+    if (!resolved.length && !customNames.length) return r
     return {
       ...r,
       kind: "mapping" as const,
-      product_name: product?.product_name ?? hit.company_product_name,
-      product_id: product?.id ?? "",
+      product_name: primary?.product_name ?? customNames[0] ?? hits[0].company_product_name,
+      product_id: primary?.id ?? "",
+      ...(resolved.length ? { product_ids: resolved.map((x) => x.id) } : {}),
+      ...(customNames.length ? { custom_names: customNames } : {}),
       resolution: "company" as const,
+      rule: "memory",
+      score: 0.8,
     }
   })
 }
 
-/** MatchRow[] → 一一对照视图/导出行 */
+/** MatchRow[] → 一一对照视图/导出行（透传原表单元格 cells、命中分数/规则、多对命中 products） */
 export function toCompareRows(
   rows: MatchRow[],
   products: CheckProduct[],
   notes: Record<string, string> = {},
+  /** 可选：去重前的原始候选池。传入后，映射 id 若在去重中被收掉，
+   *  按其模块身份回退到去重后的同身份行（避免历史映射显示成「未匹配」）。 */
+  originalPool?: CheckProduct[],
 ): MappingCompareRow[] {
   const idToProduct = new Map(products.map((p) => [p.id, p]))
-  return rows.map((r) => ({
-    row_id: r.row_id,
-    customer: r.norm,
-    raw: r.raw,
-    kind: r.kind,
-    resolution: r.resolution,
-    product: r.product_id ? (idToProduct.get(r.product_id) ?? null) : null,
-    note: notes[r.row_id] ?? "",
-    // 已落定（有 product_id）的行不再显示建议，避免用户以为还有个待选项
-    suggestion: r.product_id ? null : (r.suggestion ?? null),
-  }))
+  const originalById = new Map((originalPool ?? []).map((p) => [p.id, p]))
+  const resolve = (id: string): CheckProduct | undefined => {
+    const direct = idToProduct.get(id)
+    if (direct) return direct
+    const src = originalById.get(id)
+    if (!src) return undefined
+    return products.find((p) => sameIdentity(p, src))
+  }
+  return rows.map((r) => {
+    const resolved = rowProductIds(r)
+      .map((id) => resolve(id))
+      .filter((p): p is CheckProduct => Boolean(p))
+    return {
+      row_id: r.row_id,
+      customer: r.norm,
+      raw: r.raw,
+      kind: r.kind,
+      resolution: r.resolution,
+      product: resolved[0] ?? null,
+      products: resolved,
+      ...(r.custom_names && r.custom_names.length ? { customNames: r.custom_names } : {}),
+      note: notes[r.row_id] ?? "",
+      // 已落定（有 product_id）的行不再显示建议，避免用户以为还有个待选项
+      suggestion: r.product_id ? null : (r.suggestion ?? null),
+      ...(r.cells ? { cells: r.cells } : {}),
+      ...(r.score !== undefined ? { score: r.score } : {}),
+      ...(r.rule ? { rule: r.rule } : {}),
+    }
+  })
 }
 
-/** 已确认映射（公司命中）→ 映射库沉淀候选 */
+/**
+ * 已确认映射（公司命中）→ 映射库沉淀候选（一对多：每个命中模块一对）。
+ * products 传入时按 id 取展示标签；未传时主干回落 row.product_name（旧口径兼容）。
+ */
 export function manualMappingWrites(
   rows: MatchRow[],
+  products?: CheckProduct[],
 ): { norm: string; productName: string; productId: string }[] {
   const out: { norm: string; productName: string; productId: string }[] = []
   for (const r of rows) {
-    if (r.kind === "manual" && r.product_id && r.resolution === "company") {
-      out.push({ norm: r.norm, productName: r.product_name, productId: r.product_id })
+    if (r.kind === "manual" && r.resolution === "company") {
+      for (const pid of rowProductIds(r)) {
+        const p = products?.find((x) => x.id === pid)
+        const productName = p ? candidateLabel(p) : pid === r.product_id ? r.product_name : ""
+        if (!productName) continue
+        out.push({ norm: r.norm, productName, productId: pid })
+      }
     }
   }
   return out

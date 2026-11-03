@@ -2,7 +2,7 @@
 // pb_hooks/bid_projects.pb.js — 业务 collection + REST CRUD 路由 (self-contained)
 //
 // 由 mcp__rh-pb-hooks__install_business_collection 装. 不要直接 Read+Write 这个文件.
-// 业务字段: rh_user_id:text, project_name:text, tender_no:text, hospital:text, bid_open_date:date, stage:text, tender_text:text, parse_report:json, bid_outline:json, bid_chapters:json, response_map:json, dup_report:json, void_check:json, ai_review:json, manual_review:json, parse_config:json, opportunity_id:text, bid_result:text, bid_amount:number, lost_reason:text, result_synced_at:date, target_pages:number, outline_level:number, figures_enabled:bool, clause_granularity:text, section_words:number, bid_defense:json, submission_check:json, stage_gates:json, text_audit:json, archived:bool, deleted_at:text, gen_options:json, global_facts:text, orchestration:json, max_figures:number, compilation_basis_extra:json, basis_style:text, format_settings:json, format_check_items:json, ref_template_text:text, ref_materials_text:text, identity_words:text, bid_source_mode:text, bid_external_text:text
+// 业务字段: rh_user_id:text, project_name:text, tender_no:text, hospital:text, bid_open_date:date, stage:text, tender_text:text, tender_files:json, tender_tables:json, parse_report:json, bid_outline:json, bid_chapters:json, response_map:json, dup_report:json, void_check:json, ai_review:json, manual_review:json, parse_config:json, opportunity_id:text, bid_result:text, bid_amount:number, lost_reason:text, result_synced_at:date, target_pages:number, outline_level:number, figures_enabled:bool, clause_granularity:text, section_words:number, bid_defense:json, submission_check:json, stage_gates:json, text_audit:json, archived:bool, deleted_at:text, gen_options:json, global_facts:text, orchestration:json, max_figures:number, compilation_basis_extra:json, basis_style:text, format_settings:json, format_check_items:json, ref_template_text:text, ref_materials_text:text, identity_words:text, bid_source_mode:text, bid_external_text:text
 // 路由: list,get,create,update,delete
 // list filter 字段: rh_user_id,stage
 // list 默认排序: -updated
@@ -34,6 +34,8 @@ onBootstrap(function (e) {
       addField({ name: 'bid_open_date', type: 'date' })
       addField({ name: 'stage', type: 'text' })
       addField({ name: 'tender_text', type: 'text' })
+      addField({ name: 'tender_files', type: 'json' })
+      addField({ name: 'tender_tables', type: 'json' })
       addField({ name: 'parse_report', type: 'json' })
       addField({ name: 'bid_outline', type: 'json' })
       addField({ name: 'bid_chapters', type: 'json' })
@@ -105,6 +107,8 @@ onBootstrap(function (e) {
           { name: 'bid_open_date', type: 'date' },
           { name: 'stage', type: 'text' },
           { name: 'tender_text', type: 'text' },
+          { name: 'tender_files', type: 'json' },
+          { name: 'tender_tables', type: 'json' },
           { name: 'parse_report', type: 'json' },
           { name: 'bid_outline', type: 'json' },
           { name: 'bid_chapters', type: 'json' },
@@ -171,6 +175,8 @@ routerAdd("GET", "/api/bid_projects", function (e) {
           { name: 'bid_open_date', type: 'date' },
           { name: 'stage', type: 'text' },
           { name: 'tender_text', type: 'text' },
+          { name: 'tender_files', type: 'json' },
+          { name: 'tender_tables', type: 'json' },
           { name: 'parse_report', type: 'json' },
           { name: 'bid_outline', type: 'json' },
           { name: 'bid_chapters', type: 'json' },
@@ -329,6 +335,8 @@ routerAdd("POST", "/api/bid_projects", function (e) {
           { name: 'bid_open_date', type: 'date' },
           { name: 'stage', type: 'text' },
           { name: 'tender_text', type: 'text' },
+          { name: 'tender_files', type: 'json' },
+          { name: 'tender_tables', type: 'json' },
           { name: 'parse_report', type: 'json' },
           { name: 'bid_outline', type: 'json' },
           { name: 'bid_chapters', type: 'json' },
@@ -387,6 +395,8 @@ routerAdd("POST", "/api/bid_projects", function (e) {
     rec.set("bid_open_date", body.bid_open_date === undefined || body.bid_open_date === null ? "" : String(body.bid_open_date))
     rec.set("stage", body.stage === undefined || body.stage === null ? "" : String(body.stage))
     rec.set("tender_text", body.tender_text === undefined || body.tender_text === null ? "" : String(body.tender_text))
+    rec.set("tender_files", body.tender_files)
+    rec.set("tender_tables", body.tender_tables)
     rec.set("parse_report", body.parse_report)
     rec.set("bid_outline", body.bid_outline)
     rec.set("bid_chapters", body.bid_chapters)
@@ -501,6 +511,8 @@ routerAdd("PATCH", "/api/bid_projects/{id}", function (e) {
     if ("bid_open_date" in body) rec.set("bid_open_date", body.bid_open_date === undefined || body.bid_open_date === null ? "" : String(body.bid_open_date))
     if ("stage" in body) rec.set("stage", body.stage === undefined || body.stage === null ? "" : String(body.stage))
     if ("tender_text" in body) rec.set("tender_text", body.tender_text === undefined || body.tender_text === null ? "" : String(body.tender_text))
+    if ("tender_files" in body) rec.set("tender_files", body.tender_files)
+    if ("tender_tables" in body) rec.set("tender_tables", body.tender_tables)
     if ("parse_report" in body) rec.set("parse_report", body.parse_report)
     if ("bid_outline" in body) rec.set("bid_outline", body.bid_outline)
     if ("bid_chapters" in body) rec.set("bid_chapters", body.bid_chapters)

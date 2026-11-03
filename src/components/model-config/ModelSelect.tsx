@@ -62,6 +62,14 @@ export function ModelSelect({ models, valueKey, onChange }: ModelSelectProps) {
   //       defaultRef 初始化（个人配置优先），因此不会默认落到被禁用的选项上。
   // 线上域（vibex.cn / runninghub.cn）isLocalDeployHost() 恒为 false，行为完全不变。
   const platformDisabled = isLocalDeployHost() && personalModels.length > 0
+  // 截断兜底：select 宽度有限（max-w-44），模型名过长时显示省略号；
+  // 把完整标签挂到 title 上，悬停即可看全名（浏览器原生 tooltip）。
+  const selectedLabel =
+    models.find((m) => modelRefKey(m) === valueKey) != null
+      ? modelRefLabel(models.find((m) => modelRefKey(m) === valueKey)!)
+      : models.length === 0
+        ? "平台内置 gpt-5.5"
+        : valueKey
   // 下拉项后缀：冷却（会话内、分钟级）与实测不可用（持久、天级）是两回事，命中哪个说哪个
   const statusSuffix = (key: string): string => {
     const parts: string[] = []
@@ -77,6 +85,7 @@ export function ModelSelect({ models, valueKey, onChange }: ModelSelectProps) {
         value={valueKey}
         onChange={(e) => onChange(e.target.value)}
         aria-label="选择本次生成使用的模型"
+        title={selectedLabel}
         className="h-7 max-w-44 cursor-pointer rounded-md border-0 bg-transparent text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
         {models.length === 0 && <option value="">平台内置 gpt-5.5</option>}

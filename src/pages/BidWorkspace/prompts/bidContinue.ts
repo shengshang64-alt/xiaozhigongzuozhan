@@ -7,7 +7,8 @@ import type { ParseReport, RequirementClause, ScoringItem } from "../bidTypes"
 import type { LlmMessage } from "@/lib/llm"
 
 // REQ-052 v1→v2：BID_STYLE_RULES 新增「正文编号层次」条（续写路径同步，避免续写把层次写回扁平）
-export const PROMPT_VERSION = 2
+// 2026-10-21 v2→v3：PROSE_LINT_RULES 新增「禁元话语与应答套话」条（续写同步生效）
+export const PROMPT_VERSION = 3
 
 export function buildBidContinueMessages(
   projectName: string,

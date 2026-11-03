@@ -16,6 +16,41 @@ describe("normalizeSlideFigures", () => {
     expect(out[0].type === "architecture" && out[0].layers).toHaveLength(1)
   })
 
+  it("架构图：arrowLabel 与 crossCutting 透传（2026-10-30 渲染器升级）", () => {
+    const out = normalizeSlideFigures([
+      {
+        type: "architecture",
+        title: "总体架构",
+        layers: [
+          { name: "接入层", modules: ["网关"], arrowLabel: "HTTPS/REST" },
+          { name: "业务层", modules: ["HIS"] }, // 无 arrowLabel 正常
+        ],
+        crossCutting: ["信息安全", "运维管理"],
+      },
+      { type: "architecture", title: "无横切", layers: [{ name: "x", modules: ["y"] }], crossCutting: [] },
+    ])
+    expect(out).toHaveLength(2)
+    const first = out[0]
+    expect(first.type === "architecture" && first.layers[0].arrowLabel).toBe("HTTPS/REST")
+    expect(first.type === "architecture" && first.layers[1].arrowLabel).toBeUndefined()
+    expect(first.type === "architecture" && first.crossCutting).toEqual(["信息安全", "运维管理"])
+    // 空 crossCutting 不产出空数组字段
+    const second = out[1]
+    expect(second.type === "architecture" && second.crossCutting).toBeUndefined()
+  })
+
+  it("架构图：crossCutting 超 6 截断、非字符串过滤", () => {
+    const out = normalizeSlideFigures([
+      {
+        type: "architecture",
+        title: "t",
+        layers: [{ name: "a", modules: ["b"] }],
+        crossCutting: ["1", "2", "3", "4", "5", "6", "7", "", null, 9],
+      },
+    ])
+    expect(out[0].type === "architecture" && out[0].crossCutting).toEqual(["1", "2", "3", "4", "5", "6"])
+  })
+
   it("流程图：steps 必填，branches 可选", () => {
     const out = normalizeSlideFigures([
       { type: "flow", title: "就诊流程", steps: [{ name: "挂号" }, { name: "分诊", desc: "自动" }], branches: ["急诊"] },

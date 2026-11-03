@@ -4,12 +4,20 @@
  * 本模块集中：① 该导出项就绪所需产物；② 生成它的流水线步骤号；③ 步骤名（走 PIPELINE_STEPS，杜绝与流程条漂移）；
  * ④ 未就绪时的引导语。纯逻辑、无 React / 后端依赖，可脱离渲染单测。 */
 import { stepGoLabel } from "@/components/bid-workspace/pipelineStep"
+import { reconcileChaptersWithOutline } from "@/pages/BidWorkspace/chapterIntegrity"
 
 export type ArchiveExportKey = "bid" | "deviation" | "parse" | "check" | "eval"
 
 /** 仅取导出就绪判定所需字段的结构子集（BidProjectRecord 天然满足，多余字段不影响赋值）。 */
 export type ArchiveProjLite = {
-  bid_chapters: { content?: string | null }[]
+  bid_chapters: {
+    title?: string | null
+    content?: string | null
+    gen_status?: string | null
+    section_stats?: { chars?: number }[] | null
+  }[]
+  /** 2026-10-25（A1）：章表↔大纲对账用；缺省时不做重复章判定，行为同旧版 */
+  bid_outline?: { id?: string; title?: string | null }[] | null
   response_map: { rows?: unknown[] } | null
   parse_report: unknown
   dup_report: unknown
@@ -25,6 +33,8 @@ export type ArchiveCardGuidance = {
   goLabel: string
   /** 未就绪时的引导语（作为禁用按钮 title + 出路说明） */
   missingHint: string
+  /** 未就绪时按钮上的短语（缺省走通用「内容未就绪」） */
+  shortLabel?: string
 }
 
 const GUIDANCE: Record<ArchiveExportKey, { step: number; missingHint: string; ready: (p: ArchiveProjLite) => boolean }> = {
@@ -62,5 +72,20 @@ function stepLabel(step: number): string {
 
 export function archiveCardGuidance(key: ArchiveExportKey, proj: ArchiveProjLite): ArchiveCardGuidance {
   const g = GUIDANCE[key]
+  // 2026-10-25（A1）：章表里有与现有章重复的孤儿章时，导出的 Word 会多出一份同主题章。
+  // 只在「本来就能导」的项目上加这道判定——产物都没生成时仍走原有引导语，不给两套未就绪理由。
+  if (key === "bid" && g.ready(proj)) {
+    const dup = reconcileChaptersWithOutline(proj.bid_outline ?? [], proj.bid_chapters).duplicated
+    if (dup.length) {
+      const names = dup.slice(0, 3).map((d) => d.title).join("、")
+      return {
+        ready: false,
+        step: g.step,
+        goLabel: stepLabel(g.step),
+        missingHint: `章表里有 ${dup.length} 章与现有章重复（${names}${dup.length > 3 ? " 等" : ""}）——导出会多出一份同主题章。请先到第 ${g.step} 步按当前大纲整理章表（删除旧稿或合并），再导出`,
+        shortLabel: "章表与大纲不一致",
+      }
+    }
+  }
   return { ready: g.ready(proj), step: g.step, goLabel: stepLabel(g.step), missingHint: g.missingHint }
 }

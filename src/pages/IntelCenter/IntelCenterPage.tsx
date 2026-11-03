@@ -10,6 +10,7 @@ import { IntelStatsRow } from "@/components/intel-center/IntelStatsRow"
 import { IntelFilterRail } from "@/components/intel-center/IntelFilterRail"
 import { IntelFilterBar } from "@/components/intel-center/IntelFilterBar"
 import { IntelItemCard } from "@/components/intel-center/IntelItemCard"
+import { IntelDailyBrief } from "@/components/intel-center/IntelDailyBrief"
 import { IntelDetailPanel } from "@/components/intel-center/IntelDetailPanel"
 import { ManualEntryDialog } from "@/components/intel-center/ManualEntryDialog"
 import { CleanupIrrelevantDialog } from "@/components/intel-center/CleanupIrrelevantDialog"
@@ -123,6 +124,12 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
             onTagClick={p.handleTagClick}
           />
           <section className="min-w-0 space-y-4">
+            <IntelDailyBrief
+              work={p.dailyWork}
+              onOpenDetail={p.openDetail}
+              onConfirm={p.confirmItem}
+              onIgnore={p.ignoreItem}
+            />
             <IntelFilterBar
               searchInput={p.searchInput}
               onSearchInput={p.setSearchInput}
@@ -335,6 +342,7 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
                 onToggleLead={p.toggleLead}
                 onCreateBidTask={p.createBidTask}
                 onConvertToOpp={p.convertToOpportunity}
+                onSaveStructured={p.saveStructured}
               />
             </div>
 
@@ -429,7 +437,7 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
               AI 情报周报
               {p.reportLoading && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
             </DialogTitle>
-            <DialogDescription className="text-xs">基于近 7 天未忽略的情报由 AI 汇总生成，发布前请人工核对</DialogDescription>
+            <DialogDescription className="text-xs">基于近 7 天高分待办、临期与已确认情报由 AI 汇总生成，发布前请人工核对</DialogDescription>
           </DialogHeader>
           <div className="max-h-[55vh] overflow-y-auto px-5 py-4">
             {p.reportLoading && !p.reportText ? (

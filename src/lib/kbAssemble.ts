@@ -89,6 +89,28 @@ export function getCachedVisibleDocs(userId: string | null): Promise<KbDocRow[]>
 }
 
 /**
+ * 2026-10-31 性能优化：按查询渐进加载语料。
+ *
+ * 为什么需要：getCachedVisibleDocs 无条件拉全量正文（实测 7000 篇 = 121MB / 2.4s），
+ * 但检索只需要「与 query 相关的少数文档」的正文。实测元数据只有 7.6MB（省 94%）。
+ *
+ * 策略：元数据全量 → 按元数据粗筛（标题/摘要/关键词/赛道）→ 只给候选补正文。
+ * 返回结构仍是完整 KbDocRow[]（未命中的 content 为空），调用方接口不变。
+ *
+ * 适用：标书/方案装配（都是「有明确 query 的检索场景」）。
+ * 不适用：需要遍历全部正文的功能（如全文导出）——那些仍应用 getCachedVisibleDocs。
+ */
+export async function getDocsForQuery(
+  userId: string | null,
+  query: string,
+  opts?: { track?: string; buckets?: string[]; sections?: string[] },
+): Promise<KbDocRow[]> {
+  const { loadCorpusForQuery } = await import("./kbCorpusLazy")
+  const { docs } = await loadCorpusForQuery(query, opts)
+  return visibleKbDocs(docs, userId)
+}
+
+/**
  * A2（2026-10-25）：用刚拉取的全量可见行回填共享缓存——QA 语料通道为拿「过滤前的原始行」
  * 计算游标而绕过 getCachedVisibleDocs 直拉 listKbDocs；seed 让助手/标书/方案等共享消费方
  * 仍然复用同一份数据（保持 R229 的并发去重收益）。只用于「刚拉取的新鲜数据」。

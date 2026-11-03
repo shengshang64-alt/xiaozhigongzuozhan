@@ -63,3 +63,14 @@ describe("summarizeParseWarnings（R46/F3 段与项口径不矛盾）", () => {
     expect(s?.headline).not.toContain("按段落切分")
   })
 })
+
+// 2026-10-24（P0-10）：archived 标志优先于 stage——真实库有 archived=1 但 stage=composing 的记录
+import { deriveStage } from "./bidTypes"
+
+describe("归档状态优先（P0-10）", () => {
+  it("archived=true 但 stage=composing → 阶段与文案都显示已归档", () => {
+    const rec = { archived: true, stage: "composing" as const, bid_outline: [{ id: "n", title: "章", children: [] }] }
+    expect(deriveStage(rec)).toBe("archived")
+    expect(displayStageLabel(rec)).toBe("已归档")
+  })
+})

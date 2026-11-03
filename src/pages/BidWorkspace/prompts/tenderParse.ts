@@ -17,7 +17,9 @@ import { MAX_TENDER_CHARS, clipText, parseSectionDef, requestedKeys, truthPreamb
 import type { ParseConfig } from "../bidTypes"
 import type { LlmMessage } from "@/lib/llm"
 
-export const PROMPT_VERSION = 1
+// 2026-10-21 v1→v2：overview 增加「每条 80 字以内、按子维度拆条」约束；biz_score 排除资信类评分项（修解析重复）
+// 2026-11-01 v2→v3：提取铁律补「跨物理行断句须先拼回完整句」（P0 解析根因，与 VOID_ITEMS_TASK 同口径）
+export const PROMPT_VERSION = 3
 
 export function buildTenderParseMessages(tenderText: string, cfg: ParseConfig, onlyKeys?: string[]): LlmMessage[] {
   const keys = onlyKeys && onlyKeys.length ? onlyKeys : requestedKeys(cfg)
@@ -32,7 +34,7 @@ export function buildTenderParseMessages(tenderText: string, cfg: ParseConfig, o
     truthPreamble("parse"),
     "当前任务：从招标文件全文中提取结构化要点，供投标团队快速决策与编制投标文件。",
     `本次只输出以下解析项（未列出的项一律不要输出）：\n${specLines}`,
-    "提取铁律：以招标文件原文为准，禁止编造；某项内容找不到时省略对应行；每项内容为纯文本多行，行内不使用 markdown 符号；",
+    "提取铁律：以招标文件原文为准，禁止编造；某项内容找不到时省略对应行；每项内容为纯文本多行，行内不使用 markdown 符号；同一句条款被排版换行切成数行时必须先拼回完整句再成条，禁止把没有句末标点的残句当作一条；",
     "要点化铁律（2026-09-16 用户要求只提重点）：每项内容必须是【要点清单】——一行一条要点，每条直接给出硬指标或结论（金额/限价/工期/天数/份数/比例/资质证照名称/标准等级/系统名称/人员数量），形如「预算金额：3500 万元」「免费质保期：验收合格起 5 年」「核心系统上线：开工通知后 30 日历天内」；",
     "禁止整段抄原文、禁止复述章节标题、禁止「本项目旨在…」式铺垫句；描述性内容（背景/技术特点/实施范围）压缩为「主题词：核心短语」式要点（如「一体化管理：两院系统兼容、数据统一」「信创适配：国产服务器/操作系统/数据库」）；单条要点 ≤60 字，每项 ≤25 条，宁缺毋滥；",
     "出处回指（合并稿 §三铁律 2 的解析侧落地）：每条要点能在原文定位出处时，行末以简短括号标注来源，形如（出处：第三章3.2）或（出处：P17）；出处标注不计入 60 字要点上限、本身不超过 12 字；无法确定出处时不标注，禁止臆造出处；",

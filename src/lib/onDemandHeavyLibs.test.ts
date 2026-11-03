@@ -27,6 +27,25 @@ function staticSpecs(code: string): string[] {
   return out
 }
 
+/** 静态依赖表按文件缓存（2026-10-20）。
+ *  下面那条「全部路由壳」用例会对 17 个入口各做一次 BFS，而 components/ui、lib 这类共享子树
+ *  会被重复 readFileSync + 正则解析十余次——实测未缓存时单文件用例超过 5s 默认超时。
+ *  缓存后每个文件只读一次、只解析一次，语义完全不变（同一份源码得到同一份 spec 列表）。 */
+const staticSpecsCache = new Map<string, string[]>()
+function cachedStaticSpecs(file: string): string[] {
+  const hit = staticSpecsCache.get(file)
+  if (hit) return hit
+  let code: string
+  try {
+    code = readFileSync(file, "utf-8")
+  } catch {
+    return []
+  }
+  const specs = staticSpecs(code)
+  staticSpecsCache.set(file, specs)
+  return specs
+}
+
 /** 从 start 文件出发 BFS 静态 import 图，找是否可达指定第三方包。返回首个命中与到达链。 */
 function findStaticReach(start: string, libs: string[]): { hit: string | null; chain: string[] } {
   const seen = new Set<string>()
@@ -35,13 +54,7 @@ function findStaticReach(start: string, libs: string[]): { hit: string | null; c
     const cur = queue.shift() as { file: string; trail: string[] }
     if (seen.has(cur.file)) continue
     seen.add(cur.file)
-    let code: string
-    try {
-      code = readFileSync(cur.file, "utf-8")
-    } catch {
-      continue
-    }
-    for (const spec of staticSpecs(code)) {
+    for (const spec of cachedStaticSpecs(cur.file)) {
       const pkgRoot = spec.split("/")[0]
       if (!spec.startsWith(".") && !spec.startsWith("@/") && libs.includes(pkgRoot)) {
         return { hit: spec, chain: [...cur.trail, `${path.relative(SRC, cur.file)} -> ${spec}`] }
@@ -119,5 +132,6 @@ describe("R124 重型导出库不进静态首载图（防回潮）", () => {
       offenders,
       `以下路由壳静态可达重库——应改成点击导出时 await import()：\n  ${offenders.join("\n  ")}`,
     ).toEqual([])
-  })
+    // 超时给足：即使缓存未热，17 个入口的 BFS 也不该被 5s 默认值误判为失败
+  }, 60_000)
 })

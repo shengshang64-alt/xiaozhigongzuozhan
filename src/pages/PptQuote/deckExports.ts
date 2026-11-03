@@ -10,8 +10,9 @@ import {
 } from "./pptQuoteTypes"
 import { renderDeckChartPng } from "./deckChart"
 import { shade, type DeckThemeTokens } from "./deckTheme"
-import { buildFidelityDeck } from "./templateFidelity"
+import { buildFidelityDeck, type FidelitySlideSpec } from "./templateFidelity"
 import { effectiveLayout, planFidelityExport } from "./deckFidelityPlan"
+import type { TemplateMappingZ } from "./deckSchema"
 import type { FigureSpec } from "@/pages/SolutionStudio/solutionTypes"
 import { buildFigureSvg, tokenPalette } from "@/components/bid-workspace/BidFigure"
 import { triggerBlobDownload } from "@/lib/download"
@@ -107,6 +108,110 @@ export interface ExportDeckOptions {
   theme?: DeckThemeTokens
   /** R189（r169 切片二）：母版级保真通道的模板字节（deckTheme.decodeTemplateBytes）；缺省=现通道 */
   templateBytes?: Uint8Array
+  /**
+   * 2026-10-30 补齐：kind → 模板版式映射。
+   *
+   * 为什么需要它：原保真通道只会「克隆模板里的标题样张页 / 正文样张页」两种，
+   * 用户上传了带封面/目录/章节页/图表页的公司模板也用不上 —— 这就是
+   * 「套了公司模板还是像内置模板」的根因。
+   *
+   * 传入 mapping 后，导出会按每页的 kind 选择对应版式（见 templateLayouts）。
+   * 缺省则保持原有「样张克隆」行为（向后兼容，不影响历史 deck）。
+   */
+  layoutMapping?: TemplateMappingZ
+  /** 本次实际用到的版式名（导出后回传给界面提示"哪些页没用上模板版式"） */
+  onLayoutReport?: (report: { kind: string; layoutName: string | null; slideIndex: number }[]) => void
+  /**
+   * 2026-10-30 补齐（渲染质检）：true = 只生成字节不下载。
+   * 用于「先渲染检查实际效果，通过后再让用户下载」的场景。
+   */
+  skipDownload?: boolean
+  /** 生成的字节回传（渲染质检需要拿到与交付物完全一致的字节） */
+  onBytes?: (bytes: Uint8Array) => void
+}
+
+/**
+ * 2026-10-30：按 kind → 版式映射生成保真 specs。
+ *
+ * 与 planFidelityExport 的分工：
+ *   · planFidelityExport = 旧通道（不区分 kind，整册用同两个样张页）
+ *   · planMappedFidelityExport = 新通道（按 kind 分配版式，支持封面/目录/章节/图表页）
+ *
+ * 返回 null 表示「这册不适合走映射通道」，调用方回退旧通道。
+ */
+function planMappedFidelityExport(
+  deck: { deck_name: string; deck_type: string; audience: string; duration_min: number; slides: Slide[] },
+  today: string,
+  mapping: TemplateMappingZ,
+): { specs: FidelitySlideSpec[]; report: { kind: string; layoutName: string | null; slideIndex: number }[] } | null {
+  const slides = deck.slides ?? []
+  if (!slides.length) return null
+  const metaBits = [deckTypeLabel(deck.deck_type)]
+  if (deck.audience) metaBits.push(`汇报对象：${deck.audience}`)
+  if (deck.duration_min) metaBits.push(`时长约 ${deck.duration_min} 分钟`)
+
+  const specs: FidelitySlideSpec[] = []
+  const report: { kind: string; layoutName: string | null; slideIndex: number }[] = []
+
+  // 封面
+  const coverLayout = mapping.cover ? "cover" : null
+  specs.push({ title: deck.deck_name || "汇报 PPT", lines: [metaBits.join("  |  "), today] })
+  report.push({ kind: "cover", layoutName: coverLayout, slideIndex: 0 })
+
+  // 目录
+  specs.push({
+    title: "目录",
+    lines: slides.map((s, i) => `${String(i + 1).padStart(2, "0")}   ${s.title || `第 ${i + 1} 页`}`),
+  })
+  report.push({ kind: "agenda", layoutName: mapping.agenda ?? null, slideIndex: 0 })
+
+  // 内容页：按 kind 决定版式（kind 缺省时从 layout 反推）
+  slides.forEach((s, i) => {
+    const kind = kindOfSlide(s)
+    const layoutId = (mapping as Record<string, string | undefined>)[kind] ?? null
+    // 正文行：要点 + 结构化内容转成纯文本行（图表的数值也落成行，保证不丢信息）
+    const lines: string[] = []
+    if (s.bullets?.length) lines.push(...s.bullets)
+    if (s.chart?.categories?.length) {
+      lines.push(`${s.chart.title || "数据"}（${s.chart.unit || ""}）`)
+      s.chart.categories.forEach((c, ci) => {
+        const v = s.chart!.series?.[0]?.data?.[ci]
+        if (v !== undefined) lines.push(`${c}：${v}${s.chart!.unit ?? ""}`)
+      })
+    }
+    if (s.kpi?.length) lines.push(...s.kpi.map((k) => `${k.value}  ${k.label}`))
+    // 表格存在 figures 里（FigureSpec type=table），不在 Slide 顶层
+    const tableFig = s.figures?.find((f) => f.type === "table")
+    if (tableFig && tableFig.type === "table") {
+      lines.push(tableFig.columns.join("  |  "))
+      for (const row of tableFig.rows) lines.push(row.join("  |  "))
+    }
+    specs.push({
+      title: s.title || `第 ${i + 1} 页`,
+      ...(lines.length ? { lines } : {}),
+      ...(s.notes ? { notes: s.notes } : {}),
+    })
+    report.push({ kind, layoutName: layoutId, slideIndex: i + 1 })
+  })
+
+  // 结束页
+  specs.push({ title: "谢谢聆听", lines: ["欢迎交流指正"] })
+  report.push({ kind: "summary", layoutName: mapping.summary ?? null, slideIndex: slides.length + 1 })
+
+  return { specs, report }
+}
+
+/** 从 Slide 反推 kind（缺 kind 字段时按 layout/内容判断） */
+function kindOfSlide(s: Slide): string {
+  if (s.kind) return s.kind
+  if (s.chart) return "chart"
+  if (s.kpi?.length) return "kpi"
+  if (s.figures?.some((f) => f.type === "table")) return "table"
+  if (s.figures?.some((f) => f.type === "flow")) return "flow"
+  if (s.figures?.some((f) => f.type === "architecture")) return "architecture"
+  if (s.image) return "image"
+  if (s.layout === "section") return "section"
+  return "bullets"
 }
 
 /**
@@ -161,13 +266,25 @@ export async function exportDeckPptx(deck: DeckRecord, opts: ExportDeckOptions =
         }
       }
     }
-    const specs = planFidelityExport(deck, todayText(), imageMap)
+    // 2026-10-30：有版式映射时优先走「按 kind 分配版式」通道，
+    // 这样封面/目录/章节页/内容页能用上模板里不同的版式（旧通道只有 2 个样张页）。
+    let specs: FidelitySlideSpec[] | null = null
+    if (opts.layoutMapping && Object.keys(opts.layoutMapping).length > 0) {
+      const mapped = planMappedFidelityExport(deck, todayText(), opts.layoutMapping)
+      if (mapped) {
+        specs = mapped.specs
+        opts.onLayoutReport?.(mapped.report)
+      }
+    }
+    if (!specs) specs = planFidelityExport(deck, todayText(), imageMap)
     if (specs) {
       const fid = buildFidelityDeck(opts.templateBytes, specs)
       if (fid.ok) {
         const fidTransition = opts.transition ?? "none"
         const fidBytes = fidTransition === "none" ? fid.bytes : injectTransitions(fid.bytes, fidTransition)
-        downloadBlob(fidBytes, safeFileName(deck.deck_name, "pptx"))
+        // 2026-10-30：skipDownload 时只回传字节（渲染质检用），不触发下载
+        opts.onBytes?.(fidBytes)
+        if (!opts.skipDownload) downloadBlob(fidBytes, safeFileName(deck.deck_name, "pptx"))
         return "fidelity"
       }
     }
@@ -242,7 +359,9 @@ export async function exportDeckPptx(deck: DeckRecord, opts: ExportDeckOptions =
   // 后处理注入页面切换动画（PowerPoint 与 WPS 通用）
   const buf = (await pptx.write({ outputType: "arraybuffer" })) as unknown as ArrayBuffer
   const withTransition = injectTransitions(buf, transition)
-  downloadBlob(withTransition, safeFileName(deck.deck_name, "pptx"))
+  // 2026-10-30：skipDownload 时只回传字节（渲染质检用），不触发下载
+  opts.onBytes?.(withTransition)
+  if (!opts.skipDownload) downloadBlob(withTransition, safeFileName(deck.deck_name, "pptx"))
   return "legacy"
 }
 
@@ -327,10 +446,103 @@ function renderContentSlide(pptx: PptxGenJS, sl: SlideCtx, s: Slide, bodyFontSiz
   }
 
   // bullets（默认）
+  // ---------------------------------------------------------------------------
+  // 2026-10-30 用户反馈「文字占很大篇幅、没有美观性」的根因修复：
+  // 原来这里是一个 x=0.85 w=11.7 h=5.45 的巨型文本框，把所有要点堆成一坨字。
+  // 改为「卡片网格 + 视觉层次」：每条要点成为一个卡片，按条数自适应 2×2 / 3 列 / 双列，
+  // 卡片内用大字序号 + 要点文本 + 可选小注，形成版面对比与呼吸感。
+  // 超过 6 条才回退为紧凑列表（此时确实需要列全，不再强行卡片化）。
+  // ---------------------------------------------------------------------------
   addSlideTitle(sl, s.title)
-  const list = bullets.length ? bullets : ["—"]
-  sl.addText(list.map((t) => ({ text: t, options: { bullet: { code: "2022", indent: 14 }, breakLine: true, fontSize: bodyFontSize, color: BODY, paraSpaceAfter: 10 } })),
-    { x: 0.85, y: 1.5, w: 11.7, h: 5.45, valign: "top", fit: "shrink" })
+  const list = (bullets.length ? bullets : ["—"]).slice(0, 6)
+  const roleAccent = roleAccentColor(s.role)
+
+  if (list.length > 6) {
+    // 兜底：7 条以上走紧凑双列，避免卡片挤出页面
+    sl.addText(
+      list.map((t) => ({ text: t, options: { bullet: { code: "2022", indent: 14 }, breakLine: true, fontSize: 13, color: BODY, paraSpaceAfter: 6 } })),
+      { x: 0.85, y: 1.5, w: 11.7, h: 5.45, valign: "top", fit: "shrink" },
+    )
+    return
+  }
+
+  // 网格几何：1 条=通栏单卡；2 条=横向双卡；3 条=三列；4 条=2×2；5-6 条=2×3
+  const cols = list.length === 1 ? 1 : list.length === 2 ? 2 : list.length === 3 ? 3 : list.length === 4 ? 2 : 3
+  const rows = Math.ceil(list.length / cols)
+  const gridX = 0.7
+  const gridW = PAGE_W - gridX * 2
+  const gapX = 0.28
+  const gapY = 0.26
+  const gridTop = 1.55
+  const gridBottom = 6.95
+  const cardW = (gridW - gapX * (cols - 1)) / cols
+  const textLen = Math.max(...list.map((t) => t.length), 10)
+  // 卡片内正文字号：字多则小，保证单卡不溢出（pptxgenjs 的 fit:shrink 只在单文本框内生效，
+  // 跨卡片排版必须自己算，否则文字会压到卡片外）
+  const cardFont = textLen > 60 ? 11 : textLen > 40 ? 12 : textLen > 26 ? 13 : 14
+  const numFont = Math.round(cardFont * 1.9)
+  // 2026-10-30 修「卡片过高、下方大片留白」（用户反馈实测）：卡片高度按内容实际需要定，
+  // 不再一律撑满网格；整块内容在版心内垂直居中，上不贴标题、下不留空。
+  const maxH = (gridBottom - gridTop - gapY * (rows - 1)) / Math.max(1, rows)
+  // 估算正文占几行：卡片可用宽度（英寸）按字号折算成每行字数
+  const charsPerLine = Math.max(8, Math.floor((cardW - 0.36) * 96 / cardFont))
+  const lineCount = Math.max(1, Math.ceil(textLen / charsPerLine))
+  const needH = 0.55 + lineCount * (cardFont / 72) * 1.45 + 0.4
+  const cardH = Math.max(1.2, Math.min(needH, maxH))
+  const blockH = rows * cardH + gapY * (rows - 1)
+  const slack = gridBottom - gridTop - blockH
+  // top-align: card block starts under the title; only nudge down when lots of slack
+  const gridStartY = gridTop + (slack > 1.5 ? slack / 3 : 0)
+
+  list.forEach((text, i) => {
+    const r = Math.floor(i / cols)
+    const c = i % cols
+    const x = gridX + c * (cardW + gapX)
+    const y = gridStartY + r * (cardH + gapY)
+    // 卡片底：极浅色块（不用重色块，符合"专业版式靠留白而非贴色块"的规范）
+    sl.addShape(pptx.ShapeType.rect, {
+      x, y, w: cardW, h: cardH,
+      fill: { color: LIGHT_BG },
+      line: { color: "E4E9F0", width: 0.75 },
+    })
+    // 左侧强调竖条（语义色，宽 0.06，克制）
+    sl.addShape(pptx.ShapeType.rect, {
+      x, y, w: 0.055, h: cardH,
+      fill: { color: roleAccent },
+      line: { color: roleAccent, width: 0 },
+    })
+    // 大字序号：卡片视觉锚点
+    sl.addText(String(i + 1).padStart(2, "0"), {
+      x: x + 0.14, y: y + 0.1, w: cardW - 0.28, h: 0.5,
+      fontSize: numFont, bold: true, color: roleAccent, align: "left", valign: "middle", fit: "shrink",
+    })
+    // 要点正文：从序号下方开始，占满剩余高度
+    sl.addText(text, {
+      x: x + 0.16, y: y + 0.58, w: cardW - 0.32, h: cardH - 0.68,
+      fontSize: cardFont, color: BODY, align: "left", valign: "top", fit: "shrink",
+      lineSpacingMultiple: 1.25,
+    })
+  })
+}
+
+/** 页面角色 → 强调色（叙事角色的视觉区分，让全册有节奏而不是一个调子） */
+function roleAccentColor(role: Slide["role"]): string {
+  switch (role) {
+    case "problem":
+    case "question":
+      return "B45309" // 痛点/问题：赭石，提示"待解决"
+    case "answer":
+    case "approach":
+      return ACCENT // 主张/路径：主色
+    case "value":
+      return "0F766E" // 价值：墨绿
+    case "plan":
+      return "6D28D9" // 计划：紫
+    case "close":
+      return NAVY
+    default:
+      return ACCENT
+  }
 }
 
 /** 图表原生配色（与商务主色一致，不受站内 token 约束） */

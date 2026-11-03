@@ -132,8 +132,9 @@ e2e(
 // PROMPT_VERSION 指纹（防止静默改字后验收基线漂移）
 describe("e2eRealParse 契约", () => {
   it("sectionParse PROMPT_VERSION", () => {
-    // v6（R54 2026-10-16）：mode=full 的素材不再被 clip 到 14,000 —— 修「标称『招标文件全文』却静默截断」的契约不一致
-    // 上一版 v5（2026-10 易标对齐）：tech_score/biz_score 注入「评分项 vs 评分要求」语义区分
-    expect(PROMPT_VERSION).toBe(6)
+    // v7（2026-11-01 P0 解析根因）：void_items 补收录三条铁律（完整句/废标后果/禁标题行）
+    // 上一版 v6（R54 2026-10-16）：mode=full 的素材不再被 clip 到 14,000 —— 修「标称『招标文件全文』却静默截断」的契约不一致
+    // 上上一版 v5（2026-10 易标对齐）：tech_score/biz_score 注入「评分项 vs 评分要求」语义区分
+    expect(PROMPT_VERSION).toBe(7)
   })
 })

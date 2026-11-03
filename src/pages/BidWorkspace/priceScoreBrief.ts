@@ -15,11 +15,16 @@
 //    冒用会把评标基准价算歪，故本层不提供任何自动带入；
 // ③ 手输单位歧义（把「1200 万」写成「1200」）不静默换算：按所填单位如实计算，
 //    另挂 unitHint 提醒复核（与 B8「不静默钳位」同处置口径）。
+// ④ 报价有效性（R64）：「我方当前报价」与「建议价」同等受报价条款约束。此前 checkPriceValidity
+//    只挂在建议价/阶梯上，于是出现「现价 800 万 < 限价 45%（1125 万）会废标，面板却写
+//    『当前报价已拿满价格分，无需再降』并给满分」的自相矛盾——废标价拿满分毫无意义。
+//    现价触犯条款时一律置 ourPriceInvalid，由面板置顶红字提示，且不再说「无需再降」。
 // ---------------------------------------------------------------------------
 
 import { centsToYuan, formatMoney, productCents } from "@/lib/money"
 import { priceCeilingFromFacts, type ScoringItem } from "./bidTypes"
 import {
+  checkPriceValidity,
   fullScoreTargetPrice,
   listPriceScoringCandidates,
   priceScoreLadder,
@@ -170,6 +175,11 @@ export type PriceScoreView = {
   ceilingError: string | null
   minValidRatioPct: number | null
   minValidRatioError: string | null
+  /**
+   * 我方当前报价触犯报价有效性条款（超最高限价 / 低于无效标比例）时的原因，null = 合法或没填门槛。
+   * 与 target.invalidReason（建议价是否合法）分开：一个是「你现在的价」，一个是「建议你报的价」。
+   */
+  ourPriceInvalid: string | null
   /** 单位歧义提醒（不换算，只提醒） */
   unitHint: string | null
   /** 没出数时的人话原因；出数时为 null */
@@ -192,6 +202,7 @@ function emptyView(phase: PriceScorePhase): PriceScoreView {
     ceilingError: null,
     minValidRatioPct: null,
     minValidRatioError: null,
+    ourPriceInvalid: null,
     unitHint: null,
     note: null,
     result: null,
@@ -207,11 +218,15 @@ function targetView(
   others: number[],
   limits: PriceLimits,
   gap: number,
+  /** R64：现价已触犯报价有效性条款时的原因；此时「无需再降」是误导（该提价才合法） */
+  ourInvalid: string | null,
 ): PriceTargetView | null {
   const t = fullScoreTargetPrice(formula, our, others, limits)
   if (!t) return null
   let text: string
-  if (gap <= 0) text = "当前报价已拿满价格分，无需再降"
+  // 现价废标优先于「已拿满分」：先解决有效性，再谈价格分
+  if (ourInvalid) text = "先解决废标：当前报价不合法，价格分再高也拿不到"
+  else if (gap <= 0) text = "当前报价已拿满价格分，无需再降"
   else if (t.price >= our) text = "按该口径不存在「比现价更高才满分」的解，请对照下方阶梯复核"
   else text = `报 ${fmtPriceText(t.price)} 及以内可拿满价格分（较现价低 ${fmtScore(t.cutPct)}%）`
   return { price: t.price, cutPct: t.cutPct, note: t.note, text, invalidReason: t.invalidReason }
@@ -319,6 +334,9 @@ export function buildPriceScoreView(input: PriceScoreViewInput): PriceScoreView 
   if (view.ceiling) limits.maxPrice = view.ceiling.value
   if (view.minValidRatioPct != null) limits.minValidRatioPct = view.minValidRatioPct
 
+  // R64：现价先过一遍报价有效性条款——废标价的价格分再高也没有意义，必须先说这一句
+  view.ourPriceInvalid = checkPriceValidity(our.value, limits)
+
   // 单位歧义提醒：不足天花板 1% 的价格极可能是把「万元」当「元」填了，如实计算但要点破
   if (view.ceiling) {
     const lowThreshold = view.ceiling.value / 100
@@ -340,7 +358,7 @@ export function buildPriceScoreView(input: PriceScoreViewInput): PriceScoreView 
   view.phase = "computed"
   view.note = null
   view.result = scored.result
-  view.target = targetView(formula, our.value, comps.prices, limits, scored.result.gap)
+  view.target = targetView(formula, our.value, comps.prices, limits, scored.result.gap, view.ourPriceInvalid)
   const ladder = priceScoreLadder(formula, our.value, comps.prices, LADDER_PCTS, limits)
   view.steps = ladder.ok
     ? ladder.steps.map((s) => ({ ...s, isAnchor: centsToYuan(productCents([s.price])) === our.value }))

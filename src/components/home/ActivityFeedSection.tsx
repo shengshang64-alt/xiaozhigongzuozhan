@@ -97,9 +97,12 @@ export function ActivityFeedSection({ events, loading }: ActivityFeedSectionProp
                       <Icon className="h-4 w-4" />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium text-foreground">
-                        {event.title}
-                        <span className="ml-2 font-normal text-muted-foreground">{event.desc}</span>
+                      {/* 2026-10-31 移动端修复：原来外层 truncate 只裁父级，
+                          内层 desc 是长标题（实测撑到 621~923px），把整页撑出横向滚动。
+                          改为 flex + min-w-0，让 title 与 desc 都能各自收缩省略。 */}
+                      <span className="flex min-w-0 items-baseline gap-2 text-sm font-medium text-foreground">
+                        <span className="shrink-0 truncate">{event.title}</span>
+                        <span className="min-w-0 truncate font-normal text-muted-foreground">{event.desc}</span>
                       </span>
                     </span>
                     <span className="shrink-0 text-xs text-muted-foreground">{event.timeLabel}</span>

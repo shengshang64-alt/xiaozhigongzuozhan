@@ -184,9 +184,14 @@ routerAdd("POST", "/api/model-gw/configs", (e) => {
     rec.set("models", models)
     rec.set("default_model", "")
     rec.set("is_platform", false)
-    rec.set("last_check_status", "ok")
+    // 2026-10-31 修复：原来创建配置时无条件写 last_check_status="ok"，
+    // 但这只是"记录已创建"，并未验证 Key 是否有效。实测 5 个配置全部显示 ok，
+    // 实际有 2 个 Key 已失效（402 余额不足 / 模型不可用）、1 个被 Cloudflare 拦。
+    // 用户看到"ok"以为配好了，实际用不了——这是误导。
+    // 改为 "unchecked"：只有真正调通 /api/model-gw/test 才算 ok / failed。
+    rec.set("last_check_status", "unchecked")
     rec.set("last_check_error", "")
-    rec.set("last_checked_at", new Date().toISOString())
+    rec.set("last_checked_at", "")
     $app.save(rec)
     $app.logger().info("model-gw config created", "user", userId, "config", rec.id, "models", models.length)
     return e.json(200, {
@@ -1010,30 +1015,79 @@ routerAdd("POST", "/api/model-gw/chat", (e) => {
     } else {
       // 解析当前用户的全局默认配置（个人配置且模型已启用）
       var rows = $app.findRecordsByFilter("model_configs", "rh_user_id={:u} && default_model!='' && is_platform=false", "-updated", 10, 0, { u: userId })
-      if (!rows.length) return e.json(200, { ok: false, code: "fallback_to_platform", message: "尚未配置个人模型，将使用平台内置模型" })
+      if (!rows.length) {
+        // R302 兜底修复：没有任何配置声明 default_model 时，原实现直接落「平台内置」，
+        // 而平台内置的 gpt-5.5 在本地自用域恒未启用（rh 未登录必 412）——结果是全部 AI 功能
+        // 一律报「尚未配置个人模型」。实测复现：清空 default_model 后调用必返回 fallback_to_platform。
+        // 改为顺位取「有启用模型且带 Key 的个人配置」（按 -updated），与配置页
+        // 「启用列表第一个」兜底口径一致，保证至少还能用起来。
+        var pool = $app.findRecordsByFilter("model_configs", "rh_user_id={:u} && is_platform=false", "-updated", 20, 0, { u: userId })
+        for (var pi = 0; pi < pool.length; pi++) {
+          var pStored = []
+          try {
+            var pRaw = pool[pi].getString("models")
+            if (pRaw) { var pPs = JSON.parse(pRaw); if (pPs && typeof pPs.length === "number") pStored = pPs }
+          } catch (errP) { pStored = [] }
+          var pEnabled = false
+          for (var pj = 0; pj < pStored.length; pj++) {
+            if (pStored[pj] && pStored[pj].enabled) { pEnabled = true; break }
+          }
+          if (pEnabled && pool[pi].get("api_key")) { rows = [pool[pi]]; break }
+        }
+        if (!rows.length) return e.json(200, { ok: false, code: "fallback_to_platform", message: "尚未配置个人模型，将使用平台内置模型" })
+      }
       rec = rows[0]
     }
     if (rec.get("is_platform")) return e.json(200, { ok: false, code: "fallback_to_platform", message: "默认模型为平台内置模型" })
     var stored = []
     try { var rawS = rec.getString("models"); if (rawS) { var ps = JSON.parse(rawS); if (ps && typeof ps.length === "number") stored = ps } } catch (err3) { stored = [] }
     var useModel = wantModel || String(rec.get("default_model") || "")
-    if (!useModel) {
-      for (var s = 0; s < stored.length; s++) {
-        if (stored[s] && stored[s].enabled) { useModel = String(stored[s].id); break }
+    // R302：自动选模型时不能「取第一个启用模型就硬发」——实测 opecode 21 个启用模型里
+    // 10 个已在上游下线（upstream_error），第一个 deepseek-v4-flash 恰好是死的；
+    // 只挑一个必然再次失败。改为按「配置默认 → 其余启用项」逐个试，最多 4 个，
+    // 遇账号级失败（限流 / 额度 / 鉴权）立即停手，避免无界重试与重复计费。
+    var autoPick = !wantModel
+    var modelCandidates = []
+    if (useModel) modelCandidates.push(useModel)
+    if (autoPick) {
+      for (var q = 0; q < stored.length; q++) {
+        if (!stored[q] || !stored[q].enabled) continue
+        var qid = String(stored[q].id)
+        if (qid && modelCandidates.indexOf(qid) < 0) modelCandidates.push(qid)
       }
     }
-    if (!useModel) return e.json(200, { ok: false, code: "fallback_to_platform", message: "该配置下没有已启用的模型，将回退平台内置模型" })
-    var enabledOk = false
-    for (var t = 0; t < stored.length; t++) {
-      if (String(stored[t] && stored[t].id ? stored[t].id : "") === useModel && stored[t].enabled) enabledOk = true
+    if (!modelCandidates.length) return e.json(200, { ok: false, code: "fallback_to_platform", message: "该配置下没有已启用的模型，将回退平台内置模型" })
+    var isModelEnabled = function (mid) {
+      for (var t = 0; t < stored.length; t++) {
+        if (String(stored[t] && stored[t].id ? stored[t].id : "") === mid) return !!stored[t].enabled
+      }
+      return false
     }
-    if (!enabledOk) return e.json(200, { ok: false, code: "model_disabled", message: "模型「" + useModel + "」已停用，请在模型配置页启用或改用其他模型" })
+    if (!autoPick && !isModelEnabled(useModel)) {
+      return e.json(200, { ok: false, code: "model_disabled", message: "模型「" + useModel + "」已停用，请在模型配置页启用或改用其他模型" })
+    }
     var plainKey = rec.get("api_key") ? unxorHex(rec.get("api_key")) : ""
     if (!plainKey) return e.json(200, { ok: false, code: "fallback_to_platform", message: "该配置缺少 API Key，将回退平台内置模型" })
-    var r = doChat(String(rec.get("base_url") || ""), plainKey, useModel, messages, maxTokens, temperature, 120, body.disable_thinking === true)
-    if (!r.ok) return e.json(200, { ok: false, code: r.code === "rate_limit" ? "rate_limit" : "upstream_error", kind: r.kind || "", detail: r.detail || "", message: r.message })
-    $app.logger().info("model-gw chat ok", "user", userId, "config", rec.id, "model", useModel, "elapsed_ms", r.elapsed_ms)
-    return e.json(200, { ok: true, text: r.text, model: useModel, config_name: String(rec.get("config_name") || ""), elapsed_ms: r.elapsed_ms, usage: r.usage })
+    var lastErr = null
+    var tried = 0
+    for (var ci = 0; ci < modelCandidates.length && tried < 4; ci++) {
+      var tryModel = modelCandidates[ci]
+      if (!isModelEnabled(tryModel)) continue
+      tried++
+      var r = doChat(String(rec.get("base_url") || ""), plainKey, tryModel, messages, maxTokens, temperature, 120, body.disable_thinking === true)
+      if (r.ok) {
+        $app.logger().info("model-gw chat ok", "user", userId, "config", rec.id, "model", tryModel, "elapsed_ms", r.elapsed_ms, "tried", tried)
+        return e.json(200, { ok: true, text: r.text, model: tryModel, config_name: String(rec.get("config_name") || ""), elapsed_ms: r.elapsed_ms, usage: r.usage })
+      }
+      lastErr = r
+      // 账号级失败换模型也没用：限流 / 额度 / 鉴权，立即停手
+      if (r.code === "rate_limit") break
+      if (/认证|额度|余额|欠费|Key|api.?key/i.test(String(r.message || ""))) break
+    }
+    if (lastErr) {
+      return e.json(200, { ok: false, code: lastErr.code === "rate_limit" ? "rate_limit" : "upstream_error", kind: lastErr.kind || "", detail: lastErr.detail || "", message: lastErr.message })
+    }
+    return e.json(200, { ok: false, code: "fallback_to_platform", message: "该配置下没有可用的已启用模型，将回退平台内置模型" })
   } catch (ex) {
     $app.logger().error("model-gw chat failed", "err", String(ex))
     // T13：上游断连（EOF/reset）实测在大批量解析时成串出现（触发对方限流/配额/服务波动）——

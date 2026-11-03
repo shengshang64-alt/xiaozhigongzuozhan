@@ -57,4 +57,29 @@ describe("archiveCardGuidance", () => {
       expect(g.missingHint.length).toBeGreaterThan(4)
     }
   })
+
+  it("bid（A1）：旧大纲遗留的重复章拦导出，按钮文案说明是章表问题而不是内容没写", () => {
+    const g = archiveCardGuidance("bid", {
+      ...empty,
+      bid_outline: [
+        { title: "培训方案" },
+        { title: "应急方案与业务连续性保障" },
+      ],
+      bid_chapters: [
+        { title: "培训方案", content: "培训正文" },
+        { title: "应急方案与业务连续性保障", content: "应急正文" },
+        { title: "应急方案", content: "旧稿正文" },
+      ],
+    })
+    expect(g.ready).toBe(false)
+    expect(g.shortLabel).toBe("章表与大纲不一致")
+    expect(g.missingHint).toContain("重复")
+    expect(g.step).toBe(3)
+  })
+
+  it("bid（A1）：没有大纲信息时不做重复章判定，行为与旧版一致", () => {
+    const g = archiveCardGuidance("bid", { ...empty, bid_chapters: [{ title: "任意章", content: "正文内容" }] })
+    expect(g.ready).toBe(true)
+    expect(g.shortLabel).toBeUndefined()
+  })
 })

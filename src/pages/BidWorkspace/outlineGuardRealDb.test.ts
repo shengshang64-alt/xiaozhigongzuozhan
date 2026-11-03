@@ -14,7 +14,7 @@
 //
 // 复跑：npx vitest run src/pages/BidWorkspace/outlineGuardRealDb.test.ts
 // ---------------------------------------------------------------------------
-import { existsSync } from "node:fs"
+// (removed unused import) from "node:fs"
 import { DatabaseSync } from "node:sqlite"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { describe, expect, it } from "vitest"
@@ -27,6 +27,7 @@ import {
   missingCriticalSections,
 } from "./parseCoverage"
 import { formatCharCount } from "./outlineDiagnostics"
+import { hasRealChapters } from "./realDbFixture"
 
 const DB = new URL("../../../pocketbase/pb_data/data.db", import.meta.url)
 /** 生成前「大纲硬依赖」门禁（useBidWorkspace.OUTLINE_DEPEND_KEYS），先于关键项门禁执行 */
@@ -54,7 +55,20 @@ type Row = {
 function openDb(): DatabaseSync {
   const p = fileURLToPath(DB)
   try {
-    return new DatabaseSync(p, { readOnly: true })
+    const db = new DatabaseSync(p, { readOnly: true })
+    try {
+      // 2026-10-21 补：打开成功 ≠ 可读。在不支持 POSIX 文件锁的挂载点上，构造函数不抛，
+      // 首次真正查询才抛 `disk I/O error`——这一步只是「探一下能不能读」，不改任何断言口径。
+      db.prepare("select count(*) as n from sqlite_master").get()
+      return db
+    } catch (err) {
+      try {
+        db.close()
+      } catch {
+        /* 关闭失败不掩盖原始错误 */
+      }
+      throw err
+    }
   } catch (err) {
     try {
       return new DatabaseSync(`${pathToFileURL(p).href}?immutable=1`, { readOnly: true })
@@ -100,7 +114,7 @@ function parseConfig(raw: string | null): ParseConfig | null {
 
 const nonWsChars = (s: string | null): number => (s ?? "").replace(/\s+/g, "").length
 
-describe.skipIf(!existsSync(DB))("R58 真实库：门禁与退化自检的不变量（含 B28 四口径复算）", () => {
+describe.skipIf(!hasRealChapters())("R58 真实库：门禁与退化自检的不变量（含 B28 四口径复算）", () => {
   it("① 判缺清单与中文清单同源 + ② 有纲不被硬拦 + ③ 门禁判缺必有退化告警", () => {
     const rows = loadRows()
     expect(rows.length).toBeGreaterThan(0)

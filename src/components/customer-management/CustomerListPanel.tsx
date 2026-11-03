@@ -112,9 +112,9 @@ export function CustomerListPanel({
 
   return (
     <section className="flex h-full flex-col rounded-lg border border-border bg-card p-4 shadow-md lg:p-5">
-      <header className="flex min-h-14 shrink-0 items-center justify-between gap-2">
+      <header className="flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-foreground">客户列表</h2>
+          <h2 className="whitespace-nowrap text-lg font-semibold text-foreground">客户列表</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {batchEnriching
               ? `批量补全中 ${batchProgress.done}/${batchProgress.total}…`
@@ -123,7 +123,7 @@ export function CustomerListPanel({
                 : `已加载 ${loadedCount} 家医院客户`}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           {batchEnriching ? (
             <button
               type="button"
@@ -176,13 +176,6 @@ export function CustomerListPanel({
           >
             <Download className="h-3.5 w-3.5" />
             导出
-          </button>
-          <button
-            type="button"
-            onClick={onNewCustomer}
-            className="rounded-md border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            新建客户
           </button>
         </div>
       </header>

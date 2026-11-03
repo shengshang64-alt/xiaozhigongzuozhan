@@ -37,7 +37,7 @@ describe("sanitizeOutlineGateReview", () => {
     expect(dup.issues).toHaveLength(1)
     expect(sanitizeOutlineGateReview("垃圾输出")).toEqual({ passed: false, issues: [] })
     const long = sanitizeOutlineGateReview({ passed: false, issues: ["x".repeat(300)] })
-    expect(long.issues[0].length).toBeLessThanOrEqual(161) // 截断 160 字 + 省略号
+    expect(long.issues[0].text.length).toBeLessThanOrEqual(161) // 截断 160 字 + 省略号
   })
 })
 
@@ -88,5 +88,37 @@ describe("R-003 无底稿兜底：响应文件组成", () => {
   it("缺组成时不注入硬约束句（走兜底告警路径，不误导模型对齐不存在的组成）", () => {
     const text = joinAll(buildBidOutlineMessages("P", "H", repWithout, false, 0))
     expect(text).not.toContain("响应文件组成硬约束")
+  })
+})
+
+// 2026-10-23（对标易标结构化问题单）：问题分级 —— 动评分承接/章归属必须问人，其余可自动修
+import { gateIssuesForFix, gateIssuesForUser, defaultGateAction } from "./outlineGate"
+
+describe("大纲评审问题分级（2026-10-23）", () => {
+  it("结构化问题按 category 决定处置；显式 action 优先", () => {
+    const r = sanitizeOutlineGateReview({
+      passed: false,
+      issues: [
+        { category: "landing", text: "评分项 R3 未被任何叶子承接" },
+        { category: "duplicate", text: "两个叶子标题近义重复" },
+        { category: "part", text: "商务章排在技术章之后", action: "silent_fix" },
+      ],
+    })
+    expect(r.issues.map((i) => i.action)).toEqual(["need_user", "silent_fix", "silent_fix"])
+    expect(gateIssuesForFix(r)).toEqual(["两个叶子标题近义重复", "商务章排在技术章之后"])
+    expect(gateIssuesForUser(r).map((i) => i.category)).toEqual(["landing"])
+  })
+
+  it("旧契约（纯字符串）仍可解析，默认不阻断自动修复", () => {
+    const r = sanitizeOutlineGateReview({ passed: false, issues: ["第二章下只有 1 个孤儿子节点"] })
+    expect(r.issues[0]).toMatchObject({ category: "other", action: "silent_fix" })
+  })
+
+  it("默认处置表：landing/part 问人，其余自动修", () => {
+    for (const c of ["single_branch", "level", "volume", "duplicate", "ownership", "other"] as const) {
+      expect(defaultGateAction(c)).toBe("silent_fix")
+    }
+    expect(defaultGateAction("landing")).toBe("need_user")
+    expect(defaultGateAction("part")).toBe("need_user")
   })
 })

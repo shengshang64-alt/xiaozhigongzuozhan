@@ -98,6 +98,17 @@ export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
               setAutoFigureMode={p.setAutoFigureMode}
               autoFigureProvider={p.autoFigureProvider}
               setAutoFigureProvider={p.setAutoFigureProvider}
+              // 2026-10-30 四步向导：素材 / 模板 / 大纲
+              templateName={p.deckTemplateName ?? null}
+              templateOutline={p.templateOutline}
+              layoutMapping={p.layoutMapping}
+              onUploadTemplate={(f) => p.uploadDeckTemplate(f)}
+              onClearTemplate={p.clearDeckTemplateChoice}
+              onMappingChange={p.setLayoutMapping}
+              outlineDraft={p.draftOutline}
+              onDraftOutline={p.draftDeckOutline}
+              onOutlineChange={p.setDraftOutline}
+              onGenerateFromOutline={() => void p.generateFromOutline(p.draftOutline ?? [])}
             />
           ) : p.activeDeck ? (
             <DeckEditorWorkspace
@@ -119,7 +130,20 @@ export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
               onSaveNow={() => void p.saveDeckNow()}
               onExportPptx={p.exportPptx}
               deckTemplateName={p.deckTemplateName}
+              templateOutline={p.templateOutline}
+              layoutMapping={p.layoutMapping}
+              onMappingChange={p.setLayoutMapping}
+              // 2026-10-30 全册视觉计划 + 渲染质检
+              visualPlan={p.deckVisualPlan}
+              renderReport={p.renderReport}
+              renderChecking={p.renderChecking}
+              renderCapability={p.renderCapability}
+              onCheckRenderQuality={() => void p.checkRenderQuality()}
               onUploadDeckTemplate={p.uploadDeckTemplate}
+              deckThemePreset={p.deckThemePreset}
+              onSelectThemePreset={p.applyDeckThemePreset}
+              onPolishText={p.polishText}
+              polishingKey={p.polishingKey}
               onClearDeckTemplate={p.clearDeckTemplateChoice}
               deckTemplateProbe={p.deckTemplateProbe}
               onExportSpeech={p.exportSpeech}

@@ -47,6 +47,10 @@ describe("buildWholeParseMessages", () => {
     expect(buildWholeParseTask("tech_score")).toContain("只抄原文声明的数字")
     expect(buildWholeParseTask("void_items")).not.toContain("仅输出 JSON")
     expect(buildWholeParseTask("void_items")).toContain("条款：")
+    // P0 解析根因（2026-11-01）：收录三条铁律须落进整文通道，与检索通道同口径
+    expect(buildWholeParseTask("void_items")).toContain("一句完整的话")
+    expect(buildWholeParseTask("void_items")).toContain("明确后果表述")
+    expect(buildWholeParseTask("void_items")).toContain("禁止输出任何标题行")
     expect(buildWholeParseTask("qualification")).toContain("[强制]")
   })
 

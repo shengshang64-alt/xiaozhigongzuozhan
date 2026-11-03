@@ -53,10 +53,17 @@ export function WorkspaceTabs({
 
   return (
     <>
+      {/* 2026-10-31 移动端修复：overflow-x-auto 在 sticky + flex 子项下不总能约束 scrollWidth，
+          实测文档仍被撑到 630px（视口 390）。外层再包一个 overflow-hidden 兜底，
+          标签栏自身继续横向滚动，但绝不把整页顶宽。 */}
+      <div className="min-w-0 max-w-full overflow-hidden">
       <div
         role="tablist"
         aria-label="已打开的页面"
-        className="sticky top-[60px] z-30 flex h-[38px] items-stretch gap-1 overflow-x-auto border-b border-border bg-card/70 px-2 backdrop-blur"
+        // 2026-10-31 移动端修复：加 max-w-full + min-w-0。
+        // overflow-x-auto 只在自身内容超宽时生效，但若不限制自身宽度，
+        // 它会被父级 flex 容器的 min-width:auto 撑开，把整页顶出横向滚动（实测 630px）。
+        className="sticky top-[60px] z-30 flex h-[38px] min-w-0 max-w-full items-stretch gap-1 overflow-x-auto overscroll-x-contain border-b border-border bg-card/70 px-2 backdrop-blur"
       >
         {tabs.items.map((path) => {
           const meta = ROUTE_BY_PATH[path]
@@ -108,6 +115,7 @@ export function WorkspaceTabs({
             </div>
           )
         })}
+      </div>
       </div>
 
       {menu && (

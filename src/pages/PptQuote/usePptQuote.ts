@@ -25,24 +25,35 @@ import {
 // R-008 素材库本地命中（取图顺序①本地库 → ②实时搜图 → ③留空）
 import { matchMaterials } from "@/pages/MaterialLibrary/materialCore"
 import type { MaterialItem } from "@/pages/MaterialLibrary/materialTypes"
-import { lintDeck, lintSummaryText } from "./deckLint"
+import { gateExport, lintSummaryText, type DeckLintIssue } from "./deckLint"
+import { suggestReshape } from "./deckReshape"
+import { probeRenderCapability, renderCheckDeck } from "./deckRenderClient"
+import { buildDeckVisualPlan } from "./deckVisualPlan"
+import { renderReportSummary, type RenderReport } from "./deckRenderCheck"
 import {
   clearDeckTemplate,
   decodeTemplateBytes,
   encodeTemplateBytes,
   extractDeckTheme,
+  findThemePreset,
   loadDeckTemplate,
   saveDeckTemplate,
   type StoredDeckTemplate,
 } from "./deckTheme"
 import { finalizeFidelityProbe, probeTemplateFacts } from "./deckFidelityProbe"
 import {
-  buildDeckBatchMessages,
+  buildSlideContentMessages,
   buildDeckOutlineMessages,
+  KIND_LABEL_CN,
+  type DeckContext,
   buildDeckSingleMessages,
   buildMaterialText,
   buildQuoteDraftMessages,
   buildSlideRefineMessages,
+  buildPolishMessages,
+  parsePolishResult,
+  POLISH_LABEL as POLISH_LABEL_UI,
+  type PolishKind,
   bumpVersion,
   deepCopyGroups,
   emptySlide,
@@ -76,7 +87,17 @@ import {
   type SlidePlan,
 } from "./pptQuoteTypes"
 import { recommendFromHistory, type QuoteDimensions } from "./quoteRecommend"
-import { runBatchesWithRetry, withGenerationRetry } from "./deckBatchRecovery"
+import { withGenerationRetry } from "./deckBatchRecovery"
+import { generateSlidesByPage } from "./deckPageGen"
+import {
+  atomsToMaterialBlock,
+  fetchAtomsForProject,
+  withPageAtoms,
+  type PageAtomMap,
+} from "./deckAtomInject"
+import { attachSourceRefs, hasMaterials } from "./deckMaterialStore"
+import { parseTemplateOutline, recommendMapping, resolveMapping, type TemplateOutline } from "./templateLayouts"
+import type { TemplateMappingZ } from "./deckSchema"
 import type { CheckProduct, ChecklistRecord } from "@/pages/SolutionStudio/checklistTypes"
 
 // ---------------------------------------------------------------------------
@@ -167,14 +188,9 @@ async function llmGenerate(
 
 const MAX_TOKENS_OUTLINE = 4096
 const MAX_TOKENS_LONGFORM = 8192
-const BATCH_SIZE = 8
 const SINGLE_CALL_MAX_PAGES = 10
 
-function chunk<T>(arr: T[], size: number): T[][] {
-  const out: T[][] = []
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
-  return out
-}
+
 
 // ---------------------------------------------------------------------------
 // 主 Hook
@@ -293,14 +309,34 @@ export function usePptQuote() {
     }
   }, [])
 
-  const fetchMaterialText = useCallback(async (ref: MaterialRef): Promise<string> => {
+  /**
+   * 2026-11-03：素材读取拆成两段。
+   *   fetchMaterialParts → { base, atoms }（base 全体共用，atoms 按页各给各的）
+   *   fetchMaterialText  → 纯字符串（兼容报价草稿等旧调用点）
+   */
+  const fetchMaterialParts = useCallback(async (ref: MaterialRef): Promise<{ base: string; atoms: PageAtomMap }> => {
     const path = ref.type === "solution" ? `/api/solutions/${ref.id}` : `/api/bid_projects/${ref.id}`
     const rec = await apiFetch<MaterialDetail>(path)
     const outline = (ref.type === "solution" ? rec.outline : rec.bid_outline) ?? []
     const chapters = (ref.type === "solution" ? rec.chapters : rec.bid_chapters) ?? []
     // R149：标书项目带上招标原文节选，否则仅有大纲/章节时素材实质为空，生成会凭空编造事实
-    return buildMaterialText(ref.name, outline, chapters, 4200, ref.type === "bid" ? rec.tender_text ?? "" : "")
-  }, [])
+    const base = buildMaterialText(ref.name, outline, chapters, 4200, ref.type === "bid" ? rec.tender_text ?? "" : "")
+
+    // 2026-11-03 改为返回 { base, atoms } 两部分：
+    // base = 原有素材（全体页共用）；atoms = 按页检索的知识原子（每页只给自己的）。
+    // 上一版把全部原子拼成一块塞进共用素材，6 页分 16 条原子，每页只有 2-3 条份额，
+    // 实测原子利用远低于标书侧（那边是章级定向，命中率 100%）。
+    const atoms = await fetchAtomsForProject(userId, ref.name)
+    return { base, atoms }
+  }, [userId])
+
+  /** 纯字符串版素材（兼容报价草稿等只吃文本的旧调用点） */
+  const fetchMaterialText = useCallback(async (ref: MaterialRef): Promise<string> => {
+    const { base, atoms } = await fetchMaterialParts(ref)
+    const allHits = [...atoms.values()].flat()
+    const blocks = atomsToMaterialBlock(allHits)
+    return blocks ? `${base}\n\n【已审核知识原子（我方真实产品能力与政策依据，优先引用这些口径）】\n${blocks}`.slice(0, 7200) : base
+  }, [fetchMaterialParts])
 
   // ------------------------------ PPT 列表 ------------------------------
   const [deckList, setDeckList] = useState<DeckRecord[]>([])
@@ -335,7 +371,8 @@ export function usePptQuote() {
   const [activeDeck, setActiveDeck] = useState<DeckRecord | null>(null)
   const activeDeckRef = useRef<DeckRecord | null>(null)
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
-  const [editorTab, setEditorTab] = useState<"edit" | "preview">("edit")
+  // 2026-10-30 补齐：新增 check 页签（素材来源 / 模板映射 / 页面检查）
+  const [editorTab, setEditorTab] = useState<"edit" | "preview" | "check">("edit")
   const [slideAiKind, setSlideAiKind] = useState<RefineKind | null>(null)
   // R249：占位/空白页「一键补全」进行态与进度文案
   const [fillingBlank, setFillingBlank] = useState(false)
@@ -563,10 +600,19 @@ export function usePptQuote() {
     }
     setDeckGenerating(true)
     try {
+      // 2026-11-03：按页定向注入知识原子。
+      // 上一版把「所有页的原子」拼成一块塞进 ctx.materialText，结果 6 页共用 16 条原子，
+      // 每页只分到 2-3 条的注意力份额（实测 PPT 的原子利用远低于标书侧）。
+      // 现在拆成 baseMaterial（原有素材，全体共用）+ pageAtoms（按页各给各的）。
+      let baseMaterial = ""
+      let pageAtoms: PageAtomMap = new Map()
       if (wMaterial) {
         setDeckProgress("正在读取方案/标书素材…")
         try {
-          ctx.materialText = await fetchMaterialText(wMaterial)
+          const mat = await fetchMaterialParts(wMaterial)
+          baseMaterial = mat.base
+          pageAtoms = mat.atoms
+          ctx.materialText = baseMaterial
         } catch {
           toast.error("素材读取失败，将不使用素材直接生成")
         }
@@ -590,38 +636,60 @@ export function usePptQuote() {
       } else {
         setDeckProgress("正在生成整体大纲…")
         const outlineText = await llmGenerate(buildDeckOutlineMessages(ctx, pageCount), MAX_TOKENS_OUTLINE, "ppt-deck", activeModelRef.current)
-        const plan: SlidePlan[] = normalizeSlidePlan(parseJsonLoose(outlineText), pageCount)
+        const rawPlan: SlidePlan[] = normalizeSlidePlan(parseJsonLoose(outlineText), pageCount)
+        // 2026-10-30 素材检索接入：把大纲每页与该页相关的素材片段挂到 sourceRefs。
+        // 这样逐页生成时只塞这几段（不塞全文），且落库后可追溯到具体素材段落。
+        const plan: SlidePlan[] = hasMaterials() ? attachSourceRefs(rawPlan, 3) : rawPlan
         const allTitles = plan.map((p) => p.title)
-        const batches = chunk(plan, BATCH_SIZE)
-        const batchResults = await runBatchesWithRetry<SlidePlan, Slide>({
-          batches,
-          generate: async (batch) => {
-            const batchText = await llmGenerate(
-              buildDeckBatchMessages(ctx, batch, allTitles),
-              MAX_TOKENS_LONGFORM,
-              "ppt-deck",
-              activeModelRef.current,
-            )
-            return normalizeSlides(parseJsonLoose(batchText), batch)
-          },
-          onBatchStart: (i, total, attempt) =>
+        if (hasMaterials()) {
+          const refCount = plan.reduce((n, p) => n + (p.sourceRefs?.length ?? 0), 0)
+          if (refCount > 0) setDeckProgress(`已从素材库为 ${plan.filter((p) => p.sourceRefs?.length).length} 页召回参考片段`)
+        }
+        slides = []
+        // ---------------------------------------------------------------------
+        // 2026-10-30 重构（问题 4）：逐页生成 + Schema 校验 + 单页重试
+        //
+        // 原实现：8 页/批，整批重试。问题有二：
+        //   ① 某一页内容不合法，整批 8 页都要重试（费钱、且可能反复失败）；
+        //   ② 只做手写容错解析，非法字段被静默吞掉，无法定位是哪页哪字段坏了。
+        // 现改为：**默认 1 页/批**（并发 2 页提升吞吐），每页独立校验与重试，
+        // 单页失败只影响该页（留占位），其余页照常，且报错能指明页码与字段。
+        // ---------------------------------------------------------------------
+        const results = await generateSlidesByPage({
+          plan,
+          allTitles,
+          concurrency: 2,
+          maxAttempts: 2,
+          buildMessages: (one) => buildSlideContentMessages(withPageAtoms(ctx, baseMaterial, pageAtoms, one.title), one, allTitles),
+          callLlm: (msgs) => llmGenerate(msgs, MAX_TOKENS_LONGFORM, "ppt-deck", activeModelRef.current),
+          onProgress: (done, total, title, retrying) =>
             setDeckProgress(
-              attempt === 0
-                ? `正在生成逐页内容（第 ${i + 1}/${total} 批，共 ${plan.length} 页）…`
-                : `第 ${i + 1}/${total} 批生成失败，正在自动重试…`,
+              retrying
+                ? `「${title}」生成不合法，正在重试（${done}/${total}）…`
+                : `正在逐页生成内容（${done}/${total}）：${title}`,
             ),
         })
-        slides = []
-        batchResults.forEach((got, i) => {
-          if (got) {
-            slides.push(...got)
+        results.forEach((r) => {
+          if (r.slide) {
+            slides.push(r.slide)
           } else {
-            for (const p of batches[i]) slides.push(emptySlide(p.title))
-            placeholderCount += batches[i].length
+            slides.push(emptySlide(r.plan.title))
+            placeholderCount += 1
           }
         })
+        const failedCount = results.filter((r) => !r.slide).length
+        if (failedCount) {
+          const names = results.filter((r) => !r.slide).map((r) => r.plan.title).slice(0, 3)
+          toast.warning(
+            `${failedCount} 页生成未通过校验已留标题占位（${names.join("、")}${failedCount > 3 ? " 等" : ""}），可在编辑器逐页补全`,
+          )
+        }
         if (!slides.length || placeholderCount === slides.length) throw new Error("PPT 逐页生成均未成功，请稍后重试")
       }
+      // 2026-10-30（问题 5）：**不再自动整形**。
+      // 原实现会在落库前自动把纯文字页转成图表/架构图，这违背"未经确认不得改变页面语义"。
+      // 现改为：生成后只计算建议，随 deck 存入 suggestions 字段，由用户在界面上一键应用。
+      const reshapeSuggestions = suggestReshape(slides)
       const created = await apiFetch<DeckRecord>("/api/ppt_decks", {
         method: "POST",
         body: JSON.stringify({
@@ -636,6 +704,14 @@ export function usePptQuote() {
         }),
       })
       const rec = sanitizeDeck(created)
+      // 2026-10-30（问题 5）：整形建议**不自动应用**，存到本地供界面提示用户一键应用
+      if (reshapeSuggestions.length) {
+        try {
+          window.localStorage.setItem(`pp_reshape_suggestions_${rec.id}`, JSON.stringify(reshapeSuggestions))
+        } catch {
+          /* 隐私模式/超配额时静默降级：建议不展示也不影响主流程 */
+        }
+      }
       setDeckList((prev) => [rec, ...prev])
       applyDeckState(rec)
       setCurrentSlideIndex(0)
@@ -663,7 +739,9 @@ export function usePptQuote() {
     applyDeckState,
     autoFigureMode,
     autoFigureProvider,
-    fetchMaterialText,
+    // 2026-11-03：素材读取改为 fetchMaterialParts（按页拆分：base 共用 + atoms 按页）。
+    // fetchMaterialText 在本回调里已不再使用（那是给报价草稿等旧调用点的兼容版）。
+    fetchMaterialParts,
     handleGenError,
     targetPageCount,
     userId,
@@ -685,6 +763,177 @@ export function usePptQuote() {
       void doGenerateDeck()
     }, `将调用 AI 生成整份 PPT 大纲与逐页内容，${costTextForModel(activeModelRef.current)}${skillCostSuffix("ppt-deck")}，具体以 RunningHub 为准`)
   }, [costConfirm, doGenerateDeck, wTopic])
+
+  // -------------------------------------------------------------------------
+  // 2026-10-30 补齐（四步向导第 4 步）：大纲先生成 → 用户确认 → 再逐页生成
+  //
+  // 为什么拆两步：需求明确要求「用户确认/编辑大纲后，才能逐页生成或搜索图片，
+  // 避免无效调用」。原来是一键直出（大纲藏在内部），用户无法在看到结构前干预，
+  // 一旦结构不对就是整册返工。
+  //
+  // 关键设计：runDeckGeneration 承接「已确定的大纲 → 逐页生成 → 落库」，
+  // doGenerateDeck（一键直出）与 generateFromOutline（确认后生成）共用它，
+  // 保证两条路径行为完全一致，不存在两套逻辑。
+  // -------------------------------------------------------------------------
+  const [draftOutline, setDraftOutline] = useState<SlidePlan[] | null>(null)
+
+  /** 核心：按给定大纲逐页生成并落库（供一键直出与"确认后生成"复用） */
+  const runDeckGeneration = useCallback(
+    async (ctx: DeckContext, plan: SlidePlan[]): Promise<DeckRecord> => {
+      const deckName = wDeckName.trim() || `${wTopic.trim()}汇报 PPT`
+      const allTitles = plan.map((p) => p.title)
+      const slides: Slide[] = []
+      let placeholderCount = 0
+
+      // 逐页生成 + Schema 校验 + 单页重试（1 页/批，单页失败只影响该页）
+      const results = await generateSlidesByPage({
+        plan,
+        allTitles,
+        concurrency: 2,
+        maxAttempts: 2,
+        buildMessages: (one) => buildSlideContentMessages(ctx, one, allTitles),
+        callLlm: (msgs) => llmGenerate(msgs, MAX_TOKENS_LONGFORM, "ppt-deck", activeModelRef.current),
+        onProgress: (done, total, title, retrying) =>
+          setDeckProgress(
+            retrying
+              ? `「${title}」生成不合法，正在重试（${done}/${total}）…`
+              : `正在逐页生成内容（${done}/${total}）：${title}`,
+          ),
+      })
+      for (const r of results) {
+        if (r.slide) slides.push(r.slide)
+        else {
+          slides.push(emptySlide(r.plan.title))
+          placeholderCount += 1
+        }
+      }
+      const failedCount = results.filter((r) => !r.slide).length
+      if (failedCount) {
+        const names = results.filter((r) => !r.slide).map((r) => r.plan.title).slice(0, 3)
+        toast.warning(
+          `${failedCount} 页生成未通过校验已留标题占位（${names.join("、")}${failedCount > 3 ? " 等" : ""}），可在编辑器逐页补全`,
+        )
+      }
+      if (!slides.length || placeholderCount === slides.length) throw new Error("PPT 逐页生成均未成功，请稍后重试")
+
+      // 2026-10-30（问题 5）：不自动整形，只算建议存本地供用户一键应用
+      const reshapeSuggestions = suggestReshape(slides)
+      const created = await apiFetch<DeckRecord>("/api/ppt_decks", {
+        method: "POST",
+        body: JSON.stringify({
+          rh_user_id: userId,
+          deck_name: deckName,
+          deck_type: wDeckType,
+          audience: wAudience,
+          duration_min: Number(wDuration) || 10,
+          material_ref: wMaterial ? JSON.stringify(wMaterial) : "",
+          slides,
+          doc_status: "done",
+        }),
+      })
+      const rec = sanitizeDeck(created)
+      if (reshapeSuggestions.length) {
+        try {
+          window.localStorage.setItem(`pp_reshape_suggestions_${rec.id}`, JSON.stringify(reshapeSuggestions))
+        } catch {
+          /* 隐私模式/超配额：建议不展示也不影响主流程 */
+        }
+      }
+      setDeckList((prev) => [rec, ...prev])
+      applyDeckState(rec)
+      setCurrentSlideIndex(0)
+      setEditorTab("edit")
+      setDeckMode("editor")
+      if (placeholderCount > 0) {
+        toast.warning(`${rec.slides.length - placeholderCount}/${rec.slides.length} 页已生成，${placeholderCount} 页未成功已留标题占位，可在编辑器逐页补全后导出`)
+      } else {
+        toast.success(`已生成 ${rec.slides.length} 页，可逐页精修后导出`)
+      }
+      if (autoFigureMode !== "off") {
+        setDeckGenerating(false)
+        setDeckProgress("")
+        await runAutoFigureRef.current?.(autoFigureMode, autoFigureProvider)
+      }
+      return rec
+    },
+    [applyDeckState, autoFigureMode, autoFigureProvider, userId, wAudience, wDeckName, wDeckType, wDuration, wMaterial, wTopic],
+  )
+
+  /** 第一步：只生成大纲（不建 deck，不逐页生成） */
+  const draftDeckOutline = useCallback(async (): Promise<SlidePlan[] | null> => {
+    const topic = wTopic.trim()
+    if (!topic) {
+      toast.error("请填写汇报主题")
+      return null
+    }
+    const pageCount = targetPageCount
+    const ctx: DeckContext = { deckType: wDeckType, topic, audience: wAudience, keyPoints: wKeyPoints, materialText: "" }
+    setDeckGenerating(true)
+    setDeckProgress("正在生成整体大纲…")
+    try {
+      if (wMaterial) {
+        try {
+          ctx.materialText = await fetchMaterialText(wMaterial)
+        } catch {
+          toast.error("素材读取失败，将不使用素材生成大纲")
+        }
+      }
+      const outlineText = await llmGenerate(
+        buildDeckOutlineMessages(ctx, pageCount),
+        MAX_TOKENS_OUTLINE,
+        "ppt-deck",
+        activeModelRef.current,
+      )
+      const rawPlan = normalizeSlidePlan(parseJsonLoose(outlineText), pageCount)
+      // 素材检索：大纲阶段就挂上引用，用户在确认时能看到"这页参考了哪份素材"
+      const plan = hasMaterials() ? attachSourceRefs(rawPlan, 3) : rawPlan
+      setDraftOutline(plan)
+      const refPages = plan.filter((p) => p.sourceRefs?.length).length
+      toast.success(`已生成 ${plan.length} 页大纲${refPages ? `，其中 ${refPages} 页引用了素材` : ""}，请确认后开始逐页生成`)
+      return plan
+    } catch (e) {
+      toast.error(`大纲生成失败：${e instanceof Error ? e.message : String(e)}`)
+      return null
+    } finally {
+      setDeckGenerating(false)
+      setDeckProgress("")
+    }
+  }, [wTopic, targetPageCount, wDeckType, wAudience, wKeyPoints, wMaterial, fetchMaterialText])
+
+  /** 第二步：按用户确认（可能已编辑）的大纲逐页生成 */
+  const generateFromOutline = useCallback(
+    async (plan: SlidePlan[]) => {
+      if (!plan.length) {
+        toast.error("大纲为空，无法生成")
+        return
+      }
+      setDeckGenerating(true)
+      try {
+        const ctx: DeckContext = {
+          deckType: wDeckType,
+          topic: wTopic.trim(),
+          audience: wAudience,
+          keyPoints: wKeyPoints,
+          materialText: "",
+        }
+        if (wMaterial) {
+          try {
+            ctx.materialText = await fetchMaterialText(wMaterial)
+          } catch {
+            /* 已提示过，不阻断 */
+          }
+        }
+        await runDeckGeneration(ctx, plan)
+        setDraftOutline(null)
+      } catch (e) {
+        handleGenError(e)
+      } finally {
+        setDeckGenerating(false)
+        setDeckProgress("")
+      }
+    },
+    [runDeckGeneration, wTopic, wDeckType, wAudience, wKeyPoints, wMaterial, fetchMaterialText, handleGenError],
+  )
 
   // ------------------------------ 逐页编辑 ------------------------------
   const currentSlide = useMemo(
@@ -799,6 +1048,66 @@ export function usePptQuote() {
     [costConfirm, currentSlideIndex, doRefineSlide],
   )
 
+  // ------------------------------ 2026-10-30 AI 润色单段文字（借鉴 ChatPPT / iSlide） ------------------------------
+  // 与 refineSlide 的分工：refineSlide 整页重写；polishText 只打磨一段（要点/讲稿/标题），改动面小、可逆。
+  const [polishingKey, setPolishingKey] = useState<string | null>(null)
+
+  /**
+   * 润色一段文字并回写。
+   *
+   * @param field  "title" 改当前页标题；"notes" 改讲稿；"bullet:N" 改第 N 条要点
+   */
+  const polishText = useCallback(
+    (field: string, kind: PolishKind) => {
+      const deck = activeDeckRef.current
+      const slide = deck?.slides?.[currentSlideIndex]
+      if (!deck || !slide) return
+      const current =
+        field === "title" ? slide.title : field === "notes" ? (slide.notes ?? "") : (slide.bullets?.[Number(field.split(":")[1])] ?? "")
+      if (!String(current).trim()) {
+        toast.info("这段还是空的，先写点内容再润色")
+        return
+      }
+      const doPolish = async () => {
+        setPolishingKey(field)
+        try {
+          const raw = await llmGenerate(
+            buildPolishMessages(String(current), kind, { title: slide.title, bullets: slide.bullets }),
+            1024,
+            "ppt-deck",
+            activeModelRef.current,
+          )
+          const next = parsePolishResult(raw, String(current))
+          if (!next.trim() || next.trim() === String(current).trim()) {
+            toast.info("润色后没有变化，可能原文已经足够精炼")
+            return
+          }
+          mutateDeck((d) => ({
+            ...d,
+            slides: d.slides.map((x) => {
+              if (x.id !== slide.id) return x
+              if (field === "title") return { ...x, title: next }
+              if (field === "notes") return { ...x, notes: next }
+              const idx = Number(field.split(":")[1])
+              const bullets = [...(x.bullets ?? [])]
+              if (idx >= 0 && idx < bullets.length) bullets[idx] = next
+              return { ...x, bullets }
+            }),
+          }))
+          toast.success(`已${POLISH_LABEL_UI[kind]}这段（${String(current).length} → ${next.length} 字）`)
+        } catch (e) {
+          toast.error(`润色失败：${e instanceof Error ? e.message : String(e)}`)
+        } finally {
+          setPolishingKey(null)
+        }
+      }
+      costConfirm.runWithCostConfirm(() => {
+        void doPolish()
+      }, `将调用 AI「${POLISH_LABEL_UI[kind]}」这段文字，${costTextForModel(activeModelRef.current)}${skillCostSuffix("ppt-deck")}`)
+    },
+    [costConfirm, currentSlideIndex, mutateDeck],
+  )
+
   // ------------------------------ R249 占位/空白页一键补全（串行、单页失败跳过、封顶 12 页控费） ------------------------------
   const blankSlideCount = useMemo(
     () => (activeDeck?.slides ?? []).filter(isBlankSlide).length,
@@ -864,6 +1173,51 @@ export function usePptQuote() {
 
   // ------------------------------ R169 公司模板主题（上传→提取→导出套用） ------------------------------
   const [deckTemplate, setDeckTemplate] = useState<StoredDeckTemplate | null>(() => loadDeckTemplate())
+  // 2026-10-30 补齐：模板版式清单与 kind→版式映射（真实版式导出用）
+  const [templateOutline, setTemplateOutline] = useState<TemplateOutline | null>(null)
+  const [layoutMapping, setLayoutMapping] = useState<TemplateMappingZ>({})
+  // 2026-10-30：导出被门禁拦下时的严重问题清单（界面据此展示"页码+问题+去修复"）
+  const [exportBlocking, setExportBlocking] = useState<DeckLintIssue[]>([])
+  // 2026-10-30 渲染质检：真实把 pptx 渲染成图再检查（结构层 lint 看不见版面问题）
+  const [renderReport, setRenderReport] = useState<{ report: RenderReport; thumbs: { page: number; dataUrl: string; inkRatio: number }[] } | null>(null)
+  const [renderChecking, setRenderChecking] = useState(false)
+  const [renderCapability, setRenderCapability] = useState<{ ok: boolean; hint: string } | null>(null)
+  // 2026-10-30 全册视觉计划（按需计算，编辑器可展示与审阅）
+  const deckVisualPlan = useMemo(() => {
+    const d = activeDeck
+    if (!d?.slides?.length) return null
+    try {
+      return buildDeckVisualPlan(d)
+    } catch {
+      return null
+    }
+  }, [activeDeck])
+
+  // 2026-10-30 同稿换风格：内置主题预设（不换内容只换配色/字体，导出时套用）。
+  // 与上传模板的关系：上传模板优先（它是客户/公司的真实品牌）；
+  // 未上传模板时才用预设；两者都空则走内置中性商务版式。
+  const [deckThemePreset, setDeckThemePreset] = useState<string>(() => {
+    try {
+      return window.localStorage.getItem("pp_theme_preset") ?? "navy"
+    } catch {
+      return "navy"
+    }
+  })
+  const applyDeckThemePreset = useCallback((key: string) => {
+    setDeckThemePreset(key)
+    try {
+      window.localStorage.setItem("pp_theme_preset", key)
+    } catch {
+      /* 隐私模式降级：仅本次会话生效 */
+    }
+    const preset = findThemePreset(key)
+    toast.success(preset ? `已切换配色「${preset.label}」，下次导出生效` : "已恢复默认配色")
+  }, [])
+  /** 导出时实际套用的主题：上传模板 > 预设 > 内置 */
+  const effectiveDeckTheme = useMemo(() => {
+    if (deckTemplate?.theme) return deckTemplate.theme
+    return findThemePreset(deckThemePreset)?.theme
+  }, [deckTemplate, deckThemePreset])
 
   // R190（r169 切片三）：模板保真体检——解包只随模板变化发生一次，逐页结论在展示层合成
   const deckTemplateProbe = useMemo(() => probeTemplateFacts(deckTemplate), [deckTemplate])
@@ -891,6 +1245,27 @@ export function usePptQuote() {
       if (!fidelityOn) saveDeckTemplate(base)
       const tpl: StoredDeckTemplate = fidelityOn && bytesB64 ? { ...base, bytesB64 } : base
       setDeckTemplate(tpl)
+      // 2026-10-30：解析模板真实版式并自动推荐 kind→版式映射。
+      // 这是「套了公司模板还是像内置模板」的修复：拿到 slideLayout 清单后，
+      // 导出时按每页 kind 选对应版式，而不是只克隆两个样张页。
+      try {
+        const outline = parseTemplateOutline(bytes)
+        setTemplateOutline(outline)
+        if (!outline.failure && outline.layouts.length) {
+          const auto = recommendMapping(outline)
+          setLayoutMapping(auto)
+          const res = resolveMapping(outline, auto)
+          const missing = res.missing.length
+          toast.success(
+            `已解析模板 ${outline.layouts.length} 个版式，自动匹配 ${Object.keys(auto).length} 类页面` +
+              (missing ? `（${missing} 类未匹配到版式）` : ""),
+          )
+        } else if (outline.failure) {
+          toast.warning(`模板版式解析未成功：${outline.failure}；将只套用配色与字体`)
+        }
+      } catch {
+        /* 版式解析失败不影响主流程：仍可套主题导出 */
+      }
       toast.success(
         fidelityOn
           ? `已套用模板「${file.name}」主题（主色 #${theme.accents[0]}）：整册纯文字页导出将按模板母版/版式保真，讲稿写入备注；含图表图文的页仍按内置版式+主题色导出`
@@ -915,10 +1290,20 @@ export function usePptQuote() {
       toast.error("没有可导出的页面")
       return
     }
-    // 导出前结构自检：命中问题不阻断，只给一句可执行改进提示（借鉴顶级 skill 的自校验闭环）
-    const lintIssues = lintDeck(deck.slides)
-    if (lintIssues.length) {
-      toast.warning(`导出前自检：${lintSummaryText(lintIssues)}；${lintIssues[0].msg}${lintIssues.length > 1 ? ` 等 ${lintIssues.length} 项` : ""}`)
+    // 导出前质量门禁（2026-10-30，用户第 6 条要求）：
+    // error 级问题（空白页 / 占位符残留 / 图表数据不匹配）**阻断导出**并展示"页码+问题"，
+    // warn/info 仍只提示不拦截。
+    const gate = gateExport(deck.slides)
+    if (!gate.ok) {
+      setExportBlocking(gate.blocking)
+      toast.error(gate.summary)
+      // 自动跳到第一个问题页，便于用户就地修
+      const firstPage = gate.blocking.find((i) => i.page > 0)?.page
+      if (firstPage) setCurrentSlideIndex(Math.max(0, firstPage - 1))
+      return
+    }
+    if (gate.issues.length) {
+      toast.warning(`导出前自检：${lintSummaryText(gate.issues)}；${gate.issues[0].msg}${gate.issues.length > 1 ? ` 等 ${gate.issues.length} 项` : ""}`)
     }
     try {
       // R124：pptxgenjs/docx 导出库改为点击导出时才按需加载，PPT 页进页不再背这几百 kB
@@ -926,8 +1311,18 @@ export function usePptQuote() {
       // R189（r169 切片二）：模板字节可读且整册纯文字时，exportDeckPptx 内部走母版级保真通道
       const path = await exportDeckPptx(deck, {
         transition: deckTransition,
-        theme: deckTemplate?.theme,
+        // 2026-10-30 同稿换风格：模板主题优先，其次选中的预设，都没有走内置商务版式
+        theme: effectiveDeckTheme,
         templateBytes: decodeTemplateBytes(deckTemplate) ?? undefined,
+        // 2026-10-30 真实版式导出：按 kind→版式映射分配模板版式
+        ...(Object.keys(layoutMapping).length ? { layoutMapping } : {}),
+        onLayoutReport: (rep) => {
+          const noLayout = rep.filter((r) => !r.layoutName && r.kind !== "bullets")
+          if (noLayout.length) {
+            const kinds = Array.from(new Set(noLayout.map((r) => KIND_LABEL_CN[r.kind as keyof typeof KIND_LABEL_CN] ?? r.kind)))
+            toast.warning(`以下页面类型未匹配到模板版式，已用通用版式：${kinds.join("、")}`)
+          }
+        },
       })
       toast.success(
         path === "fidelity"
@@ -948,7 +1343,71 @@ export function usePptQuote() {
     } catch {
       toast.error("导出失败，请重试")
     }
-  }, [flushDeckPersist, deckTransition, deckTemplate, deckTemplateProbe])
+  }, [flushDeckPersist, deckTransition, deckTemplate, deckTemplateProbe, effectiveDeckTheme, layoutMapping])
+
+  // -------------------------------------------------------------------------
+  // 2026-10-30 渲染质检：把导出的 pptx 真实渲染成图再检查
+  //
+  // 为什么必须做：结构层 lint 只能看 JSON，看不见"表格文字溢出到隔壁列""卡片文字
+  // 压在图标上""整页其实一片空白"——这些只有渲染出来才知道。
+  //
+  // 流程：导出字节（不下载）→ 后端 LibreOffice 转 PDF → 每页转图 → 检查 → 通过才下载
+  // -------------------------------------------------------------------------
+  const checkRenderQuality = useCallback(async () => {
+    const deck = activeDeckRef.current
+    if (!deck?.slides?.length) {
+      toast.error("没有可检查的页面")
+      return
+    }
+    setRenderChecking(true)
+    setRenderReport(null)
+    try {
+      // 先探测能力：不支持时明确告知（不假装通过）
+      const cap = await probeRenderCapability()
+      setRenderCapability({ ok: cap.ok, hint: cap.hint })
+      if (!cap.ok) {
+        toast.error(`渲染质检不可用：${cap.hint}`)
+        return
+      }
+
+      // 导出字节（不下载）
+      const { exportDeckPptx } = await import("./deckExports")
+      let bytes: Uint8Array | null = null
+      await exportDeckPptx(deck, {
+        transition: deckTransition,
+        theme: effectiveDeckTheme,
+        templateBytes: decodeTemplateBytes(deckTemplate) ?? undefined,
+        ...(Object.keys(layoutMapping).length ? { layoutMapping } : {}),
+        skipDownload: true,
+        onBytes: (b) => {
+          bytes = b
+        },
+      })
+      if (!bytes) {
+        toast.error("导出字节获取失败，无法做渲染质检")
+        return
+      }
+
+      setDeckProgress("正在把 PPTX 渲染成图片检查实际效果（约 20-60 秒）…")
+      const result = await renderCheckDeck(bytes, { dpi: 96 })
+      if (!result.ok) {
+        toast.error(`渲染质检失败：${result.reason}`)
+        return
+      }
+      setRenderReport({ report: result.report, thumbs: result.thumbs })
+      if (result.report.pass) {
+        toast.success(renderReportSummary(result.report))
+      } else {
+        const pages = Array.from(new Set(result.report.issues.filter((i) => i.severity === "error").map((i) => i.page))).sort((a, b) => a - b)
+        toast.error(`${renderReportSummary(result.report)}；请修复第 ${pages.join("、")} 页后再导出`)
+      }
+    } catch (e) {
+      toast.error(`渲染质检异常：${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setRenderChecking(false)
+      setDeckProgress("")
+    }
+  }, [deckTransition, effectiveDeckTheme, deckTemplate, layoutMapping])
 
   // ------------------------------ 真实配图 ------------------------------
   const hostOf = (u: string) => {
@@ -1245,11 +1704,34 @@ export function usePptQuote() {
       if (mode === "off") return
       const deck = activeDeckRef.current
       if (!deck?.slides?.length) return
+      // 2026-10-30 补齐（全册视觉计划）：
+      // 原实现逐页看 imageHint/layout 就搜图，导致同一份 PPT 混 3 种风格，
+      // 且架构页可能被配"医院大楼"照片。改为**先算全册视觉计划**，再只对
+      // 计划明确要求 stockPhoto / aiIllustration 的页执行配图。
+      const plan = buildDeckVisualPlan(deck)
+      const planByPage = new Map(plan.slides.map((p) => [p.page - 1, p]))
       const targets = deck.slides
-        .map((s, i) => ({ s, i }))
-        .filter(({ s }) => !s.image && (s.imageHint?.trim() || s.layout === "banner" || (s.layout || "").startsWith("image")))
+        .map((s, i) => ({ s, i, plan: planByPage.get(i) }))
+        .filter(({ s, plan: p }) => {
+          if (s.image) return false // 已有图不动
+          if (!p) return false
+          // 只给"需要真实位图"的页配图：实拍 / AI 插画 / 公司素材
+          return p.visualType === "stockPhoto" || p.visualType === "aiIllustration" || p.visualType === "companyAsset"
+        })
         .slice(0, 12)
-      if (!targets.length) return
+      if (!targets.length) {
+        // 明确告知"为什么没配图"，避免用户以为失败了
+        const nonePages = plan.slides.filter((p) => p.visualType === "none").length
+        if (nonePages) {
+          toast.info(`按全册视觉计划，${nonePages} 页内容不需要配图（自绘图示/图表/论述页已自带视觉）`)
+        }
+        return
+      }
+      // 让用户看到决策依据（同册统一风格）
+      toast.info(`全册视觉计划：${plan.summary}`)
+      // 2026-10-30：收集失败原因，配图失败时明确告知用户（原来只说"未命中"，用户不知道是没配 Key）
+      const failMessages = new Set<string>()
+      let lastSearchMsg = ""
       setDeckGenerating(true)
       setDeckProgress(`正在自动配图（共 ${targets.length} 页）…`)
       let done = 0
@@ -1271,10 +1753,13 @@ export function usePptQuote() {
               /* 本地未命中 → 联网搜图 */
             }
             if (!inserted) {
-              const q = buildSearchQuery({ imageHint: t.s.imageHint, title: t.s.title, firstBullet: t.s.bullets[0] })
+              // 优先用视觉计划给出的 query（已结合全册主题与页面用途），无则回退原标题拼装
+              const q = t.plan?.query || buildSearchQuery({ imageHint: t.s.imageHint, title: t.s.title, firstBullet: t.s.bullets[0] })
               if (q) {
                 try {
                   const res = await searchImages(provider, q, { perPage: 4 })
+                  if (!res.ok) lastSearchMsg = String(res.message ?? "搜图失败")
+                  else if (!res.hits.length) lastSearchMsg = "图库没有匹配结果"
                   if (res.ok && res.hits.length) {
                     const hit = res.hits[0]
                     try {
@@ -1291,6 +1776,7 @@ export function usePptQuote() {
               }
             }
             if (inserted) ok += 1
+            else if (lastSearchMsg) failMessages.add(lastSearchMsg)
           } finally {
             done += 1
             setDeckProgress(`正在自动配图（${done}/${targets.length}）…`)
@@ -1301,9 +1787,14 @@ export function usePptQuote() {
       setDeckGenerating(false)
       setDeckProgress("")
       if (ok === 0) {
-        toast.info("自动配图未命中，可逐页手动重试")
+        // 2026-10-30：明确告知失败原因（最常见是图库 API Key 未配置）
+        const reason = [...failMessages][0] ?? "未知原因"
+        toast.error(`自动配图 0 成功：${reason}。可到「逐页编辑 → API Key 面板」配置图库 Key 后重试`)
+      } else if (ok < targets.length) {
+        const reason = [...failMessages][0] ?? ""
+        toast.warning(`自动配图完成 ${ok}/${targets.length} 页${reason ? `；未成功的页：${reason}` : ""}`)
       } else {
-        toast.success(`自动配图完成：${ok}/${targets.length}`)
+        toast.success(`自动配图完成：${ok}/${targets.length} 页`)
       }
     },
     [setSlideImage, urlToDataUrl, tryAttachFromLibrary],
@@ -2433,6 +2924,33 @@ export function usePptQuote() {
     deckTemplateProbe,
     uploadDeckTemplate,
     clearDeckTemplateChoice,
+    // 2026-10-30 导出质量门禁
+    exportBlocking,
+    clearExportBlocking: () => setExportBlocking([]),
+    // 2026-10-30 全册视觉计划
+    deckVisualPlan,
+    // 2026-10-30 渲染质检（真实把 pptx 渲染成图检查）
+    renderReport,
+    renderChecking,
+    renderCapability,
+    checkRenderQuality,
+    clearRenderReport: () => setRenderReport(null),
+    // 2026-10-30 四步向导：大纲先行（生成大纲 → 确认 → 逐页生成）
+    draftOutline,
+    draftDeckOutline,
+    generateFromOutline,
+    clearDraftOutline: () => setDraftOutline(null),
+    setDraftOutline,
+    // 2026-10-30 真实版式导出：模板版式清单与映射
+    templateOutline,
+    layoutMapping,
+    setLayoutMapping,
+    // 2026-10-30 同稿换风格：内置配色预设（未上传模板时生效）
+    deckThemePreset,
+    applyDeckThemePreset,
+    // 2026-10-30 AI 润色单段文字
+    polishText,
+    polishingKey,
     deckPersistFailed,
     saveDeckNow,
     exportPptx,

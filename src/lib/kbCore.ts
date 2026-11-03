@@ -38,6 +38,20 @@ export interface KbDocRow {
   kb_section?: string
   /** 组装层第一期：用途桶标签（kbTaxonomy.KB_BUCKETS，空=未分类） */
   kb_bucket?: string
+  /**
+   * 2026-10-30 场景归位：这份材料「用在哪」（逗号分隔多值）
+   * 取值见 Knowledge/kbScenes.ts 的 KB_SCENES：
+   * proposal / ppt / bid / quote / faq / qual / template / reference
+   */
+  kb_scenes?: string
+  /** 可对客性：client_facing | internal_only（空=未归位，按可对客兼容处理） */
+  kb_audience?: string
+  /** 归位依据（用户可复核"为什么分到这"） */
+  scene_reason?: string
+  /** 归位时检测到的风险（报价/失标/内部/友商） */
+  scene_risks?: string
+  /** 抽取价值分（0-1，回填脚本算出，0=不适合抽取） */
+  extract_score?: number
 }
 
 export type KbVisibility = "team" | "personal"
@@ -99,7 +113,15 @@ export const KB_LIST_PER_PAGE = 200
  * 的收敛语义），冷加载约降 3 倍。并发度取 3 是低内存机器的保守值（每页响应体均为大字符串，
  * 在飞响应 ×3 可控），高于 4 无必要且加剧带宽争抢。
  */
-const KB_LIST_PAGE_BATCH = 3
+/**
+ * 每批并发拉取的页数。
+ *
+ * 2026-10-31 实测调优：原值 3 → 串行等效单页 117ms × 60 页 ≈ 7.0s；
+ * 实测并发 5 页共 247ms、并发 10 页共 308ms，吞吐提升明显。
+ * 取 6 是折中：比 3 快约一倍，又不会像 10+ 那样把 PocketBase 打出超时
+ * （历史教训见本文件 P1-3 注释：35 并发会把 PB 打超时）。
+ */
+const KB_LIST_PAGE_BATCH = 6
 
 /** R80/B-01：单条取全文（列表瘦身后的正文保真通道） */
 export function getKbDoc(id: string): Promise<KbDocRow> {

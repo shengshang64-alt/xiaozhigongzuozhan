@@ -381,6 +381,98 @@ describe("refreshDocxFile · R46 直接格式改写（格式写死在文字上�
     expect(paraOf(out, "正文</w:t>")).toContain('<w:sz w:val="24"/>')
     expect(out).not.toContain("<w:spacing")
   })
+
+  it("无样式但大字号居中（封面形态）受保护：字体字号对齐都不改", async () => {
+    // 模拟真实标书封面：无 pStyle，26pt（52）字号 + 居中对齐，无缩进
+    const docXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+<w:p><w:r><w:rPr><w:sz w:val="52"/><w:rFonts w:eastAsia="华文彩云"/></w:rPr><w:jc w:val="center"/><w:t>封面标题</w:t></w:r></w:p>
+<w:p><w:r><w:rPr><w:sz w:val="24"/></w:rPr><w:t>正文</w:t></w:r></w:p>
+</w:body></w:document>`
+    const ctx = { stats: createRefreshStats() }
+    const st = settingsForR46()
+    const out = refreshDocumentXml(docXml, st, ALL_SCOPES, [], ctx)
+    // 封面段落保持原样：华文彩云/52pt/居中不动
+    const coverPara = paraOf(out, "封面标题")
+    expect(coverPara).toContain('<w:sz w:val="52"/>')
+    expect(coverPara).toContain('w:eastAsia="华文彩云"')
+    expect(coverPara).toContain('<w:jc w:val="center"/>')
+    expect(ctx.stats.protectedParas).toBeGreaterThanOrEqual(1)
+    // 正文正常改写
+    const bodyPara = paraOf(out, "正文")
+    expect(bodyPara).toContain('w:eastAsia="仿宋"')
+    expect(bodyPara).toContain('<w:sz w:val="28"/>')
+  })
+
+  it("无样式但普通字号左对齐正文不受保护：正常改写", async () => {
+    // 模拟普通正文：无 pStyle，12pt（24），左对齐，无缩进
+    const docXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+<w:p><w:r><w:rPr><w:sz w:val="24"/><w:rFonts w:eastAsia="等线"/></w:rPr><w:jc w:val="left"/><w:t>普通正文</w:t></w:r></w:p>
+</w:body></w:document>`
+    const ctx = { stats: createRefreshStats() }
+    const st = settingsForR46()
+    const out = refreshDocumentXml(docXml, st, ALL_SCOPES, [], ctx)
+    // 正文被改写
+    expect(paraOf(out, "普通正文")).toContain('w:eastAsia="仿宋"')
+    expect(paraOf(out, "普通正文")).toContain('<w:sz w:val="28"/>')
+  })
+
+  it("含图片的段落受保护：图注/图形内文字不被改写", () => {
+    const docXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+<w:p><w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="1" cy="1"/></wp:inline></w:drawing></w:r></w:p>
+<w:p><w:r><w:rPr><w:sz w:val="24"/></w:rPr><w:t>普通正文</w:t></w:r></w:p>
+</w:body></w:document>`
+    const ctx = { stats: createRefreshStats() }
+    const out = refreshDocumentXml(docXml, settingsForR46(), ALL_SCOPES, [], ctx)
+    expect(out).toContain("<w:drawing>")
+    expect(ctx.stats.protectedParas).toBeGreaterThanOrEqual(1)
+    expect(paraOf(out, "普通正文")).toContain('w:eastAsia="仿宋"')
+  })
+
+  it("空白段落受保护：不补首行缩进、不加行距，避免封面版式被撑乱", () => {
+    const docXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:sz w:val="24"/></w:rPr><w:t xml:space="preserve"> </w:t></w:r></w:p>
+<w:p><w:r><w:rPr><w:sz w:val="24"/></w:rPr><w:t>正文</w:t></w:r></w:p>
+</w:body></w:document>`
+    const ctx = { stats: createRefreshStats() }
+    const out = refreshDocumentXml(docXml, settingsForR46(), ALL_SCOPES, [], ctx)
+    // 空白段不出现缩进注入
+    const emptyIdx = out.indexOf("<w:t xml:space=\"preserve\"> </w:t>")
+    const before = out.slice(0, emptyIdx)
+    const lastPara = before.slice(before.lastIndexOf("<w:p>"), before.lastIndexOf("<w:p>") + 200)
+    expect(lastPara).not.toContain("w:firstLine")
+    expect(ctx.stats.protectedParas).toBeGreaterThanOrEqual(1)
+  })
+
+  it("多节文档：封面节保留 A4 原边距、正文节被改写后，页面复检必须 ok（不能取第一个 sectPr 误报）", async () => {
+    // 真实形态：封面节 sectPr 在前（旧边距 1440），正文节 sectPr 在后（将被改写）
+    const docXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+<w:p><w:r><w:t>封面</w:t></w:r></w:p>
+<w:p><w:pPr><w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1800" w:bottom="1440" w:left="1800"/></w:sectPr></w:pPr></w:p>
+<w:p><w:r><w:t>正文</w:t></w:r></w:p>
+<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1800" w:bottom="1440" w:left="1800"/></w:sectPr>
+</w:body></w:document>`
+    const stylesXml = STYLES_XML
+    const zip = zipSync({
+      "[Content_Types].xml": strToU8(`<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`),
+      "word/document.xml": strToU8(docXml),
+      "word/styles.xml": strToU8(stylesXml),
+    })
+    const file = new File([new Uint8Array(zip)], "多节文档.docx")
+    const r = await refreshDocxFile(file, settingsForR46(), ["page"])
+    const outDoc = strFromU8(unzipSync(new Uint8Array(await r.blob.arrayBuffer()))["word/document.xml"])
+    const settings = settingsForR46()
+    const lastSect = [...outDoc.matchAll(/<w:sectPr(?:\s[^>]*?)?>[\s\S]*?<\/w:sectPr>/g)].pop()?.[0] ?? ""
+    expect(lastSect).toContain(`w:top="${Math.round(settings.margins.top * 566.928)}"`)
+    // 第一个 sectPr（封面节）保持原值
+    expect(outDoc.indexOf('w:top="1440"')).toBeLessThan(outDoc.indexOf(`w:top="${Math.round(settings.margins.top * 566.928)}"`))
+    // 复检必须与改写同口径：ok
+    expect(r.report.slots.pageMargin.status).toBe("ok")
+  })
 })
 
 // ---------------------------------------------------------------------------

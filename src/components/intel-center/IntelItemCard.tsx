@@ -5,7 +5,8 @@ import {
   SOURCE_TYPE_LABEL,
   type IntelItemRow,
 } from "@/pages/IntelCenter/useIntelCenter"
-import { cleanIntelSummary } from "@/pages/IntelCenter/intelBodyClean"
+import { cleanIntelSnippet, cleanIntelSummary } from "@/pages/IntelCenter/intelBodyClean"
+import { isIntelFutureDate } from "@/pages/IntelCenter/intelDateQuality"
 
 type IntelItemCardProps = {
   item: IntelItemRow
@@ -55,8 +56,11 @@ export function IntelItemCard({
   selected,
   onToggleSelect,
 }: IntelItemCardProps) {
-  // R64：摘要统一走展示层清洗（剥站点名前缀/JSON 元数据块），与首页动态卡同口径
-  const summaryText = item.summary ? cleanIntelSummary(item.summary, 160) : ""
+  // R64：摘要统一走展示层清洗（剥站点名前缀/JSON 元数据块），与首页动态卡同口径。
+  // 2026-11-03：无 AI 摘要时回退到清洗后的原文片段——先让列表可读，AI 只在用户点开/打标时调用。
+  const summaryText = item.summary
+    ? cleanIntelSummary(item.summary, 160)
+    : cleanIntelSnippet(item.content_snippet, { title: item.title, max: 160 })
   return (
     <article
       data-intel-card
@@ -95,6 +99,14 @@ export function IntelItemCard({
         {lead && (
           <span className="rounded-full border border-violet-400/60 bg-violet-500/10 px-2 py-0.5 text-xs font-medium text-violet-600">
             已标线索
+          </span>
+        )}
+        {(item.duplicate_count ?? 0) > 1 && (
+          <span
+            className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
+            title={`同题来源：${(item.duplicate_sources ?? []).join("、")}（仅聚合展示，未删除任何记录）`}
+          >
+            同题 ×{item.duplicate_count}
           </span>
         )}
         {item.visibility === "personal" ? (
@@ -147,8 +159,16 @@ export function IntelItemCard({
         </div>
       )}
 
-      {item.structured && (item.structured.budget || item.structured.deadline || item.structured.won_amount || item.structured.winner) && (
+      {item.structured && (item.structured.buyer || item.structured.code || item.structured.budget || item.structured.deadline || item.structured.won_amount || item.structured.winner) && (
         <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+          {item.structured.buyer && (
+            <span className="max-w-72 truncate rounded bg-primary/10 px-1.5 py-0.5 text-primary" title={item.structured.buyer}>
+              采购人 {item.structured.buyer}
+            </span>
+          )}
+          {item.structured.code && (
+            <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-muted-foreground">编号 {item.structured.code}</span>
+          )}
           {item.structured.deadline && (
             <span className="rounded bg-warning/10 px-1.5 py-0.5 text-warning">截止 {item.structured.deadline}</span>
           )}
@@ -166,7 +186,16 @@ export function IntelItemCard({
 
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         <span className="truncate">{item.source_name || (item.added_by === "manual" ? "手动录入" : "未知来源")}</span>
-        <span>{fmtIntelTime(item.published_at || item.created)}</span>
+        {isIntelFutureDate(item.published_at) ? (
+          <span
+            className="rounded bg-warning/10 px-1.5 py-0.5 text-warning"
+            title="发布日超过当前日期，可能是正文中的课程/实施日期被误识别；可在信息源管理执行「修复数据」复核，不会自动删除"
+          >
+            日期待核 {String(item.published_at).slice(0, 10)}
+          </span>
+        ) : (
+          <span>{fmtIntelTime(item.published_at || item.created)}</span>
+        )}
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border pt-3">

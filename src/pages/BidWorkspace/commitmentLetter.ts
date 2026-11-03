@@ -5,6 +5,7 @@
 // 章节并入投标正文（part=biz 不参与 AI 正文生成、随全套文档导出），落款留空由投标人盖章签字。
 // ---------------------------------------------------------------------------
 import type { Chapter, OutlineNode } from "../SolutionStudio/solutionTypes"
+import { sectionText, STAR_CLAUSE_SECTION, type ParseReport } from "./bidTypes"
 
 export const COMMITMENT_CHAPTER_ID = "bid-commitment-letter"
 export const COMMITMENT_CHAPTER_TITLE = "实质性条款响应承诺函"
@@ -91,4 +92,29 @@ export function upsertCommitment(chapters: Chapter[], content: string): Chapter[
 export function upsertCommitmentOutline(outline: OutlineNode[]): { outline: OutlineNode[]; added: boolean } {
   if (outline.some((n) => n.id === COMMITMENT_CHAPTER_ID)) return { outline, added: false }
   return { outline: [...outline, commitmentOutlineNode()], added: true }
+}
+
+/**
+ * 2026-10-23（用户要求：所有承诺函都按原文先响应，人工再调整）
+ *
+ * 收集承诺函要覆盖的条款：
+ *   ① ★/▲ 实质性条款（逐字引用，原文不动）；
+ *   ② 技术参数里的「方案型 + 含承诺」条款（如「须提供《第三方接口费用承诺函》」这类）。
+ * 两条来源都保持原文逐字，不做改写——用户明确要「先按原文响应，我自己再调」。
+ */
+export function collectCommitmentClauses(report: ParseReport | null, extraClauses: string[] = []): string[] {
+  const out: string[] = []
+  const key = (t: string) => t.replace(/\s+/g, "").slice(0, 60)
+  const seen = new Set<string>()
+  const push = (raw: string) => {
+    const t = (raw ?? "").trim()
+    if (!t) return
+    const k = key(t)
+    if (seen.has(k)) return
+    seen.add(k)
+    out.push(t)
+  }
+  for (const c of splitStarClauses(sectionText(report, STAR_CLAUSE_SECTION.key))) push(c)
+  for (const c of extraClauses ?? []) if (/(承诺函|书面承诺|作出承诺|承诺不|承诺提供|承诺其|出具承诺)/.test(c)) push(c)
+  return out
 }

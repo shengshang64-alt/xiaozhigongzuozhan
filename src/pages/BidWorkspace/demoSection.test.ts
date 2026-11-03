@@ -48,3 +48,26 @@ describe("R-019/R-024 演示分节点治理（纯本地）", () => {
     expect(DEMO_OFFLINE_HINT).toContain("演示")
   })
 })
+
+// 2026-10-23（用户口径：演示不该出现在技术方案大纲里，演示只要准备好就行）
+import { stripDemoNodes } from "./demoSection"
+
+describe("stripDemoNodes：演示/答辩节点从大纲剔除", () => {
+  it("去掉演示类顶层章，保留普通技术章与商务章", () => {
+    const nodes = [
+      { id: "1", title: "可视化业务流程编排演示", children: [] },
+      { id: "2", title: "总体技术解决方案", children: [] },
+      { id: "3", title: "投标函", children: [], part: "biz" as const },
+      { id: "4", title: "包01 演示2", children: [] },
+    ]
+    const r = stripDemoNodes(nodes)
+    expect(r.removed).toEqual(["可视化业务流程编排演示", "包01 演示2"])
+    expect(r.nodes.map((n) => n.title)).toEqual(["总体技术解决方案", "投标函"])
+  })
+
+  it("没有演示节点时原样返回", () => {
+    const nodes = [{ id: "1", title: "总体技术解决方案", children: [] }]
+    expect(stripDemoNodes(nodes).removed).toEqual([])
+    expect(stripDemoNodes(null).nodes).toEqual([])
+  })
+})

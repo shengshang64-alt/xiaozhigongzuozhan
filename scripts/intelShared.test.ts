@@ -50,6 +50,7 @@ function loadShared(): Record<string, unknown> {
     "shared.__intelPubAt = __intelPubAt;",
     "shared.__intelCleanTitleSpacing = __intelCleanTitleSpacing;",
     "shared.__intelTextWithoutTitle = __intelTextWithoutTitle;",
+    "shared.__intelExtractBid = __intelExtractBid;",
     "return shared;",
   ].join("\n")
   return new Function(body)() as Record<string, unknown>
@@ -61,7 +62,34 @@ const S = loadShared() as {
   __intelPubAt: (url: string, ownBlock: string, body: string) => string
   __intelCleanTitleSpacing: (t: string) => string
   __intelTextWithoutTitle: (text: string, title: string) => string
+  __intelExtractBid: (title: string, text: string) => Record<string, string>
 }
+
+describe("招标结构化随抓取抽取（__intelExtractBid）", () => {
+  it("正文显式标签优先：采购人/预算/截止/编号全部抽出", () => {
+    const out = S.__intelExtractBid(
+      "某医院一体化核心系统项目公开招标公告",
+      "采购人：安徽中医药大学第一附属医院\n预算金额：人民币 2,500 万元\n项目编号：2026BFAFZ50845\n投标截止时间：2026年11月20日 09:30",
+    )
+    expect(out).toMatchObject({
+      buyer: "安徽中医药大学第一附属医院",
+      budget: "2,500万元",
+      code: "2026BFAFZ50845",
+      deadline: "2026年11月20日09:30",
+    })
+  })
+
+  it("无正文标签时回退标题机构名；非招标内容不臆造字段", () => {
+    const titled = S.__intelExtractBid("北京大学第六医院智慧病房建设项目招标公告", "")
+    expect(titled.buyer).toBe("北京大学第六医院")
+    expect(S.__intelExtractBid("医院召开年度工作总结会议", "我院举行运动会")).toEqual({})
+  })
+
+  it("中标结果抽取中标人和中标金额", () => {
+    const out = S.__intelExtractBid("某平台中标结果公告", "中标供应商：东软集团股份有限公司\n中标金额：890.5万元")
+    expect(out).toMatchObject({ winner: "东软集团股份有限公司", won_amount: "890.5万元" })
+  })
+})
 
 describe("Q3 标题高亮标签剥离（__intelTitleFromHtml）", () => {
   it("政采网搜索高亮：<font>医院</font> 剥离后不得插入空格", () => {

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { BookOpen, CornerDownLeft, Layers, Library, Loader2, MessageSquareQuote, Search, Sparkles, X } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { BookOpen, CornerDownLeft, HardDrive, Layers, Library, Loader2, MessageSquareQuote, Search, Sparkles, X } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,6 +15,7 @@ import {
   type BidMaterialTab,
   type BidSiblingChapter,
 } from "@/pages/BidWorkspace/bidMaterialAmmo"
+import { searchHistoryBids, toInsertText, type HistoryHit } from "@/pages/BidWorkspace/bidHistorySearch"
 
 // ---------------------------------------------------------------------------
 // R212 切片0.5B：标书编制右栏「素材弹药」——知识库 / 弹药库 / 本标书其它章节 三源检索
@@ -34,7 +35,19 @@ const TABS: { key: BidMaterialTab; label: string }[] = [
   { key: "kb", label: "知识库" },
   { key: "ammo", label: "弹药库" },
   { key: "sibling", label: "本章素材" },
+  // 本机硬盘里的历史标书（AnyTXT 离线索引）——写方案时参考同类项目怎么写的
+  { key: "history", label: "历史标书" },
 ]
+
+/** 把 AnyTXT 片段的 *<<*高亮*>>* 标记去掉，供卡片预览（插入正文时由 toInsertText 再处理一遍） */
+function cleanPreview(raw: string): string {
+  return String(raw ?? "")
+    .replace(/\*<<\*/g, "")
+    .replace(/\*>>\*/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 220)
+}
 
 function InsertButton({ disabled, onInsert }: { disabled: boolean; onInsert: () => void }) {
   return (
@@ -158,6 +171,37 @@ export function BidMaterialAmmoPanel(p: Props) {
     [docs, pairs, p.siblings, uid, p.chapterQuery, p.activeChapterId, query],
   )
 
+  // ---- 历史标书（本机 AnyTXT 索引）----
+  // 与上面三源不同：这三源是会话内内存过滤，历史标书要打磁盘索引，故走显式点击触发，
+  // 不做按键实时搜（避免每次输入都打一次本地 RPC + 取片段）。
+  const [historyHits, setHistoryHits] = useState<HistoryHit[]>([])
+  const [historyBusy, setHistoryBusy] = useState(false)
+  const [historyTotal, setHistoryTotal] = useState(0)
+  const [historySearched, setHistorySearched] = useState(false)
+  const runHistorySearch = useCallback(async () => {
+    const kw = query.trim()
+    if (!kw) {
+      toast.info("请先在上方输入检索关键词")
+      return
+    }
+    setHistoryBusy(true)
+    setHistorySearched(true)
+    try {
+      const r = await searchHistoryBids({ keyword: kw, limit: 8 })
+      if (r.ok) {
+        setHistoryHits(r.hits)
+        setHistoryTotal(r.total)
+        if (!r.hits.length) toast.info("本机没有找到包含该关键词的历史标书")
+      } else {
+        setHistoryHits([])
+        setHistoryTotal(0)
+        toast.error(r.message)
+      }
+    } finally {
+      setHistoryBusy(false)
+    }
+  }, [query])
+
   return (
     <aside className="flex max-h-[calc(100vh-9rem)] flex-col rounded-lg border border-border bg-card shadow-md">
       <div className="flex min-h-11 shrink-0 items-center gap-1.5 border-b border-border px-3">
@@ -195,8 +239,10 @@ export function BidMaterialAmmoPanel(p: Props) {
       </div>
 
       <div className="mt-2 min-h-0 flex-1 space-y-2 overflow-y-auto px-3 pb-3">
-        {/* 未搜索时展示按当前章主题的跨来源智能推荐（切章自动重排） */}
-        {!query && recos.length > 0 && (
+        {/* 未搜索时展示按当前章主题的跨来源智能推荐（切章自动重排）。
+            历史标书 Tab 不参与：它走磁盘检索、要靠用户显式点「检索本机」触发，
+            否则会盖住该 Tab 自己的引导与检索结果。 */}
+        {tab !== "history" && !query && recos.length > 0 && (
           <div className="space-y-2">
             <p className="flex items-center gap-1.5 rounded-lg bg-primary/10 px-2.5 py-2 text-xs font-medium text-primary">
               <Sparkles className="h-3.5 w-3.5 shrink-0" />
@@ -216,7 +262,9 @@ export function BidMaterialAmmoPanel(p: Props) {
           </div>
         )}
 
-        {loading ? (
+        {/* loading 只挡「知识库/弹药库/本章素材」三源（它们要等 getCachedVisibleDocs + listKbQaPairs）；
+            历史标书走 AnyTXT 磁盘检索，与这两次拉取无关，不能被它挡住。 */}
+        {loading && tab !== "history" ? (
           <div className="flex items-center justify-center gap-2 py-10 text-xs text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
             素材来源加载中…
@@ -252,6 +300,67 @@ export function BidMaterialAmmoPanel(p: Props) {
             ammoItems.map((a) => (
               <MaterialCard key={a.key} title={a.title} badge={a.badge} snippet={a.snippet} disabled={!p.canInsert} onInsert={() => p.onInsert(a.snippet, a.label)} />
             ))
+          )
+        ) : tab === "history" ? (
+          /* 历史标书：本机硬盘（AnyTXT 离线索引）。显式点「检索本机」触发，不做按键实时搜 */
+          !historySearched ? (
+            <div className="space-y-2">
+              <EmptyHint
+                icon={<HardDrive className="h-7 w-7" />}
+                title="检索本机历史标书"
+                desc="在 D 盘标书库里找同类项目是怎么写的，命中片段可一键插入本章"
+                action={
+                  <Button size="sm" variant="outline" onClick={() => void runHistorySearch()} disabled={historyBusy || !query}>
+                    {historyBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Search className="mr-1 h-3.5 w-3.5" />}
+                    {query ? "检索本机" : "先输入关键词"}
+                  </Button>
+                }
+              />
+              <p className="rounded-md bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
+                注意：历史标书未经脱敏，可能含其它医院名称/报价/内部批注。仅作内部参考，插入后必须改写。
+              </p>
+            </div>
+          ) : historyBusy ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+              正在检索本机历史标书…
+            </div>
+          ) : historyHits.length === 0 ? (
+            <EmptyHint
+              icon={<HardDrive className="h-7 w-7" />}
+              title="没有命中的历史标书"
+              desc="换个关键词，或确认 AnyTXT 已把标书目录加入索引范围"
+              action={
+                <Button size="sm" variant="outline" onClick={() => void runHistorySearch()}>
+                  <Search className="mr-1 h-3.5 w-3.5" />
+                  重试
+                </Button>
+              }
+            />
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] text-muted-foreground">
+                  命中 {historyTotal} 个文件，显示 {historyHits.length} 条片段
+                </p>
+                <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={() => void runHistorySearch()}>
+                  刷新
+                </Button>
+              </div>
+              {historyHits.map((h) => {
+                const ins = toInsertText(h)
+                return (
+                  <MaterialCard
+                    key={h.fid}
+                    title={h.title}
+                    badge={h.dir}
+                    snippet={cleanPreview(h.snippet)}
+                    disabled={!p.canInsert}
+                    onInsert={() => p.onInsert(ins.text, ins.label)}
+                  />
+                )
+              })}
+            </div>
           )
         ) : sibItems.length === 0 ? (
           <EmptyHint

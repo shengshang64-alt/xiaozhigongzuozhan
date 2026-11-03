@@ -65,17 +65,20 @@ describe("SlideListNav warn 圆点（R166）", () => {
 })
 
 describe("非阻断契约维持（R166）", () => {
-  it("导出前自检失败不拦截：toast 照旧 + 导出流程不变", () => {
+  it("导出前门禁：error 阻断导出，warn/info 只提示（2026-10-30 行为变更）", () => {
     const code = readFileSync(USE, "utf-8")
-    // R121 的一次性导出 toast 仍在（常驻面板是补全，不是替换；按无空格前缀断言，防快照差异误报）
-    expect(code).toContain("toast.warning(`导出前自检：${lintSummaryText(lintIssues)}")
-    // lint 命中后没有 return / throw，流程继续走导出（取 lint 到 try 之间片段断言）
-    const start = code.indexOf("const lintIssues = lintDeck(deck.slides)")
-    const end = code.indexOf("const { exportDeckPptx }", start)
-    expect(start).toBeGreaterThan(-1)
-    expect(end).toBeGreaterThan(start)
-    const seg = code.slice(start, end)
-    expect(seg).not.toContain("return")
-    expect(seg).not.toContain("throw")
+    // 门禁调用仍走 deckLint 的单一真源（gateExport 内部调 lintDeck）
+    expect(code).toContain("gateExport(deck.slides)")
+    // warn/info 仍给一次性 toast 提示（常驻面板是补全，不是替换）
+    expect(code).toContain("toast.warning(`导出前自检：${lintSummaryText(gate.issues)}")
+    // error 级问题必须 return，不得继续导出
+    const gateStart = code.indexOf("const gate = gateExport(deck.slides)")
+    const exportStart = code.indexOf("const { exportDeckPptx }", gateStart)
+    expect(gateStart).toBeGreaterThan(-1)
+    expect(exportStart).toBeGreaterThan(gateStart)
+    const seg = code.slice(gateStart, exportStart)
+    expect(seg).toContain("if (!gate.ok)")
+    expect(seg).toContain("return") // 阻断
+    expect(seg).toContain("setExportBlocking") // 传给界面展示「页码+问题」
   })
 })

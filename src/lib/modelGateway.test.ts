@@ -11,6 +11,7 @@ import {
   modelRefKey,
   modelRefLabel,
   modelMismatchNotice,
+  pickUsablePersonalRef,
   type AvailableModels,
   type GatewayConfig,
   type GatewayConfigModel,
@@ -86,6 +87,59 @@ describe("buildAvailableModels", () => {
     const r = buildAvailableModels([cfg])
     expect(r.models).toHaveLength(0)
     expect(r.defaultRef).toBeNull()
+  })
+})
+
+// R302：兜底挑通道时必须看健康档案。
+// 实测背景（2026-10-27）：工作站网关上「已停用 / 上游下线 / Key 失效」的通道一旦被记账，
+// 配置页会标红，但 pickFirstPersonalModelRef 原先完全不读健康档案，仍会挑中它——
+// 用户看到的就是「刚说修好了，一发问还是同一个错」。
+describe("pickUsablePersonalRef（兜底挑通道叠加健康档案）", () => {
+  it("跳过已挂账的通道，选下一个未挂账的", () => {
+    const a = mkCfg({ id: "a", config_name: "坏通道", models: [en("dead-model")] })
+    const b = mkCfg({ id: "b", config_name: "好通道", models: [en("live-model")] })
+    const ref = pickUsablePersonalRef([a, b], (k) => k === "personal:a:dead-model")
+    expect(ref?.modelId).toBe("live-model")
+    expect(ref?.configName).toBe("好通道")
+  })
+
+  it("配置声明的默认模型优先于数组顺序", () => {
+    const plain = mkCfg({ id: "p1", config_name: "普通", models: [en("m1")] })
+    const starred = mkCfg({
+      id: "p2",
+      config_name: "标了默认",
+      default_model: "m2",
+      models: [en("m2")],
+    })
+    expect(pickUsablePersonalRef([plain, starred], () => false)?.modelId).toBe("m2")
+  })
+
+  it("默认模型被停用时退回该配置首个启用模型（不硬发已停用模型）", () => {
+    const cfg = mkCfg({
+      id: "p1",
+      default_model: "gone",
+      models: [{ id: "gone", enabled: false }, en("alive")],
+    })
+    expect(pickUsablePersonalRef([cfg], () => false)?.modelId).toBe("alive")
+  })
+
+  it("全部挂账时仍返回首选，而不是直接判无数可用", () => {
+    const cfg = mkCfg({ id: "p1", models: [en("only")] })
+    expect(pickUsablePersonalRef([cfg], () => true)?.modelId).toBe("only")
+  })
+
+  it("缺 Key / 平台配置 / 无启用模型都不入选", () => {
+    const noKey = mkCfg({ id: "nk", has_key: false, models: [en("m")] })
+    const plat = mkCfg({ id: "plat", is_platform: true, models: [en("gpt-5.5")] })
+    const noEnabled = mkCfg({ id: "ne", models: [{ id: "x", enabled: false }] })
+    expect(pickUsablePersonalRef([noKey, plat, noEnabled], () => false)).toBeNull()
+  })
+
+  it("用户偏好命中的配置排最前（即使别的配置声明了默认模型）", () => {
+    const starred = mkCfg({ id: "p0", default_model: "s0", models: [en("s0")] })
+    const liked = mkCfg({ id: "p9", models: [en("liked")] })
+    const ref = pickUsablePersonalRef([starred, liked], () => false, "personal:p9:liked")
+    expect(ref?.configId).toBe("p9")
   })
 })
 

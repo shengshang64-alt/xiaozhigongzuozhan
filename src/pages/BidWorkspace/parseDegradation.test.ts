@@ -35,8 +35,17 @@ const rep = (sections: ParseSection[]): ParseReport => ({ scope: "full", section
 
 /** 完整档（含 void_items）请求范围 */
 const FULL_KEYS = requestedKeys({ scope: "full", extra_keys: ["void_items"] })
-/** 关键项档请求范围（不含 void_items） */
-const KEY_KEYS = requestedKeys({ scope: "key", extra_keys: [] })
+/** 存量项目形态：2026-10-22 之前的关键项档请求范围（不含废标三件套） */
+const KEY_KEYS = [
+  "overview",
+  "tech_score",
+  "project_info",
+  "purchaser_info",
+  "delivery_req",
+  "response_req",
+  "biz_score",
+  "bid_outline_req",
+]
 
 const realContent = (n = 20): string => Array.from({ length: n }, (_, i) => `第 ${i + 1} 条要点内容`).join("\n")
 
@@ -65,17 +74,21 @@ describe("R58（B29）解析层退化自检 v2a", () => {
     const sections = [
       mk("overview", realContent(), "ok"),
       mk("tech_score", realContent(12), "ok"),
+      mk("project_info", realContent(), "ok"),
+      mk("purchaser_info", realContent(), "ok"),
+      mk("delivery_req", realContent(), "ok"),
       mk("response_req", realContent(), "ok"),
       mk("biz_score", realContent(6), "ok"),
       mk("void_items", realContent(8), "ok"),
-      mk("bid_outline_req", realContent(), "ok"),
       mk("qualification", realContent(), "ok"),
+      mk("compliance", realContent(), "ok"),
+      mk("bid_outline_req", realContent(), "ok"),
       mk("contract_terms", realContent(), "ok"),
     ]
     const r = detectParseDegradation(rep(sections), src(120000), FULL_KEYS)
     expect(r.degraded).toBe(false)
     expect(r.reason).toBe("")
-    expect(r.metrics.filledSections).toBe(8)
+    expect(r.metrics.filledSections).toBe(sections.length)
     expect(r.metrics.scoringLines).toBeGreaterThanOrEqual(PARSE_DEGRADED_MIN_SCORING_LINES)
     expect(r.metrics.voidLines).toBeGreaterThanOrEqual(PARSE_DEGRADED_MIN_VOID_LINES)
     expect(r.metrics.voidRequested).toBe(true)
@@ -98,7 +111,7 @@ describe("R58（B29）解析层退化自检 v2a", () => {
     expect(r.reason.length).toBeLessThanOrEqual(100)
   })
 
-  it("⑤ 范围感知：key 档不请求 void_items → 不因它缺失告警（否则 11 条 key 档项目里 5 条假告警）", () => {
+  it("⑤ 范围感知：存量 key 档不请求废标项 → 不因它缺失告警（否则 11 条 key 档项目里 5 条假告警）", () => {
     const keySections = KEY_KEYS.map((k) =>
       mk(k, k === "tech_score" || k === "biz_score" ? realContent(6) : realContent(), "ok"),
     )

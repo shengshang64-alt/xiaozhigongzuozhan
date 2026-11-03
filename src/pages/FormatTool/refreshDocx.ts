@@ -448,17 +448,44 @@ function elementSpans(xml: string, name: string): Array<[number, number]> {
 
 type ParaTarget = { kind: "body" } | { kind: "heading"; level: number } | { kind: "protected" }
 
-/** 判定段落的改写目标；pStyle 既非正文也非标题（Title / 自定义）一律 protected */
+/** 段落可见文字（拼接全部 w:t；用于空段落/封面短标题判定） */
+function paraText(block: string): string {
+  const parts = [...block.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)].map((m) => m[1])
+  return parts.join("").replace(/\s+/g, " ").trim()
+}
+
+/**
+ * 判定段落的改写目标。保护优先（宁可少改、不可改坏封面/图文/特殊排版）：
+ *  ① 样式既非正文也非标题（Title / 封面自定义样式等）→ protected；
+ *  ② 含图片/图形/文本框（drawing/pict/object/txbxContent）→ protected；
+ *  ③ 无可见文字的空白段（封面排版靠空行）→ protected；
+ *  ④ 段落内任一 run 字号 ≥24pt（w:sz≥48，封面标题典型 22~72pt）→ protected；
+ *  ⑤ 居中/右对齐且无首行缩进（封面、落款、题注）→ protected。
+ */
 function paraTarget(block: string, ctx?: DirectFormatContext): ParaTarget {
   const pStyle = /<w:pStyle\s[^>]*w:val="([^"]*)"/.exec(block)?.[1] ?? ""
   const lvl = styleIdHeadingLevel(pStyle, ctx?.headingStyleLevels)
   if (lvl >= 1) return { kind: "heading", level: lvl }
   if (pStyle && !isBodyStyleId(pStyle)) return { kind: "protected" }
+  const pPr = spanOf(block, "w:pPr")
+  const pPrText = pPr ? pPr.text : ""
   if (!pStyle) {
-    const pPr = spanOf(block, "w:pPr")
-    const ol = (pPr ? pPr.text : block).match(/<w:outlineLvl\s[^>]*w:val="([0-5])"/)
+    const ol = (pPrText || block).match(/<w:outlineLvl\s[^>]*w:val="([0-5])"/)
     if (ol) return { kind: "heading", level: Number(ol[1]) + 1 }
   }
+  // ② 图文/文本框：改写 run 字体会破坏图形内文字与锚点排版
+  if (/<(?:w:drawing|w:pict|w:object|w:txbxContent)/.test(block)) return { kind: "protected" }
+  // ③ 空白段：封面常用空行撑版面，补首行缩进会改变版式
+  if (!paraText(block)) return { kind: "protected" }
+  // ④ 大字号直排（封面标题/落款）：字号可能写在 run 的 rPr 里，必须扫整段。
+  // 阈值取 24pt（w:sz≥48）：正文直排字号极少超过三号(16pt)，而封面标题常见 22~72pt。
+  let maxHalf = 0
+  for (const m of block.matchAll(/<w:sz\s+[^>]*w:val="(\d+)"/g)) maxHalf = Math.max(maxHalf, Number(m[1]))
+  if (maxHalf >= 48) return { kind: "protected" }
+  // ⑤ 居中/右对齐且未设首行缩进：正文对齐通常是两端/左对齐
+  const jc = /<w:jc\s[^>]*w:val="(center|right)"/.exec(pPrText)
+  const hasInd = /<w:ind\s[^>]*w:firstLine(?:Chars)?="[1-9]/.test(pPrText)
+  if (jc && !hasInd) return { kind: "protected" }
   return { kind: "body" }
 }
 
@@ -819,12 +846,17 @@ function buildApplyReport(
   if (on("page")) {
     const [pw, phh] = PAPER_TWIPS[settings.paper] ?? PAPER_TWIPS.A4
     const tw = (cm: number) => String(Math.round(cm * TWIPS_PER_CM))
-    const sect = /<w:sectPr[\s\S]*?<\/w:sectPr>/.exec(docXml)?.[0] ?? ""
+    // 2026-11-03 修复：改写侧只动**最后一个** sectPr（多节文档的正文节），
+    // 复检侧却用 /exec 取**第一个** sectPr（封面节）→ 多节文档必然误报「未生效」。
+    // 两侧必须同口径：取最后一个 sectPr。
+    let lastSect = ""
+    for (const m of docXml.matchAll(/<w:sectPr(?:\s[^>]*?)?>[\s\S]*?<\/w:sectPr>/g)) lastSect = m[0]
     const hit =
-      sect.includes(`w:w="${pw}"`) &&
-      sect.includes(`w:h="${phh}"`) &&
-      sect.includes(`w:top="${tw(settings.margins.top)}"`) &&
-      sect.includes(`w:left="${tw(settings.margins.left)}"`)
+      !!lastSect &&
+      lastSect.includes(`w:w="${pw}"`) &&
+      lastSect.includes(`w:h="${phh}"`) &&
+      lastSect.includes(`w:top="${tw(settings.margins.top)}"`) &&
+      lastSect.includes(`w:left="${tw(settings.margins.left)}"`)
     slots.pageMargin = hit
       ? { status: "ok", reason: `${settings.paper} · 边距 ${settings.margins.top}/${settings.margins.bottom}/${settings.margins.left}/${settings.margins.right}cm` }
       : { status: "fail", reason: "复检未命中目标纸张或页边距" }

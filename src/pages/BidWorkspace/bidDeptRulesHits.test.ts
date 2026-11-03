@@ -79,11 +79,70 @@ describe("deptRulesHits：六类命中各自归码", () => {
   it("每类独立 ≤20 条上限（防单类刷屏挤掉别的类）", () => {
     const many = Array.from({ length: 40 }, (_, i) => `系统与卫生计生委平台对接 ${i}`).join("\n")
     const hits = deptRulesHits(base({ bidText: many }))
-    expect(hits.length).toBe(DEPT_RULE_CAP)
+    // 2026-10-26：本轮新增 table_caption_missing / latex_residue 两类，本用例只锁「单类上限」
+    // 不再断言总量等于上限——改锁每类各自不超过上限（与模块头「六类各自独立上限」的原意一致）。
+    const byRule = new Map<string, number>()
+    for (const h of hits) byRule.set(h.rule, (byRule.get(h.rule) ?? 0) + 1)
+    for (const [, n] of byRule) expect(n).toBeLessThanOrEqual(DEPT_RULE_CAP)
+    expect(byRule.get("outdated_term")).toBe(DEPT_RULE_CAP)
   })
 
   it("全空输入不抛错、不产生命中", () => {
     expect(deptRulesHits({ tenderText: "", bidText: "", scoringItems: [], outline: [] })).toEqual([])
+  })
+})
+
+describe("2026-10-26 用户硬要求：表格必须有表题 / 正文禁 LaTeX", () => {
+  /** 造一个符合导出约定的表格块（列间两个全角空格 U+3000） */
+  const TABLE = ["序号　　名称　　备注", "1　　系统A　　无", "2　　系统B　　无"].join("\n")
+
+  it("表格上方有表题 → 不报 table_caption_missing", () => {
+    const hits = deptRulesHits(base({ bidText: `表1-1 系统清单\n${TABLE}` }))
+    expect(hits.filter((h) => h.rule === "table_caption_missing")).toEqual([])
+  })
+
+  it("表格上方没有表题 → 报 table_caption_missing，并指出是第几行", () => {
+    const hits = deptRulesHits(base({ bidText: `以下为系统清单：\n${TABLE}` }))
+    const cap = hits.filter((h) => h.rule === "table_caption_missing")
+    expect(cap.length).toBe(1)
+    expect(cap[0].quote).toContain("没有表题")
+    expect(cap[0].quote).toContain("第 2 行")
+  })
+
+  it("表题多种真实写法都认：带冒号 / 带加粗 / 只写编号 / 隔一空行", () => {
+    for (const cap of ["表 2-3：参数响应表", "**表1-1** 系统清单", "表1-1", "表格：系统清单"]) {
+      const hits = deptRulesHits(base({ bidText: `${cap}\n${TABLE}` }))
+      expect(hits.filter((h) => h.rule === "table_caption_missing"), `表题写法「${cap}」应被认出`).toEqual([])
+    }
+    // 表题与表格之间隔一个空行也要认
+    const hits = deptRulesHits(base({ bidText: `表1-1 系统清单\n\n${TABLE}` }))
+    expect(hits.filter((h) => h.rule === "table_caption_missing")).toEqual([])
+  })
+
+  it("单行孤立「表格行」不当表格要求表题（导出侧 block.length≥2 才转表，避免误报）", () => {
+    const hits = deptRulesHits(base({ bidText: "序号　　只有一行" }))
+    expect(hits.filter((h) => h.rule === "table_caption_missing")).toEqual([])
+  })
+
+  it("LaTeX 命令 / $公式$ / \\begin{} 都报 latex_residue", () => {
+    for (const bad of ["公式为 \\frac{1}{2}", "约等于 $x+y$", "\\begin{aligned} a=1", "精度 \\le 3 秒"]) {
+      const hits = deptRulesHits(base({ bidText: bad }))
+      const latex = hits.filter((h) => h.rule === "latex_residue")
+      expect(latex.length, `「${bad}」应报 LaTeX 残留`).toBe(1)
+      expect(latex[0].quote).toContain("<sup>")
+    }
+  })
+
+  it("反斜杠路径与普通乘号不算 LaTeX（误报会让徽标失去可信度）", () => {
+    for (const ok of ["附件存放于 C:\\temp\\bid 目录", "3 × 4 = 12", "价格 10/20 元"]) {
+      const hits = deptRulesHits(base({ bidText: ok }))
+      expect(hits.filter((h) => h.rule === "latex_residue"), `「${ok}」不该判 LaTeX`).toEqual([])
+    }
+  })
+
+  it("正文还没生成时不报表题/LaTeX（避免前置噪音）", () => {
+    const hits = deptRulesHits(base({ bidText: "" }))
+    expect(hits.filter((h) => h.rule === "table_caption_missing" || h.rule === "latex_residue")).toEqual([])
   })
 })
 

@@ -26,7 +26,7 @@ import {
   findProjectResidue,
   type ScoringItemLike,
 } from "./bidComplianceRules"
-import { checkDedicatedSections, findPronounHits, findVagueParamHits } from "./bidWritingRules"
+import { checkDedicatedSections, findCredentialClaimsWithoutEvidence, findLatexResidue, findPronounHits, findTableCaptionStatus, findVagueParamHits } from "./bidWritingRules"
 import type { OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
 
 /** 每类命中上限：与体检其它规则一致，防止单类刷屏挤掉别的类 */
@@ -156,6 +156,51 @@ export function deptRulesHits(input: DeptRulesInput): FormatCheckHit[] {
       ...findVagueParamHits(bid).map((h) => ({ quote: `模糊参数「${h.word}」（第 ${h.line} 行：${lineWindow(h.text, h.word)}）` })),
     ]
     hits.push(...toHits("writing_voice", "投标正文", voice))
+
+    // ⑤b 表格表题 / LaTeX 残留（用户硬要求，2026-10-26 补）
+    // 为什么并到 bid 分支里而不是新开一段：两者都只扫投标正文，且都要跟随 bidText 的
+    // 「有正文才报」语义——正文还没生成时报「表没有表题」是没有意义的前置噪音。
+    //
+    // 表题：findTableCaptionStatus 与导出侧同口径（全角空格分列、块内 ≥2 行才算出表），
+    // 只报「该有表题却没有」的表格，每章按 DEPT_RULE_CAP 截断。
+    const captionStatus = findTableCaptionStatus(bid)
+    const missingCaption = captionStatus.filter((t) => !t.hasCaption)
+    hits.push(
+      ...toHits(
+        "table_caption_missing",
+        "投标正文",
+        missingCaption.map((t) => ({
+          quote: `第 ${t.line} 行的表格没有表题——用户要求每个表格上方写一行「表N-M 标题」；该表首行：${t.excerpt}`,
+        })),
+      ),
+    )
+
+    // LaTeX：只认命令式形态（见 findLatexResidue 注释），不误伤反斜杠路径与普通乘号
+    hits.push(
+      ...toHits(
+        "latex_residue",
+        "投标正文",
+        findLatexResidue(bid).map((f) => ({ quote: `${f.label}（第 ${f.line} 行：${f.excerpt}）——改用普通文字 + <sup>/<sub>` })),
+      ),
+    )
+
+    // ⑤c 凭证类断言必须有出处（2026-10-26 标书官复核提出的真实缺口）
+    //
+    // 为什么是废标级：正文写「已通过等保三级测评并提供证书」却没给出处，
+    // 评标时无从核对；没有证书就是虚假应答。标书官原话「这类表述必须旁边挂详见附件X」。
+    // 核实产品里原本没有这条校验（搜「已通过/已获得」生产代码零相关实现），故补上。
+    // 只报「有断言、无出处」的，有出处的放行。
+    hits.push(
+      ...toHits(
+        "credential_claim_no_evidence",
+        "投标正文",
+        findCredentialClaimsWithoutEvidence(bid)
+          .filter((c) => !c.hasPointer)
+          .map((c) => ({
+            quote: `第 ${c.line} 行断言已持有资质但没写出处：${c.excerpt}——补「详见附件N」或证书编号，否则评委无从核对（虚假应答风险）`,
+          })),
+      ),
+    )
   }
 
   // ⑥ 必备专用章（大纲侧）——大纲还没生成时不报：否则每次体检都会刷"缺承诺函/缺偏离表"，

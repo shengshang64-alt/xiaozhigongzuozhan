@@ -1,6 +1,6 @@
 import { useMemo } from "react"
 import { Eye, Image as ImageIcon, Network, Pencil } from "lucide-react"
-import type { Slide } from "@/pages/PptQuote/pptQuoteTypes"
+import { SLIDE_ROLE_LABEL, type Slide, type SlideRole } from "@/pages/PptQuote/pptQuoteTypes"
 import { buildFigureSvg, tokenPalette } from "@/components/bid-workspace/BidFigure"
 
 type SlidePreviewGridProps = {
@@ -28,6 +28,19 @@ const LAYOUT_LABEL: Record<string, string> = {
   banner: "横幅图",
   chart: "数据图表",
   kpi: "数字亮点",
+}
+
+/** 叙事角色徽章配色（与导出色语义一致：痛点赭石/主张蓝/价值绿/计划紫） */
+const ROLE_TONE: Record<SlideRole, string> = {
+  context: "border-slate-400/40 bg-slate-500/10 text-slate-600",
+  problem: "border-amber-500/40 bg-amber-500/10 text-amber-700",
+  question: "border-amber-600/40 bg-amber-600/10 text-amber-700",
+  answer: "border-primary/40 bg-primary/10 text-primary",
+  evidence: "border-teal-500/40 bg-teal-500/10 text-teal-700",
+  approach: "border-primary/40 bg-primary/10 text-primary",
+  plan: "border-violet-500/40 bg-violet-500/10 text-violet-700",
+  value: "border-emerald-500/40 bg-emerald-500/10 text-emerald-700",
+  close: "border-slate-400/40 bg-slate-500/10 text-slate-600",
 }
 
 function visualBadge(slide: Slide): { text: string; tone: string } | null {
@@ -69,6 +82,14 @@ export function SlidePreviewGrid({ slides, deckName, onEdit }: SlidePreviewGridP
                   {index + 1}
                 </span>
                 <span className="truncate text-sm font-semibold text-foreground">{slide.title || "（未命名页）"}</span>
+                {/* 2026-10-30 叙事角色徽章：让全册的 SCQA 推进一目了然 */}
+                {slide.role ? (
+                  <span
+                    className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${ROLE_TONE[slide.role] ?? "border-border bg-muted text-muted-foreground"}`}
+                  >
+                    {SLIDE_ROLE_LABEL[slide.role]}
+                  </span>
+                ) : null}
                 {badge ? (
                   <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${badge.tone}`}>{badge.text}</span>
                 ) : null}

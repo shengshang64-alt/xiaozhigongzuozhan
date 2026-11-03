@@ -18,7 +18,9 @@ import {
 } from "lucide-react"
 import {
   isBlankSlide,
+  POLISH_LABEL,
   REFINE_LABEL,
+  type PolishKind,
   type RefineKind,
   type Slide,
   type SlideLayout,
@@ -29,6 +31,12 @@ import {
   type ImageSearchProvider,
 } from "@/pages/PptQuote/imageSearch"
 import { BidFigure } from "@/components/bid-workspace/BidFigure"
+import {
+  AI_PROVIDER_PRESETS,
+  getAiImageConfig,
+  setAiImageConfig,
+  type AiProviderKind,
+} from "@/pages/PptQuote/aiImageProvider"
 
 type ImagePool = { source: string; loading: boolean; urls: string[]; error: string }
 
@@ -42,6 +50,10 @@ type SlideEditorProps = {
   onTitleChange: (value: string) => void
   onLayoutChange: (layout: SlideLayout) => void
   onBulletsChange: (value: string) => void
+  /** 2026-10-30 AI 润色第 N 条要点（kind=润色方向） */
+  onPolishBullet?: (index: number, kind: PolishKind) => void
+  /** 正在润色的字段 key（"bullet:2" 等），用于禁用按钮 */
+  polishingKey?: string | null
   onNotesChange: (value: string) => void
   onRefine: (kind: RefineKind) => void
   /** 「改写 / 扩写 / 精简」旁的带入技能选择器（页面注入） */
@@ -74,8 +86,10 @@ const REFINE_ICONS: Record<RefineKind, typeof PenLine> = {
 }
 
 /** 用户可手动切换的版式（图表 / 数字亮点页由数据自动决定，不单列） */
-const LAYOUT_OPTIONS: { key: SlideLayout; label: string }[] = [
-  { key: "auto", label: "自动" },
+/** 2026-10-30 AI 润色的四个方向（顺序即下拉框顺序） */
+const POLISH_KINDS: PolishKind[] = ["tighten", "expand", "professional", "plain"]
+
+const LAYOUT_OPTIONS: { key: SlideLayout; label: string }[] = [  { key: "auto", label: "自动" },
   { key: "bullets", label: "纯文字要点" },
   { key: "section", label: "章节分隔页" },
   { key: "image-right", label: "文左图右" },
@@ -100,6 +114,8 @@ export function SlideEditor({
   onTitleChange,
   onLayoutChange,
   onBulletsChange,
+  onPolishBullet,
+  polishingKey = null,
   onNotesChange,
   onRefine,
   refinePickerSlot,
@@ -126,6 +142,8 @@ export function SlideEditor({
   const [figureQuery, setFigureQuery] = useState("")
   const [keyPanelOpen, setKeyPanelOpen] = useState(false)
   const [pexelsKeyDraft, setPexelsKeyDraft] = useState(() => getImageSearchKey("pexels"))
+  // 2026-10-31：AI 生图配置（用户反馈"在哪配置"——原来只能改环境变量重启 sidecar）
+  const [aiCfgDraft, setAiCfgDraft] = useState(() => getAiImageConfig())
   const [unsplashKeyDraft, setUnsplashKeyDraft] = useState(() => getImageSearchKey("unsplash"))
   const fileRef = useRef<HTMLInputElement>(null)
   // B5：精修落定（slideAiKind 非空 → null）后清掉本地草稿，界面始终显示精修结果，
@@ -210,8 +228,35 @@ export function SlideEditor({
 
         <label className="block">
           <span className="mb-1.5 flex items-center justify-between text-xs font-medium text-muted-foreground">
-            要点列表（每行一条）
-            <span>{slide.bullets.length} 条{slide.bullets.length > 6 ? " · 建议精简到 6 条以内" : ""}</span>
+            <span>要点列表（每行一条）</span>
+            <span className="flex items-center gap-2">
+              <span>{slide.bullets.length} 条{slide.bullets.length > 6 ? " · 建议精简到 6 条以内" : ""}</span>
+              {/* 2026-10-30 AI 润色：只打磨某一条，不动整页（借鉴 ChatPPT） */}
+              {onPolishBullet && slide.bullets.length > 0 ? (
+                <select
+                  aria-label="选择要润色的第几条要点"
+                  defaultValue=""
+                  disabled={refineLocked || polishingKey !== null}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    if (v) onPolishBullet(Number(v.split(":")[1]), v.split(":")[0] as PolishKind)
+                    e.target.value = ""
+                  }}
+                  className="h-6 rounded border border-border bg-background px-1 text-[11px] text-muted-foreground"
+                >
+                  <option value="">润色第…条</option>
+                  {slide.bullets.map((b, i) => (
+                    <optgroup key={i} label={`第 ${i + 1} 条：${b.slice(0, 14)}`}>
+                      {POLISH_KINDS.map((k) => (
+                        <option key={k} value={`${k}:${i}`}>
+                          {POLISH_LABEL[k]}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              ) : null}
+            </span>
           </span>
           <textarea
             value={bulletsDraft && bulletsDraft.slideId === slide.id ? bulletsDraft.text : slide.bullets.join("\n")}
@@ -471,6 +516,90 @@ export function SlideEditor({
                   <p className="text-[10px] text-muted-foreground">
                     一次性写入环境变量则取 <code className="rounded bg-muted px-1">VITE_PEXELS_API_KEY</code> / <code className="rounded bg-muted px-1">VITE_UNSPLASH_ACCESS_KEY</code>（需重启 Vite）。
                   </p>
+
+                  {/* 2026-10-31：AI 生图配置（用户问「AI 生图在哪配置」——原来只能改环境变量重启 sidecar） */}
+                  <div className="mt-3 space-y-2 border-t border-border pt-2.5">
+                    <p className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground">
+                      <Wand2 className="h-3 w-3 text-indigo-500" />
+                      AI 生图（用于抽象概念配图）
+                    </p>
+                    <label className="block">
+                      <span className="text-[11px] text-muted-foreground">服务商</span>
+                      <select
+                        value={aiCfgDraft.provider}
+                        onChange={(e) => {
+                          const provider = e.target.value as AiProviderKind | ""
+                          const preset = provider ? AI_PROVIDER_PRESETS[provider as AiProviderKind] : null
+                          const next = {
+                            provider,
+                            key: aiCfgDraft.key,
+                            model: preset?.defaultModel ?? "",
+                            base: aiCfgDraft.base,
+                          }
+                          setAiCfgDraft(next)
+                          setAiImageConfig(next)
+                        }}
+                        className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      >
+                        <option value="">（未配置，用图库搜图）</option>
+                        {(Object.keys(AI_PROVIDER_PRESETS) as AiProviderKind[]).map((k) => (
+                          <option key={k} value={k}>
+                            {AI_PROVIDER_PRESETS[k].label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {aiCfgDraft.provider ? (
+                      <>
+                        <label className="block">
+                          <span className="text-[11px] text-muted-foreground">
+                            API Key
+                            {AI_PROVIDER_PRESETS[aiCfgDraft.provider as AiProviderKind]?.keyUrl ? (
+                              <a
+                                href={AI_PROVIDER_PRESETS[aiCfgDraft.provider as AiProviderKind].keyUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="ml-1 text-primary hover:underline"
+                              >
+                                去申请
+                              </a>
+                            ) : null}
+                          </span>
+                          <input
+                            type="password"
+                            value={aiCfgDraft.key}
+                            onChange={(e) => {
+                              const next = { ...aiCfgDraft, key: e.target.value }
+                              setAiCfgDraft(next)
+                              setAiImageConfig(next)
+                            }}
+                            placeholder="粘贴 Key，仅存本地"
+                            className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-[11px] text-muted-foreground">模型</span>
+                          <input
+                            value={aiCfgDraft.model}
+                            onChange={(e) => {
+                              const next = { ...aiCfgDraft, model: e.target.value }
+                              setAiCfgDraft(next)
+                              setAiImageConfig(next)
+                            }}
+                            placeholder={AI_PROVIDER_PRESETS[aiCfgDraft.provider as AiProviderKind]?.defaultModel}
+                            className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          />
+                        </label>
+                        <p className="text-[10px] leading-relaxed text-muted-foreground">
+                          {AI_PROVIDER_PRESETS[aiCfgDraft.provider as AiProviderKind]?.note}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-[10px] leading-relaxed text-muted-foreground">
+                        不配置也能用：抽象概念页会退回图库搜图。想用 AI 画插画再选服务商。
+                      </p>
+                    )}
+                  </div>
                 </div>
               ) : null}
 
