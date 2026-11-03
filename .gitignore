@@ -1,0 +1,73 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# 环境变量与密钥（务必禁止入库；仅允许示例文件）
+.env
+.env.*
+!.env.example
+
+# SQLite 运行时产物（WAL/SHM/journal 不得入库）
+*.db-wal
+*.db-shm
+*.db-journal
+**/pb_data/
+
+# 本机探测/调试产物与运行时回收站（不入库）
+.probe/
+/data/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Local deploy artifacts
+_edgeprofile/
+_shots/
+pocketbase/pb_data/
+pocketbase/logs/
+
+# Night run（备份与大文件不入库，轮报/账本/基线入库留痕）
+.nightrun/backup/
+.nightrun/evidence/*.tmp
+.nightrun/seed/*.tmp
+
+# 轮间备份快照（与 .nightrun/backup 同口径：不入库）
+.loop/backups/
+
+# 诊断与 QA 产物（体积大、可再生，不入库）
+.diag/
+_qa/
+pb_data_backup_*/
+# 专项轮 D 素材选取器的输出（每轮重新生成，含 3MB vault 索引，不入库）
+_eval/
+
+# 循环作业临时取证与门禁输出（r153+ 惯例：不入库）
+.qoder/
+.qoder_*.txt
+_qa/
+_dupcheck.txt
+dup_check.txt
+dedup_intel_done.txt
+_intel_audit.js
+
+# 常驻守护运行时产物（PID 与误落盘的锁文件路径，不入库）
+dev-supervisor.pid
+*.pid

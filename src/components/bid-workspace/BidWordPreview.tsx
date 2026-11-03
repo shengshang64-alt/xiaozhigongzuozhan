@@ -1,0 +1,131 @@
+// @r211 R-004：标书 Word 式分页预览。A4 版心 / 页边距 / 页眉页脚 / 页码 /
+// 三级标题编号 / 正文首行缩进 / 图表居中题注，按纸张连续滚动预览。
+// 纯 CSS 仿 Word（解 Q-004：不做真·docx 分页渲染，直接命中 O-008「正文被挤到约 60% 宽」痛点）。
+// 仅 on-screen 预览；打印 / 存 PDF 仍复用既有 PrintExportButton（不动 PrintChapterFlow，守 R-009 红线）。
+import type { CSSProperties, RefObject } from "react"
+import { DEFAULT_FORMAT_SETTINGS, stripAuditAnnotations, type FormatSettings } from "@/pages/BidWorkspace/bidTypes"
+import { chapterNumber, classify, ff, lineHeight, paperDims, pt } from "./bidWordPreviewLogic"
+
+export type WordPreviewChapter = {
+  title: string
+  content: string
+  sections?: string[]
+}
+
+export function BidWordPreview({
+  docTitle,
+  chapters,
+  format,
+  chapterOffset = 0,
+  scrollRef,
+}: {
+  docTitle: string
+  chapters: WordPreviewChapter[]
+  format?: FormatSettings | null
+  /** 单章预览：按整本章节号偏移渲染（默认 0 = 整本从第 1 章连排，行为不变） */
+  chapterOffset?: number
+  /** 滚动容器 ref：外部导航点小节标题时在该容器内定位 */
+  scrollRef?: RefObject<HTMLDivElement | null>
+}) {
+  const f = format ?? DEFAULT_FORMAT_SETTINGS
+  const { w, h } = paperDims(f.paper)
+  const m = f.margins ?? DEFAULT_FORMAT_SETTINGS.margins
+  const body = f.body ?? DEFAULT_FORMAT_SETTINGS.body
+  const heads = f.heading ?? DEFAULT_FORMAT_SETTINGS.heading
+  const bodyPt = pt(body.size, 14)
+  const showHeader = f.headerFooter && !f.sealed
+  const showPage = Boolean(f.pageNumber) || f.sealed
+
+  const hStyle = (lvl: number): CSSProperties => {
+    const hd = heads[lvl] ?? heads[heads.length - 1]
+    return {
+      fontFamily: ff(hd.font),
+      fontSize: `${pt(hd.size, lvl === 0 ? 16 : 14)}pt`,
+      textAlign: (hd.align as CSSProperties["textAlign"]) ?? "left",
+      fontWeight: 700,
+      margin: lvl === 0 ? "0 0 10pt" : "12pt 0 6pt",
+    }
+  }
+
+  return (
+    <div ref={scrollRef} className="h-full overflow-y-auto bg-muted/50 px-4 py-6">
+      <div className="mx-auto flex w-fit flex-col items-stretch gap-6">
+        {chapters.length === 0 && (
+          <p className="w-[21cm] py-16 text-center text-sm text-muted-foreground">
+            暂无正文章节，请先生成标书内容。
+          </p>
+        )}
+        {chapters.map((ch, i) => {
+          const sections = (ch.sections ?? []).filter(Boolean)
+          const lines = (ch.content || "").split("\n").filter((l) => l.trim())
+          const num = i + chapterOffset
+          const chNum = chapterNumber(num, f.titleNumbering)
+          return (
+            <article
+              key={`${ch.title}-${i}`}
+              className="relative shrink-0 bg-white text-foreground shadow-[0_1px_10px_rgba(0,0,0,0.14)]"
+              style={{
+                width: `${w}cm`,
+                minHeight: `${h}cm`,
+                paddingTop: `${m.top}cm`,
+                paddingBottom: `${m.bottom}cm`,
+                paddingLeft: `${m.left}cm`,
+                paddingRight: `${m.right}cm`,
+              }}
+            >
+              {showHeader && (
+                <header
+                  className="absolute inset-x-0 text-center text-[9pt] text-muted-foreground"
+                  style={{ top: `${Math.max(0.8, m.top - 1.1)}cm` }}
+                >
+                  {docTitle}
+                </header>
+              )}
+              <h1 data-wp-title={`${chNum}${ch.title}`} style={hStyle(0)}>{`${chNum}${ch.title}`}</h1>
+              {lines.map((raw, j) => {
+                // 预览与成稿一致:先剥正文不该出现的分析态批注/内部编号,再判定行类型(与导出同一清洗函数)
+                const disp = stripAuditAnnotations(raw).trim()
+                const kind = classify(disp, sections, num + 1)
+                if (kind === "h3") return <h3 key={j} data-wp-title={disp} style={hStyle(2)}>{disp}</h3>
+                if (kind === "h2") return <h2 key={j} data-wp-title={disp} style={hStyle(1)}>{disp}</h2>
+                if (kind === "caption")
+                  return (
+                    <p
+                      key={j}
+                      className="my-2 text-center"
+                      style={{ fontFamily: ff(body.font), fontSize: `${bodyPt - 1}pt`, fontWeight: 600 }}
+                    >
+                      {disp}
+                    </p>
+                  )
+                return (
+                  <p
+                    key={j}
+                    style={{
+                      fontFamily: ff(body.font),
+                      fontSize: `${bodyPt}pt`,
+                      lineHeight: lineHeight(body.lineSpacing),
+                      textAlign: (body.align as CSSProperties["textAlign"]) ?? "justify",
+                      textIndent: body.firstIndent ? `${body.firstIndent}em` : undefined,
+                      margin: "0 0 4pt",
+                    }}
+                  >
+                    {disp}
+                  </p>
+                )
+              })}
+              {showPage && (
+                <footer
+                  className="absolute inset-x-0 text-center text-[9pt] text-muted-foreground"
+                  style={{ bottom: `${Math.max(0.6, m.bottom - 1)}cm` }}
+                >
+                  {f.sealed ? `${num + 1}` : `第 ${num + 1} 页`}
+                </footer>
+              )}
+            </article>
+          )
+        })}
+      </div>
+    </div>
+  )
+}

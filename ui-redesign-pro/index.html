@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>医疗售前工作台 · 核心页重构原型 v2</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230E7C99'/%3E%3Ctext x='32' y='44' font-size='36' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3E智%3C/text%3E%3C/svg%3E">
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<script>window.echarts||document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.0/echarts.min.js"><\/script>')</script>
+<style>
+:root{
+  /* 主色：青蓝 cyan-blue，专业克制 */
+  --primary:#0E7C99;--primary-deep:#0A5D76;--primary-soft:#DDEEF3;--primary-tint:#EFF8FA;
+  --primary-ring:rgba(14,124,153,.28);
+  --accent:#E8973C;--accent-soft:#FCEFD9;--accent-deep:#B5742A;
+  --danger:#D64545;--danger-soft:#FBE7E7;--danger-deep:#B23434;
+  --success:#1F9D63;--success-soft:#E4F4EB;
+  --info:#2E6FB0;--info-soft:#E7F0FA;--violet:#7B4FB0;--violet-soft:#F0EAF8;
+  --bg:#EEF3F5;--surface:#fff;--surface-2:#F6F9FA;
+  --ink:#122A31;--ink-2:#4A6169;--ink-3:#8CA1A8;
+  --line:#E1E9EC;--line-2:#EDF2F4;
+  --sidebar-bg:#0B2830;--sidebar-bg-2:#071C22;
+  --r-sm:6px;--r-md:10px;--r-lg:14px;--r-xl:18px;
+  --sh-1:0 1px 2px rgba(11,40,48,.05);--sh-2:0 2px 4px rgba(11,40,48,.05),0 6px 20px rgba(11,40,48,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+svg{display:block;flex-shrink:0}
+.app{display:flex;min-height:100vh}
+/* 侧边栏 */
+.sidebar{width:224px;flex-shrink:0;background:linear-gradient(180deg,var(--sidebar-bg),var(--sidebar-bg-2));position:sticky;top:0;height:100vh;display:flex;flex-direction:column;z-index:50}
+.side-logo{display:flex;align-items:center;gap:10px;padding:18px 18px 14px}
+.side-logo .mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#22B8CE,var(--primary-deep));display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(34,184,206,.35)}
+.side-logo .name{color:#EAF4F2;font-size:15px;font-weight:700}
+.side-logo .sub{color:#5C848C;font-size:9.5px;letter-spacing:1.8px;font-weight:600;margin-top:2px}
+.side-nav{flex:1;overflow-y:auto;padding:8px 10px}
+.side-group-label{padding:14px 12px 5px;font-size:10px;font-weight:600;letter-spacing:1.8px;color:#4C717A}
+.side-item{display:flex;align-items:center;gap:10px;width:100%;padding:8px 12px;border-radius:8px;color:#9BB8BD;font-size:13.5px;transition:all .15s;position:relative;margin-bottom:1px}
+.side-item:hover{background:rgba(255,255,255,.05);color:#DCEEEC}
+.side-item.active{background:linear-gradient(90deg,rgba(34,184,206,.22),rgba(34,184,206,.06));color:#fff;font-weight:500}
+.side-item.active::before{content:"";position:absolute;left:-10px;top:7px;bottom:7px;width:3px;border-radius:0 3px 3px 0;background:#22B8CE;box-shadow:0 0 8px rgba(34,184,206,.6)}
+.side-item svg{width:17px;height:17px;opacity:.85}
+.side-item .lb{margin-left:auto;font-size:9px;padding:1px 5px;border-radius:5px;background:rgba(34,184,206,.25);color:#8FE6F2;font-weight:700;letter-spacing:.5px}
+.side-footer{padding:12px;border-top:1px solid rgba(255,255,255,.05)}
+.side-user{display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;background:rgba(255,255,255,.04)}
+.side-avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#22B8CE,var(--primary-deep));color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.side-user .u-name{color:#E4F1EF;font-size:12.5px;font-weight:500}
+.side-user .u-role{color:#5C848C;font-size:10.5px;margin-top:1px}
+/* 主区 */
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{height:54px;flex-shrink:0;background:rgba(255,255,255,.9);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 24px;position:sticky;top:0;z-index:40}
+.content{flex:1;padding:22px 24px;max-width:1560px;width:100%;margin:0 auto}
+.crumb{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-3)}
+.crumb .sep{opacity:.5}.crumb .cur{color:var(--ink);font-weight:600}
+.actions{margin-left:auto;display:flex;align-items:center;gap:8px}
+.search-box{display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:7px 12px;width:250px;color:var(--ink-3);font-size:13px}
+.search-box kbd{margin-left:auto;font-size:10.5px;background:#fff;border:1px solid var(--line);border-radius:4px;padding:1px 6px}
+.icon-btn{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--ink-2)}
+.icon-btn:hover{background:var(--surface-2);color:var(--ink)}
+.role-badge{display:flex;align-items:center;gap:8px;padding:5px 12px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;font-size:12.5px}
+.role-badge b{font-weight:600}.role-tag{font-size:11px;padding:2px 8px;border-radius:10px;background:var(--success-soft);color:var(--success);font-weight:600}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--sh-1)}
+.card-pad{padding:18px 20px}
+.page-title{font-size:21px;font-weight:700;letter-spacing:-.3px}
+.page-desc{color:var(--ink-2);font-size:13px;margin-top:3px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 15px;border-radius:8px;font-size:13px;font-weight:500;transition:all .15s;white-space:nowrap}
+.btn-primary{background:var(--primary);color:#fff;box-shadow:0 2px 8px rgba(14,124,153,.25)}
+.btn-primary:hover{background:var(--primary-deep)}
+.btn-ghost{background:#fff;border:1px solid var(--line);color:var(--ink-2)}
+.btn-ghost:hover{border-color:var(--primary);color:var(--primary)}
+.btn-danger-ghost{background:var(--danger-soft);border:1px solid rgba(214,69,69,.35);color:var(--danger-deep)}
+.btn-sm{padding:5px 11px;font-size:12.5px}
+.flex{display:flex;align-items:center}.between{justify-content:space-between}.wrap{flex-wrap:wrap}
+.gap6{gap:6px}.gap8{gap:8px}.gap10{gap:10px}.gap14{gap:14px}
+.mt-2{margin-top:8px}.mt-3{margin-top:12px}.mt-4{margin-top:16px}.mt-5{margin-top:20px}
+.mb-2{margin-bottom:8px}.mb-3{margin-bottom:12px}.mb-4{margin-bottom:16px}.mb-5{margin-bottom:20px}
+.text-sm{font-size:12.5px}.text-xs{font-size:11.5px}
+.tink2{color:var(--ink-2)}.tink3{color:var(--ink-3)}.tpri{color:var(--primary-deep)}
+.fsem{font-weight:600}.fbold{font-weight:700}
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;padding:2px 9px;border-radius:10px;font-weight:500;white-space:nowrap}
+.tag-primary{background:var(--primary-soft);color:var(--primary-deep)}
+.tag-orange{background:var(--accent-soft);color:var(--accent-deep)}
+.tag-blue{background:var(--info-soft);color:var(--info)}
+.tag-red{background:var(--danger-soft);color:var(--danger-deep)}
+.tag-green{background:var(--success-soft);color:var(--success)}
+.tag-violet{background:var(--violet-soft);color:var(--violet)}
+.tag-gray{background:var(--surface-2);color:var(--ink-2)}
+.avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#22B8CE,var(--primary-deep));color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.view{display:none}.view.active{display:block;animation:fi .25s ease}
+@keyframes fi{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.float-btn{position:fixed;right:22px;bottom:22px;width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,var(--primary),var(--primary-deep));color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 20px rgba(14,124,153,.4);z-index:60}
+/* 通用工作区 */
+.ws-toolbar{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:10px 16px;margin-bottom:14px;box-shadow:var(--sh-1);flex-wrap:wrap}
+.ws-toolbar .ws-title{font-size:15px;font-weight:600}
+.seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:2px}
+.seg button{padding:5px 14px;border-radius:6px;font-size:12.5px;color:var(--ink-2)}
+.seg button.on{background:#fff;color:var(--primary-deep);font-weight:600;box-shadow:var(--sh-1)}
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px 18px;box-shadow:var(--sh-1)}
+.kpi-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.kpi-icon{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center}
+.kpi-trend{font-size:11px;font-weight:600;padding:2px 8px;border-radius:8px}
+.kpi-val{font-size:26px;font-weight:700;letter-spacing:-.5px;line-height:1}
+.kpi-lbl{font-size:12.5px;color:var(--ink-2);margin-top:4px}
+.main-grid{display:grid;gap:14px;margin-bottom:14px}
+.panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.panel-title{font-size:15px;font-weight:600}
+/* 流水线 */
+.stepper{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:8px;margin-bottom:14px;box-shadow:var(--sh-1);overflow-x:auto}
+.step{flex:1;display:flex;align-items:center;gap:7px;padding:8px 10px;border-radius:9px;font-size:12.5px;color:var(--ink-3);cursor:pointer;min-width:126px;position:relative}
+.step .n{width:24px;height:24px;border-radius:50%;border:1.5px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0;background:#fff}
+.step.done .n{background:var(--primary);border-color:var(--primary);color:#fff}
+.step.done{color:var(--ink-2)}
+.step.on{background:var(--primary-soft);color:var(--primary-deep);font-weight:600}
+.step.on .n{border-color:var(--primary);color:var(--primary-deep)}
+.step.risk .n{border-color:var(--danger);color:var(--danger);background:var(--danger-soft)}
+.step.risk{color:var(--danger-deep)}
+.step .sl{white-space:nowrap;line-height:1.25}
+/* 三栏工作布局 */
+.cols-work{display:grid;gap:14px;align-items:start}
+.cols-work>.card{min-width:0;height:calc(100vh - 176px);display:flex;flex-direction:column;overflow:hidden}
+.col-scroll{overflow-y:auto;flex:1}
+/* 章节树（可拖拽） */
+.tree-hint{font-size:11px;color:var(--ink-3);padding:0 10px 8px;display:flex;align-items:center;gap:5px}
+.chap-list{padding:8px}
+.chap{display:flex;align-items:center;gap:7px;padding:8px 9px;border-radius:8px;font-size:13px;color:var(--ink-2);cursor:pointer;margin-bottom:3px;border:1px solid transparent;transition:background .12s,border-color .12s}
+.chap:hover{background:var(--surface-2)}
+.chap.on{background:var(--primary-soft);color:var(--primary-deep);font-weight:600;border-color:var(--primary-ring)}
+.chap.drag-over{border-top:2px solid var(--primary)}
+.chap.dragging{opacity:.4}
+.chap .grip{color:var(--ink-3);opacity:.55;cursor:grab;width:13px;height:13px}
+.chap .cno{font-size:11px;color:var(--ink-3);width:14px;text-align:right;flex-shrink:0}
+.chap .cname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chap .st{margin-left:auto;width:17px;height:17px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px}
+.st.done{background:var(--success);color:#fff}.st.gen{background:var(--accent);color:#fff}.st.todo{border:1.5px solid var(--line)}
+/* 编辑器 */
+.editor-area{overflow-y:auto;padding:26px 32px;background:#fff;flex:1}
+.editor-area h2{font-size:20px;margin-bottom:4px}
+.editor-area .doc-meta{font-size:12.5px;color:var(--ink-3);margin-bottom:18px}
+.editor-area h3{font-size:16px;margin:20px 0 8px;display:flex;align-items:center;gap:8px}
+.editor-area p{font-size:14px;color:var(--ink-2);line-height:1.85;margin-bottom:12px}
+.ai-bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;padding:10px;background:var(--primary-tint);border-radius:10px}
+.ai-chip{font-size:12px;padding:5px 12px;border-radius:16px;background:#fff;border:1px solid var(--primary-soft);color:var(--primary-deep);display:flex;align-items:center;gap:4px}
+.ai-chip:hover{border-color:var(--primary)}
+/* 高亮块（编辑器内业务提示） */
+.hl-miss{background:var(--accent-soft);border:1px solid rgba(232,151,60,.4);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;padding:10px 14px;margin-bottom:14px;font-size:12.5px;color:var(--accent-deep);display:flex;gap:8px;align-items:flex-start}
+.hl-risk{background:var(--danger-soft);border:1px solid rgba(214,69,69,.4);border-left:3px solid var(--danger);border-radius:0 8px 8px 0;padding:11px 14px;margin-bottom:14px;font-size:12.5px;color:var(--danger-deep);display:flex;gap:8px;align-items:flex-start}
+.hl-done{background:var(--success-soft);border-left:3px solid var(--success);border-radius:0 8px 8px 0;padding:10px 14px;margin-bottom:14px;font-size:12.5px;color:#186B45}
+.hl-tip{background:var(--primary-tint);border-left:3px solid var(--primary);border-radius:0 8px 8px 0;padding:10px 14px;margin:14px 0;font-size:13px;color:var(--primary-deep)}
+/* 双向映射锚点 */
+.map-chip{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;padding:1px 7px;border-radius:8px;background:var(--info-soft);color:var(--info);font-weight:600;cursor:pointer;vertical-align:middle}
+.map-chip:hover{background:var(--info);color:#fff}
+.sow-para{position:relative;border-radius:8px;padding:2px 6px;margin-left:-6px;transition:background .3s}
+.sow-para.flash{background:var(--primary-soft)}
+.sow-para.weak{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+/* 右栏：素材弹药库 */
+.mat-tab{display:flex;gap:4px;margin-bottom:12px}
+.mat-tab button{flex:1;padding:7px;font-size:12.5px;border-radius:7px;color:var(--ink-2)}
+.mat-tab button.on{background:var(--primary-soft);color:var(--primary-deep);font-weight:600}
+.mat-search{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:7px 11px;font-size:12.5px;color:var(--ink-3);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.mat-item{padding:10px 12px;border:1px solid var(--line);border-radius:9px;margin-bottom:8px;font-size:12.5px}
+.mat-item .mt{font-weight:600;font-size:12.5px;margin-bottom:3px;display:flex;align-items:center;gap:6px}
+.mat-item .mm{color:var(--ink-3);font-size:11.5px;line-height:1.5;margin-bottom:6px}
+.mat-item .rel{margin-left:auto;font-size:10.5px;color:var(--primary-deep);background:var(--primary-tint);padding:1px 6px;border-radius:6px;font-weight:600}
+.reco-bar{font-size:11.5px;color:var(--primary-deep);background:var(--primary-tint);border-radius:8px;padding:7px 10px;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+/* 右栏：评分点清单 */
+.sp-list{padding:10px}
+.sp-sec{font-size:11px;color:var(--ink-3);font-weight:600;letter-spacing:.5px;padding:8px 6px 4px}
+.sp-item{padding:10px 11px;border:1px solid var(--line);border-radius:9px;margin-bottom:8px;cursor:pointer;transition:border-color .12s,background .12s}
+.sp-item:hover{border-color:var(--primary-ring)}
+.sp-item.active{border-color:var(--primary);background:var(--primary-tint)}
+.sp-item.miss{border-left:3px solid var(--accent)}
+.sp-item.risk{border-left:3px solid var(--danger)}
+.sp-item.ok{border-left:3px solid var(--success)}
+.sp-top{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.sp-code{font-size:11px;font-weight:700;color:var(--ink-2);background:var(--surface-2);border-radius:5px;padding:1px 6px}
+.sp-score{margin-left:auto;font-size:11px;font-weight:700}
+.sp-title{font-size:12.5px;font-weight:600;line-height:1.4;margin-bottom:4px}
+.sp-meta{font-size:11px;color:var(--ink-3);display:flex;align-items:center;gap:5px}
+/* 空状态 */
+.empty{text-align:center;padding:34px 20px;color:var(--ink-3)}
+.empty svg{margin:0 auto 12px;opacity:.5}
+.empty .et{font-size:13.5px;font-weight:600;color:var(--ink-2);margin-bottom:5px}
+.empty .ed{font-size:12px;line-height:1.6;max-width:280px;margin:0 auto 14px}
+/* 情报三栏 */
+.intel-filters{padding:12px}
+.fg-label{font-size:11px;font-weight:600;letter-spacing:.6px;color:var(--ink-3);margin:14px 0 7px}
+.fg-label:first-child{margin-top:2px}
+.fchips{display:flex;flex-wrap:wrap;gap:6px}
+.fchip{font-size:12px;padding:4px 11px;border-radius:16px;border:1px solid var(--line);background:#fff;color:var(--ink-2);cursor:pointer}
+.fchip.on{background:var(--primary-soft);color:var(--primary-deep);border-color:var(--primary-ring);font-weight:600}
+.intel-card{padding:13px 15px;border:1px solid var(--line);border-radius:var(--r-md);background:#fff;margin-bottom:10px;cursor:pointer;transition:border-color .12s,box-shadow .12s}
+.intel-card:hover{border-color:var(--primary-ring);box-shadow:var(--sh-1)}
+.intel-card.on{border-color:var(--primary);box-shadow:0 0 0 2px var(--primary-ring)}
+.intel-card .ic-title{font-size:14px;font-weight:600;line-height:1.5;margin:6px 0 5px}
+.intel-card .ic-sum{font-size:12.5px;color:var(--ink-2);line-height:1.6}
+.intel-card .ic-meta{font-size:11.5px;color:var(--ink-3);margin-top:8px;display:flex;gap:12px;align-items:center}
+.lead-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 8px;border-radius:8px;background:var(--violet-soft);color:var(--violet);font-weight:600}
+/* 竞品 */
+.csel{display:flex;gap:8px;flex-wrap:wrap}
+.cchip{display:flex;align-items:center;gap:8px;padding:7px 13px;border-radius:22px;border:1.5px solid var(--line);background:#fff;cursor:pointer;font-size:13px;transition:all .12s}
+.cchip .cdot{width:9px;height:9px;border-radius:50%}
+.cchip.on{border-color:var(--primary);background:var(--primary-tint);color:var(--primary-deep);font-weight:600}
+.cchip .ck{width:15px;height:15px;border-radius:50%;border:1.5px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:9px}
+.cchip.on .ck{background:var(--primary);border-color:var(--primary);color:#fff}
+.chart-box{height:300px}
+.matrix{width:100%;border-collapse:collapse;font-size:13px}
+.matrix th{text-align:center;padding:9px 6px;font-weight:600;color:var(--ink-2);border-bottom:2px solid var(--line);font-size:12px}
+.matrix th:first-child{text-align:left}
+.matrix td{padding:9px 6px;border-bottom:1px solid var(--line-2);text-align:center}
+.matrix td:first-child{text-align:left;font-weight:600}
+.matrix tr.best td:first-child{color:var(--primary-deep)}
+.stars{letter-spacing:1px}.stars .off{color:var(--line)}
+.talk-card{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.talk-card .tk-h{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.talk-card .tk-dim{font-size:12.5px;font-weight:600}
+.talk-card .tk-b{font-size:12.5px;line-height:1.65;color:var(--ink-2);background:var(--surface-2);border-radius:8px;padding:9px 11px;margin-top:6px}
+.talk-card .copy-btn{margin-left:auto;font-size:11px;color:var(--primary-deep);background:var(--primary-tint);border-radius:6px;padding:3px 9px;display:flex;align-items:center;gap:3px}
+.talk-card .copy-btn:hover{background:var(--primary);color:#fff}
+/* 格式刷新 */
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.cmp-pane{padding:20px 22px;min-height:340px}
+.cmp-pane.before{background:#fbfbfc}
+.cmp-pane.after{background:#fff;border-left:1px solid var(--line)}
+.cmp-tag{font-size:11px;font-weight:700;letter-spacing:.5px;padding:3px 10px;border-radius:8px;display:inline-flex;align-items:center;gap:5px;margin-bottom:14px}
+.doc-h{font-weight:700;margin:14px 0 6px}
+.doc-p{font-size:13px;line-height:1.8;color:var(--ink-2);margin-bottom:8px}
+.fa-anom{background:var(--danger-soft);box-shadow:0 0 0 1px rgba(214,69,69,.4);border-radius:3px;padding:0 2px;color:var(--danger-deep)}
+.fa-ok{color:var(--ink-2)}
+.doc-meta-line{font-size:11px;color:var(--ink-3);border-top:1px dashed var(--line);padding-top:8px;margin-top:12px}
+.tpl-row{display:flex;gap:10px;flex-wrap:wrap}
+.tpl-row>*{min-width:120px;flex:1}
+.tpl-card{border:2px solid var(--line);border-radius:10px;padding:13px;text-align:center;cursor:pointer;background:#fff}
+.tpl-card.on{border-color:var(--primary);background:var(--primary-tint)}
+.wz-file{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--surface-2)}
+.wz-file .ficon{width:38px;height:38px;border-radius:8px;background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--primary)}
+.chk{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px}
+.chk input{accent-color:var(--primary);width:15px;height:15px}
+.divider{border-top:1px solid var(--line);margin:14px 0}
+/* 其它保留页复用 */
+.quote-table{width:100%;border-collapse:collapse;font-size:13px}
+.quote-table th{text-align:left;padding:10px 12px;background:var(--surface-2);font-weight:600;color:var(--ink-2);font-size:12.5px;border-bottom:1px solid var(--line)}
+.quote-table td{padding:11px 12px;border-bottom:1px solid var(--line-2)}
+.quote-table .grp td{background:var(--primary-tint);font-weight:600;color:var(--primary-deep);font-size:12.5px}
+.quote-table input{border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:12.5px;background:#fff;width:100%;min-width:56px}
+.kanban{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;height:calc(100vh - 300px)}
+.kcol{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-lg);padding:10px;display:flex;flex-direction:column;overflow:hidden}
+.kcol-head{display:flex;align-items:center;gap:6px;padding:4px 6px 10px;font-size:13px;font-weight:600}
+.kcol-head .cnt{margin-left:auto;font-size:11px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:1px 8px;color:var(--ink-2)}
+.kcard{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;box-shadow:var(--sh-1);cursor:pointer}
+.kcard .kt{font-size:13px;font-weight:600;margin-bottom:4px;line-height:1.4}
+.kcard .km{font-size:11.5px;color:var(--ink-3);display:flex;align-items:center;gap:4px;margin-top:5px}
+.feed-item{display:flex;gap:11px;padding:9px 0;border-bottom:1px solid var(--line-2)}
+.feed-item:last-child{border-bottom:none}
+.feed-dot{width:8px;height:8px;border-radius:50%;margin-top:6px;flex-shrink:0}
+.feed-text{font-size:13px}.feed-time{font-size:11.5px;color:var(--ink-3);margin-top:2px}
+.opp-item{padding:12px 14px;background:var(--surface-2);border-radius:10px;margin-bottom:8px}
+.opp-name{font-size:13.5px;font-weight:600}.opp-meta{font-size:11.5px;color:var(--ink-3);margin-top:3px}
+.opp-bar{height:5px;background:var(--line-2);border-radius:3px;margin-top:8px;overflow:hidden}
+.opp-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--primary),#22B8CE);border-radius:3px}
+.todo-item{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-2)}
+.todo-check{width:17px;height:17px;border-radius:5px;border:1.5px solid var(--line);margin-top:2px;flex-shrink:0}
+.todo-text{font-size:13.5px}.todo-meta{font-size:11.5px;color:var(--ink-3);margin-top:2px}
+.chat-tabs{display:flex;gap:2px;padding:4px;background:var(--surface-2);border-radius:9px;margin:10px}
+.chat-tabs button{flex:1;padding:6px;font-size:12.5px;border-radius:7px;color:var(--ink-2)}
+.chat-tabs button.on{background:#fff;color:var(--primary-deep);font-weight:600;box-shadow:var(--sh-1)}
+.chat-session{padding:9px 11px;border-radius:8px;margin-bottom:3px;cursor:pointer}
+.chat-session:hover{background:var(--surface-2)}.chat-session.on{background:var(--primary-soft)}
+.chat-session .cst{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chat-session .csm{font-size:11px;color:var(--ink-3);margin-top:2px}
+.msg{max-width:80%;padding:11px 15px;border-radius:13px;font-size:13.5px;line-height:1.6}
+.msg.ai{align-self:flex-start;background:var(--surface-2);border-bottom-left-radius:4px}
+.msg.me{align-self:flex-end;background:var(--primary);color:#fff;border-bottom-right-radius:4px}
+@media(max-width:1180px){
+  .view{overflow-x:auto}
+  .cols-work{min-width:900px}
+  .main-grid{grid-template-columns:1fr !important}
+  .kanban{min-width:860px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="side-logo">
+      <div class="mark"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 9 4.9v10.2L12 22 3 17.1V6.9L12 2z"/><path d="m12 12 9-4.9M12 12v10M12 12 3 7.1"/></svg></div>
+      <div><div class="name">售前工作台</div><div class="sub">PRESALES DESK</div></div>
+    </div>
+    <nav class="side-nav" id="sideNav"></nav>
+    <div class="side-footer"><div class="side-user"><div class="side-avatar">医</div><div><div class="u-name">舒婷</div><div class="u-role">医疗售前工程师</div></div></div></div>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+      <div class="crumb"><span>医疗售前工作台</span><span class="sep">/</span><span class="cur" id="crumbCur">工作台</span></div>
+      <div class="actions">
+        <div class="search-box"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><span>搜索客户、标书、情报…</span><kbd>⌘K</kbd></div>
+        <div class="role-badge"><b>舒婷</b><span class="role-tag">管理员</span></div>
+        <button class="icon-btn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 22a2 2 0 0 1-3.4 0"/></svg></button>
+        <div class="avatar">舒</div>
+      </div>
+    </header>
+    <main class="content" id="content"></main>
+  </div>
+</div>
+<button class="float-btn" title="小智助手"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></svg></button>
+
+<script>
+const NAV=[
+ {group:"概览",items:[{id:"home",label:"工作台",icon:'<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>'}]},
+ {group:"核心工作",items:[
+  {id:"solution",label:"方案编制",core:1,icon:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>'},
+  {id:"bid",label:"标书工作",core:1,icon:'<path d="M3 3v18h18"/><path d="m7 14 4-4 4 4 5-5"/>'},
+  {id:"format",label:"格式刷新",core:1,icon:'<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/>'}]},
+ {group:"资源与情报",items:[
+  {id:"intel",label:"情报中心",core:1,icon:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>'},
+  {id:"comp",label:"竞品分析",core:1,icon:'<path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 13h.01M9 17h.01M14 9h2M14 13h2M14 17h2"/>'},
+  {id:"ppt",label:"PPT 与报价",icon:'<rect width="18" height="14" x="3" y="4" rx="2"/><path d="M7 20h10M12 16v4"/>'},
+  {id:"crm",label:"客户管理",icon:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>'},
+  {id:"kb",label:"知识库",icon:'<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>'}]},
+ {group:"系统",items:[
+  {id:"assistant",label:"小智助手",icon:'<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/>'},
+  {id:"model",label:"模型配置",icon:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>'}]}
+];
+const TITLES={home:"工作台",solution:"方案编制",bid:"标书工作",format:"格式刷新",intel:"情报中心",comp:"竞品分析",ppt:"PPT 与报价",crm:"客户管理",kb:"知识库",assistant:"小智助手",model:"模型配置"};
+const sideNav=document.getElementById("sideNav");
+NAV.forEach(g=>{
+  const grp=document.createElement("div");
+  const lab=document.createElement("div");lab.className="side-group-label";lab.textContent=g.group;grp.appendChild(lab);
+  g.items.forEach(it=>{const b=document.createElement("button");b.className="side-item";b.dataset.id=it.id;
+    b.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${it.icon}</svg><span>${it.label}</span>${it.core?'<span class="lb">核心</span>':''}`;
+    b.onclick=()=>nav(it.id);grp.appendChild(b);});
+  sideNav.appendChild(grp);
+});
+function nav(id){document.querySelectorAll(".side-item").forEach(el=>el.classList.toggle("active",el.dataset.id===id));
+  document.getElementById("crumbCur").textContent=TITLES[id];renderView(id);window.scrollTo(0,0)}
+const V={};
+const ICON={warn:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>',
+ stop:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>',
+ check:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+ spark:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6 8.5 8.5M15.5 15.5l2.9 2.9M18.4 5.6 15.5 8.5M8.5 15.5l-2.9 2.9"/></svg>',
+ grip:'<svg class="grip" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>',
+ copy:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>',
+ link:'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>'};
+
+/* ========== 工作台 ========== */
+V.home=`
+<div class="card card-pad mb-4" style="background:linear-gradient(135deg,#0B3946 0%,#0E5D72 55%,#0E7C99 100%);color:#fff;border:none">
+  <div class="text-sm" style="opacity:.75">9月21日 星期一 · 医疗售前</div>
+  <div style="font-size:24px;font-weight:700;margin-top:5px">早上好，舒婷</div>
+  <div class="text-sm mt-2" style="opacity:.88;max-width:560px">今日有 <b>2</b> 项待办、<b>1</b> 个在跟商机；<b style="color:#FFCF8F">1 项标书废标风险</b>待处理，电子病历方案进度 65%。</div>
+  <div class="flex gap8 mt-4 wrap"><button class="btn btn-primary" style="background:#fff;color:var(--primary-deep)">+ 新建方案</button><button class="btn btn-ghost" style="background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.3);color:#fff">今日待办</button><button class="btn btn-ghost" style="background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.3);color:#fff">处理废标风险</button></div>
+  <div class="flex gap14 mt-4 wrap" style="gap:30px">
+    <div><div style="font-size:22px;font-weight:700">2</div><div class="text-xs" style="opacity:.75">待办事项</div></div>
+    <div><div style="font-size:22px;font-weight:700">1</div><div class="text-xs" style="opacity:.75">在跟商机</div></div>
+    <div><div style="font-size:22px;font-weight:700">65%</div><div class="text-xs" style="opacity:.75">方案进度</div></div>
+    <div><div style="font-size:22px;font-weight:700;color:#FFCF8F">1</div><div class="text-xs" style="opacity:.75">废标风险</div></div>
+  </div>
+</div>
+<div class="kpi-row">
+  <div class="kpi"><div class="kpi-top"><div class="kpi-icon" style="background:var(--primary-soft);color:var(--primary-deep)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg></div><span class="kpi-trend" style="background:var(--success-soft);color:var(--success)">+1</span></div><div class="kpi-val">1</div><div class="kpi-lbl">进行中项目</div></div>
+  <div class="kpi"><div class="kpi-top"><div class="kpi-icon" style="background:var(--accent-soft);color:var(--accent-deep)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div><span class="kpi-trend" style="background:var(--accent-soft);color:var(--accent-deep)">待处理</span></div><div class="kpi-val">2</div><div class="kpi-lbl">未完成待办</div></div>
+  <div class="kpi"><div class="kpi-top"><div class="kpi-icon" style="background:var(--info-soft);color:var(--info)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 14 4-4 4 4 5-5"/></svg></div><span class="kpi-trend" style="background:var(--success-soft);color:var(--success)">本周+1</span></div><div class="kpi-val">1</div><div class="kpi-lbl">在跟商机</div></div>
+  <div class="kpi"><div class="kpi-top"><div class="kpi-icon" style="background:var(--danger-soft);color:var(--danger)">${ICON.stop}</div><span class="kpi-trend" style="background:var(--danger-soft);color:var(--danger-deep)">需处理</span></div><div class="kpi-val" style="color:var(--danger)">1</div><div class="kpi-lbl">标书废标风险</div></div>
+</div>
+<div class="main-grid" style="grid-template-columns:1.4fr 1fr">
+  <div class="card card-pad">
+    <div class="panel-head"><div class="panel-title">今日待办</div><span class="tag tag-orange">2 项 · 1 逾期</span></div>
+    <div class="todo-item"><div class="todo-check"></div><div><div class="todo-text">完成电子病历方案第 5 章初稿</div><div class="todo-meta">今天 18:00 · 方案编制</div></div><span class="tag tag-orange" style="margin-left:auto">进行中</span></div>
+    <div class="todo-item"><div class="todo-check"></div><div><div class="todo-text">跟进漳州市医院张主任</div><div class="todo-meta">今天 · 客户管理</div></div><span class="tag tag-gray" style="margin-left:auto">待办</span></div>
+    <div class="todo-item"><div class="todo-check" style="border-color:var(--danger)"></div><div><div class="todo-text" style="color:var(--danger)">处理标书废标风险：资质文件缺 ISO27001</div><div class="todo-meta">已逾期 1 天 · 标书工作</div></div><span class="tag tag-red" style="margin-left:auto">风险</span></div>
+    <button class="btn btn-ghost btn-sm mt-3" style="width:100%;justify-content:center">+ 添加待办</button>
+  </div>
+  <div class="card card-pad">
+    <div class="panel-head"><div class="panel-title">最近动态</div><button class="btn btn-ghost btn-sm">全部</button></div>
+    <div class="feed-item"><div class="feed-dot" style="background:var(--primary)"></div><div><div class="feed-text">方案「电子病历评级建设方案」更新第 5 章</div><div class="feed-time">10 分钟前</div></div></div>
+    <div class="feed-item"><div class="feed-dot" style="background:var(--danger)"></div><div><div class="feed-text">标书检查发现 1 项废标风险</div><div class="feed-time">1 小时前</div></div></div>
+    <div class="feed-item"><div class="feed-dot" style="background:var(--accent)"></div><div><div class="feed-text">新情报：电子病历评级新标准（2026 版）发布</div><div class="feed-time">2 小时前</div></div></div>
+    <div class="feed-item"><div class="feed-dot" style="background:var(--violet)"></div><div><div class="feed-text">情报已标记为项目线索：智慧病房</div><div class="feed-time">昨天</div></div></div>
+  </div>
+</div>`;
+/* ========== 方案编制：三栏（章节树可拖拽 / AI编辑器 / 素材弹药库） ========== */
+const SOL_CHAPS=[["项目背景与建设目标","done"],["现状分析与差距评估","done"],["总体设计方案","done"],["技术架构","done"],["集成平台设计","on"],["电子病历核心功能","gen"],["临床决策支持 CDSS","todo"],["数据治理体系","todo"],["安全保障体系","todo"],["实施计划","todo"],["培训与运维","todo"],["投资概算","todo"]];
+V.solution=`
+<div class="ws-toolbar">
+  <button class="btn btn-ghost btn-sm">← 方案列表</button>
+  <div class="ws-title">电子病历评级建设方案</div>
+  <span class="tag tag-primary">电子病历 · 三甲</span>
+  <span class="tag tag-orange">草稿 · 8/12 章</span>
+  <div class="flex gap8" style="margin-left:auto">
+    <div class="seg"><button>建设清单</button><button class="on">方案编制</button></div>
+    <select style="border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12.5px;background:#fff"><option>GPT-4o</option><option>DeepSeek-V3</option></select>
+    <button class="btn btn-ghost btn-sm">批量生成</button>
+    <button class="btn btn-primary btn-sm">导出 Word</button>
+  </div>
+</div>
+<div class="cols-work" style="grid-template-columns:238px minmax(430px,1fr) 300px">
+  <div class="card">
+    <div class="panel-head" style="padding:14px 16px 0"><div class="panel-title">章节目录</div><span class="tag tag-green">8 完成</span></div>
+    <div class="tree-hint" style="padding:6px 16px 0">${ICON.grip.replace('class="grip"','width="12" height="12"')} 拖拽章节可调整顺序</div>
+    <div class="col-scroll"><div class="chap-list" id="solTree">
+      ${SOL_CHAPS.map((c,i)=>{const st=c[1];const lb=st==="done"?"✓":st==="gen"?"…":"";return `<div class="chap ${st==="on"?"on":""}" draggable="true" data-i="${i}"><span style="display:flex">${ICON.grip}</span><span class="cno">${i+1}</span><span class="cname">${c[0]}</span><span class="st ${st==="on"?"gen":st}">${lb}</span></div>`;}).join("")}
+    </div>
+    <div style="padding:8px 12px"><button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center">+ AI 生成章节</button></div></div>
+  </div>
+  <div class="card">
+    <div class="editor-area">
+      <h2>第五章 集成平台设计</h2>
+      <div class="doc-meta">电子病历评级建设方案 · 漳州市医院 · 三级甲等 · 约 2,400 字 · 自动保存于 2 分钟前</div>
+      <div class="ai-bar">
+        <button class="ai-chip">${ICON.spark} AI 生成本章</button>
+        <button class="ai-chip">润色扩写</button>
+        <button class="ai-chip">评分自检</button>
+        <button class="ai-chip">按评审意见优化</button>
+      </div>
+      <div class="hl-miss">${ICON.warn}<div><b>待补充（1）：</b>本章「应急容灾」小节尚未撰写，方案模板要求覆盖三级等保下的双活/备份描述，建议补充或从右侧弹药库插入历史案例。</div></div>
+      <h3>5.1 集成平台总体架构</h3>
+      <p>集成平台采用企业服务总线（ESB）与医疗信息标准（HL7 FHIR / IHE）相结合的架构，统一承载院内各业务系统之间的数据交换与业务协同。平台由接入层、消息总线层、数据服务层和监控治理层四层构成。</p>
+      <p>接入层通过标准化适配器对接 HIS、LIS、PACS、EMR、手麻、重症等核心系统，支持实时消息、定时批量与 API 调用三种集成模式。</p>
+      <h3>5.2 关键集成场景</h3>
+      <p>围绕电子病历五级评审要求，本期重点打通门诊/住院医嘱闭环、检验检查结果回传、危急值联动、电子病历文书共享、患者主索引（EMPI）统一等 12 个关键集成场景。</p>
+      <div class="hl-done">${ICON.check}<div><b>已从弹药库插入：</b>「某三甲医院集成平台落地成效」段落（来源：历史方案 · 第五章），可继续编辑。<button class="btn btn-ghost btn-sm" style="margin-left:8px;padding:2px 8px">撤销插入</button></div></div>
+      <div class="hl-tip">💡 切换到任意章节，右侧「素材弹药库」会自动按章节主题重排序知识库/历史方案片段。</div>
+    </div>
+  </div>
+  <div class="card">
+    <div style="padding:14px 14px 0"><div class="mat-tab"><button class="on">知识库</button><button>弹药库</button><button>历史方案</button></div></div>
+    <div class="col-scroll" style="padding:0 14px 14px">
+      <div class="reco-bar">${ICON.spark} 依据「第五章 集成平台设计」智能推荐 4 条</div>
+      <div class="mat-search"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>搜索素材…</div>
+      <div class="mat-item"><div class="mt"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--info)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>集成平台技术白皮书.pdf<span class="rel">相关度 92%</span></div><div class="mm">命中「ESB 总线 + FHIR 网关」段落，与 5.1 架构描述高度吻合</div><button class="btn btn-primary btn-sm" style="padding:3px 12px">一键插入</button></div>
+      <div class="mat-item"><div class="mt"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>某三甲医院集成平台方案.docx<span class="rel">可复用 3 段</span></div><div class="mm">历史方案 · 第五章 5.3 容灾设计可整段复用</div><button class="btn btn-ghost btn-sm" style="padding:3px 12px">一键插入</button></div>
+      <div class="mat-item"><div class="mt"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--violet)" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>HL7 FHIR 标准解读.md<span class="rel">标准参考</span></div><div class="mm">知识库 · FHIR R4 资源模型与评级条款映射</div><button class="btn btn-ghost btn-sm" style="padding:3px 12px">一键插入</button></div>
+      <div class="mat-item"><div class="mt"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14"/></svg>危急值闭环管理案例<span class="rel">成效数据</span></div><div class="mm">弹药库 · 落地后危急值响应时长 ↓ 43%</div><button class="btn btn-ghost btn-sm" style="padding:3px 12px">一键插入</button></div>
+    </div>
+  </div>
+</div>`;
+
+/* ========== 标书工作：7步流水线 + 左章节 / 中编辑 / 右评分点（双向映射 + 缺失高亮 + 废标风险） ========== */
+V.bid=`
+<div class="ws-toolbar">
+  <button class="btn btn-ghost btn-sm">← 标书列表</button>
+  <div class="ws-title">漳州市人民医院电子病历升级项目</div>
+  <span class="tag tag-red">距截止 5 天</span>
+  <span class="tag tag-orange">待响应 3 项</span>
+  <div class="flex gap8" style="margin-left:auto">
+    <select style="border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12.5px;background:#fff"><option>GPT-4o</option></select>
+    <button class="btn btn-ghost btn-sm">关联商机</button>
+    <button class="btn btn-danger-ghost btn-sm">${ICON.stop} 废标检查（1）</button>
+  </div>
+</div>
+<div class="stepper">
+  ${[["招标文件","done"],["AI 解析评分点","done"],["投标文件编制","on"],["标书查重",""],["废标项检查","risk"],["模拟评标",""],["归档导出",""]].map((s,i)=>`<div class="step ${s[1]==="done"?"done":""} ${s[1]==="on"?"on":""} ${s[1]==="risk"?"risk":""}"><span class="n">${s[1]==="done"?"✓":s[1]==="risk"?"!":i+1}</span><span class="sl">${s[0]}</span></div>`).join("")}
+</div>
+<div class="cols-work" style="grid-template-columns:210px minmax(420px,1fr) 320px">
+  <div class="card">
+    <div class="panel-head" style="padding:14px 14px 0"><div class="panel-title" style="font-size:14px">投标文件结构</div></div>
+    <div class="col-scroll"><div class="chap-list">
+      ${[["投标函","done"],["法定代表人授权","done"],["资格证明文件","risk"],["技术方案总述","done"],["需求理解与分析","done"],["总体技术方案","gen"],["集成平台设计","on"],["电子病历功能","todo"],["项目实施与培训","todo"],["商务偏离表","todo"],["报价一览表","todo"]].map((c,i)=>{const st=c[1];const lb=st==="done"?"✓":st==="gen"?"…":st==="risk"?"!":"";return `<div class="chap ${st==="on"?"on":""}"><span class="cno">${i+1}</span><span class="cname">${c[0]}</span>${st==="risk"?'<span class="tag tag-red" style="font-size:9px;padding:0 5px;margin-left:auto">废标</span>':`<span class="st ${st==="on"?"gen":st}" ${st==="risk"?'style="background:var(--danger);color:#fff"':''}>${lb}</span>`}</div>`;}).join("")}
+    </div></div>
+  </div>
+  <div class="card">
+    <div class="editor-area" id="bidEditor">
+      <h2>第七章 集成平台设计</h2>
+      <div class="doc-meta">投标文件 · 技术标 · 技术分 40 分 · 本章响应评分点 <b class="tpri">3.2 系统集成能力（8 分）</b></div>
+      <div class="hl-risk">${ICON.stop}<div><b>废标风险（1）：</b>资格证明文件中「ISO27001 信息安全管理体系认证」缺失，招标文件星号（★）实质性条款要求必须提供，否则按无效投标处理。<button class="btn btn-ghost btn-sm" style="margin-left:8px;padding:2px 10px;color:var(--danger-deep);border-color:rgba(214,69,69,.4)">去补充资质</button></div></div>
+      <div class="ai-bar">
+        <button class="ai-chip">${ICON.spark} AI 生成本章</button>
+        <button class="ai-chip">对照评分点</button>
+        <button class="ai-chip">插入响应偏离表</button>
+        <button class="ai-chip">合规自检</button>
+      </div>
+      <div class="hl-miss" id="miss-32">${ICON.warn}<div><b>缺失响应 · 评分点 3.2：</b>要求「提供至少 3 个同类三甲医院集成案例」，当前章节仅 1 个，缺 2 个。点击右侧评分点可定位，或从知识库补案例。<button class="btn btn-primary btn-sm" style="margin-left:8px;padding:2px 10px">AI 补写案例</button></div></div>
+      <h3>7.1 集成平台架构响应 <span class="map-chip" data-sp="sp-32">${ICON.link} 3.2 集成能力</span></h3>
+      <div class="sow-para" id="para-32"><p>我方完全响应招标文件第 3.2 条对系统集成能力的要求。所提供的集成平台基于 HL7 FHIR R4 标准与 IHE 集成规范，已在 <b>20 余家三甲医院</b>落地，支持 HIS、LIS、PACS、EMR 等 40 余类系统的标准化接入。</p></div>
+      <h3>7.2 实质性条款（★）响应 <span class="map-chip" data-sp="sp-star">${ICON.link} ★ 星号条款</span></h3>
+      <div class="sow-para weak" id="para-star"><p>针对招标文件标注 ★ 的实质性条款，我方逐条响应并在《技术偏离表》中说明，无负偏离。平台满足<b>等保三级</b>安全要求，支持国产化数据库与中间件部署。<span class="tag tag-orange" style="font-size:10px">待补：ISO27001 证书附件</span></p></div>
+      <h3>7.3 同类集成案例 <span class="map-chip" data-sp="sp-32">${ICON.link} 3.2 案例数</span></h3>
+      <p>案例一：某省人民医院集成平台，接入 42 个系统，支撑电子病历五级评审通过。</p>
+    </div>
+  </div>
+  <div class="card">
+    <div class="panel-head" style="padding:14px 14px 0"><div class="panel-title" style="font-size:14px">评分点清单</div><span class="tag tag-orange">3 待响应</span></div>
+    <div class="col-scroll"><div class="sp-list">
+      <div class="sp-sec">技术标 · 40 分</div>
+      <div class="sp-item ok" id="sp-32" data-para="para-32"><div class="sp-top"><span class="sp-code">3.1</span><span class="sp-score" style="color:var(--success)">已响应 · 6分</span></div><div class="sp-title">平台标准化接入能力</div><div class="sp-meta">${ICON.link}<span style="color:var(--primary-deep)">已映射：7.1 架构响应</span></div></div>
+      <div class="sp-item miss active" id="sp-32b" data-para="miss-32"><div class="sp-top"><span class="sp-code">3.2</span><span class="sp-score" style="color:var(--accent-deep)">缺失 · 8分</span></div><div class="sp-title">同类集成案例 ≥ 3 个</div><div class="sp-meta">${ICON.warn}<span style="color:var(--accent-deep)">仅 1/3，正文未覆盖</span></div></div>
+      <div class="sp-item risk" id="sp-star" data-para="para-star"><div class="sp-top"><span class="sp-code">★3.5</span><span class="sp-score" style="color:var(--danger-deep)">废标项</span></div><div class="sp-title">ISO27001 认证（星号强制）</div><div class="sp-meta">${ICON.stop}<span style="color:var(--danger-deep)">资质缺失，正文待补附件</span></div></div>
+      <div class="sp-sec">商务标 · 20 分</div>
+      <div class="sp-item miss" data-para="none"><div class="sp-top"><span class="sp-code">4.1</span><span class="sp-score" style="color:var(--accent-deep)">未响应 · 6分</span></div><div class="sp-title">项目团队人员资质（PMP/系统架构师）</div><div class="sp-meta">${ICON.warn}<span style="color:var(--accent-deep)">尚未在正文找到映射</span></div></div>
+      <div class="sp-item ok"><div class="sp-top"><span class="sp-code">4.2</span><span class="sp-score" style="color:var(--success)">已响应 · 4分</span></div><div class="sp-title">本地化服务与 7×24 响应承诺</div><div class="sp-meta">${ICON.link}<span style="color:var(--primary-deep)">已映射：售后章节</span></div></div>
+      <div style="padding:12px 6px"><button class="btn btn-ghost btn-sm" style="width:100%;justify-content:center">${ICON.spark} AI 一键生成缺失响应</button></div>
+    </div></div>
+  </div>
+</div>`;
+/* ========== 格式刷新：分步向导 + 刷新前后对比 + 异常标红（不改文字） ========== */
+V.format=`
+<div class="ws-toolbar"><div class="ws-title">格式刷新</div><span class="text-sm tink3">仅统一排版样式，不改动任何文档文字</span><div style="margin-left:auto"><button class="btn btn-ghost btn-sm">刷新历史</button><button class="btn btn-primary btn-sm">导出刷新后文档</button></div></div>
+<div class="stepper">
+  ${[["上传文档","done"],["选择标准模板","done"],["预览对比","on"],["确认刷新",""]].map((s,i)=>`<div class="step ${s[1]==="done"?"done":""} ${s[1]==="on"?"on":""}"><span class="n">${s[1]==="done"?"✓":i+1}</span><span class="sl">${s[0]}</span></div>`).join("")}
+</div>
+<div class="cols-work" style="grid-template-columns:320px minmax(560px,1fr)">
+  <div class="card"><div class="col-scroll" style="padding:16px 18px">
+    <div class="panel-title mb-3" style="font-size:14px">第 1 步 · 已上传文档</div>
+    <div class="wz-file"><div class="ficon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div><div style="min-width:0"><div class="fsem text-sm" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">智慧医院整体方案.docx</div><div class="text-xs tink3">4.2 MB · 128 页 · ✓ 可解析</div></div><button class="btn btn-ghost btn-sm" style="margin-left:auto;padding:3px 8px">替换</button></div>
+    <div class="panel-title mt-5 mb-2" style="font-size:14px">第 2 步 · 公司标准模板</div>
+    <div class="tpl-row" style="flex-direction:column">
+      ${[["公司标准模板（售前方案）","标题黑体/正文小四/1.5行距",1],["投标专用模板","需响应星号条款排版",0],["简版模板","对外交流用",0]].map(t=>`<div class="tpl-card ${t[2]?"on":""}" style="text-align:left;display:flex;align-items:center;gap:10px"><div style="width:16px;height:16px;border-radius:50%;border:2px solid ${t[2]?"var(--primary)":"var(--line)"};display:flex;align-items:center;justify-content:center">${t[2]?'<div style="width:8px;height:8px;border-radius:50%;background:var(--primary)"></div>':''}</div><div><div class="fsem text-sm" style="color:${t[2]?"var(--primary-deep)":"var(--ink)"}">${t[0]}</div><div class="text-xs tink3 mt-1">${t[1]}</div></div></div>`).join("")}
+    </div>
+    <div class="divider"></div>
+    <div class="panel-title mb-2" style="font-size:14px">刷新范围</div>
+    ${[["字体与字号",1],["标题层级",1],["行距与段距",1],["页眉页脚",1],["目录与页码",0],["表格样式",1]].map(x=>`<label class="chk"><input type="checkbox" ${x[1]?"checked":""}>${x[0]}</label>`).join("")}
+    <div class="hl-tip mt-4" style="margin:14px 0 0">🛡 安全承诺：仅修改样式，正文文字内容 0 改动。</div>
+  </div></div>
+  <div class="card"><div class="col-scroll" style="padding:16px 18px">
+    <div class="panel-head"><div class="panel-title" style="font-size:14px">第 3 步 · 刷新前后对比</div><div class="flex gap8"><span class="tag tag-red">5 处格式异常</span><span class="tag tag-green">文字 0 改动</span></div></div>
+    <div class="cmp">
+      <div class="cmp-pane before">
+        <span class="cmp-tag" style="background:var(--danger-soft);color:var(--danger-deep)">${ICON.warn} 刷新前（原稿）</span>
+        <div class="doc-h" style="font-size:19px;color:#333;font-family:宋体,serif">第五章 集成平台</div>
+        <div class="doc-p" style="font-family:宋体,serif;line-height:1.4">本方案采用<span class="fa-anom">宋体小五号</span>作为正文，标题<span class="fa-anom">未设层级</span>，行距不统一。</div>
+        <div class="doc-p" style="font-family:Arial,sans-serif;line-height:1.4">平台支持 HL7 FHIR，已在 20 余家医院<span class="fa-anom">（此处字体突变 Arial）</span>落地。</div>
+        <div class="doc-p" style="text-align:left;font-family:宋体,serif">页码与页眉：<span class="fa-anom">缺失</span>，目录未自动生成。</div>
+        <div class="doc-meta-line">⚠ 正文小五/标题无层级/字体突变/对齐不一/页眉缺失 · 共 5 处</div>
+      </div>
+      <div class="cmp-pane after">
+        <span class="cmp-tag" style="background:var(--success-soft);color:var(--success)">${ICON.check} 刷新后（公司标准）</span>
+        <div class="doc-h" style="font-size:18px;color:var(--ink);font-family:Microsoft YaHei,sans-serif;font-weight:700">第五章　集成平台</div>
+        <div class="doc-p fa-ok" style="font-family:Microsoft YaHei,sans-serif;line-height:1.9">本方案采用<span style="color:var(--primary-deep)">标准正文小四、首行缩进 2 字</span>作为正文，标题<span style="color:var(--primary-deep)">已按 H1/H2 分级</span>，行距统一。</div>
+        <div class="doc-p fa-ok" style="font-family:Microsoft YaHei,sans-serif;line-height:1.9">平台支持 HL7 FHIR，已在 20 余家医院落地。</div>
+        <div class="doc-p fa-ok" style="text-align:justify;font-family:Microsoft YaHei,sans-serif">页码与页眉：<span style="color:var(--success)">已自动补齐</span>，目录一键生成。</div>
+        <div class="doc-meta-line" style="color:var(--success)">✓ 已全部修复，文字内容完全一致（可逐字校对）</div>
+      </div>
+    </div>
+    <div class="flex gap10 mt-4 wrap"><div class="card card-pad" style="flex:1;min-width:130px;box-shadow:none"><div class="text-xs tink3">已修复格式项</div><div class="fbold tpri" style="font-size:22px">5</div></div><div class="card card-pad" style="flex:1;min-width:130px;box-shadow:none"><div class="text-xs tink3">文字改动</div><div class="fbold" style="font-size:22px;color:var(--success)">0 处</div></div><button class="btn btn-primary" style="padding:11px 26px;justify-content:center">确认刷新并导出</button></div>
+  </div></div>
+</div>`;
+
+/* ========== 情报中心：左筛选 / 中卡片流 / 右详情（线索标记 + 周报 + 新建标书任务） ========== */
+const INTEL=[
+ {t:"政策",c:"primary",src:"国家卫健委",time:"2 小时前",title:"国家卫健委发布电子病历分级评价新版标准（2026 版）",sum:"新标准对五级评审的集成平台、CDSS 要求进一步细化，新增 AI 辅助决策评分项。自 2027 年 1 月起执行。",st:"待确认",detail:"政策明确五级评审新增「AI 辅助临床决策」独立评分项，权重 6 分；集成平台需支持 FHIR R4 与闭环可追溯。对我司电子病历与 CDSS 产品线为重大利好，建议更新售前方案模板第三章与第五章。",kws:["电子病历","集成平台","CDSS"]},
+ {t:"招标",c:"blue",src:"中国政府采购网",time:"5 小时前",title:"测试市人民医院 HIS 系统升级项目招标公告",sum:"预算 480 万元，要求电子病历五级、集成平台、等保三级，投标截止 9 月 26 日。",st:"待确认",detail:"项目预算 480 万，资格条件：电子病历五级或能提供升级方案、具备集成平台案例≥3、等保三级。与我司能力高度匹配，建议立即立项并拆解废标风险条款。",kws:["招标","HIS","等保三级"]},
+ {t:"竞品",c:"orange",src:"行业媒体",time:"昨天",title:"某厂商发布新一代智慧病房解决方案",sum:"主打物联网床旁终端 + 护理闭环，已在 3 家三甲落地，报价区间 80-150 万。",st:"已确认",lead:true,detail:"竞品智慧病房方案以护理闭环为卖点，但 CDSS 与集成能力较弱。我司可以集成平台 + 数据治理为差异化打击点，详见竞品分析页话术。",kws:["智慧病房","竞品"]},
+ {t:"行业",c:"gray",src:"IDC 中国",time:"2 天前",title:"2026 医疗信息化市场规模预计突破 1800 亿",sum:"IDC 报告显示集成平台与 CDSS 增速最快，分别达 28% 和 35%。",st:"已确认",detail:"宏观市场数据，可用于方案价值论证页。建议归档为弹药库引用。",kws:["市场规模"]}];
+V.intel=`
+<div class="ws-toolbar">
+  <div class="ws-title">情报中心</div>
+  <span class="tag tag-primary">启用源 8/10</span>
+  <div class="flex gap8" style="margin-left:auto">
+    <button class="btn btn-ghost btn-sm">源管理</button>
+    <button class="btn btn-ghost btn-sm">${ICON.spark} AI 生成情报周报</button>
+    <button class="btn btn-primary btn-sm">+ 手动录入</button>
+  </div>
+</div>
+<div class="cols-work" style="grid-template-columns:200px minmax(420px,1fr) 340px">
+  <div class="card"><div class="col-scroll intel-filters">
+    <div class="fg-label">情报类型</div>
+    <div class="fchips"><span class="fchip on">全部</span><span class="fchip">政策</span><span class="fchip">招标</span><span class="fchip">竞品</span><span class="fchip">行业</span></div>
+    <div class="fg-label">处理状态</div>
+    <div class="fchips"><span class="fchip on">待确认</span><span class="fchip">已确认</span><span class="fchip">已忽略</span></div>
+    <div class="fg-label">标签</div>
+    <div class="fchips"><span class="fchip">电子病历(8)</span><span class="fchip">集成平台(5)</span><span class="fchip">CDSS(4)</span><span class="fchip">智慧病房(3)</span></div>
+    <div class="fg-label">时间范围</div>
+    <div class="fchips"><span class="fchip on">近 7 天</span><span class="fchip">近 30 天</span></div>
+  </div></div>
+  <div class="card"><div class="col-scroll" style="padding:14px 16px">
+    <div class="flex between mb-3"><span class="text-sm tink3">共 <b class="tpri">12</b> 条 · 待确认 <b style="color:var(--accent-deep)">5</b></span><select style="border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:12px;background:#fff"><option>按时间</option><option>按相关度</option></select></div>
+    ${INTEL.map((n,i)=>`<div class="intel-card ${i===0?"on":""}" data-i="${i}"><div class="flex gap8 mb-2"><span class="tag tag-${n.c}">${n.t}</span><span class="text-xs tink3">${n.src}</span>${n.lead?'<span class="lead-badge" style="margin-left:auto">已标线索</span>':`<span class="tag ${n.st==="待确认"?"tag-orange":"tag-green"}" style="margin-left:auto">${n.st}</span>`}</div><div class="ic-title">${n.title}</div><div class="ic-sum">${n.sum}</div><div class="ic-meta"><span>${n.time}</span><span style="margin-left:auto;display:flex;gap:10px"><span style="color:var(--primary);cursor:pointer">确认</span><span style="color:var(--ink-3);cursor:pointer">忽略</span><span style="cursor:pointer">☆</span></span></div></div>`).join("")}
+  </div></div>
+  <div class="card"><div class="col-scroll" style="padding:16px 18px">
+    <div class="panel-head"><div class="panel-title" style="font-size:14px">情报详情</div><span class="tag tag-primary">政策</span></div>
+    <div class="fsem" style="font-size:14px;line-height:1.5;margin-bottom:6px">国家卫健委发布电子病历分级评价新版标准（2026 版）</div>
+    <div class="text-xs tink3 mb-3">来源：国家卫健委 · 2 小时前 · 权威度 <b style="color:var(--success)">高</b></div>
+    <div class="card card-pad" style="box-shadow:none;background:var(--primary-tint);margin-bottom:12px"><div class="text-xs fsem tpri mb-2">${ICON.spark} AI 摘要与售前启示</div><div class="text-sm" style="line-height:1.7;color:var(--ink-2)">${INTEL[0].detail}</div></div>
+    <div class="fsem text-sm mb-2">关键词</div>
+    <div class="fchips mb-3">${INTEL[0].kws.map(k=>`<span class="tag tag-gray">${k}</span>`).join("")}</div>
+    <div class="divider"></div>
+    <div class="flex gap8 wrap">
+      <button class="btn btn-ghost btn-sm">⭐ 收藏</button>
+      <button class="btn btn-ghost btn-sm" style="color:var(--violet);border-color:var(--violet-soft)">📌 标记为项目线索</button>
+    </div>
+    <button class="btn btn-primary btn-sm mt-3" style="width:100%;justify-content:center">${ICON.spark} 一键新建标书任务</button>
+    <div class="text-xs tink3 mt-2" style="text-align:center">自动带入：电子病历升级 · 预算参考 · 截止提醒</div>
+  </div></div>
+</div>`;
+
+/* ========== 竞品分析：顶部选择器 / 雷达+矩阵 / 右侧 AI 话术（可复制） ========== */
+const COMP=[["本产品","#0E7C99",1,[5,4,4,5,4,4]],["卫宁","#2E6FB0",1,[4,5,3,3,4,3]],["东华","#E8973C",1,[3,3,4,2,3,4]],["东软","#7B4FB0",0,[4,4,3,3,5,3]],["创业","#1F9D63",0,[3,2,5,4,3,5]]];
+function compHTML(){const selN=COMP.filter(c=>c[2]).length;return `
+<div class="ws-toolbar">
+  <div class="ws-title">竞品分析</div>
+  <div class="csel" style="margin-left:8px">
+    ${COMP.map((c,i)=>`<button class="cchip ${c[2]?"on":""}" data-ci="${i}"><span class="cdot" style="background:${c[1]}"></span>${c[0]}<span class="ck">${c[2]?"✓":""}</span></button>`).join("")}
+  </div>
+  <div class="flex gap8" style="margin-left:auto"><button class="btn btn-ghost btn-sm">导出对比</button><button class="btn btn-primary btn-sm">+ 添加竞品</button></div>
+</div>
+<div class="kpi-row" style="grid-template-columns:repeat(4,1fr)">
+  <div class="kpi"><div class="kpi-lbl">当前对标</div><div class="kpi-val" style="margin-top:5px">${selN} 家</div></div>
+  <div class="kpi"><div class="kpi-top"><div class="kpi-icon" style="background:var(--danger-soft);color:var(--danger)">${ICON.warn}</div></div><div class="kpi-val" style="color:var(--danger-deep)">中高</div><div class="kpi-lbl">综合威胁等级</div></div>
+  <div class="kpi"><div class="kpi-lbl">我方领先维度</div><div class="kpi-val" style="margin-top:5px;color:var(--success)">3 项</div></div>
+  <div class="kpi"><div class="kpi-lbl">关联情报</div><div class="kpi-val" style="margin-top:5px">8 条</div></div>
+</div>
+<div class="cols-work" style="grid-template-columns:minmax(420px,1fr) 380px;height:auto">
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <div class="card card-pad"><div class="panel-head"><div class="panel-title">能力雷达对比</div><span class="text-xs tink3">六维能力模型·5 分制</span></div><div class="chart-box" id="radarChart"></div></div>
+    <div class="card card-pad">
+      <div class="panel-title mb-3">竞品能力矩阵</div>
+      <div style="overflow-x:auto"><table class="matrix">
+        <thead><tr><th>能力维度</th>${COMP.filter(c=>c[2]).map(c=>`<th style="color:${c[1]}">${c[0]}</th>`).join("")}</tr></thead>
+        <tbody>${["电子病历","集成平台","CDSS/AI","移动端","实施交付","价格竞争力"].map((dim,r)=>{const row=COMP.filter(c=>c[2]);const mx=Math.max(...row.map(c=>c[3][r]));return `<tr class="${row[0][3][r]===mx?"best":""}"><td>${dim}</td>${row.map(c=>{const v=c[3][r];const win=v===mx&&v>=4;return `<td style="color:${win?c[1]:"var(--ink-2)"};font-weight:${win?700:400}"><span class="stars">${"★".repeat(v)}<span class="off">${"★".repeat(5-v)}</span></span></td>`;}).join("")}</tr>`;}).join("")}</tbody>
+      </table></div>
+      <div class="text-xs tink3 mt-2">★ 青色为该维度领先者；本产品领先：电子病历 / 移动端 / CDSS。</div>
+    </div>
+  </div>
+  <div class="card"><div class="col-scroll" style="padding:16px 18px">
+    <div class="panel-head"><div class="panel-title" style="font-size:14px">${ICON.spark} AI 差异化竞争话术</div><button class="btn btn-ghost btn-sm">重新生成</button></div>
+    <div class="hl-tip" style="margin:0 0 12px">基于勾选竞品（卫宁/东华/东软）与关联情报生成，可直接粘贴至方案/标书。</div>
+    ${[["对抗卫宁·集成平台","优势","卫宁集成平台起步早，但本项目强调电子病历五级 + CDSS 双重要求，我方 FHIR R4 原生架构在 AI 决策支持上领先，建议以「数据智能」而非「接口连接」定调评分点。"],["对抗东华·AI能力","反击","东华在 CDSS 上有一定积累，但其移动端与云原生架构较旧。用「移动查房 + 床旁闭环」实测演示拉开差距。"],["价格与交付","化解","若遇价格战，强调全生命周期成本：我方一体化平台免中间件适配费，三年 TCO 低 18%，并提供本地化 7×24 服务承诺。"]].map(t=>`<div class="talk-card"><div class="tk-h"><span class="tag ${t[1]==="优势"?"tag-green":t[1]==="反击"?"tag-blue":"tag-orange"}">${t[1]}</span><span class="tk-dim">${t[0]}</span><button class="copy-btn">${ICON.copy} 复制</button></div><div class="tk-b">${t[2]}</div></div>`).join("")}
+    <div class="empty" style="${selN?'display:none':''}"><div class="et">请选择至少一个竞品</div><div class="ed">勾选顶部竞品后，AI 将自动生成差异化竞争话术。</div></div>
+    <button class="btn btn-primary btn-sm mt-2" style="width:100%;justify-content:center">全部复制到剪贴板</button>
+  </div></div>
+</div>`; }
+/* ========== 非核心页（保留，避免空白） ========== */
+V.crm=`
+<div class="ws-toolbar"><div class="ws-title">客户管理</div><div class="seg"><button class="on">商机看板</button><button>客户列表</button></div><div style="margin-left:auto"><button class="btn btn-primary btn-sm">+ 新建客户</button></div></div>
+<div class="kanban">
+  ${[["线索","var(--ink-3)",[["区域中心医院升级需求","福州市·三甲","待联系"]]],["初步接触","var(--info)",[["第二人民医院 HIS 改造","泉州市·三乙","已电话沟通"]]],["需求确认","var(--violet)",[["智慧病房解决方案","某三甲·¥152万","需求调研中"]]],["方案阶段","var(--primary)",[["电子病历系统升级","测试市人民医院","方案 65%"]]],["投标","var(--accent)",[]]].map(col=>`<div class="kcol"><div class="kcol-head"><span style="width:8px;height:8px;border-radius:50%;background:${col[1]}"></span>${col[0]}<span class="cnt">${col[2].length}</span></div><div style="overflow-y:auto;flex:1">${col[2].map(c=>`<div class="kcard"><div class="kt">${c[0]}</div><div class="km">${c[1]}</div><div class="km" style="color:var(--primary-deep)">${c[2]}</div></div>`).join("")||'<div class="empty" style="padding:18px 0"><div class="ed" style="margin:0">暂无商机，拖入卡片或新建</div></div>'}</div></div>`).join("")}
+</div>`;
+V.kb=`
+<div class="ws-toolbar"><div class="ws-title">知识库</div><div class="seg"><button class="on">团队库 12</button><button>我的笔记 4</button></div><div style="margin-left:auto"><button class="btn btn-primary btn-sm">上传文档</button></div></div>
+<div class="cols-work" style="grid-template-columns:190px 320px 1fr">
+  <div class="card"><div class="col-scroll chap-list">
+    ${[["全部文档",16,1],["产品资料",5],["解决方案",4],["投标模板",3],["竞品分析",2],["合规文档",2]].map(f=>`<div class="chap ${f[2]?"on":""}"><span class="cname">${f[0]}</span><span class="text-xs tink3">${f[1]}</span></div>`).join("")}
+  </div></div>
+  <div class="card"><div class="col-scroll chap-list">
+    ${[["集成平台技术白皮书.pdf","产品资料 · 28 页 · 昨天",1],["电子病历评级建设方案.docx","解决方案 · 86 页 · 2 小时前",0],["HL7 FHIR 标准解读.md","合规文档 · 3 天前",0],["智慧医院整体解决方案.pptx","解决方案 · 上周",0]].map(d=>`<div class="mat-item ${d[2]?"mt-0":""}" style="${d[2]?"border-color:var(--primary);background:var(--primary-tint)":""}"><div class="mt">${d[0]}</div><div class="mm">${d[1]}</div></div>`).join("")}
+  </div></div>
+  <div class="card"><div class="editor-area"><h2>集成平台技术白皮书</h2><div class="doc-meta">产品资料 · 28 页 · 已索引</div><h3>一、集成平台概述</h3><p>医疗集成平台是医院信息化建设中枢，通过统一数据标准、接口规范与消息路由，实现院内异构系统互联互通。</p><h3>二、核心能力</h3><p>标准化接入（HL7 v2/v3、FHIR、WebService）、可靠传输、主数据管理（EMPI）、数据质量治理、统一监控、开放 API 网关。</p><div class="hl-tip">引用本文档时，问知识库会自动标注来源段落与页码。</div></div></div>
+</div>`;
+V.ppt=`
+<div class="ws-toolbar"><div class="seg"><button>PPT 演示稿</button><button class="on">报价单</button></div><div class="ws-title">电子病历升级 · 报价单</div><span class="tag tag-orange">待确认</span><div style="margin-left:auto"><button class="btn btn-primary btn-sm">导出 Excel</button></div></div>
+<div class="main-grid" style="grid-template-columns:1fr 300px">
+  <div class="card" style="overflow:hidden"><table class="quote-table"><thead><tr><th style="width:34%">产品 / 服务</th><th style="width:12%">数量</th><th style="width:16%">单价</th><th style="width:14%">小计</th><th></th></tr></thead><tbody>
+    <tr class="grp"><td colspan="5">一、软件产品</td></tr>
+    <tr><td>电子病历核心系统 V6.0</td><td>1 套</td><td><input value="180000"></td><td class="fsem">162,000</td><td style="color:var(--danger);cursor:pointer">删除</td></tr>
+    <tr><td>集成平台（ESB）</td><td>1 套</td><td><input value="120000"></td><td class="fsem">102,000</td><td style="color:var(--danger);cursor:pointer">删除</td></tr>
+    <tr class="grp"><td colspan="5">二、实施与运维</td></tr>
+    <tr><td>系统实施与数据迁移</td><td>60 人天</td><td><input value="1500"></td><td class="fsem">90,000</td><td style="color:var(--danger);cursor:pointer">删除</td></tr>
+  </tbody></table></div>
+  <div class="card card-pad"><div class="panel-title mb-3">报价汇总</div><div class="flex between" style="padding:6px 0;font-size:13px"><span class="tink2">软件产品</span><span>264,000</span></div><div class="flex between" style="padding:6px 0;font-size:13px"><span class="tink2">实施服务</span><span>90,000</span></div><div class="divider" style="margin:8px 0"></div><div class="flex between"><span class="fsem">合计（含税）</span><span class="fbold tpri" style="font-size:22px">¥354,000</span></div></div>
+</div>`;
+V.assistant=`
+<div class="ws-toolbar"><div class="ws-title">小智助手</div><span class="text-sm tink3">多轮对话 · 站内数据问答 · 长期记忆</span><div style="margin-left:auto"><button class="btn btn-ghost btn-sm">+ 新会话</button></div></div>
+<div class="cols-work" style="grid-template-columns:280px 1fr">
+  <div class="card"><div class="chat-tabs"><button class="on">会话</button><button>记忆</button><button>技能</button></div><div class="col-scroll chap-list">
+    ${[["电子病历方案大纲","2 分钟前",1],["标书评分点提取","今天",0],["竞品差异化话术","昨天",0],["情报周报汇总","2 天前",0]].map(s=>`<div class="chat-session ${s[2]?"on":""}"><div class="cst">${s[0]}</div><div class="csm">${s[1]}</div></div>`).join("")}
+  </div></div>
+  <div class="card" style="display:flex;flex-direction:column"><div class="col-scroll" style="display:flex;flex-direction:column;gap:14px;padding:22px 26px"><div class="msg ai">你好！我是小智。可以帮你起草方案、解析标书提取评分点、查知识库、汇总情报、核算报价。</div><div class="msg me">帮我起草一份电子病历五级评级建设方案大纲，突出集成平台和 CDSS</div><div class="msg ai">好的，建议大纲：<br><b>第一章 背景与目标</b><br><b>第二章 总体设计</b><br><b>第三章 集成平台建设</b>（重点）<br><b>第四章 CDSS 临床决策支持</b>（重点）<br>需要我直接生成某一章正文吗？</div></div><div class="flex gap8" style="padding:14px 18px;border-top:1px solid var(--line)"><div class="search-box" style="flex:1;width:auto">输入消息，@ 可引用知识库文档…</div><button class="btn btn-primary">发送</button></div></div>
+</div>`;
+V.model=`
+<div class="ws-toolbar"><div class="ws-title">模型配置</div><span class="text-sm tink3">各业务场景使用的 AI 模型</span><div style="margin-left:auto"><button class="btn btn-primary btn-sm">+ 添加平台</button></div></div>
+<div class="main-grid" style="grid-template-columns:1fr 1fr">
+  ${[["方案编制 · 章节生成","GPT-4o","OpenAI · 128K",1],["标书解析 · 评分提取","Claude 3.5 Sonnet","Anthropic · 200K",0],["情报摘要 · 信息抽取","DeepSeek-V3","深度求索 · 高性价比",0],["问知问答 · RAG","GPT-4o + 知识库","检索增强生成",0]].map(c=>`<div class="card card-pad"><div class="flex between mb-2"><div class="fsem">${c[0]}</div>${c[3]?'<span class="tag tag-green">默认启用</span>':'<span class="tag tag-gray">已配置</span>'}</div><div class="fbold tpri" style="font-size:17px">${c[1]}</div><div class="text-xs tink3 mt-1">${c[2]}</div><div class="flex between mt-3"><span class="text-xs" style="color:var(--success)">● 连接正常 · 延迟 1.2s</span><div style="display:flex;gap:6px"><button class="btn btn-ghost btn-sm">测试</button><button class="btn btn-ghost btn-sm">配置</button></div></div></div>`).join("")}
+</div>`;
+
+/* ========== 渲染与交互 ========== */
+let radarInst=null;
+function whenEcharts(cb){if(window.echarts)return cb();var n=0;var t=setInterval(function(){if(window.echarts){clearInterval(t);cb()}else if(++n>120)clearInterval(t)},50)}
+function initRadar(){const el=document.getElementById("radarChart");if(!el||!window.echarts)return;if(radarInst){radarInst.dispose();radarInst=null;}radarInst=echarts.init(el);const sel=COMP.filter(c=>c[2]);radarInst.setOption({tooltip:{},legend:{data:sel.map(c=>c[0]),bottom:0,textStyle:{fontSize:12}},radar:{indicator:[{name:"电子病历",max:5},{name:"集成平台",max:5},{name:"CDSS/AI",max:5},{name:"移动端",max:5},{name:"实施",max:5},{name:"价格",max:5}],radius:"62%",axisName:{color:"#4A6169",fontSize:12}},series:[{type:"radar",data:sel.map(c=>({value:c[3],name:c[0],itemStyle:{color:c[1]},areaStyle:{color:c[1]+"33"}}))}]});}
+function wireSolutionDrag(){const tree=document.getElementById("solTree");if(!tree)return;let dragEl=null;tree.querySelectorAll(".chap").forEach(ch=>{ch.addEventListener("dragstart",()=>{dragEl=ch;ch.classList.add("dragging")});ch.addEventListener("dragend",()=>{ch.classList.remove("dragging");tree.querySelectorAll(".chap").forEach(c=>c.classList.remove("drag-over"));renumber(tree)});ch.addEventListener("dragover",e=>{e.preventDefault();if(!dragEl||dragEl===ch)return;const r=ch.getBoundingClientRect();const after=e.clientY>r.top+r.height/2;tree.insertBefore(dragEl,after?ch.nextSibling:ch);});});}
+function renumber(tree){[...tree.querySelectorAll(".chap .cno")].forEach((n,i)=>n.textContent=i+1)}
+function wireBidMap(){const ed=document.getElementById("bidEditor");if(!ed)return;document.querySelectorAll(".sp-item[data-para]").forEach(sp=>{sp.addEventListener("click",()=>{document.querySelectorAll(".sp-item").forEach(x=>x.classList.remove("active"));sp.classList.add("active");const t=document.getElementById(sp.dataset.para);if(t){t.scrollIntoView({behavior:"smooth",block:"center"});t.classList.add("flash");setTimeout(()=>t.classList.remove("flash"),1400);}});});ed.querySelectorAll(".map-chip[data-sp]").forEach(mc=>{mc.addEventListener("click",()=>{const t=document.getElementById(mc.dataset.sp);if(t){document.querySelectorAll(".sp-item").forEach(x=>x.classList.remove("active"));t.classList.add("active");t.scrollIntoView({behavior:"smooth",block:"center"});}});});}
+function renderView(id){const c=document.getElementById("content");c.innerHTML=id==="comp"?compHTML():(V[id]||"");radarInst&&(id!=="comp"&&radarInst.dispose(),radarInst=null);if(id==="comp"){whenEcharts(initRadar);}if(id==="solution"){wireSolutionDrag();}if(id==="bid"){wireBidMap();}}
+
+/* 全局事件委派 */
+document.addEventListener("click",e=>{
+  if(e.target.closest(".side-item")||e.target.closest(".icon-btn")||e.target.closest(".float-btn"))return;
+  const cchip=e.target.closest(".cchip");
+  if(cchip){const i=+cchip.dataset.ci;COMP[i][2]=COMP[i][2]?0:1;renderView("comp");return;}
+  const grpSel=e.target.closest(".seg button,.mat-tab button,.fchip,.chat-tabs button");
+  if(grpSel){grpSel.parentElement.querySelectorAll("button,.fchip").forEach(b=>b.classList.remove("on"));grpSel.classList.add("on");e.stopPropagation();return;}
+  const ich=e.target.closest(".intel-card");
+  if(ich){document.querySelectorAll(".intel-card").forEach(x=>x.classList.remove("on"));ich.classList.add("on");return;}
+  const chap=e.target.closest(".chap");
+  if(chap&&chap.closest(".chap-list")&&!e.target.closest("[draggable]")){/* 章节树点击选中 */chap.parentElement.querySelectorAll(".chap").forEach(x=>x.classList.remove("on"));chap.classList.add("on");return;}
+  const copy=e.target.closest(".copy-btn,.talk-card .btn-primary");
+  if(copy){const card=copy.closest(".talk-card");const txt=card?card.querySelector(".tk-b").textContent:"已复制全部话术";if(navigator.clipboard)navigator.clipboard.writeText(txt);toast("差异化话术已复制到剪贴板");return;}
+  const b=e.target.closest("button");if(!b)return;const t=b.textContent.trim();if(!t||t.length>22)return;toast("「"+t+"」静态原型演示中");
+});
+let _th;function toast(m){let to=document.getElementById("__toast");if(!to){to=document.createElement("div");to.id="__toast";to.style.cssText="position:fixed;bottom:32px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;z-index:99;opacity:0;transition:opacity .2s";document.body.appendChild(to);}to.textContent=m;to.style.opacity="1";clearTimeout(_th);_th=setTimeout(()=>to.style.opacity="0",1600);}
+nav("home");
+</script>
+</body>
+</html>

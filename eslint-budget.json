@@ -1,0 +1,17 @@
+{
+  "_note": "eslint 债务预算（对标 OHIF .react-compiler-lint-budget.json：把存量债写成显式、可审计、可下降的数字，而不是假装为零）。规则：只许下降；要上调必须先在当轮轮报里写明理由。totals.errors 必须与 docs/evolution/_loop_state.json 的 eslintBaseline / gatesBaseline.eslint 同源（verify:eslint-budget 会校验）。",
+  "_r52Note": "R52（2026-10-16）119→116 error / 13→11 warning，只动 2 个业务文件，降幅全部可复算。① immutability −3、preserve-manual-memoization −1：把 useSolutionStudio.ts 的 autoSaveState / autoSaveResetRef / saveTimerRef 声明上移到首个使用点 persistSolution 之前；把 useIntelCenter.ts 的「信息源」块（state + loadSources + effect）上移到 triggerTick 之前。两处都是**声明前引用（TDZ）**——react-hooks/immutability 报「声明前访问」、preserve-manual-memoization 判「memo 无法保留」。运行时原本不出错（调用都发生在回调内），但一旦启用 React Compiler 并上调 panicThreshold，loadSources 会失去稳定引用 → [loadSources] 每次渲染都变 → setSourcesLoading(true) → 无限渲染。② exhaustive-deps warning −2（13→11）之一来自顺带把 loadSources 补进 triggerTick 的依赖数组（先前是真实遗漏）。③ set-state-in-effect +1 **不是新增缺陷，而是规则变准**：修掉前向引用后，useIntelCenter.ts 的 useEffect(()=>{void loadSources()},[loadSources]) 才首次可被规则的过程间分析跟踪到并如实标记（A 组 fetch-on-mount，生产零影响）。净效果：−3 error，并把 1 条被前向引用掩盖的缺失依赖变成显式真命中。",
+  "capturedAt": "2026-10-16",
+  "round": "R52",
+  "totals": { "errors": 116, "warnings": 11 },
+  "errorsByRule": {
+    "react-hooks/set-state-in-effect": 74,
+    "react-hooks/preserve-manual-memoization": 24,
+    "react-hooks/immutability": 7,
+    "react-refresh/only-export-components": 7,
+    "react-hooks/refs": 4
+  },
+  "warningsByRule": {
+    "react-hooks/exhaustive-deps": 11
+  }
+}

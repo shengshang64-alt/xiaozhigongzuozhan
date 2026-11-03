@@ -1,0 +1,325 @@
+// ---------------------------------------------------------------------------
+// 标书检查中枢（BidCheck）· 领域类型与标签（纯类型层，无 JSX、无副作用）
+//
+// 设计红线（写进注释与验收标准）：
+//  ⚠️ 本模块及其所有规则/引擎只读检测，绝不修改正文内容、绝不写回原文件。
+//  ⚠️ 产出永远是「覆盖层视图」（清单 / Excel / HTML），不是对正文的改动。
+//  ⚠️ 判定权归人：工具只发现与定位，不替人决定改法是否落地。
+// ---------------------------------------------------------------------------
+
+import type { EffectiveFontUsage } from "./engine/fontResolve"
+import type { NumberingFormatUsage } from "./engine/numberingResolve"
+
+/** 检查模式：普通标书 / 暗标严格模式（同一套引擎加严阈值 + 追加暗标专属项，一个开关切换） */
+export type BidCheckMode = "normal" | "sealed"
+
+/** 五级检查体系：L1 格式 / L2 响应 / L3 内容 / L4 查重 / L5 合规（暗标） */
+export type CheckLevel = "L1" | "L2" | "L3" | "L4" | "L5"
+
+/** 严重度四档：critical=废标级必改 / high=丢分应改 / medium=建议改 / info=提示 */
+export type Severity = "critical" | "high" | "medium" | "info"
+
+/**
+ * 单项状态：
+ *  pass=通过 · fail=命中必改 · warn=命中建议改 · unconfigured=标准未配置（不瞎判） · skipped=当前输入形态无法检测
+ */
+export type ItemStatus = "pass" | "fail" | "warn" | "unconfigured" | "skipped"
+
+/** 单条命中的定位与证据（批注五要素中的「位置 / 原文 / 依据」） */
+export type CheckHit = {
+  /** 位置：章节 / 页 / 元数据字段路径（如 docProps/core.xml → dc:creator） */
+  location: string
+  /** 问题原文摘录（命中片段，最长 80 字） */
+  text: string
+  /** 规则标识（如 phone_regex / core_creator） */
+  rule: string
+  /** 依据：为什么算问题（招标出处 / 元数据字段 / 规则来源） */
+  basis: string
+  // ---- 定位锚点（R262 三栏界面：中栏精确高亮 + 闪烁，元数据/节点类命中可缺省）----
+  /** 命中段落在 ctx.paragraphs 中的下标（定位锚点，禁止用 chapters 字符串 indexOf 反查） */
+  paragraphIndex?: number
+  /** 命中段落所属章节下标（= chapterOf[paragraphIndex]，由定位解析层换算） */
+  chapterIndex?: number
+  /** 章节标题（如「第3章 实施方案」） */
+  chapterTitle?: string
+  /** 完整段落原文（列表预览不再 40 字截断；与 paragraphs[paragraphIndex].text 逐字相等） */
+  paragraphText?: string
+  /** 最近的二级标题提示（如「3.1 实施组织与进度计划」） */
+  sectionHint?: string
+  /** OOXML 部件名（元数据 / 批注 / 节点痕迹类命中用，如 docProps/core.xml） */
+  partName?: string
+  /** 页码估算（按段落累计行数粗估） */
+  lineNo?: number
+}
+
+/** 一个检查项的完整结果（一条规则 = 一个 CheckItem，可含多条 hit） */
+export type CheckItem = {
+  /** 检查项编号（对齐设计文档：L1-1 / L5-A1 / L5-B1 …） */
+  code: string
+  level: CheckLevel
+  /** 分组类目（如「主体身份」「文档元数据」） */
+  category: string
+  /** 检查项标题 */
+  title: string
+  severity: Severity
+  status: ItemStatus
+  /** 判定依据（规则来源或招标文件出处占位） */
+  basis: string
+  /** 建议改法（人工在 Word 中完成，工具不代改） */
+  suggestion: string
+  hits: CheckHit[]
+  /** 置信度：仅 AI 类才有；零 AI 项为 null（Excel 填「—」） */
+  confidence: number | null
+}
+
+/** 汇总统计 */
+export type CheckSummary = {
+  total: number
+  passed: number
+  fail: number
+  warn: number
+  unconfigured: number
+  skipped: number
+  bySeverity: Record<Severity, number>
+}
+
+/**
+ * 2026-10-24（P0-5 整改）：检查覆盖范围。
+ *
+ * 走查实测：某项目 13 个技术章只有 1 章有正文，检查器只看到这 1 章，
+ * 却给出「必须整改 0」的结论——用户会读成「标书已安全」。
+ * 检查结论的可信度 = 覆盖完整度 × 定级准确性，覆盖不完整时必须**明说**。
+ */
+export type CheckCoverage = {
+  /** 应检查的技术章数（来自项目大纲章节；上传文件形态为 0＝不适用） */
+  expectedChapters: number
+  /** 实际有正文、进入检查范围的章数 */
+  checkedChapters: number
+  /** 覆盖是否完整（没有应检查而未检查的章） */
+  complete: boolean
+  /** 一句话结论（面板/导出直接展示） */
+  note: string
+}
+
+/** 一次检查的完整结果（可整体导出 Excel / HTML，可回显清单） */
+export type BidCheckResult = {
+  mode: BidCheckMode
+  /** 来源文件名或项目名 */
+  sourceName: string
+  /** 输入形态：file=上传 docx/pdf · project=选择标书项目 */
+  inputKind: "file" | "project"
+  /** 是否含 OOXML 包（决定 L5-B 能否跑） */
+  hasPackage: boolean
+  items: CheckItem[]
+  summary: CheckSummary
+  /** 检查覆盖范围（2026-10-24） */
+  coverage: CheckCoverage
+  generatedAt: string
+  /** 章节数组（三栏界面左栏 + 中栏分组用；与 ctx.chapters 同源） */
+  chapters: CheckChapter[]
+  /** 段落数组（三栏界面中栏只读渲染 + 定位锚点；与 ctx.paragraphs 同源） */
+  paragraphs: Paragraph[]
+  /** 段落→章节映射（三栏中栏滚动↔左栏章节联动；与 ctx.chapterOf 同源，长度 = paragraphs.length） */
+  chapterOf: number[]
+}
+
+// ---------------------------------------------------------------------------
+// 文档上下文：规则层的唯一输入（只读，从 docx/pdf/项目正文构建）
+// ---------------------------------------------------------------------------
+
+/** 章节（标题 + 正文），喂给本地格式/身份/措辞规则 */
+export type CheckChapter = { title: string; content: string }
+
+/**
+ * 段落（R262 三栏界面中栏只读渲染 + 定位锚点的最小结构单元）。
+ * index/inTable/tableIndex/hasImage 为 T-1~T-4 提取缺陷修复补的字段。
+ */
+export type Paragraph = {
+  /** 纯文本（表格单元格文字也会进来，靠 inTable 区分） */
+  text: string
+  /** 是否标题段（pStyle Heading* / outlineLvl） */
+  heading: boolean
+  /** 在 paragraphs 数组中的下标（定位锚点，T-4） */
+  index: number
+  /** 是否位于表格内（T-1：渲染时整块折叠，不与正文混排） */
+  inTable: boolean
+  /** 所属表格序号（0 起；inTable=false 时缺省，T-1） */
+  tableIndex?: number
+  /** 段落内是否含图片 w:drawing / w:pict（T-2：渲染 [图片] 占位，图片类检查显式标未检测） */
+  hasImage: boolean
+}
+
+/** 页面四边距（单位 cm），从 w:pgMar 解析；无法确定为 null */
+export type PageMargins = { top: number; right: number; bottom: number; left: number }
+
+/**
+ * 文档元数据与结构事实（来自 OOXML 包）。
+ * available=false 表示当前输入（如仅项目正文文本）拿不到包，L5-B 类项标 skipped。
+ */
+export type DocMeta = {
+  available: boolean
+  /** 作者 / 最后保存者（docProps/core.xml dc:creator、cp:lastModifiedBy） */
+  creator: string
+  lastModifiedBy: string
+  /** 标题 / 主题 / 关键词（core.xml） */
+  title: string
+  subject: string
+  keywords: string
+  /** 公司 / 管理者（docProps/app.xml Company、Manager） */
+  company: string
+  manager: string
+  /** 是否存在批注 + 批注作者集合 */
+  hasComments: boolean
+  commentAuthors: string[]
+  /** 隐藏文字节点 w:vanish */
+  hasHiddenText: boolean
+  /** 修订残留计数 w:ins / w:del */
+  revisionIns: number
+  revisionDel: number
+  /** 书签名集合 w:bookmarkStart w:name */
+  bookmarkNames: string[]
+  /** 页眉页脚合并文本（header*.xml / footer*.xml 去标签后） */
+  headerFooterText: string
+  /** 文档保护 settings.xml documentProtection */
+  hasProtection: boolean
+  /** 水印 shape（含 "watermark" 文本或 Word 水印锚） */
+  hasWatermark: boolean
+  /** 自定义 XML 部件 customXml/ 或 w:dataBinding */
+  hasCustomXml: boolean
+  /**
+   * 含中文 run 的「生效字体」分布（继承链解析，R45）：run 自身 rFonts → run 字符样式
+   * → 段落样式（沿 basedOn 上溯）→ docDefaults。空数组=未解析到，规则层应回退 fontsUsed。
+   */
+  fontsEffective: EffectiveFontUsage[]
+  /** 继承链走完仍未取到字体的含中文 run 数（宁可上报计数，不瞎填一个字体） */
+  fontsUnresolvedRuns: number
+  /** 编号形式分布（numbering.xml 的 w:numFmt 解析；bullet=项目符号） */
+  numberingFormats: NumberingFormatUsage[]
+  /** 带自动编号（w:numPr 有 numId）的段落数 */
+  numberedParagraphs: number
+  /** 其中编号形式为项目符号（bullet）的段落数 */
+  bulletParagraphs: number
+  /** 正文去重后的中文字体集合（w:rFonts w:eastAsia） */
+  fontsUsed: string[]
+  /** 正文去重后的字号集合（w:sz val，半点单位原样保留） */
+  sizesUsed: string[]
+  /** 行距种类（w:spacing w:line + w:lineRule 归一） */
+  lineSpacings: string[]
+  /** 行距 (w:line, w:lineRule) 配对详情（R269 L1-14 行距标准判定用；无数据=空数组） */
+  lineSpacingsDetail: { line: string; rule: string }[]
+  /** 首节页面四边距 */
+  margins: PageMargins | null
+  /** 是否含页码域 / 页脚引用 */
+  hasPageNumber: boolean
+  /** 估算页数（正文字数 / 每页字数近似；无法精确时给估值） */
+  pageEstimate: number
+  /** 内嵌图片部件数量 */
+  imageCount: number
+  /** PDF 元数据（pdfjs getMetadata Info 映射；docx 输入为空对象） */
+  pdfMetadata: Record<string, string>
+}
+
+/** 规则层唯一输入 */
+export type DocContext = {
+  sourceName: string
+  inputKind: "file" | "project"
+  hasPackage: boolean
+  chapters: CheckChapter[]
+  fullText: string
+  meta: DocMeta
+  /** 段落序列（中栏只读渲染 + 定位；file 由 extractParagraphs 得，project 由章节正文合成） */
+  paragraphs: Paragraph[]
+  /** 段落→章节映射：chapterOf[i] = paragraphs[i] 所属 chapters 下标（长度 = paragraphs.length，T-3） */
+  chapterOf: number[]
+}
+
+// ---------------------------------------------------------------------------
+// 标签与展示映射（单一真源同时喂检测与页面，避免两处不一致）
+// ---------------------------------------------------------------------------
+
+export const CHECK_LEVEL_LABEL: Record<CheckLevel, string> = {
+  L1: "格式层",
+  L2: "响应层",
+  L3: "内容层",
+  L4: "查重层",
+  L5: "合规层（暗标）",
+}
+
+export const SEVERITY_LABEL: Record<Severity, string> = {
+  critical: "必须整改",
+  high: "丢分风险",
+  medium: "建议整改",
+  info: "提示",
+}
+
+/** 严重度排序权重（critical 最优先）：三栏阅读视图与导出清单共用的单一真源 */
+export const SEVERITY_RANK: Record<Severity, number> = { critical: 0, high: 1, medium: 2, info: 3 }
+
+/** 严重度色点（与 Word 审阅习惯一致，不自创）：红=必改 黄=建议 蓝=提示 灰=通过/未配置 */
+export const SEVERITY_DOT: Record<Severity, string> = {
+  critical: "🔴",
+  high: "🟠",
+  medium: "🟡",
+  info: "🔵",
+}
+
+export const ITEM_STATUS_LABEL: Record<ItemStatus, string> = {
+  pass: "通过",
+  fail: "命中必改",
+  warn: "命中建议",
+  unconfigured: "标准未配置",
+  skipped: "当前输入无法检测",
+}
+
+/** Badge 语义档映射（复用工程 ui/badge 的 variant 取值） */
+export const SEVERITY_BADGE_VARIANT: Record<Severity, "danger" | "warning" | "neutral" | "success"> = {
+  critical: "danger",
+  high: "warning",
+  medium: "warning",
+  info: "neutral",
+}
+
+/** 计算汇总（fail/warn 依据 status；bySeverity 只统计非 pass 项的 severity） */
+export function summarize(items: CheckItem[]): CheckSummary {
+  const s: CheckSummary = {
+    total: items.length,
+    passed: 0,
+    fail: 0,
+    warn: 0,
+    unconfigured: 0,
+    skipped: 0,
+    bySeverity: { critical: 0, high: 0, medium: 0, info: 0 },
+  }
+  for (const it of items) {
+    if (it.status === "pass") s.passed += 1
+    else if (it.status === "fail") s.fail += 1
+    else if (it.status === "warn") s.warn += 1
+    else if (it.status === "unconfigured") s.unconfigured += 1
+    else if (it.status === "skipped") s.skipped += 1
+    if (it.status === "fail" || it.status === "warn") s.bySeverity[it.severity] += 1
+  }
+  return s
+}
+
+/** 是否存在废标级(critical) 命中且状态为 fail——暗标门禁据此置灰导出 + 二次确认 */
+export function hasBlockingCritical(result: BidCheckResult): boolean {
+  return result.items.some((it) => it.severity === "critical" && it.status === "fail")
+}
+
+/**
+ * 命中位置的精确呈现（R264 单一真源）：正文类命中解析出锚点后，
+ * 用「章节标题 / 小节提示 / 第 N 段」替代粗粒度 location；未解析（元数据 / 节点类）回退原 location。
+ * 三栏阅读视图与 Excel 整改清单共用，避免两处口径不一致。
+ */
+export function formatHitLocation(h: CheckHit): string {
+  return (
+    [
+      h.chapterTitle,
+      h.sectionHint,
+      h.lineNo != null ? `第 ${h.lineNo} 段` : null,
+      h.paragraphIndex == null ? h.location : null,
+    ]
+      .filter(Boolean)
+      .join(" / ") || h.location
+  )
+}

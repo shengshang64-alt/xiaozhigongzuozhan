@@ -1,0 +1,584 @@
+/// <reference path="../pb_data/types.d.ts" />
+// pb_hooks/bid_projects.pb.js — 业务 collection + REST CRUD 路由 (self-contained)
+//
+// 由 mcp__rh-pb-hooks__install_business_collection 装. 不要直接 Read+Write 这个文件.
+// 业务字段: rh_user_id:text, project_name:text, tender_no:text, hospital:text, bid_open_date:date, stage:text, tender_text:text, tender_files:json, tender_tables:json, parse_report:json, bid_outline:json, bid_chapters:json, response_map:json, dup_report:json, void_check:json, ai_review:json, manual_review:json, parse_config:json, opportunity_id:text, bid_result:text, bid_amount:number, lost_reason:text, result_synced_at:date, target_pages:number, outline_level:number, figures_enabled:bool, clause_granularity:text, section_words:number, bid_defense:json, submission_check:json, stage_gates:json, text_audit:json, archived:bool, deleted_at:text, gen_options:json, global_facts:text, orchestration:json, max_figures:number, compilation_basis_extra:json, basis_style:text, format_settings:json, format_check_items:json, ref_template_text:text, ref_materials_text:text, identity_words:text, bid_source_mode:text, bid_external_text:text
+// 路由: list,get,create,update,delete
+// list filter 字段: rh_user_id,stage
+// list 默认排序: -updated
+
+onBootstrap(function (e) {
+  e.next()
+  try {
+    var existing = null
+    try { existing = $app.findCollectionByNameOrId("bid_projects") } catch (_) { existing = null }
+    if (existing) {
+      var changed = false
+      function hasField(name) {
+        try { return !!existing.fields.getByName(name) } catch (_) {}
+        try {
+          for (var i = 0; i < existing.fields.length; i++) {
+            if (String(existing.fields[i].name) === String(name)) return true
+          }
+        } catch (_) {}
+        return false
+      }
+      function addField(def) {
+        if (hasField(def.name)) return
+        try { existing.fields.add(new Field(def)); changed = true } catch (_) {}
+      }
+      addField({ name: 'rh_user_id', type: 'text', required: true })
+      addField({ name: 'project_name', type: 'text', required: true })
+      addField({ name: 'tender_no', type: 'text' })
+      addField({ name: 'hospital', type: 'text' })
+      addField({ name: 'bid_open_date', type: 'date' })
+      addField({ name: 'stage', type: 'text' })
+      addField({ name: 'tender_text', type: 'text' })
+      addField({ name: 'tender_files', type: 'json' })
+      addField({ name: 'tender_tables', type: 'json' })
+      addField({ name: 'parse_report', type: 'json' })
+      addField({ name: 'bid_outline', type: 'json' })
+      addField({ name: 'bid_chapters', type: 'json' })
+      addField({ name: 'response_map', type: 'json' })
+      addField({ name: 'dup_report', type: 'json' })
+      addField({ name: 'void_check', type: 'json' })
+      addField({ name: 'ai_review', type: 'json' })
+      addField({ name: 'manual_review', type: 'json' })
+      addField({ name: 'parse_config', type: 'json' })
+      addField({ name: 'opportunity_id', type: 'text' })
+      addField({ name: 'bid_result', type: 'text' })
+      addField({ name: 'bid_amount', type: 'number' })
+      addField({ name: 'lost_reason', type: 'text' })
+      addField({ name: 'result_synced_at', type: 'date' })
+      addField({ name: 'target_pages', type: 'number' })
+      addField({ name: 'outline_level', type: 'number' })
+      addField({ name: 'figures_enabled', type: 'bool' })
+      addField({ name: 'clause_granularity', type: 'text' })
+      addField({ name: 'section_words', type: 'number' })
+      addField({ name: 'bid_defense', type: 'json' })
+      addField({ name: 'submission_check', type: 'json' })
+      addField({ name: 'stage_gates', type: 'json' })
+      addField({ name: 'text_audit', type: 'json' })
+      addField({ name: 'archived', type: 'bool' })
+      addField({ name: 'deleted_at', type: 'text' })
+      addField({ name: 'gen_options', type: 'json' })
+      addField({ name: 'global_facts', type: 'text' })
+      addField({ name: 'orchestration', type: 'json' })
+      addField({ name: 'max_figures', type: 'number' })
+      addField({ name: 'compilation_basis_extra', type: 'json' })
+      addField({ name: 'basis_style', type: 'text', max: 16 })
+      addField({ name: 'format_settings', type: 'json' })
+      addField({ name: 'format_check_items', type: 'json' })
+      addField({ name: 'ref_template_text', type: 'text' })
+      addField({ name: 'ref_materials_text', type: 'text' })
+      addField({ name: 'identity_words', type: 'text' })
+      addField({ name: 'bid_source_mode', type: 'text', max: 16 })
+      addField({ name: 'bid_external_text', type: 'text' })
+      addField({ name: "created", type: "autodate", onCreate: true })
+      addField({ name: "updated", type: "autodate", onCreate: true, onUpdate: true })
+      // 用户反馈轮（2026-09-18）：长文本字段存量限制拦截十万字级招标文件保存（500 update_failed）
+      // 2026-09-21 修正：PB 0.23+ text 字段 max=0 并非不限，而是应用默认 5000 上限（官方 JSVM 文档），
+      // 旧修复把 max 置 0 从未解除限制；改为显式放宽到 LONG_TEXT_MAX；只放宽不收紧，幂等
+      var LONG_TEXT_FIELDS = ["tender_text", "ref_template_text", "ref_materials_text", "global_facts", "identity_words", "bid_external_text"]
+      var LONG_TEXT_MAX = 5000000
+      for (var lti = 0; lti < LONG_TEXT_FIELDS.length; lti++) {
+        try {
+          var lf = existing.fields.getByName(LONG_TEXT_FIELDS[lti])
+          var lfMax = (typeof lf.max === "number") ? lf.max : 0
+          if (lf && (lfMax === 0 || lfMax < LONG_TEXT_MAX)) { lf.max = LONG_TEXT_MAX; changed = true }
+        } catch (err) {
+          try { $app.logger().warn("bid_projects field repair err", "field", LONG_TEXT_FIELDS[lti], "err", String(err)) } catch (_) {}
+        }
+      }
+      if (changed) {
+        $app.save(existing)
+        try { $app.logger().info("bid_projects collection upgraded") } catch (_) {}
+      }
+    } else {
+      var col = new Collection({
+        type: "base",
+        name: "bid_projects",
+        listRule: null, viewRule: null, createRule: null, updateRule: null, deleteRule: null,
+        fields: [
+          { name: 'rh_user_id', type: 'text', required: true },
+          { name: 'project_name', type: 'text', required: true },
+          { name: 'tender_no', type: 'text' },
+          { name: 'hospital', type: 'text' },
+          { name: 'bid_open_date', type: 'date' },
+          { name: 'stage', type: 'text' },
+          { name: 'tender_text', type: 'text' },
+          { name: 'tender_files', type: 'json' },
+          { name: 'tender_tables', type: 'json' },
+          { name: 'parse_report', type: 'json' },
+          { name: 'bid_outline', type: 'json' },
+          { name: 'bid_chapters', type: 'json' },
+          { name: 'response_map', type: 'json' },
+          { name: 'dup_report', type: 'json' },
+          { name: 'void_check', type: 'json' },
+          { name: 'ai_review', type: 'json' },
+          { name: 'manual_review', type: 'json' },
+          { name: 'parse_config', type: 'json' },
+          { name: 'opportunity_id', type: 'text' },
+          { name: 'bid_result', type: 'text' },
+          { name: 'bid_amount', type: 'number' },
+          { name: 'lost_reason', type: 'text' },
+          { name: 'result_synced_at', type: 'date' },
+          { name: 'target_pages', type: 'number' },
+          { name: 'outline_level', type: 'number' },
+          { name: 'figures_enabled', type: 'bool' },
+          { name: 'clause_granularity', type: 'text' },
+          { name: 'section_words', type: 'number' },
+          { name: 'bid_defense', type: 'json' },
+          { name: 'submission_check', type: 'json' },
+          { name: 'stage_gates', type: 'json' },
+          { name: 'text_audit', type: 'json' },
+          { name: 'archived', type: 'bool' },
+          { name: 'deleted_at', type: 'text' },
+          { name: 'gen_options', type: 'json' },
+          { name: 'global_facts', type: 'text' },
+          { name: 'orchestration', type: 'json' },
+          { name: 'max_figures', type: 'number' },
+          { name: 'compilation_basis_extra', type: 'json' },
+          { name: 'basis_style', type: 'text', max: 16 },
+          { name: 'format_settings', type: 'json' },
+          { name: 'format_check_items', type: 'json' },
+          { name: 'ref_template_text', type: 'text' },
+          { name: 'ref_materials_text', type: 'text' },
+          { name: 'identity_words', type: 'text' },
+          { name: 'bid_source_mode', type: 'text', max: 16 },
+          { name: 'bid_external_text', type: 'text' },
+          { name: "created", type: "autodate", onCreate: true },
+          { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
+        ],
+      })
+      $app.save(col)
+      try { $app.logger().info("bid_projects collection created") } catch (_) {}
+    }
+  } catch (err) {
+    try { $app.logger().error("bid_projects bootstrap: " + String(err && err.message || err)) } catch (_) {}
+  }
+})
+
+// GET /api/bid_projects?page=1&perPage=50&sort=-created&rh_user_id=...&stage=...
+routerAdd("GET", "/api/bid_projects", function (e) {
+  function ensureCollLocal() {
+    try { return $app.findCollectionByNameOrId("bid_projects") } catch (_) {}
+    var col = new Collection({
+      type: "base",
+      name: "bid_projects",
+      listRule: null, viewRule: null, createRule: null, updateRule: null, deleteRule: null,
+      fields: [
+          { name: 'rh_user_id', type: 'text', required: true },
+          { name: 'project_name', type: 'text', required: true },
+          { name: 'tender_no', type: 'text' },
+          { name: 'hospital', type: 'text' },
+          { name: 'bid_open_date', type: 'date' },
+          { name: 'stage', type: 'text' },
+          { name: 'tender_text', type: 'text' },
+          { name: 'tender_files', type: 'json' },
+          { name: 'tender_tables', type: 'json' },
+          { name: 'parse_report', type: 'json' },
+          { name: 'bid_outline', type: 'json' },
+          { name: 'bid_chapters', type: 'json' },
+          { name: 'response_map', type: 'json' },
+          { name: 'dup_report', type: 'json' },
+          { name: 'void_check', type: 'json' },
+          { name: 'ai_review', type: 'json' },
+          { name: 'manual_review', type: 'json' },
+          { name: 'parse_config', type: 'json' },
+          { name: 'opportunity_id', type: 'text' },
+          { name: 'bid_result', type: 'text' },
+          { name: 'bid_amount', type: 'number' },
+          { name: 'lost_reason', type: 'text' },
+          { name: 'result_synced_at', type: 'date' },
+          { name: 'target_pages', type: 'number' },
+          { name: 'outline_level', type: 'number' },
+          { name: 'figures_enabled', type: 'bool' },
+          { name: 'clause_granularity', type: 'text' },
+          { name: 'section_words', type: 'number' },
+          { name: 'bid_defense', type: 'json' },
+          { name: 'submission_check', type: 'json' },
+          { name: 'stage_gates', type: 'json' },
+          { name: 'text_audit', type: 'json' },
+          { name: 'archived', type: 'bool' },
+          { name: 'deleted_at', type: 'text' },
+          { name: 'gen_options', type: 'json' },
+          { name: 'global_facts', type: 'text' },
+          { name: 'orchestration', type: 'json' },
+          { name: 'max_figures', type: 'number' },
+          { name: 'compilation_basis_extra', type: 'json' },
+          { name: 'basis_style', type: 'text', max: 16 },
+          { name: 'format_settings', type: 'json' },
+          { name: 'format_check_items', type: 'json' },
+          { name: 'ref_template_text', type: 'text' },
+          { name: 'ref_materials_text', type: 'text' },
+          { name: 'identity_words', type: 'text' },
+          { name: 'bid_source_mode', type: 'text', max: 16 },
+          { name: 'bid_external_text', type: 'text' },
+        { name: "created", type: "autodate", onCreate: true },
+        { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
+      ],
+    })
+    $app.save(col)
+    return $app.findCollectionByNameOrId("bid_projects")
+  }
+  try {
+    ensureCollLocal()
+    var info = e.requestInfo()
+    var query = info.query || {}
+    var __uid = String(e.get("rhUserId") || "")
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
+    var page = parseInt(String(query.page || "1"), 10) || 1
+    var perPage = parseInt(String(query.perPage || "50"), 10) || 50
+    if (perPage > 200) perPage = 200
+    var sort = String(query.sort || "-updated")
+    var filterParts = []
+    var params = {}
+    filterParts.push("rh_user_id = {:rh_user_id}")
+      params.rh_user_id = __uid
+    if (query.stage !== undefined && query.stage !== "") {
+      filterParts.push("stage = {:stage}")
+      params.stage = String(query.stage)
+    }
+    var filter = filterParts.length > 0 ? filterParts.join(" && ") : ""
+    var records = filter
+      ? $app.findRecordsByFilter("bid_projects", filter, sort, perPage, (page - 1) * perPage, params)
+      : $app.findRecordsByFilter("bid_projects", "", sort, perPage, (page - 1) * perPage)
+    var items = []
+    for (var i = 0; i < records.length; i++) {
+      items.push(records[i].publicExport())
+    }
+    // 2026-10-20 性能修复（照 kb_docs 的 P1-3 口径）：原实现分页查完之后又用
+    // findRecordsByFilter(..., 100000, 0) 把「该用户全部项目」整条记录加载进内存只为数个数——
+    // 而 bid_projects 单条可达 76 万字（tender_text 全文 + 全部章正文），等于每次打开列表
+    // 都把整个标书语料读一遍。改为 $app.countRecords + $dbx 表达式（SQL count，不加载记录）。
+    // 本路由的过滤只有 rh_user_id / stage 两个精确匹配（无 LIKE），与 kb_docs 里
+    // 「q 模糊搜索不能走 dbx 快速路径」的已知限制无关。
+    // 任何一步异常都回落到原实现——绝不因为计数失败就把 totalItems 退化成「只有当前一页」。
+    var totalItems = items.length
+    try {
+      var __exprs = []
+      var __pairUser = {}
+      __pairUser["rh_user_id"] = __uid
+      __exprs.push($dbx.hashExp(__pairUser))
+      if (query.stage !== undefined && query.stage !== "") {
+        var __pairStage = {}
+        __pairStage["stage"] = String(query.stage)
+        __exprs.push($dbx.hashExp(__pairStage))
+      }
+      var __cntExpr = __exprs[0]
+      for (var __ci = 1; __ci < __exprs.length; __ci++) {
+        __cntExpr = $dbx.and(__cntExpr, __exprs[__ci])
+      }
+      var __cnt = $app.countRecords("bid_projects", __cntExpr)
+      if (typeof __cnt === "number" && __cnt >= 0) totalItems = __cnt
+    } catch (err2) {
+      try {
+        var __fallback = $app.findRecordsByFilter("bid_projects", filter, sort, 100000, 0, params)
+        totalItems = __fallback.length
+      } catch (err3) {}
+    }
+    return e.json(200, { items: items, page: page, perPage: perPage, totalItems: totalItems })
+  } catch (err) {
+    var msg = String(err && err.message || err)
+    try { $app.logger().error("bid_projects list: " + msg) } catch (_) {}
+    return e.json(500, { error: "list_failed", message: msg, fingerprint: msg.substring(0, 80) })
+  }
+})
+// GET /api/bid_projects/{id}
+routerAdd("GET", "/api/bid_projects/{id}", function (e) {
+  try {
+    var id = e.request.pathValue("id")
+    var __uid = String(e.get("rhUserId") || "")
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
+    if (!id) return e.json(400, { error: "id_required" })
+    var rec = null
+    try { rec = $app.findRecordById("bid_projects", id) } catch (_) { rec = null }
+    if (!rec) return e.json(404, { error: "not_found" })
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id")||"") === __uid) } catch(_x) {}
+    if (!__own) { try { __own = (String(rec.get("owner_id")||"") === __uid) } catch(_x) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
+    return e.json(200, rec.publicExport())
+  } catch (err) {
+    var msg = String(err && err.message || err)
+    return e.json(500, { error: "get_failed", message: msg, fingerprint: msg.substring(0, 80) })
+  }
+})
+// POST /api/bid_projects  body 字段: rh_user_id, project_name, tender_no, hospital, bid_open_date, stage, tender_text, parse_report, bid_outline, bid_chapters, response_map, dup_report, void_check, ai_review, manual_review, parse_config, opportunity_id, bid_result, bid_amount, lost_reason, result_synced_at, target_pages, outline_level, figures_enabled, clause_granularity, section_words, bid_defense, submission_check, stage_gates, archived, deleted_at, gen_options, global_facts, orchestration, max_figures, compilation_basis_extra, basis_style, format_settings, format_check_items, ref_template_text, ref_materials_text, identity_words
+routerAdd("POST", "/api/bid_projects", function (e) {
+  try {
+    var collFix2 = $app.findCollectionByNameOrId("bid_projects")
+    if (collFix2) {
+      var needFix2 = false
+      var LTF2 = ["tender_text", "ref_template_text", "ref_materials_text", "global_facts", "identity_words"]
+      var WANT2 = 5000000
+      for (var li2 = 0; li2 < LTF2.length; li2++) {
+        var f2 = collFix2.fields.getByName(LTF2[li2])
+        var m2 = (f2 && typeof f2.max === "number") ? f2.max : 0
+        if (f2 && (m2 === 0 || m2 < WANT2)) { f2.max = WANT2; needFix2 = true }
+      }
+      if (needFix2) $app.save(collFix2)
+    }
+  } catch (_) {}
+  function ensureCollLocal() {
+    try { return $app.findCollectionByNameOrId("bid_projects") } catch (_) {}
+    var col = new Collection({
+      type: "base",
+      name: "bid_projects",
+      listRule: null, viewRule: null, createRule: null, updateRule: null, deleteRule: null,
+      fields: [
+          { name: 'rh_user_id', type: 'text', required: true },
+          { name: 'project_name', type: 'text', required: true },
+          { name: 'tender_no', type: 'text' },
+          { name: 'hospital', type: 'text' },
+          { name: 'bid_open_date', type: 'date' },
+          { name: 'stage', type: 'text' },
+          { name: 'tender_text', type: 'text' },
+          { name: 'tender_files', type: 'json' },
+          { name: 'tender_tables', type: 'json' },
+          { name: 'parse_report', type: 'json' },
+          { name: 'bid_outline', type: 'json' },
+          { name: 'bid_chapters', type: 'json' },
+          { name: 'response_map', type: 'json' },
+          { name: 'dup_report', type: 'json' },
+          { name: 'void_check', type: 'json' },
+          { name: 'ai_review', type: 'json' },
+          { name: 'manual_review', type: 'json' },
+          { name: 'parse_config', type: 'json' },
+          { name: 'opportunity_id', type: 'text' },
+          { name: 'bid_result', type: 'text' },
+          { name: 'bid_amount', type: 'number' },
+          { name: 'lost_reason', type: 'text' },
+          { name: 'result_synced_at', type: 'date' },
+          { name: 'target_pages', type: 'number' },
+          { name: 'outline_level', type: 'number' },
+          { name: 'figures_enabled', type: 'bool' },
+          { name: 'clause_granularity', type: 'text' },
+          { name: 'section_words', type: 'number' },
+          { name: 'bid_defense', type: 'json' },
+          { name: 'submission_check', type: 'json' },
+          { name: 'stage_gates', type: 'json' },
+          { name: 'text_audit', type: 'json' },
+          { name: 'archived', type: 'bool' },
+          { name: 'deleted_at', type: 'text' },
+          { name: 'gen_options', type: 'json' },
+          { name: 'global_facts', type: 'text' },
+          { name: 'orchestration', type: 'json' },
+          { name: 'max_figures', type: 'number' },
+          { name: 'compilation_basis_extra', type: 'json' },
+          { name: 'basis_style', type: 'text', max: 16 },
+          { name: 'format_settings', type: 'json' },
+          { name: 'format_check_items', type: 'json' },
+          { name: 'ref_template_text', type: 'text' },
+          { name: 'ref_materials_text', type: 'text' },
+          { name: 'identity_words', type: 'text' },
+          { name: 'bid_source_mode', type: 'text', max: 16 },
+          { name: 'bid_external_text', type: 'text' },
+        { name: "created", type: "autodate", onCreate: true },
+        { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
+      ],
+    })
+    $app.save(col)
+    return $app.findCollectionByNameOrId("bid_projects")
+  }
+  try {
+    var coll = ensureCollLocal()
+    var body = e.requestInfo().body || {}
+    var __uid = String(e.get("rhUserId") || "")
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
+    var rec = new Record(coll)
+    rec.set("rh_user_id", __uid)
+    rec.set("project_name", body.project_name === undefined || body.project_name === null ? "" : String(body.project_name))
+    rec.set("tender_no", body.tender_no === undefined || body.tender_no === null ? "" : String(body.tender_no))
+    rec.set("hospital", body.hospital === undefined || body.hospital === null ? "" : String(body.hospital))
+    rec.set("bid_open_date", body.bid_open_date === undefined || body.bid_open_date === null ? "" : String(body.bid_open_date))
+    rec.set("stage", body.stage === undefined || body.stage === null ? "" : String(body.stage))
+    rec.set("tender_text", body.tender_text === undefined || body.tender_text === null ? "" : String(body.tender_text))
+    rec.set("tender_files", body.tender_files)
+    rec.set("tender_tables", body.tender_tables)
+    rec.set("parse_report", body.parse_report)
+    rec.set("bid_outline", body.bid_outline)
+    rec.set("bid_chapters", body.bid_chapters)
+    rec.set("response_map", body.response_map)
+    rec.set("dup_report", body.dup_report)
+    rec.set("void_check", body.void_check)
+    rec.set("ai_review", body.ai_review)
+    rec.set("manual_review", body.manual_review)
+    rec.set("parse_config", body.parse_config)
+    rec.set("opportunity_id", body.opportunity_id === undefined || body.opportunity_id === null ? "" : String(body.opportunity_id))
+    rec.set("bid_result", body.bid_result === undefined || body.bid_result === null ? "" : String(body.bid_result))
+    rec.set("bid_amount", (body.bid_amount === undefined || body.bid_amount === null) ? 0 : Number(body.bid_amount))
+    rec.set("lost_reason", body.lost_reason === undefined || body.lost_reason === null ? "" : String(body.lost_reason))
+    rec.set("result_synced_at", body.result_synced_at === undefined || body.result_synced_at === null ? "" : String(body.result_synced_at))
+    rec.set("target_pages", (body.target_pages === undefined || body.target_pages === null) ? 0 : Number(body.target_pages))
+    rec.set("outline_level", (body.outline_level === undefined || body.outline_level === null) ? 0 : Number(body.outline_level))
+    rec.set("figures_enabled", !!body.figures_enabled)
+    rec.set("clause_granularity", body.clause_granularity === undefined || body.clause_granularity === null ? "" : String(body.clause_granularity))
+    rec.set("section_words", (body.section_words === undefined || body.section_words === null) ? 0 : Number(body.section_words))
+    rec.set("bid_defense", body.bid_defense)
+    rec.set("submission_check", body.submission_check)
+    rec.set("stage_gates", body.stage_gates)
+    rec.set("text_audit", body.text_audit)
+    rec.set("archived", !!body.archived)
+    rec.set("deleted_at", body.deleted_at === undefined || body.deleted_at === null ? "" : String(body.deleted_at))
+    rec.set("gen_options", body.gen_options)
+    rec.set("global_facts", body.global_facts === undefined || body.global_facts === null ? "" : String(body.global_facts))
+    rec.set("orchestration", body.orchestration)
+    rec.set("max_figures", (body.max_figures === undefined || body.max_figures === null) ? 0 : Number(body.max_figures))
+    rec.set("compilation_basis_extra", body.compilation_basis_extra)
+    rec.set("basis_style", body.basis_style === undefined || body.basis_style === null ? "" : String(body.basis_style))
+    rec.set("format_settings", body.format_settings)
+    rec.set("format_check_items", body.format_check_items)
+    rec.set("ref_template_text", body.ref_template_text === undefined || body.ref_template_text === null ? "" : String(body.ref_template_text))
+    rec.set("ref_materials_text", body.ref_materials_text === undefined || body.ref_materials_text === null ? "" : String(body.ref_materials_text))
+    rec.set("identity_words", body.identity_words === undefined || body.identity_words === null ? "" : String(body.identity_words))
+    rec.set("bid_source_mode", body.bid_source_mode === undefined || body.bid_source_mode === null ? "" : String(body.bid_source_mode))
+    rec.set("bid_external_text", body.bid_external_text === undefined || body.bid_external_text === null ? "" : String(body.bid_external_text))
+    $app.save(rec)
+    return e.json(200, rec.publicExport())
+  } catch (err) {
+    var msg = String(err && err.message || err)
+    try { $app.logger().error("bid_projects create: " + msg) } catch (_) {}
+    return e.json(500, { error: "create_failed", message: msg, fingerprint: msg.substring(0, 80) })
+  }
+})
+// PATCH /api/bid_projects/{id}  body 字段同 POST, 只更新 body 里出现的字段
+routerAdd("PATCH", "/api/bid_projects/{id}", function (e) {
+  try {
+    // 用户反馈轮（2026-09-18）：长文本字段 max 懒修复；2026-09-21 修正：PB 0.23+ text max=0 并非不限
+    // 而是应用默认 5000 上限（官方 JSVM 文档），故显式放宽到 WANT；只放宽不收紧，幂等
+    // Goja 跨 routerAdd 不共享顶层函数/变量，故与 POST/onBootstrap 各自内联
+    try {
+      var collFix = $app.findCollectionByNameOrId("bid_projects")
+      if (collFix) {
+        var needFix = false
+        var LTF = ["tender_text", "ref_template_text", "ref_materials_text", "global_facts", "identity_words", "bid_external_text"]
+        var WANT = 5000000
+        for (var li = 0; li < LTF.length; li++) {
+          var ff = collFix.fields.getByName(LTF[li])
+          if (!ff) continue
+          var curMax = (typeof ff.max === "number") ? ff.max : 0
+          if (curMax === 0 || curMax < WANT) { ff.max = WANT; needFix = true }
+        }
+        // 2026-10-20：这三个字段此前漏在写入白名单外（text_audit 连列都没有），就地幂等补列。
+        // onBootstrap 的 addField 只在启动时跑，而本机重启 :7000 长期被挡（backlog B15），
+        // 只靠 onBootstrap 会让本次修复必须等重启才生效。与上面 max 懒修复同一范式、同样幂等。
+        var ENSURE_FIELDS = [
+          { name: "text_audit", type: "json" },
+          { name: "bid_source_mode", type: "text", max: 16 },
+          { name: "bid_external_text", type: "text" },
+        ]
+        for (var ei = 0; ei < ENSURE_FIELDS.length; ei++) {
+          try {
+            if (!collFix.fields.getByName(ENSURE_FIELDS[ei].name)) {
+              collFix.fields.add(new Field(ENSURE_FIELDS[ei]))
+              needFix = true
+            }
+          } catch (_) {}
+        }
+        if (needFix) $app.save(collFix)
+      }
+    } catch (_) {}
+    var id = e.request.pathValue("id")
+    var __uid = String(e.get("rhUserId") || "")
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
+    if (!id) return e.json(400, { error: "id_required" })
+    var rec = null
+    try { rec = $app.findRecordById("bid_projects", id) } catch (_) { rec = null }
+    if (!rec) return e.json(404, { error: "not_found" })
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id")||"") === __uid) } catch(_x) {}
+    if (!__own) { try { __own = (String(rec.get("owner_id")||"") === __uid) } catch(_x) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
+    var body = e.requestInfo().body || {}
+    // 静默忽略是 text_audit 丢数据的根因：前端写入的字段若不在下面白名单里，既不报错也不落库，
+    // 前端拿到 200 以为「已存档」，刷新后读回 null（2026-10-20 修复前 text_audit 即如此）。
+    // 这里只对白名单外字段记一条 warn 留痕，不改响应语义（避免打断既有客户端）；真正的防线是
+    // pbFieldContract.test.ts 的前端写入字段 ↔ 白名单契约守卫。
+    try {
+      var KNOWN_FIELDS = ["project_name", "tender_no", "hospital", "bid_open_date", "stage", "tender_text", "parse_report", "bid_outline", "bid_chapters", "response_map", "dup_report", "void_check", "ai_review", "manual_review", "parse_config", "opportunity_id", "bid_result", "bid_amount", "lost_reason", "result_synced_at", "target_pages", "outline_level", "figures_enabled", "clause_granularity", "section_words", "bid_defense", "submission_check", "stage_gates", "text_audit", "archived", "deleted_at", "gen_options", "global_facts", "orchestration", "max_figures", "compilation_basis_extra", "basis_style", "format_settings", "format_check_items", "ref_template_text", "ref_materials_text", "identity_words", "bid_source_mode", "bid_external_text"]
+      var unknownFields = []
+      for (var bf in body) { if (KNOWN_FIELDS.indexOf(bf) === -1) unknownFields.push(bf) }
+      if (unknownFields.length) {
+        $app.logger().warn("bid_projects PATCH: 白名单外字段未落库", "id", id, "fields", unknownFields.join(","))
+      }
+    } catch (_) {}
+    // IDOR fix: owner transfer disabled
+    if ("project_name" in body) rec.set("project_name", body.project_name === undefined || body.project_name === null ? "" : String(body.project_name))
+    if ("tender_no" in body) rec.set("tender_no", body.tender_no === undefined || body.tender_no === null ? "" : String(body.tender_no))
+    if ("hospital" in body) rec.set("hospital", body.hospital === undefined || body.hospital === null ? "" : String(body.hospital))
+    if ("bid_open_date" in body) rec.set("bid_open_date", body.bid_open_date === undefined || body.bid_open_date === null ? "" : String(body.bid_open_date))
+    if ("stage" in body) rec.set("stage", body.stage === undefined || body.stage === null ? "" : String(body.stage))
+    if ("tender_text" in body) rec.set("tender_text", body.tender_text === undefined || body.tender_text === null ? "" : String(body.tender_text))
+    if ("tender_files" in body) rec.set("tender_files", body.tender_files)
+    if ("tender_tables" in body) rec.set("tender_tables", body.tender_tables)
+    if ("parse_report" in body) rec.set("parse_report", body.parse_report)
+    if ("bid_outline" in body) rec.set("bid_outline", body.bid_outline)
+    if ("bid_chapters" in body) rec.set("bid_chapters", body.bid_chapters)
+    if ("response_map" in body) rec.set("response_map", body.response_map)
+    if ("dup_report" in body) rec.set("dup_report", body.dup_report)
+    if ("void_check" in body) rec.set("void_check", body.void_check)
+    if ("ai_review" in body) rec.set("ai_review", body.ai_review)
+    if ("manual_review" in body) rec.set("manual_review", body.manual_review)
+    if ("parse_config" in body) rec.set("parse_config", body.parse_config)
+    if ("opportunity_id" in body) rec.set("opportunity_id", body.opportunity_id === undefined || body.opportunity_id === null ? "" : String(body.opportunity_id))
+    if ("bid_result" in body) rec.set("bid_result", body.bid_result === undefined || body.bid_result === null ? "" : String(body.bid_result))
+    if ("bid_amount" in body) rec.set("bid_amount", (body.bid_amount === undefined || body.bid_amount === null) ? 0 : Number(body.bid_amount))
+    if ("lost_reason" in body) rec.set("lost_reason", body.lost_reason === undefined || body.lost_reason === null ? "" : String(body.lost_reason))
+    if ("result_synced_at" in body) rec.set("result_synced_at", body.result_synced_at === undefined || body.result_synced_at === null ? "" : String(body.result_synced_at))
+    if ("target_pages" in body) rec.set("target_pages", (body.target_pages === undefined || body.target_pages === null) ? 0 : Number(body.target_pages))
+    if ("outline_level" in body) rec.set("outline_level", (body.outline_level === undefined || body.outline_level === null) ? 0 : Number(body.outline_level))
+    if ("figures_enabled" in body) rec.set("figures_enabled", !!body.figures_enabled)
+    if ("clause_granularity" in body) rec.set("clause_granularity", body.clause_granularity === undefined || body.clause_granularity === null ? "" : String(body.clause_granularity))
+    if ("section_words" in body) rec.set("section_words", (body.section_words === undefined || body.section_words === null) ? 0 : Number(body.section_words))
+    if ("bid_defense" in body) rec.set("bid_defense", body.bid_defense)
+    if ("submission_check" in body) rec.set("submission_check", body.submission_check)
+    if ("stage_gates" in body) rec.set("stage_gates", body.stage_gates)
+    if ("text_audit" in body) rec.set("text_audit", body.text_audit)
+    if ("archived" in body) rec.set("archived", !!body.archived)
+    if ("deleted_at" in body) rec.set("deleted_at", body.deleted_at === undefined || body.deleted_at === null ? "" : String(body.deleted_at))
+    if ("gen_options" in body) rec.set("gen_options", body.gen_options)
+    if ("global_facts" in body) rec.set("global_facts", body.global_facts === undefined || body.global_facts === null ? "" : String(body.global_facts))
+    if ("orchestration" in body) rec.set("orchestration", body.orchestration)
+    if ("max_figures" in body) rec.set("max_figures", (body.max_figures === undefined || body.max_figures === null) ? 0 : Number(body.max_figures))
+    if ("compilation_basis_extra" in body) rec.set("compilation_basis_extra", body.compilation_basis_extra)
+    if ("basis_style" in body) rec.set("basis_style", body.basis_style === undefined || body.basis_style === null ? "" : String(body.basis_style))
+    if ("format_settings" in body) rec.set("format_settings", body.format_settings)
+    if ("format_check_items" in body) rec.set("format_check_items", body.format_check_items)
+    if ("ref_template_text" in body) rec.set("ref_template_text", body.ref_template_text === undefined || body.ref_template_text === null ? "" : String(body.ref_template_text))
+    if ("ref_materials_text" in body) rec.set("ref_materials_text", body.ref_materials_text === undefined || body.ref_materials_text === null ? "" : String(body.ref_materials_text))
+    if ("identity_words" in body) rec.set("identity_words", body.identity_words === undefined || body.identity_words === null ? "" : String(body.identity_words))
+    // 2026-10-20：bid_source_mode / bid_external_text 此前有列但漏在写入白名单外——
+    // Q28「外部投标文件」的上传与来源切换因此静默不落库（前端 updateProject 后刷新即丢）。
+    if ("bid_source_mode" in body) rec.set("bid_source_mode", body.bid_source_mode === undefined || body.bid_source_mode === null ? "" : String(body.bid_source_mode))
+    if ("bid_external_text" in body) rec.set("bid_external_text", body.bid_external_text === undefined || body.bid_external_text === null ? "" : String(body.bid_external_text))
+    $app.save(rec)
+    return e.json(200, rec.publicExport())
+  } catch (err) {
+    var msg = String(err && err.message || err)
+    try { $app.logger().error("bid_projects update: " + msg) } catch (_) {}
+    return e.json(500, { error: "update_failed", message: msg, fingerprint: msg.substring(0, 80) })
+  }
+})
+// DELETE /api/bid_projects/{id}
+routerAdd("DELETE", "/api/bid_projects/{id}", function (e) {
+  try {
+    var id = e.request.pathValue("id")
+    var __uid = String(e.get("rhUserId") || "")
+    if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
+    if (!id) return e.json(400, { error: "id_required" })
+    var rec = null
+    try { rec = $app.findRecordById("bid_projects", id) } catch (_) { rec = null }
+    if (!rec) return e.json(404, { error: "not_found" })
+    var __own = false
+    try { __own = (String(rec.get("rh_user_id")||"") === __uid) } catch(_x) {}
+    if (!__own) { try { __own = (String(rec.get("owner_id")||"") === __uid) } catch(_x) {} }
+    if (!__own) return e.json(403, { error: "forbidden", message: "无权操作该记录" })
+    $app.delete(rec)
+    return e.json(200, { ok: true })
+  } catch (err) {
+    var msg = String(err && err.message || err)
+    return e.json(500, { error: "delete_failed", message: msg, fingerprint: msg.substring(0, 80) })
+  }
+})

@@ -1,0 +1,526 @@
+{
+  "round": 68,
+  "lastRound": {
+    "id": "R068",
+    "theme": "开标倒计时每天 00:00–08:00 多算一天（date-only 被按 UTC 解析）+ 补录条直出库里的日期时间串、编辑框空白 → 解析上收 src/lib/bidOpenDay 单一真源",
+    "verdict": "pass"
+  },
+  "eslintBaseline": 116,
+  "gatesBaseline": {
+    "tsc": 0,
+    "eslint": 116
+  },
+  "gates": {
+    "tsc": "pass",
+    "build": "pass",
+    "vitest": "pass",
+    "eslint": "pass"
+  },
+  "backlog": [
+    {
+      "id": "B35-evidence-depth-budget",
+      "priority": "high",
+      "source": "self-found(R63)",
+      "title": "证据深度 / 预算自适应（B25 分出来的另一半）：R63 之后选块已经不是瓶颈，但全量 13.9 万字仍只有约 14% 的正文能进模型，严格判据下 86/133。两条候选：① **注入预算按模型上下文自适应**——selectBidEvidence 的 budget 本来就是入参，改动点在调用侧（useBidWorkspace 的偏离表/废标两条链路），关键是先搞清楚所选模型的上下文上限从哪取（modelProfiles/modelRouting 里有没有现成字段），并在模型切换时不动存量产物；② **偏离表按条款分批取证**——每批各自吃满预算，召回可以逼近单批天花板，但 LLM 调用次数线性增长、**会改变计费次数**，属「会不会让已生成内容/已存数据变得不一致」的边界，动手前必须单独向用户确认计费口径。另：严格判据目前只钉在安中医全量（bidVisibilityRealBid §7 的 countStrictlyCovered），第二份语料未接，是低成本的一步。"
+    },
+    {
+      "id": "B22-multi-agent-same-workspace",
+      "title": "同一工作区并发执行者（WorkBuddy AI，C:\\Users\\Administrator\\.workbuddy-ai）实测：R48 期间它在改 src/components/ppt-quote/QuoteEditor.tsx 并跑 vitest，导致 ① 我在途 tsc 被对方的半成品改动打成 error（对方随后自行还原）② 全仓 vitest 文件数含对方未提交文件（241 而非 240）。待办：约定「同一时刻只允许一个执行者写仓库」，或给另一方改用 worktree/分支；并复核 docs/evolution/_loop_state.json 的 round 是否会双 bump【R49 实测确认已发生】R49（本地自动化线）原记 R48，与项目 R48（factSources 事实来源优先级）撞号 —— 即本条担心的「round 双 bump」已真实发生；R49 已主动顺延，并在 .loop/ledger.json 与 docs/evolution/_loop_state.json 两边写明编号来源。",
+      "priority": "high",
+      "source": "self-found(R48)"
+    },
+    {
+      "id": "B23-prompt-doc-generator-drift",
+      "title": "scripts/split-prompts.mjs 与母文档 docs/系统提示词分类手册.md 已既存漂移：执行它会冲掉 docs/提示词手册/01-标书工作台.md §2.27 与 08-站内助手.md 里的手补修订说明（R48 实测复现后已还原）。R48 起派生手册一律手工同步，并由 factSourceWiring.test.ts 的「母手册 §2.22 == 派生手册 §2.22 == 代码」守卫兜底。待办：修生成器（保留手补区）或改为只校验不覆盖",
+      "priority": "medium",
+      "source": "self-found(R48)"
+    },
+    {
+      "id": "B24-upgrade-doc-slices-3-4-5",
+      "title": "WorkBuddy《提示词升级文档》剩余切片：切片 3 长文可见性（长文生成的可观测/可续写）、切片 4 Flash 选型实测（deepseek-v4.1-flash 在真实标书链路的表现取证）、切片 5 交付金丝雀（生成→导出的端到端交付物体检）。切片 0 基线 / 切片 1 废标证据（R47 随行入库）/ 切片 2 事实来源优先级（R48）已完成；**切片 3 长文可见性已由 R50 完成**（docs/evolution/R50_20261015.md），剩切片 4 Flash 选型实测 / 切片 5 交付金丝雀",
+      "priority": "high",
+      "source": "benchmark"
+    },
+    {
+      "id": "B0-gate-honesty",
+      "title": "门禁诚实性：驱动器已禁止「本轮文件 pass / 全仓被在途文件挡」式自我豁免（--verify-state）；四门实测 tsc 0 / eslint 151 已回写 _loop_state.json",
+      "priority": "high",
+      "source": "self-found(R41a)"
+    },
+    {
+      "id": "B0b-schema-as-code",
+      "title": "schema-as-code 与人工检查清单已全部落地：R41b 导出 + 双向验证 pb_migrations/1791964662_collections_snapshot.js，空目录重建验收固化为 `pnpm verify:migrations`（空目录 40 集合，exit 0）；**R44 起该验收与「lint 债务预算 + 账本同源」一起进 `pnpm health:manual`（scripts/health/manual-checks.mjs）**——依旧刻意不进 loop 四门，保持 loop 无 pocketbase 二进制依赖。本条可结。",
+      "priority": "high",
+      "source": "self-found(R41b done)"
+    },
+    {
+      "id": "B0c-ui-regression",
+      "title": "UI 回归网（R42 四张：DiscountCell 10 例 / NumCell 11 例 / DiscountIntentDialog 11 例 / GateChecklist 14 例 = 46 例，均 jsdom + testing-library，per-file @vitest-environment 覆盖不动全局 node 环境；四张都做过「删实现即变红」验证）。R49 已补完「报价行编辑 → 小计 / 总额往返」半张（src/components/ppt-quote/QuoteEditorMoney.test.tsx 6 例，含探针行 15 × 599,729.21 × 90% = 8,096,344.34 与「删实现即变红」验证）。剩余可补：导出前门禁拦截（该拦的必须拦、该放行的必须放行）。此后新增 UI 高风险交互按「改前先补测试」继续",
+      "priority": "medium",
+      "source": "self-found(R42 x4)"
+    },
+    {
+      "id": "B0d-identity-convergence",
+      "title": "身份收敛已落地（R43 完成）：全站唯一取值处 = zx_guard.pb.js 顶部 routerUse 中间件（e.set(\"rhUserId\")），182 处内联副本清零、34 个业务钩子改 e.get(\"rhUserId\")；scripts/pbHooksIdentity.test.ts 9 例（结构锁 3 + 口径锁 6）进 loop；160/160 行为等价（32 端点 × 5 头，噪声地板 0）+ 口径审计（23 表 8091 行 longest uid 15 < 64）已归档 docs/evolution/_r43_*.cjs。剩余：身份**字段模型**收敛（一稿 P1-3，用 PocketBase 原生 auth 记录替代自建 rh_user_id 文本字段）需单开一轮，本轮明确不做",
+      "priority": "medium",
+      "source": "self-found(R43 done)"
+    },
+    {
+      "id": "B15",
+      "title": "pb_hooks 网关补丁待重启生效：重启 :7000 后复测 opecode 通道是否恢复；并评估把「模型配置健康徽标」从 /models 连通改为真跑一次 chat（本次假绿根因）（R49 复核：核心动作「重启 :7000」仍被项目 hook 挡住，无变化）",
+      "priority": "high",
+      "source": "self-found"
+    },
+    {
+      "id": "B2",
+      "title": "条款-响应合规矩阵可视化：R35 复核确认数据链与偏离表导出均已落地（buildScoringCoverageMatrix bidTypes.ts:2088 + exportDeviationDocx bidFiles.ts:1260），降级为「是否需要统一矩阵视图」的产品判断，不再是能力缺口",
+      "priority": "medium",
+      "source": "benchmark"
+    },
+    {
+      "id": "B4",
+      "title": "评分表/表格化条款的结构化解析（RAGFlow 式表格感知抽取）——R35 复核：评分项 JSON 化已落地，剩余为扫描件表格保真",
+      "priority": "medium",
+      "source": "benchmark"
+    },
+    {
+      "id": "B13",
+      "title": "价格分口径扩充：按元计扣分、单边费率（低于基准价不扣分）、档位法（低于基准价×95% 得满分）、复合标底（标底与均价加权）——R35 刻意返回 ok:false，需真实语料驱动",
+      "priority": "low",
+      "source": "round-report"
+    },
+    {
+      "id": "B5",
+      "title": "投标复盘看板二期：胜率趋势 / 报价命中率（summarizeBidResults 与 buildWinLossReview 已具备一期，缺时间序列与报价偏差）",
+      "priority": "medium",
+      "source": "benchmark"
+    },
+    {
+      "id": "B6",
+      "title": "公司模板中心二期：标书 Word OOXML 母版级保真（format_templates/doc_templates 与 PPT buildFidelityDeck 已在，Word 侧仍按 docx 库逐段构造）",
+      "priority": "medium",
+      "source": "benchmark"
+    },
+    {
+      "id": "B7",
+      "title": "作战驾驶舱指标与 PB 实际数据对账",
+      "priority": "medium",
+      "source": "round-report"
+    },
+    {
+      "id": "B11",
+      "title": "报价 PPT（deck）导出页的金额版式（R034 只覆盖 Word/Excel/编辑器三出口）",
+      "priority": "low",
+      "source": "self-found"
+    },
+    {
+      "id": "B16",
+      "title": "其他百分比型字段的两种量纲歧义复查（价格分下浮率 / 评分办法费率 / 清单数量倍数）：是否复用 src/lib/discountIntent 的「判定单一真源 + 入口弹确认 + 存量只盘点」范式",
+      "priority": "low",
+      "source": "self-found(R40 F40-4)"
+    },
+    {
+      "id": "B18-lint-debt-reacthooks",
+      "title": "lint 存量债 119 error / 13 warning 已具名预算化（eslint-budget.json，可机检、只许下降），但**全部**集中在 react-hooks/post-react-compiler 类：set-state-in-effect 73 / preserve-manual-memoization 25 / immutability 10 / refs 4 / only-export-components 7（warning：exhaustive-deps 13）。下一步可从 set-state-in-effect 的集中点（同文件多条）逐处治理，按「改前先补测试 / 改后跑四门」推进；每降一档记得同步收 eslint-budget.json 与账本基线三处",
+      "priority": "medium",
+      "source": "self-found(R44)"
+    },
+    {
+      "id": "B19-auto-model-route",
+      "title": "【R47 已完成】按环节自动选模型已落地：新增 src/lib/modelRouting.ts（六环节 longform/outline/extract/judge/vision/chat；硬门槛=非文本模态排除 + 长期不可用档案直接排除；标签加权 + 人工标注加成 12 分 + 会话冷却降权 6 分（只降权不排除）+ 同分个人配置优先）；标书工作台默认档改为「自动 · 按环节智能选择」（AUTO_MODEL_KEY 哨兵值，手选具体模型时整体关闭自动路由）；31 处 llmGenerate 调用点显式补 role，其余按 scope 兜底推导（未分类兜底 judge，宁慢不错）；解析报告 / 合规矩阵 / 质疑函 / 投诉书四面板不再硬编码 modelRef:null（本地部署下平台内置必然 412，此前是静默失效）；模型选择器与工具栏就地提示「本环节挑了谁、凭什么」。取证 docs/evolution/_r47_model_route_verify.mjs（真实 pb_data.model_configs：6 通道 / 82 模型 / 28 启用；全绿）。剩余：① 模型画像 tags 目前主要走内置知识表，用户手动标注加成待真实使用后复核；② 环节偏好标签与权重随真实语料演进需同步 modelRouting.test.ts；③ 手选档仍是「一刀切全环节用同一个模型」，暂不做「手选若干 + 其余自动」的混合档",
+      "priority": "medium",
+      "source": "self-found(R46 用户三问 Q1) → R47 done"
+    },
+    {
+      "id": "B20-template-onboarding",
+      "title": "【R47 已完成】商务模板 onboarding 已落地：新增 src/pages/BidWorkspace/templateProfile.ts 编排层，合并两条既有识别链路（formatSpec 强链路定样式/页面 + bidDocxFormatExtract 补链路补 extras），补齐 1-6 级标题 / 表格 / 页眉页脚 / PAGE 页码域 / 目录域 / 封面 / 标题编号 / 模板要求行；「结合招标文件完善」= 给招标原文时用本地 bigram 相似度（阈值 0.34）把模板要求行与评分点、★▲ 条款对齐，命中数与漏项数写进 alignment 供界面复核；识别结果落 format_settings.templateProfile（零新 collection / 零 PocketBase schema 变更），空画像 isMeaningful=false 不覆盖旧画像，暗标 sealed 不被模板覆盖；要求行注入大纲（PROMPT_VERSION 5）/ 章级（6）/ 小节级（7）提示词，空数组时输出与旧版逐字一致（存量项目 prompt 与前缀缓存不受影响）；FormatSyncDialog 展示模板画像 + 1-6 级标题 + 布局 + 要求条数 + 对齐结论 + notes。取证 docs/evolution/_r47_template_profile_verify.mjs（3 份真实 docx + 安中医真实招标原文 152212 字；全绿）。剩余：① 真实商务模板样本仍少（模板库那份是封面模板，要求行 0 条），要求行抽取规则需要更多真实模板打磨；② 模板的「内容」侧（章节目录结构）尚未反向生成大纲骨架，目前只注入要求行；③ 要求行与评分点的相似度阈值 0.34 是本地规则初值，需要真实语料回归调参",
+      "priority": "medium",
+      "source": "self-found(R46 用户三问 Q2) → R47 done"
+    },
+    {
+      "id": "B21-export-font-guard",
+      "title": "【R62 已完成 docx 侧】导出字体护栏：docx 库 TextRun 不给 font 就不写 <w:rFonts>。R46 修 exportBidDocxDefaults；R62 收口其余 6 条 docx 导出（体检报告/讲标手册/报价 Word/讲稿 Word/周报/方案封面目录）：新建 src/lib/exportFont.ts 单一真源（DEFAULT_RUN_FONT + DOCX_DEFAULT_STYLES 整篇 docDefaults）+ src/lib/exportFont.test.ts 源码守卫（无字体 run 计数）+ toAnnotatedDocx.test.ts 拆真 docx 看 styles.xml 产物验证。剩余 PPTX/Excel 字体是独立机制，见 B34。",
+      "priority": "medium",
+      "source": "self-found(R46)"
+    },
+    {
+      "id": "B34-pptx-xlsx-export-font",
+      "title": "PPTX / Excel 导出的字体排查（R62 未做，独立于 docx TextRun 机制）：deckExports.ts 的 PptxGenJS 导出走 fontFace、quoteExports.ts 的 xlsx 导出走单元格样式 font。待办：同口径排查这两条路径是否也会「裸奔」到系统默认字体，若会则补默认中文字体（仿宋/黑体）并加守卫。",
+      "priority": "low",
+      "source": "self-found(R62)"
+    },
+    {
+      "id": "B25-long-bid-retrieval-recall",
+      "title": "长文检索召回：**宽松口径已收口，剩余瓶颈换口径**。R63 实测取证：原「9.8%」的机制层根因是选块策略（按条款轮转、先到先得，没有任何一处最大化「有可见证据的条款数」），改成两阶段最大覆盖后 安中医全量 50→131/133、子集 110→123/133、建阳总医院（184 条）115→171/184，注入字数不变。剩下的三件事：① 2 条条款是词表完全零命中（改选块永远补不上，需词表/同义词工作）；② 宽松判据（任一检索词命中）已饱和，按严格判据（≥2 词且≥自身最高分 50%）全量只有 86/133 —— 真正的剩余瓶颈是「证据深度」而非「选哪几块」，见 B35；③ 「纯条款清单型」第三份结构样本仍未覆盖（建阳是 heading 口径、安中医是 parse 口径）。",
+      "priority": "medium",
+      "source": "self-found(R51) → R63 部分收口"
+    },
+    {
+      "id": "B26-sanity-recall-widening",
+      "title": "丢字检测可安全扩召回的位置（R55 已取证：BROKEN_PAIRS 的「词中留白」判据在 185,913 字真实正文 + 32,957 字表格/OCR 文本上零误报）。可无损放宽的有「不依赖额外容\\s*(Windows|Mac|Linux|macOS)」「向用户提\\s*给」「系统包\\s*了」「医疗运\\s*质量」「功能模\\s*入」；**不可放宽**的四条（整体采/系统提/能够实/系统支）已写进源码注释——放宽即命中正确正文。另：过短行族在表格/OCR 文本上必然误报（实测 6/6 全误报），若将来要把检测器用于招标原文，必须先给该族加「表格单元格上下文」门控。注意：本轮实测真实正文里并不存在这些无空白残缺形态，故属「有依据但无发生证据」的扩召回，需先找到真实发生样本再动。",
+      "priority": "low",
+      "source": "self-found(R55)"
+    },
+    {
+      "id": "B27-outline-failure-diagnosis",
+      "title": "【已由 R56 交付，R63 对账确认】【= 三稿审计 §5 原本排给 R55 的交付，被本轮内容挤后顺延】给「大纲生成失败」落一条可诊断的原因记录（当前完全没有失败原因数据，所以「大文件是否致败」无法定论）；复盘 9 个未出大纲的项目；把审计 §2 P0-3 悬置的「大文件是否致败」变成结论或明确否定。注意：审计 §8.5 已注明该前提在排除 6 个弃用项目后 n=2、证据不足，故先做「原因记录」再做因果结论，不要反过来。",
+      "priority": "low",
+      "source": "audit(P0-3, 顺延自 R55)"
+    },
+    {
+      "id": "B28-guard-threshold-recalibration",
+      "title": "拦截阈值（关键项判据）需要按真实成功率重校：R56 用当前 `missingCriticalSections` 重算全部 25 个项目 → **13 个会被拦，其中 11 个其实已经有大纲**，说明该判据比「当年真的生成出大纲」的那套条件更严；且 `parse_report` 可变（重新解析会改判）、覆盖率高估（要点摘要口径天然偏低）。待办：用 R56 起的 `diag` 留痕统计「被拦项目最终有没有产出大纲 / 用户有没有回头补解析」，据此决定判据是保留、放宽，还是改为「警告不阻断 + 让用户显式确认继续」。**不要在无新取证时凭感觉改阈值。**",
+      "priority": "high",
+      "source": "self-found(R56 复盘)"
+    },
+    {
+      "id": "B29-parse-degraded-report",
+      "title": "【已由 R58 交付，R63 对账结项】解析层退化自检：真实库有个 38.2 万字的项目（三明实测）只解析出 **1 个分区**（overview），导致硬依赖（`OUTLINE_DEPEND_KEYS`）全缺、大纲必被拦——病在解析层，不在大纲层，而界面没有任何「解析结果异常地少」的提示。待办：解析完成后自检「分区数 / 评分项数 / 废标项数」是否显著低于同类规模项目的常态，异常时给出可操作提示（重解析 / 换模型 / 分片），而不是让用户在大纲环节撞墙。",
+      "priority": "low",
+      "source": "self-found(R56 复盘)"
+    },
+    {
+      "id": "B30-p0-3-size-question-recheck",
+      "title": "回头回答审计 §2 P0-3 的悬置问题（「是不是大文件导致大纲失败」）：R56 已让**之后**的失败带规模与分类留痕（`tenderChars`/`parseChars`/`kind`/`durationMs`）。待办：攒够新的失败记录（或下次真实大标书实测）后，用 `diag` 记录做一次真正的规模-成败对照，把这条从「存量不可判定」推进到结论或明确否证；存量 9 个项目的历史原因永久不可回溯，不要再试图归因。",
+      "priority": "medium",
+      "source": "self-found(R56)"
+    },
+    {
+      "id": "B31-source-scan-single-entry-remainder",
+      "title": "源码扫描入口的**剩余迁移**：R57 只把「读 God Hook」的 9 个哨兵收敛到 `src/testing/hookSources.ts`，仓库里仍有 **29 个文件 / ~105 处 `readFileSync`**（其它页面源码、`scripts/**`、`docs/evolution/*.cjs` 等）各自算路径、各自处理 EOL，其中多数没做 CRLF 归一化。待办：逐文件把读取改走 `sourceText(relPath)`（相对仓库根）或按需给入口加 `sourceTexts()` 批量读；同步把多行正则统一成 `\\n` 口径。机械迁移、低风险，但**必须逐文件跑该文件的测试**再继续（R57 已证明同一条正则在不同文件里可能一绿一红）。",
+      "priority": "low",
+      "source": "self-found(R57)"
+    },
+    {
+      "id": "B32-god-hook-behavior-net-expand",
+      "title": "God Hook 行为网按簇扩展：R57 铺第一层（挂载契约 / 只读边界 / 计费确认 / 大纲失败诊断 + 快照恢复判据，5 例）；R58 落地第二簇「项目 CRUD」（projectCrud 6 例）；R59 落地「正文精修」（chapterRefine 5 例）；R60 落地第三簇「体检与评标」的预检半边（submissionEval 6 例：计费确认 / 无正文·无评分项预检 / 本地打分表 / 归档只读，反向验证 3 条）。R61 落地第四簇「导出」（export 7 例：预检 / 成功路径 / 顺序 / 资质硬拦截，反向验证 3 条）。剩余：章节生成（依赖 LLM，需 mock 网关）/ 体检与评标成功路径（多路 LLM，需 mock 网关）。每次扩展都做「删实现即变红」反向验证；这张网变厚之前不要动搬簇（审计 §3.1 的 BidWorkspaceCore 首参 / src/pages/BidWorkspace/state/ 目标架构）。参考范式：useBidWorkspace.behavior.test.tsx 的 3 旁路 mock + DeptChecklistPanel.test.tsx。",
+      "priority": "high",
+      "source": "self-found(R57)"
+    },
+    {
+      "id": "B33-deeplink-cold-load-list-miss",
+      "title": "观察项（**不是缺陷**）：冷启动带 `?project=<id>` 时，深链 effect 第一次就跑并把 id 记进 `deepLinkProjectIdRef`，那一刻 `projects` 列表还是空的 → 于是**必然**走「单条 GET `/api/bid_projects/{id}` 兜底打开」分支（hook L3219-3241 的注释也这么描述，属设计容错）。影响：① 每次冷启动深链都多一次请求；② 任何 mock/测试只实现列表接口会得到一句「项目不存在或无权访问」（R57 行为网已踩过）。待办：若将来要省这一次请求，让 ref 等列表到位后再消费（需要重新验证「列表 miss 才兜底」的语义不变），否则保持现状并**在测试里显式 mock 单条 GET**。",
+      "priority": "low",
+      "source": "self-found(R57)"
+    },
+    {
+      "id": "B36-intel-summary-ingest-guard",
+      "title": "情报入库摘要质量闸（R64 遗留的根因侧）：病根在 pocketbase/pb_hooks/intel_center.pb.js 的摘要拼装，会把「站点名 + 页面 JSON 元数据 + 正文」整段塞进 summary。R64 只在展示层剥（存量 9 条已可读），新抓条目仍会带 JSON。待办：入库即清 or 列表页给这类条目加「待清洗」角标；改 pb_hooks 需重启 :7000（项目 hook 禁止智能体结束进程）。",
+      "priority": "medium",
+      "source": "self-found(R64)"
+    },
+    {
+      "id": "B37-intel-future-date",
+      "title": "情报发布日期未来值：HIT专家网有 3 条 published_at 为 2027-04-29 / 2027-01-03，按「按发布时刻」排序会顶到最前（docs/测试报告 BUG-003 的「日期错(2027)」至今未闭环）。建议展示层对 published_at > 今天+7 天标「日期异常」并沉底，不改数据。",
+      "priority": "low",
+      "source": "self-found(R64)",
+      "note": "2026-10-28 实测：另一位执行者已在 useIntelCenter.ts 落地「未来日期并入待修集合 + region_mode=recompute_crawl」，并新增未跟踪的 intelFuturePubDate.test.ts；本轮不重复做，等其落地后复核。"
+    },
+    {
+      "id": "B38-agents-vitest-baseline-sync",
+      "title": "AGENTS.md 的 vitest 基线行需在并发在途批次落地后一次性同步（R64 时刻工作区有 91 个未提交文件，此刻同步会把别人未提交的用例数写进仓库约定）。",
+      "priority": "low",
+      "source": "self-found(R64)"
+    },
+    {
+      "id": "B39-intel-summary-more-token",
+      "title": "摘要字段（summary）没有剥「更多…」导航 token：当前 66 条 summary 里 0 条命中，属预防性缺口；改它需连带更新 R64 的 cleanIntelSummary 测试锁。",
+      "priority": "low",
+      "source": "self-found"
+    },
+    {
+      "id": "B40-bidwarroom-intel-snippet",
+      "title": "BidWarRoom.tsx:276 用 it.summary ?? it.content_snippet 填「作战室情报」，同样会把列表残片当摘要显示；R65 未修（目录有并发在途改动），等 BidWorkspace 干净后接 cleanIntelSnippet。",
+      "priority": "medium",
+      "source": "self-found"
+    },
+    {
+      "id": "B41-intel-card-snippet-fallback",
+      "title": "情报中心列表卡片只渲染 summary、无片段兜底 → 同一批条目首页有内容、列表卡片空白；属产品判断，需用户点头。",
+      "priority": "low",
+      "source": "self-found"
+    },
+    {
+      "id": "B44-qual-unknown-bucket-hidden",
+      "title": "资质台账「未登记有效期」桶在页面上不可见：/api/qual_certs/summary 实测 34 条里 25 条无有效期（软著/荣誉证书等长期有效属正常，也可能含漏填），页面只展示 已过期/30 天内/90 天内/台账总数 四张卡，看不出这 25 条完全不参与到期预警。属展示口径变更（B 类），需用户点头后再做。",
+      "priority": "medium",
+      "source": "self-found(R67)"
+    },
+    {
+      "id": "B45-bid-open-date-morning-off-by-one",
+      "title": "开标倒计时在开标日 00:00–08:00 之间显示「距开标 1 天」而非「今日开标」：bidOpenDateStatus 用 Date.parse 解析，纯日期被当作 UTC 零点（= 本地 08:00）。实测开标日 07:00 → daysLeft=1、09:00 → 今日开标。改法：与 bidNodesLogic.bidOpenDayMs 同口径（取前 10 位 + 本地零点）。",
+      "priority": "low",
+      "source": "self-found(R67)"
+    }
+  ],
+  "history": [
+    {
+      "id": "R066",
+      "theme": "资质台账「导出硬拦截」：同一 localStorage 键两处各写一套判定且默认值相反（台账页 === \"1\"、导出闸门 !== \"0\"），默认态下页面说「关」而导出实际被拦；抽 lib/qualHardBlock 作唯一真源（默认拦/脏值按拦/storage 不可用按软警告）+ 台账页接线 + 10 例单测含跨文件哨兵；反证「改回旧写法 → 1 failed」",
+      "verdict": "pass",
+      "at": "2026-10-29"
+    },
+    {
+      "id": "R063",
+      "theme": "长文选块召回（B25 续做）：① 先取证，把「还漏 83 条」拆成「2 条词表零命中 + 81 条有分但装不进预算」，证明瓶颈不在打分算法、也不在证据粒度（粒度下沉到段反而 50→67 / 110→68 更差，因为破坏了块级共用）；② 新增 selectEvidenceChunks 两阶段最大覆盖（阶段①每字新增覆盖贪心、阶段②余量补条款自己的最强块），保持命中判据 / 输入可见性契约 / 来源 id / 首块可超预算 / 确定性不变；③ 三份真实语料实测：安中医全量 50→131、子集 110→123、建阳总医院（结构不同的第二份样本，184 条）115→171，注入字数基本不变；④ 新增严格判据（≥2 词且≥自身最高分 50%）防止把宽松口径吹成已解决：全量 33→86、最佳块 13→74，天花板 120，余下瓶颈是证据深度；⑤ 反向验证 3 条 + 字节级还原；⑥ 顺带修 4 处「本机路径」测试（真实库 immutable 兜底 / Downloads 与 D 盘样本缺失即 skip / PPT 产物不再往仓库里造 C: 目录）让四门在非本机环境可实测",
+      "verdict": "pass",
+      "at": "2026-10-21"
+    },
+    {
+      "id": "R062",
+      "theme": "导出字体护栏（B21 收尾）：其余 6 条 docx 导出路径补默认中文字体（单一真源 exportFont.ts + 整篇 docDefaults）+ 无字体 run 源码守卫 + 真实 styles.xml 产物验证",
+      "verdict": "pass",
+      "at": "2026-10-21"
+    },
+    {
+      "id": "R061",
+      "theme": "God Hook 行为网第四簇（B32）导出：投标文件/技术偏离表/全套导出预检·成功路径·顺序·资质硬拦截 7 例行为测试 + 反向验证 3 条",
+      "verdict": "pass",
+      "at": "2026-10-21"
+    },
+    {
+      "id": "R060",
+      "theme": "God Hook 行为网第三簇（B32）体检与评标：交卷体检/模拟评标计费确认、无正文·无评分项预检、人工打分表本地落库、归档三入口只读硬锁 6 例行为测试 + 反向验证 3 条；顺带修 R59 chapterRefine 本地状态竞态（防抖 flush 在 act 外，读本地状态改 waitFor）",
+      "verdict": "pass",
+      "at": "2026-10-21"
+    },
+    {
+      "id": "R059",
+      "theme": "God Hook 行为网第二簇（B32 第二簇）正文精修：章节编辑从 grep 升级为行为测试。新增 src/pages/BidWorkspace/useBidWorkspace.chapterRefine.test.tsx（5 例）：①正文编辑自动保存（selectChapter + setEditingContent → 1s 防抖 → PATCH 落库，只动目标章不误改兄弟章与标题）②正文一经人工改动丢字/版式标记立即作废（R55 契约第一次行为级钉住）③正文没真变化不落库④归档项目正文编辑被静默拦截⑤章节生成把 gen_status 置 generating 是本地态不落库。沿用 R57/R58 的 3 旁路 mock（pbJsonRequest/sonner/MemoryRouter），零生产代码改动、零 AI、不触网。反向验证 2 条（删 flushEditingContent 的 stale 标记作废分支→用例②红；删 setEditingContent 的 blockIfArchived 守卫→用例④红；字节级还原自检 PASS）。四门实测：tsc -b exit 0；vite build ✓ 4.27s；vitest 297 files / 3491 passed / 2 skipped（基线 296/3486 → +1 文件 / +5 例）；eslint 116 error / 11 warning（= 基线，零新增）。",
+      "verdict": "pass",
+      "at": "2026-10-21"
+    },
+    {
+      "id": "R058",
+      "theme": "God Hook 行为网第二簇（B32 第一簇）：项目 CRUD 从 grep 升级为行为测试。新增 src/pages/BidWorkspace/useBidWorkspace.projectCrud.test.tsx（6 例）：新建（填名 POST 落库 + 自动打开 + 空名零写请求）/ 重命名（updateProject PATCH + 当前项目同步）/ 软删→还原（deleted_at 写/清）/ 归档→取消归档（archived true/false）/ 彻底删除（DELETE + 列表移除 + 按名提示）。沿用 R57 的 3 旁路 mock（pbJsonRequest/sonner/MemoryRouter），零生产代码改动、零 AI、不触网。反向验证 2 条（删 createProject 的 applyProjectState(record)→用例①红；删 updateProject 的 persistProject→用例③红；字节级还原自检 PASS）。四门实测：tsc -b exit 0；vite build ✓ 3.91s；vitest 296 files / 3486 passed / 2 skipped（基线 295/3480 → +1 文件 / +6 例）；eslint 116 error / 11 warning（= 基线，零新增）。",
+      "verdict": "pass",
+      "at": "2026-10-20"
+    },
+    {
+      "id": "R057",
+      "theme": "God Hook：第一张**行为网**（`renderHook` 0 → N）+ 9 个源码哨兵收敛成 `hookSources()` 单一入口（= 审计三稿 §8.6 原编号 R56 的那一行 / §3.1；出口标准两条全部达成）。**本轮零生产代码改动**（`useBidWorkspace.ts` 一个字节没动），只加测试与 helper。 ① **问题**：`src/pages/BidWorkspace/useBidWorkspace.ts` = 9,828 行 / 494 KB / 118 `useState` / 238 `useCallback` / 371 个返回句柄，`/bid-workspace` 的全部业务能力都从它挂出；而全仓 **271 个测试文件里 `renderHook` = 0 次**，它仅有的回归网是十几处「读源码 + 正则」哨兵，路径口径散落在 9 个文件里（搬一个簇要同时改 9 处路径）。 ② **侦察实测（数字都是跑出来的）**：含 `readFileSync` 的测试文件 **38 个 / 123 处调用**（审计说「12 个哨兵」是**低估**）；读 God Hook 的哨兵 **9 个文件**（含审计漏算的 `composeOutlineRegenWiring.test.ts`），本轮全部迁移，6 个已跟踪文件的 diff 里删掉 **14 处 `readFileSync` + 5 处 `new URL(...)`**；只有 3 个哨兵做了 CRLF 归一化 —— 而 `.gitattributes` 虽为 `eol=lf`，`useBidWorkspace.ts` 的工作区副本是 **CRLF**，所以「同一个多行正则在不同文件里有的能匹配、有的永远匹配不到」是本族最真实的失效模式。 ③ **唯一读取入口 `src/testing/hookSources.ts`（103 行）**：`HOOK_PATH` 是全仓唯一的路径字面量；`normalizeEol`（CRLF/CR→LF，导出可直测）、`sourceText(relPath)`（仓库相对 POSIX 路径 + 进程内 Map 缓存 + 归一化）、`hookSources(...extra)`、`countMatches(text, re)`（**无 `g` 标志直接抛**，因为 `String.match` 无 `g` 时只返回首个匹配，在哨兵里区分不出「1 处」与「7 处」）、`resetSourceCache()`。错误文案自带修复指引：越界抛「源码哨兵读取越界」，文件不存在抛「源码哨兵读取失败 + 解析后的绝对路径 + 请同步 src/testing/hookSources.ts 的 HOOK_PATH」——搬文件时**报错本身告诉你改哪一行**。 ④ **9 个哨兵迁移后一次跑完 121 例全绿**（clauseOutlineAlignment 65 / promptVisibility 9 / outlineDiagWiring 8 / proseLintWiring 8 / factSource 7 / sanityJump 6 / composeOutlineRegen 4 / proseFallback 3 / priceScore 11）；迁移后 `useBidWorkspace.ts` 这个文件名在 `src/`+`scripts/` 的**非注释代码里只剩 `HOOK_PATH` 一行**（两处解释性注释不计）。 ⑤ **「守哨兵的哨兵」`hookSourcesConvergence.test.ts`（5 例）**：扫 `src/`+`scripts/` 全部 `.ts/.tsx`，强制 ① 文件名在非注释代码里只能出现一次且就在 `HOOK_PATH` 行；② 每个 `from \".../testing/hookSources\"` 的文件里不许再有 `readFileSync(`；③ 入口自身可用（`sourceText(HOOK_PATH)` 不抛、含 `export function useBidWorkspace()`、`HOOK_PATH` 形如 `src/**.ts`）；④ 地板检查（扫描文件数 > 100、名单含入口与 hook、含 `clauseOutlineAlignment.test.ts`）——防止「扫了个空目录也全绿」。写它时它先抓住了自己：第一版里写了 `const HOOK_LITERAL = \"useBidWorkspace.ts\"`，改成从 `HOOK_PATH` 派生 `path.posix.basename(...)` 后，**改 hook 文件名也只需改入口那一行**。 ⑥ **第一张行为网 `useBidWorkspace.behavior.test.tsx`（218 行 / 5 例，jsdom）**：3 个旁路 mock（`pbJsonRequest` / `sonner` / `MemoryRouter`），**计费弹窗、项目加载、快照写入全部跑真实实现**（零 AI、不触网）。用例：挂载即返回 ≥350 句柄 + 13 个跨簇关键句柄逐个 `toBeDefined()`；挂载+打开项目**全程零写请求**（同时证明确实读过列表，防真空）；点生成先弹费用确认、**取消⇒不生成不落库**（计费红线，实测本机 `visitorPaysForAi=true`）；确认后无解析报告 ⇒ **POST `/api/bid_stage_snapshots` 且 `payload.diag.kind=blocked_no_report`**、label 含「大纲生成被拦」+原因、toast 含「请先完成招标文件 AI 解析」；失败诊断行点恢复被拒（零写请求 + 不进忙碌态）+ **真成果行照常 PATCH（正向对照）**。后两条把 R56 的两个行为**从「grep 得到」升级为「跑得出来」**。 ⑦ **反向验证（三条，全部「删实现即变红」，字节级备份 + finally 还原）**：删 `runGenerateOutline` 的 `recordOutlineDiag(\"blocked_no_report\", …)` → 行为网第 4 例红；删 `restoreSnapshot` 的 `if (!isRestorableSnapshot(snap))` 守卫 → 第 5 例红；把 hook 路径字面量写回某个哨兵 → 收敛守卫第 1 例红。还原后逐条复核（L4295 / L8804 原样在位、`priceScoreWiring.test.ts` 无残留）。 ⑧ **四门实测**：`npx tsc -b` exit 0；`CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD=100000 npx vite build` ✓ 4.89s exit 0；`npx vitest run` **282 files / 3308 passed / 2 skipped / 0 failed**（基线 279/3290 → +3 文件 / +18 例）；`npx eslint .` **116 error / 11 warning**（= 基线零新增，`verify-eslint-budget` PASS，四处同源基线一律不动）。 ⑨ **明确不做**：不做搬簇（审计 §3.1 的 `BidWorkspaceCore` 首参 / `state/` 目标架构依赖行为网先变厚）；不迁移剩余 29 文件 / ~105 处非 hook 的 `readFileSync`（记 B31）；不改 PocketBase 与任何生产代码；未做浏览器点击实测（端到端复验步骤写在轮报 §八）。**本轮新登记**：B31 非 hook 读取点迁移 / B32 行为网按簇扩展 / B33 冷启动深链必走单条 GET（观察项，非缺陷）。",
+      "verdict": "pass",
+      "at": "2026-10-16"
+    },
+    {
+      "id": "R056",
+      "theme": "大纲失败「可诊断」：把没有证据变成一条记录 + 空名单拦截判据统一 + 非成果行不给恢复（= 审计三稿 §5 原定给 R55 的交付；R55 被用于成稿自检，故顺延到本轮落地，backlog `B27-outline-failure-diagnosis` 结项）。① **先复盘，不猜原因**：审计 §2 P0-3 悬着「是不是大文件导致失败」，而真实库 25 个项目 / 255 条快照里 9 个项目没有大纲，`runGenerateOutline` 的 4 条失败出口（未解析 / 硬依赖为空 / 关键项缺失 / 抛错）**全部只 toast、不留痕**——问题在数据上不可判定，不是因为证据指向「无关」，而是当年根本没记录。本轮先把「下一次失败可回答」做出来。② **复盘读数（真实库只读，可复跑 `outlineGuardRealDb.test.ts`）**：24 个非空标书项目里 9 个无大纲；<10 万字 4 个项目 **0 失败**，≥10 万字 20 个项目 **9 失败（45%）**；已有大纲的最大项目 417,254 字、无大纲的最小项目 103,474 字 → **两侧区间重叠，规模既非充分也非必要**，「大文件致败」依然不成立；6 个失败项目创建于 09-23~09-28（审计所谓「6 个弃用项目」创建时间对得上，但**排除它们不是中性操作**——弃用很可能就是失败的结果），另 3 个创建于 10-10/10-12/10-14（贵港 / 三明 / 厦心，厦心已走到 `composing`）→ **不是历史遗留**。**诚实边界**：那 9 个究竟是「点了生成但失败」还是「从未点过生成」永久无法区分（当年无留痕），本轮**不宣布任何因果结论**。③ **口径纠正（自查发现）**：一度用 `bid_projects.updated` 判断活跃度，实测 5 条项目 `updated` 全是 `2026-09-29 01:16`、另 3 条全是 `2026-10-15 06:01` —— 那是**批量触碰**，`updated` 不能当活跃度证据，只能看 `created` 与阶段快照时间。④ **顺带测出的真缺陷（两套判据串用 → 提示名单为空）**：拦截 toast 用 `missingSectionTitles`（判据 = `content.trim()` 是否为空）去串 `missingCriticalSections`（判据含 `status=failed/pending` 与空态占位文本「原文未提及」）→ 13 个被拦项目里 **5 个名单不完整，其中 762,209 字那个（最大真实标书）完全空白**（用户看到「关键解析项缺失：」后面什么都没有，被拦住却不知道回去补什么）。现抽出唯一判据 `isSectionMissing` + 新增 `missingCriticalSectionTitles`（同源取名；未知 key 回落成 key，保证「有缺项 ⇒ 名单非空」恒成立）。**反向验证已做**：换回旧调用后哨兵变红。⑤ **诊断记录（复用既有通道，PocketBase 零改动）**：新增 `src/pages/BidWorkspace/outlineDiagnostics.ts`，4 条失败出口各写一条 `bid_stage_snapshots`（`stage=outline`、`payload.diag`）：分类 12 档（blocked_no_report / blocked_dependency / blocked_critical / auth / empty_reply / non_json / json_parse / empty_outline / timeout / network / model_api / unknown，**判据全部取自本仓真实报文**）、原因与错误报文截断 200 字、`durationMs`、**规模取证 `tenderChars`/`parseChars`**（专为下次回答 P0-3）、拦截判据输入（缺失 key 与中文名、覆盖率）、`staged`/`outlineLevel`/`leafGoal`；**不落任何正文片段**。去重只做「同因 5 秒内」连点抑制，跨时间的重复失败全部保留（重复本身就是证据）。⑥ **失败记录不得冒充成果**：真实库 3 条 `chapter` 空 payload 事件行此前只靠 `restoreSnapshot` 的 chId 检查侥幸没出后果（提示却写成「该快照对应的章节已不在当前大纲中」——把「本来就没有成果」说成「章节没了」）；新增的 `stage=outline` 诊断行没有这层侥幸：不判可恢复则**不勾清空下游会假报「已恢复该历史版本」**，勾了会**清空正文与各报告却仍不恢复大纲**。现新增 `isRestorableSnapshot`（含 `hasSnapshotDiag`）作为统一契约，面板恢复入口一律以它为准；诊断行徽标改 `warning`、「查看」弹窗显示完整原因、不可恢复行标「留痕·不可恢复」。⑦ **测试 +4 文件 / +26 例**：`outlineDiagnostics.test.ts` 13（分类用真实报文 / 字数与时长口径 / 同因窗口 / 读回容错）、`outlineDiagWiring.test.ts` 8（**该函数里每条 `throw new Error` 都必须能被分类**（新增失败文案不归类即红）、3 处预检 + catch 都留痕且顺序在 toast 之前、同源取名、恢复守卫顺序、面板不给恢复按钮）、`snapshotRestoreContract.test.ts` 4（表驱动，含 3 条真实形状与诊断行）、`outlineGuardRealDb.test.ts` 1（真实库只读复盘，无库 skipIf，**只断言不变量、统计只打印**，避免随数据变红）。**反向验证**：三处接线同时拆掉 → 恰好 3 条变红、其余 5 条保持绿；恢复后 26 例全绿。四门实测：`npx tsc -b` exit 0；`vite build` ✓ 3.98s（收尾终态复跑）exit 0；`npx vitest run` **279 files / 3290 passed / 2 skipped / 0 failed**（+4 文件 / +26 例）；`npx eslint .` **116 error / 11 warning**（= 基线，零新增，`verify-eslint-budget` PASS，四处同源基线一律不动）。⑧ **明确不做**：不改拦截阈值（今天判据拦下 13/25，其中 **11 个已有大纲** → 它比「当年真的生成成功」的那套条件更严，且 `parse_report` 可变，属**候选发现**，需新取证再校准，记 B28）；不改 PocketBase 集合与 hook（`stage` 无枚举、`payload` 原样落库，已通读确认）；不自动重试生成（原因未知时重试＝烧钱）；本轮**未做浏览器点击实测**（验证为源码级 + 单测 + hook 落库路径通读，端到端复验步骤写进报告 §七）。⑨ **本轮新登记**：B28 守卫阈值重校（按真实成功率）/ B29 解析层退化（38.2 万字只解析出 1 个分区）/ B30 P0-3 复答（攒够新的失败留痕后回答规模问题）。",
+      "verdict": "pass",
+      "at": "2026-10-16"
+    },
+    {
+      "id": "R055",
+      "theme": "成稿自检的「可信 + 可定位」：丢字检测召回补洞 + 命中可定位 + 两类本地标记随正文失效（本轮起点是复核上一轮遗留建议「拿真实语料校准 bidTextSanity 误报率」，**复核结果反而把这条建议本身否掉了**）。① **先校准，再决定方向**：用 R51 的真实夹具（脱敏子集 47,103 字 + .probe 全量 138,810 字，合计 185,913 字安中医真实投标正文）跑 detectLostChars，**全部 0 命中**（BROKEN_PAIRS 全 12 条零命中、过短行族零命中）→ 校准结论：误报率实测为 0，「校准误报率」这条建议已无油水，于是把本轮转向召回。② **召回补洞（真缺陷：注释与实现不一致）**：模块头部逐条记录了 BUG-101 的 5 条真实样本，逐条复算发现第 4 条「医院日均门诊患 15000 以上」**从来没有被命中过**——旧模式 /门诊患\\s+(人次|以上|数量)/ 要求缺字处紧跟量词，而真实样本是「门诊患 + 数字」。即注释里承诺能查出来的东西，代码其实查不出来，且没有任何测试会发现（这条只在把注释样本当断言跑时才会暴露）。现改为 /门诊患(?!者)\\s*(?:\\d[\\d,，.]*|人次|以上|数量)/，同时覆盖数字形态、量词形态与无空白形态（流式丢字的另一种形态）；**反向验证已做**：整条退回旧模式后「注释即契约」用例变红（报文 `日均门诊患 15000 以上 → 实得 []`），这条修复确实被测试守住。**诚实记录**：单独去掉 (?!者) 后 17 例**全绿** —— 其候选集无一以「者」开头，故它今天是**冗余的意图声明**（真正拦住「门诊患者」的是候选本身），删除它无行为变化；已写进源码注释防后人误判。真实语料自证：185,913 字里 13 处「门诊患」**全部**是正确写法「门诊患者」（门诊患者人次达15000 / 门诊患者15000以上 / 门诊患者 15000 人），新模式一个都没误报。③ **命中可定位**：R-301 的丢字检测只有一条不可点击的 tooltip（红字「丢字?」+ 一句总结），而 R-302 的文风 lint 已经做到「命中入库 → 徽标 → 一键跳到命中字符」；同一个成稿自检里两个检测器体验不一致，且丢字只给总结不给位置（hits 里本来就有 offset，只是被丢弃了），用户面对 3 万字正文无从下手。现 Chapter 增 sanityFirstHit{offset,excerpt}、applyAutoRepair 落库首条命中、ComposeStep 的「丢字?」由 span 改成 button 并走与「版式?」完全相同的 focusPositionInChapter 通道（预览态先切编辑态；R55 之前的存量章无锚点时兜底只切到该章）。另把 summary 的「最严重」变成名副其实：hits 按类别置信度稳定排序（残缺搭配 > 过短行），hits[0] 同时充当跳转锚点。④ **标记必须随正文失效（契约从未落地）**：R-301/R-302 的字段注释都写着「人工修订后随 updateChapter 清空」，但实现只在**重新生成**时清空——人工改完正文，徽标永远红着，且 offset 还锚在旧正文上（**跳到错位置比不跳更坏**）。现 flushEditingContent 在正文真的变化时一并清空四字段（仅在确实存在标记时才写补丁，避免每次编辑都往 chapters json 里塞 4 个 undefined）。⑤ **顺手修两处源码级失真**：short_line 的用户文案里直接印着未替换的占位符「第 N 行」（现显示真实行号）；模块头部用法注释仍写 updateChapter({genError: r.summary})，而 genError 是 R280「生成失败原因」字段（composeGates A2 用它判「failed 未写原因」违规，genFailureSummary/SolutionDeliveryCheckCard 也按它做失败归因聚合），照注释抄会污染失败归因——已改正并加守卫断言「sanity 写入块不得出现 genError」。⑥ **测试 +16 例（2 新文件 + 1 扩展）**：bidTextSanity.test.ts 增 6 例（真实行号 + **源码注释即契约**：12 条注释样本必须全部命中且原因一致（另加一条「源码里每个模式都要有样本能命中」覆盖哨兵） / 4 条正确写法与合法词零误报 / 置信度排序）、新增 bidTextSanityRealBid.test.ts 4 例（真实语料零误报哨兵，含「语料自证」防空洞结论 + 全量夹具 skipIf）、新增 sanityJumpWiring.test.ts 6 例（三层接线：offset 锚点 / Chapter 字段与双向写入清空 / 徽标 button 与同通道跳转）。四门实测：npx tsc -b exit 0；CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD=100000 npx vite build ✓ 4.35s（收尾终态复跑） exit 0；npx vitest run **275 files / 3264 passed / 2 skipped / 0 failed**（+2 文件 / +16 例）；npx eslint . **116 error / 11 warning**（= R52/R54 基线，零新增，故 eslint-budget.json 与三处同源基线一律不动）。⑦ **明确不做**：不把 BROKEN_PAIRS 的 \\s+ 放宽成 \\s*（「整体采/系统提/能够实/系统支」这四条一旦放宽就会命中**正确**正文「整体采用/系统提供/能够实现/系统支持」，属灾难性误报；其余无损位置已记入 B26 待办，不做本轮猜测性扩召回）；不给丢字徽标加「整章重写」入口（缺一个字的正解是跳过去补字，不是重写三万字）；不动 B25 长文检索预算（设计变更，异源）。⑧ **口径更正**：AGENTS.md/CLAUDE.md 第 3 条基线原写 273 files / 3244 passed（= R52 期数字，R54 未同步；R54 自己的记录已是 3248），本次一并更正为 R55 实测值，并补齐账本 baseline 里缺失的 r052 / r054 两条。⑨ **轮次口径说明（防重演历史上「round 双 bump」）**：本轮做的是**本地自动化线《第 5 轮优化记录》「下一轮建议」第 1 条**（原文：「同法校准 bidTextSanity（丢字检测）—— 本轮只校准了版式 linter；丢字检测尚未在真实语料上验证误报率（`BROKEN_PAIRS` 里「整体采 用」这类模式需实测）」），而三稿审计 §5 给 R55 排的是「大纲失败可诊断（P0-3）」、§8.5 的下一步也写着 R55 做该交付。两条线同时指向 R55 这个号（本地线自编「第 N 轮」，项目线是 R+编号；B22/R49 已实测过一次撞号）。本轮选择：**沿用项目线 R55 编号，内容换成「丢字检测校准 + 可定位」**，理由有二 —— ① 审计 §5 的 R55 交付依赖 §2 P0-3 的前提「大文件致败」，而该前提已被 R54 证明证据不足（排除 6 个弃用项目后 n=2，审计自己也写着「证据不足，先把失败原因记录做出来」），先做一项当场能取证、且直接改善交付物（标书正文）的改动更划算；② 本地线第 1 条与本轮的语料/工具（R51 真实夹具）完全现成，属零新增基础设施的一轮。**「大纲失败可诊断」没有被取消**，已原地登记为 backlog `B27-outline-failure-diagnosis`（= 审计 §5 R55 的原始交付），下一轮可直接做。若用户要求严格按审计顺序执行，直接指示改做该条即可。",
+      "verdict": "pass",
+      "at": "2026-10-16"
+    },
+    {
+      "id": "R054",
+      "theme": "解析链路根因更正 + 一处真缺陷修复 + 死路径立墓碑（承接 R52；R53 的零风险去重与 lint 快赢已并入 R52 记录，未单列轮次）。① **更正 R52 期 §2 P0-2 的根因判断（本轮的起点）**：原先判定「整文解析只用 14,000 字符，最大招标 762,209 字覆盖率仅 1.8%」，根因指向 bidTypes.MAX_TENDER_CHARS=14000 与 prompts/tenderParse.ts:32。**核验方式：先问「谁真的调用它」**——全仓 buildTenderParseMessages 的引用只有它自己、bidTypes.ts:7092 的 barrel 再导出、2 个测试、2 个工具脚本（split-prompts.mjs / r50_bidtypes.mjs），**前端运行时零调用**。真正的活链路阈值在 prompts/wholeParse.ts:24-38：WHOLE_FILE_LIMIT=60000（≤6 万字整文直读）→ PARSE_SEGMENT_CHARS=45000 切段 + 跨段 AI 合并，段数上限 PARSE_MAX_SEGMENTS=20（关键项 PARSE_MAX_SEGMENTS_CRITICAL=24）≈ 90 万 / 108 万字全量覆盖；最大真实标书 762,209 字 = 17 段 ≤ 20，**在全量覆盖区间内**。且该问题**已由 R288+（2026-10-13）修过**，证据就写在 wholeParse.ts:30-36 的注释里（原值 6 段使 38 万字标书 17/22 项全部回落检索、覆盖率 8%，提到 20 才解决）——审计时未读该注释。另：「parse_report ÷ tender_text 比值低」被证明**不是截断指标**（parse_report 是抽取摘要，本就远小于原文），原判断属误读。② **真缺陷修复**：prompts/sectionParse.ts 的 mode===\"full\" 分支。selectRelevantChunks 在 source.length ≤ RETRIEVAL_BUDGET_CHARS(20000) 时给 mode=\"full\"（语义=完整原文、无省略），而该分支此前用 clipText(tenderText, MAX_TENDER_CHARS=14000) —— 于是 14,001~20,000 字的招标被**标成「招标文件全文」却静默截断（最多丢 30%）**，且 full 分支的 tail **没有** retrieval/truncated 两条都具备的「不得臆造」护栏（等于告诉模型「这是全文」又鼓励它直接输出）。现按契约原样注入全文；仅当确实超该通道上限（> MAX_TENDER_CHARS*2 = 28,000）时**如实降级为「摘录」口径**，绝不再自称全文。sectionParse PROMPT_VERSION 5→6（并同步 e2eRealParse.test.ts 的版本指纹）。③ **契约守卫**：sectionParse.test.ts 新增 4 例（full 在 14,000~20,000 区间须原样注入 / 超限须如实降级且不含「全文」字样 / retrieval 与 truncated 既有口径不被牵连）；**已做「删实现即变红」反向验证**：退回 clipText(tenderText, MAX_TENDER_CHARS) 后核心例变红（断言命中 full 分支出现「省略」字样）。④ **给死路径立墓碑**：tenderParse.ts 顶部加显著注释，写明其无生产调用者、活链路在哪、14000 常数不是线上上限，并注明「R54 审计曾据此得出错误结论」；**未删除该文件**（测试与工具脚本仍引用）。⑤ **明确不做**：不改 MAX_TENDER_CHARS（那是在修一条没人走的路）；不扩 eval.ts 的 14,000 摘要预算（传入的已是逐章摘要：关键章 1500 / 普通章 400 字，属正常封顶设计）；不做 bidVisibility 20,000 字证据预算改造（B25，属设计变更，且它面向投标正文而非解析链路）。四门实测：tsc -b exit 0；vite build ✓ 6.15s exit 0；npx vitest run 273 files / 3248 passed / 2 skipped / 0 failed（+4 例即本次契约守卫）；npx eslint . 116 error / 11 warning（= R52 基线，零新增，故 eslint-budget.json 与账本基线无需再改）。",
+      "verdict": "pass",
+      "at": "2026-10-16"
+    },
+    {
+      "id": "R052",
+      "theme": "门禁回绿 + 抽样审计确认的四处真实修复（只动 2 个业务文件）。① 门禁假红根治：proseFallbackWiring.test.ts 的行锚正则原为 /\\n\\s*\"bid-outline\",\\n/，而 useBidWorkspace.ts 是 CRLF（9700/9700），`,\\n` 在 CRLF 下永不匹配 → outlineCalls=0+2=2，expect(2).toBe(7) 失败。这不是业务回归（expectJson:true 实测 7 处、line-anchored bid-outline 实测 5 处，均满足契约），而是**行尾导致的假红**；代价是该守卫（用户最痛故障「标书大纲一直生成不了」的接线守卫）实际失效。修法：正则改 /\\r?\\n/ 使其不依赖行尾；同时新增 .gitattributes（* text=auto eol=lf + 二进制显式豁免 + .cmd/.bat 保 CRLF），从源头阻止行尾漂移（实测本仓原为 351 CRLF / 394 LF / 21 混合，.gitattributes 此前为空且 core.autocrlf=true）。② clipText 由「只留开头」改为「保头+保尾」：原实现 text.slice(0,max) 直接丢弃后文，而中文招标的评分办法/★▲条款/废标条款/合同条款/格式要求绝大多数落在靠后章节 —— 真实库 25 份 :762,209 字符的最大一份只看到 1.8%，且静默无提示。现保留前后两端并以「此处省略中间 N 字」显式标注；`text.length <= max` 仍原样返回（短文本零改动语义不变，44 处调用点无一破快照）。新增 src/pages/BidWorkspace/clipText.test.ts 7 例并做「删实现即变红」反向验证：退回旧实现后 4/7 红（含「★废标条款只在结尾必须存活」核心例）。③ 零风险去重：删除 bidTypes.ts 的 repairJsonCandidate（29 行）—— 它与 @/lib/jsonTolerant 的 repairJsonStructure **逐字节同源**，而 jsonTolerant 自陈该库正是「抽自标书/方案/PPT 三处此前逐字节重复的实现」即库从标书抽出但标书留了副本；两份分别演进会让标书链路与 PPT/方案链路的 JSON 容错悄悄分叉。另收编 PipelineStepper.tsx 的 daysUntilOpen 副本回 bidTypes.daysUntil（形参放宽到 string|null|undefined），消除「同语义两实现两活跃消费者」。④ 声明顺序（TDZ）修真实结构债：把 useSolutionStudio.ts 的 autoSaveState/autoSaveResetRef/saveTimerRef 上移到首个使用点 persistSolution 之前，把 useIntelCenter.ts 的「信息源」块（state+loadSources+effect）上移到 triggerTick 之前，并把 loadSources 补进 triggerTick 依赖（先前是真实遗漏依赖）。运行时原本不出错，但一旦启用 React Compiler 并上调 panicThreshold，loadSources 失去稳定引用 → [loadSources] 每渲染都变 → 无限渲染。四门实测：tsc -b exit 0（0 error）；npx vitest run 272 files / 3237 passed / 2 skipped / 0 failed（20.93s→13.70s）；npx eslint . 116 error / 11 warning（原 119/13；−3 error 已复算到规则级，且 set-state-in-effect +1 属**规则变准**而非新缺陷——修掉前向引用后 useIntelCenter 的 useEffect(loadSources) 才首次可被过程间分析跟踪并如实标记）；vite build 见当轮验证。同轮另确认一条**不成立**的审计结论以免误改：有审查称「tsconfig 未启用 strict」，但 TS 6.0.3 已把 strict 作为默认（探针实证：默认报 TS2322，--strict false 才 exit 0），故全仓是在 strict 下编译的，不得据此改动 tsconfig。",
+      "verdict": "pass",
+      "at": "2026-10-16"
+    },
+    {
+      "id": "R051",
+      "theme": "安中医真实标书回归夹具（R50 §5 未覆盖边界第 1 条）：把「长文检索召回率未用真实标书验证」从口径变成可复跑数字。新增 scripts/azhongyi-real-fixture.mjs（只读 PocketBase 项目 mfl6howomsw5i0l；脱敏加固 3 处：投标正文章节内容也脱敏、新增行级脱敏 scrubLabelLines/LABEL_LINE 处理地址·联系人·电话·邮编·传真标签行与地址续行、新增（…交口）→（某路口）与…路N号→某市某路 000 号 正则），产出全量夹具 .probe/az-fixture/azhongyi.full.json（tender 152053 字 / bid 138810 字 / 133 条款，不入库）与脱敏子集 src/pages/BidWorkspace/__fixtures__/azhongyiRealBid.json（tender 32957 / bid 47103 字 / 18 章 / 133 条款；第 3 章整章保留、其余每章截 1900 字）。新增 src/pages/BidWorkspace/bidVisibilityRealBid.test.ts 27 例（只断言行为不变量与下限 hitFloor=40，不把命中率写死）：§0 夹具自洽与脱敏（真名计数 0）§1 mode=retrieval/input_complete=false/注入≤20000/未注入如实计量/note 写明不得当作不存在 §2 未覆盖章片段确实不在注入素材 §3 召回下限+命中必带 sources+未命中逐条点名 §4 旧口径 clipText(12000) 只覆盖 2-3 章却自称 input_complete=true 不得回归 §5 端到端 sanitize+markInvisible → 不可见一律 partial+needs_review、导出无内部文案 §6 buildDeviationMapMessages 含真实证据包不含未注入片段 §7 全量夹具存在时（skipIf）139k 字下 needs_review>100。真实测量：全量 clause_hit=13/133(9.8%)、注入 6 段 19542 字、未注入 119268、漏第 4/8/9-18 章；子集 clause_hit=56/133(42%)、注入 7 段 19944 字、未注入 27159。顺带修真实缺陷：bidTypes.ts 的 deviationCommitHits 原让负偏离（deviation_undercommit，在 GATE_FATAL_RULES 硬闸黑名单）与「本次不可见」（deviation_invisible_review）共用 30 条上限，长文下不可见上百条会把负偏离整批挤出 hits → 交卷体检误判「无废标级命中」；现改为先收集负偏离（≤30）再收集不可见（独立 ≤30）。245 files / 2917 passed / 2 skipped；tsc 0 error；vite build 3.91s；eslint 119 error / 13 warning = R50 基线零新增",
+      "verdict": "pass",
+      "at": "2026-10-15"
+    },
+    {
+      "id": "R050",
+      "theme": "P0-3 长文可见性（WorkBuddy 升级文档切片 3）：长投标正文进废标自查 / 偏离表前先做「输入可见性报告 + 按条款定向检索证据包」。新增 src/pages/BidWorkspace/bidVisibility.ts（纯函数：20000 字预算；按「第N章」切章 → ≤6000 字块 / 300 字重叠 / 来源 id 形如「第3章 资质证明/块2」；条款关键词 + 同义词 + IDF 加权打分；selectBidEvidence 产出 mode=full|retrieval|truncated 的证据包，input_complete 仅 full 为真）。三份提示词（voidCheck 4→5 / voidCheckRounds 1→2 / deviationMap 1→2）system 各带可见性契约、user 由程序注入【输入可见性】块，删除 clipText 与「每章前 300 字摘要」等静默截断。偏离表未知态不再落成负偏离：sanitizeDeviationRows 漏答兜底 deviation → partial + needs_review（旧口径会经 deviation_undercommit 撞 GATE_FATAL_RULES 硬闸，把「系统没看到」判成「投标人没承诺」）；新增 markInvisibleDeviationRows 按检索未命中条款打标。新增体检规则 deviation_invisible_review（warn，不进硬闸名单）；DeviationPanel 补「待人工核对」角标 / 分组计数 / 统计卡 / 核对指引；bidFiles 导出偏离表改用 deviationExportSummary，内部过程文案不外泄。测试 +3：bidVisibility.test.ts 24 例、promptVisibilityWiring.test.ts 9 例（母手册 == 派生手册 == 代码 system）、DeviationPanel.test.tsx 5 例（jsdom）。244 files / 2890 passed / 2 skipped；tsc 0 error；vite build 4.01s；eslint 119 error / 13 warning = 基线零新增",
+      "verdict": "pass",
+      "at": "2026-10-15"
+    },
+    {
+      "id": "R049",
+      "theme": "B0c 剩余项「报价编辑器金额往返回归网」（本地自动化线 R49；因项目 R48 已被并发执行者的「事实来源优先级」切片占用，本线主动顺延为 R49）：新增 src/components/ppt-quote/QuoteEditorMoney.test.tsx（6 例，jsdom + @testing-library，状态化 harness 复演线上 usePptQuote 的 mutateQuote，totals 由 groupSubtotal/quoteTotal 从最新 state 重算），驱动真实「数量 / 单价（元）/ 折扣（百分比）」输入框，断言「行小计 / 分组小计 / 报价总计」三处逐分自洽且等于金额单一真源 itemSubtotal；探针行 = R034 经典反例 15 × 599,729.21 × 90%（精确 8,096,344.34，裸浮点得 8,096,344.33）。已做「删实现即变红」反向验证：把 QuoteEditor.tsx:674 的 const sub = itemSubtotal(item) 临时改成裸浮点 → 第 1、4 条 2 failed | 4 passed；git checkout 还原后 6 passed、git diff 为空。业务代码 0 改动 / 0 新依赖 / 0 schema / 0 提示词。顺带核对并结掉三处陈旧待办：B1（A1-A6 已落地接线：composeGates.ts 387 行 + useBidWorkspace.ts:712 导入 / :6938 调用 / :6944-6958 逐条弹）、B10（overPriceCeilingHits :2259 与 quoteRecordCeilingHits :2263 均已接进 refreshFormatReport 本地体检）、docs/13 §3.2/§3.3/§3.4。241 files / 2848 passed / 2 skipped（连跑 3 次一致；本轮自身 +1 文件 / +6 用例，其余增量属并发在途 factSources 批次）；eslint 119 error / 13 warning = 基线零新增；vite build 6.30s",
+      "verdict": "pass",
+      "at": "2026-10-15"
+    },
+    {
+      "id": "R048",
+      "theme": "P0-2「事实来源优先级」（WorkBuddy 审查文档切片 2）：新增 BidWorkspace/factSources.ts 纯函数层（FACT_CONFIRM_MARK / FACT_COMMITMENT_TOPIC_RE / TENDER_CONSTRAINT_VALUE_RE / FactSourceTier / normalizeFactSourceLine / factSourceTierOf / normalizeFactSourceLines），规范化只作用于「AI 输出→编辑态」，把需商务拍板主题上的已定承诺形态取值补【需人工确认】，招标原文比较口径（不超过/不少于…）原样保留；prompts/factSettings.ts PROMPT_VERSION 1→2、新增来源优先级分层（招标硬约束 > 本项目已确认事实 > 待商务拍板 > 历史范本仅写法参考）、重写第 4/6/7 条（范本数值不得覆盖本项目招标硬约束与本项目已确认事实）；runGenerateFactSettings 改走 rawLines→normalizeFactSourceLines→setFactDraft 并 toast 报出标记条数，范本摘录标签去掉「同主题事实优先采用范本口径」；事实面板补「【需人工确认】=待商务拍板」口径。刻意不标记「预算金额/最高限价/控制价」以保住 priceCeilingFromFacts 报价天花板（bidTypes.ts:4360 + bidFormatCheck.test.ts:424-428 双侧守卫）。新增 3 个测试文件 / +21 例（factSources.test.ts 7 / factSourcePriority.test.ts 7 / factSourceWiring.test.ts 7，含「手册 §2.22 逐字块 == buildFactSettingsMessages 的 system」母手册+派生手册同源守卫，已做变异负例验证：改代码不改手册必红）；promptsSnapshot.test.ts.snap 的 buildFactSettingsMessages 条目按新文案更新（diff 只动该条）。241 files / 2848 passed / 2 skipped（含同期另一执行者的未提交 1 文件/6 例）；eslint 119 error / 13 warning 持平预算",
+      "verdict": "pass",
+      "at": "2026-10-15"
+    },
+    {
+      "id": "R047",
+      "theme": "用户三问收口（B19 自动选模型 + B20 商务模板识别）并复核「格式更新」：① 新增 lib/modelRouting.ts 按环节自动选模型（六环节 longform/outline/extract/judge/vision/chat；硬门槛=非文本模态排除 + 长期不可用档案排除，标签加权 + 人工标注加成 + 会话冷却只降权 6 分 + 同分个人优先；默认档改「自动 · 按环节智能选择」，31 处 llm 调用点补 role，解析报告/合规矩阵/质疑函/投诉书四面板不再硬编码 modelRef:null）；② 新增 BidWorkspace/templateProfile.ts 编排层，合并 formatSpec 强链路 + bidDocxFormatExtract 补链路，补齐 1-6 级标题 / 表格 / 页眉页脚 / PAGE 页码域 / 目录 / 封面 / 标题编号 / 要求行，要求行与招标评分点 + ★▲ 条款本地 bigram 对齐，落 format_settings.templateProfile（零新 collection / 零 schema，空画像不覆盖旧画像），要求行注入大纲 v5 / 章级 v6 / 小节级 v7 提示词（空数组时与旧版逐字一致）；③ 格式更新沿用 R46 结论并扩识别面。237 files / 2821 passed / 2 skipped；eslint 119 error / 13 warning 持平预算",
+      "verdict": "pass",
+      "at": "2026-10-15"
+    },
+    {
+      "id": "R046",
+      "theme": "格式刷新真可用性 + 导出物无字体根因：文字级直接格式同步改写（含 Normal 补建 / docDefaults 偏移非法 XML 修复）+ 识别侧文字级抽样推定与如实提示 + exportBidDocxDefaults 写入 DEFAULT_RUN_FONT；233 files / 2758 passed / 2 skipped；eslint 119 error / 13 warning 持平预算",
+      "verdict": "pass",
+      "at": "2026-10-14"
+    },
+    {
+      "id": "R045",
+      "theme": "交付物治理三处硬伤：★/▲ 实质性条款标记不再被当装饰符清洗（废标级）+ 导出保留已写正文章节（pickExportChapters）+ 技术评分章小节标题兜底（sections=[]）；同轮落地暗标检查复用（fontResolve 继承链 / numberingResolve + L5-C10 / 三地区预置）；231 files / 2747 passed / 2 skipped；eslint 119 error / 13 warning 持平预算",
+      "verdict": "pass",
+      "at": "2026-10-14"
+    },
+    {
+      "id": "R044",
+      "theme": "工程卫生：lint 债务具名预算化 + 人工检查清单可机检（eslint-budget.json / verify:eslint-budget / health:manual）；151→119 error、20→13 warning（−32 / −7）；删 7 条僵尸 eslint-disable；13 在途文件类型收口；0 行为变更（112.7 万例对拍 0 差异）",
+      "verdict": "pass",
+      "at": "2026-10-14"
+    },
+    {
+      "id": "R043",
+      "theme": "身份收敛（结构整备 C / 0 功能变更 / 0 前端改动 / 0 数据模型变更）：pb_hooks 里 182 处内联身份副本全删 → zx_guard.pb.js 顶部 routerUse 中间件单点取值并 e.set(\"rhUserId\")，34 个业务钩子改读 e.get(\"rhUserId\")；35 文件 +207 −355；新增 pbHooksIdentity.test.ts 9 例（结构锁 3 + 口径锁 6）；160/160 逐字节等价；改前头名口径已漂移 3 种（131 处截 64 / 22 处去控制字符不截断 / 1 处只 trim）",
+      "verdict": "pass",
+      "at": "2026-10-14"
+    },
+    {
+      "id": "R040",
+      "theme": "修 B8 折扣语义歧义：新增 src/lib/discountIntent 判定单一真源（阈值 5）+ DiscountIntentDialog 把两种读法各换算成真实金额；行内 DiscountCell 只在 blur/Enter 落值且歧义不写库、整组入口先判后落、存量横幅逐行确认、交付体检 warn 只报不拦；normalizeDiscount 的 R285 口径未动并有回归守卫。+1 文件 +20 用例（18 新 + 2 交付体检）；实机注入真实组件 23 项断言全过 / 0 pageerror",
+      "verdict": "pass",
+      "at": "2026-10-14"
+    },
+    {
+      "id": "R039",
+      "theme": "B14 解析失败可诊断性 + OpenCode GO 会话头：三通道实测定位（opecode 400 / 大模型 429 / 平台 ok），网关补 x-opencode-session 与 UA（仅 opencode.ai），前端 parseSegmentsFailedMessage 透出真因与下一步；+4 例单测",
+      "verdict": "pass",
+      "at": "2026-10-14"
+    },
+    {
+      "id": "R038",
+      "theme": "B12 价格分测算接 UI：四层接线（算法层只加只读枚举口 listPriceScoringCandidates → 视图模型 buildPriceScoreView 六阶段分流 → 面板纯渲染 → 第 6 步挂载 + key 重挂载）；+38 例（27 视图模型 + 11 源码扫描哨兵）；真实库 23 项目审计 8 可算 / 6 拒算 / 4 无价格分项；真实公式出数 27.5 / 临界价 -8.33%",
+      "verdict": "pass",
+      "at": "2026-10-14"
+    },
+    {
+      "id": "R037",
+      "theme": "修 B9 建设清单金额分位：checklistTypes.ts 新增 lineSubtotalYuan/sumLinesYuan、calcTotal 改「逐行精确到分 → 整数分累加」；checklistSummary 小计同口径；checklistExports 逐行小计与分类小计改走同一真源；ChecklistDetailPanel 行小计同口径。20 万组审计：旧实现 140,477 组分位偏差 → 新 0；导出「逐行之和 ≠ 合计」18,084 → 0；实机 10 分类小计之和 = 合计 = 4,960,000",
+      "verdict": "pass",
+      "at": "2026-10-14"
+    },
+    {
+      "id": "R036",
+      "theme": "修 B13 价格分临界价闭式解（比值法分支漏乘下浮率）：均价口径下比值法与偏差法统一到自洽不动点 p=(1-fl)·S/(n+fl)，priceScoreModel.ts:380-390，+1 例单测；监工复验脚本由「✗ 缺陷确认：代码 20000000 vs 真值 19207920.79；自洽失败 9.7」转为「✓ 全部通过」",
+      "verdict": "pass",
+      "at": "2026-10-14"
+    },
+    {
+      "id": "R035",
+      "theme": "GitHub 对标落地价格分确定性测算：priceScoreModel.ts 识别比值法/偏差扣分法 + 敏感性阶梯 + 满分临界价 + checkPriceValidity 废标区间守护；认不出即 ok:false 不猜数；真实招标文件（.diag/r50_tender.txt，395KB，限价 2500 万/低于 45% 无效）跑通",
+      "verdict": "pass",
+      "at": "2026-10-14"
+    },
+    {
+      "id": "R034",
+      "theme": "报价金额分位精确 + 合计大写单源（money.ts productCents/centsToYuan；pptQuoteTypes 分位链路；Word/Excel/编辑器大写出口；新增 quoteTotalCapital.test.ts 17 例）",
+      "verdict": "pass",
+      "at": "2026-10-14"
+    },
+    {
+      "id": "R62",
+      "theme": "(驱动器兜底推进)",
+      "verdict": "fail",
+      "at": "2026-10-20"
+    },
+    {
+      "id": "R63",
+      "theme": "(驱动器兜底推进)",
+      "verdict": "fail",
+      "at": "2026-10-20"
+    },
+    {
+      "id": "R64",
+      "theme": "情报中心摘要显示成原始 JSON：展示层清洗口径统一（卡片/详情/首页三处同源，剥站点名前缀+JSON 元数据块）",
+      "verdict": "pass",
+      "at": "2026-10-25"
+    },
+    {
+      "id": "R65",
+      "theme": "情报「内容片段」显示成别的文章标题列表：展示层列表残片识别（首页 + 详情面板同源）",
+      "verdict": "pass",
+      "at": "2026-10-28"
+    },
+    {
+      "id": "R66",
+      "theme": "资质「导出硬拦截」开关口径统一（R66 收尾时漏记 history，本轮补记，依据 lastRound 与 .loop/ledger.json）",
+      "verdict": "pass",
+      "at": "2026-10-29"
+    },
+    {
+      "id": "R67",
+      "theme": "首页投标节点卡开标日期解析单一真源（date-only 与 PB 日期时间串同口径）",
+      "verdict": "pass",
+      "at": "2026-10-30"
+    },
+    {
+      "id": "R68",
+      "theme": "开标倒计时与补录条的日期口径统一（每天 00:00–08:00 多算一天 + 原始串直出 + 编辑框空白）",
+      "verdict": "pass",
+      "at": "2026-10-31"
+    }
+  ],
+  "eslintBaselineNote": "160 为 2026-10-13 实测存量（53 文件，主因 react-hooks/set-state-in-effect 75 条 + any 19 条）。闭环只要求「不高于此数」，不要求清零——清零属独立治理任务。R034 复测仍为 160 error / 20 warning；R035 复测仍为 160 error / 20 warning（新增两文件单独 lint exit 0）；R036 复测仍为 160 error / 20 warning（180 problems，未新增文件）。R037 复测为 **161 error / 20 warning（181 problems，54 文件）** —— 多出的 1 条**不是本轮引入**：本轮 5 个文件单独 lint 全部 exit 0；+1 来自工作区既有的未提交新文件 `src/components/model-config/ModelMetaDialog.tsx`（见 notes「R037 工作区卫生」）。**eslintBaseline 仍按 160 记**，待用户处置那批未提交改动后应回到 160。 R044 实测 **119 error / 13 warning** —— 基线自此改为 **119**（不再回看 160/151/163）。降幅构成（全部可复算）：① 删掉 7 条 eslint 自己报的僵尸 `eslint-disable-next-line`（unused directive，ruleId=null：useBidWorkspace.ts ×5 / useIntelCenter.ts ×1 / pbHooksIdentity.test.ts ×1）→ warning 20→13 的 −7 正好等于这 7 条；② 13 个在途文件的类型收口（`as any` ×4）与 no-control-regex 处置（imageSearch 改 `\\p{ASCII}`、composeGates 去多余转义、bidTypes/mermaidFigure 加带理由的行内豁免）+ 死分支折叠（no-useless-assignment ×1）；③ 剩余 119 条**全部**来自 5 条 react-hooks/react-refresh 规则（set-state-in-effect 73 / preserve-manual-memoization 25 / immutability 10 / only-export-components 7 / refs 4）；对照 R041 存档快照（163 error），当年 40 条非 react-hooks 类错误（no-explicit-any 19 / no-useless-assignment 5 / no-useless-escape 5 / no-unused-vars 3 / no-control-regex 3 / prefer-const 3 / no-irregular-whitespace 1 / preserve-caught-error 1）现已清零。明细见 docs/evolution/_r44_eslint_byrule.json（脚本 _r44_eslint_snapshot.cjs 可一键复算）。",
+  "baseline": {
+    "capturedAt": "2026-10-13",
+    "commit": "0e84156",
+    "tsc": "0 error（修复 8 个存量 error 后）",
+    "vitest": "211 files / 2482 passed | 2 skipped",
+    "eslint": "160 error / 20 warning",
+    "r034": "212 files / 2499 passed | 2 skipped；eslint 160 error（+1 测试文件 / +17 用例）",
+    "r035": "213 files / 2532 passed | 2 skipped；eslint 160 error；vite build 11.88s（+1 测试文件 / +33 用例）",
+    "r036": "213 files / 2533 passed | 2 skipped（+1 用例，0 新文件）；eslint 160 error / 20 warning（持平）；tsc -b exit 0；vite build ✓ 10.09s",
+    "r037": "216 files / 2555 passed | 2 skipped —— 其中本轮新增 1 文件 / 6 用例（checklistMoney.test.ts），另 +2 文件 +16 用例来自工作区**既有未提交的 model-config 改动**（非本轮）；eslint 161 error / 20 warning —— +1 来自既有未提交新文件 src/components/model-config/ModelMetaDialog.tsx，本轮 5 个文件单独 lint 全部 0 error；tsc -b exit 0；**pnpm build 恢复可用 ✓ 6.42s**（见 notes E-1）",
+    "r038": "218 files / 2593 passed | 2 skipped（+2 files / +38 用例，均来自本轮 priceScoreBrief.test.ts 27 例 + priceScoreWiring.test.ts 11 例）；eslint 触及 7 文件 19 problems（6 error / 13 warning）全为 useBidWorkspace.ts 在途既有位置，本轮新增 0 error；tsc -b exit 2 —— 5 error 全在在途文件（ModelMetaDialog / PersonalConfigList / useModelConfig / bidDocxFormatExtract×2），本轮 7 文件 0 error；npx vite build exit 0（6076 modules / 4.85s），「价格分测算」落在 BidWorkspace 路由 chunk 而非主包",
+    "r039": "218 files / 2597 passed | 2 skipped（+4 用例，0 新文件）；eslint 触及文件 19 problems 全为在途既有存量（新增 0 error）；tsc -b exit 2 —— 5 error 全在在途文件（ModelMetaDialog / PersonalConfigList / useModelConfig / bidDocxFormatExtract×2）；npx vite build exit 0（6076 modules / 3.68s）",
+    "r040": "219 files / 2617 passed | 2 skipped（+1 file / +20 用例：quoteDiscountAmbiguity.test.ts 18 例 + deliverability.test.ts 2 例）；eslint 本轮触及 7 文件 exit 0（0 error 0 warning），全仓 src 152 error / 19 warning 全为存量；tsc -b exit 2 —— 5 error 全在在途文件（ModelMetaDialog / PersonalConfigList / useModelConfig / bidDocxFormatExtract×2）；npx vite build exit 0（4.28s），「折扣写法有歧义」等文案落在 PptQuote 路由 chunk 而非主包",
+    "r043": "225 files / 2682 passed | 2 skipped（+1 文件 / +200 用例：scripts/pbHooksIdentity.test.ts 9 例 + 工作区既有在途批次）；eslint 151 error / 20 warning（= 账本基线 151，持平）；tsc -b exit 0；vite build ✓ 8.35s",
+    "r044": "225 files / 2682 passed | 2 skipped（+0 文件 / +0 用例：与 R043 同批；本轮只改实现与工具，未加减用例）；eslint 实测 **119 error / 13 warning**（R043 基线 151 → 119，−32；20 → 13，−7；连测两次一致）；tsc -b exit 0；vite build ✓ 7.83s（6078 modules）。新增 eslint-budget.json + 两条 health 脚本（.mjs/.cjs 也在 eslint 覆盖面内，实测 0 error）",
+    "r045": "231 files / 2747 passed | 2 skipped（本轮新增 6 文件 / 26 例：fontResolve / numberingResolve / anbidRegionPresets / BidCheckConfigDialog(首个组件测试) / bidExportChapters / 三处既有测试扩例）；eslint 119 error / 13 warning（= R44 基线，零新增）；tsc -b exit 0；vite build ✓ 4.65s",
+    "r046": "233 files / 2758 passed | 2 skipped；eslint 119 error / 13 warning（= R44 基线，零新增）；tsc -b exit 0；vite build ✓",
+    "r047": "237 files / 2821 passed | 2 skipped（+4 文件 / +63 用例：modelRouting.test.ts / templateProfile.test.ts / templateRequirements.test.ts / voidEvidence.test.ts 等）；eslint 119 error / 13 warning（= R44 基线，零新增）；tsc -b exit 0；vite build ✓ 4.50s",
+    "r048": "241 files / 2848 passed | 2 skipped（本切片 +3 文件 / +21 例：factSources.test.ts / factSourcePriority.test.ts / factSourceWiring.test.ts；另含同期 WorkBuddy AI 执行者未提交的 QuoteEditorMoney.test.tsx 1 文件 / 6 例 —— 本切片自身等价口径 = 240 / 2842）；eslint 119 error / 13 warning（= R44 基线，零新增）；tsc -b exit 0；vite build ✓ 10.36s",
+    "r049": "241 files / 2848 passed | 2 skipped（连跑 3 次一致）；eslint 119 error / 13 warning；vite build 6.30s（本轮自身 +1 文件 / +6 用例，其余增量属并发在途 factSources 批次，本轮未碰）",
+    "r050": "244 files / 2890 passed | 2 skipped；tsc 0 error；vite build 4.01s；eslint 119 error / 13 warning（= 基线，零新增）",
+    "r051": "245 files / 2917 passed | 2 skipped（+1 文件 / +27 例：bidVisibilityRealBid.test.ts；其余增量属并发在途批次）；eslint 119 error / 13 warning（= R50 基线，零新增）；tsc -b exit 0；npx vite build ✓ 3.91s；真实召回率：全量 13/133 (9.8%)、脱敏子集 56/133 (42%)",
+    "r052": "272 files / 3237 passed | 2 skipped（R052 记录值；+7 例 clipText 契约守卫）；eslint 116 error / 11 warning（119→116，−3 已复算到规则级）；tsc -b exit 0。**注意：AGENTS.md/CLAUDE.md 当时写的是 273 files / 3244 passed，属未同步的错记，R55 已更正。**",
+    "r054": "273 files / 3248 passed | 2 skipped（+4 例即 sectionParse 契约守卫）；eslint 116 error / 11 warning（= R52 基线，零新增）；tsc -b exit 0；vite build ✓ 6.15s",
+    "r055": "275 files / 3264 passed | 2 skipped（+2 文件 / +16 例：bidTextSanity.test.ts +6、bidTextSanityRealBid.test.ts +4、sanityJumpWiring.test.ts +6）；eslint 116 error / 11 warning（= R52/R54 基线，零新增）；tsc -b exit 0；vite build ✓ 4.35s（收尾终态复跑）。真实语料校准：投标正文 185,913 字 → 0 命中（首次把丢字检测误报率从推断变成实测）",
+    "r056": "279 files / 3290 passed | 2 skipped（+4 文件 / +26 例：outlineDiagnostics.test.ts 13、outlineDiagWiring.test.ts 8、snapshotRestoreContract.test.ts 4、outlineGuardRealDb.test.ts 1）；eslint 116 error / 11 warning（= 基线，零新增）；tsc -b exit 0；vite build ✓ 3.98s（收尾终态复跑）。真实库复盘（只读）：25 项目 / 255 快照、9 个无大纲、13 个被当前关键项判据拦下（其中 11 个已有大纲）、旧口径下 5 个项目提示名单不完整（最大标书那 1 个完全空白）",
+    "r057": "282 files / 3308 passed | 2 skipped（+3 文件 / +18 例：hookSources.test.ts 8、hookSourcesConvergence.test.ts 5、useBidWorkspace.behavior.test.tsx 5）；eslint 116 error / 11 warning（= 基线，零新增）；tsc -b exit 0；vite build ✓ 4.89s。God Hook 侦察：hook 9,828 行 / 371 句柄、迁移前 renderHook 命中 0；含 readFileSync 的测试文件 38 / 123 处，读 hook 的哨兵 9 个（迁移后一次跑 121 例全绿）；迁移后 hook 文件名在 src/+scripts/ 非注释代码里只剩 HOOK_PATH 一行",
+    "r058": "296 files / 3486 passed | 2 skipped（+1 文件 / +6 例：useBidWorkspace.projectCrud.test.tsx 6 例）；eslint 116 error / 11 warning（= 基线，零新增）；tsc -b exit 0；vite build ✓ 3.91s。B32 行为网第一簇（项目 CRUD）落地，反向验证 2 条（删 applyProjectState(record)→用例①红、删 persistProject→用例③红）",
+    "r059": "297 files / 3491 passed | 2 skipped（+1 文件 / +5 例：useBidWorkspace.chapterRefine.test.tsx 5 例）；eslint 116 error / 11 warning（= 基线，零新增）；tsc -b exit 0；vite build ✓ 4.27s。B32 行为网第二簇（正文精修）落地，反向验证 2 条（删 flushEditingContent 的 stale 标记作废分支→用例②红、删 setEditingContent 的 blockIfArchived 守卫→用例④红）",
+    "r060": "298 files / 3497 passed | 2 skipped（+1 文件 / +6 例：useBidWorkspace.submissionEval.test.tsx 6 例）；eslint 116 error / 11 warning（= 基线，零新增）；tsc -b exit 0；vite build ✓ 3.97s。B32 行为网第三簇（体检与评标）落地，反向验证 3 条（删 startSubmissionCheck 的 blockIfArchived→用例⑥红、无正文预检改恒假→用例③红、删 initManualReview 的 manual_review 落库→用例⑤红）；另修 R59 chapterRefine 本地状态竞态（防抖 flush 在 act 外，读本地状态改 waitFor）",
+    "r061": "299 files / 3504 passed | 2 skipped（+1 文件 / +7 例：useBidWorkspace.export.test.tsx 7 例）；eslint 116 error / 11 warning（= 基线，零新增）；tsc -b exit 0；vite build ✓ 3.94s。B32 行为网第四簇（导出）落地，反向验证 3 条（删 exportBidWord 无正文预检→用例①红、删 exportDeviationWord 无偏离表预检→用例④红、删 exportAllDocs 闸门预检→用例⑥红）",
+    "r062": "300 files / 3509 passed | 2 skipped（+1 文件 / +5 例：exportFont.test.ts 4 例 + toAnnotatedDocx.test.ts 1 例）；eslint 116 error / 11 warning（= 基线，零新增）；tsc -b exit 0；vite build ✓ 4.22s。B21 导出字体护栏收尾：其余 6 条 docx 导出路径补默认中文字体（单一真源 exportFont.ts + 整篇 docDefaults），反向验证 2 条（删 toAnnotatedDocx 的 styles→守卫用例②红、删 exportTemplate 目录标题 font→守卫用例③红）",
+    "r063": "301 files / 3513 passed | 7 skipped（分片实测：沙盒 2 核、单次调用上限约 175 秒，整包一次跑不完；按 jsdom 28 / node 273 两组共 15 片跑完并用文件清单做集合校验「已跑 301 / 全部 301、未覆盖为空」，0 failed）；+1 文件 / +11 例（bidVisibilityCorpus2 5 例 + bidVisibility 分配器 6 例），另有 5 例因本机夹具/盘符路径缺失转为 skip；eslint 116 error / 11 warning（= 基线，零新增）；tsc -b exit 0；vite build ✓ 1m14s。B25 选块两阶段最大覆盖：安中医全量 50→131/133、子集 110→123/133、建阳总医院（184 条）115→171；严格判据（≥2 词且≥自身最高分 50%）全量 33→86、最佳块被选中 13→74；反向验证 3 条，bidVisibility.ts 字节级还原",
+    "r064": "326 files / 3785 passed | 2 skipped（单命令整包实测，本机非沙盒分片；开工基线 325/3774/2 → 本轮 +1 文件 / +11 例：intelBodyClean.test.ts +8 例、intelSummaryWiring.test.ts 新增 3 例）；eslint 116 error / 11 warning（= 基线，零新增）；tsc -b exit 0；vite build ✓ 9.80s。真实库取证：627 条情报 / 58 条有 summary / 9 条含 JSON 元数据（全属「健康报·卫健官方媒体」，该源 11 条脏 9 条 = 81.8%）；清洗后 9 条全部恢复真正文（净增 531 字），非脏 49 条零变化；反向验证：改回裸渲染 → 1 failed，还原 → 3 passed；浏览器实机 0 error。注意：全量数字含并发执行者 91 个未提交在途文件的用例，本轮自身贡献 +1 文件 / +11 例。",
+    "r065": "352 files / 4033 passed | 2 skipped（单命令整包实测）；eslint 116 error / 11 warning（逐文件比对 = 基线，零新增）；tsc -b exit 0；vite build exit 0。真实库取证：728 条情报 / 672 条有 content_snippet；旧口径下 368 条（54.8%）把「别的条目」当摘要显示（含「更多…」166 / 含≥2 日期 345 / 两者 143）；新口径归零 339 条、保留正文 333 条；无日期片段 262 条新旧输出逐字一致（不误伤）。反向验证：两处接线改回旧写法 → 2 failed | 3 passed，还原 → 5 passed。浏览器：首页 5 张情报卡「更多...」5→0；详情面板两处（该隐藏/该保留）行为正确；0 console error。注意：352/4033 含并发执行者未提交的在途用例（R64 时为 326/3785），本轮自身贡献 +11 例、未新增测试文件。",
+    "r066": "356 files / 4071 passed | 2 skipped（开工基线 355 / 4061 / 2，本轮 +1 文件 / +10 例，全部来自 qualHardBlock.test.ts）；eslint 116 error / 11 warning（= 基线，零新增）；tsc -b exit 0；vite build exit 0（6.60s）。工作区仍有 147 个他人在途文件，全量数字含其用例。",
+    "r067": "361 files / 4137 passed | 2 skipped（R66 基线 356 / 4071 / 2；本轮自身 +2 文件 / +22 例：bidNodesLogic.test.ts 16 + bidNodesWiring.test.ts 6，其余增量为工作区他人在途用例）；eslint 116 error / 11 warning（与开工基线逐文件比对，零新增）；tsc -b exit 0；vite build exit 0（15.88s）。工作区仍有 175 个他人在途文件。",
+    "r068": "376 files / 4400 passed | 2 skipped（R67 基线 361 / 4137 / 2；本轮自身 +0 文件 / +13 例：bidOpenDate.test.ts 6→18、bidNodesWiring.test.ts 6→7，其余增量为工作区他人在途用例）；eslint 116 error / 11 warning（与开工基线逐文件比对，零新增）；tsc -b exit 0；vite build exit 0（7.63s）。工作区仍有 248 个他人在途文件。"
+  },
+  "notes": "R068（2026-10-31）：R67 修完首页卡以后，我按「同类面」去扫 bid_open_date 的其余消费者，发现同一个缺陷换了三个面貌还活着。① 补录条 BidOpenDateBar 用 Date.parse(iso)+Math.ceil：date-only 串被当成 UTC 零点（=当地 08:00），所以**每天** 00:00–08:00 都多算一天——开标当天凌晨说「距开标 1 天」而不是「今日开标」，2026-12-01 在 07:59 说 32 天、08:00 变 31 天（倒计时在早上 8 点跳，不在零点跳）。② 同一组件把 proj.bid_open_date 原样塞进文案和 input[type=date]：库里是「2026-12-01 00:00:00.000Z」，界面直出这串，点「修改」后日期框是**空白**的（浏览器丢弃非法 value），保存按钮还 disabled——用户会以为日期没存上。③ 流水线 PipelineStepper 用 bidTypes.daysUntil（同一 UTC 口径），且 `daysLeft<=0` 一律渲染「已过期 N 天」，改成日历日口径后开标当天会变成「已过期 0 天」，所以标签必须一起改。证据是同一时刻同一屏三个答案：2026-10-31 01:00，首页「剩 31 天」/ 流水线「距开标截止 32 天」/ 补录条「距开标 32 天 + 原始串」。修法：新建 src/lib/bidOpenDay.ts 作唯一真源（bidOpenDayMs 取前 10 位按本地零点重建 + 回读校验、bidOpenDateDay 出展示串、daysUntilLocalDay 出日历日差值），三处消费者全部改调；首页 bidNodesLogic 里 R67 那份实现搬进 lib 并留同名 re-export，R67 的接线哨兵跟着改读 lib（否则哨兵会假红）。教训：**「日期字段」的正确单位不是毫秒，是「日历日」**——凡是投标截止/证书到期/回收站保留这类语义，比较的必须是本地日历日，不是时间戳差；一旦用时间戳差，误差就会固定在「当地时区偏移」那一段（这里是 00:00–08:00）。另一条：`input[type=date]` 遇到非法 value 不报错，只是静默变空——所以「把库里原始串直接绑给输入框」是隐形的失败方式，和 R67 的 `continue` 同一类。遗留：项目**列表**的倒计时 chip（BidProjectList → bidTypes.daysUntil）仍是旧口径，实测同一时刻仍显示 32 天；该文件在他人 248 个未提交批次里，按纪律没碰，开单 B46。\n\nR067（2026-10-30）：用户可见缺陷的第一现场仍然是浏览器——本轮是「首页卡片说未来 60 天没有开标项目，可库里明明有个 32 天后开标的项目」。根因是日期串格式：库里 bid_open_date 存的是 PocketBase 日期时间串 \"2026-12-01 00:00:00.000Z\"，卡片写的是 `new Date(`${d}T00:00:00`)`，只认 date-only，拼出来是非法日期 → continue 静默跳过（不报错、不提示、界面看不出少了一条）。实测 19 个可见项目里 3 个有开标时间、3 个全部被跳过；同一项目在标书工作台列表里是有「距开标 32 天」的（那边用 daysUntil 直接 new Date()）——两页对同一件事给出相反答案，这是「同一件事两处各写一套」的第 N 次复现（R66 是同一个 localStorage 键两套判定）。修法：抽 src/components/home/bidNodesLogic.ts（bidOpenDayMs + buildBidNodeLists），日期只取前 10 位按本地零点重建，两种历史格式同口径，并做月份/日越界回读校验（2026-13-01 / 2026-02-30 不许被 Date 顺延成别的日子）；卡片改为调纯函数，展示日期恒为 YYYY-MM-DD。新增 22 例（16 行为 + 6 源码哨兵），反证「改回旧写法 → 6 failed | 10 passed」。全仓扫过同类写法：grep \"T00:00:00\" 共 5 处，useHome×3 都先 slice(0,10)、qualsCore 先过正则、formQualityHits 输入来自 toIso 纯日期，只有首页卡是裸拼，无第二处。四门：tsc 0 / build exit 0 15.88s / vitest 361 files 4137 passed 2 skipped / eslint 116-11 零新增。教训入池：**凡是「从库里读日期再算天数」，解析函数必须是唯一的一份，且必须同时吃 date-only 与日期时间串；静默 continue 是最坏的失败方式**（正确做法是解析不出也要能被测到，所以逻辑必须离开渲染体、变成可注入时钟的纯函数）。另有两条记账：B44 台账「未登记有效期」25/34 不可见、B45 开标日早间差一天。并发在途从 147 涨到 175（BidWorkspace 77 + components/bid-workspace 14 + prompts 10 + ProductMapping 17），B42/B40/B25 仍不可碰。\n\nR066（2026-10-29）：开关类持久化配置的口径纪律——「读」与「写」必须是同一个函数，且默认值只允许有一处定义。本轮实测：同一个键 qual_hard_block 在资质台账页用 `=== \"1\"`（键缺失→默认关），在导出闸门（useBidWorkspace.ts:9426）用 `!== \"0\"`（键缺失→默认拦），两处单看都「对」，只有把「页面显示」与「真实行为」摆在一起才看得见；症状是「提示让用户去关开关，点一下反而把它打开」。已收敛到 src/lib/qualHardBlock.ts（默认拦；只有显式 \"0\" 放行；脏值一律按拦；storage 不可用按软警告），台账页接线，并在 qualHardBlock.test.ts 用源码哨兵钉住两端口径。导出闸门那一半仍在他人在途的 useBidWorkspace.ts 里（未碰），已开单 B42-qual-hardblock-gate-wiring。\n\nR50 的关键判断（两处口径反转）：① 「AI 漏答」不再等于「负偏离」——旧兜底 deviation 会经 deviationCommitHits → deviation_undercommit 命中 GATE_FATAL_RULES（硬闸），即工具没看到的内容会把可交付标书判成承诺不够；现一律 partial + needs_review，并单列 deviation_invisible_review（warn，不入硬闸）。② 内部过程文案与对外交付物分离——偏离表 Word 是投标文件组成部分，deviationExportSummary 把「AI 未定位 / 未注入」这类句子换成对外口径，即使 needs_review 标记缺失（模型原样抄回）也照改。另：新增体检规则必须同时进 FORMAT_RULE_LABEL（它是 normalizeFormatCheckReport 白名单的唯一真源），否则回读即被静默丢弃——本轮先由 tsc 报 TS2322 暴露，已一并修掉。,R48 事实（实测非推断）：① 同一工作区内存在**并发执行者** —— WorkBuddy AI 运行时（C:\\Users\\Administrator\\.workbuddy-ai）在 R48 期间改 src/components/ppt-quote/QuoteEditor.tsx（import 了 itemSubtotal 却未使用）并跑 vitest，我在途的一次 `npx tsc -b` 因此报 TS6133；对方随后自行还原，重跑 tsc exit 0。全仓 vitest 文件数因此为 241（含对方未提交的 QuoteEditorMoney.test.tsx），本切片自身等价口径 240 / 2842。已登记 backlog B22。② `docs/提示词手册/08-站内助手.md` 长期显示 ` M` 但 `git hash-object` == index blob（15b696f…）—— 纯 CRLF 统计伪差异，**不是真改动，不要据此回滚**（澄清 R48 交接单遗留疑点）。③ scripts/split-prompts.mjs 有既存漂移，本轮禁跑，派生手册手工同步；新增 factSourceWiring.test.ts 用「手册逐字块 == 代码 system」守卫把这件事变成会红的测试（含变异负例验证）。④ promptsSnapshot.test.ts 用 toMatchSnapshot 锁住 buildFactSettingsMessages 全文：改提示词必须连带更新 .snap（本轮 diff 只动该条）并把 PROMPT_VERSION 1→2。,R48 纪律（写死以免再犯）：① 「什么算我方承诺」不能凭语义直觉决定，必须**先查下游消费侧** —— 预算金额/最高限价/控制价看着像金额，实为招标方给定约束，若被标【需人工确认】会让 bidTypes.ts:4360 priceCeilingFromFacts 的报价天花板静默失效（超限价不自知）。② 规范化只允许发生在「AI 输出 → 编辑态」这一次；对用户手工编辑行与已保存的 global_facts **一字不改**（系统不得静默改写人工确认过的口径）。③ 手册与代码必须同源且**可自动发现漂移**：新增/修改提示词时，母手册 §、派生手册 §、代码 system 三者要一起动，且要有会红的测试兜底，禁止「人肉记得同步」。,起点 R034；R031/R033 为已存在的进化日志（docs/evolution/）。,每 3 轮至少做一次 GitHub 对标（提示词 §3）。R034 未做→R35 已由驱动器钉为对标轮并完成。下一次对标应排 R38 前后。,门禁四门：tsc/build/vitest 必须绝对绿；eslint 用相对基线。,R034 证据脚本随轮报入库：docs/evolution/_r34_amount_drift_audit.mjs（旧写法缺陷复现，200k 用例 16,600 处少 1 分）与 docs/evolution/_r34_new_chain_check.ts（新写法 0 处偏差，`npx vite-node` 运行；vite-node 仅经 npx 临时拉取，未进 package.json）。,R034 实测环境无 headless 浏览器（vitest environment=node，node_modules 无 puppeteer/playwright）→ UI 目视未做，改用真实 .docx 拆 zip + workbook 单元格断言作为交付物证据。,R034 遗留一个环境副作用：本会话曾起 `npx vite preview --port 5199`（PID 24532 监听中）。项目 hook 禁止智能体结束进程，需用户自行关闭。R035 未启动任何新服务，该端口状态未变。,R035 重要教训：**对标基线 .nightrun/PRODUCT_BENCHMARK.md（2026-09-18）本身会过期**——11 项差距里 5 项（#1/#2/#3/#4/#7）在后续轮次已落地。以后每做对标轮，必须先读码复核基线条目再挑活，否则会重复发现、浪费轮次。已在该文件追加「§五 R35 复核」。,R035 真实语料位置（可复用，勿重复找）：.diag/r50_tender.txt 与 .diag/r48b_tender.txt 为同一份 395,128 字节真实医院招标文件（含「低价优先法＋×10％×100」价格分公式、最高限价 2500 万元、低于限价 45% 按无效标处理）；.diag/r47_tender_text.json 亦为真实招标文本。,R035 证据脚本入库：docs/evolution/_r35_real_tender_price_score.ts（`npx vite-node` 运行，直接吃真实招标文件打印 6 段结论）。,R035 刻意交付「算法层未接 UI」：属提示词 §3.4 只落地可独立验证的一小步，非半成品；入口在 B12。,R036 数学教训（写死以免再犯）：均价类口径下**我方报价自身进样本池**，报高会拖动基准价，所以「报多少拿满分」必须解自洽不动点 p=(1-fl)·S/(n+fl)，比值法（min(1,base/p)=1）与偏差法（dev=0）在这一式上等价；fl=0 时才退化成 S/n。R035 把下浮率误当成偏差法专属，比值法分支留了 sum/n 特例 → 监工复验抓出。以后新增价格分口径，先问「p 进不进样本池」，不能解就返回 null 让阶梯试算兜底，禁止给近似闭式解。,R036 真实语料缺口：.diag 三份招标语料 grep「下浮」「算术平均」命中均为 0（r48b 与 r50 md5 相同 8f951842…，是同一份文件的副本，勿当两份用），故「均价+下浮」这一类**没有真实标书验证过**，当前正确性只靠推导 + 两份监工复验脚本 + 单测。补真实条款后即闭环。,R036 状态文件卫生：本文件此前有两个 \"focus\" 键（后者静默覆盖前者），已去重为单一键。改状态文件时先 grep 键名防重复。,R036 观察（非缺陷）：vite build 的 minify 阶段实测显示 vite:terser，R035 记录为 vite:esbuild；构建结果正常，未追。,R037 B9 教训（写死以免再犯）：**同一笔钱只要有一条算路走裸浮点，整套数字就会自相矛盾**。R034 只修了报价域（pptQuoteTypes/quoteExports），建设清单域（checklistTypes/checklistSummary/checklistExports/ChecklistDetailPanel）当时被 R034 轮报标为 L2「单开一轮更稳」，本轮补齐。以后新增任何金额字段/出口，先 grep `qty * ` 与 `unit_price * `，确认没有裸浮点乘法。,R037 审计脚本入库：docs/evolution/_r37_checklist_cent_audit.mts（`npx vite-node` 运行；20 万组随机对拍 + 定点案例，含冻结的修复前实现作对照）。修复前输出 `badOldTotal=140477 / badExportMismatchOld=32272`（冻结对照口径下为 18084），修复后 `badNewTotal=0 / badExportMismatchNew=0`。,R037 **E-1 阻塞已消失（重要）**：本机 pnpm 现为 **11.21.0**（原记录为 v10），`pnpm build` 不再被 verify-deps-before-run 预检卡死，实测 `CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD=100000 pnpm build` ✓ 6.42s exit 0。.nightrun/state.json 里 E-1 那条阻塞可视为已解除；`npx tsc -b && npx vite build` 仍是等价的回退路径。,R037 环境事实（下轮直接用）：本机 **:8000 是 Vite dev server**（响应含 /@react-refresh，不是 dist 静态站），改了 src 会 HMR 自动生效，不需要重启；:7000 是 PocketBase。浏览器验证走 `source _qa/ab.sh` 的 ab_login/ab_go，**agent-browser 会话与 ref 都不跨 bash 调用保持**，必须同一次调用内 snapshot 取 ref 再 click（用 `agent-browser click @ref`，不要用 eval 的 .click()）。,R037 工作区卫生（下轮开工先处理）：工作区存在**与本轮无关的未提交改动** —— `src/components/model-config/PersonalConfigList.tsx`、`src/components/model-config/ModelMetaDialog.tsx`（新）、`src/pages/ModelConfig/ModelConfigPage.tsx`、`src/pages/ModelConfig/useModelConfig.ts`、`src/lib/modelMetaLocal.ts`(新)、`src/lib/modelProfiles.ts`(新) 及对应 2 个 .test.ts。本轮**刻意未碰**（红线：不做与本轮主题无关的改动）。副作用：全量 eslint 因此从 160 升到 161（多出的 1 条在 ModelMetaDialog.tsx），全量 vitest 多 2 文件 / 16 用例。**请用户决定：提交、继续做、还是回滚这批 model-config 改动**，否则下轮门禁的「≤160」会持续处于假阳性。,R037 数据事实：PB 现有 2 份建设清单（93 行，其中 20 行有单价），**单价全部为整数，没有任何 3 位以上小数** —— 即本缺陷在当前真实数据上是**潜伏**的，触发条件是单价带 3 位以上小数（Excel 导入 / AI 生成清单 / 手工输入均可产生）。实机复测因此只能证明「未回归 + 小计之和 = 合计」，无法现场复现偏差。,R38 接线教训（写死以免再犯）：**新增能力「有算法没入口」等于没交付**。R35/R36 两轮把价格分算法定对之后，账本里 B12 一直挂着没人接；本轮一接才发现真正的难点不在数学而在口径纪律（哪些数不许自动带入、认不出怎么说不算）。以后交付算法层时在同一个 PR 里就留最小入口（哪怕只读展示），别把接线推给下一轮。,R38 门禁卫生：react-hooks/set-state-in-effect 会把「effect 体内同步 setState」直接判 error（含 IIFE 里的分支）。默认值回填要用**派生 override**（state 只存用户覆盖值，默认值渲染期算），跨项目重置交给挂载点 key；批量 setState 移进异步回包。本轮首跑因此新增 3 处 error，改完归零。,R38 真实库事实（下轮直接用，勿重复盘点）：bid_projects 共 23 个，其中 18 个 parse_report 有评分办法；价格分口径可机械复算的 8 个（ratio/lowest 7：安庆二院 0feqc18hkk3j07e、天坛 WH23CG…、海沧、霍邱、13131、313131、13431；deviation/average 1：项目「13」s50nd2n3m3590dv）。第 6 步准入（dup_report||void_check）现库只有杏林 69gzo840vy1b7wn 满足，而它没有评分办法。,R38 取证通道：:8000 Vite dev 下可 `import('/src/<模块>.ts')` 在浏览器里直接调真实函数；React 组件注入渲染要用 '/node_modules/.vite-xzlocal/deps/react.js?v=<hash>' 与 react-dom_client 的实际 dep 路径（裸 'react' 说明符解析不了）。browser-use 的 take_screenshot 本轮全程 15s 超时且无产物，图像证据请换通道。,R38 并发在途（本轮实际发生）：另一方同期在改 DraftMergePanel.tsx（+40，一度语法错误自坏自愈）、新增 FormatSyncDialog.tsx 与 bidDocxFormatExtract.ts（后者 2 处类型 error）。本轮严格未碰；改标书域文件前请再 git status 比对锚点区域。,R38 脚本与产物：补丁脚本 d:/KFDXCX/MedPreSales/scripts/r38_install.py（4 新增 + 6 定点补丁，锚点全部唯一命中断言）、r38_fix1.py（修 3 处自引入 eslint error + 1 例期待）、r38_gate.py（四门执行器，UTF-8 落盘回读）；门禁原始输出 d:/KFDXCX/MedPreSales/.qoder/tmp/r38_gate_*.txt。,R39 事故复盘（写死以免再犯）：**「AI 一直失败」类问题必须先拿到上游真实错误再谈修**。本次真因是上游契约变更（OpenCode GO 强制 x-opencode-session），但界面只说「请重试」，等于把根因藏了两层（catch 吞错 + /models 假绿）。以后新增 AI 链路：① catch 里留住首条真实原因；② 健康检查必须打真正要用的端点，不能只看 /models。,R39 环境事实：PocketBase JSVM hooks **不热加载**，改 pb_hooks/*.pb.js 必须重启 :7000 才生效（实测重启前 opecode 仍 400）；项目 hook 禁止智能体结束进程，故涉及 hooks 的改动一律标注「需用户重启」，不得假定已生效。前端 src 改动则经 :8000 Vite dev 实时生效。,R39 实测数据（下轮直接用）：三通道 chatViaGateway 探针 —— opecode(dpawhl9y29xoaxr)/deepseek-v4.1-flash → HTTP 400 缺 x-opencode-session（1153ms）；大模型(qut3tclhcid8bjz)/deepseek-v4-flash → HTTP 429 频率超限（794ms，退避可恢复）；平台 gpt-5.5 → ok（1506ms）。探针写法：浏览器内 import('/src/lib/modelGateway.ts') 调 chatViaGateway，结果挂 window 变量后二次轮询取回（避开工具 15s 超时）。,R39 取证通道：browser-use 的 take_screenshot 因桌面 Chrome 被最小化（视口 0x0）恒超时；Playwright 自带 chromium 可出图但本地部署会撞团队登录闸（fresh context 无 xiaozhi-team-token）。图像证据需用户还原窗口或提供登录态。,R39 取证通道结论（写死以免再犯）：browser-use 的 take_screenshot 超时**不是页面问题**，而是它连的那个 Chrome 窗口被最小化——视口 0x0 时 CDP 永远等不到合成帧（诊断证据：document.visibilityState=hidden、innerWidth/innerHeight=0）。要图像证据就走 Playwright chromium 独立视口，并在 add_init_script 里注入 xiaozhi-team-token/profile 绕过本地团队登录闸；Vite dev 的 react / react-dom_client 必须用 main.tsx 里的实际 dep 绝对路径（形如 /node_modules/.vite-xzlocal/deps/react.js?v=<hash>，裸 'react' 解析不了）。R38 面板两张实机图已入库 docs/evolution/_r38_panel_mount.png 与 _r38_panel_computed.png。,R40 折扣口径教训（写死以免再犯）：**「折扣(%)」与「几折」是两套量纲，机器不许猜**。填 9 是 9%（价钱的百分之九）还是 9 折（百分之九十）差 10 倍，填 0.9 更是差 100 倍；旧 UI 用 min=1 静默钳位等于把用户的 0.9 变成 1% 计价，且只在输入瞬间闪一句「应在 1–100 之间」。以后凡是「同一数字有两种量纲」的字段：判定收敛成纯函数单一真源（本轮 src/lib/discountIntent.ts，阈值 DISCOUNT_AMBIGUOUS_BELOW=5）、入口弹确认并把两种读法各换算成真实金额、已落库数据只盘点不改写。禁止再出现 min=/fallback= 式静默兜底。,R40 取证纪律：报价编辑器**改动即自动保存**，不许在用户真实记录上敲键盘做验证。本轮走「:8000 dev 动态 import 真实 QuoteEditor + spy 回调本地重渲染」（等价线上 usePptQuote 的函数式 mutateQuote），既拿到真实事件路径的行为证据，又零写库。截图通道仍是 Playwright chromium 独立视口（browser-use take_screenshot 因桌面 Chrome 最小化恒超时）。,R40 门禁数字：vitest 基线更新为 **219 files / 2617 passed / 2 skipped**（R39 218 / 2597 / 2，+1 文件 +20 用例）；全仓 src eslint 实测 **152 error / 19 warning**（低于账本 160 基线，因在途批次改动，非本轮清理所致；本轮触及 7 文件单独 lint exit 0）。,R40 数据事实：/api/quotes（X-Rh-User-Id=local-user）返回 0 条报价记录 → 报价域的「真实语料」审计需要在用户实际登录身份下进行，别把「查不到」当「没问题」。,R40 环境副作用：为取证启动了 :8000 Vite dev server（start-local.cmd 同参），按 hook 禁令未结束进程，当前仍在监听；stop-local.cmd 会连 :7000 一起停，勿轻易调用。,R40 证据通道补充：除 Playwright 注入取证外，本轮另在 browser-use 连的本机 Chrome 真实会话里跑过一遍（线上壳 + 真实主题 + sonner Toaster）：行内填 0.9 失焦零写入并弹两种读法的真实金额，选 9 折读法只落一次 {discount:90} 且 toast 实际弹出；整组填 3 弹组级合计确认，点「都不是」不写。两个环境事实记死：窗口最小化时 document.hasFocus()=false -> **el.blur() 不产生 focusout，React onBlur 不触发**（要显式派发一次 FocusEvent('focusout')）；隐藏页里 CSS 动画被节流 -> Radix 关闭后节点滞留 DOM 但 data-state 已是 closed，判「弹窗已关」要看 data-state 而非只查节点存在。,R40 之后补记（用户反馈「项目又挂了」，13:41 实测）：挂的是 **:8000 Vite dev server 进程**，不是代码 —— PocketBase :7000 一直 200，Windows 应用程序日志无 node 崩溃记录，vite deps 目录无 temp 半成品残留；重启后浏览器实测 /ppt-quote 正常渲染、控制台 0 error、R40 新模块（discountIntent / DiscountIntentDialog / QuoteEditor）在真实应用里全部加载可用。**根因**：上一轮为取证用 `Start-Process node …vite.js` 直起服务，该进程随工具会话结束被回收（当时实测「在监听」只在同一次调用窗口内成立，不能当作持久服务）；改走项目自己的 `start-local.cmd`（内部 `start \"Vite\" /min cmd /c …&& set NODE_OPTIONS= &&`）派生独立控制台后，跨多次调用仍存活。**下轮起服务的规矩**：要常驻就用 start-local.cmd，不要自己 Start-Process node 直起；并且把「起服务」与「用它取证」放进同一次调用窗口内完成，跨窗口前先复测端口（Test-NetConnection 127.0.0.1 8000）。另注意历史高频杀手：WorkBuddy 沙箱经 NODE_OPTIONS 注入 safe-delete 守卫，vite 重优化依赖批量删 node_modules\\.vite*\\deps_temp_* 时会把 dev server 打死（SAFE_DELETE_BULK_CONFIRM_REQUIRED），start-local.cmd 已显式清空 NODE_OPTIONS 规避 —— 手工起服务时别把 NODE_OPTIONS 带进去。停止服务请只关那个 Vite 窗口，`stop-local.cmd` 会连 :7000 PocketBase 一起停。,R43 身份收敛纪律（写死以免再犯）：**全站身份取值只允许存在于 zx_guard.pb.js 的 routerUse 中间件一处**。改动前 HEAD 的 182 处内联副本里口径已漂移出 3 种（131 处 trim+截 64、22 处去控制字符但不截断、1 处只 trim）——这不是「同一段代码被复制」，而是安全语义有 3 个版本。此后新增路由/handler 一律 e.get(\"rhUserId\")，禁止再内联读 X-Rh-User-Id 头；scripts/pbHooksIdentity.test.ts 的结构锁会逐行列出违规点。又：PocketBase 每个 handler 跑在独立 VM 隔离里，文件级 const/var/function 在 handler 内一律 ReferenceError、globalThis 也不跨隔离 —— 所以只能走中间件，别再试 require()/共享函数。,R43 行为等价复核教训（写死以免再犯）：**不采信自己上一轮留下的取证产物**。上一轮留在 .probe/pb-smoke/ 的 pre/post JSON（三者哈希相同、看着很干净）经复核判定不可用：其 harness 用 `body += chunk` 累加字符串，多字节字符跨 TCP 分片会产生 \\uFFFD 伪影（本轮复现到「党\\uFFFD\\uFFFD书记」），且只抽 items.length / 首条 id，判别力弱。本轮改为 Buffer.concat 后统一 decode + 完整响应体逐字节比对 + 把「仅数组顺序不同」降级为差异分类，并且**先测噪声地板（同代码连跑两次 = 0）再比 pre vs post**。结论：160/160 零差异、扣除噪声后仍 0。,R43 口径审计事实：pb_data 里 23/43 张表含 rh_user_id，带值行 8091，**distinct uid 只有 2 个（local-user 10 字符 / sa03xruhigmthh8 15 字符），最长 15 < 64 截断线、含控制字符 0** → 把「去控制字符 + 截断 64」统一到全站不会重键任何既有数据。另：HEAD 非注释头名取值恰好 182 处 / 13 种字面量（盘点脚本 docs/evolution/_r43_head_idioms.cjs）——这个数字是「改动前」口径，收敛后应恒为 1 处（在中间件块内）。两条归档脚本：_r43_identity_equiv_verify.cjs（160 用例等价）、_r43_uid_length_audit.cjs（口径审计）。,R43 账本缺口说明：history 数组此前只回填到 R040，R041（门禁诚实性）/ R042（UI 回归网四张）以及本轮之前的中间轮次只在 backlog（B0-gate-honesty / B0b-schema-as-code / B0c-ui-regression）与各自 commit 里留痕，未逐条插入 history。本轮起把 R043 插回 history 头部；后续回写请保持 history 与 lastRound 同步，别继续拉缺口。,R44 纪律（写死以免再犯）：**lint 基线只允许存在一个数字**。此前账本/轮报同时流传 151（R043 实测）/ 160（2026-10-13 初始）/ 163（R041 存档快照）三个数，导致「我们 lint 是 1xx」这种说法无法核对。R44 起唯一口径 = **119 error / 13 warning**，且三处必须同源：eslint-budget.json `totals.errors` ＝ 账本 `eslintBaseline` ＝ `gatesBaseline.eslint`；`pnpm verify:eslint-budget` 会因为不同源直接 exit 1（本轮它就是靠这条把旧账本 151 揪出来的）。要复算明细：`node docs/evolution/_r44_eslint_snapshot.cjs`。,R44 新增人工检查入口：`pnpm health:manual`（scripts/health/manual-checks.mjs）一条命令跑两项**刻意不进 loop 四门**的验收 —— ① pb_migrations 空目录重建（需 pocketbase 二进制）② eslint 债务预算 + 账本同源。它与 `pnpm verify:migrations` 并存，以后每轮收尾建议至少跑一次；它**不替代** loop 四门。,R44 环境事实（修正 R43 轮报与 docs/20 §9.3）：`npx eslint .` 的**分母实测 780 个文件**（`.ts 477 / .tsx 227 / .js 45 / .mjs 27 / .cjs 4`），`pocketbase/pb_hooks/*.pb.js`、`scripts/health/*.mjs`、`docs/evolution/*.cjs` 都在报告内。准确表述 = **规则块只对 `**/*.{ts,tsx}` 生效**（非 ts 文件被解析、不套规则、不贡献 error），所以 R43「四门数字持平」的推理没错，但「不在任何门禁分母内」的说法是错的。推论：新增 `.mjs`/`.cjs` 脚本会进入分母，写脚本时顺手自检。,R47 事实（用户三问收口，实测非推断）：① B19 自动选模型在用户真实清单（pocketbase/pb_data/data.db → model_configs：6 通道 / 82 模型 / 28 启用）上的落点是 正文撰写=opecode·glm-5.2、大纲规划=大模型·deepseek-v4.1-flash、解析抽取=opecode·deepseek-flash、判定审查=opecode·glm-5.2、图表审阅=opecode·deepseek-v4-flash-vision-exp、中文文书=opecode·glm-5.1（全部 personal，平台内置 ref 为空）。② B20 识别 3 份真实 docx 全部成功、1-6 级标题全覆盖，但这 3 份都「未写入字体」→ 按 R46 口径如实提示并按系统默认套用（不臆造）；与本系统产出的标书同源的文档还检出 15 条要求行。③ 与安中医项目真实招标原文（152212 字）对齐：抽出评分点 31 项 / ★▲ 条款 6 条。④ 三问里的第 3 问「格式更新」本轮结论 = R46 已修到真可用（文字级直接格式同步改写 + 缺 Normal 补建 + 导出侧补默认字体闭合「导出→识别→刷新」），R47 只是把识别面扩到 4-6 级标题 / 表格 / 页眉页脚 / 页码 / 目录 / 编号，未改动刷新内核。,R47 纪律（写死以免再犯）：① `useMemo` 里出现「本地状态强触发票」（如 rolePickTick：本地画像 / 会话冷却 / 健康档案变化计数）时，必须显式 `void tick` 消费并在依赖数组保留，否则 react-hooks/exhaustive-deps 报「unnecessary dependency」，容易被误删成「选型不随状态刷新」的真 bug。② 模板识别的两条链路只允许存在两条：强链路（formatSpec）定样式与页面、补链路（bidDocxFormatExtract）补 extras，字段优先级冲突时按此顺序裁决，禁止再加第三条 docx 解析链路。③ 模板画像落库走既有 format_settings json 列，禁止为它新增 collection / 改 PocketBase schema（本轮零 schema 变更）。,R49 事实（本地自动化线，实测非推断）：① 主题 = B0c 剩余项「报价编辑器金额往返回归网」，新增 src/components/ppt-quote/QuoteEditorMoney.test.tsx 6 例（jsdom + testing-library，状态化 harness 等价线上 usePptQuote 的 mutateQuote；探针行 = R034 经典反例 15 × 599,729.21 × 90%，精确 8,096,344.34 而裸浮点得 8,096,344.33），断言「行小计 / 分组小计 / 报价总计」三处逐分自洽且等于 itemSubtotal 单一真源；已做「删实现即变红」反向验证（把 QuoteEditor.tsx:674 临时改成裸浮点 → 第 1、4 条 2 failed | 4 passed；git checkout 还原后 6 passed、diff 为空）。业务代码 0 改动 / 0 新依赖 / 0 schema / 0 提示词。② 四门实测：npx tsc -b exit 0；CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD=100000 npx vite build 6.30s exit 0；npx vitest run 241 files / 2848 passed / 2 skipped（连跑 3 次一致）；npx eslint . 119 error / 13 warning = 基线零新增。③ 核对结掉三处陈旧待办并已从 backlog 移除：B1（A1-A6 已落地接线：composeGates.ts 387 行 + useBidWorkspace.ts:712 导入 / :6938 调用 / :6944-6958 逐条弹；另有 BidCheck/rules/response.ts L2-R1 二次覆盖）、B10（overPriceCeilingHits useBidWorkspace.ts:2259 与 quoteRecordCeilingHits :2263 均已接进 refreshFormatReport，与 numberConflictHits:2255 / amountCaseMismatchHits:2272 同一路径）、docs/13 §3.2/§3.3/§3.4（useActiveWork / modelFailover / CustomerProfileCard.tsx:126 有 docs13-3.4 注释）—— 依据见本条，如需回滚按此恢复。④ 新增待办 B25-export-gate-ui-test（B0c 另一半，登记在 .loop/ledger.json）。⑤ 未执行 git commit：工作区存在并发在途批次，git add -A 会连带提交他人未完成改动。,R49 教训（并发纪律，实测）：同一工作区出现两个执行者（均本机 WorkBuddy AI 运行时）同时迭代，round 被双 bump —— 项目账本 R48（factSources 事实来源优先级）与本地自动化线原记 R48 撞号。处置：本地线主动顺延为 R49，两边账本均已写明编号来源。推论：① 写账本前必须重新读，并在写入脚本里断言期望的 round 值（本轮即用 chk(st.round === 48) 兜住），否则会被并发覆盖；② 同一时刻只应有一个执行者写仓库（另一方可改用 git worktree / 分支），或给执行者分配不重叠的轮次号段；③ 全量 vitest 的绝对数里可能混入对方未提交文件，报告必须点名区分「本轮贡献」与「在途增量」；④ 开工时 git status 干净不代表整轮干净，收尾写数字前应再跑一次 git status --porcelain 并点名排除并发批次。,R51 事实（Codex 主线，实测非推断）：① 真实标书召回率首次有数字 —— 安中医全量 138810 字 / 133 条款 / 20000 字预算下 clause_hit=13/133=9.8%（仅注入 6 段 19542 字、未注入 119268 字），脱敏子集 47103 字下 56/133=42%（注入 7 段 19944 字）。同一套检索算法，正文缩短后命中率涨 4 倍以上 → 瓶颈是「预算 ÷ 正文长度」，不是打分算法；解法方向是压缩单位证据 / 提高预算 / 先摘要再取证，而不是重写检索。② 漏在哪是确定的：全量下第 4、8、9-18 章完全未覆盖，已逐章点名，下轮可直接照着补。③ 样本量 = 1 份标书，结论强度有限。,R51 教训（真实长文才会暴露的闸门缺陷）：deviationCommitHits 里「负偏离」（deviation_undercommit，在 GATE_FATAL_RULES 硬闸黑名单）与「本次不可见」（deviation_invisible_review，warn）原共用同一个 30 条上限。R50 引入可见性规则后，长文场景不可见动辄上百条，会把负偏离整批挤出 hits → 交卷体检判「无废标级命中」→ 硬闸形同虚设。规律：① 任何「命中上限」必须按「是否进硬闸」分组，硬闸类不得与非硬闸类争抢配额；② 这类缺陷只有真实长文（139k 字 / 133 条款）能暴露，构造样本命中数少、必然测不出来 —— 这是「构造样本测试充分性」的反例，真实语料夹具应作为长文本链路的常规门槛。,R55 事实（实测非推断）：bidTextSanity 的误报率首次有数字 —— 安中医真实投标正文 185,913 字（脱敏子集 47,103 + .probe 全量 138,810）→ **0 命中**；同一份文件里的招标原文 32,957 字（表格/OCR 抽取文本）→ 只有过短行族命中（6 处 = 该族上限）且**全部误报**（「条款」「号」「部门」「序」「疑会」「开时间」，都是表格单元格被抽成独立行），残缺搭配族依旧 0。→ 结论一：BROKEN_PAIRS 的「词中留白」判据连表格/OCR 文本都不误伤，可安全扩召回；结论二：过短行族只适用正文，而生产路径本来就只扫章节正文（applyAutoRepair），风险已隔离。复算入口：src/pages/BidWorkspace/bidTextSanityRealBid.test.ts（含 skipIf 全量夹具 + 「语料自证」防空洞结论）。,R55 教训（写死以免再犯）：**「上一轮遗留建议」也要先复核再执行**。上一轮建议第 1 条是「用真实语料校准 bidTextSanity 误报率」，照做后发现误报率实测为 0 —— 建议本身没错，只是已无油水；真正的问题在同一份源码注释的另一半（召回）：模块头部写着 5 条 BUG-101 真实样本，其中第 4 条因模式写成「缺字处紧跟量词」而**从未命中**。规律：① 本地检测器要把**误报与漏报分别取数**，只测一边会把「没油水」误判成「已达标」；② 凡注释/文档写了「能识别 X」的检测器，都应把注释里的样本做成可执行契约（本轮落地：11 条注释样本必须全部命中）；③ 凡「标记/徽标/缓存」类字段，必须写清并真的实现它的**失效条件**——本轮发现两个字段的注释都写了「人工修订后清空」，实现里却只在重新生成时清空，而 offset 型标记不失效就会**跳到错误位置**（比不跳更坏）；④ 复用字段前先看它的既有语义：sanityWarning 差点被写成 genError，而 genError 是 A2 门禁与失败归因的字段。,R55 教训 2（写死以免再犯）：**「加了」不等于「防住了」—— 守卫本身也要做反向验证**。新丢字模式里的 (?!者) 读起来像「防误报的关键」，实测把它删掉后相关 16 例**全绿**：因为候选集里没有一个以「者」开头，真正拦住「门诊患者」的是候选本身。若不做这一步实跑，这条冗余断言会被后人当成有效防线（从而误判「有守卫所以安全」），或在重构时被当成「重要逻辑」而不敢动。规律：① 任何防御性断言 / lookahead / 别名分支，都应做一次「删掉它到底有什么变化」的实测；② 实测若无变化，要么直接删，要么在注释里明写「冗余的意图声明 + 保留理由」，**不要让它冒充有效防线**；③ 同一轮里两类反向验证的结论可以不同（本轮：整条退回旧模式 → 变红，是真防线；只删 lookahead → 全绿，是冗余声明），必须分别写清，不能笼统写一句「已验证」。,R56 教训（写死以免再犯）：**`updated` 字段不能当活跃度证据**。复盘 9 个无大纲项目时，我先按 `bid_projects.updated` 判断「哪些还在用」，得到的分布是「6 个停在 09-29、3 个 10-15 刚动过」；后来发现 5 条项目的 `updated` 精确到同一秒（`2026-09-29 01:16`）、另 3 条同样精确到同一秒（`2026-10-15 06:01`）——那是**批量触碰**（迁移/批量写），不是人在用。规律：① 任何「最近修改时间」类字段，先看它是否出现**同一秒聚集**，聚集即批量写，不能当行为信号；② 判断「项目是否被弃用」要用 `created` + 阶段快照（快照有真实语义与先后顺序），不要用可被后台操作刷新的字段；③ 本轮据此把结论从「3 个活跃 / 6 个弃用」修正为「6 个创建于 09-23~09-28、3 个创建于 10-10~10-14」，两种说法的证据强度完全不同。,R56 教训 2：**「排除一批样本再算相关性」必须先问这批样本为什么被排除**。审计三稿 P0-3 想排除 6 个「已弃用」项目再统计文件大小与失败的相关性；但那 6 个「弃用」很可能**正是失败的结果**——按结果条件化会把待研究的信号本身从样本里挖掉（选择/对撞偏倚），于是「排除后 n=2、证据不足」很容易被误读成「大小与失败无关」，而真实情况是「这些项目为什么被弃用」这件事本身就是问题所在。规律：① 凡「先筛掉一批再看规律」，先把筛选条件与结果变量画在一张图上，若筛选条件由结果决定（或因结果而不同），这条统计就不能用来支持因果结论；② 存量失败若没有留痕，就只能承认「不可判定」，不要用代理指标硬凑相关性；③ 本轮的落点是把留痕做出来（`diag` 记录带规模与分类），让下一次盘点**第一次可答**，而不是现在就宣布结论。,R56 教训 3：**「判定」与「展示」用两套判据，会出现「拦住了却不说为什么」**。拦截提示原本用 `missingSectionTitles`（判据 = 分区 `content` 是否为空）去给 `missingCriticalSections`（判据 = 分区缺失 / status failed·pending / 空态占位文本「原文未提及」）的结果取名，两套判据 → 真实数据 13 个被拦项目里 **5 个提示名单不完整，其中 762,209 字那个（最大真实标书）完全空白**：用户看到红字「关键解析项缺失：」后面什么都没有，被拦住却不知道回去补什么。规律：① 「判定 → 展示」两步链路里，展示必须由判定那一步的**输出**派生（同一判据、同一函数家族），不要各写一套同义判据；② 任何「列表可能为空」的用户提示，都要有测试盯住不变量（本轮：`未知 key 回落成 key`，保证「有缺项 ⇒ 名单非空」恒成立）；③ 这类缺陷不会让任何测试变红（两套判据各自都有测试），只会让用户撞墙——所以「提示里的名单是否完整」应当被当成契约来测，而不是当文案。 R57 教训（写死以免再犯）：**「读源码的哨兵」必须走单一入口，且入口必须做行尾归一化**。实测：38 个测试文件 / 123 处 readFileSync，其中 9 个文件读同一个 God Hook；只有 3 个文件做了 CRLF 归一化 —— 而 `useBidWorkspace.ts` 的工作区副本恰恰是 CRLF（尽管 .gitattributes 写了 eol=lf），于是**同一条多行正则在有的文件里能匹配、在有的文件里永远匹配不到**（`hookSources.test.ts` 里留了可执行物证：CRLF 文本上 `/\\n\\s*\"bid-outline\",\\n/g` 返回 null，归一化后为 1）。规律：① 读源码的路径字面量只允许出现在入口一处，并由一个「守哨兵的哨兵」逐行强制（`hookSourcesConvergence.test.ts`：非注释代码里该文件名出现次数必须为 1）；② 归一化只发生在读取侧，正则一律写 `\\n`，不许再散落 `\\r?\\n`；③ 计数一律用带 `g` 的 `countMatches`——`String.match` 无 `g` 时返回首个匹配对象，会把「7 处」静默读成「1 处」，这类缺陷不会让任何测试变红。 R57 教训 2：**不要断言引擎内部行为**。`hookSources.test.ts` 里曾写 `expect(cached).not.toBe(readAgain)` 来表达「缓存返回了旧内容」，实测**失败**：V8 对相同长字符串可以返回同一个对象。改用可观测语义后稳定 —— 改写探针文件（v1→v2）后缓存仍返回 v1，`resetSourceCache()` 之后才返回 v2。规律：缓存/记忆化类断言只许断言「外部可观测的效果」，不许断言对象身份、引用相等或引擎优化细节。 R57 教训 3：**行为网也要做「删实现即变红」，而且要与 grep 哨兵分别记功**。三条反向验证各自让**恰好**对应用例变红（删 pre-flight 留痕 → 行为网第 4 例；删恢复守卫 → 第 5 例；路径字面量写回哨兵 → 收敛守卫第 1 例）。规律：行为网的用例如果没做过这一步，就无法区分「它真的跑通了这条路径」与「它只是碰巧没断言到」——本轮正是靠这一步才发现行为网用例④必须经由**真实**计费确认路径（`confirmCostAction()`）才会触发生成。 R57 教训 4：**断言文案前先 grep，别凭印象写**。我按记忆写了 `expect(label).toContain(\"大纲诊断\")`，实跑才发现 hook 写入的 label 是 `outlineDiagLabel()` 产出的「大纲生成被拦：…」，而「大纲诊断」是 `StageHistoryPanel` 给诊断行加的**徽标**——两处文案各有分工（前者是留痕内容、后者是列表标签）。规律：断言用户可见文案时，先在该字符串的真实产地处核对一次，否则会把「我改错了实现」误判成「实现错了」。 R57 教训 5：**同一工作区的并发纪律再次生效**。写账本前重读 `_loop_state.json` 并断言 `round === 56`、`lastRound.id === \"R56\"`、`history[0].id === \"R056\"`、`baseline.r057` 不存在（上一轮 R56 正是靠这条拦住并发覆盖）；同时本轮**刻意零生产代码改动**，把「测试基础设施」与「业务行为」的改动面分开，工作区里那批与本轮无关的未提交改动（29 文件 +2,465/−974）一个都没碰。另：本轮为做反向验证临时改过 `useBidWorkspace.ts` 与 `priceScoreWiring.test.ts`，用**字节级备份 + finally 还原**（该文件 CRLF 且工作区有在途改动，`git checkout` 会连坐），还原后已逐条复核关键行在位。,R64 事实（实测非推断）：① 情报「健康报·卫健官方媒体」源 11 条里 9 条 summary 是「站点名 + 页面 JSON 元数据 + 真正文」同处一行，脏条创建日期跨 2026-09-19～10-22，不是一次性历史遗留。② 反直觉点：首页 useHome.ts 早已用 displayizeIntel 清洗，但其判据「整行含花括号即丢」遇到「JSON 与正文同行」会把正文一起丢掉 → 首页这 9 条表现为「有摘要但空白」；故修复必须先剥元数据块再交给 displayizeIntel，不能照搬首页口径。③ 三处渲染（IntelItemCard / IntelDetailPanel / useHome）现统一走 cleanIntelSummary；详情面板「复制」也改为复制清洗后文本，避免「看到干净、复制出去是 JSON」。④ 开工时工作区 91 个未提交文件（含 docs/23 P0 全套：交卷清单/证据台账/正文质量门禁），本轮一个未碰、未 git add -A；全量 vitest 326/3785 含对方在途用例。⑤ 情报搜索框必须按 Enter 才生效（只输入不筛），是否设计如此未定，先记账。",
+  "leftover": {
+    "at": "2026-10-20T17:30:09.881Z",
+    "count": 2,
+    "paths": [
+      "M  docs/evolution/_loop_state.json",
+      "A  docs/evolution/_prompt_R63.md"
+    ]
+  },
+  "engineFail": {
+    "at": "2026-10-20T17:32:20.984Z",
+    "engine": "claude",
+    "exit": 1,
+    "isError": true,
+    "message": "API Error: Request rejected (429) · Go usage limit exceeded",
+    "consecutive": 2,
+    "note": "R62 完成后尝试 R63 时上游配额耗尽（两次 429，第三次 4s 内即失败），引擎一字未出、工作区未改。旧驱动器把它计入「门禁连续失败」并 bump 轮次到 64、写 lastRound R63 fail，形成「fail 但四门全 PASS」的矛盾条目；现按实际事实回退轮次到 R62，并把该事件降级为 engineFail 记录（不占轮次号）。驱动器已同步修复：引擎类失败独立计数 + 线性退避重试，且不再推进轮次/写 lastRound。"
+  }
+}

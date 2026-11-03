@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /><title>登录中...</title></head>
+<body>
+<script>
+  // RunningHub SSO popup callback (rh-runninghub-login SKILL spec).
+  // Lives at <origin>/sso-popup-callback (vibex 主域 root, 不在 app-preview 路径下).
+  //
+  // Flow:
+  //   主窗口(iframe app) opens popup → window.open(SSO?returnUrl=<origin>/sso-popup-callback?from=<app-url>)
+  //   用户在 popup 里登录 → RH 跳到这个 callback 页(带 from 参数)
+  //   本页 postMessage 通知主窗口 + 关 popup; 主窗口收到 message 后 reload, 拿到登录态
+  //
+  // Fallback: opener 不可用(比如 popup 被浏览器升级成 tab) → 直接跳 from URL.
+  (function () {
+    var from = new URLSearchParams(location.search).get("from") || "";
+    try {
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage({ type: "rh-sso-login-complete" }, window.location.origin);
+        setTimeout(function () { window.close(); }, 300);
+        return;
+      }
+    } catch (e) {
+      // cross-origin opener 访问被拒, 继续走 from fallback
+    }
+    if (from) { window.location.replace(from); }
+  })();
+</script>
+</body>
+</html>
