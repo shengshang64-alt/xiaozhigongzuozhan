@@ -6,7 +6,11 @@ import { formatCount } from "@/lib/money"
 import { starClauseCount } from "@/pages/BidWorkspace/bidTypes"
 import type { TenderParseQuality } from "@/pages/BidWorkspace/bidTypes"
 
-export type ParseGroupId = "items" | "clauses" | "risk" | "lists"
+/** 内置四组。外部面板（如条款覆盖矩阵、评分项核对）经 extraTabs 追加任意分组 id。 */
+export type BuiltinParseGroupId = "items" | "clauses" | "risk" | "lists"
+
+/** 呈现层的分组 id：内置四组，或 extraTabs 追加的任意字符串 id。不落库。 */
+export type ParseGroupId = string
 
 /** 默认只展开最需要处理的一组。必选项失败优先，因为它会挡住进入编制。 */
 export function pickParseGroup(input: {
@@ -15,7 +19,7 @@ export function pickParseGroup(input: {
   implicitVoid: number
   /** 参数研判已出现「建议放弃」或「谨慎投标」。未研判的常态不抢首屏。 */
   paramNeedsAttention: boolean
-}): ParseGroupId {
+}): BuiltinParseGroupId {
   if (input.requiredFailureCount > 0) return "items"
   if (input.riskRed > 0) return "risk"
   if (input.implicitVoid > 0) return "clauses"

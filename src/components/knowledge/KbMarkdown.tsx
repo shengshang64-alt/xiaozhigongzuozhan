@@ -1,6 +1,8 @@
 // 知识库共享 Markdown 渲染（阅读视图 + 问答回答共用），全部 token 配色。
 import Markdown from "react-markdown"
 import type { Components } from "react-markdown"
+import { splitMarkdownTables } from "@/lib/markdownTables"
+import type { MarkdownTable } from "@/lib/markdownTables"
 
 const MD_COMPONENTS: Components = {
   h1: ({ children }) => <h1 className="mb-3 mt-5 text-xl font-semibold tracking-tight text-foreground first:mt-0">{children}</h1>,
@@ -49,6 +51,62 @@ const MD_COMPONENTS: Components = {
   hr: () => <hr className="my-4 border-border" />,
 }
 
+// 表格兜底渲染：本仓 react-markdown 没有 remark-gfm，GFM 表格会被当普通段落输出成 `|---|` 文本。
+// splitMarkdownTables 先把表格块切出来，这里用原生 <table>（与 MD_COMPONENTS.table 同一套 token 配色）渲染。
+function MarkdownTableBlock({ table }: { table: MarkdownTable }) {
+  return (
+    <div className="mb-3 overflow-x-auto rounded-md border border-border shadow-sm">
+      <table className="w-full border-collapse text-sm">
+        <thead className="bg-muted/60">
+          <tr className="border-b border-border">
+            {table.header.map((cell, i) => (
+              <th
+                key={`h_${i}`}
+                style={{ textAlign: table.align[i] ?? "left" }}
+                className="border-r border-border px-3 py-2 text-xs font-semibold text-foreground last:border-r-0"
+              >
+                {cell || "\u00a0"}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {table.rows.map((row, ri) => (
+            <tr key={`r_${ri}`} className="border-b border-border last:border-0">
+              {row.map((cell, ci) => (
+                <td
+                  key={`c_${ci}`}
+                  style={{ textAlign: table.align[ci] ?? "left" }}
+                  className="border-r border-border px-3 py-2 align-top text-muted-foreground last:border-r-0"
+                >
+                  {cell || "\u00a0"}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 export function KbMarkdown({ content }: { content: string }) {
-  return <Markdown components={MD_COMPONENTS}>{content}</Markdown>
+  const blocks = splitMarkdownTables(content)
+  // 无表格时保持原渲染路径（DOM 结构与改动前完全一致，不影响既有测试与样式）
+  if (!blocks.some((block) => block.kind === "table")) {
+    return <Markdown components={MD_COMPONENTS}>{content}</Markdown>
+  }
+  return (
+    <div>
+      {blocks.map((block, i) =>
+        block.kind === "table" ? (
+          <MarkdownTableBlock key={`table_${i}`} table={block.table} />
+        ) : (
+          <Markdown key={`md_${i}`} components={MD_COMPONENTS}>
+            {block.text}
+          </Markdown>
+        ),
+      )}
+    </div>
+  )
 }

@@ -11,7 +11,13 @@ import {
 } from "@/components/bid-workspace/bidOpenDate"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 
-type BidOpenDateBarProps = Pick<UseBidWorkspace, "activeProject" | "isArchivedLocked" | "updateProject">
+type BidOpenDateBarProps = Pick<UseBidWorkspace, "activeProject" | "isArchivedLocked" | "updateProject"> & {
+  /**
+   * bar（默认）：独立成条，自带圆角卡片与左右留白；
+   * inline：外层用 display:contents 让本组件内容直接进入父级合并行（项目信息栏）。
+   */
+  variant?: "bar" | "inline"
+}
 
 const CHIP: Record<BidOpenDateStatus["tone"], string> = {
   missing: "border border-dashed border-warning/50 bg-warning/10 text-warning",
@@ -24,8 +30,9 @@ const CHIP: Record<BidOpenDateStatus["tone"], string> = {
  * 此前开标时间仅能在「新建项目」对话框设置，已建项目缺失后无任何补录入口——
  * 而驾驶舱投标节点提醒、开标倒计时、截标预警都依赖它。本条让当前项目就地补录 / 修改 / 清除，
  * 复用既有 updateProject（PATCH 已有 bid_open_date 字段，零新 collection、零迁移、零 pb_hooks）。 */
-export function BidOpenDateBar({ activeProject, isArchivedLocked, updateProject }: BidOpenDateBarProps) {
+export function BidOpenDateBar({ activeProject, isArchivedLocked, updateProject, variant = "bar" }: BidOpenDateBarProps) {
   const proj = activeProject
+  const inline = variant === "inline"
   // R68：库里这个字段可能是 PB 的日期时间串（`2026-12-01 00:00:00.000Z`）。旧实现把它原样
   // 塞进展示文案与 `<input type="date">`，于是界面上直出「开标时间：2026-12-01 00:00:00.000Z」，
   // 点「修改」后日期框是**空白**的（date 输入拒绝非法值），用户会以为日期没存上。
@@ -60,8 +67,14 @@ export function BidOpenDateBar({ activeProject, isArchivedLocked, updateProject 
   }
 
   return (
-    <div className="mx-auto mt-3 max-w-7xl px-4">
-      <div className="flex flex-wrap items-center gap-2.5 rounded-lg border border-border bg-card px-4 py-2.5 shadow-sm">
+    <div className={inline ? "contents" : "mx-auto mt-3 max-w-7xl px-4"}>
+      <div
+        className={
+          inline
+            ? "flex flex-wrap items-center gap-2.5"
+            : "flex flex-wrap items-center gap-2.5 rounded-lg border border-border bg-card px-4 py-2.5 shadow-sm"
+        }
+      >
         <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs ${CHIP[status.tone]}`}>
           <CalendarClock className="h-3.5 w-3.5" />
           {status.label}

@@ -69,6 +69,8 @@ type ParseReportPanelProps = {
   onExportPurchaseList?: () => void
   /** 必选项已通过时的主操作：进入下一步。快捷工具没有步骤条，可不传。 */
   onContinue?: () => void
+  /** 额外分组页签（外部面板，如条款覆盖矩阵 / 评分项核对）。只影响呈现，不改报告数据。 */
+  extraTabs?: { id: string; label: string; node: ReactNode }[]
 }
 
 /**
@@ -93,6 +95,7 @@ export function ParseReportPanel({
   restoredTables,
   onExportPurchaseList,
   onContinue,
+  extraTabs,
 }: ParseReportPanelProps) {
   const summaryColumns = useMemo(() => buildParseSummary(report), [report])
   const parseHealth = useMemo(() => summarizeParseHealth(report), [report])
@@ -290,6 +293,7 @@ export function ParseReportPanel({
                 : undefined,
             alert: paramSummary.overall === "reject",
           },
+          ...(extraTabs ?? []).map((t) => ({ id: t.id, label: t.label })),
         ]}
       />
       <div
@@ -345,6 +349,17 @@ export function ParseReportPanel({
           modelRefForRole={modelRefForRole}
         />
       </div>
+      {(extraTabs ?? []).map((t) => (
+        <div
+          key={t.id}
+          role="tabpanel"
+          id={`parse-panel-${t.id}`}
+          aria-labelledby={`parse-tab-${t.id}`}
+          hidden={active.group !== t.id}
+        >
+          {t.node}
+        </div>
+      ))}
     </div>
   )
 }

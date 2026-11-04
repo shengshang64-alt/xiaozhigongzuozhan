@@ -55,6 +55,7 @@ export function EvalResultView({
   onManualScore,
   onManualComment,
   locked = false,
+  scoreMaxTotal,
 }: {
   aiReview: AiReview | null
   manualReview?: ManualReview | null
@@ -62,12 +63,16 @@ export function EvalResultView({
   onManualComment?: (idx: number, comment: string) => void
   /** 循环 6 A1：归档只读——人工打分输入禁用（仍展示既有分数），QuickToolsPanel 只读复用不传 */
   locked?: boolean
+  /** 本项目评分项满分之和（scoringItemsFromReport 口径）；缺省 / ≤0 时回退标准满分 100 */
+  scoreMaxTotal?: number
 }) {
   const [filter, setFilter] = useState<EvalRowFilter>("none")
   if (!aiReview) return null
   const aiTotal = aiReview.total_score
   const manualTotal = manualReview?.total_score ?? 0
-  const maxTotal = aiReview.items.reduce((sum, i) => sum + (i.max_score || 0), 0)
+  // 分母取项目评分项满分之和：AI 逐项 max_score 会因重名/漏项失真（实测显示 200 而招标满分 100）；
+  // 取不到或为 0 时回退 100，保证分母始终是合同口径的满分
+  const maxTotal = scoreMaxTotal && scoreMaxTotal > 0 ? scoreMaxTotal : 100
   const editable = !!onManualScore && !!manualReview
   const lowCount = aiReview.items.filter((it) => isLowScoreBidItem(it)).length
   const gapCount = editable ? aiReview.items.filter((it, i) => isGapBidItem(it, manualReview?.items[i])).length : 0
@@ -311,7 +316,9 @@ export function MockEvalPanel({
 }: MockEvalPanelProps) {
   // 第九轮改造 3：三路页签（纯 UI 状态）
   const [evalTab, setEvalTab] = useState<EvalPath>("tech")
-  const scoringCount = scoringItemsFromReport(activeProject?.parse_report ?? null).length
+  const scoringItems = scoringItemsFromReport(activeProject?.parse_report ?? null)
+  const scoringCount = scoringItems.length
+  const scoringMaxTotal = scoringItems.reduce((sum, it) => sum + (Number(it.score) || 0), 0)
   const chaptersReady = (activeProject?.bid_chapters ?? []).some((c) => (c.content ?? "").trim())
   const aiReview = activeProject?.ai_review ?? null
   const manualReview = activeProject?.manual_review ?? null
@@ -444,6 +451,7 @@ export function MockEvalPanel({
                 onManualScore={manualReview ? setManualScore : undefined}
                 onManualComment={manualReview ? setManualComment : undefined}
                 locked={isArchivedLocked}
+                scoreMaxTotal={scoringMaxTotal}
               />
             )}
             {evalTab === "format" && <FormatIssuesView issues={aiReview.format_issues} />}

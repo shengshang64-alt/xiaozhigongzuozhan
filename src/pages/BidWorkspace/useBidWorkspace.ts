@@ -1555,6 +1555,48 @@ export function asArrayField<T>(raw: unknown): T[] {
   return []
 }
 
+// ---------------------------------------------------------------------------
+// 2026-11-03：未确认的大纲草稿本地留档（纯 localStorage，零 collection 变更）。
+//
+// 背景：AI 生成的大纲在用户点「确认大纲」之前只存在于 React 内存，刷新/切页即丢，
+// 等于要重新付费生成一次。这里按项目 id 落一份草稿：
+//   · 非空且与项目已确认大纲（bid_outline）不一致 → 写草稿（= 还没确认的那一份）；
+//   · 为空、或已与 bid_outline 完全一致（= 已入库，含「确认大纲」与「重置项目」）→ 清草稿。
+// 读写全部 try/catch：隐私模式 / 超配额时静默降级为只在内存，绝不阻断大纲编辑。
+// ---------------------------------------------------------------------------
+const OUTLINE_DRAFT_KEY_PREFIX = "xz.bid.outlineDraft."
+
+function readOutlineDraft(projectId: string | null | undefined): OutlineNode[] | null {
+  if (!projectId) return null
+  try {
+    const raw = window.localStorage.getItem(OUTLINE_DRAFT_KEY_PREFIX + projectId)
+    if (!raw) return null
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed) || !parsed.length) return null
+    return parsed as OutlineNode[]
+  } catch {
+    return null
+  }
+}
+
+function writeOutlineDraft(projectId: string | null | undefined, nodes: OutlineNode[]): void {
+  if (!projectId) return
+  try {
+    window.localStorage.setItem(OUTLINE_DRAFT_KEY_PREFIX + projectId, JSON.stringify(nodes))
+  } catch {
+    /* 存储不可用：草稿只在内存，不阻断编辑 */
+  }
+}
+
+function clearOutlineDraft(projectId: string | null | undefined): void {
+  if (!projectId) return
+  try {
+    window.localStorage.removeItem(OUTLINE_DRAFT_KEY_PREFIX + projectId)
+  } catch {
+    /* 同上 */
+  }
+}
+
 function normalizeRecord(rec: BidProjectRecord): BidProjectRecord {
   const resultRaw = (rec.bid_result ?? "") as BidResult
   const amountRaw = Number(rec.bid_amount)
@@ -3527,6 +3569,19 @@ export function useBidWorkspace() {
       // r89-guard-kb-cold-01：进项目即后台预热 KB 缓存，护栏路免冷加载
       void prewarmKbCache(userId)
       setCoverageAudit(null) // 循环 5 A2：覆盖审计仅会话内有效，切项目即清空
+      // 2026-11-03：未确认的大纲草稿按项目恢复——数据库还没有大纲时用本地草稿（刷新/切页不丢）；
+      // 已有大纲则以数据库为准，并清掉过期草稿（草稿只服务于"还没点确认"的那一份）。
+      // 顺带修掉切换项目时 outlineDraft 残留上一项目内容的问题（此前 openProject 完全没碰它）。
+      {
+        const savedDraft = readOutlineDraft(rec.id)
+        if (!(rec.bid_outline ?? []).length && savedDraft) {
+          setOutlineDraft(savedDraft)
+          toast.info("已恢复上次未确认的大纲草稿（尚未保存到项目，点「确认大纲」后正式生效）")
+        } else {
+          setOutlineDraft([])
+          if (savedDraft) clearOutlineDraft(rec.id)
+        }
+      }
       // 2026-10-27 P0：先记下当前项目 id（后续所有 setActiveStep 都按它落盘），
       // 再按「用户上次停留步骤」与「数据能支撑的步骤」取较小值恢复，避免刷新/切回一律回落到 1~3。
       activeProjectIdRef.current = rec.id ?? null
@@ -4643,6 +4698,19 @@ export function useBidWorkspace() {
 
   // ------------------------------ ③ 投标文件编制 ------------------------------
   const [outlineDraft, setOutlineDraft] = useState<OutlineNode[]>([])
+  // 2026-11-03：草稿落盘——非空且与已确认大纲（bid_outline）不一致时写 localStorage；
+  // 为空、或与 bid_outline 完全一致（已确认入库 / 项目重置）时清键，
+  // 于是「确认大纲」「重置项目」无需额外代码即自动清草稿。
+  useEffect(() => {
+    const pid = activeProjectIdRef.current
+    if (!pid) return
+    const persisted = JSON.stringify(activeProject?.bid_outline ?? [])
+    if (!outlineDraft.length || JSON.stringify(outlineDraft) === persisted) {
+      clearOutlineDraft(pid)
+      return
+    }
+    writeOutlineDraft(pid, outlineDraft)
+  }, [outlineDraft, activeProject?.id, activeProject?.bid_outline])
   const [outlineLoading, setOutlineLoading] = useState(false)
   // R58（B28）：关键解析项缺失但项目已有大纲时，二次确认是否继续重新生成（默认取消，防覆盖）
   const [outlineCriticalConfirmOpen, setOutlineCriticalConfirmOpen] = useState(false)

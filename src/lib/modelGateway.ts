@@ -299,18 +299,18 @@ export async function chatViaGateway(opts: ChatViaGatewayOptions): Promise<LlmCa
   return result
 }
 
-// 个人模型出站前端兜底超时：服务端转发上限 120s，留 30s 余量；
+// 个人模型出站前端兜底超时：服务端转发上限 300s，留 30s 余量；
 // 防跨服务重启的请求连接半开挂死、生成按钮无限转圈不报错
-const PERSONAL_CHAT_TIMEOUT_MS = 150_000
+const PERSONAL_CHAT_TIMEOUT_MS = 330_000
 
 /**
  * 个人模型「超时」失败的可执行引导文案（R177）。
- * 网关服务端单请求转发上限约 120s（model_gateway.pb.js 红线区），慢模型 / 超长小节易触发；
+ * 网关服务端单请求转发上限约 300s（model_gateway.pb.js 红线区），慢模型 / 超长小节易触发；
  * 旧文案「请重试或切换平台内置模型」在本地自用域是死路——平台内置令牌恒空必然 412 且已禁用
  * （见 ModelSelect.tsx 本地禁用逻辑），故改为「切换到更快的已配置模型 / 分章生成」的正确指引。
  */
 export const PERSONAL_TIMEOUT_MSG =
-  "该模型本次响应超时（网关单次请求上限约 120 秒，偏慢的模型或超长小节容易触发）。请在顶部切换到更快的已配置模型（例如 sensenova-flash-lite）后点「继续生成 / 继续生成正文」重试，或改为逐章分次生成。"
+  "该模型本次响应超时（网关单次请求上限约 300 秒，偏慢的模型或超长小节容易触发）。请在顶部切换到响应更快的已配置模型后重试，或改为逐章分次生成。"
 
 /**
  * 把客户端 abort 或服务端返回的超时详情串归一为可执行文案；命中超时返回 PERSONAL_TIMEOUT_MSG，

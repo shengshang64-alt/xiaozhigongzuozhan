@@ -132,7 +132,7 @@ export function ScoreCrossCheckPanel({
 
       {cc.totalSumWarn && (
         <p className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
-          {cc.totalSumWarn}——评分项分项之和必须等于总分（常见废标级口径错误），请核对解析报告。
+          {cc.totalSumWarn}——评分项分项之和必须等于总分（常见废标级计算方式错误），请核对解析报告。
         </p>
       )}
 

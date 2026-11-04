@@ -902,6 +902,8 @@ routerAdd("POST", "/api/model-gw/chat", (e) => {
       var tryPayload = payload
       var started = new Date().getTime()
       var lastStatus = 0
+      // 503（上游「模型服务繁忙」）通常几秒即自愈：仅自动重试一次，不做无界重试，避免重复计费
+      var retried503 = false
       // R39（实测坐实）：OpenCode 的 GO 端点对非官方客户端强制要求会话标识头，缺省直接 400
       // 「Request is missing x-opencode-session and cannot be routed efficiently」——
       // 标书整本 22 段全灭、解析覆盖率掉到 2% 就是这么来的（而 /models 连通性检查返回 200，
@@ -938,7 +940,20 @@ routerAdd("POST", "/api/model-gw/chat", (e) => {
             try { $app.logger().warn("model-gw upstream 429", "model", model, "kind", rr.kind, "code", rr.code, "detail", rr.detail) } catch (lg) {}
             return { ok: false, code: "rate_limit", kind: rr.kind, detail: rr.detail, message: rateMessage(rr) }
           }
-          if (res.statusCode >= 500) return { ok: false, message: "所配置模型的服务暂时不可用（HTTP " + res.statusCode + "），请稍后重试" }
+          if (res.statusCode >= 500) {
+            // 503 是上游模型服务繁忙，通常几秒即恢复，既不是 Key 失效也不是配置错误：
+            // 先等待 3 秒重试同一 URL 一次；仍 503 才回可执行文案。
+            // 其它 5xx（500/502/504）语义不明确且可能已计费，维持原样不重试。
+            if (res.statusCode === 503 && !retried503) {
+              retried503 = true
+              try { $app.logger().warn("model-gw upstream 503, retrying once in 3s", "model", model) } catch (lg) {}
+              try { if (typeof sleep === "function") sleep(3000) } catch (eSlp) {}
+              i -= 1
+              continue
+            }
+            if (res.statusCode === 503) return { ok: false, message: "模型服务繁忙（HTTP 503），通常稍等几秒重试即可，不是配置错误" }
+            return { ok: false, message: "所配置模型的服务暂时不可用（HTTP " + res.statusCode + "），请稍后重试" }
+          }
           if (res.statusCode !== 200) {
             var detail = ""
             try { var dj = JSON.parse(typeof res.raw === "string" ? res.raw : ""); if (dj && dj.error && dj.error.message) detail = String(dj.error.message).slice(0, 200) } catch (e2) { detail = "" }
@@ -1074,7 +1089,9 @@ routerAdd("POST", "/api/model-gw/chat", (e) => {
       var tryModel = modelCandidates[ci]
       if (!isModelEnabled(tryModel)) continue
       tried++
-      var r = doChat(String(rec.get("base_url") || ""), plainKey, tryModel, messages, maxTokens, temperature, 120, body.disable_thinking === true)
+      // 长请求（整页聊天 / 单项解析 / 方案大纲）单次出站上限由 120s 放宽到 300s；
+      // 连通性检查（fetchModels 20s）与模型测试（doChat 60s）维持原值不动。
+      var r = doChat(String(rec.get("base_url") || ""), plainKey, tryModel, messages, maxTokens, temperature, 300, body.disable_thinking === true)
       if (r.ok) {
         $app.logger().info("model-gw chat ok", "user", userId, "config", rec.id, "model", tryModel, "elapsed_ms", r.elapsed_ms, "tried", tried)
         return e.json(200, { ok: true, text: r.text, model: tryModel, config_name: String(rec.get("config_name") || ""), elapsed_ms: r.elapsed_ms, usage: r.usage })

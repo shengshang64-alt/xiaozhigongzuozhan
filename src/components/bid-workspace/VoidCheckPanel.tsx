@@ -375,7 +375,7 @@ export function VoidCheckPanel({
             </div>
             <div className="rounded-lg border border-border bg-card p-4 text-center shadow-md">
               <p className={`text-2xl font-bold ${criticalCount ? "text-destructive" : "text-foreground"}`}>{criticalCount}</p>
-              <p className="mt-1 text-xs text-muted-foreground">critical 未核销</p>
+              <p className="mt-1 text-xs text-muted-foreground">严重问题未处理</p>
             </div>
           </div>
 

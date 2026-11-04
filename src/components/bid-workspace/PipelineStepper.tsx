@@ -1,13 +1,18 @@
 import { Check } from "lucide-react"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import { PIPELINE_STEPS, stepEntryMissing, stepGateConfirmed, type BidProjectRecord } from "@/pages/BidWorkspace/bidTypes"
-import { bidOpenDateStatus } from "@/components/bid-workspace/bidOpenDate"
 
 type PipelineStepperProps = Pick<UseBidWorkspace, "activeStep" | "requestStep" | "activeProject"> & {
   /** 重构轮：未响应条款数（第③步橙色角标，缺失橙） */
   missCount?: number
   /** 重构轮：废标重大风险待核销数（第⑤步红色角标，废标红） */
   riskCount?: number
+  /**
+   * 是否在步骤条上重复展示「待响应 / 废标风险」计数角标。
+   * 默认 false——这两项计数已在作战室风险灯里各展示一份，避免同一数字出现两处；
+   * 需要就地提示时传 true 即可恢复角标显示（能力保留，不做删除）。
+   */
+  showRiskMeta?: boolean
 }
 
 function stepDone(step: number, proj: BidProjectRecord | null): boolean {
@@ -22,14 +27,11 @@ function stepDone(step: number, proj: BidProjectRecord | null): boolean {
   return false
 }
 
-/** 重构轮：开标倒计时（天）；无日期/非法日期返回 null */
-export function PipelineStepper({ activeStep, requestStep, activeProject, missCount = 0, riskCount = 0 }: PipelineStepperProps) {
-  // 重构轮：开标前倒计时徽标（≤7 天红，其余中性；无日期不显）
-  // R68：改用 bidOpenDateStatus（本地日历日口径，与下方「开标时间补录条」同一函数）。
-  // 旧实现走 bidTypes.daysUntil → date-only 串被按 UTC 解析成当地 08:00，每天 00:00–08:00
-  // 都多算一天；且 `daysLeft <= 0` 一律渲染「已过期 N 天」，开标当天会变成「已过期 0 天」。
-  const openStatus = bidOpenDateStatus(activeProject?.bid_open_date)
-  const daysLeft = openStatus.daysLeft
+/**
+ * 流程步骤条。项目级提醒（开标倒计时 / 待响应 / 废标风险计数）统一收在「项目信息栏」
+ * 与「作战室风险灯」里各展示一份，本组件默认不再重复渲染；需要时用 showRiskMeta 打开。
+ */
+export function PipelineStepper({ activeStep, requestStep, activeProject, missCount = 0, riskCount = 0, showRiskMeta = false }: PipelineStepperProps) {
   return (
     <nav aria-label="投标流程步骤" className="mx-auto max-w-7xl px-4 pt-5">
       <ol className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-border bg-card p-2 shadow-md">
@@ -96,12 +98,12 @@ export function PipelineStepper({ activeStep, requestStep, activeProject, missCo
                   )}
                 </span>
                 <span className={`truncate text-xs font-medium ${isActive ? (isRisk ? "text-destructive" : "text-primary") : ""}`}>{s.label}</span>
-                {isRisk && (
+                {showRiskMeta && isRisk && (
                   <span className="shrink-0 rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-semibold text-destructive-foreground" title={`${riskCount} 项废标重大风险待核销`}>
                     {riskCount}
                   </span>
                 )}
-                {isMiss && !isRisk && (
+                {showRiskMeta && isMiss && !isRisk && (
                   <span className="shrink-0 rounded-full bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold text-warning" title={`${missCount} 项招标条款尚未响应`}>
                     {missCount}
                   </span>
@@ -111,24 +113,6 @@ export function PipelineStepper({ activeStep, requestStep, activeProject, missCo
           )
         })}
       </ol>
-      {(daysLeft !== null || missCount > 0 || riskCount > 0) && (
-        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 px-1 text-xs">
-          {daysLeft !== null &&
-            (openStatus.tone === "past" && daysLeft < 0 ? (
-              <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 font-medium text-destructive">已过期 {Math.abs(daysLeft)} 天</span>
-            ) : openStatus.tone === "urgent" || daysLeft === 0 ? (
-              <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 font-medium text-destructive">{daysLeft === 0 ? "今日开标" : `距开标截止 ${daysLeft} 天`}</span>
-            ) : (
-              <span className="rounded-full border border-border px-2 py-0.5 text-muted-foreground">距开标截止 {daysLeft} 天</span>
-            ))}
-          {missCount > 0 && (
-            <span className="rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 font-medium text-warning">待响应 {missCount} 项</span>
-          )}
-          {riskCount > 0 && (
-            <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 font-medium text-destructive">废标风险 {riskCount} 项待处理</span>
-          )}
-        </div>
-      )}
     </nav>
   )
 }

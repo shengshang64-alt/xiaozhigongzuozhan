@@ -190,6 +190,15 @@ const MAX_TOKENS_OUTLINE = 4096
 const MAX_TOKENS_LONGFORM = 8192
 const SINGLE_CALL_MAX_PAGES = 10
 
+/**
+ * 默认 PPT 名称：主题已以「汇报」结尾时不再重复追加，
+ * 避免出现「…建设汇报汇报 PPT」这类叠词。
+ */
+export function defaultDeckName(topic: string): string {
+  const t = topic.trim()
+  return /汇报$/.test(t) ? `${t} PPT` : `${t}汇报 PPT`
+}
+
 
 
 // ---------------------------------------------------------------------------
@@ -590,7 +599,7 @@ export function usePptQuote() {
   const doGenerateDeck = useCallback(async () => {
     const topic = wTopic.trim()
     const pageCount = targetPageCount
-    const deckName = wDeckName.trim() || `${topic}汇报 PPT`
+    const deckName = wDeckName.trim() || defaultDeckName(topic)
     const ctx = {
       deckType: wDeckType,
       topic,
@@ -780,7 +789,7 @@ export function usePptQuote() {
   /** 核心：按给定大纲逐页生成并落库（供一键直出与"确认后生成"复用） */
   const runDeckGeneration = useCallback(
     async (ctx: DeckContext, plan: SlidePlan[]): Promise<DeckRecord> => {
-      const deckName = wDeckName.trim() || `${wTopic.trim()}汇报 PPT`
+      const deckName = wDeckName.trim() || defaultDeckName(wTopic)
       const allTitles = plan.map((p) => p.title)
       const slides: Slide[] = []
       let placeholderCount = 0

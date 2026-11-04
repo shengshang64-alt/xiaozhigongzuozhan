@@ -577,6 +577,9 @@ export function ComposeStep(p: ComposeStepProps) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h1 className="truncate text-xl font-semibold tracking-tight text-foreground lg:text-2xl">投标文件编制</h1>
+            <p className="mt-1 text-xs tabular-nums text-muted-foreground">
+              已写 {(proj.bid_chapters ?? []).filter((c) => (c.content ?? "").trim().length > 0).length}/{(proj.bid_chapters ?? []).length} 章
+            </p>
             <p className="mt-1.5 text-sm text-muted-foreground">
               {hasParse
                 ? "未上传底稿时，按招标文件解析出的响应文件组成与评分要求自动编排全部内容；可从方案编制引入底稿"
@@ -620,6 +623,14 @@ export function ComposeStep(p: ComposeStepProps) {
             </div>
           )}
         </div>
+        <details className="group mt-4">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            <span className="flex min-w-0 items-center gap-2">
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+              生成设置
+            </span>
+            <span className="truncate text-xs font-normal text-muted-foreground">审查模式、生成参数、格式、全局事实、素材库</span>
+          </summary>
         {/* Q28 切片A：审查模式开关卡——external 态下上传/粘贴外部标书，编制功能置灰 */}
         <div className="mt-4 rounded-lg border border-border bg-card px-4 py-3">
           <div className="flex flex-wrap items-center gap-3">
@@ -684,6 +695,19 @@ export function ComposeStep(p: ComposeStepProps) {
             </div>
           )}
         </div>
+          {/* 循环 5 A3：归档只读——生成设置 / 格式设置 / 全局事实面板整体锁交互（内部 setter 另有 hook 兜底拦截） */}
+          <div className={locked ? "pointer-events-none mt-4 space-y-4 opacity-60" : "mt-4 space-y-4"}>
+            <GenerationSettingsBar {...p} />
+
+            {/* 第十七轮 17C：格式与暗标设置面板（纸张/边距/标题正文字体/目录页码/暗标/格式检查项） */}
+            <FormatSettingsPanel {...p} />
+
+            <GlobalFactsPanel {...p} />
+
+            {/* R167：公司优质素材库（五类标准件）——逐章/逐节按类别取基线，按招标要求定向调整 */}
+            <MaterialLibraryPanel {...p} />
+          </div>
+        </details>
         {hasChapters && info.totalChars > 0 && (
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
             <span className="rounded-full bg-muted px-2.5 py-0.5 font-medium text-muted-foreground">
@@ -788,20 +812,6 @@ export function ComposeStep(p: ComposeStepProps) {
           </div>
         )}
       </header>
-
-      {/* 循环 5 A3：归档只读——生成设置 / 格式设置 / 全局事实面板整体锁交互（内部 setter 另有 hook 兜底拦截） */}
-      {/* 用户反馈轮项 2：设置三卡纵向堆叠间距统一 space-y-4（原各面板根部散落 mt-4 收敛到包裹层） */}
-      <div className={locked ? "pointer-events-none mt-4 space-y-4 opacity-60" : "mt-4 space-y-4"}>
-        <GenerationSettingsBar {...p} />
-
-        {/* 第十七轮 17C：格式与暗标设置面板（纸张/边距/标题正文字体/目录页码/暗标/格式检查项） */}
-        <FormatSettingsPanel {...p} />
-
-        <GlobalFactsPanel {...p} />
-
-        {/* R167：公司优质素材库（五类标准件）——逐章/逐节按类别取基线，按招标要求定向调整 */}
-        <MaterialLibraryPanel {...p} />
-      </div>
 
       {p.outlineMissingTitles.length > 0 && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5">

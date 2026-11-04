@@ -487,6 +487,7 @@ export function useSolutionStudio() {
   const [formInfo, setFormInfo] = useState<HospitalInfo>(emptyHospitalInfo)
   const [outlineDraft, setOutlineDraft] = useState<OutlineNode[]>([])
   const [outlineLoading, setOutlineLoading] = useState(false)
+  const [outlineError, setOutlineError] = useState<string | null>(null)
   // ux-01：确认大纲创建方案的在途护栏——ref 同步拦双点/连按 Enter 重复 POST，state 只驱动按钮禁用反馈
   const [confirming, setConfirming] = useState(false)
   const confirmingRef = useRef(false)
@@ -501,6 +502,7 @@ export function useSolutionStudio() {
     setFormOpportunityId("")
     setFormInfo(emptyHospitalInfo())
     setOutlineDraft([])
+    setOutlineError(null)
     setWizardStep(1)
     setWizardOpen(true)
   }, [userId])
@@ -516,6 +518,7 @@ export function useSolutionStudio() {
     setFormOpportunityId("")
     setFormInfo({ ...emptyHospitalInfo(), ...(rec.hospital_info ?? {}) })
     setOutlineDraft([])
+    setOutlineError(null)
     setWizardStep(2)
     setWizardOpen(true)
   }, [])
@@ -534,6 +537,7 @@ export function useSolutionStudio() {
   const closeWizard = useCallback(() => {
     setWizardOpen(false)
     setOutlineLoading(false)
+    setOutlineError(null)
   }, [])
 
   /** 关联建设清单：预填建设内容与医院 */
@@ -584,6 +588,7 @@ export function useSolutionStudio() {
 
   const generateOutlineDraft = useCallback(async () => {
     setOutlineLoading(true)
+    setOutlineError(null)
     try {
       const solutionName = formSolutionName.trim() || `${formHospital.trim()}${typeLabel(formTypeKey)}`
       const text = await llmGenerate(
@@ -595,9 +600,13 @@ export function useSolutionStudio() {
       if (!nodes.length) throw new Error("大纲格式解析失败，请重试")
       setOutlineDraft(nodes)
       setWizardStep(3)
+      setOutlineError(null)
       toast.success("大纲已生成，可调整后确认")
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "大纲生成失败，请重试")
+      const reason = e instanceof Error ? e.message : "大纲生成失败"
+      const msg = `${reason}，可直接重试`
+      setOutlineError(msg)
+      toast.error(msg)
     } finally {
       setOutlineLoading(false)
     }
@@ -1910,6 +1919,7 @@ export function useSolutionStudio() {
     setFormInfo,
     outlineDraft,
     outlineLoading,
+    outlineError,
     confirming,
     submitWizardInfo,
     assembleOutlineFromChecklist,

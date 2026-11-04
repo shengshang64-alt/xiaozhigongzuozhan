@@ -59,6 +59,7 @@ type NewSolutionWizardProps = Pick<
   onPickChecklist: (id: string) => void
   /** 从 CheckProduct 产品库自动汇总的「产品/系统」候选列表（非空时优先作为 systems 标签云） */
   productNames?: string[]
+  outlineError?: string | null
 }
 
 const STEP_TITLES = ["选择方案类型", "填写项目信息", "确认方案大纲"]
@@ -242,6 +243,11 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
 
         {p.wizardStep === 2 && (
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {p.outlineError ? (
+              <div className="sm:col-span-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive" role="alert">
+                {p.outlineError}
+              </div>
+            ) : null}
             {linkedChecklist ? (
               <div className="sm:col-span-2">
                 <p className="rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-xs text-primary">
