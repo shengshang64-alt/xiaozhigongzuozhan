@@ -171,7 +171,11 @@ describe("modelRefKey / modelRefLabel / costTextForModel", () => {
 describe("R177 个人模型超时文案与归一", () => {
   it("PERSONAL_TIMEOUT_MSG 给可执行 remedy，且不再把用户推向本地禁用的平台内置模型", () => {
     expect(PERSONAL_TIMEOUT_MSG).toContain("更快的已配置模型")
-    expect(PERSONAL_TIMEOUT_MSG).toContain("120")
+    // 上限数字必须与真实出站上限一致：model_gateway.pb.js 的 doChat 传 300（原本 120，
+    // 长请求放宽后文案已改 300，本条断言当时漏改、红了一次）。只断言「文案里写到的秒数」
+    // 就等于服务端实际值，防以后再各写一套。
+    expect(PERSONAL_TIMEOUT_MSG).toContain("300")
+    expect(PERSONAL_TIMEOUT_MSG).not.toContain("120")
     expect(PERSONAL_TIMEOUT_MSG).not.toContain("切换平台内置模型")
     expect(PERSONAL_TIMEOUT_MSG).toMatch(/[一-鿿]/)
   })
