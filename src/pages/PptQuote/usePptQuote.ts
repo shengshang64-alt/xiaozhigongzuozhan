@@ -99,6 +99,18 @@ import {
 } from "./deckAtomInject"
 import { attachSourceRefs, hasMaterials } from "./deckMaterialStore"
 import { parseTemplateOutline, recommendMapping, resolveMapping, type TemplateOutline } from "./templateLayouts"
+// 2026-11-04 B 项：大纲返回后按页型配额做确定性校正（模型执行率低，光靠提示词不够）
+import { enforceOutlineKindQuota } from "./deckOutlineQuota"
+// 2026-11-04 E 项：生成/导出前的结构自检报告（空页、缺 figure、纯文字比例）
+import { buildStructureReport, reportToastLine } from "./deckStructureReport"
+// 2026-11-04 D 项：先探能力再发请求（缺 Key 时一次性说清原因并降级，不逐页瞎试）
+import {
+  detectFigureCapability,
+  figureCapabilityNotice,
+  planFigureActions,
+} from "./deckFigureGate"
+import { getImageSearchKey } from "./imageSearch"
+import { hasAiImageConfig } from "./aiImageProvider"
 import type { TemplateMappingZ } from "./deckSchema"
 import type { CheckProduct, ChecklistRecord } from "@/pages/SolutionStudio/checklistTypes"
 
@@ -241,9 +253,30 @@ function autoReshapeSlides(input: Slide[]): Slide[] {
 
 
 
-// ---------------------------------------------------------------------------
-// 主 Hook
-// ---------------------------------------------------------------------------
+/**
+ * 大纲页型配额校正 + 一次性反馈（2026-11-04 B 项）。
+ *
+ * 模型对「页型配额」这类文字约束执行率很低，所以在 normalizeSlidePlan 之后再做一层
+ * 确定性校正：只改 kind（不重写标题/内容），转不了就如实说，不假装达标。
+ * 失败绝不阻断大纲生成——校正只是增强。
+ */
+function enforceOutlineQuotaWithToast(plan: SlidePlan[], pageCount: number): SlidePlan[] {
+  try {
+    const r = enforceOutlineKindQuota(plan, pageCount)
+    if (r.converted > 0) {
+      toast.success(`按页型配额校正了 ${r.converted} 页页型（架构/流程/对照），未改动任何文字内容`)
+    }
+    if (r.unmet.length) {
+      // 如实告知缺口，避免用户以为"配额已经达标"
+      toast.warning(`大纲页型仍不达标：${r.unmet[0]}${r.unmet.length > 1 ? ` 等 ${r.unmet.length} 项` : ""}，可在下一步手动调整`)
+    }
+    return r.plan
+  } catch {
+    return plan
+  }
+}
+
+
 
 /** 统一确认对话框请求（替代 window.confirm，由 View 层挂 ConfirmDialog 渲染） */
 type ConfirmRequestState = {
@@ -688,7 +721,10 @@ export function usePptQuote() {
       } else {
         setDeckProgress("正在生成整体大纲…")
         const outlineText = await llmGenerate(buildDeckOutlineMessages(ctx, pageCount), MAX_TOKENS_OUTLINE, "ppt-deck", activeModelRef.current)
-        const rawPlan: SlidePlan[] = normalizeSlidePlan(parseJsonLoose(outlineText), pageCount)
+        const rawPlan: SlidePlan[] = enforceOutlineQuotaWithToast(
+          normalizeSlidePlan(parseJsonLoose(outlineText), pageCount),
+          pageCount,
+        )
         // 2026-10-30 素材检索接入：把大纲每页与该页相关的素材片段挂到 sourceRefs。
         // 这样逐页生成时只塞这几段（不塞全文），且落库后可追溯到具体素材段落。
         const plan: SlidePlan[] = hasMaterials() ? attachSourceRefs(rawPlan, 3) : rawPlan
@@ -775,6 +811,13 @@ export function usePptQuote() {
         toast.warning(`${rec.slides.length - placeholderCount}/${rec.slides.length} 页已生成，${placeholderCount} 页未成功已留标题占位，可在编辑器逐页补全后导出`)
       } else {
         toast.success(`已生成 ${rec.slides.length} 页，可逐页精修后导出`)
+      }
+      // 2026-11-04 E 项：生成后立刻给一句结构自检（空页/缺图示/纯文字比例），
+      // 别等导出才在门禁里一次性砸给用户。
+      const structure = buildStructureReport(rec.slides)
+      if (structure.totalPages > 0) {
+        if (structure.ok) toast.info(reportToastLine(structure))
+        else toast.warning(reportToastLine(structure))
       }
       // 自动配图（开关开启时）：失败不阻断主流程，内部已 catch
       if (autoFigureMode !== "off") {
@@ -905,6 +948,12 @@ export function usePptQuote() {
       } else {
         toast.success(`已生成 ${rec.slides.length} 页，可逐页精修后导出`)
       }
+      // 2026-11-04 E 项：与一键直出同一口径的结构自检（两条落库路径行为必须一致）
+      const structure = buildStructureReport(rec.slides)
+      if (structure.totalPages > 0) {
+        if (structure.ok) toast.info(reportToastLine(structure))
+        else toast.warning(reportToastLine(structure))
+      }
       if (autoFigureMode !== "off") {
         setDeckGenerating(false)
         setDeckProgress("")
@@ -940,7 +989,10 @@ export function usePptQuote() {
         "ppt-deck",
         activeModelRef.current,
       )
-      const rawPlan = normalizeSlidePlan(parseJsonLoose(outlineText), pageCount)
+      const rawPlan = enforceOutlineQuotaWithToast(
+        normalizeSlidePlan(parseJsonLoose(outlineText), pageCount),
+        pageCount,
+      )
       // 素材检索：大纲阶段就挂上引用，用户在确认时能看到"这页参考了哪份素材"
       const plan = hasMaterials() ? attachSourceRefs(rawPlan, 3) : rawPlan
       setDraftOutline(plan)
@@ -1361,6 +1413,12 @@ export function usePptQuote() {
     if (gate.issues.length) {
       toast.warning(`导出前自检：${lintSummaryText(gate.issues)}；${gate.issues[0].msg}${gate.issues.length > 1 ? ` 等 ${gate.issues.length} 项` : ""}`)
     }
+    // 2026-11-04 E 项：导出前再给一次「版面结构」报告（空页/缺 figure/纯文字比例）。
+    // 与 gate 的区别：gate 管"能不能导出"，这里管"导出后好不好看"，所以不阻断。
+    const preExportStructure = buildStructureReport(deck.slides)
+    if (preExportStructure.totalPages > 0 && !preExportStructure.ok) {
+      toast.warning(reportToastLine(preExportStructure))
+    }
     try {
       // R124：pptxgenjs/docx 导出库改为点击导出时才按需加载，PPT 页进页不再背这几百 kB
       const { exportDeckPptx } = await import("./deckExports")
@@ -1760,8 +1818,6 @@ export function usePptQuote() {
   const runAutoFigure = useCallback(
     async (mode: "off" | "search" | "search+ai", provider: ImageSearchProvider) => {
       if (mode === "off") return
-      // AI 插画只对「抽象概念页」开启；真实界面/资质等已在 aiImageProvider.canUseAiFor 硬拦截
-      const aiEnabled = mode === "search+ai"
       const deck = activeDeckRef.current
       if (!deck?.slides?.length) return
       // 2026-10-30 补齐（全册视觉计划）：
@@ -1769,26 +1825,34 @@ export function usePptQuote() {
       // 且架构页可能被配"医院大楼"照片。改为**先算全册视觉计划**，再只对
       // 计划明确要求 stockPhoto / aiIllustration 的页执行配图。
       const plan = buildDeckVisualPlan(deck)
-      const planByPage = new Map(plan.slides.map((p) => [p.page - 1, p]))
-      const targets = deck.slides
-        .map((s, i) => ({ s, i, plan: planByPage.get(i) }))
-        .filter(({ s, plan: p }) => {
-          if (s.image) return false // 已有图不动
-          if (!p) return false
-          // 只给"需要真实位图"的页配图：实拍 / AI 插画 / 公司素材
-          return p.visualType === "stockPhoto" || p.visualType === "aiIllustration" || p.visualType === "companyAsset"
-        })
-        .slice(0, 12)
+      // 2026-11-04 D 项：**先探能力，再排计划**。
+      // 缺 Key 时旧实现会对每页各发起一次注定失败的请求（12 页 = 12 次往返 + 12 条同样报错），
+      // 既慢又刷屏；现在一次探测，把"这页要搜图/AI 插画/改用系统图示兜底"排成计划再执行。
+      const capability = detectFigureCapability(
+        { searchKey: (p) => getImageSearchKey(p as ImageSearchProvider), aiConfigured: () => hasAiImageConfig() },
+        provider,
+        mode,
+      )
+      const notice = figureCapabilityNotice(capability, mode)
+      if (notice) toast.info(notice)
+      const figurePlan = planFigureActions({ slides: deck.slides, visualPlan: plan.slides, mode, capability, maxPages: 12 })
+      // 兜底页：不联网，但在结果文案里明确告诉用户"这些页改用系统图示了"
+      const fallbackCount = figurePlan.fallbackCount
+      const remoteActions = figurePlan.actions.filter((a) => a.action === "search" || a.action === "ai")
+      const targets = remoteActions.map((a) => ({ s: deck.slides[a.index], i: a.index, plan: plan.slides.find((p) => p.page === a.page), action: a.action }))
       if (!targets.length) {
         // 明确告知"为什么没配图"，避免用户以为失败了
         const nonePages = plan.slides.filter((p) => p.visualType === "none").length
-        if (nonePages) {
+        if (fallbackCount) {
+          toast.info(`本次没有可联网配图的页：${fallbackCount} 页改用系统图示（架构/流程/图表）兜底，不阻断生成`)
+        } else if (nonePages) {
           toast.info(`按全册视觉计划，${nonePages} 页内容不需要配图（自绘图示/图表/论述页已自带视觉）`)
         }
         return
       }
-      // 让用户看到决策依据（同册统一风格）
+      // 让用户看到决策依据（同册统一风格 + 降级原因）
       toast.info(`全册视觉计划：${plan.summary}`)
+      toast.info(figurePlan.summary)
       // 2026-10-30：收集失败原因，配图失败时明确告知用户（原来只说"未命中"，用户不知道是没配 Key）
       const failMessages = new Set<string>()
       let lastSearchMsg = ""
@@ -1817,9 +1881,10 @@ export function usePptQuote() {
               /* 本地未命中 → 联网搜图 */
             }
             // 取图顺序②：AI 插画页走 sidecar 生图（密钥在服务端，前端不碰 Key）
-            // 仅在模式含 ai 且该页视觉类型为 aiIllustration 时尝试；失败/未配置退回搜图
-            if (!inserted && aiEnabled && t.plan?.visualType === "aiIllustration") {
-              const prompt = (t.plan.query || t.s.title || "").trim()
+            // 2026-11-04 D 项：不再用「mode 含 ai + visualType」就地判断，
+            // 而是严格按能力门给出的 action——没有生图 Key 的页根本走不到这里（已在计划里 fallback）。
+            if (!inserted && t.action === "ai") {
+              const prompt = (t.plan?.query || t.s.title || "").trim()
               if (prompt) {
                 try {
                   const ai = await generateAiImage({
@@ -1834,10 +1899,11 @@ export function usePptQuote() {
                     aiOk += 1
                     toast.success(`第 ${t.i + 1} 页 AI 插画已生成（${ai.provider}）`)
                   } else {
+                    // 原因写清（余额不足/未配置/超时都在 reason 里），并在下面汇入结果文案
                     aiFailMsg = ai.notConfigured ? `AI 生图未配置：${ai.reason}` : `AI 生图失败：${ai.reason}`
                   }
-                } catch {
-                  /* AI 生图异常 → 退回联网搜图 */
+                } catch (e) {
+                  aiFailMsg = `AI 生图异常：${e instanceof Error ? e.message : String(e)}`
                 }
               }
             }
@@ -1879,16 +1945,20 @@ export function usePptQuote() {
       setDeckGenerating(false)
       setDeckProgress("")
       if (ok === 0) {
-        // 2026-10-30：明确告知失败原因（最常见是图库 API Key 未配置）
+        // 明确告知失败原因（最常见是 Key 未配置 / 余额不足 / 超时），并说明兜底方式
         const reason = [...failMessages][0] ?? "未知原因"
-        toast.error(`自动配图 0 成功：${reason}。可到「逐页编辑 → API Key 面板」配置图库 Key 后重试`)
+        toast.error(
+          `自动配图 0 成功：${reason}。${fallbackCount ? `另有 ${fallbackCount} 页已改用系统图示兜底；` : ""}可到「逐页编辑 → API Key 面板」配置后重试`,
+        )
       } else if (ok < targets.length) {
         const reason = [...failMessages][0] ?? ""
         toast.warning(
-          `自动配图完成 ${ok}/${targets.length} 页${aiOk ? `（其中 AI 插画 ${aiOk} 页）` : ""}${reason ? `；未成功的页：${reason}` : ""}`,
+          `自动配图完成 ${ok}/${targets.length} 页${aiOk ? `（其中 AI 插画 ${aiOk} 页）` : ""}${reason ? `；未成功的页：${reason}` : ""}${fallbackCount ? `；${fallbackCount} 页改用系统图示兜底` : ""}`,
         )
       } else {
-        toast.success(`自动配图完成：${ok}/${targets.length} 页${aiOk ? `（其中 AI 插画 ${aiOk} 页）` : ""}`)
+        toast.success(
+          `自动配图完成：${ok}/${targets.length} 页${aiOk ? `（其中 AI 插画 ${aiOk} 页）` : ""}${fallbackCount ? `，${fallbackCount} 页用系统图示` : ""}`,
+        )
       }
     },
     [setSlideImage, urlToDataUrl, tryAttachFromLibrary],
