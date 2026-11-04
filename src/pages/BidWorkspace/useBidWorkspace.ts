@@ -415,6 +415,8 @@ import {
 } from "./formQualityHits"
 // R-021 残句治理：大纲收尾本地质检（零 AI、零费用）
 import { cleanOutlineResidue, type ResidueFix } from "./outlineResidue"
+// 2026-11-04：大纲草稿「恢复还是清」的判定收敛为纯函数（丢的是已付费生成的大纲，必须可单测）
+import { decideOutlineDraft } from "./outlineDraft"
 import { buildScoreCheckup } from "./scoreCoverageCheckup"
 import { applyMustWrite, judgeMustWrite } from "./bidMustWrite"
 import { readRequiredTechKeywords } from "./mustWriteConfig"
@@ -3572,14 +3574,25 @@ export function useBidWorkspace() {
       // 2026-11-03：未确认的大纲草稿按项目恢复——数据库还没有大纲时用本地草稿（刷新/切页不丢）；
       // 已有大纲则以数据库为准，并清掉过期草稿（草稿只服务于"还没点确认"的那一份）。
       // 顺带修掉切换项目时 outlineDraft 残留上一项目内容的问题（此前 openProject 完全没碰它）。
+      //
+      // 2026-11-04 修（审计 P1）：原实现的 else 分支「只要 bid_outline 非空就清草稿」是错的——
+      // 「项目已有确认大纲，用户又点了一次『生成大纲』，新的一份还没确认」是**最常见**场景，
+      // 旧代码会把这份新草稿当成残渣删掉，刷新后新大纲凭空消失且毫无提示。
+      // 判定收敛到 outlineDraft.decideOutlineDraft：只有「草稿与 bid_outline 逐字一致」（= 已入库）
+      // 才清，不一致一律恢复。
       {
         const savedDraft = readOutlineDraft(rec.id)
-        if (!(rec.bid_outline ?? []).length && savedDraft) {
+        const action = decideOutlineDraft(savedDraft, rec.bid_outline)
+        if (action === "restore" && savedDraft) {
           setOutlineDraft(savedDraft)
-          toast.info("已恢复上次未确认的大纲草稿（尚未保存到项目，点「确认大纲」后正式生效）")
+          toast.info(
+            (rec.bid_outline ?? []).length
+              ? "已恢复上次未确认的大纲草稿（项目里现有的大纲还没被替换，点「确认大纲」才会覆盖）"
+              : "已恢复上次未确认的大纲草稿（尚未保存到项目，点「确认大纲」后正式生效）",
+          )
         } else {
           setOutlineDraft([])
-          if (savedDraft) clearOutlineDraft(rec.id)
+          if (action === "clear") clearOutlineDraft(rec.id)
         }
       }
       // 2026-10-27 P0：先记下当前项目 id（后续所有 setActiveStep 都按它落盘），
