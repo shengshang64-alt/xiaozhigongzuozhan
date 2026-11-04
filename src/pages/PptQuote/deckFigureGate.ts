@@ -125,16 +125,37 @@ function needsBitmap(t: VisualType): boolean {
  *   · stockPhoto/companyAsset：搜图可用 → search；否则 → fallback
  *   · fallback = 不做远程请求，交给 reshape/系统图示兜底（页面仍有版面结构，不是空白）
  */
+/**
+ * 单次自动配图的页数上限（按册大小自适应）。
+ *
+ * 2026-11-04 实测调整：原实现硬编码 12 页。而解析用户磁盘上 9 份真实公司 PPT 后发现，
+ * 真实方案汇报是「每页 2.6 张图、含图页占 82%」（蚌埠医科大学一附院 123 页里 103 页有图；
+ * 安医阜阳 115 页里 96 页有图）。12 页上限意味着 100 页的册子里只有 12% 的页能配上图，
+ * 其余全是纯文字——这正是"生成出来不像公司稿、不够图文并茂"的直接原因。
+ *
+ * 新口径：小册（≤20 页）全配；大册按「目标含图页比例」推算，但保留硬上限防一次跑太久。
+ *   · 上限的存在是必要的（每页一次远程请求，100 页 × 2s = 3 分钟以上）；
+ *   · 但上限不该低到把"图文并茂"这个产品目标直接废掉。
+ * 真实稿 82% 含图页是无法在一次批量里全做到的（且有些页本就该用自绘图示），
+ * 这里按 50% 起步、封顶 60 页，兼顾观感与耗时。
+ */
+export function autoFigurePageBudget(slideCount: number): number {
+  const n = Math.max(0, Math.floor(Number(slideCount) || 0))
+  if (n <= 20) return n // 小册全配（含封面/章节页会自动 skip）
+  // 大册：按 50% 比例，封顶 60 页
+  return Math.min(60, Math.max(12, Math.ceil(n * 0.5)))
+}
+
 export function planFigureActions(input: {
   slides: Slide[]
   visualPlan: SlideVisualPlan[]
   mode: FigureMode
   capability: FigureCapability
-  /** 最多给多少页配图（防一次跑太久） */
+  /** 最多给多少页配图；不传则按 autoFigurePageBudget(slides.length) 自适应 */
   maxPages?: number
 }): FigurePlan {
   const { slides, visualPlan, mode, capability } = input
-  const maxPages = input.maxPages ?? 12
+  const maxPages = input.maxPages ?? autoFigurePageBudget(slides.length)
   const planByPage = new Map(visualPlan.map((p) => [p.page - 1, p]))
   const actions: FigurePageAction[] = []
 

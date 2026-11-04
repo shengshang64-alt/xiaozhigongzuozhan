@@ -101,6 +101,7 @@ import { attachSourceRefs, hasMaterials } from "./deckMaterialStore"
 import { parseTemplateOutline, recommendMapping, resolveMapping, type TemplateOutline } from "./templateLayouts"
 // 2026-11-04 B 项：大纲返回后按页型配额做确定性校正（模型执行率低，光靠提示词不够）
 import { enforceOutlineKindQuota } from "./deckOutlineQuota"
+import { buildPlaceholderSlides, insertBeforeClosing } from "./deckPageFloor"
 // 2026-11-04 E 项：生成/导出前的结构自检报告（空页、缺 figure、纯文字比例）
 import { buildStructureReport, reportToastLine } from "./deckStructureReport"
 // 2026-11-04 D 项：先探能力再发请求（缺 Key 时一次性说清原因并降级，不逐页瞎试）
@@ -716,8 +717,24 @@ export function usePptQuote() {
             // R149：单发路径按目标页数收敛，防模型自行加页（保留开场/致谢、裁中间正文）
             return normalizeSlides(parseJsonLoose(text), null, pageCount)
           },
-          { isEmptyResult: (got) => got.length === 0, emptyMessage: "AI 未返回可用的页面内容，请重试" },
+          {
+            // 2026-11-04 修：原来判据是 `got.length === 0`——**只有一页都没生成才算失败**。
+            // 实测要 10 页、模型只返回 4 页，既不重试也不提示，用户拿到一本 4 页的册子。
+            // 现改为「少于目标页数一半」即视为不完整，触发重试。
+            isEmptyResult: (got) => got.length === 0 || got.length < Math.ceil(pageCount / 2),
+            emptyMessage: "AI 返回的页数明显不足，请重试",
+          },
         )
+        // 2026-11-04：页数补齐。模型常「说要 10 页、只写 4 页」；重试后仍不足时不静默接受，
+        // 补占位页保住骨架（插在结尾页之前，保持叙事顺序），并如实告知用户补了几页。
+        if (slides.length > 0 && slides.length < pageCount) {
+          const short = pageCount - slides.length
+          const got = slides.length
+          slides = insertBeforeClosing(slides, buildPlaceholderSlides(short))
+          toast.warning(
+            `AI 本次只生成了 ${got} 页（目标 ${pageCount} 页），已补齐 ${short} 页占位页，可在编辑器逐页「AI 补全」`,
+          )
+        }
       } else {
         setDeckProgress("正在生成整体大纲…")
         const outlineText = await llmGenerate(buildDeckOutlineMessages(ctx, pageCount), MAX_TOKENS_OUTLINE, "ppt-deck", activeModelRef.current)
@@ -1306,9 +1323,13 @@ export function usePptQuote() {
   // 未上传模板时才用预设；两者都空则走内置中性商务版式。
   const [deckThemePreset, setDeckThemePreset] = useState<string>(() => {
     try {
-      return window.localStorage.getItem("pp_theme_preset") ?? "navy"
+      // 2026-11-04：默认改为「智业官方」。色值实测自公司官方模板 att5-ppt-template.potx
+      // （PB doc_templates「智业PPT模板」）与近年真实方案汇报稿。
+      // 原来默认 "navy" 是外部风格参考色，与公司稿并不同源——这正是"生成的 PPT 不像我们公司的"的原因之一。
+      // 已存过偏好的用户保持其选择，不强行覆盖。
+      return window.localStorage.getItem("pp_theme_preset") ?? "zhiye"
     } catch {
-      return "navy"
+      return "zhiye"
     }
   })
   const applyDeckThemePreset = useCallback((key: string) => {
@@ -1841,7 +1862,9 @@ export function usePptQuote() {
       )
       const notice = figureCapabilityNotice(capability, mode)
       if (notice) toast.info(notice)
-      const figurePlan = planFigureActions({ slides: deck.slides, visualPlan: plan.slides, mode, capability, maxPages: 12 })
+      // 2026-11-04：不再写死 12 页——按册大小自适应（小册全配/大册 50%、封顶 60），
+    // 否则 100 页的册子只有 12% 的页能配上图，做不出真实公司稿那种图文密度。
+    const figurePlan = planFigureActions({ slides: deck.slides, visualPlan: plan.slides, mode, capability })
       // 兜底页：不联网，但在结果文案里明确告诉用户"这些页改用系统图示了"
       const fallbackCount = figurePlan.fallbackCount
       const remoteActions = figurePlan.actions.filter((a) => a.action === "search" || a.action === "ai")

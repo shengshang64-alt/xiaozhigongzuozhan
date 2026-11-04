@@ -12,6 +12,7 @@ import {
   figureCapabilityNotice,
   planFigureActions,
   summarizeFigurePlan,
+  autoFigurePageBudget,
   type FigureProbe,
 } from "./deckFigureGate"
 
@@ -172,5 +173,52 @@ describe("summarizeFigurePlan / figureCapabilityNotice · 人话提示", () => {
   it("只缺 AI 生图 → 说明可退回搜图（不阻断）", () => {
     const notice = figureCapabilityNotice(detectFigureCapability(SEARCH_ONLY, "pexels", "search+ai"), "search+ai")
     expect(notice).toContain("搜图")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 配图页数预算（2026-11-04 实测调整）
+//
+// 原实现写死 12 页。实测用户磁盘 9 份真实公司 PPT：真实方案汇报「每页 2.6 张图、
+// 含图页占 82%」（蚌埠一附院 123 页 / 103 页有图；安医阜阳 115 页 / 96 页有图）。
+// 12 页上限 = 100 页的册子只有 12% 能配图，做不出"图文并茂"。
+// ---------------------------------------------------------------------------
+describe("autoFigurePageBudget · 配图预算随册大小自适应", () => {
+  it("小册（≤20 页）全配", () => {
+    expect(autoFigurePageBudget(0)).toBe(0)
+    expect(autoFigurePageBudget(10)).toBe(10)
+    expect(autoFigurePageBudget(20)).toBe(20)
+  })
+
+  it("大册按 50% 推算，且远高于原来的 12 页", () => {
+    expect(autoFigurePageBudget(40)).toBe(20)
+    expect(autoFigurePageBudget(100)).toBe(50)
+    // 关键回归：100 页的册子不能再被限制到 12 页
+    expect(autoFigurePageBudget(100)).toBeGreaterThan(12)
+  })
+
+  it("封顶 60 页（保留防跑太久的安全阀）", () => {
+    expect(autoFigurePageBudget(200)).toBe(60)
+    expect(autoFigurePageBudget(1000)).toBe(60)
+  })
+
+  it("脏入参不炸、不返回负数", () => {
+    expect(autoFigurePageBudget(-5)).toBe(0)
+    expect(autoFigurePageBudget(Number.NaN)).toBe(0)
+  })
+
+  it("planFigureActions 不传 maxPages 时用自适应预算（而非写死 12）", () => {
+    // 造 40 页都要配图的册子；旧实现只会排 12 页，新实现应排 20 页
+    const slides = Array.from({ length: 40 }, (_, i) => slide(`第${i + 1}页`))
+    const plans = Array.from({ length: 40 }, (_, i) => vp(i + 1, "stockPhoto"))
+    const plan = planFigureActions({
+      slides,
+      visualPlan: plans,
+      mode: "search",
+      capability: detectFigureCapability(SEARCH_ONLY, "pexels", "search"),
+    })
+    const remote = plan.actions.filter((a) => a.action === "search" || a.action === "ai")
+    expect(remote.length).toBe(20)
+    expect(remote.length).toBeGreaterThan(12)
   })
 })

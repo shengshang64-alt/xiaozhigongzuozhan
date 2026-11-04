@@ -353,6 +353,17 @@ export async function exportDeckPptx(deck: DeckRecord, opts: ExportDeckOptions =
 
   const transition = opts.transition ?? "none"
   if (transition === "none") {
+    // 2026-11-04 修：原来这里无条件 writeFile() → 下载，
+    // **skipDownload / onBytes 在这个分支完全失效**（渲染质检、端到端验证都走这条路，
+    // 结果既拿不到字节、还往用户下载目录里丢文件）。
+    // 现在与下面带 transition 的分支同口径：要字节就先 write 出 arraybuffer 再按需下载。
+    if (opts.skipDownload || opts.onBytes) {
+      const bufNoTrans = (await pptx.write({ outputType: "arraybuffer" })) as unknown as ArrayBuffer
+      const bytesNoTrans = new Uint8Array(bufNoTrans)
+      opts.onBytes?.(bytesNoTrans)
+      if (!opts.skipDownload) downloadBlob(bytesNoTrans, safeFileName(deck.deck_name, "pptx"))
+      return "legacy"
+    }
     await pptx.writeFile({ fileName: safeFileName(deck.deck_name, "pptx") })
     return "legacy"
   }
