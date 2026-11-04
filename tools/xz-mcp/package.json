@@ -1,0 +1,16 @@
+{
+  "name": "xz-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "小智工作站 MCP server（给 DeepSeek Harness 用）",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^3.25.0"
+  }
+}
