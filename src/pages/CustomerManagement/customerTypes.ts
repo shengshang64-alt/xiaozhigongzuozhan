@@ -1,5 +1,6 @@
 import type { LlmMessage } from "@/lib/llm"
 import { formatDateDisplay, formatDateTimeDisplay } from "@/lib/dateDisplay"
+import { redactPii } from "@/lib/piiRedact"
 
 // ---------------------------------------------------------------------------
 // 类型（字段名与 PocketBase collection 100% 一致，snake_case）
@@ -354,11 +355,16 @@ export function buildProfileMessages(hospitalName: string): LlmMessage[] {
 }
 
 export function buildExtractMessages(rawText: string): LlmMessage[] {
+  // 2026-11-04（审计 P1）：这段是医院官网抓下来的整页正文，最多 16000 字，会被原样发往
+  // **第三方云模型**。官网新闻/公告里经常带联系人手机、座机、邮箱、身份证号（表彰/公示类尤其多），
+  // 发出去就收不回。全站口径（kbPolicy / 竞品取证 / 知识库问答）都是「原文进 AI 前一律 redactPii」，
+  // 此入口当年漏了。掩码保留头尾，不影响模型识别医院/科室/领导姓名（姓名本身不是 PII 掩码对象）。
+  const safeText = redactPii(rawText.slice(0, 16000))
   return [
     { role: "system", content: PROFILE_SYSTEM_PROMPT },
     {
       role: "user",
-      content: `请从下面这段文字里提取医院档案信息（文字里明确提到的才填，没提到的一律填 null）：\n\n${rawText.slice(0, 16000)}`,
+      content: `请从下面这段文字里提取医院档案信息（文字里明确提到的才填，没提到的一律填 null）：\n\n${safeText}`,
     },
   ]
 }

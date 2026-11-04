@@ -17,6 +17,7 @@ import {
 } from "./intelCleanupBackup"
 import { formatDateTimeDisplay } from "@/lib/dateDisplay"
 import { localizeLlmError } from "@/lib/llmError"
+import { redactPii } from "@/lib/piiRedact"
 import type { LlmMessage } from "@/lib/llm"
 import {
   chatViaGateway,
@@ -236,8 +237,15 @@ function parseAiTagResult(text: string): AiTagResult | null {
   }
 }
 
-function buildTagMessages(item: IntelItemRow): LlmMessage[] {
+// 导出仅为可单测（断言「真正发往模型的 messages 里没有明文 PII」）；
+// 生产调用点只有本文件内的 tagItem 一处。
+export function buildTagMessages(item: IntelItemRow): LlmMessage[] {
   const snippet = (item.content_snippet || "").slice(0, 1500)
+  // 2026-11-04（审计 P1）：这条片段会被原样发往**第三方云模型**（默认 Open Design）。
+  // 情报来自政府采购网/行业站，实测含「供应商联系电话：13330076038」「联系方式：0832-22561202」
+  // 这类明文 PII——发出去就收不回。全站口径（kbPolicy / 竞品取证 / 知识库问答）都是
+  // 「原文进 AI 前一律 redactPii」，这里当年漏了。掩码保留头尾，不影响模型判断地区/类型/主题。
+  const safeSnippet = redactPii(snippet)
   return [
     {
       role: "system",
@@ -246,7 +254,7 @@ function buildTagMessages(item: IntelItemRow): LlmMessage[] {
     },
     {
       role: "user",
-      content: `标题：${item.title}\n来源：${item.source_name || "未知"}\n链接：${item.url}\n内容片段：${snippet || "（无正文片段，请根据标题判断）"}`,
+      content: `标题：${item.title}\n来源：${item.source_name || "未知"}\n链接：${item.url}\n内容片段：${safeSnippet || "（无正文片段，请根据标题判断）"}`,
     },
   ]
 }
