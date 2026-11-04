@@ -147,8 +147,6 @@ export function IntelDetailPanel({
           </section>
         )}
 
-        <IntelStructuredEditor key={item.id} item={item} onSave={onSaveStructured} />
-
         {summaryText && (
           <section className="mt-3.5 rounded-lg border border-primary/30 bg-primary/5 p-3">
             <p className="flex items-center justify-between text-xs font-semibold text-primary">
@@ -203,6 +201,12 @@ export function IntelDetailPanel({
             查看原文
           </a>
         )}
+
+        {/* 2026-11-04（审计 P1）：人工补正表单原先排在「AI 摘要 / 内容片段 / 查看原文」之前，
+            且在没有抽到招标要素时默认展开——打开一条情报，首屏先看到 6 行空输入框，
+            而用户真正要看的摘要和正文被压到下面。现在把表单移到最后一步（补录是「看完之后」的动作），
+            正文优先。表单自身的默认展开逻辑不变。 */}
+        <IntelStructuredEditor key={item.id} item={item} onSave={onSaveStructured} />
       </div>
 
       <footer className="shrink-0 space-y-2 border-t border-border px-3.5 py-3">
