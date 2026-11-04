@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { categoryOf, effectivePolicy, KB_CATEGORIES } from "@/lib/kbPolicy"
+import { EmptyState } from "@/components/common/DataStates"
 import { exportToCsv } from "@/lib/exportCsv"
 import { toast } from "sonner"
 import { formatRelativeTime } from "@/lib/relativeTime"
@@ -338,28 +339,58 @@ export function DocListPanel({
             正在加载文档…
           </div>
         ) : sortedDocs.length === 0 ? (
-          <div className="mt-6 flex flex-col items-center gap-3 rounded-lg border border-dashed border-border px-4 py-16 text-center">
-            <FileText className="h-8 w-8 text-muted-foreground" />
-            <p className="text-sm font-medium text-foreground">
-              {searchQuery.trim() ? "没有匹配的文档" : libTab === "team" ? "团队知识库还是空的" : "你还没有个人笔记"}
-            </p>
-            <p className="max-w-56 text-xs leading-relaxed text-muted-foreground">
-              {searchQuery.trim()
-                ? "换个关键词试试，或清空搜索浏览全部文档"
-                : "上传 Obsidian 笔记（.md），或把整个笔记库打包成 zip 一次导入，目录结构会自动保留"}
-            </p>
-            {searchQuery.trim() ? (
-              <Button size="sm" variant="outline" onClick={onClearSearch} className="gap-1.5 border-primary/40 text-primary hover:bg-primary/10 hover:text-primary">
-                <X className="h-3.5 w-3.5" />
-                清空搜索
-              </Button>
-            ) : (
-              <Button size="sm" onClick={openUpload} className="gap-1.5 bg-primary text-primary-foreground shadow-sm transition-all hover:scale-105 hover:shadow-md">
-                <Upload className="h-3.5 w-3.5" />
-                上传第一批文档
-              </Button>
-            )}
-          </div>
+          (() => {
+            // 2026-11-04（R69 审计 P2-7）：空态原先只判 searchQuery，不看分类筛选。
+            // 用户选了「合同商务」这类没有文档的分类 → 显示「团队知识库还是空的 / 上传第一批文档」，
+            // 而左栏明明写着 2175 篇。这会让人以为库被清空了。
+            // 现在按「哪些筛选条件生效」分别措辞，并给出对应的清除入口。
+            const hasSearch = !!searchQuery.trim()
+            const hasCategory = !!categoryFilter
+            const filtered = hasSearch || hasCategory
+            const title = filtered
+              ? "当前筛选条件下没有文档"
+              : libTab === "team"
+                ? "团队知识库还是空的"
+                : "你还没有个人笔记"
+            const hint = filtered
+              ? [hasSearch ? "搜索词" : "", hasCategory ? `分类「${categoryFilter}」` : ""]
+                  .filter(Boolean)
+                  .join(" + ") + " 一起把结果筛空了；清掉筛选即可看到全部文档"
+              : "上传 Obsidian 笔记（.md），或把整个笔记库打包成 zip 一次导入，目录结构会自动保留"
+            return (
+              <EmptyState
+                className="mt-6"
+                title={title}
+                hint={hint}
+                icon={<FileText className="h-8 w-8 text-muted-foreground" />}
+                action={
+                  filtered ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        onClearSearch()
+                        setCategoryFilter("")
+                      }}
+                      className="gap-1.5 border-primary/40 text-primary hover:bg-primary/10 hover:text-primary"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      清除筛选
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      onClick={openUpload}
+                      className="gap-1.5 bg-primary text-primary-foreground shadow-sm transition-all hover:scale-105 hover:shadow-md"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      上传第一批文档
+                    </Button>
+                  )
+                }
+              />
+            )
+          })()
         ) : (
           listSlice.map((doc) => {
             const active = selectedDoc?.id === doc.id

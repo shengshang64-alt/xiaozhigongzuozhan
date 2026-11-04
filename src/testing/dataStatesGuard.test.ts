@@ -136,4 +136,23 @@ describe("失败不许伪装成空态（防回潮）", () => {
     // ErrorState 必须带 role=alert（可被无障碍工具与测试识别为「这是错误」）
     expect(code).toContain('role="alert"')
   })
+
+  /**
+   * 「筛选后 0 条一律说成库是空的」是 R69 审计 P2-7 的具体缺陷：
+   * DocListPanel 空态只判 searchQuery、不判 categoryFilter，于是选了空分类就显示
+   * 「团队知识库还是空的 / 上传第一批文档」，而左栏写着 2175 篇。
+   * 这里把「空态必须区分是否处于筛选态」钉住，防止以后又只判搜索词。
+   */
+  it("知识库列表空态必须同时考虑搜索与分类筛选（不许只说「库是空的」）", () => {
+    const code = readFileSync(path.join(REPO_ROOT, "src/components/knowledge/DocListPanel.tsx"), "utf-8")
+    // 必须出现「筛选态」与「真空库」两套文案分支
+    expect(code).toContain("当前筛选条件下没有文档")
+    expect(code).toContain("团队知识库还是空的")
+    // 筛选判定必须把 categoryFilter 算进去（而非只看 searchQuery）
+    expect(code, "空态判定漏了 categoryFilter：选了空分类会显示成「库是空的」").toMatch(
+      /hasCategory/,
+    )
+    // 清除入口必须同时清搜索与分类
+    expect(code, "「清除筛选」应同时清空搜索词与分类").toMatch(/onClearSearch\(\)[\s\S]{0,120}setCategoryFilter\(""\)/)
+  })
 })

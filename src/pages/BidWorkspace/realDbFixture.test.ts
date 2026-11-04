@@ -9,11 +9,11 @@
 // 本文件锁两件事：
 //   ① hasRealChapters / hasRealTenderText 在没有数据时必须返回 false（→ 探针 skip）；
 //   ② 这两个判定必须真的查库，不能只判断文件存在。
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
 import { DatabaseSync } from "node:sqlite"
 import { existsSync } from "node:fs"
 import { fileURLToPath } from "node:url"
-import { hasRealChapters, hasRealTenderText } from "./realDbFixture"
+import { hasRealChapters, hasRealTenderText, resetRealDbFixtureCache, sawDbError, setRealDbFailureForTest } from "./realDbFixture"
 
 const DB_PATH = fileURLToPath(new URL("../../../pocketbase/pb_data/data.db", import.meta.url))
 const HAS_DB = existsSync(DB_PATH)
@@ -60,5 +60,57 @@ describe("realDbFixture · 探针跳过口径", () => {
     } finally {
       db.close()
     }
+  })
+
+  /**
+   * 2026-11-04：全量测试偶发 1 例失败，根因是探针与正在运行的 PocketBase 抢同一个 data.db
+   * （SQLITE_BUSY），而 hasRealChapters 的 catch 一律 `cached = false` ——
+   * 等于把「这次没读到」说成「库里没有正文」，于是依赖它的真实语料回归被静默 skip，
+   * 表面上还是"全绿"。这跟本轮修的其它「假空态」是同一类错误：环境竞争伪装成业务事实。
+   *
+   * 修法：读失败时 sawDbError 置真、**不写缓存**、并往 stderr 留一行；
+   * 返回值仍是 false（探针 skip 是合理降级），但可区分、可观测、可重试。
+   *
+   * 注意：catch 分支在正常环境里走不到，所以这里用 setRealDbFailureForTest 注入故障——
+   * 否则这几条用例等于没断言（首版就犯了这个错：反向验证时改回旧行为仍然全绿）。
+   */
+  describe("读库失败 ≠ 库里没有（2026-11-04 修）", () => {
+    afterEach(() => resetRealDbFixtureCache())
+
+    it("正常读成功时 sawDbError 保持 false", () => {
+      if (!HAS_DB) return
+      resetRealDbFixtureCache()
+      hasRealChapters()
+      expect(sawDbError).toBe(false)
+    })
+
+    it("注入读失败 → 返回 false 且 sawDbError 置真（可区分「没读到」）", () => {
+      resetRealDbFixtureCache()
+      setRealDbFailureForTest(true)
+      expect(hasRealChapters()).toBe(false)
+      expect(sawDbError).toBe(true)
+    })
+
+    it("读失败**不写缓存**：故障解除后不复位也能重新读到真实值（旧实现会永久记住 false）", () => {
+      if (!HAS_DB) return
+      resetRealDbFixtureCache()
+      const real = hasRealChapters()
+      expect(sawDbError).toBe(false)
+
+      // 注入一次失败（只清缓存 + 打开故障开关）
+      setRealDbFailureForTest(true)
+      expect(hasRealChapters()).toBe(false)
+      expect(sawDbError).toBe(true)
+
+      // 关键：解除故障后**不调用 reset**，直接再读。
+      //   新实现：catch 里 cached=null → 重新查库 → 拿到真实值
+      //   旧实现：catch 里 cached=false → 命中缓存直接返回 false，永远读不到真实值
+      setRealDbFailureForTest(false) // 只关故障开关，不碰 cached / sawDbError
+      const again = hasRealChapters()
+      expect(
+        again,
+        "读失败被永久缓存了：故障解除后仍返回 false，依赖它的真实语料回归会一直被静默 skip",
+      ).toBe(real)
+    })
   })
 })
