@@ -351,13 +351,14 @@ function splitLabelDesc(text: string): { label: string; desc?: string } {
 }
 
 /**
- * 生成「形态优化建议」——**不自动应用**（2026-10-30 问题 5 修复）。
+ * 生成「形态优化建议」——**只返回清单，不自动应用**。
  *
- * 用户明确要求：reshapeTextHeavySlides 只能作为可选优化建议，
- * 不得未经确认自动改变页面语义和图表类型。
+ * 2026-10-30 曾据此把 reshape 从生成流程里摘掉；2026-11-04 用户实测「整册仍是纯文字」，
+ * 因为建议只写进 localStorage 的 pp_reshape_suggestions_*、全仓没有读取/一键应用入口，
+ * 建议永远落不了地。
  *
- * 因此本函数只返回建议清单（哪页可改成什么），由界面提示用户点击应用；
- * 生成流程里不再自动调用 reshape。
+ * 现口径：生成落库前**自动整形**（usePptQuote 调 reshapeTextHeavySlides），
+ * 本函数只负责给「整形后仍无视觉形态」的残余页出可选建议。
  */
 export type ReshapeSuggestion = {
   slideIndex: number

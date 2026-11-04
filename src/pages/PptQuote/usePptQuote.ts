@@ -26,7 +26,7 @@ import {
 import { matchMaterials } from "@/pages/MaterialLibrary/materialCore"
 import type { MaterialItem } from "@/pages/MaterialLibrary/materialTypes"
 import { gateExport, lintSummaryText, type DeckLintIssue } from "./deckLint"
-import { suggestReshape } from "./deckReshape"
+import { reshapeTextHeavySlides, suggestReshape } from "./deckReshape"
 import { probeRenderCapability, renderCheckDeck } from "./deckRenderClient"
 import { buildDeckVisualPlan } from "./deckVisualPlan"
 // 2026-11-04：AI 插画页真正调用 sidecar 生图（此前 generateAiImage 无任何调用方）
@@ -200,6 +200,44 @@ export function defaultDeckName(topic: string): string {
   const t = topic.trim()
   return /汇报$/.test(t) ? `${t} PPT` : `${t}汇报 PPT`
 }
+
+/** 整形规则的中文名（toast 里告诉用户"变成了什么"） */
+const RESHAPE_RULE_LABEL: Record<string, string> = {
+  kpi: "数字亮点",
+  table: "对照表",
+  architecture: "架构图",
+  flow: "流程图",
+  chart: "图表",
+  iconGrid: "要点矩阵",
+}
+
+/**
+ * 生成落库前的自动整形（2026-11-04 恢复）。
+ *
+ * 背景：2026-10-30 按要求关掉自动整形、只保留「建议」，但建议只写进
+ * localStorage 的 `pp_reshape_suggestions_*`，全仓没有任何读取/一键应用入口，
+ * 结果建议永远落不了地，用户实测「生成的内容还是走的纯文字」。
+ *
+ * 口径：只做**形态转换**，所有数字/名词都取自原文，抽不出来就不转换（保持原样）；
+ * 任何异常都不阻断生成落库（整形是增强，不是必需）。
+ */
+function autoReshapeSlides(input: Slide[]): Slide[] {
+  try {
+    const { slides: reshaped, stats } = reshapeTextHeavySlides(input)
+    if (stats.reshaped > 0) {
+      const detail = Object.entries(stats.byRule)
+        .map(([rule, n]) => `${RESHAPE_RULE_LABEL[rule] ?? rule} ${n}`)
+        .join("、")
+      toast.success(
+        `已自动把 ${stats.reshaped} 页纯文字转为架构/流程/图表等图示${detail ? `（${detail}）` : ""}`,
+      )
+    }
+    return reshaped
+  } catch {
+    return input
+  }
+}
+
 
 
 
@@ -517,7 +555,7 @@ export function usePptQuote() {
   //   "off"        不自动配图（逐页手动）
   //   "search"     只走图库搜图（本地素材库优先）
   //   "search+ai"  搜图 + AI 插画（visualType=aiIllustration 的页走 sidecar 生图，失败退回搜图）
-  const [autoFigureMode, setAutoFigureMode] = useState<"off" | "search" | "search+ai">("off")
+  const [autoFigureMode, setAutoFigureMode] = useState<"off" | "search" | "search+ai">("search+ai")
   const [autoFigureProvider, setAutoFigureProvider] = useState<ImageSearchProvider>("pexels")
   // 逐页预置开关：搜图的当页 busy 状态（0 = 闲置）
   const [slideFigureBusy, setSlideFigureBusy] = useState<{ index: number; kind: "search" | "" }>({ index: -1, kind: "" })
@@ -700,9 +738,11 @@ export function usePptQuote() {
         }
         if (!slides.length || placeholderCount === slides.length) throw new Error("PPT 逐页生成均未成功，请稍后重试")
       }
-      // 2026-10-30（问题 5）：**不再自动整形**。
-      // 原实现会在落库前自动把纯文字页转成图表/架构图，这违背"未经确认不得改变页面语义"。
-      // 现改为：生成后只计算建议，随 deck 存入 suggestions 字段，由用户在界面上一键应用。
+      // 2026-11-04：恢复「生成后自动整形」——纯文字页在落库前确定性转成图表/架构/流程/要点矩阵。
+      // （2026-10-30 曾关掉它、只把建议写进 localStorage，但全仓无人读取该键，
+      //  建议永远落不了地，用户实测「生成的内容还是走的纯文字」，故恢复。）
+      slides = autoReshapeSlides(slides)
+      // 整形后仍无视觉形态的残余页，继续给出可选建议（不自动应用，留待用户手动微调）
       const reshapeSuggestions = suggestReshape(slides)
       const created = await apiFetch<DeckRecord>("/api/ppt_decks", {
         method: "POST",
@@ -796,7 +836,7 @@ export function usePptQuote() {
     async (ctx: DeckContext, plan: SlidePlan[]): Promise<DeckRecord> => {
       const deckName = wDeckName.trim() || defaultDeckName(wTopic)
       const allTitles = plan.map((p) => p.title)
-      const slides: Slide[] = []
+      let slides: Slide[] = []
       let placeholderCount = 0
 
       // 逐页生成 + Schema 校验 + 单页重试（1 页/批，单页失败只影响该页）
@@ -830,7 +870,9 @@ export function usePptQuote() {
       }
       if (!slides.length || placeholderCount === slides.length) throw new Error("PPT 逐页生成均未成功，请稍后重试")
 
-      // 2026-10-30（问题 5）：不自动整形，只算建议存本地供用户一键应用
+      // 2026-11-04：恢复生成后自动整形（与 doGenerateDeck 同一口径，两条落库路径行为必须一致）
+      slides = autoReshapeSlides(slides)
+      // 整形后仍无视觉形态的残余页留可选建议
       const reshapeSuggestions = suggestReshape(slides)
       const created = await apiFetch<DeckRecord>("/api/ppt_decks", {
         method: "POST",

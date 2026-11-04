@@ -462,7 +462,7 @@ export function NewDeckWizard({
               </div>
               <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
                 {autoFigureMode === "off"
-                  ? "默认不自动，逐页图框内部手工选图；可预先配好 API Key 后切换开关。"
+                  ? "不自动配图，逐页在图框内部手工选图；可随时切回自动（默认：搜图 + AI 插画）。"
                   : autoFigureMode === "search+ai"
                     ? "抽象概念页（AI 插画）走服务端 AI 生图，其余页仍按 Pexels/Unsplash/Pixabay 搜图，素材库本地命中优先。生图需在 sidecar 配好 ZX_AI_IMAGE_*（或数据库里的图像模型凭据）；未配置或生图失败会自动退回搜图，不阻断生成。真实产品界面/资质/Logo 类页面永不生图。"
                     : "仅 Pexels/Unsplash/Pixabay 图库（素材库本地命中优先）。需先在逐页编辑里的 “API Key” 面板写好 Key（或写入 .env.local）；无 Key 会自动跳过。"}
