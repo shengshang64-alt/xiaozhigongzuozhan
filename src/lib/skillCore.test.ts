@@ -13,6 +13,7 @@ import {
   parseSkillPlaceholders,
   presetSkillsForScope,
   pruneSkillSelection,
+  PPT_DECK_DEFAULT_SKILL_IDS,
   registerScopeSkills,
   saveSkillSelection,
   SCOPE_CATALOG,
@@ -253,6 +254,79 @@ describe("技能选择持久化", () => {
     })
     expect(loadSkillSelection("assistant")).toEqual({ ids: [], vars: {} })
     expect(() => saveSkillSelection("assistant", { ids: ["a"], vars: {} })).not.toThrow()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// A 项自检（2026-11-04）：新建向导「PPT 生成」是否默认勾选两个预置技能，
+// 且空 localStorage（首次/清缓存）与「勾空后再进」都能回填默认。
+//
+// 这里钉的不只是常量，而是「回填」这件事本身：
+// useScopeSkills 的持久化 effect 首屏就会把 ids:[] 写进 key，所以只认「无记录」
+// 会让绝大多数用户永远看不到默认勾选——必须把空选与无记录一视同仁。
+// ---------------------------------------------------------------------------
+describe("PPT 生成默认勾选 · ppt-deck 预置技能回填", () => {
+  it("默认勾选项是两个视觉/叙事预置技能，且都归 ppt-deck 适用范围", () => {
+    expect(PPT_DECK_DEFAULT_SKILL_IDS).toEqual([
+      "preset:ppt-report-expert",
+      "preset:ppt-smart-hospital-visual",
+    ])
+    const pool = presetSkillsForScope("ppt-deck").map((s) => s.id)
+    for (const id of PPT_DECK_DEFAULT_SKILL_IDS) expect(pool).toContain(id)
+  })
+
+  it("空 localStorage（首次使用 / 清过缓存）→ 回填默认两项", () => {
+    stubStorage()
+    expect(loadSkillSelection("ppt-deck").ids).toEqual([...PPT_DECK_DEFAULT_SKILL_IDS])
+  })
+
+  it("勾空后再进（key 存在且 ids:[]）→ 仍回填默认两项", () => {
+    const store = stubStorage()
+    store.set(`${SKILL_SEL_PREFIX}ppt-deck`, JSON.stringify({ ids: [], vars: {} }))
+    expect(loadSkillSelection("ppt-deck").ids).toEqual([...PPT_DECK_DEFAULT_SKILL_IDS])
+  })
+
+  it("勾空但填过空位值 → 回填默认项的同时保留 vars（不让用户白填）", () => {
+    const store = stubStorage()
+    store.set(
+      `${SKILL_SEL_PREFIX}ppt-deck`,
+      JSON.stringify({ ids: [], vars: { "preset:ppt-report-expert": { 客户名称: "某市中医院" } } }),
+    )
+    expect(loadSkillSelection("ppt-deck")).toEqual({
+      ids: [...PPT_DECK_DEFAULT_SKILL_IDS],
+      vars: { "preset:ppt-report-expert": { 客户名称: "某市中医院" } },
+    })
+  })
+
+  it("用户自己勾了别的技能（非空 ids）→ 不被默认值覆盖", () => {
+    const store = stubStorage()
+    saveSkillSelection("ppt-deck", { ids: ["pb-row-1"], vars: {} })
+    expect(loadSkillSelection("ppt-deck").ids).toEqual(["pb-row-1"])
+    expect(store.get(`${SKILL_SEL_PREFIX}ppt-deck`)).toBeTruthy()
+  })
+
+  it("只勾了一个预置技能（用户手动取消另一个）→ 尊重用户选择，不回填", () => {
+    stubStorage()
+    saveSkillSelection("ppt-deck", { ids: ["preset:ppt-report-expert"], vars: {} })
+    expect(loadSkillSelection("ppt-deck").ids).toEqual(["preset:ppt-report-expert"])
+  })
+
+  it("脏数据解析失败 → 仍按默认勾选兜底（不清空）", () => {
+    const store = stubStorage()
+    store.set(`${SKILL_SEL_PREFIX}ppt-deck`, "{坏 JSON")
+    expect(loadSkillSelection("ppt-deck").ids).toEqual([...PPT_DECK_DEFAULT_SKILL_IDS])
+  })
+
+  it("其它功能点不受影响：无记录仍是空选（默认值只属于 ppt-deck）", () => {
+    stubStorage()
+    expect(loadSkillSelection("bid-outline").ids).toEqual([])
+  })
+
+  it("默认项在勾选裁剪中不被误删（预置项任何时候都可校验）", () => {
+    const pool = presetSkillsForScope("ppt-deck").map((s) => s.id)
+    expect(pruneSkillSelection([...PPT_DECK_DEFAULT_SKILL_IDS], pool, false)).toEqual([
+      ...PPT_DECK_DEFAULT_SKILL_IDS,
+    ])
   })
 })
 
