@@ -155,4 +155,65 @@ describe("失败不许伪装成空态（防回潮）", () => {
     // 清除入口必须同时清搜索与分类
     expect(code, "「清除筛选」应同时清空搜索词与分类").toMatch(/onClearSearch\(\)[\s\S]{0,120}setCategoryFilter\(""\)/)
   })
+
+  /**
+   * 已修的真实缺陷不许回退：小智对话的四个「采纳」下拉，加载失败必须与「真没有」区分。
+   * 曾把失败 setXxx([]) + toast，界面随即显示「还没有客户，先到客户管理新建」。
+   */
+  it("小智对话采纳下拉：四种列表加载失败都要与「真没有」区分", () => {
+    const code = readFileSync(path.join(REPO_ROOT, "src/components/assistant/ChatStream.tsx"), "utf-8")
+    expect(code, "客户列表失败态丢了").toMatch(/customerLoadFailed/)
+    expect(code, "竞品列表失败态丢了").toMatch(/compLoadFailed/)
+    expect(code, "标书项目列表失败态丢了").toMatch(/bidLoadFailed/)
+    expect(code).toContain("没加载出来（不是没有")
+  })
+
+  /**
+   * 剩余待接入清单：只许递减，不许新增。
+   *
+   * 这里不是「要求全部接入」——有些空态是表格行内/弹窗紧凑块，换块级组件会破坏布局，
+   * 强行统一反而是倒退。所以做成**白名单 + 上限**：
+   *   · 名单里的文件是「已判定：语义正确、暂不接入」，每条都写了理由；
+   *   · 新文件出现「空态 + catch 却未接入」→ 立刻红，逼着判断一次。
+   */
+  it("未接入清单只许递减：新增「有空态+catch 但未接入」的文件必须判读登记", () => {
+    const ALLOWED_NOT_WIRED = new Map<string, string>([
+      ["src/components/bid-workspace/BidWarRoom.tsx", "状态机已正确分流 idle/loading/done/error，仅样式未统一"],
+      ["src/components/solution-studio/checklist/ProductLibraryPanel.tsx", "表格内空行必须保留 tr/td 结构，已有 emptyTitle/emptyHint"],
+      ["src/components/bid-workspace/ComposeStep.tsx", "弹窗内紧凑空态，换块级组件会破坏弹窗布局"],
+      ["src/components/bid-workspace/DraftMergePanel.tsx", "整块引导式说明，非空态语义"],
+      ["src/components/ppt-quote/DeckEditorWorkspace.tsx", "计数提示文案，非空态容器"],
+      ["src/components/intel-center/SourceManagerPanel.tsx", "周统计已有 weekStatsState error 分流，仅样式未统一"],
+      ["src/components/team-auth/TeamAuthGate.tsx", "连接失败已给明确说明（正确示范）"],
+      ["src/pages/ProductMapping/CompanyLibraryDialog.tsx", "单行提示文案，非空态容器"],
+      ["src/pages/ProductMapping/UploadWizardDialog.tsx", "解析统计文案，非空态容器"],
+      ["src/components/bid-workspace/FormatSettingsPanel.tsx", "行内紧凑提示（span），换组件破坏布局"],
+      ["src/components/bid-workspace/BidProjectList.tsx", "已接入"],
+      ["src/components/bid-workspace/BidMaterialAmmoPanel.tsx", "已接入"],
+      ["src/components/bid-workspace/ComplianceMatrixPanel.tsx", "已接入"],
+      ["src/components/model-config/PersonalConfigList.tsx", "已接入"],
+      ["src/components/assistant/ChatStream.tsx", "已接入（四种采纳下拉）"],
+    ])
+
+    const offenders: string[] = []
+    for (const abs of FILES) {
+      const rel = path.relative(REPO_ROOT, abs).replace(/\\/g, "/")
+      const code = readFileSync(abs, "utf-8")
+      if (code.includes("@/components/common/DataStates")) continue
+      const hasCatch = /catch\s*[({]/.test(code)
+      const hasEmptyWord = /暂无|没有找到|还没有|为空|没有任何/.test(code)
+      if (!hasCatch || !hasEmptyWord) continue
+      if (ALLOWED_NOT_WIRED.has(rel)) continue
+      offenders.push(rel)
+    }
+    // 上限 = 白名单里「未接入」的数量；只许减少
+    const notWiredCount = [...ALLOWED_NOT_WIRED.keys()].length
+    expect(
+      offenders,
+      `以下文件出现了「空态文案 + catch 但未接入 DataStates」，请判读后二选一：\n` +
+        `  ① 真缺陷 → 接入 ErrorState/EmptyState；\n` +
+        `  ② 语义正确（行内提示/表格内/已有 error 分流）→ 加进 ALLOWED_NOT_WIRED 并写理由。\n` +
+        `当前白名单 ${notWiredCount} 条。新增：\n  ${offenders.join("\n  ")}`,
+    ).toEqual([])
+  }, 60_000)
 })

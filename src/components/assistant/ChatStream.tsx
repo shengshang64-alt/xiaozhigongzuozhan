@@ -227,7 +227,8 @@ const ADOPTABLE = new Set(["写客户跟进邮件", "生成周报总结", "竞�
 
 type CustomerOption = { id: string; hospital_name: string }
 
-function SkillAdoptRow({ skillName, content }: { skillName: string; content: string }) {
+/** 导出仅为可测（断言「加载失败不能显示成没有客户」）。生产调用点仍只有下面 ChatStream 内部。 */
+export function SkillAdoptRow({ skillName, content }: { skillName: string; content: string }) {
   const navigate = useNavigate()
   const [pickerOpen, setPickerOpen] = useState(false)
   const [customers, setCustomers] = useState<CustomerOption[] | null>(null)
