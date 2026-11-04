@@ -2,6 +2,7 @@ import type { LlmMessage } from "@/lib/llm"
 import { chatViaGateway, costTextForModel, type ModelRef } from "@/lib/modelGateway"
 import { injectSkillBlock, skillBlockFor, type SkillScope } from "@/lib/skillCore"
 import { localizeLlmError } from "@/lib/llmError"
+import { planTimeoutDegrade } from "@/lib/llmDegrade"
 
 // ---------------------------------------------------------------------------
 // 方案编制 / 建设清单共用的 LLM 调用封装（统一模型网关，错误中文化）
@@ -30,21 +31,45 @@ export async function llmGenerate(
   scope?: SkillScope,
   temperature?: number,
 ): Promise<string> {
+  const payload = injectSkillBlock(messages, skillBlockFor(scope))
   const r = await chatViaGateway({
     modelRef: studioModelRef,
-    messages: injectSkillBlock(messages, skillBlockFor(scope)),
+    messages: payload,
     page: "solution-studio",
     max_tokens: maxTokens,
     // docs/07 §5.2（第 19 轮）：与标书侧同口径——仅确定性任务显式传 temperature，未传保持模型默认
     temperature,
   })
   if (r.needsLogin) throw new Error(STUDIO_ERROR_ZH.rh_login_required)
-  if (!r.ok || r.status !== "success" || !r.text) {
-    // B5 附带口径已收敛到 @/lib/llmError：未收录错误码 / 裸英文串一律中文兜底，
-    // 可读中文串透传（与小智侧同源，不再各抄一份）
-    throw new Error(
-      localizeLlmError(r.error, { generic: "生成失败，请稍后重试", copy: STUDIO_ERROR_ZH }),
-    )
+  if (r.ok && r.status === "success" && r.text?.trim()) return r.text
+
+  // 2026-11-04（审计 P1）：方案侧此前**没有**超时降级——同样 8192 token 的长文预算撞上
+  // 网关 300s 红线时，标书侧能靠「关思考 + 逐次折半预算」跑完，方案侧直接整章 failed，
+  // 用户会当成「方案工作室坏了」。这里补上与标书侧同源的阶梯（数字口径都在 modelGateway /
+  // llmDegrade 定义一次，不在本文件另写一套）。
+  const plan = planTimeoutDegrade(false, r.error, maxTokens)
+  if (plan.retry) {
+    let last = r
+    for (const budget of plan.budgets) {
+      const degraded = await chatViaGateway({
+        modelRef: studioModelRef,
+        messages: payload,
+        page: "solution-studio",
+        max_tokens: budget,
+        temperature,
+        disableThinking: true, // 关思考：推理型模型把预算耗在思考上是超时主因之一
+      })
+      if (degraded.needsLogin) throw new Error(STUDIO_ERROR_ZH.rh_login_required)
+      if (degraded.ok && degraded.status === "success" && degraded.text?.trim()) return degraded.text
+      last = degraded
+      // 非超时的明确失败（内容审核 / 余额 / 鉴权）立即停：继续降档只是重复扣费
+      if (!degraded.ok && !planTimeoutDegrade(false, degraded.error, budget).retry) break
+    }
+    // 全部档位都失败：透出最后一档的真实原因，而不是笼统的「生成失败」
+    throw new Error(localizeLlmError(last.error, { generic: "生成失败，请稍后重试", copy: STUDIO_ERROR_ZH }))
   }
-  return r.text
+
+  throw new Error(
+    localizeLlmError(r.error, { generic: "生成失败，请稍后重试", copy: STUDIO_ERROR_ZH }),
+  )
 }
