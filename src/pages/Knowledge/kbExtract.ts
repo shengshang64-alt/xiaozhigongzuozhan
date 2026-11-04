@@ -18,6 +18,7 @@ import { LOW_CONFIDENCE } from "./kbAtoms"
 import type { ParsedParagraph } from "./kbParse"
 import { splitWithAnchor } from "./kbParse"
 import type { LlmMessage } from "@/lib/llm"
+import { redactPii } from "@/lib/piiRedact"
 
 /** 抽取版本号（变更提示词时递增，用于"按新提示词全量重跑"） */
 export const EXTRACT_VERSION = "v1.0-2026-10-30"
@@ -218,9 +219,18 @@ export async function extractAtomsFromDoc(content: string, opts: DocExtractOptio
     let lastErr = ""
     for (let attempt = 0; attempt < maxAttempts && !segOk; attempt += 1) {
       try {
-        const messages = buildExtractionMessages({ text: p.text, docTitle: opts.docTitle, index: i + 1, total: list.length })
+        // 2026-11-04（隐私巡检）：知识库可能存有合同/资质原文，这里把整段正文发往第三方云模型。
+        // 全站口径是「原文进 AI 前一律 redactPii」，此处此前漏了。
+        //
+        // 两边统一用同一份脱敏文本（发送 + 逐字比对 + 落库引用都取自 safeText）：
+        // 实测确认「只脱敏发送侧、比对用原文」并不会导致抽取失败（sanitizeExtraction 的逐字
+        // 校验是子串包含，脱敏只让文本变短、不破坏未掩码部分的连续性），所以这里统一两边
+        // 不是为了防丢数据，而是为了保证**落库的 source_quote/正文与模型看到的文本一致**，
+        // 不出现「模型看掩码、库里存原文」这种无法解释的差异。
+        const safeText = redactPii(p.text)
+        const messages = buildExtractionMessages({ text: safeText, docTitle: opts.docTitle, index: i + 1, total: list.length })
         const raw = await opts.callLlm(messages)
-        const parsed = parseSegmentExtraction(raw, p.text)
+        const parsed = parseSegmentExtraction(raw, safeText)
         if (!parsed.ok) {
           lastErr = parsed.reason
           continue
