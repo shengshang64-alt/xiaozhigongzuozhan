@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import { useCallback, useRef, useState } from "react"
-import { FileText, Loader2, Search, Sparkles } from "lucide-react"
+import { AlertTriangle, FileText, Loader2, Search, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -16,8 +16,19 @@ import {
   splitSnippet,
   type KbSearchItem,
 } from "@/lib/kbContentSearch"
+import { redactPii } from "@/lib/piiRedact"
 
-/** 片段渲染：[[关键词]] → 黄色高亮 */
+/** 把服务端/网络的失败串翻成人话 + 下一步做什么（不吞原因，也不把故障说成「没有」） */
+function failureHint(message: string): string {
+  const m = (message ?? "").toLowerCase()
+  if (/timeout|aborted|abort/.test(m)) return "检索超时了（正文索引很大，首次检索会慢一些）。请稍等再点一次「搜正文」。"
+  if (/401|403|unauthorized|forbidden|登录|鉴权/.test(m)) return "登录状态失效了，刷新页面重新登录后再搜。"
+  if (/no such|fts|index|索引|not enabled|未建/.test(m)) return "正文索引还没建好。可让管理员在知识库设置里重建索引，或先用左侧的列表搜索按标题/关键词查找。"
+  if (/fetch|network|econn|enotfound|failed to fetch/.test(m)) return "连不上本地服务。请确认本机 PocketBase（7000 端口）在运行，然后重试。"
+  return "检索没成功，原因见上方。可先重试一次；仍失败请把这句话反馈给管理员。"
+}
+
+/** 片段渲染：[[关键词]] → 黄色高亮。渲染前统一过 redactPii（与 QaDrawer / CitedAnswer 同口径）。 */
 function SnippetText({ snippet }: { snippet: string }) {
   const parts = splitSnippet(snippet)
   if (!parts.length) return <span className="text-muted-foreground">（无片段）</span>
@@ -26,10 +37,13 @@ function SnippetText({ snippet }: { snippet: string }) {
       {parts.map((p, i) =>
         p.hit ? (
           <mark key={i} className="rounded bg-amber-200/70 px-0.5 text-foreground">
-            {p.text}
+            {/* 2026-11-04 口径统一：知识库其余展示面（QaDrawer / CitedAnswer / qaCopyText）
+                渲染前都过 redactPii，只有本面板裸渲染原文片段。两边都过，掩码保留头尾，
+                用户要看全号仍可点开该文档（文档详情有「查看原文」）。 */}
+            {redactPii(p.text)}
           </mark>
         ) : (
-          <span key={i}>{p.text}</span>
+          <span key={i}>{redactPii(p.text)}</span>
         ),
       )}
     </>
@@ -49,6 +63,10 @@ export function KbContentSearchPanel({
   const [items, setItems] = useState<KbSearchItem[]>([])
   const [total, setTotal] = useState(0)
   const [searched, setSearched] = useState(false)
+  // 2026-11-04（审计 P1）：检索**失败**（401 / 索引没建 / 服务没起 / 超时）此前被静默吞成
+  // 「没有找到正文包含该关键词的文档」——用户会以为库里真没有，实际是功能坏了。
+  // 现在把失败原因与下一步单独存起来，与「搜到了 0 条」严格区分。
+  const [failMessage, setFailMessage] = useState("")
   const seqRef = useRef(0)
 
   const run = useCallback(async () => {
@@ -57,6 +75,7 @@ export function KbContentSearchPanel({
     const seq = ++seqRef.current
     setBusy(true)
     setSearched(true)
+    setFailMessage("")
     try {
       const r = await searchKbContent({ q, limit: 30, libTab })
       if (seq !== seqRef.current) return // 丢弃过期响应
@@ -66,6 +85,7 @@ export function KbContentSearchPanel({
       } else {
         setItems([])
         setTotal(0)
+        setFailMessage(r.message || "检索失败")
       }
     } finally {
       if (seq === seqRef.current) setBusy(false)
@@ -106,7 +126,18 @@ export function KbContentSearchPanel({
         </Button>
       </div>
 
-      {searched && !busy && (
+      {searched && !busy && failMessage && (
+        <div className="mt-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2">
+          <p className="flex items-start gap-1.5 text-xs font-medium text-destructive">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            正文检索没有成功（不是「没有这篇文档」）
+          </p>
+          <p className="mt-1 pl-5 text-xs leading-relaxed text-foreground">{failureHint(failMessage)}</p>
+          <p className="mt-0.5 pl-5 text-[11px] leading-relaxed text-muted-foreground">技术原因：{failMessage}</p>
+        </div>
+      )}
+
+      {searched && !busy && !failMessage && (
         <p className="mt-2 text-xs text-muted-foreground">
           {items.length ? `命中 ${total} 篇，显示前 ${items.length} 篇` : "没有找到正文包含该关键词的文档"}
         </p>
