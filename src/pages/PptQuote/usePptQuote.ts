@@ -29,6 +29,8 @@ import { gateExport, lintSummaryText, type DeckLintIssue } from "./deckLint"
 import { suggestReshape } from "./deckReshape"
 import { probeRenderCapability, renderCheckDeck } from "./deckRenderClient"
 import { buildDeckVisualPlan } from "./deckVisualPlan"
+// 2026-11-04：AI 插画页真正调用 sidecar 生图（此前 generateAiImage 无任何调用方）
+import { generateAiImage } from "./aiImageProvider"
 import { renderReportSummary, type RenderReport } from "./deckRenderCheck"
 import {
   clearDeckTemplate,
@@ -511,14 +513,17 @@ export function usePptQuote() {
   // 导出页面切换动画（deck 级，导出时注入 OOXML；不持久化）
   const [deckTransition, setDeckTransition] = useState<DeckTransition>("fade")
 
-  // 真实配图自动预分配（向导开关）："off" | "search"（只走图库搜图，本地素材库优先）
-  const [autoFigureMode, setAutoFigureMode] = useState<"off" | "search">("off")
+  // 真实配图自动预分配（向导开关）：
+  //   "off"        不自动配图（逐页手动）
+  //   "search"     只走图库搜图（本地素材库优先）
+  //   "search+ai"  搜图 + AI 插画（visualType=aiIllustration 的页走 sidecar 生图，失败退回搜图）
+  const [autoFigureMode, setAutoFigureMode] = useState<"off" | "search" | "search+ai">("off")
   const [autoFigureProvider, setAutoFigureProvider] = useState<ImageSearchProvider>("pexels")
   // 逐页预置开关：搜图的当页 busy 状态（0 = 闲置）
   const [slideFigureBusy, setSlideFigureBusy] = useState<{ index: number; kind: "search" | "" }>({ index: -1, kind: "" })
   // TDZ 规避：`runAutoFigure` 定义在 `doGenerateDeck` 之后，deps 数组不能直接引用；
   // 用 ref 中转，定义完成后用 useEffect 同步，`doGenerateDeck` 中只读 `ref.current`。
-  const runAutoFigureRef = useRef<((mode: "off" | "search", provider: ImageSearchProvider) => Promise<void>) | null>(null)
+  const runAutoFigureRef = useRef<((mode: "off" | "search" | "search+ai", provider: ImageSearchProvider) => Promise<void>) | null>(null)
 
   // 真实配图：从医院官网取候选图池 + 逐页插入
   const [imagePool, setImagePool] = useState<{ source: string; loading: boolean; urls: string[]; error: string }>({
@@ -1705,12 +1710,16 @@ export function usePptQuote() {
 
   /**
    * 自动配图为当前 active deck 一切换完毕的 slides 补图：
-   *   - search: 素材库本地命中优先，未命中再联网搜图
+   *   - search:    素材库本地命中优先，未命中再联网搜图
+   *   - search+ai: 同上，但 visualType=aiIllustration 的页先走 sidecar AI 生图，
+   *                失败或未配置时**静默退回搜图**（不阻断整册）
    *   失败不阻断，每页内部 catch，并发 3 路，上限 12 页。
    */
   const runAutoFigure = useCallback(
-    async (mode: "off" | "search", provider: ImageSearchProvider) => {
+    async (mode: "off" | "search" | "search+ai", provider: ImageSearchProvider) => {
       if (mode === "off") return
+      // AI 插画只对「抽象概念页」开启；真实界面/资质等已在 aiImageProvider.canUseAiFor 硬拦截
+      const aiEnabled = mode === "search+ai"
       const deck = activeDeckRef.current
       if (!deck?.slides?.length) return
       // 2026-10-30 补齐（全册视觉计划）：
@@ -1745,6 +1754,8 @@ export function usePptQuote() {
       setDeckProgress(`正在自动配图（共 ${targets.length} 页）…`)
       let done = 0
       let ok = 0
+      // AI 生图成功页数（用于结果文案区分「AI 插画」与「搜图」）
+      let aiOk = 0
       const queue = targets.slice()
       const workers = Array.from({ length: Math.min(3, queue.length) }, async () => {
         while (queue.length) {
@@ -1752,6 +1763,8 @@ export function usePptQuote() {
           if (!t) break
           try {
             let inserted = false
+            // AI 生图失败原因：仅在最终也没搜到图时才汇入 failMessages，避免噪音
+            let aiFailMsg = ""
             // R-008 取图顺序①：先试素材库本地命中，未命中再联网搜图
             try {
               if (await tryAttachFromLibrary(t.i, t.s)) {
@@ -1760,6 +1773,31 @@ export function usePptQuote() {
               }
             } catch {
               /* 本地未命中 → 联网搜图 */
+            }
+            // 取图顺序②：AI 插画页走 sidecar 生图（密钥在服务端，前端不碰 Key）
+            // 仅在模式含 ai 且该页视觉类型为 aiIllustration 时尝试；失败/未配置退回搜图
+            if (!inserted && aiEnabled && t.plan?.visualType === "aiIllustration") {
+              const prompt = (t.plan.query || t.s.title || "").trim()
+              if (prompt) {
+                try {
+                  const ai = await generateAiImage({
+                    prompt,
+                    aspect: "16:9",
+                    page: t.i + 1,
+                    stylePreset: "illustrative",
+                  })
+                  if (ai.ok) {
+                    setSlideImage(t.i, ai.dataUrl, `AI 插画 · ${ai.provider}${ai.model ? ` / ${ai.model}` : ""}`)
+                    inserted = true
+                    aiOk += 1
+                    toast.success(`第 ${t.i + 1} 页 AI 插画已生成（${ai.provider}）`)
+                  } else {
+                    aiFailMsg = ai.notConfigured ? `AI 生图未配置：${ai.reason}` : `AI 生图失败：${ai.reason}`
+                  }
+                } catch {
+                  /* AI 生图异常 → 退回联网搜图 */
+                }
+              }
             }
             if (!inserted) {
               // 优先用视觉计划给出的 query（已结合全册主题与页面用途），无则回退原标题拼装
@@ -1785,7 +1823,10 @@ export function usePptQuote() {
               }
             }
             if (inserted) ok += 1
-            else if (lastSearchMsg) failMessages.add(lastSearchMsg)
+            else {
+              if (aiFailMsg) failMessages.add(aiFailMsg)
+              if (lastSearchMsg) failMessages.add(lastSearchMsg)
+            }
           } finally {
             done += 1
             setDeckProgress(`正在自动配图（${done}/${targets.length}）…`)
@@ -1801,9 +1842,11 @@ export function usePptQuote() {
         toast.error(`自动配图 0 成功：${reason}。可到「逐页编辑 → API Key 面板」配置图库 Key 后重试`)
       } else if (ok < targets.length) {
         const reason = [...failMessages][0] ?? ""
-        toast.warning(`自动配图完成 ${ok}/${targets.length} 页${reason ? `；未成功的页：${reason}` : ""}`)
+        toast.warning(
+          `自动配图完成 ${ok}/${targets.length} 页${aiOk ? `（其中 AI 插画 ${aiOk} 页）` : ""}${reason ? `；未成功的页：${reason}` : ""}`,
+        )
       } else {
-        toast.success(`自动配图完成：${ok}/${targets.length} 页`)
+        toast.success(`自动配图完成：${ok}/${targets.length} 页${aiOk ? `（其中 AI 插画 ${aiOk} 页）` : ""}`)
       }
     },
     [setSlideImage, urlToDataUrl, tryAttachFromLibrary],

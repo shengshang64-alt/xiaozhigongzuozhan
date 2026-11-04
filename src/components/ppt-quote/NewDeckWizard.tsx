@@ -39,9 +39,9 @@ type NewDeckWizardProps = {
   onGenerate: () => void
   /** 「AI 生成 PPT」按钮旁的带入技能选择器（页面注入） */
   deckPickerSlot?: ReactNode
-  /** 自动配图开关与参数 */
-  autoFigureMode: "off" | "search"
-  setAutoFigureMode: (v: "off" | "search") => void
+  /** 自动配图开关与参数（"search+ai" = 搜图 + AI 插画） */
+  autoFigureMode: "off" | "search" | "search+ai"
+  setAutoFigureMode: (v: "off" | "search" | "search+ai") => void
   autoFigureProvider: ImageSearchProvider
   setAutoFigureProvider: (v: ImageSearchProvider) => void
   // 2026-10-30 四步向导：素材 / 模板 / 大纲
@@ -439,14 +439,15 @@ export function NewDeckWizard({
                 </p>
                 <select
                   value={autoFigureMode}
-                  onChange={(e) => setAutoFigureMode(e.target.value as "off" | "search")}
+                  onChange={(e) => setAutoFigureMode(e.target.value as "off" | "search" | "search+ai")}
                   disabled={deckGenerating}
                   className="ml-auto h-7 rounded-md border border-border bg-background px-1.5 text-[11px] text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60"
                 >
                   <option value="off">不自动（逐页手动）</option>
                   <option value="search">仅联网搜图（免费）</option>
+                  <option value="search+ai">搜图 + AI 插画（抽象页走生图）</option>
                 </select>
-                {autoFigureMode === "search" ? (
+                {autoFigureMode !== "off" ? (
                   <select
                     value={autoFigureProvider}
                     onChange={(e) => setAutoFigureProvider(e.target.value as ImageSearchProvider)}
@@ -462,7 +463,9 @@ export function NewDeckWizard({
               <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
                 {autoFigureMode === "off"
                   ? "默认不自动，逐页图框内部手工选图；可预先配好 API Key 后切换开关。"
-                  : "仅 Pexels/Unsplash/Pixabay 图库（素材库本地命中优先）。需先在逐页编辑里的 “API Key” 面板写好 Key（或写入 .env.local）；无 Key 会自动跳过。"}
+                  : autoFigureMode === "search+ai"
+                    ? "抽象概念页（AI 插画）走服务端 AI 生图，其余页仍按 Pexels/Unsplash/Pixabay 搜图，素材库本地命中优先。生图需在 sidecar 配好 ZX_AI_IMAGE_*（或数据库里的图像模型凭据）；未配置或生图失败会自动退回搜图，不阻断生成。真实产品界面/资质/Logo 类页面永不生图。"
+                    : "仅 Pexels/Unsplash/Pixabay 图库（素材库本地命中优先）。需先在逐页编辑里的 “API Key” 面板写好 Key（或写入 .env.local）；无 Key 会自动跳过。"}
               </p>
             </div>
             {deckGenerating && (
