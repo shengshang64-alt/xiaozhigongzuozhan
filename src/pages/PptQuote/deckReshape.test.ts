@@ -268,7 +268,17 @@ describe("reshapeTextHeavySlides：按大纲声明 kind 整形（2026-11-04 C �
     expect(fig && fig.type === "architecture" ? fig.layers.length : 0).toBeGreaterThanOrEqual(3)
   })
 
-  it("声明 kind=flow 但标题无流程关键词 → 仍画成流程图", () => {
+  it("「一期夯基二期提质三期创优」这类裸期数标题 → flow（FLOW_WORD_RE 曾缺「期」）", () => {
+    const { slides } = reshapeTextHeavySlides([
+      mk({
+        title: "一期夯基二期提质三期创优",
+        bullets: ["一期：平台与主数据", "二期：业务域全覆盖", "三期：评级与智能化"],
+      }),
+    ])
+    expect(slides[0].figures?.[0]?.type).toBe("flow")
+  })
+
+  it("声明 kind=flow 但标题是结论句（无流程关键词）→ 仍画成流程图", () => {
     const { slides } = reshapeTextHeavySlides([
       mk({
         title: "三年建成区域医疗高地",

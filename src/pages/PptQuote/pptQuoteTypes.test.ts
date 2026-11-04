@@ -470,6 +470,32 @@ describe("normalizeSlides maxPages 上限", () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// 2026-11-04 C 项补链回归：normalizeSlides 曾**完全丢弃 kind**，
+// 导致单发路径（≤10 页，最常见）生成的页型全丢 → reshape 的「按声明页型整形」
+// 永远触发不了，架构/流程页继续退化成文字卡片。这里钉住 kind 必须保住。
+// ---------------------------------------------------------------------------
+describe("normalizeSlides 保留页型 kind", () => {
+  it("模型给了合法 kind → 原样保留（单发路径 reshape 依赖它）", () => {
+    const out = normalizeSlides(
+      { slides: [{ title: "总体架构", kind: "architecture", bullets: ["a", "b", "c"] }] },
+      null,
+    )
+    expect(out[0].kind).toBe("architecture")
+  })
+
+  it("非法 kind → 不抛错、不硬塞，退化为无 kind", () => {
+    const out = normalizeSlides({ slides: [{ title: "页", kind: "网页", bullets: ["a"] }] }, null)
+    expect(out[0].kind).toBeUndefined()
+  })
+
+  it("模型没给 kind → 继承大纲同名页的 kind", () => {
+    const plan = [{ id: "s1", title: "总体架构", intent: "", kind: "architecture" as const }]
+    const out = normalizeSlides({ slides: [{ title: "总体架构", bullets: ["a", "b", "c"] }] }, plan)
+    expect(out[0].kind).toBe("architecture")
+  })
+})
+
 
 // ---------------------------------------------------------------------------
 // R285（r281-quote-discount-no-entry）：折扣百分比单一口径

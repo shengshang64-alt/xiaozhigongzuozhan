@@ -932,7 +932,21 @@ export function normalizeSlides(raw: unknown, plan: SlidePlan[] | null, maxPages
     const bullets = normalizeBulletList(rec.bullets ?? rec.points ?? rec.items)
     const notes = String(rec.notes ?? rec.note ?? rec.speech ?? "").trim()
     const role = normalizeSlideRole(rec.role)
-    out.push({ id: makeUid(), title, bullets: bullets.length ? bullets : [title], notes, ...(role ? { role } : {}), ...slideVisual(rec) })
+    // 2026-11-04 C 项补链：原来这里**完全丢掉 kind**，导致单发路径（≤10 页，最常见的场景）
+    // 生成的 kind 全丢 → deckReshape 的「按声明页型整形」无从触发，架构/流程页继续退化。
+    // 优先取模型给的 kind，其次继承大纲同名页（pageGen 路径），非法值才留空。
+    const kindParsed = SlideKindSchema.safeParse(rec.kind ?? rec.pageKind)
+    const planKind = plan?.[i]?.kind
+    const kind = kindParsed.success ? kindParsed.data : planKind
+    out.push({
+      id: makeUid(),
+      title,
+      bullets: bullets.length ? bullets : [title],
+      notes,
+      ...(kind ? { kind } : {}),
+      ...(role ? { role } : {}),
+      ...slideVisual(rec),
+    })
   })
   if (!out.length) throw new Error("AI 返回的页面内容为空，请重试")
   return maxPages === undefined ? out : trimSlidesToTarget(out, maxPages)
