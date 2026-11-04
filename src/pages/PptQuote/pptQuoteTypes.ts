@@ -11,6 +11,8 @@ import {
   type SlideRoleZ,
   type SourceRefZ,
 } from "./deckSchema"
+// 2026-11-04 B 项：大纲/单发提示词共用同一份页型配额文案（与确定性校正同源）
+import { kindQuotaRuleText } from "./deckOutlineQuota"
 
 // ---------------------------------------------------------------------------
 // PPT 与报价页：领域类型、常量、LLM prompt 构造与 JSON 容错解析（Logic 层专用，无 JSX）
@@ -796,6 +798,14 @@ export type SlidePlan = {
   sourceRefs?: SourceRefZ[]
   /** 预估内容量（字） */
   estimatedContent?: number
+  /**
+   * 大纲阶段就定下的配图/图示意图（2026-11-04 B 项）。
+   *
+   * 为什么必须在大纲阶段就有：视觉计划与自动配图都要「先知道这页该画什么」。
+   * 等逐页生成完再按标题猜，只能搜到与页面语义无关的图（架构页配到医院大楼）。
+   * 逐页生成时作为兜底值传下去；模型自己给了更贴切的 imageHint 时优先用模型的。
+   */
+  imageHint?: string
 }
 
 /** kind → 中文名（提示用） */
@@ -829,13 +839,21 @@ export function normalizeSlidePlan(raw: unknown, expect: number): SlidePlan[] {
           .filter((r): r is { success: true; data: SourceRefZ } => Boolean(r?.success))
           .map((r) => r.data)
       : []
+    // 2026-11-04 B 项：兼容旧字段 visualHint（chart|kpi|table|architecture|flow|image|text）
+    // ——旧版提示词要的是 visualHint，模型可能仍按老口径返回，不能因为字段改名就丢掉页型。
+    const legacyVisual = String(rec.visualHint ?? "").trim().toLowerCase()
+    const legacyKind =
+      legacyVisual === "text" ? SlideKindSchema.safeParse("bullets") : SlideKindSchema.safeParse(legacyVisual)
+    const kind = kindRaw.success ? kindRaw.data : legacyKind.success ? legacyKind.data : inferKindFromTitle(title, idx, expect)
+    const imageHint = String(rec.imageHint ?? rec.image_hint ?? "").trim().slice(0, 60)
     out.push({
       id: String(rec.id ?? `s${idx + 1}`).slice(0, 40) || `s${idx + 1}`,
       title,
       intent: String(rec.intent ?? rec.summary ?? "").trim().slice(0, 200),
-      kind: kindRaw.success ? kindRaw.data : inferKindFromTitle(title, idx, expect),
+      kind,
       ...(roleRaw.success ? { role: roleRaw.data } : {}),
       ...(refsRaw.length ? { sourceRefs: refsRaw.slice(0, 8) } : {}),
+      ...(imageHint ? { imageHint } : {}),
       estimatedContent: Number(rec.estimatedContent) > 0 ? Math.min(2000, Number(rec.estimatedContent)) : 0,
     })
     if (out.length >= expect + 4) return
@@ -1202,13 +1220,16 @@ export function buildDeckSingleMessages(ctx: DeckContext, pageCount: number): Ll
   const system = [
     deckSystem(ctx),
     `输出铁律：只输出一个 JSON 对象，不要 markdown 围栏以外的任何解释。格式：`,
-    `{"slides":[{"title":"页标题(≤16字)","role":"context|problem|question|answer|evidence|approach|plan|value|close","bullets":["要点1","要点2"],"notes":"该页讲稿备注(80-150字)","layout":"bullets|chart|kpi|table|image-right|banner","chart":null,"kpi":null,"imageHint":"..."}]}`,
+    `{"slides":[{"title":"页标题(≤16字)","role":"context|problem|question|answer|evidence|approach|plan|value|close","kind":"cover|agenda|section|bullets|kpi|chart|table|flow|architecture|image|summary","bullets":["要点1","要点2"],"notes":"该页讲稿备注(80-150字)","layout":"bullets|chart|kpi|table|image-right|banner","chart":null,"kpi":null,"imageHint":"..."}]}`,
     NARRATIVE_RULES,
     TITLE_RULE,
     layoutGuideRules(),
+    // 2026-11-04 B 项：≤10 页走单发（不进大纲），配额只能写进提示词；
+    // 与大纲路径共用同一份文案，避免两条路径口径分叉。
+    kindQuotaRuleText(pageCount),
     VISUAL_RULES,
     `共生成 ${pageCount} 页（含开场页与收尾致谢页）；纯文字页要点 3-4 条、每条 ≤26 字（越短越像汇报、越不像文档）；讲稿备注面向「${ctx.audience || "院领导"}」的口吻，讲稿可详细但**页面上要少字**。`,
-    "最后自检（不达标就重写这几页）：① 全册念下来是不是一个有主张的故事？② 纯文字页是否超过配额？③ 有没有连续三页以上都在罗列现状？④ 每页标题是不是结论句？",
+    "最后自检（不达标就重写这几页）：① 全册念下来是不是一个有主张的故事？② 纯文字页是否超过配额？③ 有没有连续三页以上都在罗列现状？④ 每页标题是不是结论句？⑤ 架构/流程/KPI 页是否达到配额？",
   ].join("\n")
   return [
     { role: "system", content: system },
@@ -1220,12 +1241,16 @@ export function buildDeckOutlineMessages(ctx: DeckContext, pageCount: number): L
   const system = [
     deckSystem(ctx),
     "输出铁律：只输出一个 JSON 对象。格式：",
-    `{"slides":[{"title":"页标题(≤16字)","role":"context|problem|question|answer|evidence|approach|plan|value|close","intent":"该页要讲什么(一句话)","visualHint":"建议用什么形态呈现：chart|kpi|table|architecture|flow|image|text"}]}`,
+    `{"slides":[{"id":"s1","title":"页标题(≤16字)","role":"context|problem|question|answer|evidence|approach|plan|value|close","intent":"该页要讲什么(一句话，结构化页要写清骨架)","kind":"cover|agenda|section|bullets|kpi|chart|table|flow|architecture|image|summary","imageHint":"这页要画什么/给谁看（不需要配图的页留空串）"}]}`,
     NARRATIVE_RULES,
     TITLE_RULE,
     layoutGuideRules(),
+    // 2026-11-04 B 项：大纲阶段就下硬配额（与 enforceOutlineKindQuota 同源文案），
+    // 否则模型仍会整册输出 bullets，到逐页生成再改就要重写内容。
+    kindQuotaRuleText(pageCount),
     `共 ${pageCount} 页（含开场页与收尾致谢页），页与页之间逻辑递进、不重复。`,
-    "大纲阶段就要把 SCQA 骨架排好：哪些页是问题、哪些页是答案、哪些页是论据，并给每页标 visualHint。",
+    "大纲阶段就要把 SCQA 骨架排好：哪些页是问题、哪些页是答案、哪些页是论据，并给每页标 kind 与 imageHint。",
+    "自检（不达标就重排这几页）：① 架构页 ≥ 配额？② 流程/分期页 ≥ 配额？③ KPI/对照页 ≥ 配额？④ 纯 bullets 页是否超 30%？",
   ].join("\n")
   return [
     { role: "system", content: system },
@@ -1284,6 +1309,9 @@ export function buildSlideContentMessages(ctx: DeckContext, plan: SlidePlan, all
     `- 页面类型 kind 已由大纲确定为「${KIND_LABEL[plan.kind]}」，必须原样使用 kind="${plan.kind}"，不得改回 bullets。`,
     plan.role ? `- 该页叙事角色：${plan.role}` : "",
     plan.intent ? `- 该页要讲什么：${plan.intent}` : "",
+    // 2026-11-04 B 项：大纲已定下这页要画什么，逐页生成照此给图表/图示意图，
+    // 别再让模型在"这页该不该配图"上重新猜一遍（猜出来的图常与页面语义无关）。
+    plan.imageHint ? `- 该页视觉意图（大纲已定）：${plan.imageHint}` : "",
     plan.estimatedContent ? `- 预估正文约 ${plan.estimatedContent} 字` : "",
     "",
     "输出铁律：只输出一个 JSON 对象，格式：",
