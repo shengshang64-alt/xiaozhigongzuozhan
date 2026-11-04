@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Loader2, Plus, RefreshCw, Inbox, Copy, ChevronDown, ChevronRight, LayoutGrid, Star, Table2 } from "lucide-react"
 import { copyTextToClipboard } from "@/lib/clipboard"
 import { Button } from "@/components/ui/button"
@@ -19,6 +19,7 @@ import { SourceManagerPanel } from "@/components/intel-center/SourceManagerPanel
 import { DataTable, type DataTableColumn } from "@/components/ui/DataTable"
 import { localDateStamp } from "@/lib/dateStamp"
 import { ITEM_STATUS_LABEL, SOURCE_TYPE_LABEL, type IntelItemRow, type useIntelCenter } from "./useIntelCenter"
+import { shouldScrollDetailIntoView } from "./detailScroll"
 
 export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
   const enabledCount = p.sources.filter((s) => s.enabled).length
@@ -30,6 +31,21 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
 
   // R237 情报「表格」视图：卡片/表格切换，表格便于横向比对与排序（复用 DataTable）
   const [intelView, setIntelView] = useState<"card" | "table">("card")
+
+  // 2026-11-04（审计 P1）：1024–1279px 是两栏布局，详情面板被挤到整张列表下方，
+  // 点卡片后详情确实渲染了但**视口毫无变化**（列表几十条卡片，详情在几屏之外），
+  // 用户以为「点了没反应」。窄布局下打开详情即把详情区滚进视口。
+  const detailRef = useRef<HTMLElement | null>(null)
+  const hasDetail = p.detailItem != null
+  useEffect(() => {
+    if (!shouldScrollDetailIntoView(typeof window === "undefined" ? 0 : window.innerWidth, hasDetail)) return
+    // 等详情真正挂载完再滚（同一帧里 ref 可能还是空的）
+    const id = window.requestAnimationFrame(() => {
+      detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    })
+    return () => window.cancelAnimationFrame(id)
+  }, [hasDetail, p.detailItem?.id])
+
   const isStarred = p.isStarred
   const intelColumns = useMemo<DataTableColumn<IntelItemRow>[]>(
     () => [
@@ -327,7 +343,7 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
             )}
           </section>
 
-          <aside className="space-y-4">
+          <aside ref={detailRef} className="scroll-mt-24 space-y-4">
             <div className="lg:sticky lg:top-[7.5rem] lg:max-h-[calc(100vh-9rem)]">
               <IntelDetailPanel
                 item={p.detailItem}
