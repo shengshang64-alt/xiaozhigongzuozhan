@@ -2052,8 +2052,25 @@ routerAdd("GET", "/api/intel/items", (e) => {
         updated: String(rec.get("updated") || "")
       }
     }
-    // 先按其他条件查（上限 500 条），按 my_status 内存过滤后再分页（数据量小可接受）
-    var rows = $app.findRecordsByFilter("intel_items", whereSql, "-published_at", 500, 0, params)
+    // 按 my_status 过滤必须先拿到「全部」匹配行再分页——my_status 存在 intel_views 里（每人一份，
+    // 缺省 pending），PB 的过滤表达式 join 不到该表，只能在内存里拼。
+    //
+    // 2026-11-04 修（审计：分页失真）：旧实现固定只取 500 条再内存过滤，多的直接看不见，
+    // 而且 totalItems 报的是「过滤后还剩几条」，两处一起错。真实库实测：922 条可见情报中
+    // **422 条（46%）永远不可能出现在列表里**，界面还显示「情报总数 500」——用户完全无从察觉。
+    // 现改为分批取全（每批 500，上限 MAX_SCAN 防失控），total 即为真实命中数。
+    var MAX_SCAN = 5000
+    var BATCH = 500
+    var rows = []
+    var scanned = 0
+    while (scanned < MAX_SCAN) {
+      var chunk = $app.findRecordsByFilter("intel_items", whereSql, "-published_at", BATCH, scanned, params)
+      if (!chunk.length) break
+      for (var ci = 0; ci < chunk.length; ci++) rows.push(chunk[ci])
+      scanned += chunk.length
+      // 最后一批没取满 = 已经到底，不必再发一次查询
+      if (chunk.length < BATCH) break
+    }
     var filtered = []
     for (var i = 0; i < rows.length; i++) {
       var myStatus = viewMap[rows[i].id] || "pending"
@@ -2063,6 +2080,8 @@ routerAdd("GET", "/api/intel/items", (e) => {
       filtered.push(obj)
     }
     var total = filtered.length
+    // 扫描触顶时如实告知（宁可让界面显示「还有更多」的提示，也不要假装已经全了）
+    var truncated = rows.length >= MAX_SCAN
     var startIdx = (page - 1) * perPage
     var items = filtered.slice(startIdx, startIdx + perPage)
     var allTags = []
@@ -2077,7 +2096,7 @@ routerAdd("GET", "/api/intel/items", (e) => {
         }
       }
     } catch (err4) { allTags = [] }
-    return e.json(200, { ok: true, items: items, page: page, perPage: perPage, totalItems: total, allTags: allTags })
+    return e.json(200, { ok: true, items: items, page: page, perPage: perPage, totalItems: total, allTags: allTags, truncated: truncated })
   } catch (ex) {
     $app.logger().error("intel items list failed", "err", String(ex))
     return e.json(500, { error: "intel_error", message: "读取情报列表失败，请稍后重试", fingerprint: "intel-items-" + Math.floor(Math.random() * 1000000000).toString(36) })
