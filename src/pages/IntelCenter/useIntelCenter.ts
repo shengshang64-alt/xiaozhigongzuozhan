@@ -305,6 +305,11 @@ export function useIntelCenter() {
   const [statusTab, setStatusTab] = useState<"active" | "pending" | "confirmed" | "ignored">("active")
   const [searchInput, setSearchInput] = useState("")
   const [searchText, setSearchText] = useState("")
+  // 2026-11-04（P1 假空态修复）：同一关键词重复点「搜索」/再按 Enter 时，page 已是 1、
+  // searchText 也没变 → effect 依赖一项都没变 → 不会重新请求，而 submitSearch 已经把
+  // itemList 清空了，界面就永远停在「当前筛选条件下暂无情报」，可顶部徽标还显示旧总数。
+  // 加一个只增不减的重搜信号，保证每次提交都真的再拉一次；成功回包后自增一次即可复位语义。
+  const [searchNonce, setSearchNonce] = useState(0)
   const [activeTag, setActiveTag] = useState("")
   const [sinceRange, setSinceRange] = useState<"all" | "7" | "30">("all")
   // 区域 / 信息源 两个新筛选维度（值均为服务端过滤参数；"all" = 不过滤）
@@ -314,6 +319,9 @@ export function useIntelCenter() {
   const [knownRegions, setKnownRegions] = useState<string[]>([])
 
   const submitSearch = useCallback(() => {
+    // 关键：先自增重搜信号，再动 page/searchText。三者任一变化都会让下面的 effect 重跑，
+    // 即使关键词与页码都没变（重复点搜索）也能真的重新请求，不会留下空列表。
+    setSearchNonce((n) => n + 1)
     setPage(1)
     setItemList([])
     setSearchText(searchInput.trim())
@@ -328,6 +336,7 @@ export function useIntelCenter() {
     setStatusTab("active")
     setRegionFilter("all")
     setSourceFilter("all")
+    setSearchNonce((n) => n + 1)
     setPage(1)
     setItemList([])
   }, [])
@@ -407,7 +416,7 @@ export function useIntelCenter() {
   useEffect(() => {
     void loadItems(page)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, typeTab, statusTab, searchText, activeTag, sinceRange, regionFilter, sourceFilter])
+  }, [page, typeTab, statusTab, searchText, activeTag, sinceRange, regionFilter, sourceFilter, searchNonce])
 
   const loadMore = useCallback(() => setPage((p) => p + 1), [])
 
