@@ -86,6 +86,74 @@ describe("reshapeTextHeavySlides：形态转换", () => {
     expect(stats.byRule.flow).toBe(1)
   })
 
+  it("「三步走 + 一期/二期/三期」→ flow（序数词兜底）", () => {
+    const slides = [
+      mk({ title: "封面", bullets: ["x"] }),
+      mk({
+        title: "三步走分期实施",
+        bullets: [
+          "一期（3-6个月）：基础平台上线与主数据治理",
+          "二期（7-12个月）：核心业务系统集成",
+          "三期（13-18个月）：智慧应用与运营优化",
+        ],
+      }),
+      mk({ title: "致谢", bullets: ["x"] }),
+    ]
+    const { slides: out, stats } = reshapeTextHeavySlides(slides)
+    expect(out[1].figures?.[0].type).toBe("flow")
+    expect(stats.byRule.flow).toBe(1)
+  })
+
+  it("「一体化平台」标题 + 3 条要点 → architecture（不等架构字样也能出框）", () => {
+    const slides = [
+      mk({ title: "封面", bullets: ["x"] }),
+      mk({
+        title: "智慧医院一体化信息平台",
+        bullets: [
+          "统一门户：面向患者、医护、管理者提供统一入口",
+          "数据中心：汇聚临床与管理数据形成统一主数据",
+          "业务中台：支撑预约、诊疗、随访等业务复用",
+        ],
+      }),
+      mk({ title: "致谢", bullets: ["x"] }),
+    ]
+    const { slides: out, stats } = reshapeTextHeavySlides(slides)
+    expect(out[1].figures?.[0].type).toBe("architecture")
+    expect(stats.byRule.architecture).toBe(1)
+  })
+
+  it("拆不出多模块时压成 1 个模块（不整页放弃）", () => {
+    const slides = [
+      mk({ title: "封面", bullets: ["x"] }),
+      mk({
+        title: "一体化信息平台总体架构",
+        bullets: [
+          "以统一标准与主数据为核心的一体化底座支撑全院业务协同与数据共享",
+          "覆盖门诊住院医技体检等全部临床业务场景并沉淀过程数据",
+          "对上提供运营决策分析、对下连接各类终端与设备",
+        ],
+      }),
+      mk({ title: "致谢", bullets: ["x"] }),
+    ]
+    const { slides: out } = reshapeTextHeavySlides(slides)
+    expect(out[1].figures?.[0].type).toBe("architecture")
+    const fig = out[1].figures?.[0] as unknown as { layers?: { modules: string[] }[] } | undefined
+    expect(fig?.layers?.[0].modules).toHaveLength(1)
+  })
+
+  it("纯痛点清单（短板/瓶颈）不转架构", () => {
+    const slides = [
+      mk({ title: "封面", bullets: ["x"] }),
+      mk({
+        title: "信息平台现状短板",
+        bullets: ["数据标准不统一，药名不互通", "系统间靠手工导数", "缺少统一主索引"],
+      }),
+      mk({ title: "致谢", bullets: ["x"] }),
+    ]
+    const { slides: out } = reshapeTextHeavySlides(slides)
+    expect(out[1].figures?.some((f) => f.type === "architecture")).toBe(false)
+  })
+
   it("「A：B」形式 2-4 条 → table(compare)", () => {
     const slides = [
       mk({ title: "封面", bullets: ["x"] }),
@@ -156,18 +224,29 @@ describe("reshapeTextHeavySlides：绝不造假", () => {
 })
 
 describe("reshapeTextHeavySlides：配额控制", () => {
-  it("整形数量受 maxTextOnlyRatio 约束", () => {
-    // 10 页内容，预算 = 10 * 0.4 = 4 页最多被整形
-    const slides = [
-      mk({ title: "封面", bullets: ["x"] }),
-      ...Array.from({ length: 8 }, (_, i) =>
-        mk({ title: `指标页${i}`, bullets: ["病历完整率 60%", "医嘱闭环率 50%", "影像调阅率 40%"] }),
-      ),
-      mk({ title: "致谢", bullets: ["x"] }),
-    ]
-    const { stats } = reshapeTextHeavySlides(slides, { maxTextOnlyRatio: 0.4 })
-    expect(stats.reshaped).toBeLessThanOrEqual(4)
-    expect(stats.reshaped).toBeGreaterThan(0)
+  // 10 页 = 封面 + 8 页内容 + 致谢
+  const mkBatch = () => [
+    mk({ title: "封面", bullets: ["x"] }),
+    ...Array.from({ length: 8 }, (_, i) =>
+      mk({ title: `指标页${i}`, bullets: ["病历完整率 60%", "医嘱闭环率 50%", "影像调阅率 40%"] }),
+    ),
+    mk({ title: "致谢", bullets: ["x"] }),
+  ]
+
+  it("默认只保留约 25% 纯文字：8 页内容最多整形 6 页", () => {
+    // contentCount = 10 − 2 = 8；允许留 floor(8*0.25)=2 页纯文字 → 预算 6
+    const { stats } = reshapeTextHeavySlides(mkBatch())
+    expect(stats.reshaped).toBe(6)
+  })
+
+  it("maxTextOnlyRatio=0 时内容页全部整形", () => {
+    const { stats } = reshapeTextHeavySlides(mkBatch(), { maxTextOnlyRatio: 0 })
+    expect(stats.reshaped).toBe(8)
+  })
+
+  it("maxTextOnlyRatio=1 时一页都不转（显式关闭整形）", () => {
+    const { stats } = reshapeTextHeavySlides(mkBatch(), { maxTextOnlyRatio: 1 })
+    expect(stats.reshaped).toBe(0)
   })
 })
 

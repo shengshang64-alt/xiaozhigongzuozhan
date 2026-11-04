@@ -199,24 +199,34 @@ function tryKpi(s: Slide): Partial<Slide> | null {
  *   根因：只匹配了「体系/平台」这类泛词。改为必须命中**真·分层**特征，且
  *   每条要点要能拆出 ≥2 个模块名（分层的实质是"一层含多个组件"）。
  */
+/** 架构语义标题词表（2026-11-04：补「一体化平台/信息平台/中台」） */
+const ARCH_TITLE_RE = /(分层|层级|架构|技术栈|总体设计|一体化平台|信息平台|中台|平台架构)/
+/** 痛点/现状类标题：不是分层结构，不能被画成架构图 */
+const PAIN_TITLE_RE = /(短板|问题|瓶颈|痛点|现状|不足|缺失)/
+
 function tryArchitecture(s: Slide): Partial<Slide> | null {
   const title = s.title ?? ""
-  const joined = [title, ...s.bullets].join(" ")
-  // 必须是"结构/分层"语义，且标题本身要像架构（不能只是提到"体系"两个字）
-  if (!/(分层|层级|技术架构|总体架构|系统架构|技术栈|总体设计|平台架构|中台架构)/.test(joined)) return null
-  if (!/(分层|架构|技术栈|总体设计)/.test(title)) return null
+  // 必须是"结构/分层"语义，且标题本身要像架构（不能只是提到"体系"两个字）。
+  // 2026-11-04 适度放宽：「一体化平台 / 信息平台 / 中台」这类标题也算架构语义。
+  if (!ARCH_TITLE_RE.test(title)) return null
+  // 纯痛点清单（标题含 短板/问题/瓶颈/现状 且无真·架构词）绝不能画成分层——
+  // 实测反例「数据标准不统一」被当成架构图，层名变成"药名不互通"。
+  if (PAIN_TITLE_RE.test(title) && !/(架构|分层|层级|技术栈|总体设计)/.test(title)) return null
   if (s.bullets.length < 3) return null
-  // 每条要点必须能拆出 ≥2 个模块（分层的实质），否则说明它是一句话论述而非一层
   const layers = s.bullets.slice(0, 5).map((b, i) => {
-    const modules = b
-      .replace(/^[^：:]{0,10}[：:]/, "") // 去掉"第X层："前缀
+    const name = layerNameOf(b, i)
+    const body = b.replace(/^[^：:]{0,10}[：:]/, "") // 去掉"第X层："前缀
+    const modules = body
       .split(/[，,、；;]/)
       .map((x) => x.trim())
       .filter((x) => x.length >= 2 && x.length <= 12)
       .slice(0, 4)
-    return { name: layerNameOf(b, i), modules }
+    if (modules.length >= 2) return { name, modules }
+    // 2026-11-04 放宽：拆不出 ≥2 个模块时不再整页放弃，
+    // 而是把这一层的整句压成 1 个模块（层名兜底），至少能出架构框。
+    const one = (modules[0] ?? body).replace(/\s+/g, "").slice(0, 16).trim()
+    return { name, modules: [one.length >= 2 ? one : name] }
   })
-  if (layers.some((l) => l.modules.length < 2)) return null
   const fig: FigureSpec = { type: "architecture", title: "分层架构", layers }
   return { layout: "image-right", figures: [fig], imageHint: "" }
 }
@@ -230,29 +240,39 @@ function layerNameOf(bullet: string, idx: number): string {
 
 /**
  * 规则 4：步骤/流程类 → flow 图示
- * 判定：标题或要点里出现「步骤/流程/阶段/路径/实施」且要点数 ≥3
+ * 判定：标题或要点里出现流程语义词，且要点数 ≥3，且每条都像一个步骤。
  */
+/** 流程语义词表（2026-11-04：补「分期/分步/三步走/路线图」） */
+const FLOW_WORD_RE = /(步骤|流程|阶段|路径|实施|推进|建设顺序|里程碑|分期|分步|三步走|路线图)/
+/** 序数/阶段标记（2026-11-04：补「一期/二期」「第N期」「步骤N」「阶段N」） */
+const STEP_ORDER_RE =
+  /(第[一二三四五六七八九十\d]+[期步层]|[一二三四五六七八九十]+期|步骤\s*\d*|阶段\s*\d*|三步走|分阶段|分步|首先|其次|然后|最后|\d+[.、)])/
+/** 标题自带强时序语义时，允许序数词不足 2 条（用标题语义兜底） */
+const FLOW_TITLE_TIMED_RE = /(三步走|分期|分阶段|实施路径|实施路线|路线图|实施步骤|建设路径)/
+
 function tryFlow(s: Slide): Partial<Slide> | null {
-  const joined = [s.title, ...s.bullets].join(" ")
-  if (!/(步骤|流程|阶段|路径|实施|推进|建设顺序|里程碑)/.test(joined)) return null
+  const title = s.title ?? ""
+  const joined = [title, ...s.bullets].join(" ")
+  if (!FLOW_WORD_RE.test(joined)) return null
   if (s.bullets.length < 3) return null
   // 2026-10-30 加严：每一条都得像"一个步骤"，而不是"一句解释"。
   // 实测反例：「评级逻辑 电子病历5级要求…」被当成流程步骤，语义错乱。
-  // 判据：步骤名应短（≤12字）且不含"因为/说明/意味着/要求/导致/逻辑/原因"这类论述词，
-  //       若原文带「第一/第二/步骤/阶段」序数更可信。
+  // 2026-11-04 放宽：head 上限 14→22 字——「一期（3-6个月）：…」这类步骤名本身就长；
+  // 论述词判据保留（含"因为/说明/意味着/要求/逻辑"的仍不是步骤，宁可不转）。
   const looksLikeStep = (b: string): boolean => {
     const head = b.split(/[：:，,。；;]/)[0].trim()
-    if (head.length > 14) return false
+    if (head.length > 22) return false
     if (/(因为|所以|说明|意味着|要求|导致|逻辑|原因|因此|从而|本质|核心在于)/.test(head)) return false
     return true
   }
   if (!s.bullets.every(looksLikeStep)) return null
-  // 至少 2 条带序数/阶段词，才确信这是流程页（否则可能只是并列要点）
-  const ordered = s.bullets.filter((b) => /(第[一二三四五六七八九十]|步骤|阶段|首先|其次|然后|最后|\d+[.、)])/.test(b))
-  if (ordered.length < 2) return null
+  // 至少 2 条带序数/阶段词，才确信这是流程页（否则可能只是并列要点）；
+  // 标题已写明「三步走/分期/路线图」时视为强时序，可豁免该条。
+  const ordered = s.bullets.filter((b) => STEP_ORDER_RE.test(b))
+  if (ordered.length < 2 && !FLOW_TITLE_TIMED_RE.test(title)) return null
   const steps = s.bullets.slice(0, 6).map((b) => {
     const [name, ...rest] = b.split(/[：:，,]/)
-    return { name: name.trim().slice(0, 14), ...(rest.length ? { desc: rest.join("，").trim().slice(0, 20) } : {}) }
+    return { name: name.trim().slice(0, 18), ...(rest.length ? { desc: rest.join("，").trim().slice(0, 24) } : {}) }
   })
   const fig: FigureSpec = { type: "flow", title: "实施路径", steps }
   return { layout: "image-right", figures: [fig], imageHint: "" }
@@ -264,9 +284,11 @@ function tryFlow(s: Slide): Partial<Slide> | null {
  */
 function tryTable(s: Slide): Partial<Slide> | null {
   if (s.bullets.length < 2 || s.bullets.length > 4) return null
-  // 流程/阶段类不走表格（"第一阶段：xxx" 也是 A：B 形式，但它该画流程图）
+  // 流程/阶段类不走表格（"第一阶段：xxx"、"一期（3-6个月）：xxx" 也是 A：B 形式，
+  // 但它们该画流程图）。2026-11-04：补「分期/分步/三步走/路线图/N期」。
   const joined = [s.title, ...s.bullets].join(" ")
-  if (/(步骤|流程|阶段|路径|推进|里程碑|第[一二三四五六]步)/.test(joined)) return null
+  if (/(步骤|流程|阶段|路径|推进|里程碑|分期|分步|三步走|路线图|第[一二三四五六]步|[一二三四五六七八九]+期)/.test(joined))
+    return null
   const rows = s.bullets.map((b) => {
     const m = /^(.{2,14}?)[：:]\s*(.+)$/.exec(b)
     return m ? [m[1].trim(), m[2].trim()] : null
@@ -354,7 +376,7 @@ function splitLabelDesc(text: string): { label: string; desc?: string } {
  * 生成「形态优化建议」——**只返回清单，不自动应用**。
  *
  * 2026-10-30 曾据此把 reshape 从生成流程里摘掉；2026-11-04 用户实测「整册仍是纯文字」，
- * 因为建议只写进 localStorage 的 pp_reshape_suggestions_*、全仓没有读取/一键应用入口，
+ * 因为建议只写进 localStorage 的 `pp_reshape_suggestions_*`、全仓没有读取/一键应用入口，
  * 建议永远落不了地。
  *
  * 现口径：生成落库前**自动整形**（usePptQuote 调 reshapeTextHeavySlides），
@@ -379,9 +401,10 @@ export function suggestReshape(slides: Slide[]): ReshapeSuggestion[] {
     if (lay === "section") return
     const attempts: [ReshapeSuggestion["suggestedKind"], string, () => Partial<Slide> | null][] = [
       ["kpi", "这页有几组并列的关键数字，可做成数字亮点卡更醒目", () => tryKpi(s)],
-      ["table", "这页是并列对照结构，可做成表格更清晰", () => tryTable(s)],
+      // 与 reshapeTextHeavySlides 同序：架构/流程先于 table，否则 A：B 形式会被判成表格
       ["architecture", "这页讲的是分层/架构组成，可画成架构图", () => tryArchitecture(s)],
       ["flow", "这页讲的是步骤/流程，可画成流程图", () => tryFlow(s)],
+      ["table", "这页是并列对照结构，可做成表格更清晰", () => tryTable(s)],
       ["chart", "这页有可比较的数值序列，可做成柱图", () => tryChart(s)],
       ["iconGrid", "这页是并列论点，可做成要点矩阵更规整", () => tryIconGrid(s)],
     ]
@@ -430,7 +453,8 @@ function fixDanglingImageLayout(s: Slide): Partial<Slide> | null {
  * 对整册做形态整形：只处理「纯文字且文字偏多」的页，已有视觉的页一律不动。
  *
  * @param slides    AI 生成的页面
- * @param opts.maxTextOnlyRatio 允许保留的纯文字页比例（默认 0.4，即最多 40%）
+ * @param opts.maxTextOnlyRatio 允许**保留**的纯文字页比例（默认 0.25，即最多留 25% 纯文字，
+ *                              其余内容页都会被尝试转成视觉形态；封面/致谢/section 不计）
  */
 export function reshapeTextHeavySlides(
   slides: Slide[],
@@ -438,7 +462,11 @@ export function reshapeTextHeavySlides(
 ): { slides: Slide[]; stats: ReshapeStats } {
   const stats: ReshapeStats = { reshaped: 0, byRule: {}, downgraded: 0 }
   const contentCount = Math.max(1, slides.length - 2)
-  const budget = Math.max(1, Math.floor(contentCount * (opts?.maxTextOnlyRatio ?? 0.4)))
+  // 2026-11-04 语义修正：本参数是「允许保留的纯文字页比例」，预算 = 内容页 − 允许保留数。
+  // 旧实现直接拿 ratio 当整形配额（默认 0.4 → 只整形 40%），与 JSDoc 相反：
+  // 实测 10 页册子只转 3 页，用户看到的仍是满屏文字。
+  const maxTextOnly = Math.floor(contentCount * (opts?.maxTextOnlyRatio ?? 0.25))
+  const budget = Math.max(0, contentCount - maxTextOnly)
 
   // 规则 0（先于一切）：无配图却声明了 image/banner 的页，先降级 layout，
   // 否则它们既进不了候选集（hasVisual=false 但 layout 是 image），又渲染成最丑的纯文字。
@@ -465,13 +493,15 @@ export function reshapeTextHeavySlides(
     // 逐一尝试规则，命中即停。
     // 顺序原则：越"具体/越能保留信息"的规则越优先——
     //   kpi(3-4个并列数字) 比 chart 更贴合"每项一个亮点"的语义，先试；
-    //   table/architecture/flow 是结构性规则，比泛化的 chart 更能体现内容关系；
+    //   architecture/flow 是有语义前提的结构性规则，必须先于 table：
+    //     「一期（3-6个月）：…」「统一门户：…」也都是 A：B 形式，
+    //     若 table 先跑，架构/流程页会被当成两列表格抢走（实测就是这样丢图的）；
     //   chart 放最后作为"有多个数值但说不清关系"的兜底。
     const attempts: [string, () => Partial<Slide> | null][] = [
       ["kpi", () => tryKpi(s)],
-      ["table", () => tryTable(s)],
       ["architecture", () => tryArchitecture(s)],
       ["flow", () => tryFlow(s)],
+      ["table", () => tryTable(s)],
       ["chart", () => tryChart(s)],
       // 兜底：前面都不适用时，用图标矩阵把并列论点视觉化（避免退化成文字墙）
       ["iconGrid", () => tryIconGrid(s)],
