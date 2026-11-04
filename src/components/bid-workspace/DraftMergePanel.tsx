@@ -90,6 +90,12 @@ export function DraftMergePanel(p: DraftMergePanelProps) {
    * R47（B20）自动套用底稿格式：走模板画像识别（一次解析同时得到格式项 + 模板要求 + 对齐结论）。
    * 自动档「全量套用」语义不变，额外把模板画像落进 format_settings.templateProfile，
    * 之后大纲 / 正文生成自动消费画像里的写作要求。识别不到任何有效信息时静默不动。
+   *
+   * 2026-11-04（巡检）：原 catch 是空的（`catch { /* 静默 *\/ }`），分不清两种完全不同的情况：
+   *   ① 这个 docx 本来就没有可识别的格式（正常，静默是对的）；
+   *   ② 识别过程真的抛错了（解析失败/文件损坏）——用户以为"已经自动同步了格式"，
+   *      实际什么都没写进去，后续润色全部按默认格式走。
+   * 现在把 ② 用一句人话告诉他，并指明明天还能手工点「格式同步」。
    */
   const autoApplyFormat = async (file: File) => {
     try {
@@ -105,7 +111,13 @@ export function DraftMergePanel(p: DraftMergePanelProps) {
         `已自动同步底稿格式 ${fields.length} 项` +
           (profile.requirements.length ? `，并识别到 ${profile.requirements.length} 条模板写作要求` : ""),
       )
-    } catch { /* 静默 */ }
+    } catch (e) {
+      // 不再静默：底稿格式没同步成功会让后续正文格式与商务同事的稿子不一致，用户必须知道
+      toast.warning(
+        `底稿已合并，但「自动套用格式」没成功（${e instanceof Error ? e.message : "解析异常"}）；` +
+          "可点「格式同步」手动识别一次，或继续按当前格式生成",
+      )
+    }
   }
 
   /** 手动勾选应用：格式 patch 合入 format_settings，模板画像一并落库（空画像不覆盖旧画像） */

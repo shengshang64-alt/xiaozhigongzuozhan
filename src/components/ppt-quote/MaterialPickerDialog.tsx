@@ -16,7 +16,19 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: { "Content-Type": "application/json", ...vibexAuthHeaders(), ...(init?.headers ?? {}) },
   })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  if (!res.ok) {
+    // 2026-11-04（巡检）：原来只抛 `HTTP 500`，把服务端 message 丢了——用户和我们都看不出
+    // 到底是库锁了、鉴权挂了还是接口不存在。带上服务端原因（拿不到就退回状态码）。
+    let detail = `HTTP ${res.status}`
+    try {
+      const j = (await res.json()) as { message?: string; error?: string }
+      const m = String(j?.message || j?.error || "").trim()
+      if (m) detail = `${detail}：${m}`
+    } catch {
+      /* 响应体不是 JSON：保留状态码即可 */
+    }
+    throw new Error(detail)
+  }
   return (await res.json()) as T
 }
 
@@ -36,10 +48,15 @@ export function MaterialPickerDialog({ open, onOpenChange, onPick }: MaterialPic
   const [q, setQ] = useState("")
   const [category, setCategory] = useState("")
   const [pickingId, setPickingId] = useState("")
+  // 2026-11-04（巡检）：拉取失败此前被 catch 静默吞掉、只把 loaded 置 true，
+  // 于是界面显示「素材库为空或未命中」——用户会以为库里真没素材，实际是请求失败了。
+  // 两者的下一步完全不同（补素材 vs 重试），必须分开。
+  const [loadError, setLoadError] = useState("")
 
   const load = useCallback(
     async (targetPage: number) => {
       setLoading(true)
+      setLoadError("")
       try {
         const qs = new URLSearchParams({ page: String(targetPage), perPage: String(PER_PAGE), mode: "thumbs" })
         if (q.trim()) qs.set("q", q.trim())
@@ -48,8 +65,9 @@ export function MaterialPickerDialog({ open, onOpenChange, onPick }: MaterialPic
         setTotal(data.totalItems ?? 0)
         setItems((prev) => (targetPage === 1 ? data.items : [...prev, ...data.items]))
         setPage(targetPage)
-      } catch {
-        /* 拉取失败留空态，不打断编辑 */
+      } catch (e) {
+        // 保留已加载的图（翻页失败不该把前面看过的清空）
+        setLoadError(e instanceof Error ? e.message : "加载失败")
       } finally {
         setLoaded(true)
         setLoading(false)
@@ -108,7 +126,19 @@ export function MaterialPickerDialog({ open, onOpenChange, onPick }: MaterialPic
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto pt-3">
-          {loaded && items.length === 0 ? (
+          {loadError ? (
+            <div className="py-10 text-center">
+              <PackageOpen className="mx-auto mb-2 h-7 w-7 text-destructive/70" />
+              <div className="text-sm font-medium text-destructive">素材没加载出来（不是「库里没有」）</div>
+              <div className="mt-1 text-xs text-muted-foreground">技术原因：{loadError}</div>
+              <Button size="sm" variant="outline" className="mt-3" onClick={() => void load(page)}>
+                重试
+              </Button>
+              <div className="mt-2 text-[11px] text-muted-foreground">
+                修不好也可以继续用「联网搜图」兜底，不影响本次插图
+              </div>
+            </div>
+          ) : loaded && items.length === 0 ? (
             <div className="py-12 text-center">
               <PackageOpen className="mx-auto mb-2 h-7 w-7 text-muted-foreground" />
               <div className="text-sm text-muted-foreground">

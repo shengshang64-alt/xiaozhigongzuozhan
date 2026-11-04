@@ -1371,8 +1371,14 @@ export function usePptQuote() {
         } else if (outline.failure) {
           toast.warning(`模板版式解析未成功：${outline.failure}；将只套用配色与字体`)
         }
-      } catch {
-        /* 版式解析失败不影响主流程：仍可套主题导出 */
+      } catch (e) {
+        // 2026-11-04（巡检）：原来这里静默——但紧跟着就会弹「已套用模板」的成功提示，
+        // 于是用户以为版式也匹配好了，导出时才发现每页还是内置版式（"套了公司模板还是像内置模板"）。
+        // 版式解析失败不影响主流程（配色/字体照常），但必须如实说清楚只套了什么。
+        toast.warning(
+          `模板版式没能解析（${e instanceof Error ? e.message : "解析异常"}）：本次只套用配色与字体，` +
+            "导出时页面按内置版式；如需母版保真，可在导出设置里手动指定版式",
+        )
       }
       toast.success(
         fidelityOn
