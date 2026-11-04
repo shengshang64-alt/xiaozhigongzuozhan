@@ -6,6 +6,17 @@
 模块：方案工作室 / 标书工作台 / PPT 报价 / 知识库 / 情报竞品 / 大模型通道 / 助手。
 **核心价值只有一条：产出可对外交付的标书 / 方案 / PPT。**
 
+### 本地三个端口（2026-11-04 补全；此前只写了 7000/8000，7001 长期无文档）
+
+| 端口 | 服务 | 启动方式 | 停掉会怎样 | 备注 |
+|---|---|---|---|---|
+| **8000** | 前端 Vite dev server | `start-local.cmd`（用 `vibex-local/vite.local.config.ts`，带 `/__pb` 代理） | 页面打不开 | `npm run dev` 用的是根配置、**没有代理**，界面能开但数据全空；两者都声明 `port 8000 + strictPort`，不能同时起 |
+| **7000** | PocketBase（数据库 + 全部自定义 API） | `start-local.cmd` 一并拉起 | 全站数据为空、所有 `/api/*` 404 | **JSVM hooks（`pb_hooks/*.pb.js`）不热加载**，改 hook 必须重启本端口才生效 |
+| **7001** | Node sidecar（AI 生图 / 渲染等重活） | `vibex-local/sidecar/server.mjs` 独立进程 | 「AI 插画」「PPT 渲染」类功能报错，其它功能不受影响 | 端口在前端 `src/lib/sidecarClient.ts` 硬编码 7001；服务端可用 `ZX_SIDECAR_PORT` 覆盖（两者必须一致） |
+
+一键起停：`start-local.cmd` / `stop-local.cmd`（**stop 会同时停 7000 和 8000**，需要单独保留 one 时注意）。
+只验证某一层是否活着：`curl -s -o NUL -w "%{http_code}" http://127.0.0.1:8000/`（或 7000 的 `/api/health`）。
+
 > 注意：`npm run dev`（裸 `vite`）用的是**根** `vite.config.ts`，**没有 `/__pb` 代理**，会表现为「界面能开但数据全空」；
 > 且它与 `start-local.cmd` 都声明 `port 8000 + strictPort`，两者不能同时起。日常开发一律走 `start-local.cmd`。
 
