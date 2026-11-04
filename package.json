@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "verify:migrations": "node scripts/health/verify-pb-migrations.mjs",
     "verify:eslint-budget": "node scripts/health/verify-eslint-budget.mjs",
+    "verify:isolation": "node scripts/verify-account-isolation.mjs",
     "health:manual": "node scripts/health/manual-checks.mjs"
   },
   "dependencies": {
