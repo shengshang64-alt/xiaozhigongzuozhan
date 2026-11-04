@@ -19,6 +19,7 @@ import {
 } from "@/lib/anytxtClient"
 import { ingestManyToKb, ingestToKb } from "@/lib/anytxtIngest"
 import { toast } from "sonner"
+import { EmptyState, ErrorState } from "@/components/common/DataStates"
 
 type State = "probing" | "offline" | "ready"
 /** 单个文件的入库状态 */
@@ -41,6 +42,8 @@ export function LocalDocSearchPanel({
   const [files, setFiles] = useState<AnytxtFile[]>([])
   const [count, setCount] = useState(0)
   const [searched, setSearched] = useState(false)
+  /** 检索失败原因（与「真没搜到」区分开，2026-11-04） */
+  const [searchError, setSearchError] = useState("")
   const [ingestState, setIngestState] = useState<Record<string, IngestState>>({})
   const [batchBusy, setBatchBusy] = useState(false)
 
@@ -122,6 +125,7 @@ export function LocalDocSearchPanel({
     if (!pattern) return
     setSearching(true)
     setSearched(true)
+    setSearchError("")
     try {
       const r = await searchAnytxt({ pattern, limit: 100 })
       if (r.ok) {
@@ -129,8 +133,12 @@ export function LocalDocSearchPanel({
         setCount(r.count)
         if (!r.files.length) toast.info("本机没有找到匹配内容的文件")
       } else {
+        // 2026-11-04（R69 同类缺陷）：失败只弹了个 toast，列表清空后界面显示
+        // 「本机没有找到匹配内容的文件」——用户会以为硬盘里真没这份资料，
+        // 而实际是 AnyTXT 挂了/超时。现在把失败原因留在面板上，与「真没搜到」分开。
         setFiles([])
         setCount(0)
+        setSearchError(r.message || "检索失败")
         toast.error(r.message)
       }
     } finally {
@@ -226,10 +234,30 @@ export function LocalDocSearchPanel({
         </Button>
       </div>
 
-      {searched && !searching && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          {files.length ? `命中 ${count} 个文件，显示前 ${files.length} 个` : "本机没有找到匹配内容的文件"}
-        </p>
+      {searched && !searching && searchError && (
+        <ErrorState
+          className="mt-2"
+          tone="compact"
+          title="本机检索没有成功"
+          reason={searchError}
+          hint="确认 AnyTXT 正在运行（设置 → API/MCP 打开、绑定 127.0.0.1:9920）后再点搜索"
+          onRetry={() => void doSearch()}
+        />
+      )}
+
+      {searched && !searching && !searchError && (
+        files.length ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            命中 {count} 个文件，显示前 {files.length} 个
+          </p>
+        ) : (
+          <EmptyState
+            className="mt-2"
+            tone="compact"
+            title="本机没有找到匹配内容的文件"
+            hint="检索本身是成功的（不是故障）；可换个更短的关键词，或确认那份资料已在 AnyTXT 索引目录里"
+          />
+        )
       )}
 
       {files.length > 0 && (
