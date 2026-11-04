@@ -240,6 +240,26 @@ export function skillCostSuffix(scope?: SkillScope | null): string {
 
 export const SKILL_SEL_PREFIX = "xz_skill_sel_"
 
+/**
+ * PPT 生成的默认技能勾选：视觉页型（结构化页型）+ 叙事方法论。
+ *
+ * 生效条件是「该 scope 解析后一个技能都没勾」——包括 localStorage 里没有记录（首次使用 / 清过缓存），
+ * 也包括记录里是 `ids: []`。后者必须一并回填：`useScopeSkills` 的持久化 effect 首屏就会把 `ids: []`
+ * 写进 key，若只认「无记录」，绝大多数用户永远看不到默认勾选。
+ *
+ * 用户不想用时在选择器里取消即可：只要还留着别的勾选（或只剩其它技能），保存下来的就是非空 ids，
+ * 不会被默认值覆盖。只有当用户把默认项全去掉且一个都不选时，下次刷新才会再次被默认勾上——可接受。
+ */
+export const PPT_DECK_DEFAULT_SKILL_IDS: readonly string[] = [
+  "preset:ppt-report-expert",
+  "preset:ppt-smart-hospital-visual",
+]
+
+function defaultSkillSelection(scope: SkillScope): SkillSelection {
+  if (scope === "ppt-deck") return { ids: [...PPT_DECK_DEFAULT_SKILL_IDS], vars: {} }
+  return { ids: [], vars: {} }
+}
+
 export interface SkillSelection {
   ids: string[]
   vars: Record<string, Record<string, string>>
@@ -248,7 +268,8 @@ export interface SkillSelection {
 export function loadSkillSelection(scope: SkillScope): SkillSelection {
   try {
     const raw = window.localStorage.getItem(`${SKILL_SEL_PREFIX}${scope}`)
-    if (!raw) return { ids: [], vars: {} }
+    // 无 key（首次使用 / 清过缓存）→ 默认勾选；key 存在但为空的情况在下方按 scope 二次判定
+    if (!raw) return defaultSkillSelection(scope)
     const parsed = JSON.parse(raw) as Partial<SkillSelection>
     const ids = Array.isArray(parsed.ids) ? parsed.ids.filter((v) => typeof v === "string") : []
     const vars: Record<string, Record<string, string>> = {}
@@ -261,9 +282,15 @@ export function loadSkillSelection(scope: SkillScope): SkillSelection {
         }
       }
     }
+    // ppt-deck：持久化 effect 首屏已把 ids:[] 写进 key，故「空选」与「无记录」一视同仁地回填默认项。
+    // 已填的空位值（vars）保留，避免用户填过的槽位因回填默认项丢失。
+    if (scope === "ppt-deck" && ids.length === 0) {
+      return { ids: [...PPT_DECK_DEFAULT_SKILL_IDS], vars }
+    }
     return { ids, vars }
   } catch {
-    return { ids: [], vars: {} }
+    // 解析失败（脏数据 / 隐私模式等）按 scope 取默认值，ppt-deck 仍能吃到默认勾选
+    return defaultSkillSelection(scope)
   }
 }
 
