@@ -3,6 +3,7 @@ import { Archive, ArchiveRestore, CalendarClock, Download, FileCheck2, LayoutGri
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { EmptyState } from "@/components/common/DataStates"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { CompanyTemplateHint } from "@/components/common/CompanyTemplateHint"
 import { DataTable, type DataTableColumn } from "@/components/ui/DataTable"
@@ -571,31 +572,30 @@ export function BidProjectList(p: BidProjectListProps) {
             </Button>
           </div>
         ) : p.projects.length === 0 ? (
-          <div className="mt-10 rounded-2xl border border-dashed border-border bg-card py-16 text-center shadow-md">
-            <FileCheck2 className="mx-auto h-9 w-9 text-muted-foreground" />
-            <p className="mt-3 text-sm font-medium text-foreground">
-              {p.listView === "archived"
-                ? "还没有归档项目"
-                : p.listView === "trash"
-                  ? "回收站是空的"
-                  : "还没有投标项目"}
-            </p>
-            <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
-              {p.listView === "archived"
+          <EmptyState
+            className="mt-10"
+            icon={<FileCheck2 className="mx-auto h-9 w-9 text-muted-foreground" />}
+            title={
+              p.listView === "archived" ? "还没有归档项目" : p.listView === "trash" ? "回收站是空的" : "还没有投标项目"
+            }
+            hint={
+              p.listView === "archived"
                 ? displayMode === "table"
                   ? "在表格行的「操作」列点「归档」，完结的项目会收进这里留档，随时可取消归档"
                   : "在项目卡片上点「归档」，完结的项目会收进这里留档，随时可取消归档"
                 : p.listView === "trash"
                   ? "删除的项目会先进回收站保留 30 天，期间可还原，超期自动彻底清除"
-                  : "点「新建投标项目」，导入招标文件后 AI 会提取评分办法、资质要求与废标条款，帮你把标书做扎实"}
-            </p>
-            {p.listView === "active" && (
-              <Button onClick={p.openNewDialog} variant="outline" className="mt-5 border-primary/40 text-primary hover:bg-primary/10">
-                <Plus className="mr-1.5 h-4 w-4" />
-                新建第一个项目
-              </Button>
-            )}
-          </div>
+                  : "点「新建投标项目」，导入招标文件后 AI 会提取评分办法、资质要求与废标条款，帮你把标书做扎实"
+            }
+            action={
+              p.listView === "active" ? (
+                <Button onClick={p.openNewDialog} variant="outline" className="border-primary/40 text-primary hover:bg-primary/10">
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  新建第一个项目
+                </Button>
+              ) : undefined
+            }
+          />
         ) : displayMode === "table" ? (
           <div className="mt-5 pb-16">
             <DataTable<BidProjectRecord>

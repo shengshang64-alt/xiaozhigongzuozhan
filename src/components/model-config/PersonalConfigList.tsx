@@ -2,6 +2,7 @@ import { useState } from "react"
 import { AlertTriangle, Cpu, FlaskConical, Loader2, Pencil, Plus, RefreshCw, Star, Trash2 } from "lucide-react"
 import { detectModelModality, isTextGenerationModel, modalityBadgeClass, modalityLabel } from "@/lib/modelModality"
 import { Button } from "@/components/ui/button"
+import { EmptyState } from "@/components/common/DataStates"
 import {
   Dialog,
   DialogContent,
@@ -132,22 +133,22 @@ export function PersonalConfigList({
 
       <div className="space-y-4 px-4 py-4">
         {configs.length === 0 && (
-          <div className="flex flex-col items-center rounded-lg border border-dashed border-border bg-card px-5 py-16 text-center">
-            <Cpu className="h-8 w-8 text-muted-foreground" />
-            <p className="mt-3 text-sm font-medium text-foreground">还没有个人模型配置</p>
-            <p className="mx-auto mt-1.5 max-w-md text-xs leading-relaxed text-muted-foreground">
-              添加公司或个人的 OpenAI 兼容接口（如 DeepSeek、Kimi、通义等），保存后会自动拉取该地址下的全部模型，可逐个启用并设为系统默认。
-            </p>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={onAdd}
-              className="mt-4 border-primary/40 text-primary shadow-sm hover:bg-primary/10 hover:text-primary"
-            >
-              <Plus className="mr-1 h-4 w-4" />
-              添加第一个配置
-            </Button>
-          </div>
+          <EmptyState
+            title="还没有个人模型配置"
+            hint="添加公司或个人的 OpenAI 兼容接口（如 DeepSeek、Kimi、通义等），保存后会自动拉取该地址下的全部模型，可逐个启用并设为系统默认。"
+            icon={<Cpu className="h-8 w-8 text-muted-foreground" />}
+            action={
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onAdd}
+                className="border-primary/40 text-primary shadow-sm hover:bg-primary/10 hover:text-primary"
+              >
+                <Plus className="mr-1 h-4 w-4" />
+                添加第一个配置
+              </Button>
+            }
+          />
         )}
 
         {configs.map((cfg) => {

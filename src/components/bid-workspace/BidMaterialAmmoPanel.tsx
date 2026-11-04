@@ -16,6 +16,7 @@ import {
   type BidSiblingChapter,
 } from "@/pages/BidWorkspace/bidMaterialAmmo"
 import { searchHistoryBids, toInsertText, type HistoryHit } from "@/pages/BidWorkspace/bidHistorySearch"
+import { ErrorState } from "@/components/common/DataStates"
 
 // ---------------------------------------------------------------------------
 // R212 切片0.5B：标书编制右栏「素材弹药」——知识库 / 弹药库 / 本标书其它章节 三源检索
@@ -178,6 +179,8 @@ export function BidMaterialAmmoPanel(p: Props) {
   const [historyBusy, setHistoryBusy] = useState(false)
   const [historyTotal, setHistoryTotal] = useState(0)
   const [historySearched, setHistorySearched] = useState(false)
+  /** 历史标书检索失败原因（与「真没命中」区分，2026-11-04） */
+  const [historyError, setHistoryError] = useState("")
   const runHistorySearch = useCallback(async () => {
     const kw = query.trim()
     if (!kw) {
@@ -186,6 +189,7 @@ export function BidMaterialAmmoPanel(p: Props) {
     }
     setHistoryBusy(true)
     setHistorySearched(true)
+    setHistoryError("")
     try {
       const r = await searchHistoryBids({ keyword: kw, limit: 8 })
       if (r.ok) {
@@ -193,8 +197,11 @@ export function BidMaterialAmmoPanel(p: Props) {
         setHistoryTotal(r.total)
         if (!r.hits.length) toast.info("本机没有找到包含该关键词的历史标书")
       } else {
+        // 2026-11-04（R69 同类缺陷）：失败只弹 toast 就清空列表，面板随即显示
+        // 「没有命中的历史标书」——用户会以为硬盘里真没这份标书，实际是 AnyTXT 挂了。
         setHistoryHits([])
         setHistoryTotal(0)
+        setHistoryError(r.message || "检索失败")
         toast.error(r.message)
       }
     } finally {
@@ -325,11 +332,19 @@ export function BidMaterialAmmoPanel(p: Props) {
               <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
               正在检索本机历史标书…
             </div>
+          ) : historyError ? (
+            <ErrorState
+              tone="compact"
+              title="历史标书检索没有成功"
+              reason={historyError}
+              hint="确认 AnyTXT 正在运行、且标书目录已加入索引范围后再点重试"
+              onRetry={() => void runHistorySearch()}
+            />
           ) : historyHits.length === 0 ? (
             <EmptyHint
               icon={<HardDrive className="h-7 w-7" />}
               title="没有命中的历史标书"
-              desc="换个关键词，或确认 AnyTXT 已把标书目录加入索引范围"
+              desc="检索本身是成功的（不是故障）；换个关键词，或确认标书目录已在 AnyTXT 索引范围内"
               action={
                 <Button size="sm" variant="outline" onClick={() => void runHistorySearch()}>
                   <Search className="mr-1 h-3.5 w-3.5" />

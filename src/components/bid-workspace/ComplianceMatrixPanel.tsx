@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { Copy, Loader2, ShieldAlert, Sparkles } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { EmptyState, ErrorState } from "@/components/common/DataStates"
 import { chatViaGateway, type ModelRef } from "@/lib/modelGateway"
 import type { ModelRole } from "@/lib/modelRouting"
 import type { ParseReport, ParseSection } from "@/pages/BidWorkspace/bidTypes"
@@ -318,13 +319,15 @@ export function ComplianceMatrixPanel({
       )}
 
       {scanError && (
-        <p className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{scanError}</p>
+        <ErrorState className="mt-3" tone="compact" title="AI 补扫失败" reason={scanError} notEmptyHint={false} />
       )}
 
       {rows.length === 0 ? (
-        <p className="mt-4 rounded-lg border border-dashed border-border bg-background px-4 py-6 text-center text-sm text-muted-foreground">
-          解析报告中还没有 ★/▲ 条款、废标项、资格要求或符合性检查分区——可运行解析、或点右上「AI 补扫四类条款」（产生一次 AI 调用费用）。
-        </p>
+        <EmptyState
+          className="mt-4"
+          title="解析报告中还没有可核对的条款"
+          hint="还没有 ★/▲ 条款、废标项、资格要求或符合性检查分区——可运行解析、或点右上「AI 补扫四类条款」（产生一次 AI 调用费用）。"
+        />
       ) : (
         <div className="mt-4 overflow-x-auto">
           <table className="w-full text-left text-xs">

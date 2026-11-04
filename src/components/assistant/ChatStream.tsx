@@ -231,6 +231,8 @@ function SkillAdoptRow({ skillName, content }: { skillName: string; content: str
   const navigate = useNavigate()
   const [pickerOpen, setPickerOpen] = useState(false)
   const [customers, setCustomers] = useState<CustomerOption[] | null>(null)
+  /** 客户列表加载失败（与「真没客户」区分，2026-11-04） */
+  const [customerLoadFailed, setCustomerLoadFailed] = useState(false)
   const [customerId, setCustomerId] = useState("")
   const [saving, setSaving] = useState(false)
 
@@ -238,11 +240,16 @@ function SkillAdoptRow({ skillName, content }: { skillName: string; content: str
 
   const loadCustomers = () => {
     if (customers) return
+    setCustomerLoadFailed(false)
     fetch(`${getPocketBaseUrl()}/api/customers?perPage=200&page=1`, { headers: vibexAuthHeaders() })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d: { items?: CustomerOption[] }) => setCustomers(d.items ?? []))
       .catch(() => {
+        // 2026-11-04（R69 同类缺陷）：原来失败后 setCustomers([])，界面随即显示
+        // 「还没有客户，先到客户管理新建」——把网络/鉴权失败说成了业务空态。
+        // 现在置失败标记，界面区分「真没客户」与「没加载出来」。
         toast.error("客户列表加载失败")
+        setCustomerLoadFailed(true)
         setCustomers([])
       })
   }
@@ -311,7 +318,7 @@ function SkillAdoptRow({ skillName, content }: { skillName: string; content: str
                   客户加载中…
                 </span>
               ) : customers.length === 0 ? (
-                <span className="text-xs text-muted-foreground">还没有客户，先到客户管理新建</span>
+                <span className="text-xs text-muted-foreground">{customerLoadFailed ? "客户列表没加载出来（不是没有客户），请重试" : "还没有客户，先到客户管理新建"}</span>
               ) : (
                 <>
                   <select
@@ -394,6 +401,8 @@ type CompOption = { id: string; competitor_name: string }
 function CompetitorAdopt({ content }: { content: string }) {
   const [open, setOpen] = useState(false)
   const [comps, setComps] = useState<CompOption[] | null>(null)
+  /** 竞品列表加载失败（与「真没竞品」区分，2026-11-04） */
+  const [compLoadFailed, setCompLoadFailed] = useState(false)
   const [compId, setCompId] = useState("")
   const [saving, setSaving] = useState(false)
 
@@ -402,7 +411,12 @@ function CompetitorAdopt({ content }: { content: string }) {
     fetch(`${getPocketBaseUrl()}/api/competitors?perPage=200&page=1`, { headers: vibexAuthHeaders() })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d: { items?: CompOption[] }) => setComps(d.items ?? []))
-      .catch(() => { toast.error("竞品列表加载失败"); setComps([]) })
+      .catch(() => {
+        // 失败≠没竞品（2026-11-04 同 R69 修法）
+        toast.error("竞品列表加载失败")
+        setCompLoadFailed(true)
+        setComps([])
+      })
   }
 
   const doAdopt = () => {
@@ -447,7 +461,7 @@ function CompetitorAdopt({ content }: { content: string }) {
               <Loader2 className="h-3 w-3 animate-spin" />加载中…
             </span>
           ) : comps.length === 0 ? (
-            <span className="text-xs text-muted-foreground">暂无竞品，先到竞品管理新建</span>
+            <span className="text-xs text-muted-foreground">{compLoadFailed ? "竞品列表没加载出来（不是没有竞品），请重试" : "暂无竞品，先到竞品管理新建"}</span>
           ) : (
             <>
               <select value={compId} onChange={(e) => setCompId(e.target.value)}
@@ -476,6 +490,8 @@ type BidOption = { id: string; project_name: string }
 function BidMaterialAdopt({ content }: { content: string }) {
   const [open, setOpen] = useState(false)
   const [bids, setBids] = useState<BidOption[] | null>(null)
+  /** 标书项目加载失败（与「真没项目」区分，2026-11-04） */
+  const [bidLoadFailed, setBidLoadFailed] = useState(false)
   const [bidId, setBidId] = useState("")
   const [saving, setSaving] = useState(false)
 
@@ -484,7 +500,11 @@ function BidMaterialAdopt({ content }: { content: string }) {
     fetch(`${getPocketBaseUrl()}/api/bid_projects?perPage=200&page=1`, { headers: vibexAuthHeaders() })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d: { items?: BidOption[] }) => setBids(d.items ?? []))
-      .catch(() => { toast.error("标书项目列表加载失败"); setBids([]) })
+      .catch(() => {
+        toast.error("标书项目列表加载失败")
+        setBidLoadFailed(true)
+        setBids([])
+      })
   }
 
   const doAdopt = () => {
@@ -528,7 +548,7 @@ function BidMaterialAdopt({ content }: { content: string }) {
               <Loader2 className="h-3 w-3 animate-spin" />加载中…
             </span>
           ) : bids.length === 0 ? (
-            <span className="text-xs text-muted-foreground">暂无标书项目，先到工作台新建</span>
+            <span className="text-xs text-muted-foreground">{bidLoadFailed ? "标书项目没加载出来（不是没有项目），请重试" : "暂无标书项目，先到工作台新建"}</span>
           ) : (
             <>
               <select value={bidId} onChange={(e) => setBidId(e.target.value)}
@@ -555,6 +575,8 @@ function BidMaterialAdopt({ content }: { content: string }) {
 function VisitChecklistAdopt({ content }: { content: string }) {
   const [open, setOpen] = useState(false)
   const [customers, setCustomers] = useState<CustomerOption[] | null>(null)
+  /** 客户列表加载失败（与「真没客户」区分，2026-11-04） */
+  const [customerLoadFailed, setCustomerLoadFailed] = useState(false)
   const [customerId, setCustomerId] = useState("")
   const [saving, setSaving] = useState(false)
 
@@ -563,7 +585,11 @@ function VisitChecklistAdopt({ content }: { content: string }) {
     fetch(`${getPocketBaseUrl()}/api/customers?perPage=200&page=1`, { headers: vibexAuthHeaders() })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((d: { items?: CustomerOption[] }) => setCustomers(d.items ?? []))
-      .catch(() => { toast.error("客户列表加载失败"); setCustomers([]) })
+      .catch(() => {
+        toast.error("客户列表加载失败")
+        setCustomerLoadFailed(true)
+        setCustomers([])
+      })
   }
 
   const doAdopt = () => {
@@ -600,7 +626,7 @@ function VisitChecklistAdopt({ content }: { content: string }) {
               <Loader2 className="h-3 w-3 animate-spin" />加载中…
             </span>
           ) : customers.length === 0 ? (
-            <span className="text-xs text-muted-foreground">还没有客户</span>
+            <span className="text-xs text-muted-foreground">{customerLoadFailed ? "客户列表没加载出来（不是没有客户），请重试" : "还没有客户"}</span>
           ) : (
             <>
               <select value={customerId} onChange={(e) => setCustomerId(e.target.value)}
