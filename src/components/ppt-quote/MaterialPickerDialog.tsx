@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { getPocketBaseUrl } from "@/lib/pb"
 import { vibexAuthHeaders } from "@/lib/rhLogin"
 import { MATERIAL_CATEGORIES, MATERIAL_SOURCE_LABELS, type MaterialItem, type MaterialListResult } from "@/pages/MaterialLibrary/materialTypes"
+import { EmptyState, ErrorState } from "@/components/common/DataStates"
 
 const PER_PAGE = 60
 
@@ -127,24 +128,18 @@ export function MaterialPickerDialog({ open, onOpenChange, onPick }: MaterialPic
 
         <div className="min-h-0 flex-1 overflow-y-auto pt-3">
           {loadError ? (
-            <div className="py-10 text-center">
-              <PackageOpen className="mx-auto mb-2 h-7 w-7 text-destructive/70" />
-              <div className="text-sm font-medium text-destructive">素材没加载出来（不是「库里没有」）</div>
-              <div className="mt-1 text-xs text-muted-foreground">技术原因：{loadError}</div>
-              <Button size="sm" variant="outline" className="mt-3" onClick={() => void load(page)}>
-                重试
-              </Button>
-              <div className="mt-2 text-[11px] text-muted-foreground">
-                修不好也可以继续用「联网搜图」兜底，不影响本次插图
-              </div>
-            </div>
+            <ErrorState
+              title="素材没加载出来"
+              reason={loadError}
+              hint="修不好也可以继续用「联网搜图」兜底，不影响本次插图"
+              onRetry={() => void load(page)}
+            />
           ) : loaded && items.length === 0 ? (
-            <div className="py-12 text-center">
-              <PackageOpen className="mx-auto mb-2 h-7 w-7 text-muted-foreground" />
-              <div className="text-sm text-muted-foreground">
-                素材库为空或未命中 —— 可先到「素材库」页导入，或继续用联网搜图兜底。
-              </div>
-            </div>
+            <EmptyState
+              title="素材库为空或未命中"
+              hint="可先到「素材库」页导入，或继续用联网搜图兜底"
+              icon={<PackageOpen className="h-8 w-8 text-muted-foreground" />}
+            />
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
               {items.map((it) => (

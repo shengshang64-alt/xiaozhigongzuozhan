@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import { useCallback, useRef, useState } from "react"
-import { AlertTriangle, FileText, Loader2, Search, Sparkles } from "lucide-react"
+import { FileText, Loader2, Search, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -17,6 +17,7 @@ import {
   type KbSearchItem,
 } from "@/lib/kbContentSearch"
 import { redactPii } from "@/lib/piiRedact"
+import { EmptyState, ErrorState } from "@/components/common/DataStates"
 
 /** 把服务端/网络的失败串翻成人话 + 下一步做什么（不吞原因，也不把故障说成「没有」） */
 function failureHint(message: string): string {
@@ -127,20 +128,29 @@ export function KbContentSearchPanel({
       </div>
 
       {searched && !busy && failMessage && (
-        <div className="mt-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2">
-          <p className="flex items-start gap-1.5 text-xs font-medium text-destructive">
-            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            正文检索没有成功（不是「没有这篇文档」）
-          </p>
-          <p className="mt-1 pl-5 text-xs leading-relaxed text-foreground">{failureHint(failMessage)}</p>
-          <p className="mt-0.5 pl-5 text-[11px] leading-relaxed text-muted-foreground">技术原因：{failMessage}</p>
-        </div>
+        <ErrorState
+          className="mt-2"
+          tone="compact"
+          title="正文检索没有成功"
+          reason={failMessage}
+          hint={failureHint(failMessage)}
+          onRetry={() => void run()}
+        />
       )}
 
       {searched && !busy && !failMessage && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          {items.length ? `命中 ${total} 篇，显示前 ${items.length} 篇` : "没有找到正文包含该关键词的文档"}
-        </p>
+        items.length ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            命中 {total} 篇，显示前 {items.length} 篇
+          </p>
+        ) : (
+          <EmptyState
+            className="mt-2"
+            tone="compact"
+            title="没有找到正文包含该关键词的文档"
+            hint="检索本身是成功的（不是故障）；可换个更短的关键词，或先用左侧列表按标题查找"
+          />
+        )
       )}
 
       {items.length > 0 && (

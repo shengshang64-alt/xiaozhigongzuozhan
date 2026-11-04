@@ -2,6 +2,7 @@ import { BriefcaseBusiness, Check, Copy, ExternalLink, FileStack, Flag, Sparkles
 import { IntelStructuredEditor } from "./IntelStructuredEditor"
 import { copyTextToClipboard } from "@/lib/clipboard"
 import { cleanIntelSnippet, cleanIntelSummary } from "@/pages/IntelCenter/intelBodyClean"
+import { EmptyState } from "@/components/common/DataStates"
 import {
   fmtIntelTime,
   ITEM_STATUS_LABEL,
@@ -44,13 +45,12 @@ export function IntelDetailPanel({
 }: IntelDetailPanelProps) {
   if (!item) {
     return (
-      <div className="flex h-full min-h-64 flex-col items-center justify-center gap-2.5 rounded-lg border border-dashed border-border bg-card p-6 text-center shadow-md">
-        <FileStack className="h-8 w-8 text-muted-foreground/60" />
-        <p className="text-sm font-medium text-foreground">点击左侧情报查看详情</p>
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          选中后可查看招标要素与 AI 摘要，标记项目线索或一键新建标书任务
-        </p>
-      </div>
+      <EmptyState
+        className="h-full min-h-64"
+        title="点击左侧情报查看详情"
+        hint="选中后可查看招标要素与 AI 摘要，标记项目线索或一键新建标书任务"
+        icon={<FileStack className="h-8 w-8 text-muted-foreground/60" />}
+      />
     )
   }
   // R64：摘要统一走展示层清洗（剥站点名前缀/JSON 元数据块），与列表卡片、首页动态卡同口径
