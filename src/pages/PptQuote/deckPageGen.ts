@@ -102,10 +102,15 @@ export function contentToSlide(content: SlideContentZ, plan: SlidePlan): Slide {
   }
   const [slide] = normalizeSlides([raw], [plan])
   const extraPending = kindMismatch ? [`原计划为 ${plan.kind}，模型返回 ${content.kind}，已按大纲渲染`] : []
+  // 2026-11-04 C 项：保住大纲声明的 kind，供 reshape 按声明页型整形
+  // （渲染层只看 layout，这里带上 kind 是为了「这页本来就该是架构图」不被降级成文字卡片）。
+  const resolvedImageHint = (content.imageHint || "").trim() || (plan.imageHint || "").trim()
   return {
     ...slide,
+    kind: plan.kind,
     // 用大纲的 kind 推导布局（renderContent 侧按 layout 分流）
     layout: layoutOfKind(plan.kind),
+    ...(resolvedImageHint ? { imageHint: resolvedImageHint.slice(0, 60) } : {}),
     ...(plan.sourceRefs?.length ? { sourceRefs: plan.sourceRefs } : {}),
     ...(content.pendingFields?.length || extraPending.length
       ? { pendingFields: [...(content.pendingFields ?? []), ...extraPending].slice(0, 10) }

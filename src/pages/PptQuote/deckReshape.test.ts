@@ -250,6 +250,95 @@ describe("reshapeTextHeavySlides：配额控制", () => {
   })
 })
 
+describe("reshapeTextHeavySlides：按大纲声明 kind 整形（2026-11-04 C 项）", () => {
+  it("声明 kind=architecture 但标题是结论句（无架构关键词）→ 仍画成分层架构", () => {
+    const { slides } = reshapeTextHeavySlides([
+      mk({
+        title: "一体化平台把门诊准备时间压缩 40%",
+        kind: "architecture",
+        bullets: [
+          "渠道层：掌上医院、自助机、公众号",
+          "业务层：门诊、住院、医技、药事",
+          "数据层：业务库、数据仓、主索引",
+        ],
+      }),
+    ])
+    const fig = slides[0].figures?.[0]
+    expect(fig?.type).toBe("architecture")
+    expect(fig && fig.type === "architecture" ? fig.layers.length : 0).toBeGreaterThanOrEqual(3)
+  })
+
+  it("声明 kind=flow 但标题无流程关键词 → 仍画成流程图", () => {
+    const { slides } = reshapeTextHeavySlides([
+      mk({
+        title: "三年建成区域医疗高地",
+        kind: "flow",
+        bullets: ["摸底调研与方案设计", "平台建设与系统集成", "评级冲刺与验收推广"],
+      }),
+    ])
+    expect(slides[0].figures?.[0]?.type).toBe("flow")
+  })
+
+  it("声明 kind=kpi 但抽不出数字 → 绝不硬造 KPI（退到能自渲染的其它形态）", () => {
+    const { slides } = reshapeTextHeavySlides([
+      mk({
+        title: "建设成效综述",
+        kind: "kpi",
+        bullets: ["院内系统全面打通", "数据质量显著提升", "临床体验明显改善", "管理决策有据可依"],
+      }),
+    ])
+    expect(slides[0].kpi).toBeUndefined()
+  })
+
+  it("声明 kind=table 且要点是 A：B → 画成对照表", () => {
+    const { slides } = reshapeTextHeavySlides([
+      mk({
+        title: "现状与目标对照",
+        kind: "table",
+        bullets: ["电子病历：4 级 → 5 级", "互联互通：未测评 → 四级甲等"],
+      }),
+    ])
+    expect(slides[0].figures?.[0]?.type).toBe("table")
+  })
+
+  it("声明页型但要点太少（<3 条）→ 不硬画，保持原样不崩", () => {
+    const { slides } = reshapeTextHeavySlides([
+      mk({ title: "平台架构", kind: "architecture", bullets: ["只说了一句"] }),
+    ])
+    expect(slides[0].figures).toBeUndefined()
+  })
+
+  it("10 页文本册整形后同时具备架构页与流程页（页型配额达标）", () => {
+    const src = [
+      mk({ title: "封面", bullets: ["x"] }),
+      mk({ title: "现状：数据孤岛", bullets: ["系统各自为政", "数据标准不一", "接口重复建设", "运维成本高"] }),
+      mk({
+        title: "一体化平台总体蓝图",
+        kind: "architecture",
+        bullets: ["渠道层：掌上医院、自助机", "业务层：门诊、住院、医技", "数据层：数据仓、主索引"],
+      }),
+      mk({
+        title: "三步走建设节奏",
+        kind: "flow",
+        bullets: ["一期：夯基，完成平台与主数据", "二期：提质，业务域全覆盖", "三期：创优，评级与智能化"],
+      }),
+      mk({ title: "保障措施", bullets: ["组织保障到位", "资金预算落实", "人才队伍培养", "考核机制健全"] }),
+      mk({ title: "投资估算", bullets: ["平台建设投入", "系统改造投入", "运维服务投入"] }),
+      mk({ title: "风险与应对", bullets: ["进度风险可控", "质量风险可控", "合规风险可控"] }),
+      mk({ title: "下一步安排", bullets: ["确认需求范围", "启动招采流程", "组建实施团队"] }),
+      mk({ title: "谢谢聆听", bullets: ["x"] }),
+    ]
+    const { slides } = reshapeTextHeavySlides(src)
+    const figTypes = slides.flatMap((s) => (s.figures ?? []).map((f) => f.type))
+    expect(figTypes).toContain("architecture")
+    expect(figTypes).toContain("flow")
+    const textOnly = slides.filter(
+      (s) => !s.chart && !s.kpi?.length && !s.image && !s.figures?.length && s.layout !== "section",
+    )
+    expect(textOnly.length).toBeLessThanOrEqual(Math.ceil(slides.length * 0.3))
+  })
+})
+
 describe("hasVisual", () => {
   it("识别各类视觉形态", () => {
     expect(hasVisual(mk({ title: "a", bullets: [] }))).toBe(false)

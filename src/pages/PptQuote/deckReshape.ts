@@ -79,6 +79,71 @@ export function hasVisual(s: Slide): boolean {
 }
 
 /**
+ * 规则 0a（2026-11-04 C 项）：按**大纲声明的 kind** 强制整形。
+ *
+ * 为什么需要：逐页生成时模型经常把架构页/流程页写成 4 条要点（kind 已被
+ * contentToSlide 保住），但这些页的标题往往是结论句（「一体化平台把门诊准备时间压缩 40%」），
+ * 不含「架构/分层」这类关键词 → tryArchitecture 的标题门槛把它们全挡在外面，
+ * 最后退化成 iconGrid 甚至纯文字卡片。用户看到的仍是「没有架构图」。
+ *
+ * 口径：**只信大纲的 kind，不再看标题关键词**；但构造不出合法结构（要点太少、
+ * 拆不出层/步骤）就返回 null 交给后续规则，绝不硬造数据。
+ *   · architecture：要点数 ≥3，逐条当一层（层名取「第N层」或要点前缀），模块从要点里拆
+ *   · flow：要点数 ≥3，逐条当一步
+ *   · table：要点 2-4 条且都是「A：B」结构
+ *   · kpi：3-4 条且都能抽出数值（抽不出就放弃——kpi 绝不能编数字）
+ */
+function tryDeclaredKind(s: Slide): Partial<Slide> | null {
+  switch (s.kind) {
+    case "architecture":
+      return tryArchitectureForced(s)
+    case "flow":
+      return tryFlowForced(s)
+    case "table":
+      return tryTable(s)
+    case "kpi":
+      return tryKpi(s)
+    default:
+      return null
+  }
+}
+
+/** 按大纲声明 kind=architecture 整形（不看标题关键词，只看要点是否够分层） */
+function tryArchitectureForced(s: Slide): Partial<Slide> | null {
+  const bullets = s.bullets.map((b) => b.trim()).filter(Boolean)
+  if (bullets.length < 3) return null
+  const layers = bullets.slice(0, 5).map((b, i) => {
+    const name = layerNameOf(b, i)
+    const body = b.replace(/^[^：:]{0,12}[：:]/, "")
+    const modules = body
+      .split(/[，,、；;]/)
+      .map((x) => x.trim())
+      .filter((x) => x.length >= 2 && x.length <= 12)
+      .slice(0, 4)
+    if (modules.length >= 2) return { name, modules }
+    const one = (modules[0] ?? body).replace(/\s+/g, "").slice(0, 16).trim()
+    return { name, modules: [one.length >= 2 ? one : name] }
+  })
+  const fig: FigureSpec = { type: "architecture", title: "分层架构", layers }
+  return { layout: "image-right", figures: [fig], imageHint: "" }
+}
+
+/** 按大纲声明 kind=flow 整形（不看标题关键词，只看要点是否像有序步骤） */
+function tryFlowForced(s: Slide): Partial<Slide> | null {
+  const bullets = s.bullets.map((b) => b.trim()).filter(Boolean)
+  if (bullets.length < 3) return null
+  // 论述句不是步骤（与 tryFlow 同一判据，宁可不转）
+  if (bullets.some((b) => /(因为|所以|说明|意味着|要求|导致|本质|核心在于)/.test(b.split(/[：:，,。；;]/)[0] ?? "")))
+    return null
+  const steps = bullets.slice(0, 6).map((b) => {
+    const [name, ...rest] = b.split(/[：:，,]/)
+    return { name: name.trim().slice(0, 18), ...(rest.length ? { desc: rest.join("，").trim().slice(0, 24) } : {}) }
+  })
+  const fig: FigureSpec = { type: "flow", title: "实施路径", steps }
+  return { layout: "image-right", figures: [fig], imageHint: "" }
+}
+
+/**
  * 规则 1：百分比/数值对比 → chart
  * 判定：一页里有 ≥3 条要点各含一个可识别数值（更少不足以成图）
  *
@@ -393,6 +458,20 @@ export type ReshapeSuggestion = {
   patch: Partial<Slide>
 }
 
+/** kind → 建议里展示的页型（不在建议体系里的 kind 归到最接近的一项） */
+function declaredSuggestionKind(s: Slide): ReshapeSuggestion["suggestedKind"] {
+  switch (s.kind) {
+    case "architecture":
+    case "flow":
+    case "kpi":
+    case "table":
+    case "chart":
+      return s.kind
+    default:
+      return "iconGrid"
+  }
+}
+
 export function suggestReshape(slides: Slide[]): ReshapeSuggestion[] {
   const out: ReshapeSuggestion[] = []
   slides.forEach((s, i) => {
@@ -400,6 +479,12 @@ export function suggestReshape(slides: Slide[]): ReshapeSuggestion[] {
     const lay = s.layout ?? "auto"
     if (lay === "section") return
     const attempts: [ReshapeSuggestion["suggestedKind"], string, () => Partial<Slide> | null][] = [
+      // 与 reshapeTextHeavySlides 同序：先按大纲声明页型，再按语义规则
+      [
+        declaredSuggestionKind(s),
+        "这页大纲已声明为结构化页型，可画成对应的图示",
+        () => tryDeclaredKind(s),
+      ],
       ["kpi", "这页有几组并列的关键数字，可做成数字亮点卡更醒目", () => tryKpi(s)],
       // 与 reshapeTextHeavySlides 同序：架构/流程先于 table，否则 A：B 形式会被判成表格
       ["architecture", "这页讲的是分层/架构组成，可画成架构图", () => tryArchitecture(s)],
@@ -498,6 +583,8 @@ export function reshapeTextHeavySlides(
     //     若 table 先跑，架构/流程页会被当成两列表格抢走（实测就是这样丢图的）；
     //   chart 放最后作为"有多个数值但说不清关系"的兜底。
     const attempts: [string, () => Partial<Slide> | null][] = [
+      // 2026-11-04 C 项：大纲已声明页型的页优先按声明整形（标题常是结论句，不含结构关键词）
+      ["declared", () => tryDeclaredKind(s)],
       ["kpi", () => tryKpi(s)],
       ["architecture", () => tryArchitecture(s)],
       ["flow", () => tryFlow(s)],
