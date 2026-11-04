@@ -86,6 +86,11 @@ export function ChapterEditor({
   // 防止取消批量后旧循环仍在飞时点单章入口并发写同批章节）
   const busy = chapterBusy === activeChapter.node_id || bulkGenerating
   const hasContent = (activeChapter.content ?? "").trim().length > 0
+  // 2026-11-04：失败态必须出现在正文区，而不是只有大纲目录那个 2px 红点的 hover tooltip。
+  // 此前失败章照常渲染「点击生成正文」的空文本框，用户刷新回来只看到「尚未生成正文」，
+  // 完全看不出刚才失败过、更看不到原因（原因随 genError 落库，一直在，只是没地方显示）。
+  const failed = activeChapter.gen_status === "failed"
+  const failReason = (activeChapter.genError ?? "").trim()
   // 标书第十三轮改造 4：商务骨架章不生成正文——隐藏全部生成/改写入口，正文区替换为线下填写骨架指引
   const isBiz = activeChapter.part === "biz"
   return (
@@ -118,7 +123,9 @@ export function ChapterEditor({
                   ? "AI 正在撰写本章…"
                   : hasContent
                     ? `${editingContent.length} 字 · 编辑后自动保存`
-                    : "尚未生成正文"}
+                    : failed
+                      ? "上次生成失败，可直接重试"
+                      : "尚未生成正文"}
           </p>
         </div>
         {!isBiz && (
@@ -189,6 +196,32 @@ export function ChapterEditor({
         )}
       </header>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+        {failed && !busy && (
+          <div className="flex shrink-0 items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs leading-relaxed text-foreground">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+            <div className="min-w-0 flex-1">
+              <p>
+                <b className="text-destructive">上次生成本章失败</b>
+                {failReason ? `：${failReason}` : "（旧记录未留存原因）"}
+              </p>
+              <p className="mt-0.5 text-muted-foreground">
+                可直接点「重新生成本章」重试；若是超时，建议换更快的已配置模型或整本分批生成。
+              </p>
+            </div>
+            {!readOnly && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() => (regenerateChapter ? regenerateChapter(activeChapter.node_id) : generateChapter(activeChapter.node_id))}
+                className="shrink-0 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              >
+                <RefreshCw className="mr-1 h-3.5 w-3.5" />
+                重试
+              </Button>
+            )}
+          </div>
+        )}
         {!!missingSections?.length && (
           <div className="flex shrink-0 items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs leading-relaxed text-foreground">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
