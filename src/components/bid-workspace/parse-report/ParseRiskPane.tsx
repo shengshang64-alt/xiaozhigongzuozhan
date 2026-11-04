@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { Loader2, ShieldAlert, Sparkles } from "lucide-react"
+import { Loader2, MapPin, ShieldAlert, Sparkles } from "lucide-react"
 import { chatViaGateway, type ModelRef } from "@/lib/modelGateway"
 import type { ModelRole } from "@/lib/modelRouting"
 import { extractJsonCandidate, parseJsonTolerant } from "@/lib/jsonTolerant"
@@ -12,6 +12,7 @@ import {
   type RiskFinding,
 } from "@/pages/BidWorkspace/tenderComplianceRisk"
 import type { ParseReport } from "@/pages/BidWorkspace/bidTypes"
+import { ParseOriginalDialog } from "./ParseOriginalDialog"
 
 const AI_RISK_SYSTEM = [
   "你是招标文件合规审查助手，依据《医疗信息化投标全流程规范》：八大禁止情形（差别待遇/歧视）、六类隐形陷阱、七条招标红线。",
@@ -60,6 +61,8 @@ export function ParseRiskPane({
   const [riskScanning, setRiskScanning] = useState(false)
   const [riskError, setRiskError] = useState("")
   const [riskFilter, setRiskFilter] = useState<RiskCategory | "all">("all")
+  // 2026-11-04：风险条目点「看原文」→ 只读弹窗回到招标原文那一行（此前只有一行灰色 L6807，点不动）
+  const [locate, setLocate] = useState<{ title: string; line: number; excerpt: string } | null>(null)
   const visible = useMemo(
     () => (riskFilter === "all" ? findings : findings.filter((f) => f.category === riskFilter)),
     [findings, riskFilter],
@@ -176,7 +179,15 @@ export function ParseRiskPane({
                   <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground" title={f.title}>
                     {f.title}
                   </span>
-                  {f.line > 0 && <span className="shrink-0 text-xs text-muted-foreground">L{f.line}</span>}
+                  <button
+                    type="button"
+                    onClick={() => setLocate({ title: f.title, line: f.line, excerpt: f.excerpt })}
+                    title={f.line > 0 ? `回到招标原文第 ${f.line} 行核对` : "按这条结论的原文摘录回招标原文核对"}
+                    className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-primary/40 px-2 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <MapPin className="h-3 w-3" />
+                    看原文{f.line > 0 ? ` L${f.line}` : ""}
+                  </button>
                 </div>
                 {f.excerpt && (
                   <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-foreground" title={f.excerpt}>
@@ -197,6 +208,14 @@ export function ParseRiskPane({
           </ul>
         )}
       </div>
+      <ParseOriginalDialog
+        open={locate != null}
+        onClose={() => setLocate(null)}
+        tenderText={tenderText}
+        title={locate?.title ?? ""}
+        line={locate?.line ?? 0}
+        excerpt={locate?.excerpt ?? ""}
+      />
     </section>
   )
 }

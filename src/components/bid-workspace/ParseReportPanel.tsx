@@ -319,7 +319,13 @@ export function ParseReportPanel({
         aria-labelledby="parse-tab-clauses"
         hidden={active.group !== "clauses"}
       >
-        <ParseClausesPane starSection={starSection} sections={sections} implicitList={implicitList} actions={actions} />
+        <ParseClausesPane
+          starSection={starSection}
+          sections={sections}
+          implicitList={implicitList}
+          tenderText={tenderText}
+          actions={actions}
+        />
       </div>
       <div role="tabpanel" id="parse-panel-risk" aria-labelledby="parse-tab-risk" hidden={active.group !== "risk"}>
         <ParseRiskPane

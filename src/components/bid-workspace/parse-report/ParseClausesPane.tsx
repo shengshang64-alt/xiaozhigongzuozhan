@@ -1,4 +1,5 @@
-import { ShieldAlert } from "lucide-react"
+import { useState } from "react"
+import { MapPin, ShieldAlert } from "lucide-react"
 import {
   groupImplicitConstraints,
   type ImplicitConstraintKind,
@@ -6,6 +7,7 @@ import {
 } from "@/pages/BidWorkspace/bidTypes"
 import { ParseSectionReader, type SectionReaderActions } from "./ParseSectionReader"
 import { countStarClauseLines } from "./parseReportLayout"
+import { ParseOriginalDialog } from "./ParseOriginalDialog"
 
 /**
  * 「重点条款与硬约束」：★/▲ 原文，以及页数、份数、装订、视为无效这类本地抽出的硬约束。
@@ -14,13 +16,17 @@ export function ParseClausesPane({
   starSection,
   sections,
   implicitList,
+  tenderText,
   actions,
 }: {
   starSection: ParseSection | null
   sections: ParseSection[]
   implicitList: string[]
+  /** 招标原文：隐式硬约束由本地扫描得出、没有行号，靠这段原文反查所在行 */
+  tenderText?: string
   actions: SectionReaderActions
 }) {
+  const [locate, setLocate] = useState<{ title: string; excerpt: string } | null>(null)
   const grouped = groupImplicitConstraints(implicitList)
   const starCount = countStarClauseLines(starSection?.content)
   const groups: { key: ImplicitConstraintKind; label: string; hint: string; items: string[]; tone: string }[] = [
@@ -92,7 +98,16 @@ export function ParseClausesPane({
                   <ul className="grid grid-cols-1 gap-1.5 lg:grid-cols-2">
                     {g.items.map((t, i) => (
                       <li key={`${g.key}-${i}`} className={`rounded-md border px-3 py-2 text-xs leading-relaxed ${g.tone}`}>
-                        {t}
+                        <span className="block">{t}</span>
+                        <button
+                          type="button"
+                          onClick={() => setLocate({ title: "隐式硬约束原文", excerpt: t })}
+                          title="回招标原文核对这一条（本地检索，不联网）"
+                          className="mt-1 inline-flex items-center gap-0.5 text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        >
+                          <MapPin className="h-3 w-3" />
+                          看原文
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -102,6 +117,13 @@ export function ParseClausesPane({
           </div>
         )}
       </section>
+      <ParseOriginalDialog
+        open={locate != null}
+        onClose={() => setLocate(null)}
+        tenderText={tenderText}
+        title={locate?.title ?? ""}
+        excerpt={locate?.excerpt ?? ""}
+      />
     </div>
   )
 }
