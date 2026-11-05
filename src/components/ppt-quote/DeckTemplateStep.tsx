@@ -32,6 +32,9 @@ export function DeckTemplateStep({
   onUpload,
   onClear,
   onMappingChange,
+  builtinTemplates = [],
+  builtinTemplateKey = null,
+  onSelectBuiltin = async () => {},
 }: {
   templateName: string | null
   outline: TemplateOutline | null
@@ -39,9 +42,14 @@ export function DeckTemplateStep({
   onUpload: (file: File) => Promise<void> | void
   onClear: () => void
   onMappingChange: (m: TemplateMappingZ) => void
+  /** 2026-11-05 内置公司模板清单（随应用发布，走 fetch 不走 localStorage，不受 3MB 上限） */
+  builtinTemplates?: { key: string; label: string; desc: string; layouts: string[] }[]
+  builtinTemplateKey?: string | null
+  onSelectBuiltin?: (key: string) => Promise<void> | void
 }) {
   const [busy, setBusy] = useState(false)
   const [parsing, setParsing] = useState(false)
+  const [builtinBusy, setBuiltinBusy] = useState<string | null>(null)
   const [localOutline, setLocalOutline] = useState<TemplateOutline | null>(outline)
   const [localMapping, setLocalMapping] = useState<TemplateMappingZ>(mapping)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -89,11 +97,55 @@ export function DeckTemplateStep({
     onMappingChange(next)
   }
 
+  async function selectBuiltin(key: string) {
+    setBuiltinBusy(key)
+    try {
+      await onSelectBuiltin(key)
+    } finally {
+      setBuiltinBusy(null)
+    }
+  }
+
   if (!templateName && !effectiveOutline) {
     return (
       <div className="space-y-3">
+        {/* 2026-11-05：内置公司模板放在最前——用户不必自己去找 .pptx 文件，
+            且它 4.93MB 超过 localStorage 上限，只有这条 fetch 通道才能保住母版级保真。 */}
+        {builtinTemplates.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-foreground">公司内置模板（推荐）</p>
+            {builtinTemplates.map((t) => (
+              <div
+                key={t.key}
+                className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 ${
+                  builtinTemplateKey === t.key ? "border-primary/50 bg-primary/5" : "border-border bg-card"
+                }`}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-foreground">{t.label}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{t.desc}</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">版式：{t.layouts.join(" / ")}</p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={builtinBusy !== null}
+                  onClick={() => void selectBuiltin(t.key)}
+                  className="gap-1.5"
+                >
+                  {builtinBusy === t.key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                  用这个模板
+                </Button>
+              </div>
+            ))}
+            <p className="text-[11px] text-muted-foreground">
+              内置模板随应用发布，导出走母版/版式级保真（封面/目录/章节/内页/封底各自套真实母版）。
+            </p>
+          </div>
+        )}
         <div className="rounded-lg border border-dashed border-border bg-muted/30 p-6 text-center">
-          <p className="text-sm font-medium text-foreground">上传公司模板，导出时按真实版式生成</p>
+          <p className="text-sm font-medium text-foreground">或上传其他公司模板，导出时按真实版式生成</p>
           <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
             支持 .pptx / .potx。上传后会解析模板里的母版与版式（封面页 / 目录页 / 章节页 / 内容页…），
             导出时按页面类型自动套用对应版式，而不是只用内置布局。

@@ -220,15 +220,41 @@ export type MappingResolution = {
 export function recommendMapping(outline: TemplateOutline): TemplateMappingZ {
   const ls = outline.layouts
   const pickByName = (re: RegExp): TemplateLayout | undefined => ls.find((l) => re.test(l.name))
-  const withTitle = ls.filter((l) => l.hasTitle)
-  const contentLayouts = ls.filter((l) => l.hasTitle && l.hasBody)
-  // 内容页优先级：标题+正文 > 仅标题 > 任意含占位符
-  const anyContent = contentLayouts[0] ?? withTitle[0] ?? ls[0]
 
   const cover = pickByName(/标题幻灯片|封面|title slide|cover|首页/i)
   const agenda = pickByName(/目录|agenda|toc|contents/i)
   const section = pickByName(/节标题|章节|section|divider/i)
-  const end = pickByName(/结束|尾页|致谢|谢谢|thank|ending|closing/i)
+  // 2026-11-05 修：补「封底 / 结束页 / 尾页 / back cover」。原来只认「结束|尾页|致谢|谢谢|thank」，
+  // 公司官方模板 zoe-light-internal 的结束页版式名叫「封底」→ summary 全部落到封面版式上。
+  const end = pickByName(/封底|结束|尾页|致谢|谢谢|thank|ending|closing|back\s*cover/i)
+
+  // ---------------------------------------------------------------------------
+  // 2026-11-05 修（真实模板暴露的映射缺陷）：
+  // 原实现 `const anyContent = contentLayouts[0] ?? withTitle[0] ?? ls[0]`，
+  // 而 contentLayouts = 有「标题+正文」占位符的版式 —— **很多模板的封面版式恰好就是
+  // 标题+正文双占位**，于是它排第一，被当成「内容页版式」。
+  // 实测公司官方模板 zoe-light-internal（6 个版式）：
+  //     layout1 封面(标题+正文) / layout2 目录 / layout3 章节过渡页(标题+正文)
+  //     layout4 内页1(仅标题) / layout5 2_仅标题 / layout6 封底
+  //   → 8 个内容类 kind 全部被映射到「封面」，summary 也落到「封面」。
+  //   导出的册子里每一页都是封面版式（大标题居中），等于完全没套上公司模板。
+  //
+  // 现改为三级优先，且**先把角色页排除在内容候选之外**：
+  //   ① 名称明确是内容页的版式（内页/内容/正文/content/body/text page）
+  //   ② 排除封面/目录/章节/封底后，第一个「标题+正文」版式（正文可由占位符承载）
+  //   ③ 排除角色页后，第一个「仅标题」版式（正文区由渲染器自绘，已在 resolution 标记）
+  //   ④ 最后才退到任意版式（含角色页，保证不会「一个都映射不到」）
+  // ---------------------------------------------------------------------------
+  const roleLayouts = new Set<TemplateLayout>()
+  for (const l of [cover, agenda, section, end]) if (l) roleLayouts.add(l)
+  const nonRole = ls.filter((l) => !roleLayouts.has(l))
+  const contentByName = ls.find((l) => /内页|内容|正文|content|body|text\s*page/i.test(l.name))
+  const anyContent =
+    contentByName ??
+    nonRole.find((l) => l.hasTitle && l.hasBody) ??
+    nonRole.find((l) => l.hasTitle) ??
+    nonRole[0] ??
+    ls[0]
 
   const m: TemplateMappingZ = {}
   for (const kind of SLIDE_KINDS) {
@@ -255,7 +281,12 @@ export function recommendMapping(outline: TemplateOutline): TemplateMappingZ {
           anyContent
         break
     }
-    const layoutId = hit?.path.replace(/^ppt\/slideLayouts\//, "").replace(/\.xml$/, "")
+    // 2026-11-05 修：原来这里用 `hit.path` 截出「slideLayout1」当作映射值，
+    // 但界面下拉与 resolveMapping 的规范值都是 `TemplateLayout.layoutId`（「layout1」）。
+    // 两者不一致的直接后果：界面每类页面都显示「（未映射）」+ 黄色告警，
+    // 而引擎其实已经匹配好了（实测公司模板 6 个版式全部匹配成功却全是未映射）。
+    // 统一改用 layoutId（resolveMapping 仍兼容存量的 slideLayoutN 写法）。
+    const layoutId = hit?.layoutId
     if (layoutId) m[kind] = layoutId
   }
   return m

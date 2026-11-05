@@ -105,6 +105,10 @@ export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
               onUploadTemplate={(f) => p.uploadDeckTemplate(f)}
               onClearTemplate={p.clearDeckTemplateChoice}
               onMappingChange={p.setLayoutMapping}
+              // 2026-11-05 内置公司模板（智业浅色母版，走 fetch 通道不受 3MB 上限）
+              builtinTemplates={p.builtinTemplates}
+              builtinTemplateKey={p.builtinTemplateKey}
+              onSelectBuiltinTemplate={(k) => void p.selectBuiltinDeckTemplate(k)}
               outlineDraft={p.draftOutline}
               onDraftOutline={p.draftDeckOutline}
               onOutlineChange={p.setDraftOutline}

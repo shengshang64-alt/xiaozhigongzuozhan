@@ -43,6 +43,7 @@ import {
   type StoredDeckTemplate,
 } from "./deckTheme"
 import { finalizeFidelityProbe, probeTemplateFacts } from "./deckFidelityProbe"
+import { findBuiltinTemplate, loadBuiltinTemplateBytes, BUILTIN_DECK_TEMPLATES } from "./builtinTemplates"
 import {
   buildSlideContentMessages,
   buildDeckOutlineMessages,
@@ -1325,9 +1326,66 @@ export function usePptQuote() {
 
   // ------------------------------ R169 公司模板主题（上传→提取→导出套用） ------------------------------
   const [deckTemplate, setDeckTemplate] = useState<StoredDeckTemplate | null>(() => loadDeckTemplate())
+  /**
+   * 内置公司模板的字节（2026-11-05）。与 deckTemplate 分开存：
+   * 内置模板 4.93MB > localStorage 上限 3MB，塞不进 StoredDeckTemplate.bytesB64，
+   * 只能按需 fetch 后留在内存里。导出时优先用它。
+   */
+  const [builtinTplBytes, setBuiltinTplBytes] = useState<Uint8Array | null>(null)
+  const [builtinTplKey, setBuiltinTplKey] = useState<string | null>(null)
   // 2026-10-30 补齐：模板版式清单与 kind→版式映射（真实版式导出用）
   const [templateOutline, setTemplateOutline] = useState<TemplateOutline | null>(null)
   const [layoutMapping, setLayoutMapping] = useState<TemplateMappingZ>({})
+  /**
+   * 2026-11-05 修（刷新后模板"半失效"）：
+   * deckTemplate 从 localStorage 恢复，但 templateOutline / layoutMapping 只是内存 state，
+   * 刷新后变成 null / {} → 界面只显示「当前模板：xxx」，版式清单与映射全空，
+   * 且导出时没有 layoutMapping，退回「不分版式」的保真通道。
+   * 用户以为模板还在、实际已经半失效。
+   *
+   * 这里在挂载时把模板字节重新解出来恢复这两项：
+   *   · 内置模板：走 fetch（带缓存）；
+   *   · 上传模板：从 localStorage 的 bytesB64 解（超 3MB 的原本就没存字节，只能恢复主题）。
+   */
+  useEffect(() => {
+    if (!deckTemplate) return
+    // 已有 outline/mapping 就不重复解析（用户可能刚手动调过映射，不能覆盖）
+    if (templateOutline && Object.keys(layoutMapping).length) return
+    let cancelled = false
+    void (async () => {
+      try {
+        let bytes: Uint8Array | null = builtinTplBytes
+        if (!bytes) {
+          const builtin = BUILTIN_DECK_TEMPLATES.find((t) => t.label === deckTemplate.name)
+          if (builtin) {
+            const r = await loadBuiltinTemplateBytes(builtin.key)
+            if (cancelled) return
+            if ("bytes" in r) {
+              setBuiltinTplBytes(r.bytes)
+              setBuiltinTplKey(builtin.key)
+              bytes = r.bytes
+            }
+          }
+        }
+        if (!bytes) bytes = decodeTemplateBytes(deckTemplate)
+        if (!bytes || cancelled) return
+        const outline = parseTemplateOutline(bytes)
+        if (cancelled) return
+        setTemplateOutline(outline)
+        if (!outline.failure && outline.layouts.length) {
+          setLayoutMapping((prev) => (Object.keys(prev).length ? prev : recommendMapping(outline)))
+        }
+      } catch {
+        /* 恢复失败不阻断：保持「仅套主题」的降级态，导出时会有明确提示 */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // 只在 deckTemplate 变化时跑；templateOutline/layoutMapping 作为"是否已恢复"的判断依据，
+    // 不放进依赖（否则恢复完成后会再次触发自身）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deckTemplate])
   // 2026-10-30：导出被门禁拦下时的严重问题清单（界面据此展示"页码+问题+去修复"）
   const [exportBlocking, setExportBlocking] = useState<DeckLintIssue[]>([])
   // 2026-10-30 渲染质检：真实把 pptx 渲染成图再检查（结构层 lint 看不见版面问题）
@@ -1441,8 +1499,65 @@ export function usePptQuote() {
   const clearDeckTemplateChoice = useCallback(() => {
     clearDeckTemplate()
     setDeckTemplate(null)
+    setBuiltinTplBytes(null)
+    setBuiltinTplKey(null)
     toast.success("已改用内置商务版式")
   }, [])
+
+  /**
+   * 选用内置公司模板（2026-11-05）。
+   *
+   * 为什么单独一条通道：内置模板 4.93 MB，超过 localStorage 的 3 MB 预算，
+   * 走「上传模板」通道会被 encodeTemplateBytes 判超限 → 母版保真被静默关闭，
+   * 用户只得到「已套用主题」的降级结果（实测这就是"套了公司模板还是不像"的根源）。
+   * 这里改为按需 fetch（带内存缓存）+ 直接交给导出层，不碰 localStorage。
+   *
+   * 失败一律如实报错并**不**记住选择：不允许"显示已选中模板、导出却还是内置版式"。
+   */
+  const selectBuiltinDeckTemplate = useCallback(async (key: string) => {
+    const meta = findBuiltinTemplate(key)
+    if (!meta) {
+      toast.error(`未知的内置模板：${key}`)
+      return
+    }
+    const r = await loadBuiltinTemplateBytes(key)
+    if ("failure" in r) {
+      toast.error(`内置模板加载失败：${r.failure}`)
+      return
+    }
+    const bytes = r.bytes
+    setBuiltinTplBytes(bytes)
+    setBuiltinTplKey(key)
+    // 主题令牌：内置模板的 accents 已在清单里实测好，不再现场解析（省一次解包）
+    const base: StoredDeckTemplate = { name: meta.label, savedAt: Date.now(), theme: meta.theme }
+    saveDeckTemplate(base) // 只存主题与名字（小），字节不落 localStorage
+    setDeckTemplate(base)
+    // 版式清单 + 自动映射（与上传通道同一套逻辑，保证行为一致）
+    try {
+      const outline = parseTemplateOutline(bytes)
+      setTemplateOutline(outline)
+      if (!outline.failure && outline.layouts.length) {
+        const auto = recommendMapping(outline)
+        setLayoutMapping(auto)
+        const res = resolveMapping(outline, auto)
+        toast.success(
+          `已选用「${meta.label}」：解析 ${outline.layouts.length} 个版式，自动匹配 ${Object.keys(auto).length} 类页面` +
+            (res.missing.length ? `（${res.missing.length} 类未匹配）` : "") +
+            "；导出将按母版/版式保真",
+        )
+      } else if (outline.failure) {
+        toast.warning(`内置模板版式解析未成功：${outline.failure}；将只套用配色与字体`)
+      }
+    } catch (e) {
+      toast.warning(`内置模板版式解析异常（${e instanceof Error ? e.message : "未知"}）；本次只套用配色与字体`)
+    }
+  }, [])
+
+  /** 导出时实际使用的模板字节：内置模板优先，其次用户上传（受 3MB 上限约束） */
+  const effectiveTemplateBytes = useMemo(
+    () => builtinTplBytes ?? decodeTemplateBytes(deckTemplate) ?? undefined,
+    [builtinTplBytes, deckTemplate],
+  )
 
   // ------------------------------ PPT 导出 ------------------------------
   const exportPptx = useCallback(async () => {
@@ -1481,7 +1596,7 @@ export function usePptQuote() {
         transition: deckTransition,
         // 2026-10-30 同稿换风格：模板主题优先，其次选中的预设，都没有走内置商务版式
         theme: effectiveDeckTheme,
-        templateBytes: decodeTemplateBytes(deckTemplate) ?? undefined,
+        templateBytes: effectiveTemplateBytes,
         // 2026-10-30 真实版式导出：按 kind→版式映射分配模板版式
         ...(Object.keys(layoutMapping).length ? { layoutMapping } : {}),
         onLayoutReport: (rep) => {
@@ -1511,7 +1626,7 @@ export function usePptQuote() {
     } catch {
       toast.error("导出失败，请重试")
     }
-  }, [flushDeckPersist, deckTransition, deckTemplate, deckTemplateProbe, effectiveDeckTheme, layoutMapping])
+  }, [flushDeckPersist, deckTransition, deckTemplate, deckTemplateProbe, effectiveDeckTheme, layoutMapping, effectiveTemplateBytes])
 
   // -------------------------------------------------------------------------
   // 2026-10-30 渲染质检：把导出的 pptx 真实渲染成图再检查
@@ -1544,7 +1659,7 @@ export function usePptQuote() {
       await exportDeckPptx(deck, {
         transition: deckTransition,
         theme: effectiveDeckTheme,
-        templateBytes: decodeTemplateBytes(deckTemplate) ?? undefined,
+        templateBytes: effectiveTemplateBytes,
         ...(Object.keys(layoutMapping).length ? { layoutMapping } : {}),
         skipDownload: true,
         onBytes: (b) => {
@@ -1575,7 +1690,7 @@ export function usePptQuote() {
       setRenderChecking(false)
       setDeckProgress("")
     }
-  }, [deckTransition, effectiveDeckTheme, deckTemplate, layoutMapping])
+  }, [deckTransition, effectiveDeckTheme, layoutMapping, effectiveTemplateBytes])
 
   // ------------------------------ 真实配图 ------------------------------
   const hostOf = (u: string) => {
@@ -3144,6 +3259,10 @@ export function usePptQuote() {
     deckTemplateProbe,
     uploadDeckTemplate,
     clearDeckTemplateChoice,
+    // 2026-11-05 内置公司模板（智业浅色母版）：走 fetch + 内存，不受 localStorage 3MB 上限
+    builtinTemplates: BUILTIN_DECK_TEMPLATES,
+    builtinTemplateKey: builtinTplKey,
+    selectBuiltinDeckTemplate,
     // 2026-10-30 导出质量门禁
     exportBlocking,
     clearExportBlocking: () => setExportBlocking([]),

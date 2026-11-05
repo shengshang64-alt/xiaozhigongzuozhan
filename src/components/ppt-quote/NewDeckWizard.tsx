@@ -51,6 +51,10 @@ type NewDeckWizardProps = {
   onUploadTemplate?: (file: File) => Promise<void> | void
   onClearTemplate?: () => void
   onMappingChange?: (m: TemplateMappingZ) => void
+  /** 2026-11-05 内置公司模板（智业浅色母版）：走 fetch 通道，不受 localStorage 3MB 上限 */
+  builtinTemplates?: { key: string; label: string; desc: string; layouts: string[] }[]
+  builtinTemplateKey?: string | null
+  onSelectBuiltinTemplate?: (key: string) => Promise<void> | void
   /** 当前草稿大纲（null=尚未生成） */
   outlineDraft?: SlidePlan[] | null
   onDraftOutline?: () => Promise<unknown> | void
@@ -98,6 +102,9 @@ export function NewDeckWizard({
   onUploadTemplate = async () => {},
   onClearTemplate = () => {},
   onMappingChange = () => {},
+  builtinTemplates = [],
+  builtinTemplateKey = null,
+  onSelectBuiltinTemplate = async () => {},
   outlineDraft = null,
   onDraftOutline = async () => {},
   onOutlineChange = () => {},
@@ -205,6 +212,9 @@ export function NewDeckWizard({
             onUpload={onUploadTemplate}
             onClear={onClearTemplate}
             onMappingChange={onMappingChange}
+            builtinTemplates={builtinTemplates}
+            builtinTemplateKey={builtinTemplateKey}
+            onSelectBuiltin={onSelectBuiltinTemplate}
           />
           <StepNav
             onBack={() => setStep(2)}

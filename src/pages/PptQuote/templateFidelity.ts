@@ -26,6 +26,16 @@ export type FidelitySlideSpec = {
    * 注入为右侧半栏图片（正文加右内边距避让），模板母版/版式原样保留。
    */
   image?: { base64: string; ext: string }
+  /**
+   * 2026-11-05：本页应使用的**版式文件名**（如 `slideLayout3.xml`）。
+   * 缺省时按「有无正文行」退回标题/正文样张页（旧行为，逐字不变）。
+   *
+   * 为什么必须显式指定：保真引擎原本**只克隆一张样张页**，于是整册所有页共用同一个版式。
+   * 实测公司官方模板 6 页导出后，6 页 layout 全是「封面」——封面/目录/章节/内页/封底
+   * 的差异被完全抹平，用户看到的仍是"一个版式复制 6 遍"。
+   * 现在按 kind→版式映射挑「该版式下的样张页」来克隆，母版版式才真正生效。
+   */
+  layoutFile?: string
 }
 
 export type FidelityTemplateSlide = {
@@ -105,6 +115,8 @@ type Ctx = {
   xmls: Map<number, string>
   /** idx -> slide rels 文本（缺省空串） */
   relss: Map<number, string>
+  /** 2026-11-05：idx -> 该样张页绑定的版式文件名（如 slideLayout3.xml），供按版式选样张 */
+  layouts: Map<number, string>
   pres: string
   presRels: string
   ct: string
@@ -119,6 +131,8 @@ function readCtx(entries: Record<string, Uint8Array>): { ctx?: Ctx; reason?: str
   const slides: FidelityTemplateSlide[] = []
   const xmls = new Map<number, string>()
   const relss = new Map<number, string>()
+  // 2026-11-05：记录每个样张页绑定的版式，供「按 kind 分配版式」时挑对样张页
+  const layouts = new Map<number, string>()
   for (const n of names) {
     const xml = strFromU8(entries[n])
     const relName = `ppt/slides/_rels/slide${slideIdx(n)}.xml.rels`
@@ -126,11 +140,24 @@ function readCtx(entries: Record<string, Uint8Array>): { ctx?: Ctx; reason?: str
     const info = classifySlide(n, xml, rels)
     slides.push(info)
     xmls.set(info.idx, xml)
-    if (rels !== null) relss.set(info.idx, rels)
+    if (rels !== null) {
+      relss.set(info.idx, rels)
+      const lay = /Target="[^"]*?(slideLayout\d+\.xml)"/.exec(rels)?.[1]
+      if (lay) layouts.set(info.idx, lay)
+    }
   }
   if (!slides.length) return { reason: "no slides in template" }
   return {
-    ctx: { entries, slides, xmls, relss, pres: strFromU8(presU), presRels: strFromU8(presRelU), ct: strFromU8(ctU) },
+    ctx: {
+      entries,
+      slides,
+      xmls,
+      relss,
+      layouts,
+      pres: strFromU8(presU),
+      presRels: strFromU8(presRelU),
+      ct: strFromU8(ctU),
+    },
   }
 }
 
@@ -151,10 +178,65 @@ function pickSample(ctx: Ctx, role: "title" | "body"): FidelityTemplateSlide | n
   return ctx.slides.find((s) => s.idx === picked) ?? null
 }
 
+/**
+ * 按指定版式挑一张可用样张页（2026-11-05）。
+ *
+ * 用途：让封面/目录/章节/内页/封底各自复用**自己那个版式**的样张页，
+ * 而不是整册都克隆同一张。找不到该版式的样张页时返回 null，调用方回退到默认样张。
+ */
+function pickSampleByLayout(ctx: Ctx, layoutFile: string): FidelityTemplateSlide | null {
+  const target = layoutFile.replace(/^.*?((?:slide)?layout\d+\.xml)$/, "$1")
+  const cands = ctx.slides.filter((s) => s.usable && ctx.layouts.get(s.idx) === target)
+  if (!cands.length) return null
+  // 优先有标题占位符的（才能写入本页标题）
+  return cands.find((s) => s.titlePh) ?? cands[0]
+}
+
 // ---------------------------- 文本注入 -------------------------------------
 
-function firstMatch(re: RegExp, s: string): string {
-  return re.exec(s)?.[0] ?? ""
+/**
+ * 取出从第一个 `<tag ...>` 开始的**完整元素**文本（正确处理自闭合与同名嵌套）。
+ *
+ * 2026-11-05 修（真实模板暴露）：原来这里用
+ *   `firstMatch(/<a:rPr\b[\s\S]*?(?:\/>|<\/a:rPr>)/, run)`
+ * 这类**非贪婪 + `/>` 或收尾**的写法。当 rPr 内部嵌套自闭合子元素时（公司官方模板
+ * zoe-light-internal 的 rPr 含 `<a:ln w="12700"><a:noFill/></a:ln>`），
+ * 惰性匹配会先撞上 `<a:noFill/>` 的 `/>`，于是截到
+ *   `<a:rPr ...><a:ln w="12700"><a:noFill/>`
+ * ——`ln` 与 `rPr` 都没闭合。把它拼回新段落 → 产出的 slide1.xml 全部**标签不匹配**，
+ * 用 python-pptx / PowerPoint 打开直接报 "Opening and ending tag mismatch: ln ... and r"。
+ * 症状是「导出成功但文件打不开」，属于最坏的一类失败（静默产出坏文件）。
+ *
+ * 现改为扫描配对：同级自闭合立即返回、同名嵌套按深度计数，保证取出的是完整元素。
+ */
+function balancedElement(s: string, tag: string, from = 0): { text: string; end: number } | null {
+  // 只匹配「开标签」与「闭标签」，属性值里含 > 的情况在 OOXML 中不会出现（会被转义）
+  const re = new RegExp(`<${tag}\\b[^>]*?(?:/)?>|</${tag}>`, "g")
+  re.lastIndex = from
+  let depth = 0
+  let start = -1
+  let m: RegExpExecArray | null
+  while ((m = re.exec(s)) !== null) {
+    const tok = m[0]
+    const isClose = tok.startsWith("</")
+    const isSelfClose = !isClose && tok.endsWith("/>")
+    if (isClose) {
+      depth -= 1
+      if (depth === 0 && start >= 0) {
+        return { text: s.slice(start, m.index + tok.length), end: m.index + tok.length }
+      }
+      if (depth < 0) return null
+      continue
+    }
+    if (isSelfClose) {
+      // 顶层自闭合即为完整元素；作为子元素时不改变深度
+      if (depth === 0) return { text: tok, end: m.index + tok.length }
+      continue
+    }
+    if (depth === 0) start = m.index
+    depth += 1
+  }
+  return null
 }
 
 /** 用给定文本行重建一个形状块的 txBody，保留 bodyPr/lstStyle 与首段 pPr/首 run rPr 样式模板 */
@@ -162,12 +244,14 @@ function rewriteShapeTxBody(block: string, texts: string[]): string | null {
   const tx = /<p:txBody>[\s\S]*?<\/p:txBody>/.exec(block)
   if (!tx) return null
   const inner = tx[0].slice("<p:txBody>".length, -"</p:txBody>".length)
-  const bodyPr = firstMatch(/<a:bodyPr\b[\s\S]*?(?:\/>|<\/a:bodyPr>)/, inner) || '<a:bodyPr/>'
-  const lstStyle = firstMatch(/<a:lstStyle\b[\s\S]*?(?:\/>|<\/a:lstStyle>)/, inner)
-  const firstPara = /<a:p>[\s\S]*?<\/a:p>/.exec(inner)
-  const pPr = firstPara ? firstMatch(/<a:pPr\b[\s\S]*?(?:\/>|<\/a:pPr>)/, firstPara[0]) : ""
-  const firstRun = firstPara ? /<a:r>[\s\S]*?<\/a:r>/.exec(firstPara[0]) : null
-  const rPr = firstRun ? firstMatch(/<a:rPr\b[\s\S]*?(?:\/>|<\/a:rPr>)/, firstRun[0]) : ""
+  // 注意：这四者都可能是「带自闭合子元素的容器」（bodyPr 含 normAutofit、lstStyle 含 lvl1pPr、
+  // pPr 含 spcBef/buFont、rPr 含 ln/fill），必须用配对扫描，不能用惰性正则（见 balancedElement 注释）。
+  const bodyPr = balancedElement(inner, "a:bodyPr")?.text || '<a:bodyPr/>'
+  const lstStyle = balancedElement(inner, "a:lstStyle")?.text ?? ""
+  const firstPara = /<a:p\b[^>]*>[\s\S]*?<\/a:p>/.exec(inner)
+  const pPr = firstPara ? (balancedElement(firstPara[0], "a:pPr")?.text ?? "") : ""
+  const firstRun = firstPara ? /<a:r\b[^>]*>[\s\S]*?<\/a:r>/.exec(firstPara[0]) : null
+  const rPr = firstRun ? (balancedElement(firstRun[0], "a:rPr")?.text ?? "") : ""
   let paras = ""
   for (const t of texts) {
     paras += `<a:p>${pPr}<a:r>${rPr}<a:t>${xmlEscape(t)}</a:t></a:r></a:p>`
@@ -446,7 +530,10 @@ export function buildFidelityDeck(template: Uint8Array, specs: FidelitySlideSpec
       if (!bytes.length) useImage = false
       else ext = spec.image!.ext === "jpeg" ? "jpeg" : spec.image!.ext === "gif" ? "gif" : "png"
     }
-    const sample = lines.length || (useImage && bodySample) ? bodySample : titleSample
+    // 2026-11-05：优先用它专属版式的样张页，让封面/目录/章节/内页/封底各自套自己的版式；
+    // 该版式没有可用样张页时退回「有无正文行」的默认样张（旧行为）。
+    const byLayout = spec.layoutFile ? pickSampleByLayout(ctx, spec.layoutFile) : null
+    const sample = byLayout ?? (lines.length || (useImage && bodySample) ? bodySample : titleSample)
     const src = ctx.xmls.get(sample.idx) ?? ""
     // 带图页：正文限 3 行避让右侧图（正文加右内边距，不与图重叠）
     const effLines = useImage ? lines.slice(0, 3) : lines

@@ -46,9 +46,22 @@ describe("模板字节持久化与调用接线（R189）", () => {
   it("上传保存模板字节（容量失败降级）；导出把字节喂给保真通道并按通道回报", () => {
     const code = readFileSync(USE, "utf-8")
     expect(code).toContain("encodeTemplateBytes(bytes)")
-    expect(code).toContain("templateBytes: decodeTemplateBytes(deckTemplate)")
+    // 2026-11-05：导出侧不再直接 decode，而是走 effectiveTemplateBytes——
+    // 内置公司模板（4.93MB，超 localStorage 3MB 上限）必须优先于用户上传模板，
+    // 否则内置模板会被 encodeTemplateBytes 判超限、保真通道被静默关闭。
+    expect(code).toContain("builtinTplBytes ?? decodeTemplateBytes(deckTemplate)")
+    expect(code).toContain("templateBytes: effectiveTemplateBytes")
     expect(code).toContain('path === "fidelity"')
     expect(code).toContain("未启用母版级保真")
+  })
+
+  it("内置模板走 fetch 通道而非 localStorage（4.93MB 装不进 3MB 预算）", () => {
+    const use = readFileSync(USE, "utf-8")
+    expect(use).toContain("loadBuiltinTemplateBytes(")
+    expect(use).toContain("selectBuiltinDeckTemplate")
+    const mod = readFileSync(new URL("./builtinTemplates.ts", import.meta.url), "utf-8")
+    expect(mod).toContain("/ppt-templates/zoe-light-internal.pptx")
+    expect(mod).toContain("byteCache")
   })
 
   it("上传按钮 tooltip 口径同步母版/版式保真能力", () => {

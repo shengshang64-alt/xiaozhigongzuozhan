@@ -155,13 +155,14 @@ function planMappedFidelityExport(
 
   // 封面
   const coverLayout = mapping.cover ? "cover" : null
-  specs.push({ title: deck.deck_name || "汇报 PPT", lines: [metaBits.join("  |  "), today] })
+  specs.push({ title: deck.deck_name || "汇报 PPT", lines: [metaBits.join("  |  "), today], layoutFile: toLayoutFile(mapping.cover) })
   report.push({ kind: "cover", layoutName: coverLayout, slideIndex: 0 })
 
   // 目录
   specs.push({
     title: "目录",
     lines: slides.map((s, i) => `${String(i + 1).padStart(2, "0")}   ${s.title || `第 ${i + 1} 页`}`),
+    layoutFile: toLayoutFile(mapping.agenda),
   })
   report.push({ kind: "agenda", layoutName: mapping.agenda ?? null, slideIndex: 0 })
 
@@ -190,15 +191,26 @@ function planMappedFidelityExport(
       title: s.title || `第 ${i + 1} 页`,
       ...(lines.length ? { lines } : {}),
       ...(s.notes ? { notes: s.notes } : {}),
+      layoutFile: toLayoutFile(layoutId),
     })
     report.push({ kind, layoutName: layoutId, slideIndex: i + 1 })
   })
 
   // 结束页
-  specs.push({ title: "谢谢聆听", lines: ["欢迎交流指正"] })
+  specs.push({ title: "谢谢聆听", lines: ["欢迎交流指正"], layoutFile: toLayoutFile(mapping.summary) })
   report.push({ kind: "summary", layoutName: mapping.summary ?? null, slideIndex: slides.length + 1 })
 
   return { specs, report }
+}
+
+/**
+ * 映射值（layout4 / slideLayout4）→ 保真引擎认的版式文件名（slideLayout4.xml）。
+ * 值缺失或格式不认识时返回 undefined，让引擎退回默认样张（不静默选错版式）。
+ */
+function toLayoutFile(v: string | undefined | null): string | undefined {
+  if (!v) return undefined
+  const m = /(\d+)/.exec(v)
+  return m ? `slideLayout${m[1]}.xml` : undefined
 }
 
 /** 从 Slide 反推 kind（缺 kind 字段时按 layout/内容判断） */
