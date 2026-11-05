@@ -724,6 +724,20 @@ export function usePptQuote() {
           normalizeSlidePlan(parseJsonLoose(outlineText), pageCount),
           pageCount,
         )
+        // 2026-11-05 修（真实生成暴露）：大纲路径**完全没有页数校验**。
+        // 实测要 10 页、大纲只给 3 页 → 逐页生成 3 页 → 落库 3 页册子，
+        // 界面上"目标 10 页"却只出 3 页，且没有任何提示。
+        // 单发路径此前已修（decideSingleCallOutcome），大纲路径漏了，这里补同口径处置：
+        //   · 缺一点 → 补占位页（插在结尾页之前）
+        //   · 缺太多 → 明确告知用户，并按已回的大纲页数继续（不整册重做大纲，避免又一次烧钱且未必更好）
+        const outlineVerdict = decideSingleCallOutcome(rawPlan.length, pageCount)
+        if (outlineVerdict.action !== "accept") {
+          toast.warning(
+            `AI 本次大纲只给了 ${outlineVerdict.got} 页（目标 ${pageCount} 页）${
+              outlineVerdict.action === "pad" ? `，将补齐 ${outlineVerdict.missing} 页占位` : "，内容会偏少，可在编辑器「新增一页」补足"
+            }`,
+          )
+        }
         // 2026-10-30 素材检索接入：把大纲每页与该页相关的素材片段挂到 sourceRefs。
         // 这样逐页生成时只塞这几段（不塞全文），且落库后可追溯到具体素材段落。
         const plan: SlidePlan[] = hasMaterials() ? attachSourceRefs(rawPlan, 3) : rawPlan
@@ -761,8 +775,7 @@ export function usePptQuote() {
             out.push(r.slide)
           } else {
             out.push(emptySlide(r.plan.title))
-            placeholderCount += 1
-          }
+            placeholderCount += 1          }
         })
         const failedCount = results.filter((r) => !r.slide).length
         if (failedCount) {
