@@ -727,20 +727,40 @@ export function usePptQuote() {
         // 2026-11-05 修（真实生成暴露）：大纲路径**完全没有页数校验**。
         // 实测要 10 页、大纲只给 3 页 → 逐页生成 3 页 → 落库 3 页册子，
         // 界面上"目标 10 页"却只出 3 页，且没有任何提示。
-        // 单发路径此前已修（decideSingleCallOutcome），大纲路径漏了，这里补同口径处置：
-        //   · 缺一点 → 补占位页（插在结尾页之前）
-        //   · 缺太多 → 明确告知用户，并按已回的大纲页数继续（不整册重做大纲，避免又一次烧钱且未必更好）
+        // 单发路径此前已修（decideSingleCallOutcome），大纲路径漏了，这里补同口径处置。
+        //
+        // 2026-11-05 再修（真实生成暴露）：上一版**只弹了警告、没有真的补页**——
+        // 文案写着「将补齐 N 页占位」，代码里却没有补齐动作，实测要 10 页时
+        // 大纲只给 1 页 → 最终落库 1 页册子，用户拿到一份只有封面的 PPT。
+        // 这是"提示与实际行为不符"，比不提示更糟。现在真的补：
+        //   · 缺一点（≤20%）→ 补占位页
+        //   · 缺太多（>20%）→ 也补到位，但明确告知这是占位、需逐页补全
+        //（不整册重做大纲：重做要再烧一次钱，且模型不保证第二次给够页数。）
         const outlineVerdict = decideSingleCallOutcome(rawPlan.length, pageCount)
+        let planWithFloor: SlidePlan[] = rawPlan
         if (outlineVerdict.action !== "accept") {
+          const missing = pageCount - rawPlan.length
+          const ph = buildPlaceholderSlides(missing)
+          // 占位页转成 SlidePlan（只带标题与 kind），插在结尾页之前
+          const phPlans: SlidePlan[] = ph.map((s) => ({
+            id: s.id,
+            title: s.title,
+            intent: "",
+            kind: "bullets" as const,
+          }))
+          // 找结尾页（summary / 标题像致谢）之前的插入点
+          const closeIdx = rawPlan.findIndex(
+            (p, i) => i === rawPlan.length - 1 && (p.kind === "summary" || /谢谢|致谢|Q\s*&\s*A|提问/i.test(p.title)),
+          )
+          planWithFloor =
+            closeIdx >= 0 ? [...rawPlan.slice(0, closeIdx), ...phPlans, rawPlan[closeIdx]] : [...rawPlan, ...phPlans]
           toast.warning(
-            `AI 本次大纲只给了 ${outlineVerdict.got} 页（目标 ${pageCount} 页）${
-              outlineVerdict.action === "pad" ? `，将补齐 ${outlineVerdict.missing} 页占位` : "，内容会偏少，可在编辑器「新增一页」补足"
-            }`,
+            `AI 本次大纲只给了 ${outlineVerdict.got} 页（目标 ${pageCount} 页），已补齐 ${missing} 页占位，可在编辑器逐页「AI 补全」`,
           )
         }
         // 2026-10-30 素材检索接入：把大纲每页与该页相关的素材片段挂到 sourceRefs。
         // 这样逐页生成时只塞这几段（不塞全文），且落库后可追溯到具体素材段落。
-        const plan: SlidePlan[] = hasMaterials() ? attachSourceRefs(rawPlan, 3) : rawPlan
+        const plan: SlidePlan[] = hasMaterials() ? attachSourceRefs(planWithFloor, 3) : planWithFloor
         const allTitles = plan.map((p) => p.title)
         if (hasMaterials()) {
           const refCount = plan.reduce((n, p) => n + (p.sourceRefs?.length ?? 0), 0)

@@ -12,6 +12,7 @@
 //  ③ 异常入参不炸、不产生负页数。
 // ---------------------------------------------------------------------------
 import { describe, expect, it } from "vitest"
+import { readFileSync } from "node:fs"
 import { PLACEHOLDER_HINT, buildPlaceholderSlides, insertBeforeClosing } from "./deckPageFloor"
 import type { Slide } from "./pptQuoteTypes"
 
@@ -87,5 +88,31 @@ describe("insertBeforeClosing · 插在结尾页之前", () => {
     const snapshot = all.map((s) => s.title)
     insertBeforeClosing(all, placeholders)
     expect(all.map((s) => s.title)).toEqual(snapshot)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 大纲页数补齐（2026-11-05 修）
+//
+// 实测缺陷：目标 10 页，AI 大纲只给 1 页 → 最终落库 1 页册子（只有封面），
+// 而界面文案写着「将补齐 N 页占位」——**提示与行为不符**，比不提示更糟。
+// 本哨兵钉住：大纲不足时必须真的补，且补到目标页数。
+// ---------------------------------------------------------------------------
+describe("大纲页数补齐 · 接线哨兵", () => {
+  it("大纲不足时调用了 buildPlaceholderSlides 并合并进 plan（不是只弹 toast）", () => {
+    const code = readFileSync(new URL("./usePptQuote.ts", import.meta.url), "utf-8")
+    // 必须有补齐动作
+    expect(code).toContain("buildPlaceholderSlides(missing)")
+    expect(code).toContain("planWithFloor")
+    // 补齐后的 plan 必须真的被后续逐页生成使用（否则补了也没用）
+    expect(code).toMatch(/attachSourceRefs\(planWithFloor/)
+    // toast 文案要与实际行为一致（不再出现"将补齐"这种没做的事）
+    expect(code).not.toContain("将补齐 ${outlineVerdict.missing} 页占位")
+  })
+
+  it("占位页插在结尾页之前（不排在「谢谢」后面）", () => {
+    const code = readFileSync(new URL("./usePptQuote.ts", import.meta.url), "utf-8")
+    expect(code).toContain("closeIdx")
+    expect(code).toMatch(/rawPlan\.slice\(0, closeIdx\), \.\.\.phPlans, rawPlan\[closeIdx\]/)
   })
 })
