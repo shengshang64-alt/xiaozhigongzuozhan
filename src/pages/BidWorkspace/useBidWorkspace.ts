@@ -94,7 +94,6 @@ import { formatDensitySummary, measureItemDensity } from "./proseItemDensity"
 import { checkFigureAnnotations } from "./figureAnnotation"
 import {
   aggregateAuditByChapter,
-  assignClausesToChapters,
   applyFactPatchItems,
   assignScoringToChapters,
   backfillResponseTags,
@@ -134,7 +133,6 @@ import {
   buildVoidCheckMessages,
   chapterOrchestration,
   chapterWordBudgets,
-  chaptersToText,
   clipText,
     // 循环 8 A5：单项重解析成功后清除落库的失败横幅 warnings
   clearParseWarnings,
@@ -200,7 +198,6 @@ import {
   mergeBasisItems,
   mergeRequiredSections,
   normalizeBasisExtra,
-  normalizeBasisStyle,
   parseBasisLines,
   DEFAULT_FORMAT_SETTINGS,
   findIntraDupPairs,
@@ -224,18 +221,12 @@ import {
   MAX_TENDER_CHARS,
   missingSectionTitles,
   normalizeAiReview,
-  normalizeBidDefense,
   normalizeDeviationTable,
   normalizeExtraKeys,
-  normalizeFormatCheckItems,
-  normalizeFormatSettings,
   normalizeBidSourceMode,
   SECTION_SYNONYM_FALLBACK,
   type BidSourceMode,
-  normalizeGenOptions,
-  normalizeOrchestration,
   normalizeParseReport,
-  normalizeStageGates,
   normalizeSubmissionCheck,
   normalizeVoidCheck,
   // 循环 8 A4：本地零 AI 数字口径冲突检查（事实表 × 正文）
@@ -417,6 +408,11 @@ import {
 import { cleanOutlineResidue, type ResidueFix } from "./outlineResidue"
 // 2026-11-04：大纲草稿「恢复还是清」的判定收敛为纯函数（丢的是已付费生成的大纲，必须可单测）
 import { decideOutlineDraft } from "./outlineDraft"
+// R1（整仓重构 · 标书内核拆分）：记录层纯函数搬出到 ./bidRecord（库列归一化 + 大纲草稿留档）。
+// 这一行既服务内部调用点，也与文件下方 re-export 配合保持「从 useBidWorkspace 取」的导出 API 不变。
+import { clearOutlineDraft, normalizeRecord, readOutlineDraft, sortOppsByHospital, writeOutlineDraft } from "./bidRecord"
+// R1（整仓重构）：正文取数层搬到 ./bidBodyText，内部调用点从这里取；对外仍经下方 re-export 兼容。
+import { auditLeafExcerpt, bidChaptersFor, chaptersToTextStub, isExternalBid, mapClausesToChapters, resolveBidText } from "./bidBodyText"
 import { buildScoreCheckup } from "./scoreCoverageCheckup"
 import { applyMustWrite, judgeMustWrite } from "./bidMustWrite"
 import { readRequiredTechKeywords } from "./mustWriteConfig"
@@ -1530,168 +1526,8 @@ function costText(): string {
   return "按各环节实际所选模型计费：个人接口账户承担该模型费用，平台内置按 token 用量扣费"
 }
 
-/**
- * 数组类 JSON 列的安全取值（2026-10-27 事故：打开已归档项目报
- * `proj.bid_chapters.filter is not a function`）。
- *
- * 成因：PocketBase 的 json 列正常会返回已解析的数组；但当列里存的是**空字符串**
- * （例如运维脚本把列置空、或历史数据被清成 `''`）时，它不是合法 JSON，
- * PocketBase 原样返回字符串，于是 `rec.bid_chapters ?? []` 的兜底不生效
- * ——`??` 只挡 null/undefined，挡不住 `''`——下游 `.filter/.map/.length` 全部炸。
- *
- * 这里统一收口：非数组一律归一为 `[]`（字符串 `'[]'` 也顺手解析），
- * 保证进到 UI 的这三列永远是数组。
- */
-export function asArrayField<T>(raw: unknown): T[] {
-  if (Array.isArray(raw)) return raw as T[]
-  if (typeof raw === "string") {
-    const s = raw.trim()
-    if (!s) return []
-    try {
-      const parsed: unknown = JSON.parse(s)
-      return Array.isArray(parsed) ? (parsed as T[]) : []
-    } catch {
-      return []
-    }
-  }
-  return []
-}
-
-// ---------------------------------------------------------------------------
-// 2026-11-03：未确认的大纲草稿本地留档（纯 localStorage，零 collection 变更）。
-//
-// 背景：AI 生成的大纲在用户点「确认大纲」之前只存在于 React 内存，刷新/切页即丢，
-// 等于要重新付费生成一次。这里按项目 id 落一份草稿：
-//   · 非空且与项目已确认大纲（bid_outline）不一致 → 写草稿（= 还没确认的那一份）；
-//   · 为空、或已与 bid_outline 完全一致（= 已入库，含「确认大纲」与「重置项目」）→ 清草稿。
-// 读写全部 try/catch：隐私模式 / 超配额时静默降级为只在内存，绝不阻断大纲编辑。
-// ---------------------------------------------------------------------------
-const OUTLINE_DRAFT_KEY_PREFIX = "xz.bid.outlineDraft."
-
-function readOutlineDraft(projectId: string | null | undefined): OutlineNode[] | null {
-  if (!projectId) return null
-  try {
-    const raw = window.localStorage.getItem(OUTLINE_DRAFT_KEY_PREFIX + projectId)
-    if (!raw) return null
-    const parsed: unknown = JSON.parse(raw)
-    if (!Array.isArray(parsed) || !parsed.length) return null
-    return parsed as OutlineNode[]
-  } catch {
-    return null
-  }
-}
-
-function writeOutlineDraft(projectId: string | null | undefined, nodes: OutlineNode[]): void {
-  if (!projectId) return
-  try {
-    window.localStorage.setItem(OUTLINE_DRAFT_KEY_PREFIX + projectId, JSON.stringify(nodes))
-  } catch {
-    /* 存储不可用：草稿只在内存，不阻断编辑 */
-  }
-}
-
-function clearOutlineDraft(projectId: string | null | undefined): void {
-  if (!projectId) return
-  try {
-    window.localStorage.removeItem(OUTLINE_DRAFT_KEY_PREFIX + projectId)
-  } catch {
-    /* 同上 */
-  }
-}
-
-function normalizeRecord(rec: BidProjectRecord): BidProjectRecord {
-  const resultRaw = (rec.bid_result ?? "") as BidResult
-  const amountRaw = Number(rec.bid_amount)
-  // 第五轮改造 1：生成设置字段（老项目缺列时容错为默认值：页数 null / 级数 0 / 配图按记录 / 维度按系统 / 小节字数 null→800）
-  const pagesRaw = Number(rec.target_pages)
-  const levelRaw = Number(rec.outline_level)
-  const sectionWordsRaw = Number(rec.section_words)
-  const granRaw = String(rec.clause_granularity ?? "")
-  // 第九轮改造 2：解析报告先归一化，交卷体检 severity 推导需要评分项分值
-  const parseReport = normalizeParseReport(rec.parse_report)
-  return {
-    ...rec,
-    tender_no: rec.tender_no ?? "",
-    hospital: rec.hospital ?? "",
-    bid_open_date: rec.bid_open_date ?? "",
-    stage: (rec.stage as BidStage) ?? "pending_parse",
-    tender_text: rec.tender_text ?? "",
-    // 2026-10-21：多份招标文件清单（存量项目缺列容错为空数组=单段文本，行为不变）
-    tender_files: normalizeTenderFiles(rec.tender_files),
-    parse_report: parseReport,
-    parse_config: rec.parse_config ?? null,
-    bid_outline: asArrayField(rec.bid_outline),
-    bid_chapters: asArrayField(rec.bid_chapters),
-    response_map: normalizeDeviationTable(rec.response_map),
-    dup_report: rec.dup_report ?? null,
-    // 第九轮改造 2：旧 void_check（verdict 三态）容错映射到新 status 契约
-    void_check: normalizeVoidCheck(rec.void_check),
-    // 第九轮改造 3：旧 ai_review 没有三路字段时容错为空数组（自动归技术路）
-    ai_review: normalizeAiReview(rec.ai_review),
-    manual_review: rec.manual_review ?? null,
-    // 第四轮改造新增字段：存量老项目没有这些列，统一给默认空值防崩
-    opportunity_id: rec.opportunity_id ?? "",
-    bid_result: resultRaw === "won" || resultRaw === "lost" || resultRaw === "pending" ? resultRaw : "",
-    bid_amount: Number.isFinite(amountRaw) && amountRaw > 0 ? amountRaw : null,
-    lost_reason: rec.lost_reason ?? "",
-    result_synced_at: rec.result_synced_at ?? "",
-    // 第五轮改造新增字段：存量老项目没有这些列，统一给默认值防崩
-    target_pages: Number.isFinite(pagesRaw) && pagesRaw > 0 ? Math.min(9999, Math.round(pagesRaw)) : null,
-    outline_level: levelRaw === 1 || levelRaw === 2 || levelRaw === 3 ? levelRaw : 0,
-    figures_enabled: typeof rec.figures_enabled === "boolean" ? rec.figures_enabled : true,
-    clause_granularity: granRaw === "l2" || granRaw === "l3" ? (granRaw as ClauseGranularity) : "system",
-    section_words:
-      Number.isFinite(sectionWordsRaw) && sectionWordsRaw >= 400 && sectionWordsRaw <= 5000
-        ? Math.round(sectionWordsRaw)
-        : null,
-    // 第十三轮改造 3：存量项目没有 gen_options 列时容错为全 false（行为与现状一致）
-    gen_options: normalizeGenOptions(rec.gen_options),
-    // 第十六轮 B1 改造 1.1：存量项目没有 global_facts 列时容错为空串（回退本地自动抽取，行为与现状一致）
-    global_facts: typeof rec.global_facts === "string" ? rec.global_facts : "",
-    // 第十六轮 B2 改造 2.1：存量项目没有 orchestration / max_figures 列时容错（null=未编排走旧逻辑 / 留空=不限）
-    orchestration: normalizeOrchestration(rec.orchestration),
-    max_figures:
-      rec.max_figures !== null && rec.max_figures !== undefined && Number.isFinite(Number(rec.max_figures))
-        ? Math.min(99, Math.max(0, Math.round(Number(rec.max_figures))))
-        : null,
-    // 第十七轮 17B：存量项目没有 compilation_basis_extra / basis_style 列时容错（null=未补选 / ""=未设置样式，消费侧默认 table）
-    compilation_basis_extra: normalizeBasisExtra(rec.compilation_basis_extra),
-    basis_style: normalizeBasisStyle(rec.basis_style),
-    // 第十七轮 17C：存量项目没有 format_settings / format_check_items 列时容错（null=导出走现状默认 / 检查项视为全开）
-    format_settings: normalizeFormatSettings(rec.format_settings),
-    format_check_items: normalizeFormatCheckItems(rec.format_check_items),
-    // 第十七轮 17D：存量项目没有 ref_template_text / ref_materials_text 列时容错为空串（未导入，消费侧静默降级）
-    ref_template_text: typeof rec.ref_template_text === "string" ? rec.ref_template_text : "",
-    ref_materials_text: typeof rec.ref_materials_text === "string" ? rec.ref_materials_text : "",
-    // 循环 2 批 1-4：存量项目没有 identity_words 列时容错为空串（未设置身份词，暗标脱敏只走通用规则）
-    identity_words: typeof rec.identity_words === "string" ? rec.identity_words : "",
-    // 第六轮改造：存量项目没有 bid_defense 列时容错为空结构
-    bid_defense: normalizeBidDefense(rec.bid_defense),
-    // 第七轮改造 5：存量项目没有 submission_check 列时容错为 null（第九轮扩展 severity/核销字段）
-    submission_check: normalizeSubmissionCheck(rec.submission_check, scoringItemsFromReport(parseReport)),
-    // T18：存量项目没有 text_audit 列时容错为 null
-    text_audit: normalizeTextAudit(rec.text_audit),
-    // 第九轮改造 1：存量项目没有 stage_gates 列时容错为 {gates:[]}
-    stage_gates: normalizeStageGates(rec.stage_gates),
-    // 第十一轮改造 1：存量项目没有 archived / deleted_at 列时容错（false / 空串=未删）
-    archived: rec.archived === true,
-    deleted_at: typeof rec.deleted_at === "string" ? rec.deleted_at : "",
-  }
-}
-
-/** 商机下拉排序：客户医院名与项目医院模糊互含的排前面，其余按更新时间倒序 */
-function sortOppsByHospital(list: OpportunityRow[], hospital: string): OpportunityRow[] {
-  const hosp = hospital.trim()
-  const matched: OpportunityRow[] = []
-  const rest: OpportunityRow[] = []
-  for (const o of list) {
-    const name = (o.customer_name ?? "").trim()
-    if (hosp && name && (name.includes(hosp) || hosp.includes(name))) matched.push(o)
-    else rest.push(o)
-  }
-  const byUpdated = (a: OpportunityRow, b: OpportunityRow) => (b.updated ?? "").localeCompare(a.updated ?? "")
-  return [...matched.sort(byUpdated), ...rest.sort(byUpdated)]
-}
+// R1（整仓重构）：记录层已搬到 ./bidRecord（库列归一化 + 大纲草稿留档），此处只做 re-export 保持导出 API 不变。
+export { asArrayField, clearOutlineDraft, normalizeRecord, readOutlineDraft, sortOppsByHospital, writeOutlineDraft } from "./bidRecord"
 
 export type ToolKind = "parse" | "dup" | "void" | "eval"
 
@@ -10801,101 +10637,8 @@ const kbEmptyHintShown = new Set<string>()
   }
 }
 
-/** 工具视图的正文没有章节结构，包装成 chaptersToText 兼容的纯文本 */
-function chaptersToTextStub(text: string): string {
-  return chaptersToText([{ node_id: "", title: "", sections: [], content: text, gen_status: "done" as const }])
-}
-
-// Q28 切片A（天好 Skill 移植）：投标正文统一取数——external 用上传/粘贴全文，internal 用编制章节。
-// 老数据缺列容错 internal，行为与现状逐字一致（resolveBidText/bidChaptersFor 对 internal 直接透传）。
-function isExternalBid(cur: { bid_source_mode?: unknown }): boolean {
-  return normalizeBidSourceMode(cur.bid_source_mode) === "external"
-}
-
-/** 取投标纯文本（废标/评标/交卷体检共用） */
-export function resolveBidText(cur: BidProjectRecord): string {
-  if (isExternalBid(cur)) return chaptersToTextStub(cur.bid_external_text ?? "")
-  return chaptersToText(cur.bid_chapters)
-}
-
-/** 取 Chapter[]（评标三路 / 交卷体检需要章节结构）：external 合成单章 stub */
-export function bidChaptersFor(cur: BidProjectRecord): Chapter[] {
-  if (isExternalBid(cur)) {
-    const text = (cur.bid_external_text ?? "").trim()
-    if (!text) return []
-    return [{ node_id: "", title: "外部投标文件全文", sections: [], content: text, gen_status: "done" }]
-  }
-  return cur.bid_chapters
-}
-
-/**
- * 循环 5 A2：审计用节正文摘录（本地拼装零 AI）——优先按 section_stats 确定性切片取该节片段，
- * 统计缺失时回退标题行定位（截到下一个编号标题行）；统一截断到 max 字控 token。
- */
-function auditLeafExcerpt(ch: Chapter | undefined, sectionTitle: string, max = 800): string {
-  const content = (ch?.content ?? "").trim()
-  if (!content) return ""
-  const needle = (sectionTitle ?? "").trim()
-  if (!needle) return content.slice(0, max)
-  const stats = ch?.section_stats
-  const sections = ch?.sections ?? []
-  const idx = sections.findIndex((s) => s.trim() === needle)
-  if (stats?.length && idx >= 0) {
-    const piece = (sliceSectionPieces(content, stats)[idx] ?? "").trim()
-    if (piece) return piece.slice(0, max)
-  }
-  const lines = content.split("\n")
-  const start = lines.findIndex((l) =>
-    l.trimStart().replace(/^\d+(\.\d+)*\s*/, "").startsWith(needle),
-  )
-  if (start < 0) return ""
-  const out: string[] = []
-  let total = 0
-  for (let i = start; i < lines.length && total < max; i++) {
-    if (i > start && /^\d+(\.\d+)+\s/.test(lines[i].trimStart()) && lines[i].trim().length < 40) break
-    out.push(lines[i])
-    total += lines[i].length + 1
-  }
-  return out.join("\n").trim().slice(0, max)
-}
-
-/**
- * 条款归章（改造 3④）：AI coverage 映射优先——node_title 命中章标题/小节标题即归该章；
- * 其余条款按标题相似度归章（assignClausesToChapters）；每章上限 15 条防 prompt 过长。
- */
-function mapClausesToChapters(
-  clauses: RequirementClause[],
-  coverage: OutlineCoverageItem[],
-  chapters: { title: string; sections?: string[]; part?: string }[],
-): RequirementClause[][] {
-  const per: RequirementClause[][] = chapters.map(() => [])
-  if (!clauses.length || !chapters.length) return per
-  const byId = new Map(clauses.map((c) => [c.id, c]))
-  const assigned = new Set<string>()
-  for (const item of coverage) {
-    const cl = byId.get(item.clause_id)
-    if (!cl || assigned.has(cl.id)) continue
-    // 第十三轮改造 4：条款只映射到技术章（商务骨架章不承接条款应答）
-    const idx = chapters.findIndex(
-      (c) => !isBizPart(c) && (clauseMatchesTitle(item.node_title, c.title) || (c.sections ?? []).some((s) => clauseMatchesTitle(item.node_title, s))),
-    )
-    if (idx >= 0 && per[idx].length < 15) {
-      per[idx].push(cl)
-      assigned.add(cl.id)
-    }
-  }
-  const rest = clauses.filter((c) => !assigned.has(c.id))
-  if (rest.length) {
-    const sim = assignClausesToChapters(rest, chapters)
-    sim.forEach((list, i) => {
-      if (isBizPart(chapters[i])) return
-      for (const cl of list) {
-        if (per[i].length < 15 && !per[i].some((x) => x.id === cl.id)) per[i].push(cl)
-      }
-    })
-  }
-  return per
-}
+// R1（整仓重构）：正文取数层已搬到 ./bidBodyText（正文双模式 / 节摘录 / 条款归章），此处只做 re-export。
+export { auditLeafExcerpt, bidChaptersFor, chaptersToTextStub, isExternalBid, mapClausesToChapters, resolveBidText } from "./bidBodyText"
 
 export type UseBidWorkspace = ReturnType<typeof useBidWorkspace>
 
