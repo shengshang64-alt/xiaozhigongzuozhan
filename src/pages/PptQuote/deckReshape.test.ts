@@ -358,3 +358,65 @@ describe("hasVisual", () => {
     ).toBe(true)
   })
 })
+
+// ---------------------------------------------------------------------------
+// 结构页不得被整形（2026-11-04 修）
+//
+// 实测缺陷：原实现只排除 layout=section，封面页被 tryArchitecture 命中，把封面元信息
+// 当成组织层级，生成一张完全错误的架构图：
+//   第1层 市人民医院 / 第2层 院领导 / 第3层 信息科 / 第4层 2026年3月
+// 用户在编辑器里看到"封面变成了一张莫名其妙的架构图"。
+// ---------------------------------------------------------------------------
+describe("结构页排除：封面/目录/章节/结尾不做整形", () => {
+  const cover = mk({
+    title: "智慧医院三年规划",
+    bullets: ["汇报单位：市人民医院", "汇报对象：院领导", "汇报人：信息科", "汇报日期：2026年3月"],
+    kind: "cover",
+  })
+
+  it("kind=cover 的封面页不会被画成架构图", () => {
+    // 第二页用「能明确命中 table 规则」的对照结构，确保 budget 真的被用掉
+    const body = mk({
+      title: "现状与目标对照",
+      bullets: ["电子病历：4级 → 5级", "互联互通：未测评 → 四级甲等", "智慧服务：2级 → 3级"],
+      kind: "table",
+    })
+    const { slides, stats } = reshapeTextHeavySlides([cover, body])
+    expect(slides[0].figures).toBeUndefined()
+    expect(stats.reshaped).toBe(1) // 只整形了第二页，封面被正确排除
+  })
+
+  it("kind=agenda（目录页）不整形", () => {
+    const toc = mk({ title: "目录", bullets: ["一、现状与差距", "二、总体设计", "三、实施路径"], kind: "agenda" })
+    const { slides } = reshapeTextHeavySlides([toc])
+    expect(slides[0].figures).toBeUndefined()
+  })
+
+  it("kind=summary（结尾页）不整形", () => {
+    const end = mk({ title: "携手共建智慧医院新标杆", bullets: ["渠道层：A", "业务层：B", "数据层：C"], kind: "summary" })
+    const { slides } = reshapeTextHeavySlides([end])
+    expect(slides[0].figures).toBeUndefined()
+  })
+
+  it("末页标题像致谢时即使 kind 缺失也不整形", () => {
+    const end = mk({ title: "谢谢聆听", bullets: ["Q&A"] })
+    const { slides } = reshapeTextHeavySlides([end])
+    expect(slides[0].figures).toBeUndefined()
+  })
+
+  it("首页但内容像封面（含汇报元信息）→ 不整形", () => {
+    const c = mk({ title: "某某项目汇报", bullets: ["汇报对象：院领导", "汇报日期：2026年3月"] })
+    const { slides } = reshapeTextHeavySlides([c])
+    expect(slides[0].figures).toBeUndefined()
+  })
+
+  it("首页但是正文内容（无封面特征）→ 仍然整形（不许因位置误判放过该整形的页）", () => {
+    const body = mk({
+      title: "一体化平台把门诊准备时间压缩 40%",
+      bullets: ["渠道层：掌上医院、自助机", "业务层：门诊、住院、医技", "数据层：业务库、数据仓"],
+      kind: "architecture",
+    })
+    const { slides } = reshapeTextHeavySlides([body])
+    expect(slides[0].figures?.[0]?.type).toBe("architecture")
+  })
+})

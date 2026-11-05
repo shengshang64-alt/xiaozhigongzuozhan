@@ -79,6 +79,37 @@ export function hasVisual(s: Slide): boolean {
 }
 
 /**
+ * 是否「结构页」——不该被整形规则二次加工成图示的页（2026-11-04 修）。
+ *
+ * 缺陷背景：原实现只排除了 `layout === "section"`，于是**封面页会被 tryArchitecture 命中**，
+ * 把封面元信息当成组织层级，生成一张完全错误的架构图。真实实测产出：
+ *   第 1 页 kind=cover → 架构图「分层架构」：第1层 市人民医院 / 第2层 院领导 /
+ *                                        第3层 信息科 / 第4层 2026年3月
+ * 用户看到的是"封面变成了一张莫名其妙的架构图"。同类问题也会打中目录页与结尾页。
+ *
+ * 判定口径（任一成立即结构页）：
+ *   · kind 是 cover / agenda / section / summary（**主口径**：kind 是生成时确定的，最可靠）；
+ *   · layout 是 section（原有口径，保留）；
+ *   · 首页且**内容像封面**（很短、含汇报对象/单位/日期这类元信息）；
+ *   · 末页且标题像致谢。
+ *
+ * 刻意**不**用「index === 0 就是封面」这种纯位置判断：
+ * 单页册子、或测试/局部调用（只传一页内容页）时，首页往往就是唯一的正文页，
+ * 按位置排掉会把内容页也误判成封面，导致该整形的页不整形（已有 4 条用例因此回归）。
+ */
+export function isStructuralPage(s: Slide, index: number, total: number): boolean {
+  if ((s.layout ?? "auto") === "section") return true
+  const k = s.kind
+  if (k === "cover" || k === "agenda" || k === "section" || k === "summary") return true
+  // 内容像封面：篇幅很短且出现汇报元信息词
+  const text = `${s.title ?? ""}${(s.bullets ?? []).join("")}`
+  const looksCover = text.length <= 120 && /汇报(对象|单位|人|日期|时间)|演讲人|主讲|日期[:：]|20\d{2}\s*年\s*\d{1,2}\s*月/.test(text)
+  if (index === 0 && looksCover) return true
+  if (index === total - 1 && /谢谢|致谢|Q\s*&\s*A|提问|结束/i.test(s.title ?? "")) return true
+  return false
+}
+
+/**
  * 规则 0a（2026-11-04 C 项）：按**大纲声明的 kind** 强制整形。
  *
  * 为什么需要：逐页生成时模型经常把架构页/流程页写成 4 条要点（kind 已被
@@ -476,8 +507,9 @@ export function suggestReshape(slides: Slide[]): ReshapeSuggestion[] {
   const out: ReshapeSuggestion[] = []
   slides.forEach((s, i) => {
     if (hasVisual(s)) return
-    const lay = s.layout ?? "auto"
-    if (lay === "section") return
+    // 2026-11-04：与 reshapeTextHeavySlides 同口径排除结构页（封面/目录/章节/结尾）。
+    // 原实现只排除 layout=section，导致封面页被建议「画成架构图」。
+    if (isStructuralPage(s, i, slides.length)) return
     const attempts: [ReshapeSuggestion["suggestedKind"], string, () => Partial<Slide> | null][] = [
       // 与 reshapeTextHeavySlides 同序：先按大纲声明页型，再按语义规则
       [
@@ -567,7 +599,7 @@ export function reshapeTextHeavySlides(
   // 先算出哪些页是纯文字候选，按「文字量从大到小」优先整形（字越多越该改）
   const candidates = pre
     .map((s, i) => ({ s, i }))
-    .filter(({ s }) => !hasVisual(s) && (s.layout ?? "auto") !== "section")
+    .filter(({ s, i }) => !hasVisual(s) && !isStructuralPage(s, i, pre.length))
     .sort((a, b) => textLoad(b.s) - textLoad(a.s))
 
   const used = new Set<number>()
