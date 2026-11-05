@@ -363,8 +363,6 @@ function injectSlideText(xml: string, title: string, lines: string[]): string | 
   return out
 }
 
-// ---------------------------- 讲稿备注（R189） --------------------------------
-
 /** 标准 notesSlide 部件：body 占位 + 备注逐行成段，每行 XML 转义 */
 function notesDoc(text: string): string {
   const paras = text

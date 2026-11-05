@@ -131,7 +131,27 @@ export interface ExportDeckOptions {
 }
 
 /**
- * 2026-10-30：按 kind → 版式映射生成保真 specs。
+ * 封面副标题的一行元信息（2026-11-05 修）。
+ *
+ * 原来直接 `metaBits = [deckTypeLabel(deck.deck_type)]`，于是封面副标题变成
+ * 「通用介绍 PPT | 汇报对象：院领导 | 时长约 15 分钟」——
+ * 「通用介绍 PPT」是**系统内部对 deck_type 的分类名**，不是给院领导看的内容，
+ * 摆在公司模板封面上非常突兀（用户实测截图里一眼就看到）。
+ *
+ * 现在只输出「对读者有意义」的信息：汇报对象、时长。
+ * deck_type 分类仅在没有任何其他信息时才兜底（避免副标题整行为空）。
+ */
+function coverMetaLine(deck: { deck_type: string; audience: string; duration_min: number }): string {
+  const bits: string[] = []
+  if (deck.audience) bits.push(`汇报对象：${deck.audience}`)
+  if (deck.duration_min) bits.push(`时长约 ${deck.duration_min} 分钟`)
+  // 都没有才退回分类名（否则封面会缺一行，排版更空）
+  if (!bits.length) bits.push(deckTypeLabel(deck.deck_type))
+  return bits.join("　|　")
+}
+
+/**
+ * 2026-11-05：按 kind → 版式映射生成保真 specs。
  *
  * 与 planFidelityExport 的分工：
  *   · planFidelityExport = 旧通道（不区分 kind，整册用同两个样张页）
@@ -146,16 +166,14 @@ function planMappedFidelityExport(
 ): { specs: FidelitySlideSpec[]; report: { kind: string; layoutName: string | null; slideIndex: number }[] } | null {
   const slides = deck.slides ?? []
   if (!slides.length) return null
-  const metaBits = [deckTypeLabel(deck.deck_type)]
-  if (deck.audience) metaBits.push(`汇报对象：${deck.audience}`)
-  if (deck.duration_min) metaBits.push(`时长约 ${deck.duration_min} 分钟`)
+  const metaLine = coverMetaLine(deck)
 
   const specs: FidelitySlideSpec[] = []
   const report: { kind: string; layoutName: string | null; slideIndex: number }[] = []
 
   // 封面
   const coverLayout = mapping.cover ? "cover" : null
-  specs.push({ title: deck.deck_name || "汇报 PPT", lines: [metaBits.join("  |  "), today], layoutFile: toLayoutFile(mapping.cover) })
+  specs.push({ title: deck.deck_name || "汇报 PPT", lines: [metaLine, today], layoutFile: toLayoutFile(mapping.cover) })
   report.push({ kind: "cover", layoutName: coverLayout, slideIndex: 0 })
 
   // 目录
