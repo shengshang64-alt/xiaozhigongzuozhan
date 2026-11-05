@@ -239,12 +239,12 @@ function balancedElement(s: string, tag: string, from = 0): { text: string; end:
   return null
 }
 
-/** 用给定文本行重建一个形状块的 txBody，保留 bodyPr/lstStyle 与首段 pPr/首 run rPr 样式模板 */
-function rewriteShapeTxBody(block: string, texts: string[]): string | null {
+/** 从 txBody 里挖出可复用的样式骨架（bodyPr/lstStyle/首段 pPr/首 run rPr） */
+function styleSkeleton(block: string): { txIndex: number; txLen: number; bodyPr: string; lstStyle: string; pPr: string; rPr: string } | null {
   const tx = /<p:txBody>[\s\S]*?<\/p:txBody>/.exec(block)
   if (!tx) return null
   const inner = tx[0].slice("<p:txBody>".length, -"</p:txBody>".length)
-  // 注意：这四者都可能是「带自闭合子元素的容器」（bodyPr 含 normAutofit、lstStyle 含 lvl1pPr、
+  // 这四者都可能是「带自闭合子元素的容器」（bodyPr 含 normAutofit、lstStyle 含 lvl1pPr、
   // pPr 含 spcBef/buFont、rPr 含 ln/fill），必须用配对扫描，不能用惰性正则（见 balancedElement 注释）。
   const bodyPr = balancedElement(inner, "a:bodyPr")?.text || '<a:bodyPr/>'
   const lstStyle = balancedElement(inner, "a:lstStyle")?.text ?? ""
@@ -252,15 +252,54 @@ function rewriteShapeTxBody(block: string, texts: string[]): string | null {
   const pPr = firstPara ? (balancedElement(firstPara[0], "a:pPr")?.text ?? "") : ""
   const firstRun = firstPara ? /<a:r\b[^>]*>[\s\S]*?<\/a:r>/.exec(firstPara[0]) : null
   const rPr = firstRun ? (balancedElement(firstRun[0], "a:rPr")?.text ?? "") : ""
-  let paras = ""
-  for (const t of texts) {
-    paras += `<a:p>${pPr}<a:r>${rPr}<a:t>${xmlEscape(t)}</a:t></a:r></a:p>`
-  }
-  const newTx = `<p:txBody>${bodyPr}${lstStyle}${paras}</p:txBody>`
-  return block.slice(0, tx.index) + newTx + block.slice(tx.index + tx[0].length)
+  return { txIndex: tx.index, txLen: tx[0].length, bodyPr, lstStyle, pPr, rPr }
 }
 
-/** 在整页 XML 上按形状顺序做标题/正文注入；返回 null 表示该样张无法承载指定文本 */
+/** 用给定文本行重建一个形状块的 txBody，保留 bodyPr/lstStyle 与首段 pPr/首 run rPr 样式模板 */
+function rewriteShapeTxBody(block: string, texts: string[]): string | null {
+  const sk = styleSkeleton(block)
+  if (!sk) return null
+  let paras = ""
+  for (const t of texts) {
+    paras += `<a:p>${sk.pPr}<a:r>${sk.rPr}<a:t>${xmlEscape(t)}</a:t></a:r></a:p>`
+  }
+  const newTx = `<p:txBody>${sk.bodyPr}${sk.lstStyle}${paras}</p:txBody>`
+  return block.slice(0, sk.txIndex) + newTx + block.slice(sk.txIndex + sk.txLen)
+}
+
+/**
+ * 清空一个形状块里的示例文字，但保留形状、样式与段落属性（2026-11-05）。
+ *
+ * 用于模板样例页：装饰卡片的形状要留着（版面结构靠它们），但卡片里的
+ * 模板作者示例文案（「直播观看次数 7000W+」之类）必须抹掉，不能冒充本页内容。
+ * 保留 bodyPr/lstStyle/pPr（含项目符号与间距），只是不再有 <a:r> 文字节点。
+ */
+function clearShapeText(block: string): string | null {
+  const sk = styleSkeleton(block)
+  if (!sk) return null
+  const newTx = `<p:txBody>${sk.bodyPr}${sk.lstStyle}<a:p>${sk.pPr}</a:p></p:txBody>`
+  return block.slice(0, sk.txIndex) + newTx + block.slice(sk.txIndex + sk.txLen)
+}
+
+/**
+ * 在整页 XML 上按形状顺序做标题/正文注入。
+ *
+ * 2026-11-05 修（渲染实测暴露的严重缺陷）：
+ * 原来只在「找得到 body 占位符或第二个文字形状」时替换正文，**其余文字形状原样保留**。
+ * 而公司模板的「内页1」样张页没有 body 占位符（是一堆装饰卡片，16 个文字形状装的是
+ * 模板作者的示例文案）——结果导出后正文区全是模板自带的「直播带货：新生代妈妈消费新风尚」
+ * 「直播观看次数 7000W+」这类与医院毫无关系的内容，且多页完全相同，只有标题被换掉。
+ * 这是"看起来套上了模板、实际交付了错误内容"，比不套模板更糟。
+ *
+ * 现在的口径：
+ *   · 标题形状 = 标题占位符，其次第一个有文字的形状（不变）；
+ *   · 正文形状 = body 占位符，其次除标题外第一个有文字的形状（不变）；
+ *   · **其余所有「承载业务文案」的文字形状一律清空文字**（形状本身保留，装饰卡片/图标不受影响），
+ *     避免模板示例文案冒充本页内容；
+ *   · 页码/页脚/日期占位符（SKIP_PH_RE）不动。
+ *
+ * 返回 null 表示该样张无法承载指定文本（调用方回退）。
+ */
 function injectSlideText(xml: string, title: string, lines: string[]): string | null {
   const re = /<p:sp>[\s\S]*?<\/p:sp>/g
   const blocks: { start: number; end: number; text: string }[] = []
@@ -272,9 +311,27 @@ function injectSlideText(xml: string, title: string, lines: string[]): string | 
   const hasText = (b: string) => /<p:txBody>/.test(b) && !SKIP_PH_RE.test(b)
   let tIdx = blocks.findIndex((b) => TITLE_PH_RE.test(b.text))
   if (tIdx < 0) tIdx = blocks.findIndex((b) => hasText(b.text))
+
+  // ---------------------------------------------------------------------
+  // 2026-11-05 修（第二层，渲染实测暴露）：
+  // 正文原来按「第一个有文字的非标题形状」挑，实测挑中了「矩形 5」——
+  // 它是一块 **带 accent5 填充 + 整页宽** 的色块，而它上方还有一层全页渐变「矩形 44」，
+  // 于是文字注入成功、却**被上层色块完全盖住**：渲染出来是"标题 + 空白大色板"。
+  //
+  // 现在按「可见性」挑正文承载形状，顺序：
+  //   ① 真·正文占位符（type=body/subTitle/obj 或无 type 的裸 ph）
+  //   ② 纯文本框（不带填充）：模板里的「文本框 N」就是这种，文字天然可见
+  //   ③ 兜底：任意有文字的非标题形状
+  // 「纯文本框」判定 = 形状有 txBody 且 spPr 里没有 solidFill/gradFill/pattFill/blipFill。
+  // 带填充的大色块会被排除，避免"文字写进被盖住的色块"。
+  // ---------------------------------------------------------------------
+  const isFilledShape = (b: string) => /<p:spPr\b[\s\S]*?<\/p:spPr>/.test(b) && /<a:(solidFill|gradFill|pattFill|blipFill)\b/.test(/<p:spPr\b[\s\S]*?<\/p:spPr>/.exec(b)?.[0] ?? "")
+  const isFramelessText = (b: string) => hasText(b) && !isFilledShape(b) && !/<p:ph\b[^>]*type="(sldNum|ftr|dt)"/.test(b)
+
   let bIdx = -1
   if (lines.length) {
     bIdx = blocks.findIndex((b, i) => i !== tIdx && hasBodyPlaceholder(b.text))
+    if (bIdx < 0) bIdx = blocks.findIndex((b, i) => i !== tIdx && isFramelessText(b.text))
     if (bIdx < 0) bIdx = blocks.findIndex((b, i) => i !== tIdx && hasText(b.text))
     if (bIdx < 0) return null
   }
@@ -287,11 +344,19 @@ function injectSlideText(xml: string, title: string, lines: string[]): string | 
     if (r === null) return null
     bRewrite = r
   }
+  // 其余文字形状：清空文字（只留形状与样式），防模板示例文案冒充本页内容
+  const cleared = new Map<number, string>()
+  blocks.forEach((b, i) => {
+    if (i === tIdx || i === bIdx) return
+    if (!hasText(b.text)) return
+    const empty = clearShapeText(b.text)
+    if (empty !== null) cleared.set(i, empty)
+  })
   let out = ""
   let last = 0
   for (let i = 0; i < blocks.length; i++) {
     out += xml.slice(last, blocks[i].start)
-    out += i === tIdx ? tRewrite : i === bIdx ? bRewrite : blocks[i].text
+    out += i === tIdx ? tRewrite : i === bIdx ? bRewrite : (cleared.get(i) ?? blocks[i].text)
     last = blocks[i].end
   }
   out += xml.slice(last)
