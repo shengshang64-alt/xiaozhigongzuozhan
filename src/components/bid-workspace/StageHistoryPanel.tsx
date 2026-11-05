@@ -18,6 +18,9 @@ import {
   SNAPSHOT_STAGE_BADGE,
   SNAPSHOT_STAGE_LABEL,
   isRestorableSnapshot,
+  scoringItemsFromReport,
+  sectionText,
+  type ParseReport,
   type SnapshotStage,
   type StageSnapshotRow,
 } from "@/pages/BidWorkspace/bidTypes"
@@ -32,15 +35,31 @@ function relTime(iso: string): string {
   return formatRelativeTime(iso)
 }
 
+/**
+ * 按行数统计某个解析分区的条目数（与解析页/废标检查页同一口径：一行一条）。
+ * 分区不存在或为空返回 0（不编造、不拿旧字段凑数）。
+ */
+function countSectionLines(report: ParseReport, key: string): number {
+  return sectionText(report, key)
+    .split(/\n+/)
+    .filter((l) => l.trim()).length
+}
+
 /** 按 stage 生成 payload 摘要（本地计算，不展示原文全文） */
 function payloadSummary(stage: SnapshotStage, payload: Record<string, unknown> | null): string {
   if (!payload) return "无附加内容"
   const parts: string[] = []
-  const report = payload.parse_report as { scoring_items?: unknown[]; qualifications?: unknown[]; void_clauses?: unknown[] } | undefined
+  // 阶段 1 · 包 2（致命数字不打架）：这三行原先读 `payload.parse_report` 的**旧固定字段**
+  // （scoring_items / qualifications / void_clauses）。现网解析产物是 sections 形态（见 bidTypes
+  // 的 normalizeParseReport），旧字段只在把 legacy 报告迁回来的那一刻出现，于是快照摘要恒显示
+  // 「评分项 0 条 / 资质要求 0 条 / 废标条款 0 条」，与解析页同屏显示的「★/▲ 条款 N 条」直接打架。
+  // 现改为走全站同一真源：评分项 scoringItemsFromReport（structured 优先），
+  // 资质/废标按 sections 的 key 取行数——与解析页、废标检查页同一口径，不再各数各的。
+  const report = payload.parse_report as ParseReport | undefined
   if (report) {
-    parts.push(`评分项 ${report.scoring_items?.length ?? 0} 条`)
-    parts.push(`资质要求 ${report.qualifications?.length ?? 0} 条`)
-    parts.push(`废标条款 ${report.void_clauses?.length ?? 0} 条`)
+    parts.push(`评分项 ${scoringItemsFromReport(report).length} 条`)
+    parts.push(`资质要求 ${countSectionLines(report, "qualification")} 条`)
+    parts.push(`废标条款 ${countSectionLines(report, "void_items")} 条`)
   }
   const outline = payload.outline as { title?: string }[] | undefined
   if (outline) parts.push(`大纲节点 ${outline.length} 个`)

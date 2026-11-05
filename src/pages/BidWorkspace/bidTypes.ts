@@ -2230,8 +2230,28 @@ export function extractScoringFromText(text: string): ScoringItem[] {
   return out
 }
 
+/**
+ * 评分项统一读取（**全站唯一真源**）。
+ *
+ * 阶段 1 · 包 2（标书稳定 · 致命数字不打架）修复：
+ *   此前同一份解析报告有**两条读取口径**并存——
+ *     · `numberScoringItems()` → `scoringItemsFromSection()`（structured 优先，R-026 正式形态）；
+ *     · `scoringItemsFromReport()` → `extractScoringFromText(combinedScoringText())`（纯行文本正则）。
+ *   结构化数据在时两者本该等价，但行文本里只要出现「小计（40 分）」这类**非评分项**的分值行，
+ *   正则就会把它当成一条独立评分项重复计入。实测复现：同一报告
+ *   `scoringItemsFromReport` 得 4 条 / 合计 **140 分**，`numberScoringItems` 得 3 条 / 合计 **100 分**。
+ *   受害面很广——这个函数是全站「评分项满分之和」的唯一来源：
+ *   `MockEvalPanel` 的「AI 预估总分 / N」分母（注释里记载过「实测显示 200 而招标满分 100」）、
+ *   `PriceScorePanel` 的价格分测算样本、`BidWarRoom` 的得分地图、以及各处 `assignScoringToChapters`。
+ *   同一屏上「满分 140」与「招标满分 100」同时出现，就是 D6 §5「数字诚实」明令禁止的形态。
+ *
+ * 现口径：**与 `numberScoringItems` 共用 `scoringItemsFromSection`（structured 优先、行文本兜底）**，
+ * 一条评分项只可能被数到一次。structured 缺失的老数据仍走原来的行文本正则，行为不变。
+ *
+ * 保留导出名与签名不变（调用点 24 处，不在本次止血范围内做重命名）。
+ */
 export function scoringItemsFromReport(report: ParseReport | null): ScoringItem[] {
-  return extractScoringFromText(combinedScoringText(report))
+  return [...scoringItemsFromSection(report, "tech_score"), ...scoringItemsFromSection(report, "biz_score")]
 }
 
 // ------------------------------ R31：评分细项编号体系 + 主客观分类 ------------------------------
