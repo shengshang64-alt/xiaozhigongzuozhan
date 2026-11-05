@@ -160,6 +160,7 @@ export function AssistantPage(p: ReturnType<typeof useAssistant>) {
             onQuickAsk={p.sendMessage}
             onRetry={p.retryLast}
             onDismiss={p.dismissFailedMsg}
+            elapsedSec={p.sendElapsedTick}
           />
 
           <ChatComposer

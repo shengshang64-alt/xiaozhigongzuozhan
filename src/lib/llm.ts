@@ -43,6 +43,57 @@ const CHAT_ABORT_MS = 240000
 const POLL_INTERVAL_MS = 3000
 const POLL_ATTEMPTS = 200
 
+/**
+ * 平台通道「失败响应」的归一（纯函数，便于单测锁口径）。
+ *
+ * 背景（阶段 1 · 包 1 止血）：llm.pb.js 的失败分支都是**同步 definitive** 的——
+ * 上游 503 时它 `e.json(502, { error: "llm_failed", message: "LLM HTTP 503 …" })`，
+ * 任务记录同时被标成 failed。但原实现只要首跳不是 2xx 就 `initialFailed = true`
+ * 掉进 200 × 3s ≈ **10 分钟**的轮询，轮询每次都拿到同一个 502 → 最后统一报
+ * `error: "timeout"`。用户侧表现就是：明明上游「模型服务繁忙（503）」，却干等十分钟
+ * 后被告诉「AI 处理超时」，既不是真因、也没有可执行动作。
+ *
+ * 口径：
+ *   ① 服务端已拼成中文人话（含上游状态码与处置建议）→ 原样透出，不吞细节；
+ *   ② 只有英文/原始报文 → **不把上游原文灌给用户**，按内嵌状态码归一成可执行中文；
+ *   ③ 2xx 一律返回 null（成功路径不受影响）。
+ */
+export function platformFailureResult(status: number, body: unknown): LlmCallResult | null {
+  if (status >= 200 && status < 300) return null
+  if (status === 412) {
+    return { ok: false, status: "failed", text: "", error: "rh_login_required", needsLogin: true }
+  }
+  if (status === 404) return { ok: false, status: "failed", text: "", error: "not_found" }
+  const rec = body && typeof body === "object" ? (body as Record<string, unknown>) : {}
+  const message = typeof rec.message === "string" ? rec.message.trim() : ""
+  const code = typeof rec.error === "string" ? rec.error.trim() : ""
+  if (message && /[\u4e00-\u9fff]/.test(message)) {
+    return { ok: false, status: "failed", text: "", error: message }
+  }
+  // 报文里可能内嵌上游真实状态码（"LLM HTTP 503 …"），它比外层 502 更能指向病灶
+  const embedded = message.match(/\b(?:HTTP\s*)?([45]\d{2})\b/)
+  const eff = embedded ? Number(embedded[1]) : status
+  if (eff === 503) {
+    return { ok: false, status: "failed", text: "", error: "模型服务繁忙（HTTP 503），通常稍等几秒重试即可，不是配置错误" }
+  }
+  if (eff === 429) {
+    return { ok: false, status: "failed", text: "", error: "模型通道被限流（HTTP 429），请稍等约半分钟后重试，或切换到其他已配置模型" }
+  }
+  if (eff === 401 || eff === 403) {
+    return { ok: false, status: "failed", text: "", error: "模型通道鉴权失败（可能是 API Key 失效或已过期），请到「模型配置」核对后重试" }
+  }
+  if (eff >= 500) {
+    return { ok: false, status: "failed", text: "", error: `上游模型服务异常（HTTP ${eff}），本次未产出内容，请稍后重试或切换模型` }
+  }
+  // 兜底：仍不外泄内部错误码，给状态码与下一步
+  return {
+    ok: false,
+    status: "failed",
+    text: "",
+    error: code ? `模型请求被拒绝（HTTP ${eff}），请检查模型配置后重试` : `模型请求失败（HTTP ${eff}），请稍后重试`,
+  }
+}
+
 // 老代际后端兼容 (发布刷新契约, rh_vc_deploy 依赖 "legacyLlmRoutes" 这个标记判断
 // 本模板可以安全刷进老 app):
 // 2026-07-01 aa25af8 之前的 llm.pb.js 注册的是按模型分路由
@@ -132,7 +183,9 @@ export async function callLlmWithFallback(modelName: string, opts: LlmCallOption
     }
   }
 
-  let initialFailed: boolean
+  // 首跳的**每一个**非异常出口都在 try 内直接 return（成功 / 404 双代际 / 412 / 4xx-5xx 确定性失败），
+  // 因此「能走到 try/catch 之后」等价于「首跳抛错或被超时中止」——这正是要转入轮询取结果的
+  // 既有恢复路径（长生成 >240s）。不再需要 initialFailed 布尔量来做二次判定。
   try {
     let res = await fetch(llmUrl("chat", modelName), {
       method: "POST",
@@ -158,29 +211,35 @@ export async function callLlmWithFallback(modelName: string, opts: LlmCallOption
       }
     }
     window.clearTimeout(timeoutId)
-    if (res.status === 412) {
-      return { ok: false, status: "failed", text: "", error: "rh_login_required", needsLogin: true }
+    // 阶段 1 · 包 1：502/500（上游 503 等**确定性**失败）必须立即如实返回，
+    // 不能当瞬时故障掉进 10 分钟轮询后被改写成人人看不懂的「超时」。
+    // llm.pb.js 的 /api/llm/chat 是同步路由：成功 200{ok:true}、鉴权 412、其余失败 4xx/5xx
+    // 且任务记录已标 failed——非 2xx 再轮询也只会反复拿到同一个错，故在此收口。
+    // 响应正文本就只读一次，先取出再分流（避免前后两次 res.json() 读同一个已消费的流）。
+    const bodyData: unknown = await res.json().catch(() => null)
+    const failedResp = platformFailureResult(res.status, bodyData)
+    if (failedResp) return failedResp
+    const data = (bodyData ?? {}) as Record<string, unknown>
+    const rawStatus = typeof data.status === "string" ? data.status : ""
+    const knownStatus =
+      rawStatus === "success" || rawStatus === "failed" || rawStatus === "running" || rawStatus === "pending" || rawStatus === "not_found"
+        ? rawStatus
+        : "success"
+    return {
+      ok: !!data.ok,
+      status: knownStatus,
+      text: typeof data.text === "string" ? data.text : "",
+      error: typeof data.error === "string" ? data.error : "",
+      model: typeof data.model === "string" ? data.model : undefined,
+      usage: data.usage,
     }
-    if (res.ok) {
-      const data = await res.json().catch(() => ({}))
-      return {
-        ok: !!data.ok,
-        status: data.status || "success",
-        text: data.text || "",
-        error: data.error || "",
-        model: data.model,
-        usage: data.usage,
-      }
-    }
-    initialFailed = true
   } catch {
-    initialFailed = true
+    /* 首跳抛错 / 被 CHAT_ABORT_MS 中止：转入下面的轮询取结果 */
   } finally {
     window.clearTimeout(timeoutId)
   }
 
   if (userAborted) return { ok: false, status: "failed", text: "", error: "user_cancelled" }
-  if (!initialFailed) return { ok: false, status: "failed", text: "", error: "unknown" }
 
   // 2026-10-20：轮询必须认取消。此前这里完全不看 opts.signal —— 一旦首跳失败进入轮询，
   // 用户点「取消」无效（ctrl 只作用于首跳的 fetch），最长要等满 POLL_ATTEMPTS × POLL_INTERVAL_MS

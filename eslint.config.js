@@ -27,6 +27,7 @@ export default defineConfig([
     '.workbuddy-ai',
     '_qa', // 实机验证辅助脚本与产物
     '_shots',
+    '.scratch', // 一次性实验脚本与产物（含 .cjs/.py 混写，非产品源码；与 .probe/_eval 同类）
     '_edgeprofile',
     'pocketbase/pb_data', // PocketBase 运行时数据库
     'pocketbase/types.d.ts', // PocketBase 生成的类型声明

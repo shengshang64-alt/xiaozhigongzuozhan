@@ -121,6 +121,7 @@ export function FloatingAssistant() {
               compact
               onRetry={vm.retryLast}
               onDismiss={vm.dismissFailedMsg}
+              elapsedSec={vm.sendElapsedTick}
             />
           </Suspense>
 

@@ -35,6 +35,7 @@ import { skillCostSuffix } from "@/lib/skillCore"
 import { currentStudioCostText, llmGenerate, setStudioModelRef } from "./studioLlm"
 import { formatFailedChapterList, isBlankChapterOutput } from "./chapterGenGuard"
 import { BLANK_OUTPUT_REASON, describeGenFailure } from "./genFailureNote"
+import { outlineFailCopy } from "./outlineFailure"
 import { runBulkPool } from "@/lib/bulkPool"
 import { buildSelfCheckOverview } from "./solSelfCheckOverview"
 import { DEFAULT_EXPORT_TEMPLATE, buildExportFrontMatter, readSolutionExportTemplate, writeSolutionExportTemplate, type SolutionExportTemplate } from "./exportTemplate"
@@ -597,16 +598,18 @@ export function useSolutionStudio() {
         "solution-outline",
       )
       const nodes = normalizeOutline(parseOutlineJson(text))
-      if (!nodes.length) throw new Error("大纲格式解析失败，请重试")
+      if (!nodes.length) throw new Error("模型返回的 JSON 中没有任何有效章节（大纲为空）")
       setOutlineDraft(nodes)
       setWizardStep(3)
       setOutlineError(null)
       toast.success("大纲已生成，可调整后确认")
     } catch (e) {
-      const reason = e instanceof Error ? e.message : "大纲生成失败"
-      const msg = `${reason}，可直接重试`
-      setOutlineError(msg)
-      toast.error(msg)
+      // 阶段 1 · 包 1（方案大纲失败可见）：原实现无差别追加「，可直接重试」并把
+      // 「模型返回空大纲」误报成「格式解析失败」。改为按归因给「是什么 + 该做什么」，
+      // 确定性失败（鉴权 / 未配置模型）**不**引导重试，免得用户重复付费。
+      const copy = outlineFailCopy(e)
+      setOutlineError(copy.text)
+      toast.error(copy.text)
     } finally {
       setOutlineLoading(false)
     }

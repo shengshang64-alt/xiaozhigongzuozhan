@@ -55,7 +55,7 @@ vi.mock("@/lib/rhLogin", () => ({
   vibexAuthHeaders: () => ({ "X-Rh-User-Id": "local-user" }),
 }))
 vi.mock("sonner", () => ({ toast: { error: () => {}, info: () => {}, success: () => {}, warning: () => {} } }))
-vi.mock("@/hooks/useCostConfirm", () => ({ useCostConfirm: () => ({ runWithCostConfirm: (_fn: () => void) => {} }) }))
+vi.mock("@/hooks/useCostConfirm", () => ({ useCostConfirm: () => ({ runWithCostConfirm: (fn: () => void) => fn() }) }))
 
 vi.mock("react-router-dom", async (orig) => {
   const actual = await orig<typeof import("react-router-dom")>()

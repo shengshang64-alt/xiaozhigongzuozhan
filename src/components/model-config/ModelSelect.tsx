@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { Link } from "react-router-dom"
 import { AlertTriangle, Cpu } from "lucide-react"
 import { modelRefKey, modelRefLabel, type ModelRef } from "@/lib/modelGateway"
 import { decodeRhToken, isLocalDeployHost } from "@/lib/rhLogin"
@@ -37,9 +38,18 @@ function useModelHealth(): Record<string, ModelHealthEntry> {
   return health
 }
 
+/** 未配置任何可用模型时的统一提示（阶段 1 · 包 1：禁止 UI 把未配置的模型当可选推荐） */
+export const NO_MODEL_CONFIGURED_TEXT = "未配置任何可用模型"
+export const NO_MODEL_CONFIGURED_HINT = "请到「模型配置」添加一条可用通道（接口地址 + API Key）并启用模型后再使用 AI 功能"
+
 export function ModelSelect({ models, valueKey, onChange }: ModelSelectProps) {
   const personalModels = models.filter((m) => m.source === "personal")
   const health = useModelHealth()
+  // 阶段 1 · 包 1（AI 可靠性）：**没有任何已配置/已启用模型**时，绝不渲染「平台内置 gpt-5.5」
+  // 这种看似可选的假选项——它会让用户以为有模型可用，点了才失败，且失败了还查不出原因。
+  // 实测本地部署下平台内置必然 412（缺 RunningHub 登录态），把它当默认推荐就是「推荐未配置模型」。
+  // 空态只做两件事：如实说明「没有可用模型」+ 给出可执行的下一步，且禁用下拉（没有可选项）。
+  const noModelConfigured = models.length === 0
   // P2-4：下拉分组整备——平台内置一组在前，个人模型按供应商细分子组，组内挂账模型沉底
   const groups = useMemo(() => {
     const unhealthy = new Set(
@@ -64,12 +74,11 @@ export function ModelSelect({ models, valueKey, onChange }: ModelSelectProps) {
   const platformDisabled = isLocalDeployHost() && personalModels.length > 0
   // 截断兜底：select 宽度有限（max-w-44），模型名过长时显示省略号；
   // 把完整标签挂到 title 上，悬停即可看全名（浏览器原生 tooltip）。
-  const selectedLabel =
-    models.find((m) => modelRefKey(m) === valueKey) != null
+  const selectedLabel = noModelConfigured
+    ? NO_MODEL_CONFIGURED_HINT
+    : models.find((m) => modelRefKey(m) === valueKey) != null
       ? modelRefLabel(models.find((m) => modelRefKey(m) === valueKey)!)
-      : models.length === 0
-        ? "平台内置 gpt-5.5"
-        : valueKey
+      : valueKey
   // 下拉项后缀：冷却（会话内、分钟级）与实测不可用（持久、天级）是两回事，命中哪个说哪个
   const statusSuffix = (key: string): string => {
     const parts: string[] = []
@@ -85,10 +94,12 @@ export function ModelSelect({ models, valueKey, onChange }: ModelSelectProps) {
         value={valueKey}
         onChange={(e) => onChange(e.target.value)}
         aria-label="选择本次生成使用的模型"
+        aria-invalid={noModelConfigured || undefined}
+        disabled={noModelConfigured}
         title={selectedLabel}
-        className="h-7 max-w-44 cursor-pointer rounded-md border-0 bg-transparent text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        className="h-7 max-w-44 cursor-pointer rounded-md border-0 bg-transparent text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:text-muted-foreground"
       >
-        {models.length === 0 && <option value="">平台内置 gpt-5.5</option>}
+        {noModelConfigured && <option value="">{NO_MODEL_CONFIGURED_TEXT}</option>}
         {groups.map((g) => (
           <optgroup
             key={g.key}
@@ -108,6 +119,15 @@ export function ModelSelect({ models, valueKey, onChange }: ModelSelectProps) {
           </optgroup>
         ))}
       </select>
+      {noModelConfigured && (
+        <Link
+          to="/model-config"
+          className="shrink-0 rounded px-1.5 py-0.5 text-xs font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          title={NO_MODEL_CONFIGURED_HINT}
+        >
+          去配置
+        </Link>
+      )}
       {selectedHealth && (
         <span
           className="badge-danger inline-flex shrink-0 items-center gap-1"

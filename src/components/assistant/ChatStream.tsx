@@ -67,15 +67,37 @@ type ChatStreamProps = {
   onRetry?: () => void
   /** B1：失败消息的单条「×」消除回调，缺省时不渲染消除按钮 */
   onDismiss?: (msgId: string) => void
+  /**
+   * p1-ux（阶段 1 · 包 1）：本轮已等秒数。
+   * 长答（>30s）在只有「正在思考…」时完全无反馈，用户不知道是卡死还是真在算，
+   * 于是反复重发（每次都是真金白银）。这里把秒数与「可取消」一起显示，给出体感与出口。
+   */
+  elapsedSec?: number
 }
 
-export function ChatStream({ messages, sendState, fetchBadge, compact, onQuickAsk, onRetry, onDismiss }: ChatStreamProps) {
+/**
+ * 长答体感阈值（秒）：超过它才追加「长回答耗时较长，可取消」的提示。
+ * 取值口径：网关单次出站上限 300s（model_gateway.pb.js 红线），实测常规短问 <10s；
+ * 30s 之后仍无结果是用户开始怀疑「卡死了」的临界点，也是持续计费的开端。
+ */
+export const LONG_ANSWER_HINT_SEC = 30
+
+export function ChatStream({
+  messages,
+  sendState,
+  fetchBadge,
+  compact,
+  onQuickAsk,
+  onRetry,
+  onDismiss,
+  elapsedSec = 0,
+}: ChatStreamProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [messages.length, sendState, fetchBadge])
+  }, [messages.length, sendState, fetchBadge, elapsedSec])
 
   const busy = sendState !== "idle"
 
@@ -208,8 +230,15 @@ export function ChatStream({ messages, sendState, fetchBadge, compact, onQuickAs
                   <span className="inline-flex w-fit items-center gap-1.5 px-1 text-xs text-muted-foreground">
                     <Loader2 className="h-3 w-3 animate-spin text-primary" />
                     小智正在思考…
+                    {elapsedSec > 0 ? <span className="tabular-nums">已等 {elapsedSec}s</span> : null}
                   </span>
                 )}
+                {/* 长答体感：超过阈值后明确告知「还在算 / 可以取消」，与输入框的取消按钮互为提示 */}
+                {elapsedSec >= LONG_ANSWER_HINT_SEC ? (
+                  <span className="inline-flex w-fit items-center gap-1 px-1 text-xs text-muted-foreground/80">
+                    长回答耗时较长，仍在生成中；不想等可点输入框旁「取消」
+                  </span>
+                ) : null}
               </div>
             </div>
           ) : null}
