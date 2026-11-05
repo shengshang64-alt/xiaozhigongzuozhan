@@ -102,6 +102,7 @@ import { parseTemplateOutline, recommendMapping, resolveMapping, type TemplateOu
 // 2026-11-04 B 项：大纲返回后按页型配额做确定性校正（模型执行率低，光靠提示词不够）
 import { enforceOutlineKindQuota } from "./deckOutlineQuota"
 import { buildPlaceholderSlides, insertBeforeClosing } from "./deckPageFloor"
+import { decideSingleCallOutcome } from "./deckSingleCallFallback"
 // 2026-11-04 E 项：生成/导出前的结构自检报告（空页、缺 figure、纯文字比例）
 import { buildStructureReport, reportToastLine } from "./deckStructureReport"
 // 2026-11-04 D 项：先探能力再发请求（缺 Key 时一次性说清原因并降级，不逐页瞎试）
@@ -709,33 +710,13 @@ export function usePptQuote() {
       // 且 layout=auto，不会被自动配图选中二次烧钱），保住骨架供编辑器逐页补全；
       // 全军覆没才报错且不建空壳 deck。口径对齐标书批量编排「单批失败重试 1 次后跳过」。
       let placeholderCount = 0
-      if (pageCount <= SINGLE_CALL_MAX_PAGES) {
-        slides = await withGenerationRetry(
-          async (attempt) => {
-            setDeckProgress(attempt === 0 ? `正在生成 ${pageCount} 页内容…` : "生成未完成，正在自动重试…")
-            const text = await llmGenerate(buildDeckSingleMessages(ctx, pageCount), MAX_TOKENS_LONGFORM, "ppt-deck", activeModelRef.current)
-            // R149：单发路径按目标页数收敛，防模型自行加页（保留开场/致谢、裁中间正文）
-            return normalizeSlides(parseJsonLoose(text), null, pageCount)
-          },
-          {
-            // 2026-11-04 修：原来判据是 `got.length === 0`——**只有一页都没生成才算失败**。
-            // 实测要 10 页、模型只返回 4 页，既不重试也不提示，用户拿到一本 4 页的册子。
-            // 现改为「少于目标页数一半」即视为不完整，触发重试。
-            isEmptyResult: (got) => got.length === 0 || got.length < Math.ceil(pageCount / 2),
-            emptyMessage: "AI 返回的页数明显不足，请重试",
-          },
-        )
-        // 2026-11-04：页数补齐。模型常「说要 10 页、只写 4 页」；重试后仍不足时不静默接受，
-        // 补占位页保住骨架（插在结尾页之前，保持叙事顺序），并如实告知用户补了几页。
-        if (slides.length > 0 && slides.length < pageCount) {
-          const short = pageCount - slides.length
-          const got = slides.length
-          slides = insertBeforeClosing(slides, buildPlaceholderSlides(short))
-          toast.warning(
-            `AI 本次只生成了 ${got} 页（目标 ${pageCount} 页），已补齐 ${short} 页占位页，可在编辑器逐页「AI 补全」`,
-          )
-        }
-      } else {
+
+      /**
+       * 逐页生成路径（大纲 → 每页独立生成/校验/重试）。
+       * 抽成内部函数是为了让单发路径在「模型严重偷懒」时能**回退到它**重做，
+       * 而不是补一堆空占位糊弄（2026-11-05 修，详见下方 decideSingleCallOutcome 注释）。
+       */
+      const generateByPages = async (): Promise<Slide[]> => {
         setDeckProgress("正在生成整体大纲…")
         const outlineText = await llmGenerate(buildDeckOutlineMessages(ctx, pageCount), MAX_TOKENS_OUTLINE, "ppt-deck", activeModelRef.current)
         const rawPlan: SlidePlan[] = enforceOutlineQuotaWithToast(
@@ -750,7 +731,6 @@ export function usePptQuote() {
           const refCount = plan.reduce((n, p) => n + (p.sourceRefs?.length ?? 0), 0)
           if (refCount > 0) setDeckProgress(`已从素材库为 ${plan.filter((p) => p.sourceRefs?.length).length} 页召回参考片段`)
         }
-        slides = []
         // ---------------------------------------------------------------------
         // 2026-10-30 重构（问题 4）：逐页生成 + Schema 校验 + 单页重试
         //
@@ -774,11 +754,12 @@ export function usePptQuote() {
                 : `正在逐页生成内容（${done}/${total}）：${title}`,
             ),
         })
+        const out: Slide[] = []
         results.forEach((r) => {
           if (r.slide) {
-            slides.push(r.slide)
+            out.push(r.slide)
           } else {
-            slides.push(emptySlide(r.plan.title))
+            out.push(emptySlide(r.plan.title))
             placeholderCount += 1
           }
         })
@@ -789,7 +770,53 @@ export function usePptQuote() {
             `${failedCount} 页生成未通过校验已留标题占位（${names.join("、")}${failedCount > 3 ? " 等" : ""}），可在编辑器逐页补全`,
           )
         }
-        if (!slides.length || placeholderCount === slides.length) throw new Error("PPT 逐页生成均未成功，请稍后重试")
+        if (!out.length || placeholderCount === out.length) throw new Error("PPT 逐页生成均未成功，请稍后重试")
+        return out
+      }
+
+      if (pageCount <= SINGLE_CALL_MAX_PAGES) {
+        const singleGot = await withGenerationRetry(
+          async (attempt) => {
+            setDeckProgress(attempt === 0 ? `正在生成 ${pageCount} 页内容…` : "生成未完成，正在自动重试…")
+            const text = await llmGenerate(buildDeckSingleMessages(ctx, pageCount), MAX_TOKENS_LONGFORM, "ppt-deck", activeModelRef.current)
+            // R149：单发路径按目标页数收敛，防模型自行加页（保留开场/致谢、裁中间正文）
+            return normalizeSlides(parseJsonLoose(text), null, pageCount)
+          },
+          {
+            // 只有一页都没生成才算彻底失败（重试由下面的 verdict 决策统一处理，
+            // 因为「差几页」要看差距大小分别对待，不能一律重试也不能一律接受）
+            isEmptyResult: (got) => got.length === 0,
+            emptyMessage: "AI 返回的页数明显不足，请重试",
+          },
+        )
+        // ---------------------------------------------------------------------
+        // 2026-11-05 修（实测缺陷）：
+        //   上一轮加了「少于目标一半就重试」，但 `5 < ceil(10/2)=5` 为 false，
+        //   要 10 页只回 5 页时**既不重试也不回退**，直接补了 5 页「待补充章节」，
+        //   用户拿到半成品册子。
+        // 现在按差距分三档（decideSingleCallOutcome）：
+        //   · 够      → 直接采用
+        //   · 缺一点  → 补少量占位（不值得整册重做烧钱）
+        //   · 缺太多  → **回退到逐页生成重做**（每页独立、可靠），而不是拿空占位凑数
+        // ---------------------------------------------------------------------
+        const verdict = decideSingleCallOutcome(singleGot.length, pageCount)
+        if (verdict.action === "fallback") {
+          toast.info(
+            `单次生成只返回 ${verdict.got}/${pageCount} 页，改为逐页生成确保内容完整（每页独立校验）`,
+          )
+          placeholderCount = 0
+          slides = await generateByPages()
+        } else {
+          slides = singleGot
+          if (verdict.action === "pad") {
+            slides = insertBeforeClosing(slides, buildPlaceholderSlides(verdict.missing))
+            toast.warning(
+              `AI 本次只生成了 ${verdict.got} 页（目标 ${pageCount} 页），已补齐 ${verdict.missing} 页占位页，可在编辑器逐页「AI 补全」`,
+            )
+          }
+        }
+      } else {
+        slides = await generateByPages()
       }
       // 2026-11-04：恢复「生成后自动整形」——纯文字页在落库前确定性转成图表/架构/流程/要点矩阵。
       // （2026-10-30 曾关掉它、只把建议写进 localStorage，但全仓无人读取该键，
