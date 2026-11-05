@@ -1,4 +1,5 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate"
+import { detectQuadrantSlots, fitsQuadrant, splitQuadrantText, type ShapeInfo } from "./deckQuadrant"
 
 // ---------------------------------------------------------------------------
 // R182（r169 三切片计划·切片一）：公司模板母版/版式级保真引擎。
@@ -179,17 +180,60 @@ function pickSample(ctx: Ctx, role: "title" | "body"): FidelityTemplateSlide | n
 }
 
 /**
- * 按指定版式挑一张可用样张页（2026-11-05）。
+ * 按指定版式挑一张可用样张页（2026-11-05，v4 起支持「按内容形态择优」）。
  *
  * 用途：让封面/目录/章节/内页/封底各自复用**自己那个版式**的样张页，
  * 而不是整册都克隆同一张。找不到该版式的样张页时返回 null，调用方回退到默认样张。
+ *
+ * 2026-11-05 v4：同一版式下有 12 张结构不同的样例页（信息位 2~12 个不等）。
+ * `prefer` 参数指定本页内容形态，用它挑最匹配的样例页：
+ *   · "quadrant"：本页有 4 条并列要点 → 优先挑能被 detectQuadrantSlots 识别的四象限页
+ *     （实测只有 slide12 合格；其余页塞进去会溢出重叠或全挤一个框）。
+ *   · 未指定或挑不到 → 维持原行为（第一张有标题占位符的），保证不倒退。
  */
-function pickSampleByLayout(ctx: Ctx, layoutFile: string): FidelityTemplateSlide | null {
+function pickSampleByLayout(
+  ctx: Ctx,
+  layoutFile: string,
+  prefer?: "quadrant",
+): FidelityTemplateSlide | null {
   const target = layoutFile.replace(/^.*?((?:slide)?layout\d+\.xml)$/, "$1")
   const cands = ctx.slides.filter((s) => s.usable && ctx.layouts.get(s.idx) === target)
   if (!cands.length) return null
-  // 优先有标题占位符的（才能写入本页标题）
-  return cands.find((s) => s.titlePh) ?? cands[0]
+  const titled = cands.filter((s) => s.titlePh)
+  const pool = titled.length ? titled : cands
+
+  if (prefer === "quadrant") {
+    // 逐张试识别，取第一张能当四象限用的
+    for (const s of pool) {
+      const xml = ctx.xmls.get(s.idx)
+      if (!xml) continue
+      if (detectQuadrantSlots(shapeInfosFromXml(xml))) return s
+    }
+  }
+  return pool[0]
+}
+
+/**
+ * 从整页 XML 抽出形状几何清单（供 detectQuadrantSlots 使用）。
+ * 与 injectSlideText 里的抽取口径保持一致（同名形状、同一套偏移/字号解析）。
+ */
+function shapeInfosFromXml(xml: string): ShapeInfo[] {
+  const blocks = xml.match(/<p:sp>[\s\S]*?<\/p:sp>/g) || []
+  return blocks.map((b, i) => {
+    const off = /<a:off x="(-?\d+)" y="(-?\d+)"\/>/.exec(b)
+    const ext = /<a:ext cx="(\d+)" cy="(\d+)"\/>/.exec(b)
+    const szm = /<a:rPr[^>]*\bsz="(\d+)"/.exec(b)
+    const txt = [...b.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((x) => x[1]).join("")
+    return {
+      idx: i,
+      x: off ? Number(off[1]) : 0,
+      y: off ? Number(off[2]) : 0,
+      cx: ext ? Number(ext[1]) : 0,
+      cy: ext ? Number(ext[2]) : 0,
+      fontSize: szm ? Number(szm[1]) / 100 : 0,
+      text: txt,
+    }
+  })
 }
 
 // ---------------------------- 文本注入 -------------------------------------
@@ -338,8 +382,65 @@ function injectSlideText(xml: string, title: string, lines: string[]): string | 
   if (tIdx < 0) return null
   const tRewrite = rewriteShapeTxBody(blocks[tIdx].text, [title])
   if (tRewrite === null) return null
+
+  // ---------------------------------------------------------------------
+  // 2026-11-05 v4（手工小样验证过的方案）：四象限填充。
+  //
+  // 前几轮把要点塞进格子全都失败，根因是没搞清模板格子的语义分层。
+  // 实测公司模板 slide12 是唯一结构规整、且恰好适合 4 条并列要点的版式：
+  //   胶囊标签 / 40pt 主标题 / 2×2 四象限（每格 14pt 小标题 + 12pt 说明）/ 底部 4 标签。
+  // 我手工把 4 条医院要点注入这 8 个格子，渲染结果版面整洁、无溢出、无留白
+  // （.scratch/render/png_proto/page03.png）。
+  //
+  // 触发条件严格（宁可普通也不做坏）：恰好 4 条要点、每条都能拆出非空小标题、
+  // 且该样张页确实是四象限结构。任一不满足就走下面的「单正文框」老路。
+  // ---------------------------------------------------------------------
+  const writes = new Map<number, string>()
+  let quadrantUsed = false
+  if (fitsQuadrant(lines)) {
+    const shapeInfos = blocks.map((b, i) => {
+      const off = /<a:off x="(-?\d+)" y="(-?\d+)"\/>/.exec(b.text)
+      const ext = /<a:ext cx="(\d+)" cy="(\d+)"\/>/.exec(b.text)
+      const szm = /<a:rPr[^>]*\bsz="(\d+)"/.exec(b.text)
+      const txt = [...b.text.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((x) => x[1]).join("")
+      return {
+        idx: i,
+        x: off ? Number(off[1]) : 0,
+        y: off ? Number(off[2]) : 0,
+        cx: ext ? Number(ext[1]) : 0,
+        cy: ext ? Number(ext[2]) : 0,
+        fontSize: szm ? Number(szm[1]) / 100 : 0,
+        text: txt,
+      }
+    })
+    const slots = detectQuadrantSlots(shapeInfos)
+    if (slots) {
+      const items = lines.map((l) => splitQuadrantText(l))
+      const put = (idx: number, text: string) => {
+        if (!text) return
+        const r = rewriteShapeTxBody(blocks[idx].text, [text])
+        if (r !== null) writes.set(idx, r)
+      }
+      // 主标题
+      put(slots.headline, title)
+      // 四象限：每格小标题 + 说明
+      slots.cells.forEach(([tIdx2, bIdx2], ci) => {
+        const it = items[ci]
+        if (!it) return
+        put(tIdx2, it.title)
+        put(bIdx2, it.body)
+      })
+      // 底部标签：用各条要点的小标题（最贴近"一句话标签"语义）
+      slots.footerTags.forEach((idx, i) => {
+        const it = items[i]
+        if (it) put(idx, it.title)
+      })
+      quadrantUsed = true
+    }
+  }
+
   let bRewrite = ""
-  if (bIdx >= 0) {
+  if (!quadrantUsed && bIdx >= 0) {
     const r = rewriteShapeTxBody(blocks[bIdx].text, lines)
     if (r === null) return null
     bRewrite = r
@@ -347,7 +448,7 @@ function injectSlideText(xml: string, title: string, lines: string[]): string | 
   // 其余文字形状：清空文字（只留形状与样式），防模板示例文案冒充本页内容
   const cleared = new Map<number, string>()
   blocks.forEach((b, i) => {
-    if (i === tIdx || i === bIdx) return
+    if (i === tIdx || i === bIdx || writes.has(i)) return
     if (!hasText(b.text)) return
     const empty = clearShapeText(b.text)
     if (empty !== null) cleared.set(i, empty)
@@ -356,7 +457,7 @@ function injectSlideText(xml: string, title: string, lines: string[]): string | 
   let last = 0
   for (let i = 0; i < blocks.length; i++) {
     out += xml.slice(last, blocks[i].start)
-    out += i === tIdx ? tRewrite : i === bIdx ? bRewrite : (cleared.get(i) ?? blocks[i].text)
+    out += i === tIdx ? tRewrite : (writes.get(i) ?? (i === bIdx ? bRewrite : (cleared.get(i) ?? blocks[i].text)))
     last = blocks[i].end
   }
   out += xml.slice(last)
@@ -595,7 +696,7 @@ export function buildFidelityDeck(template: Uint8Array, specs: FidelitySlideSpec
     }
     // 2026-11-05：优先用它专属版式的样张页，让封面/目录/章节/内页/封底各自套自己的版式；
     // 该版式没有可用样张页时退回「有无正文行」的默认样张（旧行为）。
-    const byLayout = spec.layoutFile ? pickSampleByLayout(ctx, spec.layoutFile) : null
+    const byLayout = spec.layoutFile ? pickSampleByLayout(ctx, spec.layoutFile, fitsQuadrant(lines) ? "quadrant" : undefined) : null
     const sample = byLayout ?? (lines.length || (useImage && bodySample) ? bodySample : titleSample)
     const src = ctx.xmls.get(sample.idx) ?? ""
     // 带图页：正文限 3 行避让右侧图（正文加右内边距，不与图重叠）
