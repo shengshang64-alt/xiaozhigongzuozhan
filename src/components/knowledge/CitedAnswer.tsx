@@ -1,16 +1,28 @@
 // 引用溯源（轮次 D-4）：按 [资料N] 标记切分回答文本，标记渲染为上标 chip，
 // hover/focus 出摘录卡（标题 + 可见范围 + 片段前 200 字），点击跳原文。
+//
+// 阶段 1 · 包 3（知识问答 · 问答 Markdown 表可渲染）修复：
+//   原实现直接在**整篇原文**上按 `[资料N]` 切段，再对每段分别做 Markdown 渲染。
+//   Markdown 表格一旦在单元格里带引用标记（`| HIS | 300 万 [资料1] |`），这句就被切成
+//   「…300 万 」「chip」「 |」三段，表格的三个部分各自成了一个不完整片段：
+//   实测结果——表被切断，第二行数据整行漏到表格外，界面上留下原始 `|\n| EMR | 200 万` 文本，
+//   `<tr>` 从应有 3 行掉到 2 行。知识问答最常见的输出恰恰是「表格 + 逐格引用」，用户看到的就是坏表。
+//
+//   现口径：**先按块级表格切分原文**（复用 renderedTables 的同一解析器），
+//    · 表格块：整块交给 KbMarkdown 渲染（保持 `<table>` 结构完整），块内 `[资料N]`
+//      在渲染层折成上标数字并以 `title` 保留来源（表格单元格是纯文本，不能塞交互组件，
+//      塞了会把 `<td>` 撑坏；折成上标数字 + 悬停可读的 title 是这里唯一不破坏表格的形态）；
+//    · 非表格块：维持原行为（逐段切引用 + 挂 CitationChip 交互 chip）。
 import { BookMarked, ExternalLink } from "lucide-react"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 import { KbMarkdown } from "@/components/knowledge/KbMarkdown"
 import { redactPii } from "@/lib/piiRedact"
+import { splitMarkdownTables } from "@/lib/markdownTables"
+import { foldCitationMarkersInTable, tableSourceLineOf } from "@/components/knowledge/citationMarkers"
 import type { QaCitation } from "@/pages/Knowledge/useKnowledge"
 
-/** 回答里是否带 [资料N] 内联引用标记（无标记走旧版底部 chips 兼容渲染） */
-export function hasCitationMarkers(content: string): boolean {
-  return /\[资料\d+\]/.test(content ?? "")
-}
-
+// 引用标记相关的纯函数都在 ./citationMarkers；
+// 本文件只导出组件（react-refresh/only-export-components 约束），不做任何函数重导出。
 type CitedAnswerProps = {
   content: string
   citations: QaCitation[]
@@ -69,8 +81,17 @@ function CitationChip({
   )
 }
 
-export function CitedAnswer({ content, citations, onOpenCitation }: CitedAnswerProps) {
-  const src = content ?? ""
+/** 非表格文本块：按 [资料N] 切段，标记渲染成交互 chip（原有行为，原样保留） */
+function CitationText({
+  text,
+  citations,
+  onOpenCitation,
+}: {
+  text: string
+  citations: QaCitation[]
+  onOpenCitation: (citation: QaCitation) => void
+}) {
+  const src = text ?? ""
   const segments: { kind: "text" | "chip"; text?: string; markerIndex?: number }[] = []
   let last = 0
   for (const m of src.matchAll(/\[资料(\d+)\]/g)) {
@@ -84,7 +105,7 @@ export function CitedAnswer({ content, citations, onOpenCitation }: CitedAnswerP
   if (last < src.length) segments.push({ kind: "text", text: src.slice(last) })
 
   return (
-    <div>
+    <>
       {segments.map((seg, i) =>
         seg.kind === "chip" && seg.markerIndex ? (
           <CitationChip
@@ -97,6 +118,43 @@ export function CitedAnswer({ content, citations, onOpenCitation }: CitedAnswerP
           <KbMarkdown key={`txt_${i}`} content={seg.text ?? ""} />
         ),
       )}
+    </>
+  )
+}
+
+export function CitedAnswer({ content, citations, onOpenCitation }: CitedAnswerProps) {
+  const src = content ?? ""
+  // 先切块级表格：表格必须整块渲染，否则单元格里的 [资料N] 会把表格切断（见文件头注释）
+  const blocks = splitMarkdownTables(src)
+  return (
+    <div>
+      {blocks.map((block, i) => {
+        if (block.kind === "table") {
+          // 还原成标准 GFM 文本交给 KbMarkdown —— 保证 <table> 结构完整、行数正确
+          const gfm = [
+            `| ${block.table.header.join(" | ")} |`,
+            `| ${block.table.align.map((a) => (a === "center" ? ":--:" : a === "right" ? "--:" : ":--")).join(" | ")} |`,
+            ...block.table.rows.map((r) => `| ${r.join(" | ")} |`),
+          ].join("\n")
+          const source = tableSourceLineOf(gfm, citations)
+          return (
+            <div key={`table_${i}`}>
+              <KbMarkdown content={foldCitationMarkersInTable(gfm, citations)} />
+              {source ? (
+                <p className="mb-3 -mt-1 text-xs text-muted-foreground">{source}</p>
+              ) : null}
+            </div>
+          )
+        }
+        return (
+          <CitationText
+            key={`md_${i}`}
+            text={block.text}
+            citations={citations}
+            onOpenCitation={onOpenCitation}
+          />
+        )
+      })}
     </div>
   )
 }

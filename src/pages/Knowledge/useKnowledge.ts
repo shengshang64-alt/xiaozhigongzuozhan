@@ -56,6 +56,8 @@ import {
 import { parseUploadFile } from "./kbUpload"
 import { pickAndWalkFolder, joinImportFolder, supportsFolderImport } from "./kbImport"
 import { pushKbTrash, readKbTrash, removeKbTrash, type KbTrashItem } from "./kbTrash"
+// 阶段 1 · 包 3：「未命中 vs 真无资料可区分」——0 命中文案的唯一来源
+import { buildKbMissCopy, qaScopeLabel } from "./kbMissCopy"
 
 // ---------------------------------------------------------------------------
 // 类型
@@ -1678,8 +1680,12 @@ export function useKnowledge() {
           {
             id: localId("qa_none"),
             role: "assistant",
-            content:
-              "知识库中没找到与这个问题相关的内容。可以先上传相关文档（支持 md/docx/pdf/zip），或切换检索范围再试；我不会编造知识库里没有的资料。\n\n已记入待补答队列，团队补充答案后下次直接命中。",
+            content: buildKbMissCopy({
+              question,
+              scopeDocs: scoped.length,
+              visibleDocs: visibleKbDocs(qaCorpusRef.current?.length ? qaCorpusRef.current : docsRef.current, userIdRef.current).length,
+              scopeLabel: qaScopeLabel(qaScopeRef.current),
+            }).text,
           },
         ])
         return
@@ -1710,7 +1716,12 @@ export function useKnowledge() {
           {
             id: localId("qa_none"),
             role: "assistant",
-            content: "知识库中没找到与这个问题相关的内容，我不会编造知识库里没有的资料。可以先上传相关文档再试。",
+            content: buildKbMissCopy({
+              question: q,
+              scopeDocs: scoped.length,
+              visibleDocs: visibleKbDocs(qaCorpusRef.current?.length ? qaCorpusRef.current : docsRef.current, userIdRef.current).length,
+              scopeLabel: qaScopeLabel(qaScopeRef.current),
+            }).text,
           },
         ])
         return
