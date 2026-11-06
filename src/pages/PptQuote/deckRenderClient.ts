@@ -14,7 +14,8 @@
 
 import type { RenderIssue, RenderReport } from "./deckRenderCheck"
 
-const SIDECAR_BASE = (import.meta.env.VITE_SIDECAR_BASE as string | undefined)?.replace(/\/$/, "") ?? "http://127.0.0.1:7001"
+// R2（整仓重构 · 部署壳）：地址上收到 lib/sidecarBase 单一真源（同源 /__sc 优先，本机才回落 127.0.0.1）。
+import { describeSidecarUnavailable, sidecarFetch } from "@/lib/sidecarBase"
 
 export type RenderCapability = {
   ok: boolean
@@ -27,7 +28,7 @@ export type RenderCapability = {
 /** 探测后端渲染能力（前端据此决定是否显示「渲染质检」入口） */
 export async function probeRenderCapability(): Promise<RenderCapability> {
   try {
-    const res = await fetch(`${SIDECAR_BASE}/health/render`, { method: "GET" })
+    const res = await sidecarFetch("/health/render", { method: "GET" }, { timeoutMs: 10_000 })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = (await res.json()) as RenderCapability
     return {
@@ -43,7 +44,7 @@ export async function probeRenderCapability(): Promise<RenderCapability> {
       soffice: null,
       python: false,
       pymupdf: false,
-      hint: `后端服务未启动或不可达（${e instanceof Error ? e.message : String(e)}）。渲染质检需要本机 Node 后端 + LibreOffice。`,
+      hint: `${describeSidecarUnavailable(e instanceof Error ? e.message : String(e))} 渲染质检还需要 LibreOffice 支持。`,
     }
   }
 }
@@ -73,15 +74,20 @@ export async function renderCheckDeck(bytes: Uint8Array, opts?: { dpi?: number; 
 
   let res: Response
   try {
-    res = await fetch(`${SIDECAR_BASE}/ppt/render-check`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pptxBase64: b64, dpi: opts?.dpi ?? 96, maxPages: opts?.maxPages ?? 60 }),
-    })
+    res = await sidecarFetch(
+      "/ppt/render-check",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pptxBase64: b64, dpi: opts?.dpi ?? 96, maxPages: opts?.maxPages ?? 60 }),
+      },
+      // 渲染质检一次几十秒，超时给足；同时不设 timeout 会让用户以为卡死
+      { timeoutMs: 240_000 },
+    )
   } catch (e) {
     return {
       ok: false,
-      reason: `无法连接渲染后端（${e instanceof Error ? e.message : String(e)}）。请确认本机 sidecar 服务已启动。`,
+      reason: describeSidecarUnavailable(e instanceof Error ? e.message : String(e)),
       capabilityMissing: true,
     }
   }

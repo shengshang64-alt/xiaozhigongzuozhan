@@ -1,4 +1,4 @@
-﻿// Bake 的 vite.config.ts (0.0.7+ runtime). 已经 inline 了 rh-visual-edit 的
+// Bake 的 vite.config.ts (0.0.7+ runtime). 已经 inline 了 rh-visual-edit 的
 // rhSourcePlugin —— 模型不需要再调 rh-visual-edit skill 装它.
 //
 // ⚠️ 整体 Write 覆盖本文件是禁忌. 改时用 Read + Edit 局部改:
@@ -11,6 +11,9 @@ import react from '@vitejs/plugin-react'
 import { parse as babelParse } from '@babel/parser'
 import _traverse from '@babel/traverse'
 import MagicString from 'magic-string'
+// R2（整仓重构 · 部署壳）：出口反代口径（/__pb + /__sc）与 vibex-local/vite.local.config.ts
+// 共用同一份定义，避免「dev 有代理、preview 没有」这类静默分叉。
+import { buildProxy } from './vite.proxy'
 
 // @babel/traverse 在本仓库没有类型声明, 因此用本地别名收口（不再写 any）:
 // 只描述本文件真正访问到的字段, 越界即编译报错.
@@ -104,9 +107,17 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 8000,
     strictPort: true,
+    // R2（整仓重构 · 部署壳）：此前本配置**没有** /__pb 代理，于是 `npm run dev`
+    // 表现为「界面能开但数据全空」，长期靠 AGENTS.md 一句话劝人别用。
+    // 现在与 vibex-local 配置共用 vite.proxy.ts 的口径，两条路径不再分叉；
+    // 顺带把增强服务 /__sc 也接上，`npm run dev` 下增强功能同样可用。
+    proxy: buildProxy(),
   },
   preview: {
     host: '0.0.0.0',
     port: 8000,
+    // R2：build 产物托管的出口同样要能转 /__pb 与 /__sc，
+    // 否则「改走 build」这条部署路径上数据全空、增强功能静默降级。
+    proxy: buildProxy(),
   },
 })

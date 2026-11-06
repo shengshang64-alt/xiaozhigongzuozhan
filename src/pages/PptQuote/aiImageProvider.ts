@@ -14,7 +14,9 @@
 //   · 负向提示词内置（禁止文字/水印/Logo/界面），降低生成伪文字概率
 // ---------------------------------------------------------------------------
 
-const SIDECAR_BASE = (import.meta.env.VITE_SIDECAR_BASE as string | undefined)?.replace(/\/$/, "") ?? "http://127.0.0.1:7001"
+// R2（整仓重构 · 部署壳）：地址上收到 lib/sidecarBase 单一真源（同源 /__sc 优先，本机才回落 127.0.0.1）。
+// 此前写死 127.0.0.1，同事机点「AI 配图」会连到他自己电脑，表现为「绘图服务不可达」。
+import { sidecarFetch } from "@/lib/sidecarBase"
 
 /** 画幅（与 PPT 版式位置对应） */
 export type ImageAspect = "16:9" | "4:3" | "1:1" | "3:4"
@@ -212,7 +214,7 @@ export async function generateAiImage(req: AiImageRequest): Promise<AiImageResul
 
   let res: Response
   try {
-    res = await fetch(`${SIDECAR_BASE}/ai-image/generate`, {
+    res = await sidecarFetch("/ai-image/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -251,8 +253,7 @@ export async function probeAiImage(): Promise<{ ok: boolean; provider: string | 
     if (cfg.provider) qs.set("provider", cfg.provider)
     if (cfg.key) qs.set("key", cfg.key)
     if (cfg.model) qs.set("model", cfg.model)
-    const url = `${SIDECAR_BASE}/ai-image/health${qs.toString() ? `?${qs}` : ""}`
-    const res = await fetch(url)
+    const res = await sidecarFetch(`/ai-image/health${qs.toString() ? `?${qs}` : ""}`)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = (await res.json()) as { ok?: boolean; provider?: string; hint?: string }
     return { ok: Boolean(data.ok), provider: data.provider ?? null, hint: String(data.hint ?? "") }

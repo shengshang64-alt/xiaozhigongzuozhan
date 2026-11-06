@@ -8,10 +8,15 @@
 //   ③ 统一超时与错误处理
 //
 // 设计原则：后端是「增强」不是「依赖」。sidecar 没起时，所有原有功能照常工作。
+//
+// R2（整仓重构 · 部署壳）：地址解析上收到 ./sidecarBase 单一真源。
+// 此前本文件把它写死成 `http://127.0.0.1:7001`——在**同事电脑**的浏览器里，
+// 127.0.0.1 指的是同事自己那台机器，所以四条增强功能全部静默降级（用户只看到
+// 「已完成」，不知道跑的是降级版）。现在默认走同源 `/__sc` 前缀（由出口反代到
+// 服务端），只有页面确实在本机时才回落 127.0.0.1。
 // ---------------------------------------------------------------------------
 
-const SIDECAR_PORT = 7001
-const BASE = `http://127.0.0.1:${SIDECAR_PORT}`
+import { describeSidecarUnavailable, sidecarFetch } from "./sidecarBase"
 
 /** 健康状态缓存：探到可用缓存 60 秒，探到不可用缓存 10 秒（短，便于服务起来后快速恢复） */
 let healthCache: { ok: boolean; at: number } | null = null
@@ -26,10 +31,7 @@ export async function probeSidecar(force = false): Promise<boolean> {
     if (now - healthCache.at < ttl) return healthCache.ok
   }
   try {
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), 1500)
-    const res = await fetch(`${BASE}/health`, { signal: ctrl.signal })
-    clearTimeout(timer)
+    const res = await sidecarFetch("/health", undefined, { timeoutMs: 1500 })
     const ok = res.ok && (await res.json())?.ok === true
     healthCache = { ok, at: now }
     return ok
@@ -39,10 +41,18 @@ export async function probeSidecar(force = false): Promise<boolean> {
   }
 }
 
+/**
+ * 「增强服务为什么用不了」的人话解释（R2 验收要求：不可用不许静默降级）。
+ * 界面在降级时把它显示出来，用户才知道自己跑的是浏览器本地版本。
+ */
+export function sidecarUnavailableReason(): string {
+  return describeSidecarUnavailable()
+}
+
 /** 后端服务信息（调试/状态页用） */
 export async function sidecarInfo(): Promise<{ ok: boolean; node?: string; routes?: string[]; uptimeSec?: number }> {
   try {
-    const res = await fetch(`${BASE}/health`)
+    const res = await sidecarFetch("/health", undefined, { timeoutMs: 3000 })
     if (!res.ok) return { ok: false }
     return await res.json()
   } catch {
@@ -52,18 +62,15 @@ export async function sidecarInfo(): Promise<{ ok: boolean; node?: string; route
 
 /** 后端请求统一封装：超时 + 错误信息可读化 */
 async function postRaw(path: string, body: unknown, timeoutMs: number): Promise<Response> {
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
-  try {
-    return await fetch(`${BASE}${path}`, {
+  return sidecarFetch(
+    path,
+    {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-      signal: ctrl.signal,
-    })
-  } finally {
-    clearTimeout(timer)
-  }
+    },
+    { timeoutMs },
+  )
 }
 
 async function postJson<T>(path: string, body: unknown, timeoutMs: number): Promise<T> {

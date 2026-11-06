@@ -1,6 +1,9 @@
 import path from 'node:path'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+// R2（整仓重构 · 部署壳）：出口反代（/__pb + /__sc）的定义在根 vite.proxy.ts，
+// 与根 vite.config.ts 的 `vite preview` 共用同一份口径，避免两条部署路径静默分叉。
+import { buildProxy } from '../vite.proxy'
 
 export default defineConfig({
   plugins: [react()],
@@ -36,19 +39,16 @@ export default defineConfig({
     strictPort: true,
     // 内网自用：放开 Host 头校验，机器名/自定域名访问不被 vite 拦截（IP 访问本就不受限）
     allowedHosts: true,
-    proxy: {
-      // 线上由 VibeX 网关剥离 /__pb 前缀；本地必须自行 rewrite，
-      // 否则 /__pb/api/x 原样转发给 PocketBase，PB 只认 /api/x -> 404。
-      "/__pb": {
-        target: "http://127.0.0.1:7000",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/__pb/, ""),
-      },
-    },
+    // R2（整仓重构 · 部署壳）：/__pb 与 /__sc 两条前缀的定义搬到根 vite.proxy.ts 单一真源，
+    // 与 `vite preview`（build 后托管）共用同一份口径——否则增强服务在 preview 路径上会静默 404。
+    proxy: buildProxy(),
   },
   preview: {
     host: "0.0.0.0",
     port: 8000,
     strictPort: true,
+    // R2：`vite build` + `vite preview` 也要能把 /__pb 与 /__sc 转出去，
+    // 否则「改走 build 产物」这一条部署路径会让数据全空 + 增强功能静默降级。
+    proxy: buildProxy(),
   },
 })

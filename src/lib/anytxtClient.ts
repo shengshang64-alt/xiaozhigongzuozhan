@@ -4,7 +4,7 @@
 // 能力定位：补上「搜本机硬盘里的历史资料」——知识库/素材库只能搜已入库内容，
 // 而用户电脑里大量老标书、方案、资质扫描件从未入库，写标书时翻不到。
 //
-// 架构：浏览器 → sidecar(7001) → AnyTXT(9920) → 本地索引
+// 架构：浏览器 → 同源 /__sc（出口反代）→ sidecar → AnyTXT(9920) → 本地索引
 // 为什么绕一层：AnyTXT 的 JSON-RPC 没有 CORS 头，浏览器直连会被拦；
 //              且 sidecar 已统一做超时与降级，前端不必重复处理。
 //
@@ -12,7 +12,9 @@
 // AnyTXT 没装/没开时，所有原有功能照常工作。
 // ---------------------------------------------------------------------------
 
-const SIDECAR_BASE = "http://127.0.0.1:7001"
+// R2（整仓重构 · 部署壳）：地址不再写死 127.0.0.1——同事机浏览器里的 127.0.0.1 是自己那台，
+// 会表现为「本机搜索永远说后端未启动」。统一走 ./sidecarBase 的同源 /__sc 出口。
+import { describeSidecarUnavailable, sidecarFetch } from "./sidecarBase"
 
 /** 健康状态缓存：可用缓存 60s，不可用缓存 10s（便于用户装完/开启后快速恢复） */
 let healthCache: { online: boolean; at: number; message?: string } | null = null
@@ -29,20 +31,17 @@ export async function probeAnytxt(force = false): Promise<AnytxtHealth> {
     if (now - healthCache.at < ttl) return { online: healthCache.online, message: healthCache.message }
   }
   try {
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), 3000)
-    const res = await fetch(`${SIDECAR_BASE}/anytxt/health`, { signal: ctrl.signal })
-    clearTimeout(timer)
+    const res = await sidecarFetch("/anytxt/health", undefined, { timeoutMs: 3000 })
     if (!res.ok) {
-      healthCache = { online: false, at: now, message: "后端服务未响应" }
-      return { online: false, message: "后端服务未响应" }
+      healthCache = { online: false, at: now, message: describeSidecarUnavailable() }
+      return { online: false, message: describeSidecarUnavailable() }
     }
     const j = (await res.json()) as AnytxtHealth
     healthCache = { online: Boolean(j.online), at: now, message: j.message }
     return j
   } catch {
-    healthCache = { online: false, at: now, message: "连不上后端服务（7001），请确认 sidecar 已启动" }
-    return { online: false, message: "连不上后端服务（7001），请确认 sidecar 已启动" }
+    healthCache = { online: false, at: now, message: describeSidecarUnavailable() }
+    return { online: false, message: describeSidecarUnavailable() }
   }
 }
 
@@ -122,22 +121,22 @@ export async function searchAnytxt(opts: {
   const pattern = String(opts.pattern ?? "").trim()
   if (!pattern) return { ok: false, error: "pattern_required", message: "请输入搜索关键词" }
   try {
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), 8000)
-    const res = await fetch(`${SIDECAR_BASE}/anytxt/search`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        pattern,
-        filterDir: opts.filterDir ?? "",
-        filterExt: opts.filterExt ?? "*",
-        limit: opts.limit ?? 100,
-        offset: opts.offset ?? 0,
-        order: opts.order ?? 0,
-      }),
-      signal: ctrl.signal,
-    })
-    clearTimeout(timer)
+    const res = await sidecarFetch(
+      "/anytxt/search",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pattern,
+          filterDir: opts.filterDir ?? "",
+          filterExt: opts.filterExt ?? "*",
+          limit: opts.limit ?? 100,
+          offset: opts.offset ?? 0,
+          order: opts.order ?? 0,
+        }),
+      },
+      { timeoutMs: 8000 },
+    )
     const j = await res.json()
     if (!j?.ok) return { ok: false, error: j?.error ?? "unknown", message: j?.message ?? "搜索失败" }
     const raw: AnytxtFile[] = Array.isArray(j.files) ? j.files : []
@@ -172,21 +171,21 @@ export async function contextAnytxt(opts: {
   const pattern = String(opts.pattern ?? "").trim()
   if (!pattern) return { ok: false, error: "pattern_required", message: "请输入搜索关键词" }
   try {
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), 15000)
-    const res = await fetch(`${SIDECAR_BASE}/anytxt/context`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        pattern,
-        filterDir: opts.filterDir ?? "",
-        filterExt: opts.filterExt ?? "*",
-        limit: opts.limit ?? 50,
-        topN: opts.topN ?? 5,
-      }),
-      signal: ctrl.signal,
-    })
-    clearTimeout(timer)
+    const res = await sidecarFetch(
+      "/anytxt/context",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pattern,
+          filterDir: opts.filterDir ?? "",
+          filterExt: opts.filterExt ?? "*",
+          limit: opts.limit ?? 50,
+          topN: opts.topN ?? 5,
+        }),
+      },
+      { timeoutMs: 15000 },
+    )
     const j = await res.json()
     if (!j?.ok) return { ok: false, error: j?.error ?? "unknown", message: j?.message ?? "查询失败" }
     return { ok: true, pattern: j.pattern ?? pattern, count: Number(j.count ?? 0), items: Array.isArray(j.items) ? j.items : [] }
@@ -198,7 +197,7 @@ export async function contextAnytxt(opts: {
 /** 只取某个文件的命中片段 */
 export async function fragmentAnytxt(fid: string, pattern: string): Promise<{ ok: boolean; text?: string; message?: string }> {
   try {
-    const res = await fetch(`${SIDECAR_BASE}/anytxt/fragment`, {
+    const res = await sidecarFetch("/anytxt/fragment", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ fid, pattern }),
@@ -222,15 +221,15 @@ export async function fragmentAnytxt(fid: string, pattern: string): Promise<{ ok
 export async function rawTextAnytxt(fid: string): Promise<{ ok: boolean; text?: string; message?: string }> {
   if (!fid) return { ok: false, message: "缺少文件 id" }
   try {
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), 30000)
-    const res = await fetch(`${SIDECAR_BASE}/anytxt/rawtext`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fid }),
-      signal: ctrl.signal,
-    })
-    clearTimeout(timer)
+    const res = await sidecarFetch(
+      "/anytxt/rawtext",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fid }),
+      },
+      { timeoutMs: 30000 },
+    )
     const j = await res.json()
     return j?.ok ? { ok: true, text: String(j.text ?? "") } : { ok: false, message: j?.message ?? "取正文失败" }
   } catch (e) {
@@ -245,15 +244,15 @@ export async function rawTextAnytxt(fid: string): Promise<{ ok: boolean; text?: 
  */
 export async function syncIndexAnytxt(): Promise<{ ok: boolean; message?: string }> {
   try {
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), 130000)
-    const res = await fetch(`${SIDECAR_BASE}/anytxt/syncindex`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-      signal: ctrl.signal,
-    })
-    clearTimeout(timer)
+    const res = await sidecarFetch(
+      "/anytxt/syncindex",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      },
+      { timeoutMs: 130000 },
+    )
     const j = await res.json()
     return j?.ok ? { ok: true } : { ok: false, message: j?.message ?? "索引同步失败" }
   } catch (e) {
@@ -268,15 +267,15 @@ export async function syncIndexAnytxt(): Promise<{ ok: boolean; message?: string
 export async function ocrAnytxt(opts: { fid?: string; path?: string }): Promise<{ ok: boolean; text?: string; message?: string }> {
   if (!opts.fid && !opts.path) return { ok: false, message: "需要 fid 或 path" }
   try {
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), 70000)
-    const res = await fetch(`${SIDECAR_BASE}/anytxt/ocr`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(opts),
-      signal: ctrl.signal,
-    })
-    clearTimeout(timer)
+    const res = await sidecarFetch(
+      "/anytxt/ocr",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(opts),
+      },
+      { timeoutMs: 70000 },
+    )
     const j = await res.json()
     return j?.ok ? { ok: true, text: String(j.text ?? "") } : { ok: false, message: j?.message ?? "OCR 失败" }
   } catch (e) {
