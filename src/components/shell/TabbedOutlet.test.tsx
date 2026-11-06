@@ -33,7 +33,7 @@ vi.mock("@/lib/routeRegistry", async () => {
     Component,
     loader: async () => ({ default: Component }),
   })
-  const routes = [meta("/", "作战驾驶舱", PageA), meta("/knowledge", "知识库", PageB)]
+  const routes = [meta("/", "总览驾驶舱", PageA), meta("/knowledge", "知识库", PageB)]
   const byPath: Record<string, ReturnType<typeof meta>> = {}
   for (const r of routes) byPath[r.path] = r
   return {

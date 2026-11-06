@@ -9,7 +9,7 @@ type PipelineStepperProps = Pick<UseBidWorkspace, "activeStep" | "requestStep" |
   riskCount?: number
   /**
    * 是否在步骤条上重复展示「待响应 / 废标风险」计数角标。
-   * 默认 false——这两项计数已在作战室风险灯里各展示一份，避免同一数字出现两处；
+   * 默认 false——这两项计数已在 WarRoom 风险灯里各展示一份，避免同一数字出现两处；
    * 需要就地提示时传 true 即可恢复角标显示（能力保留，不做删除）。
    */
   showRiskMeta?: boolean
@@ -29,7 +29,7 @@ function stepDone(step: number, proj: BidProjectRecord | null): boolean {
 
 /**
  * 流程步骤条。项目级提醒（开标倒计时 / 待响应 / 废标风险计数）统一收在「项目信息栏」
- * 与「作战室风险灯」里各展示一份，本组件默认不再重复渲染；需要时用 showRiskMeta 打开。
+ * 与「WarRoom 风险灯」里各展示一份，本组件默认不再重复渲染；需要时用 showRiskMeta 打开。
  */
 export function PipelineStepper({ activeStep, requestStep, activeProject, missCount = 0, riskCount = 0, showRiskMeta = false }: PipelineStepperProps) {
   return (

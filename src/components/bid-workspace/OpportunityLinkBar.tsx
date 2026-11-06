@@ -7,7 +7,7 @@ type OpportunityLinkBarProps = Pick<
   UseBidWorkspace,
   "activeProject" | "activeOppOptions" | "oppOptionsCapped" | "linkOpportunity" | "linkedOpportunityName" | "isArchivedLocked"
 > & {
-  /** warroom-01：作战室入口插槽（一屏聚合弹框的触发按钮），渲染在头部右侧 */
+  /** warroom-01：WarRoom 入口插槽（一屏聚合弹框的触发按钮），渲染在头部右侧 */
   warRoomSlot?: ReactNode
   /**
    * bar（默认）：独立成条，自带圆角卡片与左右留白；

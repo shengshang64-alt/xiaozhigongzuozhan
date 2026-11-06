@@ -969,5 +969,7 @@ export function useHome() {
     doneTodoCount,
     overdueTodoCount,
     greeting,
+    // Phase 1 改版：30s 心跳时钟，供首屏派生逻辑（最近截止日 / 今日动态）做纯函数计算
+    nowTick,
   }
 }

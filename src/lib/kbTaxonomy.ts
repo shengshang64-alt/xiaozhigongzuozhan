@@ -1,4 +1,4 @@
-// 知识库「赛道 × 用途桶」分类法（第一期·组装层赋能）：
+// 知识库「赛道 × 用途桶」分类法（第一期·组装层增强）：
 // 集中定义赛道(track)与用途桶(bucket)的词表与派生函数，供三处共用，避免口径漂移：
 //   1) scripts/backfill-kb-taxonomy.mjs —— 回填 kb_docs.kb_track / kb_bucket
 //   2) src/lib/kbAssemble.ts —— 调用时按场景赛道/桶对检索结果软加权

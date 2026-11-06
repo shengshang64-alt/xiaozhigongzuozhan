@@ -1,7 +1,7 @@
 // 驾驶舱「投标节点」卡（2026-09-28 路线图：投标日历 MVP）
 // 开标/截标是最硬的 deadline——集中展示未来 60 天有开标时间的项目（紧急度分档），
 // 并提示「未填开标时间」的进行中项目引导补录（提示必须有出路）。
-// 组件自持拉取（作战室懒加载同款模式），不触碰 useBidWorkspace/useHome。
+// 组件自持拉取（WarRoom 弹框懒加载同款模式），不触碰 useBidWorkspace/useHome。
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { CalendarClock, Loader2 } from "lucide-react"

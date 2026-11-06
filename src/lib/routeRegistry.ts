@@ -105,11 +105,11 @@ export function labelFor(path: string): string {
 }
 
 /**
- * 侧栏分组（导航即作战地图，与 docs/redesign 对齐）。
+ * 侧栏分组（与 docs/redesign 对齐）。
  * 只放路径，label/icon/adminOnly 一律从 ROUTES 取，杜绝两处文案漂移。
  */
 export const NAV_GROUPS: { title: string; paths: string[] }[] = [
-  // 业务分组替代"作战地图/总览/发现/研判/制胜/决胜/沉淀/支撑"军事化术语，
+  // 业务分组替代早期版本的军事化分组词（术语规范见 docs/术语规范表.md），
   // 用一线售前能听懂的动词短语：哪里看线索、哪里写材料、哪里沉淀资产。
   // AI 动态（模型调用记录/用量）属于"沉淀·团队"——元功能，不放"客户·线索"。
   { title: "客户 · 线索", paths: ["/", "/customer-management", "/intel-center"] },

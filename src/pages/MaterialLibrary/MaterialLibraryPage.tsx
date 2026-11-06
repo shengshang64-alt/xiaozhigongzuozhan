@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -241,6 +242,8 @@ function SettingsTab({ p }: { p: UseMaterialLibrary }) {
     unsplash: getImageSearchKey("unsplash"),
     pixabay: getImageSearchKey("pixabay"),
   })
+  // Phase 1（任务 1.3）：清空回收站改走全站统一 ConfirmDialog，替代原生 window.confirm
+  const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false)
   return (
     <div className="space-y-4">
       <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
@@ -285,14 +288,22 @@ function SettingsTab({ p }: { p: UseMaterialLibrary }) {
             size="sm"
             variant="outline"
             disabled={!p.stats?.trashed}
-            onClick={() => {
-              if (window.confirm(`彻底删除回收站 ${p.stats?.trashed ?? 0} 条素材？此操作不可恢复。`)) void p.purgeTrashed()
-            }}
+            onClick={() => setPurgeConfirmOpen(true)}
           >
             <Trash2 className="mr-1 h-3.5 w-3.5" />清空回收站
           </Button>
         </div>
       </section>
+
+      <ConfirmDialog
+        open={purgeConfirmOpen}
+        onOpenChange={setPurgeConfirmOpen}
+        title="彻底删除回收站全部素材？"
+        description={`共 ${p.stats?.trashed ?? 0} 条素材将被彻底删除，此操作不可恢复。`}
+        confirmText="彻底删除"
+        tone="danger"
+        onConfirm={() => void p.purgeTrashed()}
+      />
     </div>
   )
 }
