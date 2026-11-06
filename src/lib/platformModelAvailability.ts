@@ -52,4 +52,20 @@ export function isPlatformModelLocallyUnusable(opts: {
 /** 平台内置模型「为什么不可用」的用户可见解释（界面直接显示，不出现内部字段名）。 */
 export const PLATFORM_LOCAL_UNAVAILABLE_REASON =
   "当前是本机/内网部署，这台机器拿不到 RunningHub 登录态，平台内置模型调用必然失败（不是网络问题）。" +
-  "它只适合线上域使用；在这里请用下方「个人模型」里已配置的通道。" 
+  "它只适合线上域使用；在这里请用下方「个人模型」里已配置的通道。"
+
+/**
+ * 删除「当前是系统默认模型的配置」时，默认模型会落到哪里——**按部署域如实说**。
+ *
+ * 原文案是「删除后会自动回退平台内置 gpt-5.5」。在本机/内网部署下这是**假承诺**：
+ * 平台内置拿不到 RunningHub 登录态（必然 412），所以删完之后其实**没有可用默认模型**。
+ * 用户按那句提示删了配置，下一步生成就失败，且不知道是自己刚删出来的。
+ *
+ * @param hostname 当前页面主机名
+ */
+export function describeDefaultAfterDelete(hostname: string | null | undefined): string {
+  if (isLocalOrPrivateHostname(hostname)) {
+    return "它当前是系统默认模型。删除后本机没有可回退的平台内置通道（本地拿不到 RunningHub 登录态），请在删除后把下方另一条个人配置的模型「设为默认」，否则 AI 功能将没有可用模型。"
+  }
+  return "它当前是系统默认模型，删除后会自动回退平台内置模型。"
+} 

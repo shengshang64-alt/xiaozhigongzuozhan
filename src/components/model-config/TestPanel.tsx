@@ -30,7 +30,7 @@ export function TestPanel({ targetLabel, running, result, onRerun }: TestPanelPr
 
         {!targetLabel && !running && (
           <p className="mt-auto pb-2 text-xs leading-relaxed text-muted-foreground">
-            测试会向模型发送一条固定消息，用于确认接口地址与 Key 可用。平台内置模型与个人模型都支持测试。
+            测试会向模型发送一条固定消息，用于确认接口地址与 Key 可用。平台内置模型仅在线上域可用（本机/内网部署测它必然失败，不是配置问题），日常请测个人模型。
           </p>
         )}
 

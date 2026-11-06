@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { healthNotice, healthShortLabel, type ModelHealthEntry } from "@/lib/modelHealth"
+import { describeDefaultAfterDelete } from "@/lib/platformModelAvailability"
 import type { GatewayConfig } from "@/lib/modelGateway"
 import { Coins } from "lucide-react"
 import { resolveModelProfile, resolveQuotaHint, type ProfileSource } from "@/lib/modelProfiles"
@@ -414,7 +415,7 @@ export function PersonalConfigList({
             <DialogTitle>删除配置</DialogTitle>
             <DialogDescription>
               确定删除「{deletingConfig?.config_name}」吗？该配置下的 {(deletingConfig?.models ?? []).length} 个模型将不再可用，删除后无法恢复。
-              {deletingConfig?.default_model ? "它当前是系统默认模型，删除后会自动回退平台内置 gpt-5.5。" : ""}
+              {deletingConfig?.default_model ? describeDefaultAfterDelete(typeof window !== "undefined" ? window.location.hostname : "") : ""}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

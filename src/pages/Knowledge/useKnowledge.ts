@@ -67,12 +67,9 @@ export type LibTab = "team" | "personal"
 export type QaScope = "all" | "team" | "personal"
 export type DocSortKey = "updated" | "created" | "title"
 
-export interface FolderNode {
-  path: string
-  label: string
-  children: FolderNode[]
-  count: number
-}
+// R4：FolderNode 的定义搬到 ./kbFolderTree，这里 re-export 保持既有 import 路径不变
+// （FolderTree.tsx / DocListPanel.tsx / folderTreeFilter.ts 都从本文件取这个类型）。
+export type { FolderNode } from "./kbFolderTree"
 
 export interface UploadRowResult {
   fileName: string
@@ -117,9 +114,12 @@ function localId(prefix: string): string {
   return `${prefix}_${Date.now()}_${localSeq}`
 }
 
-// 轮次 4 B2：qa 会话 sessionStorage 持久化（按登录用户为 key，上限 50 条，失败静默降级）
-const QA_SESSION_PREFIX = "kb_qa_session_"
-const QA_SESSION_LIMIT = 50
+// R4（整仓重构 · 巨型 hook 再拆一轮）：问答会话的本地持久化搬到 ./kbQaSession
+// （逐字段校验 / 上限截断 / 真清存储都得能被单测钉住，混在 hook 的 useEffect 里测不到）。
+import { clearQaSession, loadQaSession, saveQaSession } from "./kbQaSession"
+
+export { QA_SESSION_LIMIT, sanitizeQaMessages } from "./kbQaSession"
+
 // 语料等待上限：冷加载实测 30-100s（kb-cap-01），90s 覆盖健康路径；超时按设计降级，
 // 不让无超时的 fetch 把整轮问答挂死（2026-10-24 实测：挂起后 qaIndexing 卡死、发送被静默吞掉）。
 const QA_CORPUS_WAIT_MS = 90_000
@@ -127,33 +127,11 @@ const QA_CORPUS_WAIT_MS = 90_000
 // 周期性全量重拉兜底；本会话删除走 onKbMutation 清快照（即时正确）。
 const CORPUS_FULL_RESYNC_MS = 24 * 60 * 60 * 1000
 
-function sanitizeQaMessages(raw: unknown): QaChatMsg[] {
-  if (!Array.isArray(raw)) return []
-  const out: QaChatMsg[] = []
-  for (const item of raw) {
-    if (!item || typeof item !== "object") continue
-    const m = item as Partial<QaChatMsg>
-    if ((m.role !== "user" && m.role !== "assistant") || typeof m.content !== "string" || !m.content) continue
-    out.push({
-      id: typeof m.id === "string" && m.id ? m.id : localId("qa_restored"),
-      role: m.role,
-      content: m.content,
-      citations: Array.isArray(m.citations) ? (m.citations as QaCitation[]) : undefined,
-      qaLevel: m.qaLevel === "high" || m.qaLevel === "medium" ? m.qaLevel : undefined,
-      qaFollowQuestion: typeof m.qaFollowQuestion === "string" ? m.qaFollowQuestion : undefined,
-    })
-  }
-  return out.slice(-QA_SESSION_LIMIT)
-}
 
-function splitFolderPath(path: string): string[] {
-  return (path ?? "").split("/").map((s) => s.trim()).filter(Boolean)
-}
-
-function baseNameOf(path: string): string {
-  const segs = splitFolderPath(path)
-  return segs.length ? segs[segs.length - 1] : ""
-}
+// R4（整仓重构）：目录树的构建与路径工具搬到 ./kbFolderTree。
+// splitFolderPath / baseNameOf 在这里仍有内部调用点，故保留 import；
+// FolderNode 由本文件 re-export（FolderTree/DocListPanel 等既有 import 路径不变）。
+import { baseNameOf, buildFolderTree, collectFolderPaths } from "./kbFolderTree"
 
 /** perf-01：按账号隔离的「最近阅读」文档 id 列表（localStorage 持久化，上限 8） */
 function kbRecentKey(uid: string | null): string {
@@ -556,62 +534,12 @@ export function useKnowledge() {
 
 
   // ------------------------------ 目录树 ------------------------------
-  const folderTree = useMemo(() => {
-    const root: FolderNode = { path: "", label: "全部文档", children: [], count: 0 }
-    const ensure = (segments: string[]): FolderNode => {
-      let node = root
-      let acc = ""
-      for (const seg of segments) {
-        acc = acc ? `${acc}/${seg}` : seg
-        let child = node.children.find((c) => c.label === seg)
-        if (!child) {
-          child = { path: acc, label: seg, children: [], count: 0 }
-          node.children.push(child)
-        }
-        node = child
-      }
-      return node
-    }
-    for (const d of treeDocs) {
-      const segs = splitFolderPath(d.folder_path)
-      const node = segs.length ? ensure(segs) : root
-      node.count += 1
-      let parentPath = node.path
-      while (parentPath) {
-        const idx = parentPath.lastIndexOf("/")
-        parentPath = idx > 0 ? parentPath.slice(0, idx) : ""
-      }
-    }
-    for (const p of extraFolders) {
-      const segs = splitFolderPath(p)
-      if (segs.length) ensure(segs)
-    }
-    // count 汇总：父节点计入子孙文档数
-    const rollup = (node: FolderNode): number => {
-      let total = node.count
-      for (const c of node.children) total += rollup(c)
-      node.count = total
-      return total
-    }
-    for (const c of root.children) rollup(c)
-    root.count = treeDocs.length
-    const sortChildren = (node: FolderNode) => {
-      node.children.sort((a, b) => a.label.localeCompare(b.label, "zh-CN"))
-      node.children.forEach(sortChildren)
-    }
-    sortChildren(root)
-    return root
-  }, [treeDocs, extraFolders])
+  // R4（整仓重构 · 巨型 hook 再拆一轮）：目录树构建已搬到 ./kbFolderTree（纯函数，可单测）。
+  // 这里只保留 useMemo 包装——依赖数组与原来完全一致，重算时机不变。
+  const folderTree = useMemo(() => buildFolderTree(treeDocs, extraFolders), [treeDocs, extraFolders])
 
-  const allFolderPaths = useMemo(() => {
-    const paths = new Set<string>()
-    const walk = (node: FolderNode) => {
-      if (node.path) paths.add(node.path)
-      node.children.forEach(walk)
-    }
-    walk(folderTree)
-    return [...paths].sort((a, b) => a.localeCompare(b, "zh-CN"))
-  }, [folderTree])
+  const allFolderPaths = useMemo(() => collectFolderPaths(folderTree), [folderTree])
+
 
   const selectFolder = useCallback((path: string | null) => {
     setActiveFolderPath(path)
@@ -1260,33 +1188,20 @@ export function useKnowledge() {
     qaScopeRef.current = qaScope
   }, [qaScope])
 
-  // 轮次 4 B2：mount / 登录态就绪时从 sessionStorage 恢复 qa 会话（未登录不读不写）
+  // 轮次 4 B2 / R4：mount / 登录态就绪时恢复 qa 会话（未登录不读不写）。
+  // 读写细节（逐字段校验 / 上限截断 / 脏数据降级）都在 ./kbQaSession，这里只留时序。
   useEffect(() => {
     if (!userId) return
-    try {
-      const raw = window.sessionStorage.getItem(`${QA_SESSION_PREFIX}${userId}`)
-      if (!raw) return
-      const restored = sanitizeQaMessages(JSON.parse(raw))
-      if (restored.length === 0) return
-      setQaMessages(restored)
-      qaMessagesRef.current = restored
-    } catch (err) {
-      console.warn("知识库问答会话恢复失败", err)
-    }
+    const restored = loadQaSession(userId)
+    if (restored.length === 0) return
+    setQaMessages(restored)
+    qaMessagesRef.current = restored
   }, [userId])
 
-  // 轮次 4 B2：qaMessages 变更后防抖 ~500ms 写 sessionStorage；超配额等异常静默降级
+  // 轮次 4 B2 / R4：qaMessages 变更后防抖 ~500ms 落盘；超配额等异常由 kbQaSession 内部降级
   useEffect(() => {
     if (!userId) return
-    const storageKey = `${QA_SESSION_PREFIX}${userId}`
-    const timer = window.setTimeout(() => {
-      try {
-        if (qaMessages.length === 0) window.sessionStorage.removeItem(storageKey)
-        else window.sessionStorage.setItem(storageKey, JSON.stringify(qaMessages.slice(-QA_SESSION_LIMIT)))
-      } catch (err) {
-        console.warn("知识库问答会话持久化失败", err)
-      }
-    }, 500)
+    const timer = window.setTimeout(() => saveQaSession(userId, qaMessages), 500)
     return () => window.clearTimeout(timer)
   }, [qaMessages, userId])
 
@@ -1302,15 +1217,8 @@ export function useKnowledge() {
     qaTurnSeqRef.current += 1
     setQaMessages([])
     qaMessagesRef.current = []
-    // 轮次 4 B2：同步清 sessionStorage，避免「清空后刷新又复活」
-    const uid = userIdRef.current
-    if (uid) {
-      try {
-        window.sessionStorage.removeItem(`${QA_SESSION_PREFIX}${uid}`)
-      } catch (err) {
-        console.warn("知识库问答会话存储清除失败", err)
-      }
-    }
+    // 轮次 4 B2 / R4：同步清存储，避免「清空后刷新又复活」（只清内存会复活，这个 bug 修过一次）
+    clearQaSession(userIdRef.current)
   }, [])
 
   // scopeDocs 记忆化（A1 关键修复）：旧实现每题 visibleKbDocs 返回**新数组**，而 IDF 缓存

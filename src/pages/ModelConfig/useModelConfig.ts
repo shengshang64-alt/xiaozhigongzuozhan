@@ -105,12 +105,25 @@ export function useModelConfig() {
   const available = useMemo(() => buildAvailableModels(configs), [configs])
   const platformConfig = useMemo(() => configs.find((c) => c.is_platform) ?? null, [configs])
   const personalConfigs = useMemo(() => configs.filter((c) => !c.is_platform), [configs])
-  const defaultLabel = available.defaultRef ? modelRefLabel(available.defaultRef) : "平台内置 gpt-5.5"
+  // R4（横切清理 · 清幽灵模型推荐）：原实现在**一个可用模型都没有**时也把默认标签写成
+  // 「平台内置 gpt-5.5」——那是「推荐一个不存在的模型」的标准形态：用户以为有模型可用，
+  // 点了才失败（本地域还会 412）。现在分三档如实说：
+  //   ① 真有默认模型 → 正常显示它；
+  //   ② 没有任何可用模型 → 「未配置可用模型」（与模型下拉的空态同一口径）；
+  //   ③ 只剩平台内置且本地不可用 → 「平台内置（本地不可用）」，不假装可用。
+  const noModelAvailable = available.models.length === 0
+  const defaultLabel = available.defaultRef
+    ? modelRefLabel(available.defaultRef)
+    : noModelAvailable
+      ? "未配置可用模型"
+      : "平台内置"
   const defaultSource = available.defaultRef
     ? available.defaultRef.source === "platform"
       ? "平台内置"
       : available.defaultRef.configName
-    : "平台内置"
+    : noModelAvailable
+      ? "无"
+      : "平台内置"
 
   // 是否真有配置显式声明了默认模型；false 意味着当前默认只是平台内置兜底，随时会漂
   const declaredDefault = useMemo(
