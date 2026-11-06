@@ -1,6 +1,7 @@
-import { FlaskConical, Loader2, Star } from "lucide-react"
+import { AlertTriangle, FlaskConical, Loader2, Star } from "lucide-react"
 import type { GatewayConfig } from "@/lib/modelGateway"
 import { detectModelModality, isTextGenerationModel, modalityBadgeClass, modalityLabel } from "@/lib/modelModality"
+import { PLATFORM_LOCAL_UNAVAILABLE_REASON } from "@/lib/platformModelAvailability"
 
 type PlatformModelCardProps = {
   config: GatewayConfig | null
@@ -8,6 +9,15 @@ type PlatformModelCardProps = {
   onToggleModel: (cfg: GatewayConfig, modelId: string, enabled: boolean) => void
   onSetDefault: (cfg: GatewayConfig, modelId: string) => void
   onTest: (cfg: GatewayConfig, modelId: string) => void
+  /**
+   * R3 · D4「平台内置本地不可用需标明」：本机/内网部署下该通道**确定调不通**
+   * （拿不到 RunningHub 登录态，恒 412）。为真时：
+   *   · 卡片头换成红字说明真因（不是「登录后即可使用」这种假承诺）；
+   *   · 「设为默认」禁用——不能把它变成默认成功路径；
+   *   · 每个模型行打「本地不可用」徽标。
+   * 判定与下拉（ModelSelect）共用 lib/platformModelAvailability，避免两处各判一套。
+   */
+  locallyUnusable?: boolean
 }
 
 function EnableToggle({
@@ -42,7 +52,14 @@ function EnableToggle({
   )
 }
 
-export function PlatformModelCard({ config, busy, onToggleModel, onSetDefault, onTest }: PlatformModelCardProps) {
+export function PlatformModelCard({
+  config,
+  busy,
+  onToggleModel,
+  onSetDefault,
+  onTest,
+  locallyUnusable = false,
+}: PlatformModelCardProps) {
   return (
     <section className="rounded-lg border border-border bg-card shadow-md">
       <header className="flex min-h-14 flex-wrap items-center gap-2 border-b border-border px-4 py-3">
@@ -50,7 +67,16 @@ export function PlatformModelCard({ config, busy, onToggleModel, onSetDefault, o
         <span className="badge-neutral">
           平台内置 · 按 token 用量计费
         </span>
-        <p className="ml-auto text-xs text-muted-foreground">无需配置密钥，登录 RunningHub 账户后即可使用</p>
+        {locallyUnusable ? (
+          // R3：本地/内网部署下这句话原来是「登录 RunningHub 后即可使用」——一句假承诺。
+          // 本机拿不到 Rh-Accesstoken（cookie 属 runninghub.cn 域），令牌恒空 → 必然 412。
+          <p className="ml-auto flex items-start gap-1 text-xs text-destructive">
+            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+            <span>本地不可用：{PLATFORM_LOCAL_UNAVAILABLE_REASON}</span>
+          </p>
+        ) : (
+          <p className="ml-auto text-xs text-muted-foreground">无需配置密钥，登录 RunningHub 账户后即可使用</p>
+        )}
       </header>
       <div className="p-4 lg:p-5">
         {!config ? (
@@ -76,16 +102,23 @@ export function PlatformModelCard({ config, busy, onToggleModel, onSetDefault, o
                           {modalityLabel(modality)}
                         </span>
                       )}
+                      {locallyUnusable && (
+                        <span className="shrink-0 rounded-full border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-[10px] leading-none text-destructive">
+                          本地不可用
+                        </span>
+                      )}
                     </p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      {modality === "text"
-                        ? "长文本生成稳定，适合方案、标书与 PPT 内容"
-                        : `非文本模态（${modalityLabel(modality)}），不参与方案/标书正文生成`}
+                      {locallyUnusable
+                        ? "本机运行时无法拿到登录态，调用必然失败——请改用下方个人模型"
+                        : modality === "text"
+                          ? "长文本生成稳定，适合方案、标书与 PPT 内容"
+                          : `非文本模态（${modalityLabel(modality)}），不参与方案/标书正文生成`}
                     </p>
                   </div>
                   {isDefault && (
-                    <span className="badge-neutral">
-                      系统默认
+                    <span className={locallyUnusable ? "rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-[10px] text-destructive" : "badge-neutral"}>
+                      {locallyUnusable ? "系统默认（不可用）" : "系统默认"}
                     </span>
                   )}
                   <div className="ml-auto flex items-center gap-2">
@@ -98,16 +131,21 @@ export function PlatformModelCard({ config, busy, onToggleModel, onSetDefault, o
                     {(isTextGenerationModel(m.id) || isDefault) && (
                       <button
                         type="button"
-                        disabled={busy || isDefault || !m.enabled || !isTextGenerationModel(m.id)}
+                        // R3：本地不可用时不给出「设为默认」这条路——它是 D4 点名
+                        // 要消灭的「默认成功路径」。按钮仍在（不改变 DOM 结构），
+                        // 但禁用并在 title 里说清真因。
+                        disabled={busy || isDefault || !m.enabled || !isTextGenerationModel(m.id) || locallyUnusable}
                         onClick={() => onSetDefault(config, m.id)}
                         title={
-                          !isTextGenerationModel(m.id)
-                            ? "非文本模型不能作为系统默认生成模型"
-                            : isDefault
-                              ? "已是系统默认模型"
-                              : !m.enabled
-                                ? "模型已停用，先启用后才能设为默认"
-                                : "设为默认后会自动启用该模型"
+                          locallyUnusable
+                            ? PLATFORM_LOCAL_UNAVAILABLE_REASON
+                            : !isTextGenerationModel(m.id)
+                              ? "非文本模型不能作为系统默认生成模型"
+                              : isDefault
+                                ? "已是系统默认模型"
+                                : !m.enabled
+                                  ? "模型已停用，先启用后才能设为默认"
+                                  : "设为默认后会自动启用该模型"
                         }
                         className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-card-foreground shadow-sm transition-colors hover:bg-secondary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
                       >

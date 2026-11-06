@@ -32,6 +32,7 @@ import {
   type ModelMetaEntry,
   type ModelQuota,
 } from "@/lib/modelMetaLocal"
+import { isPlatformModelLocallyUnusable } from "@/lib/platformModelAvailability"
 
 export interface FormValues {
   config_name: string
@@ -330,6 +331,18 @@ export function useModelConfig() {
     if (cfgLike) void runTest(cfgLike, ref.modelId)
   }, [testTargetRef, configs, runTest])
 
+  // R3 · D4「平台内置本地不可用需标明」：判定与下拉（ModelSelect）共用同一纯函数。
+  // 口径：本机/内网域 且 已有可用个人通道 → 平台内置确定调不通（拿不到 RunningHub 登录态，
+  // 恒 412）。只有个人通道存在时才收口，避免退化成「一个模型都没有可选」的死局。
+  const platformLocallyUnusable = useMemo(
+    () =>
+      isPlatformModelLocallyUnusable({
+        hostname: typeof window !== "undefined" ? window.location.hostname : "",
+        hasPersonalModel: personalConfigs.some((c) => (c.models ?? []).some((m) => m.enabled)),
+      }),
+    [personalConfigs],
+  )
+
   return {
     // 登录态
     userId,
@@ -341,6 +354,8 @@ export function useModelConfig() {
     loadConfigs,
     platformConfig,
     personalConfigs,
+    // R3：平台内置本地不可用标注（模型配置页 + 下拉共用）
+    platformLocallyUnusable,
     defaultLabel,
     defaultSource,
     // R296 配置卫生

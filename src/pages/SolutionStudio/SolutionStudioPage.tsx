@@ -79,6 +79,7 @@ export function SolutionStudioPage(p: ReturnType<typeof useSolutionStudio>) {
             editingContent={p.editingContent}
             setEditingContent={p.setEditingContent}
             autoSaveState={p.autoSaveState}
+            autoSaveFailedReason={p.autoSaveFailedReason}
             chapterBusy={p.chapterBusy}
             generateChapter={p.generateChapter}
             refineChapter={p.refineChapter}

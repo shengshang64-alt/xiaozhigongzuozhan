@@ -20,11 +20,24 @@ import { DataTable, type DataTableColumn } from "@/components/ui/DataTable"
 import { localDateStamp } from "@/lib/dateStamp"
 import { ITEM_STATUS_LABEL, SOURCE_TYPE_LABEL, type IntelItemRow, type useIntelCenter } from "./useIntelCenter"
 import { shouldScrollDetailIntoView } from "./detailScroll"
+import { describeAutoFetch, describeWaitForNextRound } from "./intelAutoFetchCopy"
 
 export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
   const enabledCount = p.sources.filter((s) => s.enabled).length
   const errorCount = p.sources.filter((s) => s.last_status === "error").length
   const builtinCount = p.sources.filter((s) => s.is_builtin).length
+  // R3 · D4「情报关页即停」：抓取只在页面打开时进行，界面必须如实说清楚（原句「后台定时抓取
+  // 为尽力而为」会让用户以为服务端在跑）。跟踪可见性，暂停/恢复时文案也要跟着变。
+  const [pageVisible, setPageVisible] = useState(() =>
+    typeof document === "undefined" ? true : document.visibilityState === "visible",
+  )
+  useEffect(() => {
+    const onVis = () => setPageVisible(document.visibilityState === "visible")
+    document.addEventListener("visibilitychange", onVis)
+    return () => document.removeEventListener("visibilitychange", onVis)
+  }, [])
+  const autoFetchCopy = describeAutoFetch({ pageVisible })
+  const waitNextRoundCopy = describeWaitForNextRound({ pageVisible })
   // intel-01 降噪：右栏低频面板默认折叠为一行，压进场屏数
   const [srcOpen, setSrcOpen] = useState(false)
   const [aiHelpOpen, setAiHelpOpen] = useState(false)
@@ -100,7 +113,7 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
         <section className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-md">
           <RefreshCw className="h-4 w-4 shrink-0 text-primary" />
           <p className="text-xs leading-relaxed text-muted-foreground md:text-sm">
-            后台定时抓取为尽力而为，部分网站可能抓不到；只入库医疗信息化相关内容；抓取结果需人工确认后作为正式情报。确认、忽略与收藏都是每人独立状态，不影响其他成员；内置源抓取结果全员可见，个人源与未公开的手动录入仅自己可见。
+            {autoFetchCopy}
           </p>
           <div className="ml-auto flex shrink-0 items-center gap-2 text-xs">
             <span className="rounded-full bg-primary/10 px-2.5 py-1 font-medium text-primary">
@@ -272,7 +285,7 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
                 <Inbox className="h-8 w-8 text-muted-foreground" />
                 <p className="text-sm font-medium text-foreground">当前筛选条件下暂无情报</p>
                 <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
-                  可以等待下一轮自动抓取，或到信息源管理里添加更对口的信息源、立即抓取一次，也可以手动录入你掌握的情报
+                  {waitNextRoundCopy}也可以到信息源管理里添加更对口的信息源，或手动录入你掌握的情报。
                 </p>
                 <div className="mt-1 flex gap-2">
                   <button

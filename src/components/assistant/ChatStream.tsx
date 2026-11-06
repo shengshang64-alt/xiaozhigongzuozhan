@@ -11,6 +11,12 @@ import type { ChatMsg } from "@/lib/assistantCore"
 import { triggerBlobDownload } from "@/lib/download"
 import { DOCX_DEFAULT_STYLES } from "@/lib/exportFont"
 import { localDateStamp } from "@/lib/dateStamp"
+import {
+  CANCEL_SEMANTICS_TEXT,
+  LONG_ANSWER_HINT_SEC as LONG_ANSWER_HINT_SEC_LIB,
+  longAnswerHint,
+  longAnswerHintText,
+} from "@/lib/longAnswerTiming"
 
 const MD_COMPONENTS: Components = {
   h1: ({ children }) => <h1 className="mb-2 mt-3 text-base font-bold text-foreground first:mt-0">{children}</h1>,
@@ -77,10 +83,11 @@ type ChatStreamProps = {
 
 /**
  * 长答体感阈值（秒）：超过它才追加「长回答耗时较长，可取消」的提示。
- * 取值口径：网关单次出站上限 300s（model_gateway.pb.js 红线），实测常规短问 <10s；
- * 30s 之后仍无结果是用户开始怀疑「卡死了」的临界点，也是持续计费的开端。
+ * R3：阈值与文案统一由 `@/lib/longAnswerTiming` 定义（网关 300s / 客户端 330s /
+ * 一轮最多 3 次调用的数字都在那里），避免「提示阈值」与「真实超时点」脱钩。
+ * 这里保留导出名，供既有测试与调用点继续使用（数值不变，仍是 30）。
  */
-export const LONG_ANSWER_HINT_SEC = 30
+export const LONG_ANSWER_HINT_SEC = LONG_ANSWER_HINT_SEC_LIB
 
 export function ChatStream({
   messages,
@@ -233,10 +240,18 @@ export function ChatStream({
                     {elapsedSec > 0 ? <span className="tabular-nums">已等 {elapsedSec}s</span> : null}
                   </span>
                 )}
-                {/* 长答体感：超过阈值后明确告知「还在算 / 可以取消」，与输入框的取消按钮互为提示 */}
-                {elapsedSec >= LONG_ANSWER_HINT_SEC ? (
+                {/* 长答体感：超过阈值后分别说「还在算 / 已经很久 / 接近上限」，与输入框取消按钮互为提示。
+                    R3：文案由 lib/longAnswerTiming 统一定义——那里把「网关 300s / 客户端 330s /
+                    一轮最多 3 次调用」说清，避免提示阈值与真实超时点脱钩；且措辞只说「还在等」，
+                    不说「服务不可用」——慢 ≠ 挂，这是最常见的误报来源。 */}
+                {longAnswerHint({ elapsedSec }).showLongHint ? (
                   <span className="inline-flex w-fit items-center gap-1 px-1 text-xs text-muted-foreground/80">
-                    长回答耗时较长，仍在生成中；不想等可点输入框旁「取消」
+                    {longAnswerHintText({ elapsedSec })}
+                  </span>
+                ) : null}
+                {longAnswerHint({ elapsedSec }).nearLimit ? (
+                  <span className="inline-flex w-fit items-center gap-1 px-1 text-[11px] text-muted-foreground/60">
+                    {CANCEL_SEMANTICS_TEXT}
                   </span>
                 ) : null}
               </div>

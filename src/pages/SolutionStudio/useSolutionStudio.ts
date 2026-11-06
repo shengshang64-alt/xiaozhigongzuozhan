@@ -5,6 +5,7 @@ import { toast } from "sonner"
 // 此处仅保留编译期擦除的类型引用，SolutionStudio 路由 chunk 不再静态打包 docx。
 import type { Paragraph, Table, TableOfContents } from "docx"
 import { getPocketBaseUrl } from "@/lib/pb"
+import { describePbError, saveFailureReason } from "@/lib/pbJson"
 import { buildVersionedFileName } from "@/lib/fileName"
 import { decodeRhToken, vibexAuthHeaders, type RhAccountInfo } from "@/lib/rhLogin"
 import { modelRefKey, resolveAvailableModels, type ModelRef } from "@/lib/modelGateway"
@@ -97,7 +98,13 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
       ...(init?.headers ?? {}),
     },
   })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  if (!res.ok) {
+    // R3：原实现只抛 `HTTP ${status}`，于是「字段超长 / 校验不通过」这类服务端拒绝
+    // 到界面上全都变成「保存失败，请检查网络后重试」——用户按网络问题去刷新，白丢内容。
+    // 这里读出服务端 message（DescribePbError 同口径），把真因保真到 Error.message。
+    const body = await res.json().catch(() => null)
+    throw new Error(describePbError(res.status, body))
+  }
   return (await res.json()) as T
 }
 
@@ -430,7 +437,12 @@ export function useSolutionStudio() {
   // autoSaveResetRef，flushEditingContent 在用 saveTimerRef —— 形成前向引用：
   // react-hooks/immutability 报「声明前访问」、preserve-manual-memoization 判「memo 无法保留」。
   // 运行时当时不出错（都在回调内延迟执行），但顺序本身就是编译器与读者都读不懂的债，故前移。
-  const [autoSaveState, setAutoSaveState] = useState<"idle" | "saving" | "saved">("idle")
+  // R3 · D4「方案工作室无声失败」：原类型只有 idle/saving/saved，**保存失败时一律回 idle**——
+  // 界面从「保存中」直接消失，看起来像存好了；用户刷新后正文丢失，且过程里没有任何提示
+  // （quiet 模式既不 toast 也不留痕）。现在多一档 failed：失败必须留在界面上。
+  const [autoSaveState, setAutoSaveState] = useState<"idle" | "saving" | "saved" | "failed">("idle")
+  /** R3：自动保存失败的真实原因（服务端报文），供界面 title 展示与排查 */
+  const [autoSaveFailedReason, setAutoSaveFailedReason] = useState("")
   const autoSaveResetRef = useRef<number | null>(null)
   const saveTimerRef = useRef<number | null>(null)
 
@@ -443,8 +455,15 @@ export function useSolutionStudio() {
           if (autoSaveResetRef.current) window.clearTimeout(autoSaveResetRef.current)
           autoSaveResetRef.current = window.setTimeout(() => setAutoSaveState("idle"), 2000)
         }
-      } catch {
-        if (quiet) setAutoSaveState("idle")
+      } catch (e) {
+        // R3：自动保存失败**不能再回 idle**（回 idle = 界面从「保存中」直接消失，看起来像存好了）。
+        // 落成 failed 并在章节标题旁常驻提示；同时把服务端真实原因留在 title 上，
+        // 免得又变成「请检查网络」这种查不动的结论（R56 在标书侧已踩过同一个坑）。
+        if (quiet) {
+          if (autoSaveResetRef.current) window.clearTimeout(autoSaveResetRef.current)
+          setAutoSaveFailedReason(saveFailureReason(e))
+          setAutoSaveState("failed")
+        }
         if (!quiet) toast.error("保存失败，请检查网络后重试")
       }
     },
@@ -1940,6 +1959,7 @@ export function useSolutionStudio() {
     editingContent,
     setEditingContent,
     autoSaveState,
+    autoSaveFailedReason,
     chapterBusy,
     generateChapter,
     refineChapter,

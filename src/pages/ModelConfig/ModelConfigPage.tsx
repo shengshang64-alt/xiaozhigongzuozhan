@@ -34,6 +34,8 @@ export function ModelConfigPage(p: ReturnType<typeof useModelConfig>) {
               onToggleModel={p.toggleModel}
               onSetDefault={p.setDefaultModel}
               onTest={p.runTest}
+              // R3 · D4：本机/内网部署下平台内置确定不可用，必须标出来（不许当默认成功路径）
+              locallyUnusable={p.platformLocallyUnusable}
             />
             <PersonalConfigList
               configs={p.personalConfigs}

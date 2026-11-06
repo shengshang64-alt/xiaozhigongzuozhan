@@ -18,8 +18,14 @@ type ChapterEditorProps = Pick<
   | "refineChapter"
   | "bulkGenerating"
 > & {
-  /** 自动保存状态指示（仅方案编制注入，标书工作区可不传） */
-  autoSaveState?: "idle" | "saving" | "saved"
+  /**
+   * 自动保存状态指示（仅方案编制注入，标书工作区可不传）
+   * R3：新增 failed 档——自动保存失败必须留在界面上，不能从「保存中」直接消失
+   * （那样看起来像存好了，用户刷新后正文丢失且无任何提示）。
+   */
+  autoSaveState?: "idle" | "saving" | "saved" | "failed"
+  /** R3：自动保存失败的真实原因（服务端报文），作为失败提示的 title */
+  autoSaveFailedReason?: string
   chapterIndex: number
   figures?: FigureSpec[]
   /** 标书工作页注入：整章重写覆盖（不传则不渲染按钮，方案编制页不受影响） */
@@ -58,6 +64,7 @@ export function ChapterEditor({
   refineChapter,
   bulkGenerating,
   autoSaveState = "idle",
+  autoSaveFailedReason = "",
   chapterIndex,
   figures,
   regenerateChapter,
@@ -106,9 +113,15 @@ export function ChapterEditor({
               </span>
             )}
             {autoSaveState !== "idle" && (
-              <span className={`ml-2 inline-flex items-center gap-1 text-[11px] font-normal transition-opacity duration-300 ${autoSaveState === "saved" ? "text-primary" : "text-muted-foreground"}`}>
+              <span
+                title={autoSaveState === "failed" ? `保存失败：${autoSaveFailedReason || "未知原因"}（内容可能未落库，请勿刷新页面）` : undefined}
+                className={`ml-2 inline-flex items-center gap-1 text-[11px] font-normal transition-opacity duration-300 ${
+                  autoSaveState === "saved" ? "text-primary" : autoSaveState === "failed" ? "font-medium text-destructive" : "text-muted-foreground"
+                }`}
+              >
                 {autoSaveState === "saving" ? (<><Loader2 className="h-3 w-3 animate-spin" />保存中</>)
-                  : (<><Check className="h-3 w-3" />已保存</>)}
+                  : autoSaveState === "failed" ? (<><AlertTriangle className="h-3 w-3" />保存失败·未落库</>)
+                    : (<><Check className="h-3 w-3" />已保存</>)}
               </span>
             )}
           </h2>

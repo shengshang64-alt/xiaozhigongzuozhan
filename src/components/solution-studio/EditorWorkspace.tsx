@@ -24,6 +24,7 @@ type EditorWorkspaceProps = Pick<
   | "editingContent"
   | "setEditingContent"
   | "autoSaveState"
+  | "autoSaveFailedReason"
   | "chapterBusy"
   | "generateChapter"
   | "refineChapter"
@@ -306,6 +307,7 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
           textareaRef={p.chapterTextareaRef}
           bulkGenerating={p.bulkGenerating}
           autoSaveState={p.autoSaveState}
+          autoSaveFailedReason={p.autoSaveFailedReason}
           chapterIndex={chapterIndex}
           figures={p.activeChapter?.figures}
           missingSections={p.missingChapterSections}
