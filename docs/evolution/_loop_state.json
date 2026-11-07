@@ -1,11 +1,11 @@
 {
-  "round": 68,
+  "round": 80,
   "lastRound": {
-    "id": "R068",
-    "theme": "开标倒计时每天 00:00–08:00 多算一天（date-only 被按 UTC 解析）+ 补录条直出库里的日期时间串、编辑框空白 → 解析上收 src/lib/bidOpenDay 单一真源",
+    "id": "R080",
+    "theme": "技术参数响应表长列表分页：400 行全渲染（5635 DOM 节点 / 800 button / 342ms）→ 每页 100 条（1444 节点 / 204 button / 142ms），数据与统计口径不变",
     "verdict": "pass"
   },
-  "eslintBaseline": 116,
+  "eslintBaseline": 114,
   "gatesBaseline": {
     "tsc": 0,
     "eslint": 116
@@ -17,6 +17,18 @@
     "eslint": "pass"
   },
   "backlog": [
+    {
+      "id": "B46-deviation-panel-dom-scale",
+      "priority": "low",
+      "source": "self-found(R80)",
+      "title": "偏离表（DeviationPanel）同类长列表未实测 DOM 规模：R80 只处理了技术参数响应表（上限 400 行、实测 5635 节点）。偏离表受 limit:200 与条款粒度约束，行数与节点量未知。**先测后改**：用真实项目跑一次 render 量 tbody 行数/节点数，若 <1500 节点则无需处理，避免过度优化。"
+    },
+    {
+      "id": "B47-loop-state-ledger-drift",
+      "priority": "medium",
+      "source": "self-found(R80)",
+      "title": "_loop_state.json 与 .loop/ledger.json 轮次漂移：状态文件 round=68 而账本 round=79（差 11 轮）。本轮按状态文件 +1 记 R80，但两份账本不一致会让「上一轮做了什么」不可信。需一次对账：以哪份为准、缺失的 11 轮 history 如何补齐，属需要用户裁定的口径问题。"
+    },
     {
       "id": "B35-evidence-depth-budget",
       "priority": "high",
@@ -463,6 +475,12 @@
       "theme": "开标倒计时与补录条的日期口径统一（每天 00:00–08:00 多算一天 + 原始串直出 + 编辑框空白）",
       "verdict": "pass",
       "at": "2026-10-31"
+    },
+    {
+      "id": "R80",
+      "theme": "技术参数响应表长列表分页（400 行 → 100 行/页，首屏 DOM −74%）",
+      "verdict": "pass",
+      "at": "2026-11-08"
     }
   ],
   "eslintBaselineNote": "160 为 2026-10-13 实测存量（53 文件，主因 react-hooks/set-state-in-effect 75 条 + any 19 条）。闭环只要求「不高于此数」，不要求清零——清零属独立治理任务。R034 复测仍为 160 error / 20 warning；R035 复测仍为 160 error / 20 warning（新增两文件单独 lint exit 0）；R036 复测仍为 160 error / 20 warning（180 problems，未新增文件）。R037 复测为 **161 error / 20 warning（181 problems，54 文件）** —— 多出的 1 条**不是本轮引入**：本轮 5 个文件单独 lint 全部 exit 0；+1 来自工作区既有的未提交新文件 `src/components/model-config/ModelMetaDialog.tsx`（见 notes「R037 工作区卫生」）。**eslintBaseline 仍按 160 记**，待用户处置那批未提交改动后应回到 160。 R044 实测 **119 error / 13 warning** —— 基线自此改为 **119**（不再回看 160/151/163）。降幅构成（全部可复算）：① 删掉 7 条 eslint 自己报的僵尸 `eslint-disable-next-line`（unused directive，ruleId=null：useBidWorkspace.ts ×5 / useIntelCenter.ts ×1 / pbHooksIdentity.test.ts ×1）→ warning 20→13 的 −7 正好等于这 7 条；② 13 个在途文件的类型收口（`as any` ×4）与 no-control-regex 处置（imageSearch 改 `\\p{ASCII}`、composeGates 去多余转义、bidTypes/mermaidFigure 加带理由的行内豁免）+ 死分支折叠（no-useless-assignment ×1）；③ 剩余 119 条**全部**来自 5 条 react-hooks/react-refresh 规则（set-state-in-effect 73 / preserve-manual-memoization 25 / immutability 10 / only-export-components 7 / refs 4）；对照 R041 存档快照（163 error），当年 40 条非 react-hooks 类错误（no-explicit-any 19 / no-useless-assignment 5 / no-useless-escape 5 / no-unused-vars 3 / no-control-regex 3 / prefer-const 3 / no-irregular-whitespace 1 / preserve-caught-error 1）现已清零。明细见 docs/evolution/_r44_eslint_byrule.json（脚本 _r44_eslint_snapshot.cjs 可一键复算）。",

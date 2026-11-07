@@ -97,3 +97,94 @@ describe("技术参数响应表面板：重点条款先汇总 + 逐条原文响�
     expect(screen.getByLabelText("章节描述")).toBeInTheDocument()
   })
 })
+
+// ---------------------------------------------------------------------------
+// R80（2026-11-08）：长列表分页——400 行全渲染是编制页最重的子树
+// 只切渲染切片：不删数据、不改行内容，统计/覆盖核对/导出仍用全量 rows。
+// ---------------------------------------------------------------------------
+describe("技术参数响应表：长列表分页（R80）", () => {
+  /** 造 n 条参数行（每条以编号开头，便于用文本定位第 k 条） */
+  function makeTender(n: number): string {
+    const lines = ["第五章 采购需求"]
+    for (let i = 1; i <= n; i++) {
+      lines.push(`${i}.${i} 系统须支持第 ${i} 项功能，须满足国家相关标准要求，并提供对应的证明材料与检测报告`)
+    }
+    return lines.join("\n")
+  }
+
+  it("250 条参数：默认只渲染 100 行（首屏 DOM 降到单页量级）", () => {
+    const { container } = panel(makeTender(250))
+    expect(container.querySelectorAll("tbody tr").length).toBe(100)
+    // 统计仍按全量：「共 250 条」在表头徽标与分页条各一处，两处都不被分页带偏
+    expect(screen.getAllByText(/共 250 条/).length).toBeGreaterThanOrEqual(1)
+  })
+
+  it("分页条显示当前区间与总页数", () => {
+    panel(makeTender(250))
+    expect(screen.getByRole("navigation", { name: "技术参数响应表分页" })).toBeInTheDocument()
+    expect(screen.getByText("1 / 3")).toBeInTheDocument()
+    expect(screen.getByText(/共 250 条（每页 100 条）/)).toBeInTheDocument()
+  })
+
+  it("点「下一页」渲染第 101–200 条，且首条编号正确（不是重复第 1 页）", () => {
+    const { container } = panel(makeTender(250))
+    fireEvent.click(screen.getByRole("button", { name: "下一页" }))
+    expect(screen.getByText("2 / 3")).toBeInTheDocument()
+    const firstCell = container.querySelector("tbody tr td")
+    // 第 101 条：no 形如 "101.101"（makeTender 用 i.i）
+    expect(firstCell?.textContent).toBe("101.101")
+  })
+
+  it("末页只剩余数行（250 条 → 第 3 页 50 行）", () => {
+    const { container } = panel(makeTender(250))
+    fireEvent.click(screen.getByRole("button", { name: "末页" }))
+    expect(screen.getByText("3 / 3")).toBeInTheDocument()
+    expect(container.querySelectorAll("tbody tr").length).toBe(50)
+  })
+
+  it("第一页「上一页 / 首页」禁用；末页「下一页 / 末页」禁用", () => {
+    panel(makeTender(250))
+    expect(screen.getByRole("button", { name: "上一页" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "首页" })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "末页" }))
+    expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "末页" })).toBeDisabled()
+  })
+
+  it("≤100 条时不出分页条（零视觉噪音，行为与改动前一致）", () => {
+    panel(makeTender(20))
+    expect(screen.queryByRole("navigation", { name: "技术参数响应表分页" })).toBeNull()
+  })
+
+  it("翻页会收起已展开的行（避免展开态跟着 index 跑到别的行上）", () => {
+    const { container } = panel(makeTender(250))
+    // 展开第一行：该行自己的 span 去掉 line-clamp-2（只看本行，不看全表）
+    const firstRow = container.querySelector("tbody tr") as HTMLElement
+    const firstRowBtn = firstRow.querySelector("td button") as HTMLElement
+    const firstSpan = () => firstRow.querySelector("td button span")
+    expect(firstSpan()?.className).toContain("line-clamp-2")
+    fireEvent.click(firstRowBtn)
+    expect(firstSpan()?.className).not.toContain("line-clamp-2")
+
+    // 翻页后：新页第一行回到折叠态（展开态未跟随 index 漂到新页）
+    fireEvent.click(screen.getByRole("button", { name: "下一页" }))
+    const newFirstRow = container.querySelector("tbody tr") as HTMLElement
+    expect(newFirstRow.querySelector("td button span")?.className).toContain("line-clamp-2")
+  })
+
+  it("切换「章节描述」导致行数变少时，页码夹回末页而不是空白表", () => {
+    const twoSections = [
+      "第五章 采购需求",
+      ...Array.from({ length: 250 }, (_, i) => `${i + 1}.${i + 1} 系统须支持第 ${i + 1} 项功能，须满足国家相关标准要求，并提供对应的证明材料与检测报告`),
+      "附件三 技术规格书",
+      ...Array.from({ length: 20 }, (_, i) => `1.${i + 1} 终端须支持双频 Wi-Fi，兼容 802.11a/b/g/n/ac 协议，并提供样机现场演示`),
+    ].join("\n")
+    const { container } = panel(twoSections)
+    fireEvent.click(screen.getByRole("button", { name: "末页" }))
+    expect(screen.getByText("3 / 3")).toBeInTheDocument()
+    // 切到只有 20 条来源 → 只有 1 页，且表格非空
+    fireEvent.change(screen.getByLabelText("章节描述"), { target: { value: "附件三 技术规格书" } })
+    expect(container.querySelectorAll("tbody tr").length).toBeGreaterThan(0)
+    expect(screen.queryByText(/^3 \/ 3$/)).toBeNull()
+  })
+})

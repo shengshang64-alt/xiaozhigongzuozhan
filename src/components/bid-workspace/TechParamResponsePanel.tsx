@@ -31,6 +31,19 @@ import {
 const ROW_CAP = 400
 /** 覆盖点名最多列出的条数，其余用「另有 N 条」收口（避免长清单淹没面板） */
 const MISSING_SHOW = 10
+/**
+ * R80（2026-11-08）：单页渲染条数。
+ *
+ * 背景：本表最多 400 行，此前 `rows.map` 一次性全渲染。实测（400 条夹具，jsdom）
+ * **tbody 400 行 / 5635 个 DOM 节点 / 800 个 button / 首屏渲染 342ms**；
+ * 真实浏览器里还要叠加表格布局与 line-clamp 计算，且每行两个可点按钮常驻，
+ * 让这张表成为编制页最重的子树（而它 90% 的时间只是「被扫一眼」）。
+ *
+ * 取 100：400 条 → 4 页，单页 ≈ 1400 节点（降 75%），一屏可滚动浏览完，
+ * 同时页码不会多到需要「跳页输入框」那种额外控件。
+ * ⚠️ 只影响渲染切片，**不删数据、不改行内容**——导出与覆盖核对仍用全量 rows。
+ */
+const PAGE_SIZE = 100
 
 const KIND_BADGE: Record<ParamKind, string> = {
   review: "bg-primary/10 text-primary",
@@ -53,6 +66,8 @@ export function TechParamResponsePanel({ tenderText, report, onExport, exportBus
   const [customHint, setCustomHint] = useState("")
   // 展开的表格行（本地 UI 状态），与偏离表同款：默认折叠两行，点开看全文
   const [expandedKey, setExpandedKey] = useState<number | null>(null)
+  // R80：当前页（0 起）。只切渲染切片，全量 rows 仍用于导出/覆盖核对/统计。
+  const [page, setPage] = useState(0)
 
   // 覆盖核对用的条款：与偏离表生成/条数预告同调 resolveDeviationClauses（limit/granularity 同参数），
   // 保证「偏离表里有的条款」就是这里点名的分母；label 里含回退说明，直接用作实际来源展示。
@@ -86,6 +101,20 @@ export function TechParamResponsePanel({ tenderText, report, onExport, exportBus
     [clauseResolution, rows],
   )
   const capped = rows.length >= ROW_CAP
+
+  // R80：分页切片。页数变化（换来源/换描述/换项目）时把越界页码夹回末页，
+  // 避免「看到第 4 页 → 换了个 20 条的来源 → 空白表」这种一换就空的死状态。
+  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
+  const safePage = Math.min(page, pageCount - 1)
+  const pageRows = useMemo(
+    () => rows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE),
+    [rows, safePage],
+  )
+  // 翻页时收起已展开行（否则展状态会跟着 index 跑到新页某一行上，读起来像"自己跳了"）
+  const gotoPage = (next: number) => {
+    setPage(next)
+    setExpandedKey(null)
+  }
 
   return (
     <section className="mt-6 rounded-lg border border-border bg-card shadow-md">
@@ -223,7 +252,7 @@ export function TechParamResponsePanel({ tenderText, report, onExport, exportBus
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => {
+                  {pageRows.map((r) => {
                     const expanded = expandedKey === r.index
                     const toggle = () => setExpandedKey(expanded ? null : r.index)
                     return (
@@ -284,6 +313,57 @@ export function TechParamResponsePanel({ tenderText, report, onExport, exportBus
                 </tbody>
               </table>
             </div>
+            {/* R80：分页条——仅在超过一页时出现，单页保持原样（零视觉噪音） */}
+            {pageCount > 1 && (
+              <nav
+                aria-label="技术参数响应表分页"
+                className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-2.5 py-1.5"
+              >
+                <span className="text-xs text-muted-foreground">
+                  第 {(safePage + 1) * PAGE_SIZE - PAGE_SIZE + 1}–{Math.min((safePage + 1) * PAGE_SIZE, rows.length)} 条
+                  <span className="mx-1 opacity-50">/</span>共 {rows.length} 条（每页 {PAGE_SIZE} 条）
+                </span>
+                <span className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={safePage === 0}
+                    onClick={() => gotoPage(0)}
+                    aria-label="首页"
+                    className="rounded border border-border bg-card px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40"
+                  >
+                    «
+                  </button>
+                  <button
+                    type="button"
+                    disabled={safePage === 0}
+                    onClick={() => gotoPage(safePage - 1)}
+                    className="rounded border border-border bg-card px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40"
+                  >
+                    上一页
+                  </button>
+                  <span className="px-1 text-xs font-medium tabular-nums text-foreground">
+                    {safePage + 1} / {pageCount}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={safePage >= pageCount - 1}
+                    onClick={() => gotoPage(safePage + 1)}
+                    className="rounded border border-border bg-card px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40"
+                  >
+                    下一页
+                  </button>
+                  <button
+                    type="button"
+                    disabled={safePage >= pageCount - 1}
+                    onClick={() => gotoPage(pageCount - 1)}
+                    aria-label="末页"
+                    className="rounded border border-border bg-card px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40"
+                  >
+                    »
+                  </button>
+                </span>
+              </nav>
+            )}
             {capped && (
               <p className="mt-2 text-xs text-muted-foreground">本表只列前 {ROW_CAP} 条参数行（超出部分未列出），请按章节描述收窄来源后再核对。</p>
             )}
