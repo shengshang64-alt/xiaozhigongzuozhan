@@ -1,3 +1,4 @@
+// UX-R2: 标书检查 已按 docs/ux-review-2026-11 修复 2026-11-07（拖拽大区/禁用原因显形/模式单选卡/最近报告）
 // ---------------------------------------------------------------------------
 // BidCheckPage —— 标书检查中枢页面（与 7 步流水线平级的独立入口 /bid-check）。
 //
@@ -7,6 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import { useMemo, useRef, useState } from "react"
+import { Link } from "react-router-dom"
 import {
   ClipboardCheck,
   Upload,
@@ -18,6 +20,9 @@ import {
   ListChecks,
   BookOpenCheck,
   Sparkles,
+  History,
+  ChevronDown,
+  FileWarning,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
@@ -48,6 +53,41 @@ import type { BidCheckVm } from "./useBidCheck"
 
 type Tab = "result" | "rules"
 
+// UX-R2（docs/ux-review-2026-11 §十）：最近检查报告——本地 localStorage 摘要（上限 10 条）。
+// 检查结果本体含全文与命中定位（MB 级），不适合塞 localStorage；此处只存可复访的元信息，
+// 完整三栏视图仍以当次会话的 result 为准（跨会话恢复属 IndexedDB/PB 持久化，另行立项）。
+type RecentCheckReport = {
+  ranAt: string
+  mode: "normal" | "sealed"
+  sourceLabel: string
+  sourceKind: "file" | "project"
+  fail: number
+  warn: number
+}
+const RECENT_CHECKS_KEY = "bid_check_recent_reports"
+const RECENT_CHECKS_MAX = 10
+
+function readRecentChecks(): RecentCheckReport[] {
+  try {
+    const raw = window.localStorage.getItem(RECENT_CHECKS_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as RecentCheckReport[]
+    return Array.isArray(parsed) ? parsed.slice(0, RECENT_CHECKS_MAX) : []
+  } catch {
+    return []
+  }
+}
+
+function writeRecentCheck(entry: RecentCheckReport): RecentCheckReport[] {
+  const next = [entry, ...readRecentChecks().filter((r) => r.ranAt !== entry.ranAt)].slice(0, RECENT_CHECKS_MAX)
+  try {
+    window.localStorage.setItem(RECENT_CHECKS_KEY, JSON.stringify(next))
+  } catch {
+    /* 存储不可用时静默降级为会话内可见 */
+  }
+  return next
+}
+
 export function BidCheckPage(vm: BidCheckVm) {
   const {
     mode,
@@ -75,6 +115,28 @@ export function BidCheckPage(vm: BidCheckVm) {
   const [tab, setTab] = useState<Tab>("result")
   const [gateOpen, setGateOpen] = useState(false)
   const [pendingExport, setPendingExport] = useState<null | "excel" | "html" | "docx">(null)
+  // UX-R2：拖拽高亮 / 项目次入口折叠 / 最近检查报告
+  const [dragActive, setDragActive] = useState(false)
+  const [projectPickOpen, setProjectPickOpen] = useState(false)
+  const [recentChecks, setRecentChecks] = useState<RecentCheckReport[]>(() => readRecentChecks())
+  // UX-R2：每次成功产出 result 即记一条本地摘要（同一次结果只记一条）。
+  // 用渲染期调整状态（React 官方推荐模式，同 CustomerFormDialog 的 prevOpen），避开 effect 内 setState。
+  const [prevRecorded, setPrevRecorded] = useState(result)
+  if (prevRecorded !== result) {
+    setPrevRecorded(result)
+    if (result) {
+      setRecentChecks(
+        writeRecentCheck({
+          ranAt: new Date().toISOString(),
+          mode,
+          sourceLabel,
+          sourceKind: source.kind === "file" ? "file" : "project",
+          fail: result.summary.fail,
+          warn: result.summary.warn,
+        }),
+      )
+    }
+  }
   // P1-6：项目下拉整备——同名去重（保最新）+ updated 倒序 + 关键字搜索（实测 30+ 选项
   // 同名重复无排序无搜索，多人团队下不可用）
   const [projectQuery, setProjectQuery] = useState("")
@@ -130,34 +192,63 @@ export function BidCheckPage(vm: BidCheckVm) {
           <div>
             <h1 className="text-xl font-semibold">标书检查中枢</h1>
             <p className="text-xs text-muted-foreground">纯规则 · 零 AI · 只标不改（正文只读，产出三栏定位视图 / Excel / HTML / 标注版 Word 四件套覆盖层）</p>
+            {/* UX-R3 S10：交付前终检 / 项目内过程自查的分工说明（可互跳） */}
+            <p className="mt-1 text-xs text-muted-foreground">
+              交付前终检 · 可检查任意历史文档；项目内过程自查请回{" "}
+              <Link
+                to="/bid-workspace"
+                className="font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                标书工作台 →
+              </Link>
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <div className="inline-flex overflow-hidden rounded-md border">
-            <button
-              className={cn("px-3 py-1.5 text-sm", !sealed ? "bg-primary text-primary-foreground" : "bg-background hover:bg-accent")}
-              onClick={() => setMode("normal")}
-            >
-              普通模式
-            </button>
-            <button
-              className={cn("px-3 py-1.5 text-sm", sealed ? "bg-destructive text-destructive-foreground" : "bg-background hover:bg-accent")}
-              onClick={() => setMode("sealed")}
-            >
-              暗标严格模式
-            </button>
-          </div>
           <Button variant="outline" size="sm" onClick={() => setShowConfig(true)}>
             <Settings2 className="h-4 w-4" /> 配置
           </Button>
         </div>
       </div>
 
-      {sealed ? (
-        <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-          <ShieldAlert className="h-4 w-4" /> 暗标严格模式：L1~L5 全开，加严阈值，检出身份泄露 / 元数据痕迹将触发导出门禁。
-        </div>
-      ) : null}
+      {/* ---------- UX-R2：模式单选卡（带一行说明，替代原灰按钮切换 + 独立警示条） ---------- */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {([
+          {
+            key: "normal" as const,
+            title: "普通模式",
+            desc: "只读正文与常用规则：适合交付前的常规自查，速度快",
+            active: !sealed,
+          },
+          {
+            key: "sealed" as const,
+            title: "暗标严格模式",
+            desc: "L1~L5 全开、加严阈值：检出身份泄露 / 元数据痕迹将触发导出门禁",
+            active: sealed,
+          },
+        ]).map((m) => (
+          <button
+            key={m.key}
+            type="button"
+            aria-pressed={m.active}
+            onClick={() => setMode(m.key)}
+            className={`rounded-lg border-2 p-4 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+              m.active
+                ? m.key === "sealed"
+                  ? "border-destructive/60 bg-destructive/5"
+                  : "border-primary/60 bg-primary/5"
+                : "border-border bg-card hover:border-primary/40"
+            }`}
+          >
+            <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              {m.key === "sealed" ? <ShieldAlert className={`h-4 w-4 ${m.active ? "text-destructive" : "text-muted-foreground"}`} /> : <ClipboardCheck className={`h-4 w-4 ${m.active ? "text-primary" : "text-muted-foreground"}`} />}
+              {m.title}
+              {m.active ? <span className="ml-auto text-[10px] font-medium text-primary">当前模式</span> : null}
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{m.desc}</p>
+          </button>
+        ))}
+      </div>
 
       {/* ---------- 输入区 ---------- */}
       <Card>
@@ -165,82 +256,129 @@ export function BidCheckPage(vm: BidCheckVm) {
           <CardTitle className="text-sm">检查对象</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-2 rounded-md border p-3">
-              <div className="text-sm font-medium">上传文件</div>
-              <p className="text-xs text-muted-foreground">.docx 走全量（含元数据 / 节点痕迹）；.pdf 走正文 + PDF 元数据。</p>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".docx,.pdf"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0]
-                  if (f) pickFile(f)
-                  e.target.value = ""
-                }}
-              />
-              <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()}>
-                <Upload className="h-4 w-4" /> 选择 docx / pdf
-              </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".docx,.pdf"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) pickFile(f)
+              e.target.value = ""
+            }}
+          />
+          {source.kind === "none" ? (
+            /* UX-R2：双入口合并——拖拽/点击同一大区，项目选择折叠为次入口 */
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => fileInputRef.current?.click()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault()
+                  fileInputRef.current?.click()
+                }
+              }}
+              onDragOver={(e) => {
+                e.preventDefault()
+                setDragActive(true)
+              }}
+              onDragLeave={() => setDragActive(false)}
+              onDrop={(e) => {
+                e.preventDefault()
+                setDragActive(false)
+                const f = e.dataTransfer.files?.[0]
+                if (f) pickFile(f)
+              }}
+              className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                dragActive ? "border-primary bg-primary/5" : "border-border hover:border-primary/50 hover:bg-secondary/40"
+              }`}
+            >
+              <Upload className={`h-8 w-8 ${dragActive ? "text-primary" : "text-muted-foreground"}`} />
+              <p className="text-sm font-medium text-foreground">拖入 docx / pdf，或点击选择文件</p>
+              <p className="max-w-md text-xs leading-relaxed text-muted-foreground">
+                .docx 走全量检查（含元数据 / 节点痕迹）；.pdf 走正文 + PDF 元数据
+              </p>
             </div>
-            <div className="space-y-2 rounded-md border p-3">
-              <div className="text-sm font-medium">选择标书项目</div>
-              <p className="text-xs text-muted-foreground">复用项目正文做检查（无文件包，节点痕迹项标「无法检测」）。同名项目仅保留最近一条。</p>
-              <input
-                type="search"
-                value={projectQuery}
-                onChange={(e) => setProjectQuery(e.target.value)}
-                placeholder="搜索项目名称 / 招标编号…"
-                disabled={projectsLoading || projects.length === 0}
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm disabled:opacity-60"
-              />
-              <select
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm disabled:opacity-60"
-                value={source.kind === "project" ? source.record.id : ""}
-                disabled={projectsLoading || projectOptions.length === 0}
-                onChange={(e) => pickProject(e.target.value)}
-              >
-                <option value="">
-                  {projectsLoading
-                    ? "加载中…"
-                    : selectableProjects.length === 0
-                      ? "暂无项目"
-                      : projectOptions.length === 0
-                        ? "无匹配项目（调整搜索词）"
-                        : "请选择项目"}
-                </option>
-                {projectOptions.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.project_name || p.id}
+          ) : (
+            <div className="flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2.5">
+              <FileText className="h-4 w-4 shrink-0 text-primary" />
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground" title={sourceLabel}>
+                {sourceLabel}
+              </span>
+              <Badge variant="neutral">{source.kind === "file" ? "上传文件" : "项目正文"}</Badge>
+              <button className="shrink-0 text-xs text-muted-foreground hover:text-foreground" onClick={clearSource}>
+                <X className="inline h-3 w-3" /> 更换
+              </button>
+            </div>
+          )}
+
+          {/* 次入口：从标书项目选择（折叠，不与上传大区并列抢焦点） */}
+          <div>
+            <button
+              type="button"
+              aria-expanded={projectPickOpen}
+              onClick={() => setProjectPickOpen((v) => !v)}
+              className="inline-flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              或 从标书项目选择
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${projectPickOpen ? "rotate-180" : ""}`} />
+            </button>
+            {projectPickOpen ? (
+              <div className="mt-2 space-y-2 rounded-lg border border-border bg-background p-3">
+                <input
+                  type="search"
+                  value={projectQuery}
+                  onChange={(e) => setProjectQuery(e.target.value)}
+                  placeholder="搜索项目名称 / 招标编号…"
+                  disabled={projectsLoading || projects.length === 0}
+                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm disabled:opacity-60"
+                />
+                <select
+                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm disabled:opacity-60"
+                  value={source.kind === "project" ? source.record.id : ""}
+                  disabled={projectsLoading || projectOptions.length === 0}
+                  onChange={(e) => pickProject(e.target.value)}
+                >
+                  <option value="">
+                    {projectsLoading
+                      ? "加载中…"
+                      : selectableProjects.length === 0
+                        ? "暂无项目"
+                        : projectOptions.length === 0
+                          ? "无匹配项目（调整搜索词）"
+                          : "请选择项目"}
                   </option>
-                ))}
-              </select>
-              {selectableProjects.length > projectOptions.length ? (
+                  {projectOptions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.project_name || p.id}
+                    </option>
+                  ))}
+                </select>
                 <p className="text-xs text-muted-foreground">
-                  {projectOptions.length === selectableProjects.length
-                    ? `共 ${selectableProjects.length} 个项目（已隐藏回收站）`
-                    : `匹配 ${projectOptions.length} / 共 ${selectableProjects.length} 个项目（同名已合并 · 已隐藏回收站）`}
+                  {selectableProjects.length > projectOptions.length
+                    ? `匹配 ${projectOptions.length} / 共 ${selectableProjects.length} 个项目（同名已合并 · 已隐藏回收站）`
+                    : selectableProjects.length > 0
+                      ? `共 ${selectableProjects.length} 个项目 · 按最近更新排序（已隐藏回收站）`
+                      : "复用项目正文做检查（无文件包，节点痕迹项标「无法检测」）"}
                 </p>
-              ) : selectableProjects.length > 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  共 {selectableProjects.length} 个项目 · 按最近更新排序（已隐藏回收站）
-                </p>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
           </div>
-          <div className="flex items-center justify-between gap-2">
+
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-sm">
-              {source.kind === "none" ? (
-                <span className="text-muted-foreground">尚未选择检查对象</span>
+              {/* UX-R2：开始检查的禁用原因显形（原按钮「哑巴」问题） */}
+              {source.kind === "none" && !running ? (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600">
+                  <FileWarning className="h-3.5 w-3.5" />
+                  请先上传文件或选择项目
+                </span>
               ) : (
                 <>
                   <FileText className="h-4 w-4 text-primary" />
                   <span className="font-medium">{sourceLabel}</span>
                   <Badge variant="neutral">{source.kind === "file" ? "上传文件" : "项目正文"}</Badge>
-                  <button className="text-xs text-muted-foreground hover:text-foreground" onClick={clearSource}>
-                    <X className="inline h-3 w-3" /> 清除
-                  </button>
                 </>
               )}
             </div>
@@ -262,6 +400,65 @@ export function BidCheckPage(vm: BidCheckVm) {
           </div>
         </CardContent>
       </Card>
+
+      {/* ---------- UX-R2：最近检查报告（本地摘要；完整三栏视图仍属当次会话的 result） ---------- */}
+      {tab === "result" ? (
+        recentChecks.length > 0 ? (
+          <div className="rounded-lg border border-border bg-card shadow-md">
+            <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+              <History className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold text-foreground">最近检查报告</h2>
+              <span className="text-xs text-muted-foreground">本机记录（最多 {RECENT_CHECKS_MAX} 条）</span>
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    window.localStorage.removeItem(RECENT_CHECKS_KEY)
+                  } catch {
+                    /* 忽略 */
+                  }
+                  setRecentChecks([])
+                }}
+                className="ml-auto rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                清空记录
+              </button>
+            </div>
+            <ul>
+              {recentChecks.map((r) => (
+                <li key={r.ranAt} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/60 px-4 py-2.5 text-sm last:border-b-0">
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${r.mode === "sealed" ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}>
+                    {r.mode === "sealed" ? "暗标严格" : "普通模式"}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-foreground" title={r.sourceLabel}>
+                    {r.sourceLabel}
+                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    <span className="font-medium text-destructive">{r.fail}</span> 项必改 ·{" "}
+                    <span className="font-medium text-amber-600">{r.warn}</span> 项提醒
+                  </span>
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{r.ranAt.slice(5, 16).replace("T", " ")}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-2.5 rounded-lg border border-dashed border-border bg-card px-5 py-8 text-center">
+            <History className="h-7 w-7 text-muted-foreground" />
+            <p className="text-sm font-medium text-foreground">还没有检查记录</p>
+            <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
+              完成第一次检查后，这里会按时间列出历次报告的模式、对象与问题数，方便回溯对比
+            </p>
+            <button
+              type="button"
+              onClick={() => setTab("rules")}
+              className="text-xs text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              先看看检查了哪些规则 →
+            </button>
+          </div>
+        )
+      ) : null}
 
       {/* ---------- Tab：检查结果（三栏） / 规则清单 ---------- */}
       <div className="inline-flex overflow-hidden rounded-md border">

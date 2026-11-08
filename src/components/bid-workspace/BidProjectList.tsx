@@ -1,14 +1,15 @@
 import { useRef, useState, type ChangeEvent, type ReactNode } from "react"
-import { Archive, ArchiveRestore, CalendarClock, Download, FileCheck2, LayoutGrid, Loader2, Plus, Search, Table2, Trash2, Undo2 } from "lucide-react"
+import { Archive, ArchiveRestore, CalendarClock, ChevronDown, Download, FileCheck2, FilePlus2, LayoutGrid, Loader2, Plus, Search, Table2, Trash2, Undo2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { EmptyState } from "@/components/common/DataStates"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
-import { CompanyTemplateHint } from "@/components/common/CompanyTemplateHint"
+import { useCompanyTemplates } from "@/components/common/companyTemplates"
 import { DataTable, type DataTableColumn } from "@/components/ui/DataTable"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
-import { daysUntil, displayStageLabel, effectiveHospital, isGenTargetChapter, normalizeBidScope, type BidProjectRecord, type BidStage } from "@/pages/BidWorkspace/bidTypes"
+import { daysUntilLocalDay, displayStageLabel, effectiveHospital, isGenTargetChapter, normalizeBidScope, PIPELINE_STEPS, type BidProjectRecord, type BidStage } from "@/pages/BidWorkspace/bidTypes"
 import { extractTenderMeta, tenderMetaHits } from "@/pages/BidWorkspace/tenderMeta"
 import { exportToCsv } from "@/lib/exportCsv"
 import { localDateStamp } from "@/lib/dateStamp"
@@ -30,12 +31,76 @@ function chapterProgress(proj: BidProjectRecord): { done: number; total: number 
   return { done: targets.filter((c) => isTrulyDoneChapter(c)).length, total: targets.length }
 }
 
-/** 排序与展示共用同一份算法，避免两处各算一遍。
- * 单位「章成稿」并进返回值，而不是写成 `{值} 章成稿`：JSX 里「表达式 + 空格 + 文字」是三个
- * 相邻文本节点，格式化工具或编辑器若把换行插进去，前导空格会被折叠掉、显示成「3/129章成稿」。 */
-function chapterProgressLabel(proj: BidProjectRecord): string {
+// ---------------------------------------------------------------------------
+// UX-R3 S5（2026-11-08）：项目卡「卡在哪一步」一眼可见
+// 原来卡片只显示「0/0 章成稿」——无大纲时这个数字既无意义也让人无从下手。
+// 改为：七步微缩条（完成绿 / 当前蓝脉冲 / 未开始灰）+ 语义化状态文案。
+// 数据完全由既有产物推导（与本文件 chapterProgress 及流水线 stepDone 同一套判据），零新增字段。
+// ---------------------------------------------------------------------------
+
+/** 单步完成判定：与 BidPipelineStepperEnhanced.stepDone 逐条同义（列表页不得引入组件依赖） */
+function stepDoneForList(step: number, proj: BidProjectRecord): boolean {
+  switch (step) {
+    case 1: return (proj.tender_text ?? "").trim().length > 0
+    case 2: return !!proj.parse_report
+    case 3: return proj.bid_chapters.some((c) => (c.content ?? "").trim().length > 0)
+    case 4: return !!proj.dup_report
+    case 5: return !!proj.void_check
+    case 6: return !!proj.ai_review
+    case 7: return proj.stage === "archived"
+    default: return false
+  }
+}
+
+/** 当前步 = 第一个未完成步（全部完成则停在 7）；回收站/归档项目不标当前步 */
+function currentStepForList(proj: BidProjectRecord): number {
+  for (const s of PIPELINE_STEPS) {
+    if (!stepDoneForList(s.step, proj)) return s.step
+  }
+  return PIPELINE_STEPS.length
+}
+
+/** 七步微缩条：7 个小圆点横向排列 */
+function StepStrip({ proj }: { proj: BidProjectRecord }) {
+  const current = currentStepForList(proj)
+  return (
+    <span className="inline-flex items-center gap-1" aria-hidden="true">
+      {PIPELINE_STEPS.map((s, i) => {
+        const done = stepDoneForList(s.step, proj)
+        const isCurrent = s.step === current && !done
+        return (
+          <span key={s.step} className="inline-flex items-center">
+            <span
+              title={`第 ${s.step} 步 ${s.label}：${done ? "已完成" : isCurrent ? "当前" : "未开始"}`}
+              className={`h-1.5 w-1.5 rounded-full ${
+                done
+                  ? "bg-primary"
+                  : isCurrent
+                    ? "animate-pulse bg-primary ring-1 ring-primary/40"
+                    : "bg-border"
+              }`}
+            />
+            {i < PIPELINE_STEPS.length - 1 && <span className="h-px w-1 bg-border" />}
+          </span>
+        )
+      })}
+    </span>
+  )
+}
+
+/**
+ * 语义化成稿状态文案：
+ *   无大纲 → 「待生成大纲」
+ *   有大纲 → 「编写中 X/Y 章」（全部完成时「已成稿 X/Y 章」）
+ * 回收站不显示进度（沿用旧口径）。
+ */
+function progressStatusLabel(proj: BidProjectRecord): string {
+  const hasOutline = (proj.bid_outline?.length ?? 0) > 0 || proj.bid_chapters.some((c) => (c.title ?? "").trim().length > 0)
+  if (!hasOutline) return "待生成大纲"
   const p = chapterProgress(proj)
-  return `${p.done}/${p.total} 章成稿`
+  if (p.total === 0) return "待生成大纲"
+  if (p.done >= p.total) return `已成稿 ${p.done}/${p.total} 章`
+  return `编写中 ${p.done}/${p.total} 章`
 }
 
 type ListView = "active" | "archived" | "trash"
@@ -83,7 +148,7 @@ const STAGE_BADGE: Record<BidStage, string> = {
 }
 
 function CountdownChip({ dateStr }: { dateStr: string }) {
-  const days = daysUntil(dateStr)
+  const days = daysUntilLocalDay(dateStr)
   if (days === null) return null
   if (days < 0) {
     return (
@@ -109,7 +174,7 @@ function CountdownChip({ dateStr }: { dateStr: string }) {
 const TRASH_RETAIN_DAYS = 30
 
 function trashRemainDays(deletedAt: string): number | null {
-  const d = daysUntil(deletedAt)
+  const d = daysUntilLocalDay(deletedAt)
   if (d === null) return null
   return Math.max(0, TRASH_RETAIN_DAYS + d)
 }
@@ -203,7 +268,14 @@ function ProjectCard({
         {effectiveHospital(proj) || "采购人未填写"}
         {proj.tender_no ? ` · ${proj.tender_no}` : ""}
       </p>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+      {/* UX-R3 S5：七步微缩条——一眼看出项目卡在哪一步 */}
+      {view !== "trash" && (
+        <div className="mt-3 flex items-center gap-2">
+          <StepStrip proj={proj} />
+          <span className="text-xs text-muted-foreground">第 {currentStepForList(proj)} 步</span>
+        </div>
+      )}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         {view === "trash" ? (
           <TrashRemainChip deletedAt={proj.deleted_at} />
         ) : (
@@ -211,7 +283,7 @@ function ProjectCard({
         )}
         {view !== "trash" && (
           <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
-            {chapterProgressLabel(proj)}
+            {progressStatusLabel(proj)}
           </span>
         )}
       </div>
@@ -258,6 +330,8 @@ function ProjectCard({
 
 export function BidProjectList(p: BidProjectListProps) {
   const [pendingDelete, setPendingDelete] = useState<BidProjectRecord | null>(null)
+  // UX-R3 S5：公司标准模版——从头部提示条收进「新建投标项目」下拉（惰性拉取，无模板时菜单不含该组）
+  const { rows: templateRows, busyId: templateBusyId, download: downloadTemplate } = useCompanyTemplates("bid", "spec")
   // 撤销提醒条折叠态：>3 条时默认只显示前 3 条，避免把项目列表顶出首屏
   const [undoExpanded, setUndoExpanded] = useState(false)
   // ux-03：新建投标唯一必填「项目名称」——hook 已有 toast 兼底但一闪而过、不落字段；此处补行内红框+红字提示+自动聚焦
@@ -317,7 +391,7 @@ export function BidProjectList(p: BidProjectListProps) {
     sortAccessor: chapterDoneCount,
     render: (proj) => (
       <span className="text-xs text-muted-foreground">
-        {chapterProgressLabel(proj)}
+        {progressStatusLabel(proj)}
       </span>
     ),
   }
@@ -434,16 +508,43 @@ export function BidProjectList(p: BidProjectListProps) {
               <Download className="mr-1.5 h-4 w-4" />
               导出 CSV
             </Button>
-            <Button
-              onClick={p.openNewDialog}
-              className="bg-primary text-primary-foreground shadow-md hover:bg-primary/90 focus-visible:shadow-[var(--focus-ring)]"
-            >
-              <Plus className="mr-1.5 h-4 w-4" />
-              新建投标项目
-            </Button>
+            {/* UX-R3 S5：模板下载条收进「新建投标项目」下拉（与方案编制页同一模式，UX-R2 §五）
+                模板行由 useCompanyTemplates 惰性拉取，无模板时只显示新建项 */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  className="bg-primary text-primary-foreground shadow-md hover:bg-primary/90 focus-visible:shadow-[var(--focus-ring)]"
+                >
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  新建投标项目
+                  <ChevronDown className="ml-0.5 h-3.5 w-3.5 opacity-80" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-60">
+                <DropdownMenuItem onSelect={p.openNewDialog} className="gap-2">
+                  <FilePlus2 className="h-3.5 w-3.5 text-primary" />
+                  新建空项目（可上传招标文件自动识别）
+                </DropdownMenuItem>
+                {templateRows.length > 0 ? (
+                  <>
+                    <div className="px-2 py-1 text-[11px] font-medium text-muted-foreground">公司标准模版下载</div>
+                    {templateRows.map((r) => (
+                      <DropdownMenuItem
+                        key={r.id}
+                        onSelect={() => void downloadTemplate(r)}
+                        disabled={templateBusyId === r.id}
+                        className="gap-2"
+                      >
+                        <Download className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="min-w-0 flex-1 truncate">{r.name}</span>
+                        {templateBusyId === r.id ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                      </DropdownMenuItem>
+                    ))}
+                  </>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-          {/* R-203：本场景配套的公司标准模版（附件3 投标模板 + 附件1 全文范本 + 格式规范），点击即下载 */}
-          <CompanyTemplateHint scenario="bid" extraScenario="spec" />
         </header>
 
         <div className="mt-6 flex flex-wrap items-center gap-3">

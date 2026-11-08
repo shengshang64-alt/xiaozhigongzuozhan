@@ -23,6 +23,7 @@ import { evaluateProseQuality } from "./proseQualityGate"
 import { checkChapterIntegrity, reconcileChaptersWithOutline } from "./chapterIntegrity"
 import { reconcileStarClauses, scanTenderText } from "./tenderTextQuality"
 import { checkCaptionNumbering } from "./bidWritingRules"
+import { countUnconfirmedSubjective } from "./subjectiveScores"
 
 /** 严重度：blocking＝不解决就不能交（废标级/门禁阻断）；must＝应交未交；nice＝建议做但不阻断 */
 export type ReadinessLevel = "blocking" | "must" | "nice"
@@ -205,6 +206,31 @@ export function buildSubmissionReadiness(rec: Partial<BidProjectRecord> | null):
       ? { id: "deviation", title: "技术偏离表", status: "done", detail: `${deviationRows} 条条款已逐条响应`, step: 3, level: "must" }
       : { id: "deviation", title: "技术偏离表", status: "todo", detail: "还没有偏离表——评委核对技术响应时按这张表看", step: 3, level: "must" },
   )
+
+  // ⑤b UX-R3 S12：主观分逐条确认（isSubjective=true 的评分项须人工确认应对策略）
+  // ⚠️ level=must 而非 blocking：主观分策略属人工判断，不卡死流程，但必须显式提醒。
+  const subjective = countUnconfirmedSubjective(rec)
+  if (subjective.total > 0) {
+    items.push(
+      subjective.unconfirmed > 0
+        ? {
+            id: "subjective-confirm",
+            title: "主观分逐条确认",
+            status: "todo",
+            detail: `还有 ${subjective.unconfirmed} 条主观分未确认应对策略（共 ${subjective.total} 条）——评委的人工打分点，建议逐条写清怎么拿分`,
+            step: 3,
+            level: "must",
+          }
+        : {
+            id: "subjective-confirm",
+            title: "主观分逐条确认",
+            status: "done",
+            detail: `${subjective.total} 条主观分均已确认应对策略`,
+            step: 3,
+            level: "must",
+          },
+    )
+  }
 
   // ⑥ 废标检查（做过 ≠ 干净）
   const voidItems = rec.void_check?.items ?? []

@@ -21,7 +21,8 @@ type BidOpenDateBarProps = Pick<UseBidWorkspace, "activeProject" | "isArchivedLo
 
 const CHIP: Record<BidOpenDateStatus["tone"], string> = {
   missing: "border border-dashed border-warning/50 bg-warning/10 text-warning",
-  past: "border border-destructive/40 bg-destructive/10 font-medium text-destructive",
+  // UX-R3 S10：过期/今日开标由红降橙——「开标日已过」是要回填结果的提醒，不是需要补救的警报
+  past: "border border-warning/40 bg-warning/10 font-medium text-warning",
   urgent: "border border-destructive/40 bg-destructive/10 font-medium text-destructive",
   normal: "border border-border bg-muted text-muted-foreground",
 }

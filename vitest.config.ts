@@ -23,6 +23,8 @@ export default mergeConfig(
         "scripts/**/*.{test,spec}.?(c|m)[jt]s?(x)",
       ],
       exclude: ["**/node_modules/**", "**/dist/**", "**/.loop/**"],
+      // 默认 node；DOM 组件测试用文件级 // @vitest-environment jsdom pragma 显式声明。
+      // 全局 jsdom 会让 44 个 node 假设型守卫测试假红（R2 验收实测）。
       environment: "node",
     },
   }),

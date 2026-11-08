@@ -1,4 +1,5 @@
 import { extractJsonCandidate, parseJsonTolerant, repairJsonStructure } from "@/lib/jsonTolerant"
+// R70: Re-export daysUntilLocalDay from lib/bidOpenDay for local calendar day countdown (fixes UTC bias in bid project list)
 // R187（r184-bid-amount-consistency-wiring）：金额大小写一致性内核（R184 交付的确定性互逆解析），本轮接入交卷体检
 import { scanAmountMismatches } from "@/lib/currencyCn"
 import type { Chapter, FigureSpec, OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
@@ -5918,6 +5919,9 @@ export type BidProjectRecord = {
   text_audit?: TextAuditReport | null
   /** 第九轮改造 1：交卷闸门（确认留痕）；存量项目缺列时容错为 {gates:[]} */
   stage_gates: StageGates
+  /** UX-R3 S12：主观分逐条确认（json 列；键=评分项编号 R1/B1…，值={confirmed,strategy,confirmed_at}）。
+   *  存量项目缺列时容错为 {}（读取一律走 subjectiveScores.normalizeSubjectiveConfirmations）。 */
+  subjective_confirmations?: Record<string, { confirmed: boolean; strategy: string; confirmed_at: string }>
   /** 第十一轮改造 1：归档分组与回收站软删（deleted_at 空串=未删）；存量项目缺列时容错 */
   archived: boolean
   deleted_at: string
@@ -7865,6 +7869,18 @@ export const PROSE_LINT_RULES: string[] = [
   //   · 不卡单条下限 —— 「（4）体温单」这种纯功能名合法，卡下限会判成空条目。
   // 判据写宽会漏判、写窄会误判合法样本；这两条边界都是拿金标准原文校过的。
   "颗粒度硬指标（功能/技术方案/建设内容类章节）：每万字至少 30 条「（N）」条目（金标准 42/万字，这是下限不是目标）；条目长度中位数落在 30~60 字之间（金标准 36 字）——中位低于 30 字说明写成了清单没有内容，高于 60 字说明又写成散文了；条目密度不达标的章节视为未完成，必须补足到「每个功能点一条」再输出。",
+  // ─── 9. 句式级去 AI 腔（UX-R3 S11，2026-11-08）───
+  // 背景：上面的黑名单只管单词级（赋能/抓手/闭环），实测真实生成正文
+  // （test_results/审查正文-三明.txt）发现 AI 味大头在**句式与段落结构级**——
+  // 这些句式一个词都不在黑名单里，组合起来却是浓浓 AI 腔。四条分别对应四类漏网句式。
+  "禁升华句式：正文不得出现「不是……而是……」式对比升华（如「这不是单一系统的采购，而是……体系重构」）——直接陈述事实（「本项目为……」），不给项目定性拔高；" +
+    "同类禁「不仅是……更是……」「与其说……不如说……」的修辞对比；要写价值就直接写该系统解决的具体问题与量化收益；",
+  "禁排比凑结构：正文不得用「一是……二是……三是……」式排比（也不得用「首先/其次/再次/最后」串起并列要点）——分点一律用「（1）（2）（3）」条款列，一条一个独立措施，不靠排比制造结构感；" +
+    "若确有并列关系，写成「（1）……；（2）……；（3）……」，每条给具体对象与动作；",
+  "禁元话语收口：段落/章节末尾不得用「这一定位决定了……」「上述技术参数均为……」「我公司已全部逐项应答响应」「充分知悉/充分理解/高度重视/深刻认识」等收口或态度词——" +
+    "收尾只写可核验的落地承诺（量化指标/责任分工/时限）；评审看措施不看态度，「高度重视」一类表述一律删除；",
+  "禁政策堆砌：正文不得出现与具体技术实现无关的宏观政策表述（如「为贯彻落实……战略」「作为……策源地」「助力……高质量发展」「顺应……趋势」）——" +
+    "标书写「怎么做系统」，不写政策学习心得；确需引用标准时只写标准编号与名称（如「电子病历分级评价五级」「GB/T 22239-2019」），不写政策口号；",
 ]
 
 /** 正文段落形态规则（REQ-022，2026-10-17）——章/节两个生成器**共用这一份**，禁止各写一份
@@ -8209,7 +8225,10 @@ export { buildVoidCheckMessages, PROMPT_VERSION as VOID_CHECK_PROMPT_VERSION } f
 export { buildEvalMessages, PROMPT_VERSION as EVAL_PROMPT_VERSION } from "./prompts/eval"
 export { buildBidRefineMessages, PROMPT_VERSION as BID_REFINE_PROMPT_VERSION } from "./prompts/bidRefine"
 
-export type BidRefineKind = "rewrite" | "expand" | "condense"
+/** UX-R3 S11：新增 "deai"（去 AI 味）——见 prompts/bidRefine.ts 的 deai 分支。
+ *  与 rewrite 的区别：rewrite 是「按版式与文风硬条款整体重写」，deai 只做句式级去腔
+ *  （升华/排比/元话语/态度词/政策堆砌），**技术参数与事实一字不动，只改表述**。 */
+export type BidRefineKind = "rewrite" | "expand" | "condense" | "deai"
 
 // ---------------------------------------------------------------------------
 // 第九轮改造 3：三路评标之「格式规范路」与「商务要素路」（技术路 = buildEvalMessages 不动）
@@ -8259,6 +8278,27 @@ export function daysUntil(dateStr: string | null | undefined): number | null {
   const now = new Date()
   return Math.ceil((target.getTime() - now.getTime()) / 86400000)
 }
+/**
+ * R70: Local calendar day version for consistency with R67-R69 fixes.
+ * Uses lib/bidOpenDay.daysUntilLocalDay instead of UTC-based Math.ceil calculation.
+ */
+export function daysUntilLocalDay(dateStr: string | null | undefined): number | null {
+  // R70: Inline implementation for local calendar day calculation
+  const MS_PER_DAY = 86_400_000
+  if (!dateStr) return null
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dateStr).trim())
+  if (!m) return null
+  const year = Number(m[1])
+  const month = Number(m[2])
+  const day = Number(m[3])
+  const bidDay = new Date(year, month - 1, day)
+  if (Number.isNaN(bidDay.getTime())) return null
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const bidDayMs = bidDay.getTime()
+  return Math.round((bidDayMs - today) / MS_PER_DAY)
+}
+
 
 /** 章节清单 → 纯文本（废标检查/交卷体检/查重共用）；第十三轮改造 4：跳过空 content 章（商务骨架章与未生成章不产生「第X章 标题」空段噪音），编号保持原章序 */
 export function chaptersToText(chapters: Chapter[], max = MAX_BID_CHARS): string {

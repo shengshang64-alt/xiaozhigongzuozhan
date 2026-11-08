@@ -2,6 +2,7 @@
 // + 该客群竞品 battlecard + 相关情报，替代横跨解析/编制/查重/废标/评标/竞品/情报多页人肉找信息。
 // 纯前端聚合、只读：标内三源直接取自当前项目已加载数据（零额外请求），竞品/情报按需懒加载，零后端红线。
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { cleanIntelSnippet } from "@/pages/IntelCenter/intelBodyClean"
 import { Link } from "react-router-dom"
 import { formatCount } from "@/lib/money"
 import {
@@ -273,7 +274,7 @@ export function BidWarRoom({ activeProject, missCount = 0, riskCount = 0 }: { ac
         const rows = (data.items ?? []).map((it) => ({
           id: String(it.id ?? ""),
           title: String(it.title ?? ""),
-          summary: String(it.summary ?? it.content_snippet ?? ""),
+          summary: cleanIntelSnippet(String(it.summary ?? it.content_snippet ?? ""), { title: String(it.title ?? "") }),
           source_name: String(it.source_name ?? ""),
           published_at: String(it.published_at ?? ""),
           url: String(it.url ?? ""),

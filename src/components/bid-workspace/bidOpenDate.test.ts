@@ -66,8 +66,8 @@ describe("bidOpenDateStatus · 本地日历日口径（R68）", () => {
     expect(bidOpenDateStatus("2026-12-01 00:00:00.000Z", at).daysLeft).toBe(31)
   })
 
-  it("开标日次日的 00:30 才是「已过期 1 天」", () => {
-    expect(bidOpenDateStatus("2026-10-30", atLocal(2026, 10, 31, 0, 30)).label).toBe("已过期 1 天")
+  it("开标日次日的 00:30 才是「开标已过 1 天 · 待登记结果」（UX-R3 S10 文案）", () => {
+    expect(bidOpenDateStatus("2026-10-30", atLocal(2026, 10, 31, 0, 30)).label).toBe("开标已过 1 天 · 待登记结果")
     expect(bidOpenDateStatus("2026-10-30", atLocal(2026, 10, 30, 23, 59)).label).toBe("今日开标")
   })
 })

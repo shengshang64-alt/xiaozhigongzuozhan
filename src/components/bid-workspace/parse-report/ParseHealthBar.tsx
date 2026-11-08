@@ -59,8 +59,10 @@ export function ParseHealthBar({
     },
     {
       label: "合规风险",
-      value: riskRed > 0 ? `${riskTotal} 条 · 红 ${riskRed}` : `${riskTotal} 条`,
-      tone: riskRed > 0 ? "text-destructive" : "text-foreground",
+      // UX-R3 S7：不再用需要猜的「95 条 · 红 4」分数式写法——主体是「N 项待核实」，红线单独红徽标
+      value: riskTotal > 0 ? `${riskTotal} 项待核实` : "没有",
+      tone: riskTotal > 0 ? "text-foreground" : "text-foreground",
+      badge: riskRed > 0 ? `含 ${riskRed} 项红线` : undefined,
     },
   ]
 
@@ -82,7 +84,14 @@ export function ParseHealthBar({
         {metrics.map((m) => (
           <div key={m.label} className="rounded-md bg-secondary px-3 py-2">
             <dt className="text-xs text-muted-foreground">{m.label}</dt>
-            <dd className={`mt-1 text-lg font-semibold tabular-nums leading-tight ${m.tone}`}>{m.value}</dd>
+            <dd className={`mt-1 flex flex-wrap items-baseline gap-1.5 text-lg font-semibold tabular-nums leading-tight ${m.tone}`}>
+              {m.value}
+              {m.badge && (
+                <span className="rounded-full bg-destructive/10 px-1.5 py-0.5 text-xs font-medium text-destructive">
+                  {m.badge}
+                </span>
+              )}
+            </dd>
           </div>
         ))}
       </dl>

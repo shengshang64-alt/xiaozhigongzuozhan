@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { Link } from "react-router-dom"
-import { Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardPaste, Download, Eye, FileUp, FolderInput, LayoutGrid, Loader2, PenLine, Play, RefreshCw, Sparkles, Square, Table2, Wand2 } from "lucide-react"
+import { Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardPaste, Download, Eye, FileUp, FolderInput, LayoutGrid, Loader2, PenLine, Play, RefreshCw, Sparkles, Square, Wand2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -10,6 +10,7 @@ import { OutlineTreeEditor } from "@/components/solution-studio/OutlineTreeEdito
 import { ChapterBudgetBar } from "@/components/bid-workspace/ChapterBudgetBar"
 import { DeviationPanel } from "@/components/bid-workspace/DeviationPanel"
 import { TechParamResponsePanel } from "@/components/bid-workspace/TechParamResponsePanel"
+import { SubjectiveScorePanel } from "@/components/bid-workspace/SubjectiveScorePanel"
 import { FigureInsertTools } from "@/components/bid-workspace/FigureInsertTools"
 import { ScoreMappingPanel } from "@/components/bid-workspace/ScoreMappingPanel"
 import { BidMaterialAmmoPanel } from "@/components/bid-workspace/BidMaterialAmmoPanel"
@@ -26,6 +27,16 @@ import { BidWordPreview } from "./BidWordPreview"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import { healMustWriteOnRead } from "@/pages/BidWorkspace/mustWriteSelfHeal"
 import { BID_OUTLINE_REQ_KEY, bulkQueueClear, bulkQueueLoad, FIGURES_UNLIMITED, sectionText } from "@/pages/BidWorkspace/bidTypes"
+// UX-R3 S3：偏离与响应表 Tab 角标——与 TechParamResponsePanel 同一套纯本地函数（零 AI）算「待人工确认」数
+import {
+  DEVIATION_MIN_SECTION_CHARS,
+  buildParamResponseRows,
+  paramRowsFromTable,
+  resolveDeviationClauses,
+  resolveTechParamSource,
+  summarizeParamResponse,
+} from "@/pages/BidWorkspace/techParamResponse"
+import { pickTableOfKind, tableToParamItems } from "@/pages/BidWorkspace/tenderTables"
 import { isIncompleteSectionChapter } from "@/pages/BidWorkspace/chapterCompletion"
 import { summarizeBidGenFailures } from "@/pages/BidWorkspace/bidGenFailure"
 import type { Chapter, OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
@@ -180,6 +191,8 @@ type ComposeStepProps = Pick<
   | "deviationTable"
   | "deviationSummary"
   | "jumpToResponseNode"
+  // UX-R3 S12：主观分逐条确认（写 subjective_confirmations）
+  | "setSubjectiveConfirmation"
   | "exportDeviationWord"
   | "exportTechParamWord"
   | "exportBusy"
@@ -405,6 +418,42 @@ export function ComposeStep(p: ComposeStepProps) {
   // 用户反馈（2026-10-15）：大纲确认后进入逐章编制，大纲面板整块被条件渲染掉，想重生成大纲只能
   // 退回解析环节。这里加一个"大纲视图开关"：编制阶段也能展开大纲编辑视图（改完再确认）。
   const [outlineViewOpen, setOutlineViewOpen] = useState(false)
+  // UX-R3 S3（2026-11-08）：第 3 步内部双 Tab——「章节编制」/「偏离与响应表」。
+  // 响应表 400 条级的长表搬进独立 Tab 后不再把正文顶出视口；jumpToResponseNode 由包装版接入，点「定位到章节」自动切回编制 Tab。
+  const [composeTab, setComposeTab] = useState<"edit" | "tables">("edit")
+  // 角标：响应表「待人工确认 N」——与 TechParamResponsePanel 同参同源（customHint 面板本地态、角标按默认口径算）
+  const techParamNeedsReview = useMemo(() => {
+    if (!proj) return 0
+    try {
+      const clauseResolution = resolveDeviationClauses(proj.tender_text, proj.parse_report ?? null, {
+        limit: 200,
+        granularity: "l3",
+      })
+      const source = resolveTechParamSource(proj.tender_text, proj.parse_report ?? null, "", {
+        minBodyChars: DEVIATION_MIN_SECTION_CHARS,
+      })
+      const sourceText =
+        clauseResolution.how === "parse" && source.how !== "parse"
+          ? sectionText(proj.parse_report ?? null, "delivery_req")
+          : source.text
+      const restoredParamTable = pickTableOfKind(proj.tender_tables, "tech_params")
+      const rows = restoredParamTable
+        ? paramRowsFromTable(tableToParamItems(restoredParamTable.rows), { cap: 400 })
+        : buildParamResponseRows(sourceText, { cap: 400 })
+      return summarizeParamResponse(rows).needs_review
+    } catch {
+      return 0
+    }
+  }, [proj])
+  // S3 联动：偏离表「定位到章节」→ 先切回编制 Tab 再执行原跳转（selectChapter + 滚动由 jumpToChapter 完成）
+  const jumpToResponseNodeRaw = p.jumpToResponseNode
+  const jumpResponseCompose = useCallback(
+    (nodeTitle: string) => {
+      setComposeTab("edit")
+      jumpToResponseNodeRaw(nodeTitle)
+    },
+    [jumpToResponseNodeRaw],
+  )
   // R294「确认大纲」清空既有正文前的二次确认：confirmOutline 是全量重建 bid_chapters
   // （content:"" + gen_status:"pending"），已生成正文的项目误点一次即清零（实测 21 个项目里
   // 12 个有正文、共 92 章 106.5 万字）。此处按「有正文才拦」的口径提示，不影响新项目一键确认。
@@ -979,6 +1028,36 @@ export function ComposeStep(p: ComposeStepProps) {
         </div>
       ) : (
         <>
+          {/* UX-R3 S3：第 3 步双 Tab——章节编制 / 偏离与响应表（角标=响应表待人工确认数，0 时隐藏） */}
+          <div className="mt-4 inline-flex items-center gap-1 rounded-lg border border-border bg-card p-1 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setComposeTab("edit")}
+              aria-pressed={composeTab === "edit"}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                composeTab === "edit" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              📝 章节编制
+            </button>
+            <button
+              type="button"
+              onClick={() => setComposeTab("tables")}
+              aria-pressed={composeTab === "tables"}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                composeTab === "tables" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              📋 偏离与响应表
+              {techParamNeedsReview > 0 && (
+                <span className="rounded-full bg-warning/15 px-1.5 py-0.5 text-xs font-semibold text-warning">
+                  {techParamNeedsReview}
+                </span>
+              )}
+            </button>
+          </div>
+          {composeTab === "edit" ? (
+          <>
           <div className="mt-4">
             {/* 循环 5 A3：归档只读——条款覆盖补入锁交互（查看保留） */}
             <div className={locked ? "pointer-events-none opacity-60" : undefined}>
@@ -1269,17 +1348,32 @@ export function ComposeStep(p: ComposeStepProps) {
                             </Button>
                           )}
                           {ch.proseLintWarning && !locked && !p.bulkGenerating && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
-                              onClick={() => p.refineChapter(ch.node_id, "rewrite")}
-                              disabled={!!p.chapterBusy}
-                              title="按版式与文风硬条款重写本章（去 AI 套话 / 禁内联指引 / 修正标题层级 / 关键章补表）"
-                            >
-                              <Wand2 className="mr-1 h-3 w-3" />
-                              重写
-                            </Button>
+                            <>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => p.refineChapter(ch.node_id, "rewrite")}
+                                disabled={!!p.chapterBusy}
+                                title="按版式与文风硬条款重写本章（去 AI 套话 / 禁内联指引 / 修正标题层级 / 关键章补表）"
+                              >
+                                <Wand2 className="mr-1 h-3 w-3" />
+                                重写
+                              </Button>
+                              {/* UX-R3 S11：「🧹 去 AI 味」主动精修——只改句式（升华/排比/元话语/态度词/政策堆砌），
+                                  技术参数与事实一字不动；与「重写」并列，由用户选重还是选轻 */}
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 px-2 text-xs text-primary hover:bg-primary/10 hover:text-primary"
+                                onClick={() => p.refineChapter(ch.node_id, "deai")}
+                                disabled={!!p.chapterBusy}
+                                title="句式级去 AI 味精修：删除升华/排比/元话语/态度词/政策堆砌，保留全部技术参数与事实，只换表述（不重写内容）"
+                              >
+                                <Sparkles className="mr-1 h-3 w-3" />
+                                🧹 去 AI 味
+                              </Button>
+                            </>
                           )}
                         </div>
                       )
@@ -1518,18 +1612,11 @@ export function ComposeStep(p: ComposeStepProps) {
               onGoVoidCheck={() => p.requestStep(5)}
             />
           </div>
-
-          {/* R204 切片 0：技术偏离表发现性——用户反馈"没看到技术偏离表"，实际是它被塞在正文下方且无锚点。加提示 + id 供后续锚点跳转 */}
-          <div
-            id="deviation-panel"
-            className="mt-6 scroll-mt-24 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5"
-          >
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              <Table2 className="mr-1 inline h-3.5 w-3.5 align-text-bottom text-primary" />
-              <span className="font-medium text-foreground">技术偏离表就在下方</span>
-              ——章节正文成稿后选好拆分维度，点面板右上角「生成偏离表」；AI 逐条判定响应程度并定位到具体章节，与「技术偏离表」标签在归档页一致
-            </p>
-          </div>
+          </>
+          ) : (
+          <>
+          {/* UX-R3 S3：偏离表 + 技术参数响应表整体搬入独立 Tab；原「技术偏离表就在下方」蓝色横幅已删
+              （发现性由 Tab 角标承担）。jumpToResponseNode 用包装版——定位前自动切回「章节编制」Tab */}
           <DeviationPanel
             clauseGranularity={p.clauseGranularity}
             setClauseGranularity={p.setClauseGranularity}
@@ -1540,14 +1627,14 @@ export function ComposeStep(p: ComposeStepProps) {
             deviationTable={p.deviationTable}
             deviationSummary={p.deviationSummary}
             doneChapterCount={p.doneChapterCount}
-            jumpToResponseNode={p.jumpToResponseNode}
+            jumpToResponseNode={jumpResponseCompose}
             exportDeviationWord={p.exportDeviationWord}
             exportBusy={p.exportBusy}
             deviationSkills={p.deviationSkills}
             techParamCoverage={p.techParamCoverage}
             addUncoveredTechParamsToOutline={p.addUncoveredTechParamsToOutline}
           />
-          {/* R55：技术参数响应表——紧邻偏离表（偏离表在前保持既定位置）；数据只需 activeProject 的
+          {/* R55：技术参数响应表——与偏离表同 Tab；数据只需 activeProject 的
               tender_text / parse_report，面板内部自算，不动 useBidWorkspace 返回面；key 绑项目 id 防「章节描述」串项目 */}
           <TechParamResponsePanel
             key={proj.id}
@@ -1557,6 +1644,15 @@ export function ComposeStep(p: ComposeStepProps) {
             exportBusy={p.exportBusy === "deviation"}
             restoredTables={p.activeProject?.tender_tables ?? null}
           />
+          {/* UX-R3 S12：主观分逐条确认——与偏离/响应表同区（同属「对外响应口径」） */}
+          <SubjectiveScorePanel
+            project={proj}
+            onConfirm={p.setSubjectiveConfirmation}
+            onJumpToChapter={jumpResponseCompose}
+            archived={locked}
+          />
+          </>
+          )}
         </>
       )}
 

@@ -15,6 +15,7 @@ export type LintKind =
   | "ai_cliche"
   | "inline_link"
   | "task_dispatch"
+  | "sentence_shape"
   | "title_break"
   | "missing_table"
   | "long_paragraph"
@@ -254,6 +255,53 @@ const DISPATCH_PATTERNS: ReadonlyArray<{ re: RegExp; reason: string }> = [
   },
 ]
 
+/** 句式级 AI 腔检测（UX-R3 S11，2026-11-08）
+ *
+ *  背景：上面 5 类规则（黑名单/内联指引/分派/标题/长段落）都抓不到实测真实生成稿里
+ *  最典型的 AI 腔——那是**句式与段落结构**层面的病，单个词都不违规：
+ *    ① 「不是……而是……」式升华拔高
+ *    ② 「一是……二是……三是……」排比凑结构
+ *    ③ 元话语收口（「这一定位决定了……」「上述技术参数均为……」「我公司已全部逐项应答响应」）
+ *    ④ 态度词（充分知悉/充分理解/高度重视/深刻认识）
+ *    ⑤ 宏观政策堆砌（为贯彻落实……战略 / 作为……策源地 / 助力……高质量发展）
+ *  与 PROSE_LINT_RULES 第 9 组同源：prompt 端预防，这里事后兜底（命中标 warn，供「一键重写该段」）。
+ *  ⚠️ 与 `missing_table` 同属**建议性/观感**，不进 STRUCTURAL_KINDS（不染红）。
+ */
+const SENTENCE_SHAPE_PATTERNS: ReadonlyArray<{ re: RegExp; reason: string }> = [
+  {
+    re: /不是[^。！？\n]{2,40}?而是/g,
+    reason: "升华句式「不是……而是……」——直接陈述事实，不给项目定性拔高",
+  },
+  {
+    re: /不仅是[^。！？\n]{2,30}?更是/g,
+    reason: "升华句式「不仅是……更是……」——同上，写具体问题与量化收益",
+  },
+  {
+    re: /一是[^。！？\n]{2,60}?二是/g,
+    reason: "排比凑结构「一是……二是……」——分点改用「（1）（2）（3）」条款列",
+  },
+  {
+    re: /(?:^|\n)[^\n]{0,10}?首先[^。！？\n]{2,60}?其次[^。！？\n]{2,60}?再次/g,
+    reason: "排比凑结构「首先/其次/再次」——分点改用「（1）（2）（3）」条款列",
+  },
+  {
+    re: /这一定位决定了|上述(?:技术)?参数均为|已全部逐项(?:应答)?响应/g,
+    reason: "元话语收口——收尾只写可核验的落地承诺（量化指标/责任分工/时限）",
+  },
+  {
+    re: /充分(?:知悉|理解|认识|重视)|高度重视|深刻认识/g,
+    reason: "态度词「充分知悉/高度重视」——评审看措施不看态度，一律删除",
+  },
+  {
+    re: /为(?:深入)?贯彻(?:落实)?[^。！？\n]{0,20}?(?:战略|部署|精神|要求)/g,
+    reason: "政策堆砌「为贯彻落实……战略」——标书写怎么做系统，不写政策学习心得",
+  },
+  {
+    re: /(?:作为|成为)[^。！？\n]{0,20}?策源地|助力[^。！？\n]{0,15}?高质量发展/g,
+    reason: "政策堆砌「策源地/助力高质量发展」——同上，改为具体建设内容",
+  },
+]
+
 /** 关键章必出表识别（关键词 → 期望表头）
  *  设计：宽松匹配章节标题 + 严格匹配表格存在 */
 const TABLE_REQUIRED_KEYWORDS: ReadonlyArray<{ keyword: RegExp; expectedTable: string }> = [
@@ -292,6 +340,7 @@ export function lintProse(content: string, chapterTitle = "", maxHits = 50): Lin
       ai_cliche: 0,
       inline_link: 0,
       task_dispatch: 0,
+      sentence_shape: 0,
       title_break: 0,
       missing_table: 0,
       long_paragraph: 0,
@@ -356,6 +405,15 @@ export function lintProse(content: string, chapterTitle = "", maxHits = 50): Lin
 
   // ③ 标题层级断裂（同级跳号 + 1/2/3 级混排）
   detectTitleBreak(hits, scanText)
+
+  // ②c 句式级 AI 腔（UX-R3 S11）：升华 / 排比 / 元话语收口 / 态度词 / 政策堆砌
+  for (const { re, reason } of SENTENCE_SHAPE_PATTERNS) {
+    pushAll(hits, scanText, re, "sentence_shape", (m) => ({
+      excerpt: around(scanText, m.index ?? 0, 16),
+      offset: m.index ?? 0,
+      reason,
+    }))
+  }
 
   // ④ 关键章缺表（仅当 chapterTitle 命中关键词时检查）
   if (chapterTitle) {
@@ -435,6 +493,7 @@ function buildSummary(limited: LintHit[], raw: Record<LintKind, number>): string
     if (raw.ai_cliche > 0) detail.push(`AI 套话 ${raw.ai_cliche}`)
     if (raw.inline_link > 0) detail.push(`内联指引 ${raw.inline_link}`)
     if (raw.task_dispatch > 0) detail.push(`章节分派 ${raw.task_dispatch}`)
+    if (raw.sentence_shape > 0) detail.push(`AI 腔句式 ${raw.sentence_shape}`)
     if (raw.long_paragraph > 0) detail.push(`长段落 ${raw.long_paragraph}`)
     if (raw.long_sentence > 0) detail.push(`长句 ${raw.long_sentence}`)
     parts.push(`文风问题 ${style} 处（${detail.join(" / ")}）`)

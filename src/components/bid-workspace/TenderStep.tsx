@@ -59,6 +59,8 @@ export function TenderStep({
   const refTemplateInputRef = useRef<HTMLInputElement>(null)
   const refMaterialsInputRef = useRef<HTMLInputElement>(null)
   const [dragActive, setDragActive] = useState(false)
+  // UX-R3 S6：原文默认折叠（已有文本时先给摘要卡，点击展开再看原文）
+  const [textOpen, setTextOpen] = useState(false)
   const saved = (activeProject?.tender_text ?? "").trim().length > 0
   // B4（2026-10-22）：上传 docx 时本地还原的表格——原文件不上传，只有行列数据
   const restoredTables = activeProject?.tender_tables ?? []
@@ -70,9 +72,19 @@ export function TenderStep({
     <section className="mx-auto max-w-7xl px-4 pb-14 pt-5">
       <header className="rounded-2xl border border-border bg-gradient-to-br from-background via-secondary to-card px-6 py-6 shadow-md animate-in fade-in slide-in-from-bottom-4 duration-500">
         <h1 className="text-xl font-semibold tracking-tight text-foreground lg:text-2xl">导入招标文件</h1>
-        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-          支持 .docx / .pdf / .txt，<span className="font-medium text-primary">可一次导入多份</span>（招标正文 + 技术附件 + 评分办法…），文件在浏览器本地解析成文本，<span className="font-medium text-primary">原文件不会上传</span>；扫描版 PDF 提取不到文字时，可直接粘贴招标文件文本。每份文件标好角色后点「AI 解析」——解析时会按角色只读相关文件，技术附件不会被每个解析项重复读取。
-        </p>
+        {/* UX-R3 S6：长说明压成 3 行要点，完整说明折叠 */}
+        <ul className="mt-2 max-w-3xl space-y-1 text-sm leading-relaxed text-muted-foreground">
+          <li>· 支持 .docx / .pdf / .txt，<span className="font-medium text-primary">可一次导入多份</span>（招标正文 + 技术附件 + 评分办法）</li>
+          <li>· 文件在浏览器本地解析，<span className="font-medium text-primary">原文件不会上传</span>；扫描版 PDF 可直接粘贴文本</li>
+          <li>· 每份文件标好角色后点「AI 解析」，解析时按角色只读相关文件，技术附件不会被重复读取</li>
+        </ul>
+        <details className="mt-1.5 max-w-3xl">
+          <summary className="cursor-pointer text-xs font-medium text-primary hover:underline">查看完整说明▸</summary>
+          <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+            角色说明：<b>招标正文</b>= 商务/技术条款与评分办法的出处；<b>技术附件</b>= 参数清单、图纸与清单表格，只服务技术参数与偏离表；
+            <b>评分办法</b>= 单独成文的评分表，只服务评分项抽取。附件过多时优先保留正文与评分办法——它们决定废标红线与得分结构。
+          </p>
+        </details>
       </header>
 
       <div className="mt-5 grid grid-cols-1 items-start gap-4 lg:grid-cols-[1fr_2fr]">
@@ -303,15 +315,41 @@ export function TenderStep({
               {tenderDraft.length} 字
             </span>
           </div>
-          <div className="flex min-h-0 flex-1 flex-col p-4">
-            <Textarea
-              value={tenderDraft}
-              onChange={(e) => setTenderDraft(e.target.value)}
-              readOnly={isArchivedLocked}
-              placeholder="上传招标文件后文本会出现在这里，也可以直接粘贴招标公告与评分办法全文…"
-              className="min-h-[28rem] flex-1 resize-none border-border bg-background font-sans text-sm leading-relaxed text-foreground focus-visible:shadow-[var(--focus-ring)]"
-            />
-          </div>
+          {/* UX-R3 S6：762,238 字级原文不再默认铺满首屏——摘要卡一行 + 点击展开原文（编辑态保留） */}
+          {tenderDraft.trim().length > 0 && !textOpen ? (
+            <button
+              type="button"
+              onClick={() => setTextOpen(true)}
+              className="m-4 rounded-lg border border-border bg-background px-4 py-3 text-left transition-colors hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <p className="text-sm font-medium text-foreground">
+                已载入 {tenderDraft.length.toLocaleString()} 字
+                <span className="ml-2 font-normal text-muted-foreground">
+                  · {tenderFiles.length > 0 ? `招标文件 ${tenderFiles.length} 份` : "手动粘贴文本"} · 可人工核对修正
+                </span>
+              </p>
+              <p className="mt-1 text-xs text-primary">点击展开原文▸</p>
+            </button>
+          ) : (
+            <div className="flex min-h-0 flex-1 flex-col p-4">
+              <Textarea
+                value={tenderDraft}
+                onChange={(e) => setTenderDraft(e.target.value)}
+                readOnly={isArchivedLocked}
+                placeholder="上传招标文件后文本会出现在这里，也可以直接粘贴招标公告与评分办法全文…"
+                className="min-h-[28rem] flex-1 resize-none border-border bg-background font-sans text-sm leading-relaxed text-foreground focus-visible:shadow-[var(--focus-ring)]"
+              />
+              {tenderDraft.trim().length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setTextOpen(false)}
+                  className="mt-2 self-start text-xs text-muted-foreground hover:text-primary"
+                >
+                  收起原文▴
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

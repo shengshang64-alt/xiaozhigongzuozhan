@@ -20,7 +20,7 @@ import { OpportunityLinkBar } from "@/components/bid-workspace/OpportunityLinkBa
 import { ParseConfigDialog } from "@/components/bid-workspace/ParseConfigDialog"
 import { PriceScorePanel } from "@/components/bid-workspace/PriceScorePanel"
 import { ParseReportPanel } from "@/components/bid-workspace/ParseReportPanel"
-import { PipelineStepper } from "@/components/bid-workspace/PipelineStepper"
+import { BidPipelineStepperEnhanced } from "@/components/bid-workspace/BidPipelineStepperEnhanced"
 import { ScoreCrossCheckPanel } from "@/components/bid-workspace/ScoreCrossCheckPanel"
 import { SkillPickerFor } from "@/components/common/SkillPicker"
 import { QuickToolsPanel } from "@/components/bid-workspace/QuickToolsPanel"
@@ -28,6 +28,7 @@ import { StandardsPickerDialog } from "@/components/bid-workspace/StandardsPicke
 import { SubmissionCheckPanel } from "@/components/bid-workspace/SubmissionCheckPanel"
 import { TenderStep } from "@/components/bid-workspace/TenderStep"
 import { VoidCheckPanel } from "@/components/bid-workspace/VoidCheckPanel"
+import { displayStageLabel } from "@/pages/BidWorkspace/bidTypes"
 import type { useBidWorkspace } from "./useBidWorkspace"
 
 type Step5Tab = { key: string; label: string; node: ReactNode }
@@ -81,38 +82,63 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
 
       {p.mode === "detail" && p.activeProject ? (
         <main>
-          {/* 项目信息栏合一：商机关联 / 开标时间 / WarRoom 入口收进同一行，步骤条下移，避免三条横杠堆叠 */}
+          {/* UX-R3 S10：项目信息栏拆两行——原来 7 个元素挤在一行（商机关联/开标时间/WarRoom/⋯），
+              现在：第一行项目名 + 状态徽标 + 主操作；第二行开标时间 + 关联商机 + 次要操作 */}
           <div className="mx-auto mt-5 max-w-7xl px-4">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-border bg-card px-4 py-2.5 shadow-md">
-              <OpportunityLinkBar
-                variant="inline"
-                activeProject={p.activeProject}
-                activeOppOptions={p.activeOppOptions}
-                oppOptionsCapped={p.oppOptionsCapped}
-                linkOpportunity={p.linkOpportunity}
-                linkedOpportunityName={p.linkedOpportunityName}
-                isArchivedLocked={p.isArchivedLocked}
-              />
-              <span aria-hidden="true" className="hidden h-6 w-px shrink-0 bg-border lg:block" />
-              {/* R198 §3.5：开标时间就地补录/修改/清除（key 绑项目 id，切项目重挂载避免陈旧草稿） */}
-              <BidOpenDateBar
-                key={p.activeProject.id}
-                variant="inline"
-                activeProject={p.activeProject}
-                isArchivedLocked={p.isArchivedLocked}
-                updateProject={p.updateProject}
-              />
-              <div className="ml-auto shrink-0">
-                <BidWarRoom activeProject={p.activeProject} missCount={p.uncoveredClauses.length} riskCount={p.voidCriticalUnresolved} />
+            <div className="rounded-2xl border border-border bg-card px-4 py-2.5 shadow-md">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <h1 className="min-w-0 truncate text-base font-semibold tracking-tight text-foreground">
+                  {p.activeProject.project_name}
+                </h1>
+                <span
+                  className="shrink-0 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary"
+                  title="当前所处阶段"
+                >
+                  {displayStageLabel(p.activeProject)}
+                </span>
+                {p.isArchivedLocked && (
+                  <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                    已归档 · 只读
+                  </span>
+                )}
+                <div className="ml-auto shrink-0">
+                  <BidWarRoom activeProject={p.activeProject} missCount={p.uncoveredClauses.length} riskCount={p.voidCriticalUnresolved} />
+                </div>
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                {/* R198 §3.5：开标时间就地补录/修改/清除（key 绑项目 id，切项目重挂载避免陈旧草稿） */}
+                <BidOpenDateBar
+                  key={p.activeProject.id}
+                  variant="inline"
+                  activeProject={p.activeProject}
+                  isArchivedLocked={p.isArchivedLocked}
+                  updateProject={p.updateProject}
+                />
+                <span aria-hidden="true" className="hidden h-5 w-px shrink-0 bg-border lg:block" />
+                <OpportunityLinkBar
+                  variant="inline"
+                  activeProject={p.activeProject}
+                  activeOppOptions={p.activeOppOptions}
+                  oppOptionsCapped={p.oppOptionsCapped}
+                  linkOpportunity={p.linkOpportunity}
+                  linkedOpportunityName={p.linkedOpportunityName}
+                  isArchivedLocked={p.isArchivedLocked}
+                />
               </div>
             </div>
           </div>
-          <PipelineStepper
+          {/* UX-R3 S1：接线当前章/选章/预算/生成通道——章节导航面板获得三态分组树与行级快捷动作 */}
+          <BidPipelineStepperEnhanced
             activeStep={p.activeStep}
             requestStep={p.requestStep}
             activeProject={p.activeProject}
-            missCount={p.uncoveredClauses.length}
-            riskCount={p.voidCriticalUnresolved}
+            activeChapterId={p.activeChapterId}
+            selectChapter={p.selectChapter}
+            chapterBudgets={p.chapterBudgets}
+            generateChapter={p.generateChapter}
+            continueChapter={p.continueChapter}
+            refineChapter={p.refineChapter}
+            addBizAssemblyItems={p.addBizAssemblyItems}
           />
           {/* 循环 5 A3：归档只读硬锁横幅——导出与查看保留，解除归档后可编辑 */}
           {p.isArchivedLocked && (
@@ -522,6 +548,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               deviationTable={p.deviationTable}
               deviationSummary={p.deviationSummary}
               jumpToResponseNode={p.jumpToResponseNode}
+              setSubjectiveConfirmation={p.setSubjectiveConfirmation}
               exportDeviationWord={p.exportDeviationWord}
               exportTechParamWord={p.exportTechParamWord}
               generateCommitmentLetter={p.generateCommitmentLetter}
@@ -568,14 +595,15 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                       toggleVoidManual={p.toggleVoidManual}
                       setVoidManualStatus={p.setVoidManualStatus}
                       setVoidReviewStatus={p.setVoidReviewStatus}
-                      jumpToResponseNode={p.jumpToResponseNode}
-                      voidMissingTitles={p.voidMissingTitles}
+              jumpToResponseNode={p.jumpToResponseNode}
+              voidMissingTitles={p.voidMissingTitles}
                       goParseStep={p.goParseStep}
                       isArchivedLocked={p.isArchivedLocked}
                       bidSourceMode={p.bidSourceMode}
                       sealBusy={p.sealBusy}
                       sealResult={p.sealResult}
                       startSealCheck={p.startSealCheck}
+                      stageHistory={p.stageHistory}
                     />
                   ),
                 },

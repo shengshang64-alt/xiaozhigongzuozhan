@@ -65,6 +65,18 @@ function StatCard({ label, value, hint }: { label: string; value: string; hint?:
 export function BidReviewSummary({ projects }: { projects: BidProjectRecord[] }) {
   const stats = useMemo(() => summarizeBidResults(projects), [projects])
   if (stats.total === 0) return null
+  // UX-R3 S5：无已结束项目时不再占一整块卡片位置，折叠为一行提示（出结果后自动恢复完整复盘）
+  if (stats.finished === 0) {
+    return (
+      <section className="mx-auto max-w-7xl px-4 pt-6">
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-xs text-muted-foreground shadow-sm">
+          <TrendingUp className="h-3.5 w-3.5 text-primary" />
+          <span className="font-medium text-foreground">投标复盘</span>
+          <span>暂无已结束项目，出结果（中标 / 落标）后这里自动生成中标率与落标原因汇总</span>
+        </div>
+      </section>
+    )
+  }
   return (
     <section className="mx-auto max-w-7xl px-4 pt-6">
       <div className="rounded-xl border border-border bg-card px-6 py-5 shadow-md">

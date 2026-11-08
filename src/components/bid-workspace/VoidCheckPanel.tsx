@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { Link } from "react-router-dom"
 import { ArrowRight, ArrowRightCircle, CheckCircle2, Loader2, ShieldAlert, ShieldCheck } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -37,6 +38,8 @@ type VoidCheckPanelProps = Pick<
   | "sealResult"
   | "startSealCheck"
   | "requestStep"
+  /** UX-R3 S8：工作记录里的历史快照——用于空态展示「上次运行：{时间}」 */
+  | "stageHistory"
 >
 
 /** 第九轮改造 2：合规状态 / 严重度 → 语义四档 badge variant */
@@ -264,6 +267,7 @@ export function VoidCheckPanel({
   sealResult,
   startSealCheck,
   requestStep,
+  stageHistory,
 }: VoidCheckPanelProps) {
   // 第九轮改造 2：核销矩阵筛选器 + 跳过原因弹窗（纯 UI 状态）
   const [reviewFilter, setReviewFilter] = useState<"all" | ReviewStatus>("all")
@@ -271,6 +275,11 @@ export function VoidCheckPanel({
   const [skipTarget, setSkipTarget] = useState<VoidItem | null>(null)
   const [skipReason, setSkipReason] = useState("")
   const check = activeProject?.void_check ?? null
+  // UX-R3 S8：空态显示「上次运行：{时间}」——取工作记录里最近一次「废标项检查完成」快照（真实数据，无记录则不显示）
+  const lastRunAt = (() => {
+    const hit = stageHistory?.find((s) => s.stage === "check" && s.label.includes("废标项检查完成"))
+    return hit ? formatDateTimeDisplay(hit.created) : null
+  })()
   const clauseCount = sectionText(activeProject?.parse_report ?? null, "void_items")
     .split(/\n+/)
     .filter((l) => l.trim()).length
@@ -302,6 +311,16 @@ export function VoidCheckPanel({
             </h1>
             <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
               对照解析出的 {clauseCount || "—"} 条废标条款，AI 逐条输出合规核销矩阵：合规状态 + 严重度 + 招标/投标双向定位 + 证据摘录 + 整改建议。跳章整改后回来「标记已处理」，确实不适用的可「跳过」并填原因留痕。
+            </p>
+            {/* UX-R3 S10：过程自查 / 交付前终检的分工说明（可互跳） */}
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              过程自查 · 写完后在这里核对；交付前终检请用{" "}
+              <Link
+                to="/bid-check"
+                className="font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                标书检查中枢 →
+              </Link>
             </p>
           </div>
           <Button
@@ -353,10 +372,65 @@ export function VoidCheckPanel({
           <p className="text-xs text-muted-foreground">判定偏保守，拿不准的会标为「部分合规」提醒你人工确认</p>
         </div>
       ) : !check ? (
-        <div className="mt-8 rounded-2xl border border-dashed border-border bg-card py-16 text-center shadow-md">
-          <ShieldAlert className="mx-auto h-9 w-9 text-muted-foreground" />
-          <p className="mt-3 text-sm font-medium text-foreground">尚未执行废标项检查</p>
-          <p className="mt-1 text-xs text-muted-foreground">开标前务必跑一遍，任何一条「不合规」都可能直接废标</p>
+        // UX-R3 S8：空态不再是纯文字死路——先给「运行后你将得到」三栏示意，让用户对结果有预期
+        <div className="mt-8 rounded-2xl border border-dashed border-border bg-card px-6 py-8 shadow-md">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="h-5 w-5 text-muted-foreground" />
+            <div>
+              <p className="text-sm font-semibold text-foreground">尚未执行废标项检查</p>
+              <p className="text-xs text-muted-foreground">
+                开标前务必跑一遍，任何一条「不合规」都可能直接废标
+                {lastRunAt ? ` · 上次运行：${lastRunAt}` : ""}
+              </p>
+            </div>
+          </div>
+          <p className="mt-5 text-xs font-medium text-foreground">运行后你将得到</p>
+          <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border border-border bg-background p-3">
+              <p className="text-xs font-semibold text-foreground">合规状态</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">每条废标条款一条结论</p>
+              <div className="mt-2.5 space-y-1.5" aria-hidden="true">
+                {[
+                  { label: "合规", w: "w-11/12", cls: "bg-primary/25" },
+                  { label: "部分合规", w: "w-8/12", cls: "bg-warning/30" },
+                  { label: "不合规", w: "w-5/12", cls: "bg-destructive/25" },
+                ].map((s) => (
+                  <div key={s.label} className="flex items-center gap-2">
+                    <span className="w-14 shrink-0 text-[11px] text-muted-foreground">{s.label}</span>
+                    <span className={`h-1.5 rounded-full ${s.w} ${s.cls}`} />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-lg border border-border bg-background p-3">
+              <p className="text-xs font-semibold text-foreground">严重度</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">按废标风险分级，红项置顶</p>
+              <div className="mt-2.5 space-y-1.5" aria-hidden="true">
+                {[
+                  { label: "高（废标）", w: "w-5/12", cls: "bg-destructive/30" },
+                  { label: "中（待补证）", w: "w-8/12", cls: "bg-warning/30" },
+                  { label: "低（表述）", w: "w-11/12", cls: "bg-muted-foreground/20" },
+                ].map((s) => (
+                  <div key={s.label} className="flex items-center gap-2">
+                    <span className="w-16 shrink-0 text-[11px] text-muted-foreground">{s.label}</span>
+                    <span className={`h-1.5 rounded-full ${s.w} ${s.cls}`} />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-lg border border-border bg-background p-3">
+              <p className="text-xs font-semibold text-foreground">整改建议</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">每条给出可执行动作 + 定位章节</p>
+              <div className="mt-2.5 space-y-1.5" aria-hidden="true">
+                {["补写资质证明页", "补充承诺条款", "统一报价口径"].map((t, i) => (
+                  <div key={t} className="flex items-center gap-1.5">
+                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${i === 0 ? "bg-destructive/40" : "bg-primary/30"}`} />
+                    <span className="h-1.5 flex-1 rounded-full bg-muted-foreground/15" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="mt-5">

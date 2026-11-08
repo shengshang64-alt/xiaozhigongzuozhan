@@ -5,6 +5,7 @@ import { decodeRhToken, type RhAccountInfo } from "@/lib/rhLogin"
 import { pbJsonRequest, saveFailureReason } from "@/lib/pbJson"
 import { extractJsonCandidate } from "@/lib/jsonTolerant"
 import { formatDateTimeDisplay } from "@/lib/dateDisplay"
+import { readQualHardBlock } from "@/lib/qualHardBlock"
 import type { LlmMessage } from "@/lib/llm"
 import { localizeLlmError } from "@/lib/llmError"
 import {
@@ -747,6 +748,7 @@ import {
 } from "./prompts/consistencyGuard"
 import { createSubmissionTracker } from "./submissionTracker"
 import { hasPendingSections, isIncompleteSectionChapter, isTrulyDoneChapter, planSectionResume, reflowStatsAfterAppend, sectionGenStatus, withTransientRetry } from "./chapterCompletion"
+import { withConfirmation as withSubjectiveConfirmation } from "./subjectiveScores"
 import { buildOutlineGateReviewMessages, gateIssuesForFix, gateIssuesForUser, sanitizeOutlineGateReview, type OutlineGateIssue } from "./prompts/outlineGate"
 import {
   adjustGranularity,
@@ -4746,6 +4748,35 @@ export function useBidWorkspace() {
     toast.success(describeOutlineSync(`已补入 ${add.length} 个招标目录缺失条目为顶层章并同步章节清单`, aligned))
   }, [activeProject?.bid_outline, applyOutlineWithChapters, blockIfArchived, catalogDiff, outlineDraft])
 
+  /**
+   * UX-R3 S4（2026-11-08）：商务组卷检查「一键补入」——缺失商务必备件补为商务骨架章（part=biz，同名跳过）。
+   * 与 addUncoveredScoringToOutline / addMissingCatalogToOutline 同款安全增量：R292 applyOutlineWithChapters
+   * 只加不删、绝不清既有正文；商务章不参与 AI 生成（bidDraftPlan 既有约定），用户在骨架上人工填写。
+   */
+  const addBizAssemblyItems = useCallback(
+    (titles: string[]) => {
+      if (blockIfArchived()) return
+      const base = outlineDraft.length ? outlineDraft : activeProject?.bid_outline ?? []
+      if (!base.length) {
+        toast.error("大纲为空，请先生成大纲再补入商务必备件")
+        return
+      }
+      const existing = new Set(base.map((n) => n.title.trim()))
+      const toAdd = titles.map((t) => t.trim()).filter((t) => t && !existing.has(t))
+      if (!toAdd.length) {
+        toast.info("所选必备件已有同名章节，无需重复补入")
+        return
+      }
+      const add: OutlineNode[] = toAdd.map((t) => ({ id: makeUid(), title: t, children: [], part: "biz" as const }))
+      const next = [...base, ...add]
+      setOutlineDraft(next)
+      const aligned = applyOutlineWithChapters(next)
+      if (!aligned) return
+      toast.success(describeOutlineSync(`已补入 ${add.length} 个商务必备件为商务章节并同步章节清单`, aligned))
+    },
+    [activeProject?.bid_outline, applyOutlineWithChapters, blockIfArchived, outlineDraft],
+  )
+
   // 留空时的体量估算页数（仅作设置条参考小字与预算折算兜底，不再静默顶替用户已保存的页数）
   const estimatedPages = useMemo(
     () => estimatePagesFromText(activeProject?.tender_text || tenderDraft),
@@ -7597,7 +7628,7 @@ const kbEmptyHintShown = new Set<string>()
   )
 
   const runRefineChapter = useCallback(
-    async (nodeId: string, kind: "rewrite" | "expand" | "condense") => {
+    async (nodeId: string, kind: "rewrite" | "expand" | "condense" | "deai") => {
       flushEditingContent()
       const cur = activeProjectRef.current
       if (!cur) return
@@ -7636,7 +7667,7 @@ const kbEmptyHintShown = new Set<string>()
           setEditingContentState(clean)
         }
         // 第十一轮改造 4：改写/扩写/精简成功同样留快照
-        const kindLabel = kind === "rewrite" ? "改写" : kind === "expand" ? "扩写" : "精简"
+        const kindLabel = kind === "rewrite" ? "改写" : kind === "expand" ? "扩写" : kind === "deai" ? "去AI味" : "精简"
         writeStageSnapshot("chapter", `章节${kindLabel}完成：${ch.title}`, { chapter_id: nodeId, title: ch.title, content: clean })
         const repaired = applyAutoRepair(nodeId)
         refreshFormatReport()
@@ -7650,13 +7681,30 @@ const kbEmptyHintShown = new Set<string>()
     [activeChapterId, applyAutoRepair, flushEditingContent, handleLlmError, outlineClauses, outlineCoverage, refreshFormatReport, updateChapter, writeStageSnapshot],
   )
 
+  /**
+   * UX-R3 S12：主观分逐条确认——写 bid_projects.subjective_confirmations（S12 新增 json 列）。
+   * 与 stage_gates 同款「确认留痕」口径：勾选即补时间戳、取消即清时间戳；不阻断流程，只做提醒与留痕。
+   */
+  const setSubjectiveConfirmation = useCallback(
+    (id: string, patch: { confirmed?: boolean; strategy?: string }) => {
+      if (blockIfArchived()) return
+      const cur = activeProjectRef.current
+      if (!cur) return
+      const next = withSubjectiveConfirmation(cur.subjective_confirmations, id, patch)
+      updateProject({ subjective_confirmations: next }, { quiet: true })
+    },
+    [blockIfArchived, updateProject],
+  )
+
   const refineChapter = useCallback(
-    (nodeId: string, kind: "rewrite" | "expand" | "condense") => {
+    (nodeId: string, kind: "rewrite" | "expand" | "condense" | "deai") => {
       if (!requireLogin()) return
       if (blockIfArchived()) return // 循环 5 A3：归档只读
       costConfirm.runWithCostConfirm(() => {
         void runRefineChapter(nodeId, kind)
-      }, `将调用 AI 处理本章正文，${costText()}`)
+      }, kind === "deai"
+        ? `将调用 AI 做句式级「去 AI 味」精修（技术参数与事实不变，只改表述），${costText()}`
+        : `将调用 AI 处理本章正文，${costText()}`)
     },
     [blockIfArchived, costConfirm, requireLogin, runRefineChapter],
   )
@@ -9443,9 +9491,9 @@ const kbEmptyHintShown = new Set<string>()
   const warnExpiredQuals = useCallback(async (): Promise<boolean> => {
     let hardBlock = false
     try {
-      // 2026-10-24（P0-9）：默认硬拦截——证书过期直接废标，走查实测 ISO20000 已过期 87 天仍可导出。
-      // 只有用户在资质台账里显式关掉（写 "0"）才放行。
-      hardBlock = window.localStorage.getItem("qual_hard_block") !== "0"
+      // R69（B42）：接入 R66 建的单一真源 lib/qualHardBlock。
+      // 口径不变：默认拦；只有用户在资质台账里显式关掉（写 "0"）才放行。
+      hardBlock = readQualHardBlock()
     } catch {
       /* localStorage 不可用时按软警告处理 */
     }
@@ -10478,6 +10526,10 @@ const kbEmptyHintShown = new Set<string>()
     // R-022 技术参数落点
     techParamCoverage,
     addUncoveredTechParamsToOutline,
+    // UX-R3 S4：商务组卷检查（一键补入商务必备件）
+    addBizAssemblyItems,
+    // UX-R3 S12：主观分逐条确认
+    setSubjectiveConfirmation,
     clauseGranularity,
     setClauseGranularity,
     deviationClauseCount,

@@ -269,6 +269,7 @@ describe("REQ-021 长段落 / 长句闸门", () => {
         "long_paragraph",
         "long_sentence",
         "missing_table",
+        "sentence_shape",
         "task_dispatch",
         "title_break",
       ].sort(),
@@ -488,5 +489,48 @@ describe("REQ-021 反向判据：真实中标纯文字方案不得被染红", ()
       const r = lintProse(text)
       expect(r.stats.rawCounts.task_dispatch).toBeGreaterThanOrEqual(1)
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// UX-R3 S11（2026-11-08）：句式级 AI 腔检测
+// 与 PROSE_LINT_RULES 第 9 组同源：单词级黑名单管不到的句式病，由这里事后兜底。
+// ---------------------------------------------------------------------------
+describe("sentence_shape · 句式级 AI 腔（UX-R3 S11）", () => {
+  const shapeCount = (text: string) => lintProse(text).stats.rawCounts.sentence_shape
+
+  it("命中「不是……而是……」升华句式", () => {
+    const text = "本项目不是单一系统的采购，而是覆盖全院区的一体化核心系统体系重构，涉及 HIS、EMR 与集成平台。"
+    expect(shapeCount(text)).toBeGreaterThanOrEqual(1)
+  })
+
+  it("命中「一是……二是……」排比凑结构", () => {
+    const text = "建设内容分三方面推进：一是统一主数据口径，二是打通集成平台接口，三是建设临床数据中心，覆盖全部院区。"
+    expect(shapeCount(text)).toBeGreaterThanOrEqual(1)
+  })
+
+  it("命中元话语收口与态度词", () => {
+    expect(shapeCount("上述技术参数均为招标文件要求的关键指标，我公司已全部逐项应答响应，特此说明。")).toBeGreaterThanOrEqual(1)
+    expect(shapeCount("我公司充分知悉本项目实施难度，高度重视本次投标工作，将配置最优资源保障交付。")).toBeGreaterThanOrEqual(1)
+  })
+
+  it("命中政策堆砌", () => {
+    const text = "为贯彻落实公立医院高质量发展战略，本项目作为区域医疗信息化策源地，将助力医院高质量发展。"
+    expect(shapeCount(text)).toBeGreaterThanOrEqual(1)
+  })
+
+  it("正常技术陈述不误报（真实中标标书口吻）", () => {
+    const text = [
+      "5.1 系统总体架构",
+      "平台采用四层架构：数据接入层、数据存储层、服务层与应用层，层间通过统一接口交互。",
+      "（1）数据接入层支持 HL7 V2、FHIR R4 与 DICOM 三类标准协议，单节点接入并发不低于 2000 条/秒。",
+      "（2）数据存储层采用国产分布式数据库，单表容量不低于 10 亿行，查询响应时间不超过 2 秒。",
+    ].join("\n")
+    expect(shapeCount(text)).toBe(0)
+  })
+
+  it("sentence_shape 属观感类，不把整章染成 structural", () => {
+    const text = "本项目不是单一系统的采购，而是覆盖全院区的一体化核心系统体系重构，涉及 HIS、EMR 与集成平台等多个子系统。"
+    expect(lintProse(text).severity).toBe("style")
   })
 })

@@ -2,7 +2,7 @@
 // pb_hooks/bid_projects.pb.js — 业务 collection + REST CRUD 路由 (self-contained)
 //
 // 由 mcp__rh-pb-hooks__install_business_collection 装. 不要直接 Read+Write 这个文件.
-// 业务字段: rh_user_id:text, project_name:text, tender_no:text, hospital:text, bid_open_date:date, stage:text, tender_text:text, tender_files:json, tender_tables:json, parse_report:json, bid_outline:json, bid_chapters:json, response_map:json, dup_report:json, void_check:json, ai_review:json, manual_review:json, parse_config:json, opportunity_id:text, bid_result:text, bid_amount:number, lost_reason:text, result_synced_at:date, target_pages:number, outline_level:number, figures_enabled:bool, clause_granularity:text, section_words:number, bid_defense:json, submission_check:json, stage_gates:json, text_audit:json, archived:bool, deleted_at:text, gen_options:json, global_facts:text, orchestration:json, max_figures:number, compilation_basis_extra:json, basis_style:text, format_settings:json, format_check_items:json, ref_template_text:text, ref_materials_text:text, identity_words:text, bid_source_mode:text, bid_external_text:text
+// 业务字段: rh_user_id:text, project_name:text, tender_no:text, hospital:text, bid_open_date:date, stage:text, tender_text:text, tender_files:json, tender_tables:json, parse_report:json, bid_outline:json, bid_chapters:json, response_map:json, dup_report:json, void_check:json, ai_review:json, manual_review:json, parse_config:json, opportunity_id:text, bid_result:text, bid_amount:number, lost_reason:text, result_synced_at:date, target_pages:number, outline_level:number, figures_enabled:bool, clause_granularity:text, section_words:number, bid_defense:json, submission_check:json, stage_gates:json, text_audit:json, archived:bool, deleted_at:text, gen_options:json, global_facts:text, orchestration:json, max_figures:number, compilation_basis_extra:json, basis_style:text, format_settings:json, format_check_items:json, ref_template_text:text, ref_materials_text:text, identity_words:text, bid_source_mode:text, bid_external_text:text, subjective_confirmations:json
 // 路由: list,get,create,update,delete
 // list filter 字段: rh_user_id,stage
 // list 默认排序: -updated
@@ -74,6 +74,8 @@ onBootstrap(function (e) {
       addField({ name: 'identity_words', type: 'text' })
       addField({ name: 'bid_source_mode', type: 'text', max: 16 })
       addField({ name: 'bid_external_text', type: 'text' })
+      // UX-R3 S12：主观分逐条确认（json；键=评分项编号 R1/B1，值={confirmed,strategy,confirmed_at}）
+      addField({ name: 'subjective_confirmations', type: 'json' })
       addField({ name: "created", type: "autodate", onCreate: true })
       addField({ name: "updated", type: "autodate", onCreate: true, onUpdate: true })
       // 用户反馈轮（2026-09-18）：长文本字段存量限制拦截十万字级招标文件保存（500 update_failed）
@@ -147,6 +149,7 @@ onBootstrap(function (e) {
           { name: 'identity_words', type: 'text' },
           { name: 'bid_source_mode', type: 'text', max: 16 },
           { name: 'bid_external_text', type: 'text' },
+          { name: 'subjective_confirmations', type: 'json' },
           { name: "created", type: "autodate", onCreate: true },
           { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
         ],
@@ -215,6 +218,7 @@ routerAdd("GET", "/api/bid_projects", function (e) {
           { name: 'identity_words', type: 'text' },
           { name: 'bid_source_mode', type: 'text', max: 16 },
           { name: 'bid_external_text', type: 'text' },
+          { name: 'subjective_confirmations', type: 'json' },
         { name: "created", type: "autodate", onCreate: true },
         { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
       ],
@@ -375,6 +379,7 @@ routerAdd("POST", "/api/bid_projects", function (e) {
           { name: 'identity_words', type: 'text' },
           { name: 'bid_source_mode', type: 'text', max: 16 },
           { name: 'bid_external_text', type: 'text' },
+          { name: 'subjective_confirmations', type: 'json' },
         { name: "created", type: "autodate", onCreate: true },
         { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
       ],
@@ -435,6 +440,8 @@ routerAdd("POST", "/api/bid_projects", function (e) {
     rec.set("identity_words", body.identity_words === undefined || body.identity_words === null ? "" : String(body.identity_words))
     rec.set("bid_source_mode", body.bid_source_mode === undefined || body.bid_source_mode === null ? "" : String(body.bid_source_mode))
     rec.set("bid_external_text", body.bid_external_text === undefined || body.bid_external_text === null ? "" : String(body.bid_external_text))
+    // UX-R3 S12：主观分确认表（新项目默认空表，确认动作走 PATCH 写入）
+    rec.set("subjective_confirmations", body.subjective_confirmations === undefined || body.subjective_confirmations === null ? {} : body.subjective_confirmations)
     $app.save(rec)
     return e.json(200, rec.publicExport())
   } catch (err) {
@@ -497,7 +504,7 @@ routerAdd("PATCH", "/api/bid_projects/{id}", function (e) {
     // 这里只对白名单外字段记一条 warn 留痕，不改响应语义（避免打断既有客户端）；真正的防线是
     // pbFieldContract.test.ts 的前端写入字段 ↔ 白名单契约守卫。
     try {
-      var KNOWN_FIELDS = ["project_name", "tender_no", "hospital", "bid_open_date", "stage", "tender_text", "parse_report", "bid_outline", "bid_chapters", "response_map", "dup_report", "void_check", "ai_review", "manual_review", "parse_config", "opportunity_id", "bid_result", "bid_amount", "lost_reason", "result_synced_at", "target_pages", "outline_level", "figures_enabled", "clause_granularity", "section_words", "bid_defense", "submission_check", "stage_gates", "text_audit", "archived", "deleted_at", "gen_options", "global_facts", "orchestration", "max_figures", "compilation_basis_extra", "basis_style", "format_settings", "format_check_items", "ref_template_text", "ref_materials_text", "identity_words", "bid_source_mode", "bid_external_text"]
+      var KNOWN_FIELDS = ["project_name", "tender_no", "hospital", "bid_open_date", "stage", "tender_text", "parse_report", "bid_outline", "bid_chapters", "response_map", "dup_report", "void_check", "ai_review", "manual_review", "parse_config", "opportunity_id", "bid_result", "bid_amount", "lost_reason", "result_synced_at", "target_pages", "outline_level", "figures_enabled", "clause_granularity", "section_words", "bid_defense", "submission_check", "stage_gates", "text_audit", "archived", "deleted_at", "gen_options", "global_facts", "orchestration", "max_figures", "compilation_basis_extra", "basis_style", "format_settings", "format_check_items", "ref_template_text", "ref_materials_text", "identity_words", "bid_source_mode", "bid_external_text", "subjective_confirmations"]
       var unknownFields = []
       for (var bf in body) { if (KNOWN_FIELDS.indexOf(bf) === -1) unknownFields.push(bf) }
       if (unknownFields.length) {
@@ -553,6 +560,8 @@ routerAdd("PATCH", "/api/bid_projects/{id}", function (e) {
     // Q28「外部投标文件」的上传与来源切换因此静默不落库（前端 updateProject 后刷新即丢）。
     if ("bid_source_mode" in body) rec.set("bid_source_mode", body.bid_source_mode === undefined || body.bid_source_mode === null ? "" : String(body.bid_source_mode))
     if ("bid_external_text" in body) rec.set("bid_external_text", body.bid_external_text === undefined || body.bid_external_text === null ? "" : String(body.bid_external_text))
+    // UX-R3 S12：主观分逐条确认表（json；键=评分项编号 R1/B1，值={confirmed,strategy,confirmed_at}）
+    if ("subjective_confirmations" in body) rec.set("subjective_confirmations", body.subjective_confirmations)
     $app.save(rec)
     return e.json(200, rec.publicExport())
   } catch (err) {

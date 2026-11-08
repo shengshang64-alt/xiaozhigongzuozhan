@@ -106,8 +106,8 @@ export function ParseRiskPane({
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <ShieldAlert className="h-4 w-4 shrink-0 text-destructive" />
           <h3 className="text-sm font-semibold text-foreground">合规风险与红线</h3>
-          {summary.red > 0 && <span className="badge-danger">红 {summary.red}</span>}
-          {summary.yellow > 0 && <span className="badge-warning">黄 {summary.yellow}</span>}
+          {/* UX-R3 S7：红/黄计数以前在统计卡（「N 项待核实」+「含 N 项红线」）与下方筛选条各出现一次，
+              此处第三处重复已删；每行自身的红/黄级别徽标仍保留，级别信息不丢 */}
           {summary.aiCount > 0 && <span className="badge-success">AI 提示 {summary.aiCount}</span>}
           {summary.total === 0 && <span className="badge-neutral">未发现确定性风险</span>}
         </div>

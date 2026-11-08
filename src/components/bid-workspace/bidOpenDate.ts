@@ -16,17 +16,23 @@ export type BidOpenTone = "missing" | "past" | "urgent" | "normal"
 export type BidOpenDateStatus = {
   daysLeft: number | null
   tone: BidOpenTone
-  /** 展示文案：如「距开标 5 天」「已过期 2 天」「未登记开标时间」 */
+  /** 展示文案：如「距开标 5 天」「开标已过 2 天 · 待登记结果」「未登记开标时间」 */
   label: string
 }
 
 /** iso 为空 / 非法 → missing；否则按剩余**日历日**分档（past <0、今日 0、urgent ≤7 < normal）。
- *  nowMs 默认当前时间，测试可注入。 */
+ *  nowMs 默认当前时间，测试可注入。
+ *
+ * UX-R3 S10：过期文案从「已过期 N 天」改为「开标已过 N 天 · 待登记结果」——
+ * 「过期」听起来像项目失效/需要补救，实际只是开标日已过、下一步是回填中标结果；
+ * 色调同步从红降橙（提醒，不是警报）。 */
 export function bidOpenDateStatus(iso: string | null | undefined, nowMs: number = Date.now()): BidOpenDateStatus {
   if (!iso || !String(iso).trim()) return { daysLeft: null, tone: "missing", label: "未登记开标时间" }
   const daysLeft = daysUntilLocalDay(iso, nowMs)
   if (daysLeft === null) return { daysLeft: null, tone: "missing", label: "开标日期无效" }
-  if (daysLeft < 0) return { daysLeft, tone: "past", label: `已过期 ${Math.abs(daysLeft)} 天` }
+  if (daysLeft < 0) {
+    return { daysLeft, tone: "past", label: `开标已过 ${Math.abs(daysLeft)} 天 · 待登记结果` }
+  }
   if (daysLeft === 0) return { daysLeft, tone: "past", label: "今日开标" }
   if (daysLeft <= 7) return { daysLeft, tone: "urgent", label: `距开标 ${daysLeft} 天` }
   return { daysLeft, tone: "normal", label: `距开标 ${daysLeft} 天` }
