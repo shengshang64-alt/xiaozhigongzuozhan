@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 // 旁路依赖：技能选择器读 PocketBase 技能池，与本文件的可见性断言无关，直接置空
 vi.mock("@/components/common/SkillPicker", () => ({ SkillPickerFor: () => null }))
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import "@testing-library/jest-dom/vitest"
 import { DeviationPanel } from "./DeviationPanel"
 import type { DeviationRow, DeviationStats, DeviationTable } from "@/pages/BidWorkspace/bidTypes"
@@ -189,5 +189,113 @@ describe("R54 偏离表面板：条款来源如实显示", () => {
     } as unknown as Parameters<typeof DeviationPanel>[0]
     render(<DeviationPanel {...props} />)
     expect(screen.getByText(/已回退解析报告分区：交货和服务要求/)).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// R81（2026-11-08）：长列表分页——偏离表 200 行时实测 4224 DOM 节点 / 338 button / 225ms
+// 只切渲染切片：统计卡、待核对提示、Word 导出仍用全量 rows。
+// ---------------------------------------------------------------------------
+describe("技术偏离表：长列表分页（R81）", () => {
+  /** 造 n 行：按 source 分成 groupCount 组，便于验证「跨页分组标注」 */
+  function manyRows(n: number, groupCount = 1): DeviationRow[] {
+    return Array.from({ length: n }, (_, i) => ({
+      clause_id: `c${i + 1}`,
+      clause_text: `第 ${i + 1} 条：投标人须提供三年免费质保与 7×24 小时运维响应，重大故障 2 小时内到场处理`,
+      clause_no: String(i + 1),
+      source: groupCount === 1 ? "招标技术要求" : `来源章 ${(i % groupCount) + 1}`,
+      response_node: i % 3 === 0 ? "" : "第五章 售后服务",
+      response_level: (i % 4 === 0 ? "full" : i % 4 === 1 ? "partial" : i % 4 === 2 ? "deviation" : "") as
+        | "full" | "partial" | "deviation" | "",
+      response_summary: `第 ${i + 1} 条已按原文要求作出响应`,
+      bid_ref: "",
+      needs_review: i % 7 === 0,
+    })) as DeviationRow[]
+  }
+
+  function renderWith(rows: DeviationRow[]) {
+    const table = { split_dim: "system", rows, generated_at: "2026-11-08T00:00:00.000Z" } as DeviationTable
+    const st: DeviationStats = {
+      total: rows.length,
+      full: rows.filter((r) => r.response_level === "full").length,
+      partial: rows.filter((r) => r.response_level === "partial").length,
+      deviation: rows.filter((r) => r.response_level === "deviation").length,
+      needs_review: rows.filter((r) => r.needs_review === true).length,
+    }
+    const props = {
+      clauseGranularity: "system",
+      setClauseGranularity: () => {},
+      deviationClauseCount: rows.length,
+      deviationSourceLabel: "按招标原文标题定位：第五章 采购需求",
+      mapLoading: false,
+      generateDeviationTable: () => {},
+      deviationTable: table,
+      deviationSummary: st,
+      doneChapterCount: 20,
+      jumpToResponseNode: () => {},
+      exportDeviationWord: () => {},
+      exportBusy: "",
+      deviationSkills: {},
+      techParamCoverage: { hasParams: false },
+      addUncoveredTechParamsToOutline: () => {},
+    } as unknown as Parameters<typeof DeviationPanel>[0]
+    return render(<DeviationPanel {...props} />)
+  }
+
+  it("200 行：默认只渲染 100 行（DOM 降到单页量级）", () => {
+    const { container } = renderWith(manyRows(200))
+    expect(container.querySelectorAll("tbody tr").length).toBe(100)
+  })
+
+  it("统计卡仍按全量：总条款 200 / 完全响应 50", () => {
+    renderWith(manyRows(200))
+    // 统计卡标签与数字成对出现，用最近的容器断言，避免与行内数字混淆
+    const cards = screen.getAllByText("总条款")
+    expect(cards.length).toBe(1)
+    const totalCard = cards[0].parentElement as HTMLElement
+    expect(totalCard.textContent).toContain("200")
+  })
+
+  it("分页条显示区间与总页数", () => {
+    renderWith(manyRows(200))
+    const nav = screen.getByRole("navigation", { name: "技术偏离表分页" })
+    expect(nav).toBeInTheDocument()
+    expect(screen.getByText("1 / 2")).toBeInTheDocument()
+    expect(screen.getByText(/共 200 条（每页 100 条）/)).toBeInTheDocument()
+  })
+
+  it("点下一页渲染第 101–200 条（首条编号 101，不是重复第一页）", () => {
+    const { container } = renderWith(manyRows(200))
+    fireEvent.click(screen.getByRole("button", { name: "下一页" }))
+    expect(screen.getByText("2 / 2")).toBeInTheDocument()
+    const firstCell = container.querySelector("tbody tr td")
+    // 首列渲染 clause_no + clause_id（本夹具 clause_no=101、clause_id=c101）
+    expect(firstCell?.textContent).toContain("101")
+  })
+
+  it("末页禁用下一页/末页，首页禁用上一页/首页", () => {
+    renderWith(manyRows(200))
+    expect(screen.getByRole("button", { name: "上一页" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "首页" })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "末页" }))
+    expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "末页" })).toBeDisabled()
+  })
+
+  it("≤100 行时不出分页条（零视觉噪音）", () => {
+    renderWith(manyRows(60))
+    expect(screen.queryByRole("navigation", { name: "技术偏离表分页" })).toBeNull()
+  })
+
+  it("同一来源跨页时组头如实写「本页 X 条 / 全部 Y 条」", () => {
+    // 200 行单一来源 → 第 1 页该来源 100 条，全部 200 条
+    renderWith(manyRows(200, 1))
+    expect(screen.getByText("本页 100 条 / 全部 200 条")).toBeInTheDocument()
+  })
+
+  it("未跨页的来源组头只写「N 条」（不出现多余的本页/全部）", () => {
+    renderWith(manyRows(60, 1))
+    expect(screen.getByText("60 条")).toBeInTheDocument()
+    expect(screen.queryByText(/本页 \d+ 条 \/ 全部/)).toBeNull()
   })
 })

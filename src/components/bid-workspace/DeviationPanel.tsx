@@ -19,6 +19,20 @@ import { PARAM_KIND_LABEL } from "@/pages/BidWorkspace/techParamCoverage"
 // 改造 4：技术偏离表面板——拆分维度单选 + 统计 + 按来源章节分组表格 + 独立导出
 // ---------------------------------------------------------------------------
 
+/**
+ * R81（2026-11-08）：单页渲染行数。
+ *
+ * 实测依据（jsdom，真实语料 `test_results/审查正文-三明.txt` + 真实引擎 `resolveDeviationClauses`）：
+ * 面板靠 `limit: 200` 截断（调用侧 useBidWorkspace:8200 附近），200 行时已挂
+ * **200 个 tbody row / 4224 个 DOM 节点 / 338 个 button / 首屏 225ms**；
+ * 而同一份语料在不限 limit 时能抽出 **949 条**条款——说明 200 不是数据上限，只是调用侧截断，
+ * 换更大的 limit（或条款更密的招标文件）时这棵树会继续线性膨胀。
+ *
+ * 取 100：与 R80 技术参数响应表同一口径（200 行 → 2 页），单页 ≈ 2100 节点（降 50%）。
+ * ⚠️ 只切渲染切片：统计卡、待核对提示、Word 导出全部仍用全量 rows。
+ */
+const PAGE_SIZE = 100
+
 type DeviationPanelProps = Pick<
   UseBidWorkspace,
   | "clauseGranularity"
@@ -60,8 +74,28 @@ function groupRows(rows: DeviationRow[]): { source: string; rows: DeviationRow[]
 export function DeviationPanel(p: DeviationPanelProps) {
   // 展开的条款行 key（本地 UI 状态）
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
+  // R81：当前页（0 起）。只切渲染切片，全量 rows 仍用于统计/导出。
+  const [page, setPage] = useState(0)
   const rows = p.deviationTable?.rows ?? []
-  const groups = groupRows(rows)
+  // R81：先按全局行序切片，再对切片重新分组——跨页时同一来源会在相邻两页各出现一次，
+  // 组头如实标注「本页 X 条 / 全部 Y 条」，不假装整组都在这一页。
+  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
+  const safePage = Math.min(page, pageCount - 1)
+  const pageRows = rows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
+  const groups = groupRows(pageRows)
+  const totalBySource = (() => {
+    const m = new Map<string, number>()
+    for (const r of rows) {
+      const k = r.source || "招标技术要求"
+      m.set(k, (m.get(k) ?? 0) + 1)
+    }
+    return m
+  })()
+  // 翻页收起点开的行（否则展开态会按 key 里的行号漂到新页另一条条款上）
+  const gotoPage = (next: number) => {
+    setPage(next)
+    setExpandedKey(null)
+  }
   const st = p.deviationSummary
   const exportBusyNow = p.exportBusy === "deviation"
   // R52：一一对应（招标条款↔响应材料）与原文响应核对结论，均取自生成时写入的结论 / 纯本地复核
@@ -253,7 +287,16 @@ export function DeviationPanel(p: DeviationPanelProps) {
               {groups.map((g) => (
                 <div key={g.source}>
                   <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold text-foreground">
-                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary">{g.rows.length} 条</span>
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary">
+                      {/* R81：分组被分页切开时，如实写「本页 X 条 / 全部 Y 条」——
+                          只写「X 条」会让用户以为这一组只有这么多，翻页才发现还有。 */}
+                      {(() => {
+                        const totalForSource = totalBySource.get(g.source) ?? g.rows.length
+                        return totalForSource === g.rows.length
+                          ? `${g.rows.length} 条`
+                          : `本页 ${g.rows.length} 条 / 全部 ${totalForSource} 条`
+                      })()}
+                    </span>
                     {g.rows.some((r) => r.needs_review) && (
                       <span className="rounded-full bg-warning/10 px-2 py-0.5 text-warning">
                         待核对 {g.rows.filter((r) => r.needs_review).length} 条
@@ -375,6 +418,57 @@ export function DeviationPanel(p: DeviationPanelProps) {
                 </div>
               ))}
             </div>
+            {/* R81：分页条——仅超过一页时出现（≤100 条时零视觉变化，行为与改动前一致） */}
+            {pageCount > 1 && (
+              <nav
+                aria-label="技术偏离表分页"
+                className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-2.5 py-1.5"
+              >
+                <span className="text-xs text-muted-foreground">
+                  第 {safePage * PAGE_SIZE + 1}–{Math.min((safePage + 1) * PAGE_SIZE, rows.length)} 条
+                  <span className="mx-1 opacity-50">/</span>共 {rows.length} 条（每页 {PAGE_SIZE} 条）
+                </span>
+                <span className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={safePage === 0}
+                    onClick={() => gotoPage(0)}
+                    aria-label="首页"
+                    className="rounded border border-border bg-card px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40"
+                  >
+                    «
+                  </button>
+                  <button
+                    type="button"
+                    disabled={safePage === 0}
+                    onClick={() => gotoPage(safePage - 1)}
+                    className="rounded border border-border bg-card px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40"
+                  >
+                    上一页
+                  </button>
+                  <span className="px-1 text-xs font-medium tabular-nums text-foreground">
+                    {safePage + 1} / {pageCount}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={safePage >= pageCount - 1}
+                    onClick={() => gotoPage(safePage + 1)}
+                    className="rounded border border-border bg-card px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40"
+                  >
+                    下一页
+                  </button>
+                  <button
+                    type="button"
+                    disabled={safePage >= pageCount - 1}
+                    onClick={() => gotoPage(pageCount - 1)}
+                    aria-label="末页"
+                    className="rounded border border-border bg-card px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40"
+                  >
+                    »
+                  </button>
+                </span>
+              </nav>
+            )}
           </>
         )}
       </div>

@@ -1,8 +1,8 @@
 {
-  "round": 80,
+  "round": 81,
   "lastRound": {
-    "id": "R080",
-    "theme": "技术参数响应表长列表分页：400 行全渲染（5635 DOM 节点 / 800 button / 342ms）→ 每页 100 条（1444 节点 / 204 button / 142ms），数据与统计口径不变",
+    "id": "R081",
+    "theme": "B46 技术偏离表长列表实测+分页：实测 200 行 = 4224 DOM 节点/338 button/225ms（超 1500 门槛）→ 每页 100 行后 2151 节点/−49%、118ms；跨页组头如实标注「本页 X/全部 Y」",
     "verdict": "pass"
   },
   "eslintBaseline": 114,
@@ -17,12 +17,6 @@
     "eslint": "pass"
   },
   "backlog": [
-    {
-      "id": "B46-deviation-panel-dom-scale",
-      "priority": "low",
-      "source": "self-found(R80)",
-      "title": "偏离表（DeviationPanel）同类长列表未实测 DOM 规模：R80 只处理了技术参数响应表（上限 400 行、实测 5635 节点）。偏离表受 limit:200 与条款粒度约束，行数与节点量未知。**先测后改**：用真实项目跑一次 render 量 tbody 行数/节点数，若 <1500 节点则无需处理，避免过度优化。"
-    },
     {
       "id": "B47-loop-state-ledger-drift",
       "priority": "medium",
@@ -479,6 +473,12 @@
     {
       "id": "R80",
       "theme": "技术参数响应表长列表分页（400 行 → 100 行/页，首屏 DOM −74%）",
+      "verdict": "pass",
+      "at": "2026-11-08"
+    },
+    {
+      "id": "R81",
+      "theme": "B46 技术偏离表分页（实测 4224→2151 节点，−49%；真实项目蚌埠 76.2 万字验证）",
       "verdict": "pass",
       "at": "2026-11-08"
     }
