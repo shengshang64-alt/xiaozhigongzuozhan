@@ -1,4 +1,6 @@
+// UX-R2: 模型配置 已按 docs/ux-review-2026-11 修复 2026-11-07（内置警告折叠/设默认确认/提示人话化）
 import { useState } from "react"
+import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { AlertTriangle, Cpu, FlaskConical, Loader2, Pencil, Plus, RefreshCw, Star, Trash2 } from "lucide-react"
 import { detectModelModality, isTextGenerationModel, modalityBadgeClass, modalityLabel } from "@/lib/modelModality"
 import { Button } from "@/components/ui/button"
@@ -82,7 +84,11 @@ function maskUrl(raw: string): string {
   }
 }
 
-export function PersonalConfigList({
+export function PersonalConfigList(p0: PersonalConfigListProps & { children?: never }) {
+  return <PersonalConfigListInner {...p0} />
+}
+
+function PersonalConfigListInner({
   configs,
   busyConfigId,
   onAdd,
@@ -102,6 +108,8 @@ export function PersonalConfigList({
 }: PersonalConfigListProps) {
   // R-038：当前打开的元数据编辑弹窗目标（null = 关闭）
   const [editingMeta, setEditingMeta] = useState<{ cfg: GatewayConfig; modelId: string } | null>(null)
+  // UX-R2（docs/ux-review-2026-11）：「设为默认」二次确认——说清新旧默认模型
+  const [pendingDefault, setPendingDefault] = useState<{ cfgId: string; modelId: string; prevDefault: string | null } | null>(null)
 
   // R-041：只看可用开关（默认开启——无额度/挂账的模型隐藏；取消勾选可看全部）
   const [onlyUsable, setOnlyUsable] = useState(true)
@@ -173,7 +181,7 @@ export function PersonalConfigList({
                 {!cfg.default_model && enabledCount > 0 && (
                   <span
                     className="badge-warning inline-flex items-center gap-1"
-                    title="该配置没有显式声明默认模型，网关会按「启用列表第一个」兜底——配置里模型顺序一变，默认模型就静默改变。请点下方任一文本模型的「设为默认」把它固定下来。"
+                    title="该配置没有指定默认模型：未单独指定模型的功能将自动使用列表中第一个可用模型。建议点任一文本模型的「设为默认」把它固定下来。"
                   >
                     <AlertTriangle className="h-3 w-3" />
                     未设默认模型
@@ -326,7 +334,14 @@ export function PersonalConfigList({
                         <button
                           type="button"
                           disabled={busy || isDefault || !isTextGenerationModel(m.id)}
-                          onClick={() => onSetDefault(cfg, m.id)}
+                          onClick={() =>
+                            setPendingDefault({
+                              cfgId: cfg.id,
+                              modelId: m.id,
+                              prevDefault:
+                                (cfg.models ?? []).find((x) => x.id === cfg.default_model)?.id ?? cfg.default_model ?? null,
+                            })
+                          }
                           title={
                             !isTextGenerationModel(m.id)
                               ? "非文本模型不能作为系统默认生成模型"
@@ -434,6 +449,24 @@ export function PersonalConfigList({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        open={pendingDefault !== null}
+        onOpenChange={(o) => {
+          if (!o) setPendingDefault(null)
+        }}
+        title="切换全站默认模型？"
+        description={
+          pendingDefault
+            ? `将把全站 AI 生成切换到「${pendingDefault.modelId}」，原默认${pendingDefault.prevDefault ? `「${pendingDefault.prevDefault}」` : "（无）"}退为备用。`
+            : ""
+        }
+        confirmText="确认切换"
+        onConfirm={() => {
+          const cfg = configs.find((c) => c.id === pendingDefault?.cfgId)
+          if (pendingDefault && cfg) onSetDefault(cfg, pendingDefault.modelId)
+          setPendingDefault(null)
+        }}
+      />
     </section>
   )
 }

@@ -17,6 +17,7 @@ import {
   longAnswerHint,
   longAnswerHintText,
 } from "@/lib/longAnswerTiming"
+import { CAPABILITY_CARDS, quickQuestionsForRoute } from "./quickQuestions"
 
 const MD_COMPONENTS: Components = {
   h1: ({ children }) => <h1 className="mb-2 mt-3 text-base font-bold text-foreground first:mt-0">{children}</h1>,
@@ -57,11 +58,6 @@ const MD_COMPONENTS: Components = {
   hr: () => <hr className="my-3 border-border" />,
 }
 
-const QUICK_SAMPLES = [
-  "我手上哪些商机最久没跟进？",
-  "帮我总结最近的中标情报",
-  "给我列一下进行中的项目和进度",
-]
 
 type ChatStreamProps = {
   messages: ChatMsg[]
@@ -79,6 +75,10 @@ type ChatStreamProps = {
    * 于是反复重发（每次都是真金白银）。这里把秒数与「可取消」一起显示，给出体感与出口。
    */
   elapsedSec?: number
+  /** UX-R2：当前路由——快捷问题随页面变化（悬浮球每页都在，传 loc.pathname） */
+  pathname?: string
+  /** UX-R2：能力卡「填入输入框」回调——只填不发（缺省不渲染能力卡） */
+  onFillInput?: (text: string) => void
 }
 
 /**
@@ -98,6 +98,8 @@ export function ChatStream({
   onRetry,
   onDismiss,
   elapsedSec = 0,
+  pathname,
+  onFillInput,
 }: ChatStreamProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -125,7 +127,8 @@ export function ChatStream({
           </div>
           {onQuickAsk ? (
             <div className="mt-1 flex w-full max-w-md flex-col gap-2">
-              {QUICK_SAMPLES.map((q) => (
+              {/* UX-R2：快捷问题随当前路由变化（标书页问进度、客户页问跟进、资质页问到期） */}
+              {quickQuestionsForRoute(pathname).map((q) => (
                 <button
                   key={q}
                   type="button"
@@ -136,6 +139,25 @@ export function ChatStream({
                   {q}
                 </button>
               ))}
+            </div>
+          ) : null}
+          {onFillInput ? (
+            <div className="mt-3 w-full max-w-md">
+              <p className="mb-1.5 text-left text-[11px] font-medium text-muted-foreground">我能帮你做</p>
+              <div className="grid grid-cols-2 gap-2">
+                {CAPABILITY_CARDS.map((c) => (
+                  <button
+                    key={c.key}
+                    type="button"
+                    onClick={() => onFillInput(c.sample)}
+                    title={`填入示例：「${c.sample}」`}
+                    className="rounded-lg border border-border bg-background p-2.5 text-left shadow-sm transition-all hover:border-primary/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <p className="text-xs font-semibold text-foreground">{c.title}</p>
+                    <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{c.desc}</p>
+                  </button>
+                ))}
+              </div>
             </div>
           ) : null}
         </div>

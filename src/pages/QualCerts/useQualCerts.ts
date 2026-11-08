@@ -1,4 +1,5 @@
 // 资质台账 VM：列表 + 三档预警汇总 + 增删改（REST 走 __pb 代理自定义路由）
+// UX-R2: 资质台账 已按 docs/ux-review-2026-11 修复 2026-11-07（新增批量登记有效期 batchRegisterValidity）
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { getPocketBaseUrl } from "@/lib/pb"
@@ -144,6 +145,32 @@ export function useQualCerts() {
     [reload],
   )
 
+  // UX-R2（docs/ux-review-2026-11 §十三）：批量登记有效期——
+  // 服务端 PATCH 为局部更新语义（body 字段缺省即不动），逐行只发 { valid_to }；
+  // allSettled 聚合结果，部分失败不整批回滚（成功的已落库，失败的行号在页面 toast 中点名）。
+  const batchRegisterValidity = useCallback(
+    async (ids: string[], validTo: string): Promise<{ ok: number; failed: string[] }> => {
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          apiFetch<QualCertRow>(`/api/qual_certs/${encodeURIComponent(id)}`, {
+            method: "PATCH",
+            headers: vibexAuthHeaders(),
+            body: JSON.stringify({ valid_to: validTo }),
+          }),
+        ),
+      )
+      const failed: string[] = []
+      let ok = 0
+      results.forEach((r, i) => {
+        if (r.status === "fulfilled") ok += 1
+        else failed.push(ids[i])
+      })
+      if (ok > 0) await reload()
+      return { ok, failed }
+    },
+    [reload],
+  )
+
   return {
     rows,
     loading,
@@ -160,6 +187,7 @@ export function useQualCerts() {
     closeForm,
     saveDraft,
     removeRow,
+    batchRegisterValidity,
     reload,
   }
 }

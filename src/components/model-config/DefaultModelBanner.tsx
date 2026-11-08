@@ -1,3 +1,4 @@
+// UX-R2: 模型配置 已按 docs/ux-review-2026-11 修复 2026-11-07
 import { AlertTriangle, Sparkles } from "lucide-react"
 
 type DefaultModelBannerProps = {
@@ -42,7 +43,7 @@ export function DefaultModelBanner({
           {missingDefaultCount > 0 && (
             <li className="flex items-start gap-1.5 text-amber-600 dark:text-amber-400">
               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-              {missingDefaultCount} 个配置未设默认模型：它们靠「启用列表第一个」兜底，配置内模型顺序一变，默认模型就会静默改变
+              {missingDefaultCount} 个配置没有指定默认模型：未单独指定模型的功能将自动使用列表中第一个可用模型
             </li>
           )}
           {unusableCount > 0 && (

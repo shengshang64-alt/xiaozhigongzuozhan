@@ -1,7 +1,10 @@
+// UX-R2: 客户管理 已按 docs/ux-review-2026-11 修复 2026-11-07（右栏默认健康度总览 / 缺 N 项可点击补全 / 模型提示收敛小黄点 / 批量补全先确认）
 import { Building2, Download, Eye, EyeOff, ListChecks, Loader2, Search, Sparkles, MapPin, Target, Wand2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import { normalizeHospitalLevel, normalizeRegion, isTestCustomer } from "@/pages/CustomerManagement/customerNormalize"
 import { computeMissingFields, HOSPITAL_TYPES, type CustomerRow } from "@/pages/CustomerManagement/customerTypes"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { exportToCsv } from "@/lib/exportCsv"
 import { localDateStamp } from "@/lib/dateStamp"
 
@@ -18,6 +21,10 @@ const MISSING_FIELD_LABEL: Record<string, string> = {
   annual_revenue: "年营业收入",
   key_departments: "重点科室",
   leadership: "领导班子",
+}
+// UX-R2：缺失字段 → 编辑弹窗聚焦字段（cf-<key>；领导班子先填院长，班子明细随后补）
+const MISSING_FIELD_TARGET: Record<string, string> = {
+  leadership: "president",
 }
 
 type CustomerListPanelProps = {
@@ -48,6 +55,8 @@ type CustomerListPanelProps = {
   onCancelBatchEnrich: () => void
   /** R216 数据体检面板 */
   onOpenCheckup: () => void
+  /** UX-R2：「缺 N 项」角标逐项去补全——选中客户并打开编辑弹窗聚焦对应字段 */
+  onRequestFillField: (customer: CustomerRow, fieldKey: string) => void
 }
 
 export function CustomerListPanel({
@@ -76,6 +85,7 @@ export function CustomerListPanel({
   onBatchEnrich,
   onCancelBatchEnrich,
   onOpenCheckup,
+  onRequestFillField,
 }: CustomerListPanelProps) {
   // T7 演示模式（组件自持 state，不跨层传递）：给医院演示前一键隐藏名称含「测试」的客户；
   // localStorage 持久化让开关状态跨会话记住。过滤规则走 isTestCustomer 纯函数（有单测）。
@@ -108,6 +118,14 @@ export function CustomerListPanel({
     const rows = visibleCustomers.map((c) => [c.hospital_name, c.hospital_type ?? "", c.region ?? "", c.level ?? "", c.last_follow_at ?? "", c.updated ?? ""])
     exportToCsv(`客户列表_${localDateStamp()}.csv`, headers, rows)
   }
+
+  // UX-R2：批量/全量补全改为「先确认再执行」——影响范围与预计耗时先说清，用户敢点了
+  const [enrichConfirm, setEnrichConfirm] = useState<{ scope: "batch" | "full" } | null>(null)
+  const enrichScopeCount = enrichConfirm?.scope === "batch" ? Math.min(3, customers.length) : customers.length
+  const enrichScopeCopy =
+    enrichConfirm?.scope === "batch"
+      ? `将优先补齐缺失最多的前 ${Math.min(3, customers.length)} 家客户（每家约 1–2 分钟）`
+      : `将依次补全全部已加载的 ${customers.length} 家客户（每家约 1–2 分钟，总计可能达 ${customers.length * 2} 分钟）`
 
 
   return (
@@ -146,20 +164,20 @@ export function CustomerListPanel({
               </button>
               <button
                 type="button"
-                onClick={() => onBatchEnrich(3)}
+                onClick={() => setEnrichConfirm({ scope: "batch" })}
                 disabled={customers.length === 0}
-                title="优先补齐缺失最多的 3 家：抓取官网/概况/领导班子(含二级详情)/信息公开，并百科·公示·年报多来源兜底，用 AI 补全门诊量·床位·年收入·重点科室·领导团队等空白字段（已填字段不覆盖，结果均标记「AI 提供需核实」，请逐项核对）"
+                title="补齐缺失最多的前 3 家客户——点击后先出确认窗，说清影响范围与耗时"
                 className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-primary/10 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 <Wand2 className="h-3.5 w-3.5" />
                 批量补全
               </button>
-              {/* 2026-10-08 用户要求全部补全：不限量的全量入口，串行可中途停止 */}
+              {/* 2026-10-08 用户要求全部补全：不限量的全量入口，串行可中途停止；UX-R2 加确认窗 */}
               <button
                 type="button"
-                onClick={() => onBatchEnrich(undefined)}
+                onClick={() => setEnrichConfirm({ scope: "full" })}
                 disabled={customers.length === 0}
-                title="对全部医院客户依次执行批量补全（串行、耗时长，可随时点「停止」中断；已填字段不覆盖）"
+                title="对全部客户依次执行补全（串行、耗时长，可随时停止）——点击后先出确认窗"
                 className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 <Wand2 className="h-3.5 w-3.5" />
@@ -301,13 +319,22 @@ export function CustomerListPanel({
               const regionLabel = normalizeRegion(customer.region)
               return (
                 <li key={customer.id}>
-                  <button
-                    type="button"
+                  {/* UX-R2：卡片从 <button> 改为 div[role=button]——徽标要内嵌真实的 ⋯/缺失菜单触发钮，
+                      button 嵌 button 不合法；键盘可达性以 Enter/Space 对齐原按钮行为 */}
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => onSelectCustomer(customer.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault()
+                        onSelectCustomer(customer.id)
+                      }
+                    }}
                     className={
                       active
-                        ? "w-full rounded-lg border-2 border-primary bg-primary/5 px-3 py-2 text-left shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                        : "w-full rounded-lg border border-border bg-background px-3 py-2 text-left shadow-sm transition-all hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        ? "w-full cursor-pointer rounded-lg border-2 border-primary bg-primary/5 px-3 py-2 text-left shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        : "w-full cursor-pointer rounded-lg border border-border bg-background px-3 py-2 text-left shadow-sm transition-all hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     }
                   >
                     {/* 第一行：医院名（截断）+ 等级徽章 */}
@@ -340,12 +367,34 @@ export function CustomerListPanel({
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">
                         {missing.length > 0 ? (
-                          <span
-                            className="inline-flex shrink-0 items-center rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-400"
-                            title={`缺 ${missing.length} 项：${missing.map((k) => MISSING_FIELD_LABEL[k] ?? k).join("、")}`}
-                          >
-                            缺 {missing.length} 项
-                          </span>
+                          // UX-R2：「缺 N 项」角标可点击——弹出具体缺失清单，每项直达编辑弹窗对应字段
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                onClick={(e) => e.stopPropagation()}
+                                aria-label={`${customer.hospital_name} 缺 ${missing.length} 项，点击查看缺失清单`}
+                                className="inline-flex shrink-0 cursor-pointer items-center rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-700 transition-shadow hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:bg-amber-500/15 dark:text-amber-400"
+                              >
+                                缺 {missing.length} 项
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-44">
+                              <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+                                缺 {missing.length} 项，点去补全：
+                              </DropdownMenuItem>
+                              {missing.map((k) => (
+                                <DropdownMenuItem
+                                  key={k}
+                                  onSelect={() => onRequestFillField(customer, MISSING_FIELD_TARGET[k] ?? k)}
+                                  className="gap-1.5"
+                                >
+                                  <Wand2 className="h-3 w-3 text-primary" />
+                                  {MISSING_FIELD_LABEL[k] ?? k}
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         ) : (
                           <span
                             className="inline-flex shrink-0 items-center rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400"
@@ -365,7 +414,7 @@ export function CustomerListPanel({
                         )}
                       </div>
                     </div>
-                  </button>
+                  </div>
                 </li>
               )
             })}
@@ -392,6 +441,44 @@ export function CustomerListPanel({
           </div>
         )}
       </div>
+
+      {/* UX-R2：批量/全量补全确认窗——影响范围 + 预计耗时先说清（按源码实测口径：缺失最多的前 3 家 / 全部已加载客户串行） */}
+      <Dialog open={enrichConfirm != null} onOpenChange={(o) => (!o ? setEnrichConfirm(null) : undefined)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{enrichConfirm?.scope === "full" ? "全量补全确认" : "批量补全确认"}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm leading-relaxed text-foreground">
+            {enrichScopeCopy}，AI 抓取官网/百科/公示等来源补全空白字段。
+          </p>
+          <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
+            <li>· 已填字段不会被覆盖</li>
+            <li>· AI 补全结果均标记「AI 提供需核实」，请逐项核对</li>
+            <li>· 执行中可随时点「停止」中断</li>
+          </ul>
+          <div className="mt-3 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setEnrichConfirm(null)}
+              className="rounded-md border border-border px-3.5 py-2 text-sm text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const scope = enrichConfirm?.scope
+                setEnrichConfirm(null)
+                onBatchEnrich(scope === "full" ? undefined : 3)
+              }}
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <Wand2 className="h-4 w-4" />
+              开始补全（{enrichScopeCount} 家）
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

@@ -1,3 +1,4 @@
+// UX-R2: 竞品分析 已按 docs/ux-review-2026-11 修复 2026-11-07（hover 明细/口径折叠/Tab 位次核对）
 // 市场总览视图（订单口径）：数据口径 banner + 2025 大盘四卡 + 五年中标排行 / 年度趋势 / 金额区间结构。
 // 数据全部来自 marketIntel 策展数据集（剑鱼标讯 2021–2025），纯前端渲染，零 AI/后端成本。
 import { useMemo } from "react"
@@ -13,6 +14,7 @@ import {
   MARKET_TREND,
   SELF_NAME,
   coreVendors,
+  vendorByName,
 } from "@/pages/Competitors/marketIntel"
 
 const CARD_ICONS = [Building2, BarChart3, Lightbulb, Star]
@@ -37,9 +39,19 @@ export function CompetitorOverview({ onOpenVendor }: { onOpenVendor: (name: stri
       tooltip: {
         trigger: "item",
         formatter: (p) => {
+          // UX-R2（docs/ux-review-2026-11 §十四）：hover 显示该厂商订单明细（真实字段）
           const name = String((p as { name?: unknown }).name ?? "")
           const val = Number((p as { value?: unknown }).value) || 0
-          return `${name}${name === SELF_NAME ? "（我方）" : ""}：${(val / 10000).toFixed(2)} 亿元`
+          const v = vendorByName(name)
+          if (!v) return `${name}：${(val / 10000).toFixed(2)} 亿元`
+          return [
+            `<b>${name}</b>${name === SELF_NAME ? "（我方）" : ""}`,
+            `五年中标：${(val / 10000).toFixed(2)} 亿元`,
+            `其中 2025 年：${((v.bid25 ?? 0) / 10000).toFixed(2)} 亿元`,
+            `5 年项目数：${v.projects5y ?? 0} 个`,
+            `亿级大单占比：${v.bigShare ?? 0}%`,
+            `<span style="opacity:.65">点击查看厂商档案 →</span>`,
+          ].join("<br/>")
         },
       },
       xAxis: { type: "value", show: false },
@@ -142,11 +154,11 @@ export function CompetitorOverview({ onOpenVendor }: { onOpenVendor: (name: stri
 
   return (
     <div className="space-y-4">
-      {/* 数据口径 banner */}
-      <div className="rounded-[14px] border border-[#f0d9b8] bg-[#fdf6ea] px-4 py-3 text-[12.5px] leading-relaxed text-[#7a5a28]">
-        <span className="font-bold text-[#a86a1a]">数据口径：</span>
-        {DATA_CALIBER.replace(/^数据口径：/, "")}
-      </div>
+      {/* UX-R2（docs/ux-review-2026-11 §十四）：数据口径说明默认折叠 */}
+      <details className="rounded-[14px] border border-[#f0d9b8] bg-[#fdf6ea] px-4 py-2.5 text-[12.5px] leading-relaxed text-[#7a5a28]">
+        <summary className="cursor-pointer select-none font-bold text-[#a86a1a]">数据口径说明（点击展开）</summary>
+        <div className="mt-1.5">{DATA_CALIBER.replace(/^数据口径：/, "")}</div>
+      </details>
 
       {/* 2025 大盘四卡 */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

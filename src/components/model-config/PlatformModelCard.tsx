@@ -68,12 +68,17 @@ export function PlatformModelCard({
           平台内置 · 按 token 用量计费
         </span>
         {locallyUnusable ? (
-          // R3：本地/内网部署下这句话原来是「登录 RunningHub 后即可使用」——一句假承诺。
-          // 本机拿不到 Rh-Accesstoken（cookie 属 runninghub.cn 域），令牌恒空 → 必然 412。
-          <p className="ml-auto flex items-start gap-1 text-xs text-destructive">
-            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-            <span>本地不可用：{PLATFORM_LOCAL_UNAVAILABLE_REASON}</span>
-          </p>
+          // UX-R2（docs/ux-review-2026-11）：红色警告条改为默认收起的灰色折叠卡
+          // （R3 的原因说明保留在展开区；R3 的假承诺文案不复现）
+          <details className="ml-auto w-full">
+            <summary className="flex cursor-pointer select-none items-center gap-1.5 rounded-md bg-muted px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+              平台内置模型（仅线上部署可用）▸
+            </summary>
+            <p className="mt-2 flex items-start gap-1 text-xs text-muted-foreground">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+              <span>本地不可用：{PLATFORM_LOCAL_UNAVAILABLE_REASON}</span>
+            </p>
+          </details>
         ) : (
           <p className="ml-auto text-xs text-muted-foreground">无需配置密钥，登录 RunningHub 账户后即可使用</p>
         )}

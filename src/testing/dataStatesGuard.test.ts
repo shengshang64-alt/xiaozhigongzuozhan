@@ -193,6 +193,7 @@ describe("失败不许伪装成空态（防回潮）", () => {
       ["src/components/bid-workspace/ComplianceMatrixPanel.tsx", "已接入"],
       ["src/components/model-config/PersonalConfigList.tsx", "已接入"],
       ["src/components/assistant/ChatStream.tsx", "已接入（四种采纳下拉）"],
+      ["src/pages/BidCheck/BidCheckPage.tsx", "UX-R2 最近报告空态是信息型空态（无失败语义）；页内 catch 均为导出/存储的行内兜底"],
     ])
 
     const offenders: string[] = []

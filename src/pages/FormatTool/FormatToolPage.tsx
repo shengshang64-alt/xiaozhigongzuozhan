@@ -1,3 +1,4 @@
+// UX-R2: 格式刷新 已按 docs/ux-review-2026-11 修复 2026-11-07（长说明折叠/③④序号引导）
 import { useMemo, useRef, useState } from "react"
 // R118 口径：数字展示统一走 formatCount（锁定 zh-CN 分组），不用裸 toLocaleString()
 import { formatCount } from "@/lib/money"
@@ -317,6 +318,7 @@ export function FormatToolPage(vm: UseFormatTool) {
                 className="bg-primary text-primary-foreground shadow-md hover:bg-primary/90"
               >
                 <Zap className="mr-1.5 h-4 w-4" />
+                <span className="mr-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary" aria-hidden="true">3</span>
                 {vm.applying ? "应用中…" : "一键应用格式"}
               </Button>
               <Button
@@ -328,15 +330,25 @@ export function FormatToolPage(vm: UseFormatTool) {
                 className="border-primary/50 text-primary hover:bg-primary/5"
               >
                 <FileDown className="mr-1.5 h-4 w-4" />
+                <span className="mr-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary" aria-hidden="true">4</span>
                 导出刷新后文档
               </Button>
             </div>
             {vm.applyResult && (
               <ApplyReportPanel report={vm.applyResult.report} notes={vm.applyResult.notes} />
             )}
-            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-              流程：先「一键应用格式」按当前模板配置改写上传文档并自动复检（正文字体、各级标题、行距、页边距四项，报告见下方），确认结果后点「导出刷新后文档」下载——下载的就是应用时的同一份产物，不会重复改写。存在 ✗ 未生效项时导出会再次提醒，可自行判断是否继续；正文文字始终 0 改动。勾选「删除未应用的样式」在应用时一并移除文档中无引用的冗余样式定义；勾选「覆盖文字级直接格式」（默认开）会同步改写写在文字/段落上的字体字号与行距——很多成稿（含本项目导出的 docx）把格式写死在 run 与段落上，不开这项只改样式表会「看起来没变」。保存后在标书工作台「格式与暗标设置」或方案导出设置中也可选该模板套用。{vm.editingId ? "正在编辑已选模板，改完点「更新模板」保存。" : ""}
-            </p>
+            {/* UX-R2（docs/ux-review-2026-11 §十一）：长说明收进可展开块，版面让给预览。
+                验收修复：原 <p> 包 <details>/<summary> 违反 HTML 内容模型（控制台 hydration 报错），改为 div 容器 */}
+            <div className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+              <details className="rounded-lg border border-border bg-muted/40 px-3 py-2">
+                <summary className="cursor-pointer select-none text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">
+                  ⚠ 应用与导出规则（点开查看完整说明）
+                </summary>
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                  流程：先「一键应用格式」按当前模板配置改写上传文档并自动复检（正文字体、各级标题、行距、页边距四项，报告见下方），确认结果后点「导出刷新后文档」下载——下载的就是应用时的同一份产物，不会重复改写。存在 ✗ 未生效项时导出会再次提醒，可自行判断是否继续；正文文字始终 0 改动。勾选「删除未应用的样式」在应用时一并移除文档中无引用的冗余样式定义；勾选「覆盖文字级直接格式」（默认开）会同步改写写在文字/段落上的字体字号与行距——很多成稿（含本项目导出的 docx）把格式写死在 run 与段落上，不开这项只改样式表会「看起来没变」。保存后在标书工作台「格式与暗标设置」或方案导出设置中也可选该模板套用。{vm.editingId ? "正在编辑已选模板，改完点「更新模板」保存。" : ""}
+                </p>
+              </details>
+            </div>
           </div>
 
           {/* 高级微调（沿用原逐字段编辑器） */}

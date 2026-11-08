@@ -1,11 +1,12 @@
+// UX-R2: 方案工作室 已按 docs/ux-review-2026-11 修复 2026-11-07（数据条过滤/教学卡折叠/操作分层/模板下拉）
 import { useMemo, useState } from "react"
-import { Archive, Boxes, Copy, Download, FilePlus2, Layers, LayoutGrid, Loader2, Search, Table2, Trash2, X } from "lucide-react"
+import { Archive, Boxes, ChevronDown, Copy, Download, FilePlus2, Layers, LayoutGrid, Loader2, MoreHorizontal, Search, Table2, Trash2, X } from "lucide-react"
 import { DataTable, type DataTableColumn } from "@/components/ui/DataTable"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
-import { CompanyTemplateHint } from "@/components/common/CompanyTemplateHint"
+import { useCompanyTemplates } from "@/components/common/companyTemplates"
 import type { UseSolutionStudio } from "@/pages/SolutionStudio/useSolutionStudio"
 import { exportToCsv } from "@/lib/exportCsv"
 import { localDateStamp } from "@/lib/dateStamp"
@@ -19,6 +20,7 @@ import {
   type SolutionRecord,
   type SolutionTypeKey,
 } from "@/pages/SolutionStudio/solutionTypes"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 type SolutionListPanelProps = Pick<
   UseSolutionStudio,
@@ -43,30 +45,6 @@ function statusTone(jobStatus: DocStatus): string {
 }
 
 /** 统计卡（对齐原型 stat-card：标签 + 大数字 + 说明行） */
-function StatCard({
-  icon,
-  label,
-  value,
-  hint,
-  hintClass,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: number
-  hint: string
-  hintClass?: string
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-card p-4 shadow-md lg:p-5">
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <span className="text-primary">{icon}</span>
-        {label}
-      </div>
-      <p className="mt-1.5 text-3xl font-bold tabular-nums text-foreground">{value}</p>
-      <p className={`mt-1 text-xs ${hintClass ?? "text-muted-foreground"}`}>{hint}</p>
-    </div>
-  )
-}
 
 function SolutionCard({
   rec,
@@ -107,21 +85,38 @@ function SolutionCard({
         <span>更新于 {formatShortDateTime(rec.updated)}</span>
       </div>
       <div className="mt-auto flex items-center gap-2 pt-4">
-        {/* A2-10：卡片动作统一 outline，唯一 bg-primary 留给列表页「新建方案」 */}
-        <Button size="sm" variant="outline" onClick={onOpen} className="border-primary/40 text-primary shadow-sm hover:bg-primary/10 hover:text-primary">
+        {/* UX-R2（docs/ux-review-2026-11 §五）：操作分层——「打开编辑」实心主按钮，
+            以此为底稿 / 入素材库 / 删除收进 ⋯ 菜单（删除保留二次确认） */}
+        <Button size="sm" onClick={onOpen} className="bg-primary text-primary-foreground shadow-sm hover:bg-primary/90">
           打开编辑
         </Button>
-        <Button size="sm" variant="outline" onClick={onReuse} className="border-border text-muted-foreground hover:text-foreground">
-          <Copy className="mr-1 h-3.5 w-3.5" />
-          以此为底稿
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onImportToKb} className="text-muted-foreground hover:text-primary" title="把成稿章节拆块入素材库">
-          <Archive className="mr-1 h-3.5 w-3.5" />
-          入素材库
-        </Button>
-        <Button size="sm" variant="ghost" className="ml-auto text-muted-foreground hover:text-destructive" aria-label={`删除方案 ${rec.solution_name}`} title="删除方案" onClick={() => setConfirmingDelete(true)}>
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={`方案 ${rec.solution_name} 更多操作`}
+              title="以此为底稿 / 入素材库 / 删除"
+              className="ml-auto inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+              更多
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem onSelect={onReuse} className="gap-2">
+              <Copy className="h-3.5 w-3.5" /> 以此为底稿
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={onImportToKb} className="gap-2">
+              <Archive className="h-3.5 w-3.5" /> 入素材库
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => setConfirmingDelete(true)}
+              className="gap-2 text-destructive focus:bg-destructive/10 focus:text-destructive"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> 删除
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       {/* 确认走模态对话框，不再用行内按钮 + onBlur（焦点切换会吃掉鼠标点击） */}
       <ConfirmDialog
@@ -141,13 +136,25 @@ function SolutionCard({
 }
 
 export function SolutionListPanel(p: SolutionListPanelProps) {
+  // UX-R2：模板下载收进「新建方案」下拉（数据与下载复用 CompanyTemplateHint 抽出的 hook）
+  const { rows: templateRows, busyId: templateBusyId, download: downloadTemplate } = useCompanyTemplates(
+    "solution",
+    "spec",
+  )
+  // UX-R2：数据条状态过滤（全部 / 编写中 / 已完成）
+  const [activeStatus, setActiveStatus] = useState<"all" | "drafting" | "done">("all")
   // 类型筛选为纯前端视图过滤（叠加在 hook 的搜索过滤之上），不改动数据层，风险最低。
   const [activeType, setActiveType] = useState<SolutionTypeKey | "all">("all")
   // O-004：列表表格化（DataTable 复用第五站），默认卡片保持既有体验不变
   const [listView, setListView] = useState<"card" | "table">("card")
   const visible = useMemo(
-    () => (activeType === "all" ? p.solutions : p.solutions.filter((s) => s.solution_type === activeType)),
-    [p.solutions, activeType],
+    () =>
+      p.solutions.filter(
+        (s) =>
+          (activeType === "all" || s.solution_type === activeType) &&
+          (activeStatus === "all" || (activeStatus === "done" ? s.doc_status === "done" : s.doc_status !== "done")),
+      ),
+    [p.solutions, activeType, activeStatus],
   )
 
   const solutionColumns = useMemo<DataTableColumn<SolutionRecord>[]>(
@@ -237,41 +244,72 @@ export function SolutionListPanel(p: SolutionListPanelProps) {
           选择方案类型、填写医院项目信息，生成符合医疗信息化行业惯例的多级大纲，逐章产出规划 / 可研 / 初设 / 定制 / 标准方案正文，在线精修后导出 Word 交付文档。
         </p>
         <div className="mt-6 flex flex-wrap items-center gap-3">
-          <Button onClick={p.openNewWizard} className="bg-primary text-primary-foreground shadow-md hover:bg-primary/90 focus-visible:shadow-[var(--focus-ring)]">
-            <FilePlus2 className="mr-1.5 h-4 w-4" />
-            新建方案
-          </Button>
+          {/* UX-R2（docs/ux-review-2026-11 §五）：模板下载条收进「新建方案」下拉——
+              模板行由 useCompanyTemplates 惰性拉取，无模板时菜单只含向导项 */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button className="bg-primary text-primary-foreground shadow-md hover:bg-primary/90 focus-visible:shadow-[var(--focus-ring)]">
+                <FilePlus2 className="mr-1.5 h-4 w-4" />
+                新建方案
+                <ChevronDown className="ml-0.5 h-3.5 w-3.5 opacity-80" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56">
+              <DropdownMenuItem onSelect={p.openNewWizard} className="gap-2">
+                <FilePlus2 className="h-3.5 w-3.5 text-primary" />
+                从向导新建方案
+              </DropdownMenuItem>
+              {templateRows.length > 0 ? (
+                <>
+                  <div className="px-2 py-1 text-[11px] font-medium text-muted-foreground">公司标准模版下载</div>
+                  {templateRows.map((r) => (
+                    <DropdownMenuItem
+                      key={r.id}
+                      onSelect={() => void downloadTemplate(r)}
+                      disabled={templateBusyId === r.id}
+                      className="gap-2"
+                    >
+                      <Download className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="min-w-0 flex-1 truncate">{r.name}</span>
+                      {templateBusyId === r.id ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                    </DropdownMenuItem>
+                  ))}
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button variant="outline" onClick={handleExportSolutions} disabled={visible.length === 0} className="shadow-sm">
             <Download className="mr-1.5 h-4 w-4" />
             导出 CSV
           </Button>
-
         </div>
-        {/* R-203：本场景配套的公司标准模版（附件4 方案模板 + 封面示例 + 格式规范），点击即下载 */}
-        <CompanyTemplateHint scenario="solution" extraScenario="spec" />
       </header>
 
-      {/* 统计卡：始终反映全量方案（不受搜索/类型过滤影响），对齐原型 g3 stat-row */}
-      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard
-          icon={<Layers className="h-3.5 w-3.5" />}
-          label="全部方案"
-          value={p.solutionStats.total}
-          hint={`覆盖 ${SOLUTION_TYPES.length} 类方案类型`}
-        />
-        <StatCard
-          icon={<FilePlus2 className="h-3.5 w-3.5" />}
-          label="编写中"
-          value={p.solutionStats.drafting}
-          hint="大纲 / 生成中 / 部分成稿"
-        />
-        <StatCard
-          icon={<Archive className="h-3.5 w-3.5" />}
-          label="已完成交付"
-          value={p.solutionStats.done}
-          hint="可导出 Word 交付"
-          hintClass="text-primary"
-        />
+      {/* UX-R2（docs/ux-review-2026-11 §五）：三张统计卡压成一行数据条，点击过滤（数字始终反映全量） */}
+      <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-border bg-card px-5 py-3.5 shadow-sm">
+        {([
+          { key: "all" as const, label: "全部", value: p.solutionStats.total },
+          { key: "drafting" as const, label: "编写中", value: p.solutionStats.drafting },
+          { key: "done" as const, label: "已完成", value: p.solutionStats.done },
+        ]).map((s) => (
+          <button
+            key={s.key}
+            type="button"
+            aria-pressed={activeStatus === s.key}
+            onClick={() => setActiveStatus(s.key)}
+            title={`只看${s.label}的方案${activeStatus === s.key ? "（再点取消）" : ""}`}
+            className="inline-flex items-baseline gap-1.5 rounded transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <span className={`text-lg font-bold tabular-nums ${activeStatus === s.key ? "text-primary" : "text-foreground"}`}>{s.value}</span>
+            <span className={`text-xs ${activeStatus === s.key ? "font-medium text-primary" : "text-muted-foreground"}`}>{s.label}</span>
+          </button>
+        ))}
+        {activeStatus !== "all" ? (
+          <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+            已过滤：{activeStatus === "done" ? "已完成" : "编写中"}
+          </span>
+        ) : null}
+        <span className="ml-auto text-xs text-muted-foreground">覆盖 {SOLUTION_TYPES.length} 类方案类型</span>
       </div>
 
       {/* 类型筛选 chips + 搜索框 */}
@@ -407,8 +445,13 @@ export function SolutionListPanel(p: SolutionListPanelProps) {
         </div>
       )}
 
-      {/* 底部信息卡：方案类型说明 + 行业系统库（均来自真实常量，非 mock） */}
-      <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-[3fr_2fr]">
+      {/* UX-R2：教学信息默认折叠（details 模式）——新手可展开，老用户不再被打扰 */}
+      <details className="mt-8 rounded-xl border border-border bg-card shadow-md">
+        <summary className="flex cursor-pointer select-none items-center gap-2 px-5 py-3.5 text-sm font-semibold text-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary">
+          📖 新手指南：方案类型说明 与 行业系统库
+          <span className="ml-auto text-xs font-normal text-muted-foreground">点击展开 / 收起</span>
+        </summary>
+        <div className="grid grid-cols-1 gap-4 border-t border-border p-5 lg:grid-cols-[3fr_2fr]">
         <div className="rounded-xl border border-border bg-card p-5 shadow-md">
           <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
             <Layers className="h-4 w-4 text-primary" />
@@ -444,7 +487,8 @@ export function SolutionListPanel(p: SolutionListPanelProps) {
             ))}
           </div>
         </div>
-      </div>
+        </div>
+      </details>
 
       <footer className="mt-12 border-t border-border pt-6 text-center text-xs text-muted-foreground">
         方案数据保存在服务端，正文生成按实际 token 用量扣费

@@ -45,7 +45,7 @@ import {
 import { KB_QA_DIRECT_PREFIX } from "@/lib/kbQa"
 
 export interface UseAssistantOptions {
-  /** 悬浮迷你聊天窗模式：新会话默认命名「快捷会话」，页面上下文跟随当前路由 */
+  /** 悬浮迷你聊天窗模式：页面上下文跟随当前路由（会话命名已统一按首条消息自动取，UX-R2） */
   floatMode?: boolean
 }
 
@@ -575,7 +575,7 @@ export function useAssistant(options?: UseAssistantOptions) {
                 method: "POST",
                 body: JSON.stringify({
                   rh_user_id: uid,
-                  session_title: sessionTitle(userText, floatMode),
+                  session_title: sessionTitle(userText),
                   pinned: false,
                   context_path: contextPathRef.current ?? "",
                 }),
@@ -813,6 +813,27 @@ export function useAssistant(options?: UseAssistantOptions) {
 
   const cancelSkillFill = useCallback(() => setSkillFill(null), [])
 
+  // UX-R2（docs/ux-review-2026-11）：会话条目 hover 预览——惰性拉该会话最新 2 条消息
+  // （/api/assistant_messages 支持 sort=-created&perPage=2，小请求，调用方自行缓存）
+  const loadSessionPreview = useCallback(
+    async (sessionId: string): Promise<Array<{ role: string; content: string }>> => {
+      const uid = decodeRhToken()?.sub ?? null
+      if (!uid) return []
+      try {
+        const res = await assistantApiFetch<AssistantListResponse<MessageRow>>(
+          `/api/assistant_messages?rh_user_id=${encodeURIComponent(uid)}&session_id=${encodeURIComponent(sessionId)}&sort=-created&perPage=2`,
+        )
+        return (res.items ?? [])
+          .slice()
+          .reverse()
+          .map((m) => ({ role: m.role, content: String(m.content ?? "") }))
+      } catch {
+        return []
+      }
+    },
+    [],
+  )
+
   return {
     // 登录态
     userId,
@@ -821,6 +842,7 @@ export function useAssistant(options?: UseAssistantOptions) {
     // 会话
     sessions,
     sessionsLoading,
+    loadSessionPreview,
     sessionsHasMore,
     sessionsLoadingMore,
     loadMoreSessions,

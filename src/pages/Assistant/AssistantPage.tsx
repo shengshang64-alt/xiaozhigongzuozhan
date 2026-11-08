@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useLocation } from "react-router-dom"
 import { Bot, Brain, MessagesSquare, X } from "lucide-react"
 import { PageHeader } from "@/components/shell/PageHeader"
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
@@ -32,6 +33,7 @@ const LEFT_TABS = [
 ]
 
 export function AssistantPage(p: ReturnType<typeof useAssistant>) {
+  const loc = useLocation()
   const activeSession = p.sessions.find((s) => s.id === p.activeSessionId) ?? null
   const [welcomeDismissed, setWelcomeDismissed] = useState(readWelcomeDismissed)
   const showWelcome = p.convMessages.length === 0 && !welcomeDismissed
@@ -85,6 +87,7 @@ export function AssistantPage(p: ReturnType<typeof useAssistant>) {
               onNew={p.newSession}
               onTogglePin={p.togglePinSession}
               onRequestDelete={p.requestDeleteSession}
+              onLoadPreview={p.loadSessionPreview}
             />
           ) : null}
           {p.leftTab === "memory" ? (
@@ -161,6 +164,8 @@ export function AssistantPage(p: ReturnType<typeof useAssistant>) {
             onRetry={p.retryLast}
             onDismiss={p.dismissFailedMsg}
             elapsedSec={p.sendElapsedTick}
+            pathname={loc.pathname}
+            onFillInput={p.setDraftInput}
           />
 
           <ChatComposer

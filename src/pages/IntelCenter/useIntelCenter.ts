@@ -1,3 +1,4 @@
+// UX-R2: 情报中心 已按 docs/ux-review-2026-11 修复 2026-11-07（双模式/指标语义化/ⓘ弹层/筛选收敛/操作分层+滑出动画）
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
@@ -32,7 +33,10 @@ import { useCostConfirm } from "@/hooks/useCostConfirm"
 // 类型（字段名与 PocketBase collection 100% 一致，snake_case）
 // ---------------------------------------------------------------------------
 
-export type IntelSourceType = "policy" | "competitor" | "bid" | "media"
+// UX-R2（docs/ux-review-2026-11 §二十三·减法项）：AI 动态并入情报中心——
+// tech（行业前沿）作为第五来源类型；AI 动态页抓取入库的条目 item_type=tech，
+// 侧栏「AI 动态」入口下线后，用户在情报中心按「行业前沿」过滤即可看到原 AI 动态内容。
+export type IntelSourceType = "policy" | "competitor" | "bid" | "media" | "tech"
 /** 循环 10 小改 1：列表排序口径（发布时刻缺省 / 加入时刻 / 标题） */
 export type IntelListSortKey = "published" | "added" | "title"
 
@@ -103,6 +107,7 @@ export const SOURCE_TYPE_LABEL: Record<string, string> = {
   competitor: "竞品动向",
   bid: "招标中标",
   media: "行业媒体",
+  tech: "行业前沿",
 }
 
 export const ITEM_STATUS_LABEL: Record<string, string> = {
@@ -356,6 +361,9 @@ export function useIntelCenter() {
   const [itemsLoading, setItemsLoading] = useState(false)
   const [page, setPage] = useState(1)
   const [totalItems, setTotalItems] = useState(0)
+  // UX-R2（docs/ux-review-2026-11 §三）：语义化指标卡「待我确认」——per_page=1 轻量探针只取 totalItems，
+  // 确认/忽略/批量操作后刷新；与列表请求互不影响（零后端改动）
+  const [pendingTotal, setPendingTotal] = useState(0)
   const [allTags, setAllTags] = useState<string[]>([])
   const [hasMore, setHasMore] = useState(false)
 
@@ -1292,6 +1300,15 @@ export function useIntelCenter() {
     }
   }, [patchItemLocal, requireLogin])
 
+  const refreshPendingTotal = useCallback(async () => {
+    try {
+      const d = await apiFetch<{ totalItems?: number }>("/api/intel/items?item_status=pending&per_page=1")
+      setPendingTotal(d.totalItems ?? 0)
+    } catch {
+      /* 探针失败不打扰页面，保留上次计数 */
+    }
+  }, [])
+
   const setItemStatus = useCallback(
     async (item: IntelItemRow, nextStatus: "confirmed" | "ignored") => {
       if (!requireLogin()) return
@@ -1308,6 +1325,7 @@ export function useIntelCenter() {
           return
         }
         toast.success(nextStatus === "confirmed" ? "已确认该情报（仅更新你自己的状态）" : "已忽略该情报（仅更新你自己的状态）")
+        void refreshPendingTotal()
       } catch (err) {
         patchItemLocal(item.id, { my_status: prevStatus })
         const e = err as Error & { httpStatus?: number }
@@ -1315,7 +1333,7 @@ export function useIntelCenter() {
         toast.error("操作失败，请稍后重试")
       }
     },
-    [patchItemLocal, requireLogin],
+    [patchItemLocal, refreshPendingTotal, requireLogin],
   )
 
   const confirmItem = useCallback(
@@ -1379,8 +1397,9 @@ export function useIntelCenter() {
       toast[fail ? "error" : "success"](
         fail ? `批量${verb}：${ok} 条成功，${fail} 条失败请重试` : `已批量${verb} ${ok} 条情报（仅更新你自己的状态）`,
       )
+      void refreshPendingTotal()
     },
-    [batchSelectedIds, itemList, patchItemLocal, requireLogin],
+    [batchSelectedIds, itemList, patchItemLocal, refreshPendingTotal, requireLogin],
   )
 
   const batchToggleStar = useCallback(async () => {
@@ -1855,6 +1874,8 @@ export function useIntelCenter() {
     itemList,
     itemsLoading,
     totalItems,
+    pendingTotal,
+    refreshPendingTotal,
     hasMore,
     loadMore,
     exportItems,

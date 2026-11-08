@@ -766,8 +766,9 @@ export function sortSessions(rows: SessionRow[]): SessionRow[] {
   })
 }
 
-export function sessionTitle(text: string, floatMode: boolean): string {
-  if (floatMode) return "快捷会话"
+// UX-R2（docs/ux-review-2026-11）：会话自动命名不再区分悬浮/页面——一律取首条用户消息
+// 前 20 字，悬浮球的会话也能靠标题找回（原 floatMode 恒为「快捷会话」导致列表无法辨识）
+export function sessionTitle(text: string): string {
   const t = text.trim().replace(/\s+/g, " ")
   return t.length > 20 ? `${t.slice(0, 20)}…` : t || "新对话"
 }

@@ -26,8 +26,10 @@ describe("routeRegistry 一致性", () => {
   it("侧栏分组的每条路径都能在注册表找到，且没有页面漏挂分组", () => {
     const grouped = NAV_GROUPS.flatMap((g) => g.paths)
     for (const p of grouped) expect(ROUTE_BY_PATH[p], `分组引用了不存在的路径 ${p}`).toBeTruthy()
-    // 页面不进导航就没有入口，属配置遗漏（当前 17 个页面全部在导航里）
-    const orphans = ROUTES.map((r) => r.path).filter((p) => !grouped.includes(p))
+    // 页面不进导航就没有入口，属配置遗漏（UX-R2 起允许显式豁免：/ai-hot 并入情报中心
+    // 「行业前沿」过滤，路由保留防外链失效，仅下导航入口）
+    const NAV_ORPHAN_ALLOW = new Set(["/ai-hot"])
+    const orphans = ROUTES.map((r) => r.path).filter((p) => !grouped.includes(p) && !NAV_ORPHAN_ALLOW.has(p))
     expect(orphans, `以下页面未挂进任何导航分组：${orphans.join("、")}`).toEqual([])
     expect(new Set(grouped).size).toBe(grouped.length) // 同一页面不重复挂
   })

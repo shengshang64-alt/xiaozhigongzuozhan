@@ -1,3 +1,4 @@
+// UX-R2: 知识库 已按 docs/ux-review-2026-11 修复 2026-11-07（双搜索框合并/结果分组）
 import { CheckCheck, ChevronsLeft, ChevronsRight, MessageCircleQuestion, Upload } from "lucide-react"
 import { useState } from "react"
 import { useSearchParams } from "react-router-dom"
@@ -97,10 +98,15 @@ export function KnowledgePage(p: ReturnType<typeof useKnowledge>) {
         />
       </div>
 
-      {/* 正文全文检索（2026-10-29）：列表搜索只扫元数据，正文词搜不到；
-          这块用 FTS5 索引补上（7000 篇 / 1.14 亿字符已建索引）。 */}
+      {/* UX-R2（docs/ux-review-2026-11 §二十三）：顶部两个搜索框合并为一个——
+          工具栏输入即「标题命中」（列表过滤）+「正文命中」（本面板 FTS），结果分组呈现 */}
       <div className="mb-4">
-        <KbContentSearchPanel key={p.libTab} libTab={p.libTab} onOpenDoc={p.locateDoc} />
+        <KbContentSearchPanel
+          key={p.libTab}
+          libTab={p.libTab}
+          onOpenDoc={p.locateDoc}
+          externalQuery={p.searchQuery.trim() ? p.searchQuery.trim() : null}
+        />
       </div>
 
       {/* 本机资料检索（2026-10-30 API 已启用）：搜知识库之外、硬盘里的历史标书/方案/扫描件 */}

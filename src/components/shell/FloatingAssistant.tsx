@@ -122,6 +122,8 @@ export function FloatingAssistant() {
               onRetry={vm.retryLast}
               onDismiss={vm.dismissFailedMsg}
               elapsedSec={vm.sendElapsedTick}
+              pathname={loc.pathname}
+              onFillInput={vm.setDraftInput}
             />
           </Suspense>
 

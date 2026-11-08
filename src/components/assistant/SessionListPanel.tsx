@@ -1,3 +1,5 @@
+import { useCallback, useRef, useState } from "react"
+import * as HoverCard from "@radix-ui/react-hover-card"
 import { Loader2, MessageSquarePlus, MessagesSquare, Star, Trash2 } from "lucide-react"
 import type { SessionRow } from "@/lib/assistantCore"
 import { formatRelativeTime } from "@/lib/relativeTime"
@@ -22,6 +24,8 @@ type SessionListPanelProps = {
   onNew: () => void
   onTogglePin: (row: SessionRow) => void
   onRequestDelete: (row: SessionRow) => void
+  /** UX-R2：hover 惰性拉取该会话最新 2 条消息预览（返回 [] 表示加载失败/为空） */
+  onLoadPreview?: (sessionId: string) => Promise<Array<{ role: string; content: string }>>
 }
 
 export function SessionListPanel({
@@ -35,7 +39,29 @@ export function SessionListPanel({
   onNew,
   onTogglePin,
   onRequestDelete,
+  onLoadPreview,
 }: SessionListPanelProps) {
+  // UX-R2：hover 预览缓存（sessionId → 最新两条 { role, content }），本次挂载内不重复请求
+  const previewCacheRef = useRef(new Map<string, Array<{ role: string; content: string }>>())
+  const [previewMap, setPreviewMap] = useState<Map<string, Array<{ role: string; content: string }>>>(new Map())
+  const fetchPreview = useCallback(
+    (sessionId: string) => {
+      if (!onLoadPreview || previewCacheRef.current.has(sessionId)) return
+      previewCacheRef.current.set(sessionId, [])
+      void onLoadPreview(sessionId).then((msgs) => {
+        previewCacheRef.current.set(sessionId, msgs)
+        setPreviewMap(new Map(previewCacheRef.current))
+      })
+    },
+    [onLoadPreview],
+  )
+  const previewTextOf = (sessionId: string): string => {
+    const msgs = previewMap.get(sessionId)
+    if (!msgs || msgs.length === 0) return "暂无消息预览"
+    return msgs
+      .map((m) => `${m.role === "user" ? "你" : "小智"}：${m.content.replace(/\s+/g, " ").slice(0, 40)}`)
+      .join("\n")
+  }
   return (
     <div className="flex h-full min-h-0 flex-col">
       <button
@@ -79,11 +105,30 @@ export function SessionListPanel({
                     tabIndex={0}
                   >
                     <div className="min-w-0 flex-1">
-                      <p
-                        className={`truncate text-sm font-medium ${active ? "text-primary" : "text-foreground"}`}
+                      {/* UX-R2：hover 显示该会话最新两条消息预览（惰性拉取 + 挂载内缓存） */}
+                      <HoverCard.Root
+                        openDelay={250}
+                        onOpenChange={(o) => {
+                          if (o) fetchPreview(s.id)
+                        }}
                       >
-                        {s.session_title || "未命名会话"}
-                      </p>
+                        <HoverCard.Trigger asChild>
+                          <p
+                            className={`truncate text-sm font-medium ${active ? "text-primary" : "text-foreground"}`}
+                          >
+                            {s.session_title || "未命名会话"}
+                          </p>
+                        </HoverCard.Trigger>
+                        <HoverCard.Portal>
+                          <HoverCard.Content side="right" align="start" sideOffset={8} className="z-50 w-72 rounded-lg border border-border bg-card p-3 shadow-lg animate-in fade-in zoom-in-95 duration-150">
+                            <p className="text-[11px] font-medium text-muted-foreground">最近消息预览</p>
+                            <pre className="mt-1.5 whitespace-pre-wrap break-all font-sans text-xs leading-relaxed text-foreground">
+                              {previewTextOf(s.id)}
+                            </pre>
+                            <p className="mt-2 text-[11px] text-muted-foreground">创建于 {formatSessionTime(s.created)}</p>
+                          </HoverCard.Content>
+                        </HoverCard.Portal>
+                      </HoverCard.Root>
                       <p className="mt-0.5 text-xs text-muted-foreground">{formatSessionTime(s.created)}</p>
                     </div>
                     <button

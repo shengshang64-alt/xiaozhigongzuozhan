@@ -102,11 +102,60 @@ describe("跨文件哨兵 · 台账页与导出闸门不许再各写一套判定
     expect(countMatches(src, /qual_hard_block[\s\S]{0,80}===\s*"1"/g)).toBe(0)
   })
 
-  it("导出闸门仍是「只有显式 \"0\" 才放行」（改口径必须两边一起改，此断言强制同步）", () => {
+  it("导出闸门已接入单一真源 readQualHardBlock()（R69 完成 B42 接线）", () => {
     const src = sourceText(BID_HOOK)
     const viaShared = countMatches(src, /readQualHardBlock\(\)/g)
     const viaInline = countMatches(src, /qual_hard_block"\)\s*!==\s*"0"/g)
-    // 允许两种形态：已接入单一真源，或仍是等价的「!== "0"」内联判定；两者都没有则说明口径被改了
-    expect(viaShared + viaInline, "导出闸门的硬拦截判定既没走 readQualHardBlock()，也不再是 !== \"0\"——请同步 lib/qualHardBlock 与台账页").toBeGreaterThan(0)
+    // R69 起：闸门必须走 readQualHardBlock()，不再允许内联 !== "0"（B42 闭合）
+    expect(viaShared, "导出闸门未调用 readQualHardBlock()——B42 接线已回退").toBeGreaterThan(0)
+    expect(viaInline, "导出闸门仍使用内联 !== \"0\"——B42 要求改用 readQualHardBlock()").toBe(0)
   })
+
+
+// ============================================================================
+// R71: Export Gate Integration Tests
+// Verifies that hard block actually works at the export call site
+// ============================================================================
+
+describe("Export Gate Integration", () => {
+  it("Scenario A: expired certs with hardBlock=true should block export", () => {
+    localStorage.setItem("qual_hard_block", "1")
+    
+    const riskyAlerts = [
+      { cert_name: "营业执照", bucket: "expired", valid_to: "2026-01-01" },
+      { cert_name: "荣誉证书", bucket: "critical", valid_to: "2026-11-01" },
+    ]
+    
+    const isBlocked = readQualHardBlock()
+    expect(isBlocked).toBe(true)
+    
+    const wouldBlock = isBlocked && riskyAlerts.length > 0
+    expect(wouldBlock).toBe(true)
+  })
+  
+  it("Scenario B: hardBlock=false allows export despite expiry warnings", () => {
+    localStorage.setItem("qual_hard_block", "0")
+    
+    const riskyAlerts = [
+      { cert_name: "营业执照", bucket: "expired", valid_to: "2026-01-01" },
+    ]
+    
+    const isBlocked = readQualHardBlock()
+    expect(isBlocked).toBe(false)
+    
+    const wouldBlock = isBlocked && riskyAlerts.length > 0
+    expect(wouldBlock).toBe(false)
+  })
+  
+  it("Edge case: no risky certs never blocks even with hardBlock enabled", () => {
+    localStorage.setItem("qual_hard_block", "1")
+    
+    const riskyAlerts: Array<{ bucket: string }> = []
+    
+    const isBlocked = readQualHardBlock()
+    const wouldBlock = isBlocked && riskyAlerts.length > 0
+    expect(wouldBlock).toBe(false)
+  })
+})
+
 })

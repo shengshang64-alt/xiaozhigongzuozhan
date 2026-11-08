@@ -7,7 +7,7 @@
 // 后端：SQLite FTS5 索引（7000 篇 / 1.14 亿字符），片段带 [[高亮]] 标记。
 // ---------------------------------------------------------------------------
 
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { FileText, Loader2, Search, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -54,10 +54,13 @@ function SnippetText({ snippet }: { snippet: string }) {
 export function KbContentSearchPanel({
   libTab,
   onOpenDoc,
+  externalQuery = null,
 }: {
   libTab: "team" | "personal"
   /** 点击结果时打开对应文档（外部决定：切到该文档） */
   onOpenDoc?: (id: string) => void
+  /** UX-R2（docs/ux-review-2026-11 §二十三）：工具栏统一搜索词——非空时隐藏本面板输入框并自动跟随查询 */
+  externalQuery?: string | null
 }) {
   const [kw, setKw] = useState("")
   const [busy, setBusy] = useState(false)
@@ -70,8 +73,8 @@ export function KbContentSearchPanel({
   const [failMessage, setFailMessage] = useState("")
   const seqRef = useRef(0)
 
-  const run = useCallback(async () => {
-    const q = kw.trim()
+  const run = useCallback(async (explicit?: string) => {
+    const q = String(explicit ?? kw).trim()
     if (!q) return
     const seq = ++seqRef.current
     setBusy(true)
@@ -97,17 +100,52 @@ export function KbContentSearchPanel({
   // react-hooks/set-state-in-effect，且会造成一帧旧数据闪现）
   // 由调用方传 key={libTab} 保证换库即重新挂载；此处不再需要 effect。
 
+  // UX-R2：合并双搜索框——工具栏词变化即自动查正文。全部 setState 走异步链（合规：
+  // effect 内禁止同步 setState，promise 回调里允许）；cancelled 防过期响应。
+  const externalQ = (externalQuery ?? "").trim()
+  const [appliedExternal, setAppliedExternal] = useState<string | null>(null)
+  const [extItems, setExtItems] = useState<KbSearchItem[] | null>(null)
+  const [extTotal, setExtTotal] = useState(0)
+  const [extFail, setExtFail] = useState<string | null>(null)
+  useEffect(() => {
+    if (!externalQ || externalQ === appliedExternal) return
+    let cancelled = false
+    searchKbContent({ q: externalQ, limit: 30, libTab }).then((r) => {
+      if (cancelled) return
+      if (r.ok) {
+        setExtItems(r.items)
+        setExtTotal(r.total)
+        setExtFail(null)
+      } else {
+        setExtItems([])
+        setExtTotal(0)
+        setExtFail(r.message || "检索失败")
+      }
+      setAppliedExternal(externalQ)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [externalQ, appliedExternal, libTab])
+  const externalPending = Boolean(externalQ) && externalQ !== appliedExternal
+  const showOwnInput = !externalQuery
+  // 外部模式下展示 ext 结果；自主模式沿用原 kw/results
+  const displayItems = externalQuery ? (extItems ?? []) : items
+  const displayTotal = externalQuery ? extTotal : total
+  const displayFail = externalQuery ? extFail : (searched ? failMessage : "")
+  const displayPending = externalQuery ? externalPending : busy
+
   return (
     <div className="rounded-lg border border-border bg-card p-4">
       <div className="flex items-center gap-2">
         <Sparkles className="h-4 w-4 text-primary" />
-        <span className="text-sm font-medium text-foreground">正文全文检索</span>
+        <span className="text-sm font-medium text-foreground">{externalQuery ? "正文命中" : "正文全文检索"}</span>
         <span className="text-[11px] text-muted-foreground">
-          搜 7000+ 篇文档的正文内容（不只是标题）
+          {externalQuery ? "下方为正文中包含当前关键词的文档（标题命中见上方列表）" : "搜 7000+ 篇文档的正文内容（不只是标题）"}
         </span>
       </div>
 
-      <div className="mt-3 flex items-center gap-2">
+      <div className={`mt-3 flex items-center gap-2 ${showOwnInput ? "" : "hidden"}`}>
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -127,7 +165,7 @@ export function KbContentSearchPanel({
         </Button>
       </div>
 
-      {searched && !busy && failMessage && (
+      {displayFail && !displayPending && (
         <ErrorState
           className="mt-2"
           tone="compact"
@@ -141,7 +179,7 @@ export function KbContentSearchPanel({
       {searched && !busy && !failMessage && (
         items.length ? (
           <p className="mt-2 text-xs text-muted-foreground">
-            命中 {total} 篇，显示前 {items.length} 篇
+            命中 {displayTotal} 篇，显示前 {displayItems.length} 篇
           </p>
         ) : (
           <EmptyState
@@ -155,7 +193,7 @@ export function KbContentSearchPanel({
 
       {items.length > 0 && (
         <ul className="mt-2 max-h-96 space-y-1.5 overflow-y-auto">
-          {items.map((it) => (
+          {displayItems.map((it) => (
             <li key={it.id}>
               <button
                 type="button"

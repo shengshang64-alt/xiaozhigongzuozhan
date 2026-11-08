@@ -1,4 +1,5 @@
-import { useState } from "react"
+// UX-R2: 客户管理 已按 docs/ux-review-2026-11 修复 2026-11-07（右栏默认健康度总览 / 缺 N 项可点击补全 / 模型提示收敛小黄点 / 批量补全先确认）
+import { useEffect, useState } from "react"
 import { Sparkles, FileText, Loader2, Globe, Link2, Plus, Trash2 } from "lucide-react"
 import {
   Dialog,
@@ -34,6 +35,8 @@ type CustomerFormDialogProps = {
   saving: boolean
   // 轮次 F：customer-profile 技能选择器源
   profileSkills: UseScopeSkills
+  // UX-R2（docs/ux-review-2026-11）：「缺 N 项」角标逐项去补全——打开后聚焦的草稿字段 key
+  focusField?: string | null
 }
 
 const inputClass =
@@ -55,17 +58,21 @@ function NumberField({
   marked,
   value,
   onValue,
+  id,
 }: {
   label: string
   marked: boolean
   value: string
   onValue: (v: string) => void
+  /** UX-R2：去补全聚焦锚点 */
+  id?: string
 }) {
   const [error, setError] = useState("")
   return (
     <div>
       <FieldLabel label={label} marked={marked} />
       <input
+        id={id}
         value={value}
         onChange={(e) => {
           onValue(e.target.value)
@@ -103,8 +110,17 @@ export function CustomerFormDialog({
   onSave,
   saving,
   profileSkills,
+  focusField = null,
 }: CustomerFormDialogProps) {
   const busy = aiMatching || extracting || fetchingSite
+  // UX-R2：「去补全」打开后聚焦对应字段输入框（id 约定 cf-<draftKey>）
+  useEffect(() => {
+    if (!open || !focusField) return
+    const timer = window.setTimeout(() => {
+      document.getElementById(`cf-${focusField}`)?.focus()
+    }, 80)
+    return () => window.clearTimeout(timer)
+  }, [open, focusField])
   // T6 内联必填校验：点保存/Enter 时空值当场标红提示，不再只靠父层 toast
   const [submitTried, setSubmitTried] = useState(false)
   // 重开对话框时复位提示（React 官方推荐的「渲染期调整状态」，非 effect 内 setState）
@@ -255,6 +271,7 @@ export function CustomerFormDialog({
             <div>
               <FieldLabel label="医院等级" marked={aiFields.includes("level")} />
               <input
+                id="cf-level"
                 value={draft.level}
                 onChange={(e) => setDraftField("level", e.target.value)}
                 placeholder="如：三级甲等"
@@ -264,6 +281,7 @@ export function CustomerFormDialog({
             <div>
               <FieldLabel label="所在地区" marked={aiFields.includes("region")} />
               <input
+                id="cf-region"
                 value={draft.region}
                 onChange={(e) => setDraftField("region", e.target.value)}
                 placeholder="如：江苏省苏州市"
@@ -273,6 +291,7 @@ export function CustomerFormDialog({
             <div>
               <FieldLabel label="官网地址" marked={aiFields.includes("website")} />
               <input
+                id="cf-website"
                 value={draft.website}
                 onChange={(e) => setDraftField("website", e.target.value)}
                 placeholder="https://…"
@@ -282,6 +301,7 @@ export function CustomerFormDialog({
             <div className="col-span-2">
               <FieldLabel label="详细地址" marked={aiFields.includes("address")} />
               <input
+                id="cf-address"
                 value={draft.address}
                 onChange={(e) => setDraftField("address", e.target.value)}
                 className={inputClass}
@@ -292,18 +312,21 @@ export function CustomerFormDialog({
               marked={aiFields.includes("outpatient_daily")}
               value={draft.outpatient_daily}
               onValue={(v) => setDraftField("outpatient_daily", v)}
+              id="cf-outpatient_daily"
             />
             <NumberField
               label="年门诊量（人次）"
               marked={aiFields.includes("outpatient_yearly")}
               value={draft.outpatient_yearly}
               onValue={(v) => setDraftField("outpatient_yearly", v)}
+              id="cf-outpatient_yearly"
             />
             <NumberField
               label="开放床位数"
               marked={aiFields.includes("beds_total")}
               value={draft.beds_total}
               onValue={(v) => setDraftField("beds_total", v)}
+              id="cf-beds_total"
             />
             <NumberField
               label="ICU 床位数"
@@ -322,10 +345,12 @@ export function CustomerFormDialog({
               marked={aiFields.includes("annual_revenue")}
               value={draft.annual_revenue}
               onValue={(v) => setDraftField("annual_revenue", v)}
+              id="cf-annual_revenue"
             />
             <div>
               <FieldLabel label="重点科室（顿号分隔）" marked={aiFields.includes("key_departments")} />
               <input
+                id="cf-key_departments"
                 value={draft.key_departments_text}
                 onChange={(e) => setDraftField("key_departments_text", e.target.value)}
                 placeholder="如：心血管内科、骨科"
@@ -335,6 +360,7 @@ export function CustomerFormDialog({
             <div>
               <FieldLabel label="院长" marked={aiFields.includes("president")} />
               <input
+                id="cf-president"
                 value={draft.president}
                 onChange={(e) => setDraftField("president", e.target.value)}
                 placeholder="如：张三"
@@ -353,6 +379,7 @@ export function CustomerFormDialog({
             <div>
               <FieldLabel label="信息化负责人 / CIO" marked={aiFields.includes("it_lead")} />
               <input
+                id="cf-it_lead"
                 value={draft.it_lead}
                 onChange={(e) => setDraftField("it_lead", e.target.value)}
                 placeholder="如：王五（信息中心主任）"

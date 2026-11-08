@@ -102,8 +102,17 @@ export function DeckListPanel({
           <Presentation className="h-8 w-8 text-muted-foreground" />
           <p className="text-sm font-medium text-foreground">还没有汇报 PPT</p>
           <p className="max-w-sm text-xs text-muted-foreground">
-            点击「新建 PPT」，选择通用介绍、规划汇报或专题汇报，AI 会按医疗售前场景生成整份逐页内容
+            选择通用介绍、规划汇报或专题汇报，AI 会按医疗售前场景生成整份逐页内容
           </p>
+          {/* UX-R2：空态主行动居中放大（比右上角按钮更醒目） */}
+          <button
+            type="button"
+            onClick={onNew}
+            className="mt-2 inline-flex items-center gap-2 rounded-md bg-primary px-6 py-3 text-base font-medium text-primary-foreground shadow-md transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <Presentation className="h-5 w-5" />
+            新建汇报 PPT
+          </button>
         </div>
       ) : (
         <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">

@@ -1,5 +1,7 @@
+// UX-R2: 团队管理 已按 docs/ux-review-2026-11 修复 2026-11-07（启停确认/角色弹窗/最近登录列/姓名校验）
 // 团队管理页视图（R-201 阶段A）：成员列表 + 添加成员 + 改角色 + 启停。
 // 非管理员进入时展示无权限提示（写操作本就由服务端 403 兜底）。
+import { useState } from "react"
 import { Plus, RefreshCw, ShieldAlert, UserPlus } from "lucide-react"
 import { PageHeader } from "@/components/shell/PageHeader"
 import { Button } from "@/components/ui/button"
@@ -21,7 +23,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { TEAM_ROLE_LABELS } from "@/lib/teamAuth"
+import { TEAM_ROLE_LABELS, type TeamMember } from "@/lib/teamAuth"
+import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 // R47/F19：误操作护栏（与服务端 team_auth.pb.js PATCH 同口径：不能动自己/不能停用降级最后一个可用管理员）
 import { memberLockReason } from "./memberGuard"
 import type { UseTeam } from "./useTeam"
@@ -32,7 +35,24 @@ const ROLE_BADGE_VARIANT: Record<string, "success" | "neutral" | "warning"> = {
   viewer: "warning",
 }
 
+// UX-R2（docs/ux-review-2026-11 §二十二）：各角色一行权限说明
+const ROLE_DESC: Record<string, string> = {
+  admin: "全部权限，含团队管理与模型配置",
+  editor: "业务数据读写（客户 / 商机 / 标书 / 方案）",
+  viewer: "仅查看，不能修改任何数据",
+}
+
 export function TeamPage(p: UseTeam) {
+  // UX-R2：角色修改弹窗 / 启停确认目标
+  // UX-R2：姓名特殊字符校验（防 ??? 乱码成员入库）
+  const nameIssue = (() => {
+    const name = p.form.name.trim()
+    if (!name) return null
+    return /^[一-龥A-Za-z0-9·.·]+$/.test(name) ? null : "姓名含特殊字符或 emoji，请改用中文 / 字母 / 数字"
+  })()
+  const [roleEdit, setRoleEdit] = useState<TeamMember | null>(null)
+  const [roleDraft, setRoleDraft] = useState<string | null>(null)
+  const [activeConfirm, setActiveConfirm] = useState<TeamMember | null>(null)
   if (!p.isAdmin) {
     return (
       <div className="animate-in fade-in duration-300">
@@ -96,27 +116,26 @@ export function TeamPage(p: UseTeam) {
                         {isSelf && <span className="text-xs text-muted-foreground">（我）</span>}
                         {!m.active && <Badge variant="neutral">已停用</Badge>}
                       </div>
+                      {/* UX-R2：最近登录列——服务端 team_auth 暂未记录登录时间，如实显示「—」并留待后端补字段 */}
+                      <p className="mt-0.5 text-xs text-muted-foreground" title="服务端暂未记录登录时间，接入后自动显示">
+                        最近登录：—
+                      </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span title={lockReason ?? undefined}>
-                        <Select value={m.role} onValueChange={(v) => void p.changeRole(m, v as never)} disabled={busy || !!lockReason}>
-                        <SelectTrigger className="h-9 w-[110px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {p.roleOptions.map((r) => (
-                            <SelectItem key={r} value={r}>
-                              {TEAM_ROLE_LABELS[r]}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      </span>
+                      <button
+                        type="button"
+                        disabled={busy || !!lockReason}
+                        onClick={() => setRoleEdit(m)}
+                        title={lockReason ?? "修改角色（含各角色权限说明）"}
+                        className="inline-flex h-9 w-[110px] items-center justify-between rounded-md border border-input bg-background px-3 text-sm shadow-sm transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      >
+                        {TEAM_ROLE_LABELS[m.role] ?? m.role}
+                      </button>
                       <Button
                         variant={m.active ? "outline" : "secondary"}
                         size="sm"
                         disabled={busy || !!lockReason}
-                        onClick={() => void p.toggleActive(m)}
+                        onClick={() => setActiveConfirm(m)}
                         title={lockReason ?? (isSelf ? "不能停用自己" : m.active ? "停用该成员" : "启用该成员")}
                       >
                         {m.active ? "停用" : "启用"}
@@ -145,7 +164,18 @@ export function TeamPage(p: UseTeam) {
           <div className="space-y-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-foreground">姓名 *</label>
-              <Input value={p.form.name} onChange={(e) => p.setForm({ ...p.form, name: e.target.value })} placeholder="如：张三" autoComplete="off" />
+              <Input
+                value={p.form.name}
+                onChange={(e) => p.setForm({ ...p.form, name: e.target.value })}
+                placeholder="如：张三"
+                autoComplete="off"
+                aria-invalid={Boolean(nameIssue) || undefined}
+              />
+              {nameIssue ? (
+                <p className="mt-1 text-xs text-destructive">{nameIssue}</p>
+              ) : (
+                <p className="mt-1 text-[11px] text-muted-foreground">仅支持中文、字母、数字、· 与中英文点号（防止出现乱码成员）</p>
+              )}
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-foreground">邮箱（登录账号）*</label>
@@ -177,10 +207,79 @@ export function TeamPage(p: UseTeam) {
             <Button variant="ghost" onClick={p.closeAdd}>
               取消
             </Button>
-            <Button onClick={() => void p.submitAdd()}>创建</Button>
+            <Button onClick={() => void p.submitAdd()} disabled={Boolean(nameIssue)}>
+              创建
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* UX-R2：角色修改弹窗——每个角色带一行权限说明 */}
+      <Dialog open={roleEdit !== null} onOpenChange={(o) => (!o ? setRoleEdit(null) : undefined)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base">修改角色 · {roleEdit?.name}</DialogTitle>
+            <DialogDescription>选择新角色后点「确认修改」生效；改角色不会删除该成员的数据。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {(p.roleOptions ?? ["admin", "editor", "viewer"]).map((r) => (
+              <label
+                key={r}
+                className={`flex cursor-pointer items-start gap-2.5 rounded-lg border p-3 transition-colors ${
+                  roleDraft === r ? "border-primary bg-primary/5" : "border-border hover:bg-secondary/50"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="team-role"
+                  checked={roleDraft === r}
+                  onChange={() => setRoleDraft(r)}
+                  className="mt-0.5 h-4 w-4 accent-primary"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-foreground">
+                    {TEAM_ROLE_LABELS[r] ?? r}
+                    {roleEdit?.role === r ? <span className="ml-1.5 text-xs font-normal text-muted-foreground">（当前）</span> : null}
+                  </span>
+                  <span className="block text-xs text-muted-foreground">{ROLE_DESC[r] ?? "—"}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setRoleEdit(null)}>
+              取消
+            </Button>
+            <Button
+              disabled={!roleDraft || roleDraft === roleEdit?.role}
+              onClick={() => {
+                if (roleEdit && roleDraft && roleDraft !== roleEdit.role) void p.changeRole(roleEdit, roleDraft as never)
+                setRoleEdit(null)
+              }}
+            >
+              确认修改
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* UX-R2：停用 / 启用二次确认——停用会立即踢出登录会话 */}
+      <ConfirmDialog
+        open={activeConfirm !== null}
+        onOpenChange={(o) => (!o ? setActiveConfirm(null) : undefined)}
+        title={activeConfirm?.active ? `停用「${activeConfirm.name}」？` : `启用「${activeConfirm?.name}」？`}
+        description={
+          activeConfirm?.active
+            ? "停用后该成员立即被踢出登录会话，无法再登录工作台（其名下数据保留）；随时可重新启用。"
+            : "启用后该成员可重新使用邮箱与密码登录工作台。"
+        }
+        confirmText={activeConfirm?.active ? "确认停用" : "确认启用"}
+        tone={activeConfirm?.active ? "danger" : "default"}
+        onConfirm={() => {
+          if (activeConfirm) void p.toggleActive(activeConfirm)
+          setActiveConfirm(null)
+        }}
+      />
     </div>
   )
 }

@@ -1,3 +1,4 @@
+// UX-R2: 素材库 已按 docs/ux-review-2026-11 修复 2026-11-07（单视图+动作面板/统计卡瘦身/空态四要素/使用排行）
 // 素材库页（R-008）：素材总览 / 联网抓取 / 本地导入 / 库设置 四个 Tab。
 // 风格沿用现有页面规范（max-w-6xl 版心 + shadcn Tabs + badge-* + sonner toast）。
 // 授权链差异（需求提示词 §3a）：Pixabay License 允许 AI 生成内容；Pexels 条款 7B 明令禁止 —— 在联网抓取 Tab 明示。
@@ -22,7 +23,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatBytes } from "./materialCore"
 import {
   MATERIAL_CATEGORIES,
@@ -311,6 +311,10 @@ function SettingsTab({ p }: { p: UseMaterialLibrary }) {
 export function MaterialLibraryPage({ p }: { p: UseMaterialLibrary }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const detail = useMemo(() => p.detail, [p.detail])
+  // UX-R2（docs/ux-review-2026-11 §十六）：四 Tab 收敛为单视图——素材网格常驻，
+  // 「联网抓取 / 本地导入 / 库设置」改为右上角动作按钮，按需展开对应面板
+  const [panel, setPanel] = useState<null | "web" | "import" | "settings">(null)
+  const togglePanel = (key: "web" | "import" | "settings") => setPanel((prev) => (prev === key ? null : key))
   return (
     <div className="mx-auto w-full max-w-6xl">
       <header className="mb-4 flex flex-wrap items-end justify-between gap-3">
@@ -320,27 +324,46 @@ export function MaterialLibraryPage({ p }: { p: UseMaterialLibrary }) {
             本地优先的售前素材中心：架构图 / 系统截图 / 现场照手工投放，氛围图联网抓取；PPT 生成时优先命中本地库，取不到再实时搜图。
           </p>
         </div>
-        <Button size="sm" variant="outline" onClick={() => void p.exportIndex()}>
-          <Download className="mr-1 h-3.5 w-3.5" />导出索引
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant={panel === "import" ? "default" : "outline"}
+            onClick={() => togglePanel("import")}
+            title="批量导入本地图片（架构图 / 系统截图 / 现场照）"
+          >
+            <FolderInput className="mr-1 h-3.5 w-3.5" />本地导入
+          </Button>
+          <Button
+            size="sm"
+            variant={panel === "web" ? "default" : "outline"}
+            onClick={() => togglePanel("web")}
+            title="联网抓取氛围图（Pixabay / Pexels / Unsplash）"
+          >
+            <Globe className="mr-1 h-3.5 w-3.5" />联网抓取
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => togglePanel("settings")}
+            title="图库 API Key 与存储管理"
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+            <span className="sr-only">库设置</span>
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => void p.exportIndex()}>
+            <Download className="mr-1 h-3.5 w-3.5" />导出索引
+          </Button>
+        </div>
       </header>
 
-      <Tabs defaultValue="overview">
-        <TabsList className="mb-4">
-          <TabsTrigger value="overview" className="gap-1.5"><PackageOpen className="h-3.5 w-3.5" />素材总览</TabsTrigger>
-          <TabsTrigger value="web" className="gap-1.5"><Globe className="h-3.5 w-3.5" />联网抓取</TabsTrigger>
-          <TabsTrigger value="import" className="gap-1.5"><FolderInput className="h-3.5 w-3.5" />本地导入</TabsTrigger>
-          <TabsTrigger value="settings" className="gap-1.5"><Settings2 className="h-3.5 w-3.5" />库设置</TabsTrigger>
-        </TabsList>
+      {/* UX-R2：单视图——素材网格常驻，抓取/导入/设置为按需面板 */}
+      <div className="space-y-4">
+        {/* UX-R2：统计卡只留「素材总数」；回收站为 0 时整卡隐藏（统计卡纪律） */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatCard label="素材总数" value={String(p.stats?.total ?? 0)} hint={`磁盘占用 ${formatBytes(p.stats?.bytes ?? 0)} · 不含回收站`} />
+          {(p.stats?.trashed ?? 0) > 0 ? <StatCard label="回收站" value={String(p.stats?.trashed ?? 0)} hint="软删除可恢复，见下方回收站视图" /> : null}
+        </div>
 
-        {/* ---------- Tab1 素材总览 ---------- */}
-        <TabsContent value="overview" className="space-y-4">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatCard label="素材总数" value={String(p.stats?.total ?? 0)} hint="不含回收站" />
-            <StatCard label="磁盘占用" value={formatBytes(p.stats?.bytes ?? 0)} hint="原图累计" />
-            <StatCard label="分类数" value={String(p.stats?.categories?.length ?? 0)} hint={p.stats?.categories?.[0] ? `最多：${p.stats.categories[0].name}` : "—"} />
-            <StatCard label="回收站" value={String(p.stats?.trashed ?? 0)} hint="软删除可恢复" />
-          </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-52 flex-1">
@@ -379,15 +402,50 @@ export function MaterialLibraryPage({ p }: { p: UseMaterialLibrary }) {
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />素材加载中…
             </div>
           ) : p.items.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border p-10 text-center">
-              <PackageOpen className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-              <div className="text-sm font-medium text-foreground">{p.trashedView ? "回收站为空" : "素材库还是空的"}</div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                {p.trashedView
-                  ? "删除的素材会先进入回收站，可随时恢复。"
-                  : "先到「本地导入」把架构图 / 系统截图 / 现场照批量入库，或到「联网抓取」存几张氛围图。"}
+            p.trashedView ? (
+              <div className="rounded-lg border border-dashed border-border p-10 text-center">
+                <Trash2 className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+                <div className="text-sm font-medium text-foreground">回收站为空</div>
+                <div className="mt-1 text-xs text-muted-foreground">删除的素材会先进入回收站，可随时恢复。</div>
+                <Button size="sm" variant="outline" className="mt-4" onClick={() => p.setTrashedView(false)}>
+                  返回素材列表
+                </Button>
               </div>
-            </div>
+            ) : (
+              /* UX-R2：空态四要素（图标 / 一句话 / 主行动双路径实体卡 / 次要帮助链接） */
+              <div className="rounded-lg border border-dashed border-border p-10 text-center">
+                <PackageOpen className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+                <div className="text-sm font-medium text-foreground">素材库还是空的</div>
+                <div className="mt-1 text-xs text-muted-foreground">两条入库路径，选一条开始：</div>
+                <div className="mx-auto mt-4 grid max-w-md gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => togglePanel("import")}
+                    className="rounded-xl border-2 border-dashed border-border bg-background p-4 text-left transition-colors hover:border-primary/60 hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <FolderInput className="mb-1.5 h-5 w-5 text-primary" />
+                    <p className="text-sm font-semibold text-foreground">本地导入</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">架构图 / 系统截图 / 现场照批量入库</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => togglePanel("web")}
+                    className="rounded-xl border-2 border-dashed border-border bg-background p-4 text-left transition-colors hover:border-primary/60 hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <Globe className="mb-1.5 h-5 w-5 text-primary" />
+                    <p className="text-sm font-semibold text-foreground">联网抓取</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">按场景词抓取氛围图，自动留档</p>
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => togglePanel("settings")}
+                  className="mt-4 text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  抓图前先到「库设置」配置图库 API Key →
+                </button>
+              </div>
+            )
           ) : (
             <>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
@@ -395,6 +453,42 @@ export function MaterialLibraryPage({ p }: { p: UseMaterialLibrary }) {
                   <MaterialCard key={it.id} it={it} onClick={() => void p.openDetail(it)} />
                 ))}
               </div>
+
+              {/* UX-R2：素材使用排行（按被引用次数 Top10；无引用数据则整块隐藏） */}
+              {(() => {
+                const top = [...p.items]
+                  .filter((it) => !it.trashed && (it.usage ?? 0) > 0)
+                  .sort((a, b) => (b.usage ?? 0) - (a.usage ?? 0))
+                  .slice(0, 10)
+                if (top.length === 0) return null
+                const max = top[0]?.usage ?? 1
+                return (
+                  <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+                    <h3 className="text-sm font-semibold text-foreground">素材使用排行</h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">按被 PPT / 方案引用次数排序（基于已加载素材）</p>
+                    <ul className="mt-3 space-y-1.5">
+                      {top.map((it, i) => (
+                        <li key={it.id} className="flex items-center gap-2 text-xs">
+                          <span className="w-4 shrink-0 text-center tabular-nums text-muted-foreground">{i + 1}</span>
+                          <button
+                            type="button"
+                            onClick={() => void p.openDetail(it)}
+                            className="min-w-0 flex-1 truncate text-left text-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                            title={it.name}
+                          >
+                            {it.name}
+                          </button>
+                          <span className="h-1.5 w-24 shrink-0 overflow-hidden rounded-full bg-muted">
+                            <span className="block h-full rounded-full bg-primary" style={{ width: `${Math.round(((it.usage ?? 0) / Math.max(max, 1)) * 100)}%` }} />
+                          </span>
+                          <span className="w-12 shrink-0 text-right tabular-nums text-muted-foreground">{it.usage} 次</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )
+              })()}
+
               {p.hasMore && (
                 <div className="flex justify-center pt-2">
                   <Button size="sm" variant="outline" disabled={p.itemsLoading} onClick={p.loadMore}>
@@ -405,10 +499,14 @@ export function MaterialLibraryPage({ p }: { p: UseMaterialLibrary }) {
               )}
             </>
           )}
-        </TabsContent>
-
-        {/* ---------- Tab2 联网抓取 ---------- */}
-        <TabsContent value="web" className="space-y-4">
+        {panel === "web" ? (
+          <div className="space-y-4 rounded-lg border border-primary/30 bg-card/60 p-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-foreground">联网抓取</h2>
+              <button type="button" onClick={() => setPanel(null)} aria-label="收起联网抓取面板" className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
           <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
             <div className="flex flex-wrap items-center gap-2">
               <Select value={p.webProvider} onValueChange={(v) => p.setWebProvider(v as typeof p.webProvider)}>
@@ -505,10 +603,17 @@ export function MaterialLibraryPage({ p }: { p: UseMaterialLibrary }) {
               </div>
             </>
           ) : null}
-        </TabsContent>
+          </div>
+        ) : null}
 
-        {/* ---------- Tab3 本地导入 ---------- */}
-        <TabsContent value="import" className="space-y-4">
+        {panel === "import" ? (
+          <div className="space-y-4 rounded-lg border border-primary/30 bg-card/60 p-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-foreground">本地导入</h2>
+              <button type="button" onClick={() => setPanel(null)} aria-label="收起本地导入面板" className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
           <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
             <h3 className="mb-1 text-sm font-semibold text-foreground">批量导入本地图片</h3>
             <p className="mb-3 text-xs text-muted-foreground">
@@ -577,13 +682,21 @@ export function MaterialLibraryPage({ p }: { p: UseMaterialLibrary }) {
               </div>
             ) : null}
           </div>
-        </TabsContent>
+          </div>
+        ) : null}
 
-        {/* ---------- Tab4 库设置 ---------- */}
-        <TabsContent value="settings">
-          <SettingsTab p={p} />
-        </TabsContent>
-      </Tabs>
+        {panel === "settings" ? (
+          <div className="rounded-lg border border-primary/30 bg-card/60 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-foreground">库设置</h2>
+              <button type="button" onClick={() => setPanel(null)} aria-label="收起库设置面板" className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <SettingsTab p={p} />
+          </div>
+        ) : null}
+      </div>
 
       <DetailDialog p={{ ...p, detail }} />
     </div>

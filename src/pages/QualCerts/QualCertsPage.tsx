@@ -1,14 +1,40 @@
-// 资质证书台账页：三档预警条 + 台账列表 + 登记/编辑/删除
+// 资质证书台账页：危险度分档统计卡（点击过滤）+ 三档预警条（逐条定位高亮）+ DataTable（⋯菜单 / 批量操作）
 // 设计依据 docs/06 §一.1 与 docs/未来功能规划路线图.md（证书过期直接废标 → 提前预警）
-import { useMemo, useState } from "react"
-import { AlertTriangle, Download, Loader2, Pencil, Plus, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react"
+// UX-R2: 资质台账 已按 docs/ux-review-2026-11 修复 2026-11-07（统计卡危险度重排与点击过滤 / 预警逐条定位高亮 /
+//        行操作收敛 ⋯ 菜单 / 复选框批量选择 + 浮动操作条 + 批量登记有效期弹窗）
+import { useEffect, useMemo, useState } from "react"
+import { toast } from "sonner"
+import {
+  AlertTriangle,
+  CalendarClock,
+  CheckCheck,
+  Download,
+  FileSearch,
+  Loader2,
+  Locate,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  ShieldAlert,
+  ShieldCheck,
+  Trash2,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { DataTable, type DataTableColumn } from "@/components/ui/DataTable"
 import type { UseQualCerts } from "./useQualCerts"
-import { QUAL_CATEGORIES, filterQualRows, isAutoDerivedValidity, qualDueLabel, type QualBucket, type QualCertRow } from "./qualsCore"
+import {
+  QUAL_CATEGORIES,
+  filterQualRows,
+  isAutoDerivedValidity,
+  qualBucket,
+  qualDueLabel,
+  type QualBucket,
+  type QualCertRow,
+} from "./qualsCore"
 import { exportToCsv } from "@/lib/exportCsv"
 import { localDateStamp } from "@/lib/dateStamp"
 
@@ -26,8 +52,18 @@ const BUCKET_CLASS: Record<QualBucket, string> = {
   ok: "badge-success",
   unknown: "badge-neutral",
 }
-// 三档之外的桶只用于计数展示
-const ALERT_ORDER: QualBucket[] = ["expired", "critical", "warning"]
+// 三档预警条之外的桶（ok / unknown）只用于计数展示
+
+// UX-R2：统计卡按危险度排序（红→橙→黄→灰→灰），值与 qualBucket 分档一一对应
+type StatCardBucket = Extract<QualBucket, "expired" | "critical" | "warning" | "unknown"> | "total"
+const STAT_CARD_ORDER: StatCardBucket[] = ["expired", "critical", "unknown", "warning", "total"]
+const STAT_CARD_TONE: Record<StatCardBucket, { wrap: string; icon: string; value: string }> = {
+  expired: { wrap: "border-destructive/40 bg-destructive/5", icon: "text-destructive", value: "text-destructive" },
+  critical: { wrap: "border-amber-400/50 bg-amber-500/5", icon: "text-amber-500", value: "text-amber-600" },
+  unknown: { wrap: "border-yellow-400/60 bg-yellow-500/5", icon: "text-yellow-500", value: "text-yellow-600" },
+  warning: { wrap: "border-border bg-card", icon: "text-muted-foreground", value: "text-foreground" },
+  total: { wrap: "border-border bg-card", icon: "text-muted-foreground", value: "text-foreground" },
+}
 
 /** 与 qualsCore 分档口径一致：已过期 danger、≤90 天 warning、正常 success、未登记 neutral */
 function qualDueBadge(row: Pick<QualCertRow, "valid_to">, todayMs: number): { due: string; cls: string } {
@@ -39,10 +75,14 @@ function qualDueBadge(row: Pick<QualCertRow, "valid_to">, todayMs: number): { du
   return { due, cls }
 }
 
-function handleExport(p: UseQualCerts) {
+function exportCsvOf(rows: QualCertRow[], filename: string) {
   const headers = ["证照名称", "类别", "证书编号", "发证机关", "有效期开始", "有效期截止", "适用范围", "更新时间"]
-  const rows = p.rows.map((r) => [r.cert_name, r.category, r.cert_no, r.issuer, r.valid_from, r.valid_to, r.scope, r.updated])
-  exportToCsv(`资质台账_${localDateStamp()}.csv`, headers, rows)
+  const body = rows.map((r) => [r.cert_name, r.category, r.cert_no, r.issuer, r.valid_from, r.valid_to, r.scope, r.updated])
+  exportToCsv(filename, headers, body)
+}
+
+function handleExport(p: UseQualCerts) {
+  exportCsvOf(p.rows, `资质台账_${localDateStamp()}.csv`)
 }
 
 export function QualCertsPage({ p }: { p: UseQualCerts }) {
@@ -50,9 +90,121 @@ export function QualCertsPage({ p }: { p: UseQualCerts }) {
   // R250(r2-r012 收尾)：台账改为复用全站 DataTable——点表头三态排序、超 20 条分页、
   // 顶部按展示字段搜索。默认按「有效期至」升序，最急的证照排最前（原为服务端返回序）。
   const [keyword, setKeyword] = useState("")
-  const visibleRows = useMemo(() => filterQualRows(p.rows, keyword), [p.rows, keyword])
+  // UX-R2：统计卡点击过滤（再点一次或点「台账总数」清除）
+  const [bucketFilter, setBucketFilter] = useState<QualBucket | null>(null)
+  // UX-R2：预警条「定位」——滚动到行并 animate-pulse 高亮 2 秒
+  const [highlightId, setHighlightId] = useState<string | null>(null)
+  // UX-R2：批量选择（跨过滤条件保留；有效选中集 = 勾选集 ∩ 现存行——派生而非 effect 写 state，
+  // 行删除后失效的勾选自动剔除，无需同步 effect）
+  const [pickedIds, setPickedIds] = useState<string[]>([])
+  const selectedIds = useMemo(() => pickedIds.filter((id) => p.rows.some((r) => r.id === id)), [pickedIds, p.rows])
+  const [batchOpen, setBatchOpen] = useState(false)
+  const [batchDate, setBatchDate] = useState("")
+  const [batchBusy, setBatchBusy] = useState(false)
+  // UX-R2：续期登记（复用编辑表单，标题与提示区分意图）与扫描件查看
+  const [renewing, setRenewing] = useState<QualCertRow | null>(null)
+  const [fileViewRow, setFileViewRow] = useState<QualCertRow | null>(null)
+
   const todayMs = new Date(new Date().toDateString()).getTime()
+  const baseRows = useMemo(() => filterQualRows(p.rows, keyword), [p.rows, keyword])
+  const visibleRows = useMemo(
+    () => (bucketFilter ? baseRows.filter((r) => qualBucket(r.valid_to, todayMs) === bucketFilter) : baseRows),
+    [baseRows, bucketFilter, todayMs],
+  )
+
+  // 批量选择：全选口径 = 当前筛选结果（visibleRows）
+  const allSelected = visibleRows.length > 0 && visibleRows.every((r) => selectedIds.includes(r.id))
+  const someSelected = visibleRows.some((r) => selectedIds.includes(r.id))
+  const toggleRow = (id: string) =>
+    setPickedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  const toggleAll = () =>
+    setPickedIds((prev) => {
+      if (allSelected) return prev.filter((id) => !visibleRows.some((r) => r.id === id))
+      const add = visibleRows.map((r) => r.id).filter((id) => !prev.includes(id))
+      return [...prev, ...add]
+    })
+
+  // UX-R2：定位 = 清过滤 → 滚动到行（data-qual-row 锚点）→ animate-pulse 高亮 2 秒
+  const locateRow = (id: string) => {
+    setKeyword("")
+    setBucketFilter(null)
+    setHighlightId(id)
+  }
+  useEffect(() => {
+    if (!highlightId) return
+    const scrollTimer = window.setTimeout(() => {
+      const el = document.querySelector(`[data-qual-row="${CSS.escape(highlightId)}"]`)
+      if (el) el.scrollIntoView({ block: "center", behavior: "smooth" })
+      else toast.info("该证书不在当前表格页——已清除过滤，按「有效期至」升序通常在第 1 页")
+    }, 60)
+    const clearTimer = window.setTimeout(() => setHighlightId(null), 2060)
+    return () => {
+      window.clearTimeout(scrollTimer)
+      window.clearTimeout(clearTimer)
+    }
+  }, [highlightId])
+
+  const startRenew = (row: QualCertRow) => {
+    setRenewing(row)
+    p.openEdit(row)
+  }
+
+  const submitBatchValidity = async () => {
+    if (!batchDate || batchBusy) return
+    setBatchBusy(true)
+    try {
+      const { ok, failed } = await p.batchRegisterValidity(selectedIds, batchDate)
+      if (failed.length === 0) {
+        toast.success(`已为 ${ok} 张证书登记有效期`)
+      } else {
+        const names = failed
+          .map((id) => p.rows.find((r) => r.id === id)?.cert_name ?? id)
+          .slice(0, 3)
+          .join("、")
+        toast.error(`${ok} 张已登记，${failed.length} 张失败：${names}${failed.length > 3 ? " 等" : ""}`)
+      }
+      setBatchOpen(false)
+      setBatchDate("")
+      setPickedIds([])
+    } finally {
+      setBatchBusy(false)
+    }
+  }
+
+  const exportSelected = () => {
+    const picked = p.rows.filter((r) => selectedIds.includes(r.id))
+    exportCsvOf(picked, `资质台账_已选${picked.length}项_${localDateStamp()}.csv`)
+    toast.success(`已导出选中的 ${picked.length} 条证照`)
+  }
+
   const columns: DataTableColumn<QualCertRow>[] = [
+    {
+      // UX-R2：批量选择列（不排序）
+      key: "select",
+      header: (
+        <input
+          type="checkbox"
+          aria-label="全选当前列表"
+          checked={allSelected}
+          onChange={toggleAll}
+          ref={(el) => {
+            if (el) el.indeterminate = someSelected && !allSelected
+          }}
+          className="h-4 w-4 cursor-pointer rounded border-border align-middle"
+        />
+      ),
+      render: (row) => (
+        <input
+          type="checkbox"
+          aria-label={`选择 ${row.cert_name}`}
+          checked={selectedIds.includes(row.id)}
+          onChange={() => toggleRow(row.id)}
+          className="h-4 w-4 cursor-pointer rounded border-border align-middle"
+        />
+      ),
+      headerClassName: "w-10",
+      className: "w-10",
+    },
     {
       key: "cert_name",
       header: "证照名称",
@@ -117,7 +269,14 @@ export function QualCertsPage({ p }: { p: UseQualCerts }) {
       key: "actions",
       header: "操作",
       align: "right",
-      render: (row) => <QualRowActions row={row} p={p} />,
+      render: (row) => (
+        <QualRowActions
+          row={row}
+          p={p}
+          onRenew={startRenew}
+          onViewFile={(r) => setFileViewRow(r)}
+        />
+      ),
     },
   ]
   return (
@@ -164,38 +323,50 @@ export function QualCertsPage({ p }: { p: UseQualCerts }) {
         </div>
       </header>
 
-      {/* 三档预警条 */}
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {ALERT_ORDER.map((b) => (
-          <div
-            key={b}
-            className={`rounded-lg border p-3 shadow-sm ${
-              b === "expired"
-                ? "border-destructive/40 bg-destructive/5"
-                : b === "critical"
-                  ? "border-amber-400/50 bg-amber-500/5"
-                  : "border-border bg-card"
-            }`}
-          >
-            <p className="flex items-center gap-1 text-xs text-muted-foreground">
-              {b === "expired" ? <ShieldAlert className="h-3.5 w-3.5 text-destructive" /> : <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />}
-              {BUCKET_LABEL[b]}
-            </p>
-            <p className={`mt-1 text-2xl font-bold ${summary.buckets[b] > 0 ? "text-destructive" : "text-foreground"}`}>
-              {summary.buckets[b]}
-            </p>
-          </div>
-        ))}
-        <div className="rounded-lg border border-border bg-card p-3 shadow-sm">
-          <p className="flex items-center gap-1 text-xs text-muted-foreground">
-            <ShieldCheck className="h-3.5 w-3.5 text-primary" />
-            台账总数
-          </p>
-          <p className="mt-1 text-2xl font-bold text-foreground">{summary.total}</p>
-        </div>
+      {/* UX-R2：统计卡按危险度排序（红→橙→黄→灰→灰），全部可点击过滤，再点一次清除 */}
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+        {STAT_CARD_ORDER.map((b) => {
+          const tone = STAT_CARD_TONE[b]
+          const count = b === "total" ? summary.total : summary.buckets[b]
+          const active = b !== "total" && bucketFilter === b
+          const hint =
+            b === "total"
+              ? "点击清除过滤，显示全部证照"
+              : b === "unknown"
+                ? "点击列出待补录有效期的证照，可用批量登记一次补齐"
+                : `点击只看${BUCKET_LABEL[b as QualBucket]}的证照`
+          return (
+            <button
+              key={b}
+              type="button"
+              aria-pressed={active}
+              title={hint}
+              onClick={() => setBucketFilter((prev) => (b === "total" ? null : prev === b ? null : (b as QualBucket)))}
+              className={`rounded-lg border p-3 text-left shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                active ? "ring-2 ring-primary" : tone.wrap
+              }`}
+            >
+              <p className={`flex items-center gap-1 text-xs text-muted-foreground ${tone.icon}`}>
+                {b === "expired" ? (
+                  <ShieldAlert className="h-3.5 w-3.5" />
+                ) : b === "unknown" ? (
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                ) : (
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                )}
+                {b === "unknown" ? `⚠ ${BUCKET_LABEL.unknown}` : BUCKET_LABEL[b as QualBucket]}
+              </p>
+              <p className={`mt-1 text-2xl font-bold ${tone.value}`}>
+                {count}
+                {b === "unknown" && count > 0 ? <span className="ml-1 text-sm font-medium">张</span> : null}
+              </p>
+              {active ? <p className="mt-0.5 text-[10px] text-primary">已过滤 · 再点取消</p> : null}
+            </button>
+          )
+        })}
       </div>
 
-      {/* 预警明细 */}
+      {/* 预警明细（UX-R2：每条带「定位」按钮，直达表格行并高亮 2 秒） */}
       {summary.alerts.length > 0 ? (() => {
         // R228(r2-r010)：自检三档之和 == 预警总数，与驾驶舱 qualRiskView.total 同口径；
         // 不等说明数据或分档逻辑有漂移，页面内标注提示而非静默忽略。
@@ -232,6 +403,15 @@ export function QualCertsPage({ p }: { p: UseQualCerts }) {
                 <span className="text-muted-foreground">
                   {a.days_left == null ? qualDueLabel(a.valid_to, new Date(new Date().toDateString()).getTime()) : `剩 ${a.days_left} 天`}
                 </span>
+                <button
+                  type="button"
+                  onClick={() => locateRow(a.id)}
+                  aria-label={`定位 ${a.cert_name}`}
+                  className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 font-medium text-primary shadow-sm transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <Locate className="h-3 w-3" />
+                  定位
+                </button>
               </li>
             ))}
           </ul>
@@ -279,6 +459,19 @@ export function QualCertsPage({ p }: { p: UseQualCerts }) {
                 </button>
               </>
             ) : null}
+            {bucketFilter ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+                已过滤：{BUCKET_LABEL[bucketFilter]} {visibleRows.length} 条
+                <button
+                  type="button"
+                  onClick={() => setBucketFilter(null)}
+                  aria-label="清除过滤"
+                  className="rounded-full px-1 text-primary/70 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  ✕
+                </button>
+              </span>
+            ) : null}
           </div>
           <DataTable<QualCertRow>
             columns={columns}
@@ -288,20 +481,104 @@ export function QualCertsPage({ p }: { p: UseQualCerts }) {
             pageSize={20}
             caption="资质证书台账"
             emptyState={
-              keyword.trim()
-                ? "没有匹配的证照，换个关键词或清除搜索"
-                : "暂无证照，点上方「登记资质」开始维护台账"
+              bucketFilter
+                ? `没有「${BUCKET_LABEL[bucketFilter]}」的证照——这是好事，点击上方卡片清除过滤`
+                : keyword.trim()
+                  ? "没有匹配的证照，换个关键词或清除搜索"
+                  : "暂无证照，点上方「登记资质」开始维护台账"
             }
+            rowProps={(row) => ({
+              "data-qual-row": row.id,
+              className: highlightId === row.id ? "animate-pulse bg-warning/15" : undefined,
+            })}
           />
         </>
       )}
 
-      {/* 登记/编辑表单 */}
+      {/* UX-R2：批量浮动操作条（选中 >0 时出现） */}
+      {selectedIds.length > 0 && !p.loading ? (
+        <div className="fixed bottom-20 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-card px-4 py-2 shadow-lg">
+          <span className="text-xs font-medium text-foreground">已选 {selectedIds.length} 项</span>
+          <Button size="sm" onClick={() => setBatchOpen(true)} className="gap-1">
+            <CalendarClock className="h-3.5 w-3.5" />
+            批量登记有效期
+          </Button>
+          <Button size="sm" variant="outline" onClick={exportSelected} className="gap-1">
+            <Download className="h-3.5 w-3.5" />
+            批量导出
+          </Button>
+          <button
+            type="button"
+            onClick={() => setPickedIds([])}
+            className="rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            取消选择
+          </button>
+        </div>
+      ) : null}
+
+      {/* UX-R2：批量登记有效期弹窗（一个日期应用到全部选中行，覆盖原值需知晓） */}
+      <Dialog open={batchOpen} onOpenChange={(o) => (!o && !batchBusy ? setBatchOpen(false) : undefined)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>批量登记有效期</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            将把已选 <span className="font-semibold text-foreground">{selectedIds.length}</span>{" "}
+            张证书的「有效期至」统一登记为所选日期（覆盖原值，可用于批量续期或补录）。
+          </p>
+          <label htmlFor="qc-batch-date" className="mt-2 block text-xs font-medium text-muted-foreground">
+            有效期至 *
+          </label>
+          <Input
+            id="qc-batch-date"
+            type="date"
+            value={batchDate}
+            onChange={(e) => setBatchDate(e.target.value)}
+          />
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setBatchOpen(false)} disabled={batchBusy}>
+              取消
+            </Button>
+            <Button onClick={() => void submitBatchValidity()} disabled={!batchDate || batchBusy} className="gap-1.5">
+              {batchBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCheck className="h-4 w-4" />}
+              应用到 {selectedIds.length} 张
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* UX-R2：查看扫描件（file_ref 为位置描述，非文件本体） */}
+      <Dialog open={fileViewRow != null} onOpenChange={(o) => (!o ? setFileViewRow(null) : undefined)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>扫描件位置 · {fileViewRow?.cert_name}</DialogTitle>
+          </DialogHeader>
+          {fileViewRow?.file_ref ? (
+            <p className="rounded-md border border-border bg-muted/40 p-3 text-sm leading-relaxed text-foreground">
+              {fileViewRow.file_ref}
+            </p>
+          ) : (
+            <p className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
+              该证书未登记扫描件位置——点「编辑」补充「扫描件位置」字段，方便投标前快速取件。
+            </p>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 登记/编辑/续期表单 */}
       <Dialog open={p.formOpen} onOpenChange={(o) => (!o ? p.closeForm() : undefined)}>
         <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{p.editing ? "编辑资质" : "登记资质"}</DialogTitle>
+            <DialogTitle>
+              {renewing ? `续期登记 · ${renewing.cert_name}` : p.editing ? "编辑资质" : "登记资质"}
+            </DialogTitle>
           </DialogHeader>
+          {renewing ? (
+            <p className="-mt-1 text-xs text-muted-foreground">
+              更新「有效期至」后保存即可完成续期；如需修改其他字段请用「编辑」。
+            </p>
+          ) : null}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <label htmlFor="qc-name" className="mb-1 block text-xs font-medium text-muted-foreground">证照名称 *</label>
@@ -347,6 +624,7 @@ export function QualCertsPage({ p }: { p: UseQualCerts }) {
                 type="date"
                 value={p.draft.valid_to}
                 onChange={(e) => p.setDraft({ ...p.draft, valid_to: e.target.value })}
+                autoFocus={renewing != null}
               />
             </div>
             <div className="sm:col-span-2">
@@ -382,10 +660,10 @@ export function QualCertsPage({ p }: { p: UseQualCerts }) {
             </div>
           </div>
           <div className="mt-4 flex justify-end gap-2">
-            <Button variant="outline" onClick={p.closeForm}>
+            <Button variant="outline" onClick={() => { p.closeForm(); setRenewing(null) }}>
               取消
             </Button>
-            <Button onClick={() => void p.saveDraft()} disabled={p.busy} className="gap-1.5">
+            <Button onClick={() => { void p.saveDraft().then(() => setRenewing(null)) }} disabled={p.busy} className="gap-1.5">
               {p.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {p.editing ? "保存修改" : "登记"}
             </Button>
@@ -396,28 +674,53 @@ export function QualCertsPage({ p }: { p: UseQualCerts }) {
   )
 }
 
-function QualRowActions({ row, p }: { row: QualCertRow; p: UseQualCerts }) {
+function QualRowActions({
+  row,
+  p,
+  onRenew,
+  onViewFile,
+}: {
+  row: QualCertRow
+  p: UseQualCerts
+  onRenew: (row: QualCertRow) => void
+  onViewFile: (row: QualCertRow) => void
+}) {
   const [pendingDelete, setPendingDelete] = useState(false)
   return (
     <>
-      <div className="inline-flex items-center gap-1">
+      {/* UX-R2：操作收敛为 ⋯ 菜单（原 16px 双图标热区过小），删除保留二次确认 */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
           <button
             type="button"
-            onClick={() => p.openEdit(row)}
-            aria-label={`编辑 ${row.cert_name}`}
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            aria-label={`${row.cert_name} 操作菜单`}
+            className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
-            <Pencil className="h-3.5 w-3.5" />
+            <MoreHorizontal className="h-4 w-4" />
           </button>
-          <button
-            type="button"
-            onClick={() => setPendingDelete(true)}
-            aria-label={`删除 ${row.cert_name}`}
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-40">
+          <DropdownMenuItem onSelect={() => p.openEdit(row)} className="gap-2">
+            <Pencil className="h-3.5 w-3.5" />
+            编辑
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onRenew(row)} className="gap-2">
+            <CalendarClock className="h-3.5 w-3.5" />
+            续期登记
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onViewFile(row)} className="gap-2">
+            <FileSearch className="h-3.5 w-3.5" />
+            查看扫描件
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => setPendingDelete(true)}
+            className="gap-2 text-destructive focus:bg-destructive/10 focus:text-destructive"
           >
             <Trash2 className="h-3.5 w-3.5" />
-          </button>
-      </div>
+            删除
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <ConfirmDialog
         open={pendingDelete}
         onOpenChange={(o) => {

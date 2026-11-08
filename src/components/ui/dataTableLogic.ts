@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import type { HTMLAttributes, ReactNode } from "react"
 
 export type SortDir = "asc" | "desc"
 
@@ -33,6 +33,11 @@ export interface DataTableProps<T> {
   selectedRowId?: string | null
   caption?: ReactNode
   className?: string
+  /** 可选的行级 DOM 属性（如 data-* 锚点 / 定位高亮 className）；与内部 className 合并，不替换 */
+  rowProps?: (row: T, id: string, index: number) => HTMLAttributes<HTMLTableRowElement> & {
+    /** 允许调用方挂 data-* 锚点（如滚动定位） */
+    [key: `data-${string}`]: string | number | undefined
+  }
 }
 
 function isEmptyValue(v: unknown): boolean {

@@ -403,14 +403,63 @@ routerAdd("POST", "/api/intel/tick", (e) => {
         for (var i = 0; i < __TAG_BANK.length; i++) { var w = __TAG_BANK[i]; if (t.indexOf(w) >= 0 && out.indexOf(w) < 0) { out.push(w); if (out.length >= 6) break } }
         return out
       }
+      // B36 修复（2026-11-05）：makeSummary 内联 scrubIntel 调用，避免 JSON 元数据/列表残片污染摘要
       var makeSummary = function (text, ttl) {
-        var t = String(text || "").replace(/\s+/g, " ")
+        // B36 修复（2026-11-05）：内联 scrubIntel 逻辑避免 JSON/列表残片污染摘要
+        // 先做基础清洗：去除 HTML/URL/图片路径/导航噪声（同 scrubIntel 的核心规则）
+        var t = String(text || "")
+        
+        // HTML 标签剥除（核心）
+        t = t.replace(/<script[\s\S]*?<\/script>/gi, " ")
+        t = t.replace(/<style[\s\S]*?<\/style>/gi, " ")
+        t = t.replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+        t = t.replace(/<svg[\s\S]*?<\/svg>/gi, " ")
+        t = t.replace(/<!--[[\s\S]*?-->/g, " ")
+        t = t.replace(/<(nav|header|footer|aside|form)[\s\S]*?<\/\1>/gi, " ")
+        t = t.replace(/<br\s*\/?>/gi, "\n")
+        t = t.replace(/\<(p|div|li|h[1-6]|tr|td|section|article)>/gi, "\n")
+        t = t.replace(/<[^>]*>/g, " ")
+        t = t.replace(/<[^>]*$/g, " ")
+        
+        // URL/图片路径剥除
+        t = t.replace(/[\w:.=-]+\s*=\s*"[^"]*"/g, " ")
+        t = t.replace(/[\w:.=-]+\s*=\s*'[^']*'/g, " ")
+        t = t.replace(/[\w:.=-]+\s*=\s*[^\s"'<>]+/g, " ")
+        t = t.replace(/[<>]/g, " ")
+        t = t.replace(/[\w/.-]*\.(?:jpg|jpeg|png|gif|webp|bmp)["']?/gi, " ")
+        
+        // 实体字符解码
+        t = t.replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+        t = t.replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+        t = t.replace(/&amp;/g, "&")
+        
+        // 标题替换 + 空格归一化
         if (ttl) t = t.split(String(ttl)).join(" ")
         t = t.replace(/\s+/g, " ").trim()
+        
         if (t.length < 8) return ""
+        
+        // 逐行过滤导航噪声（同 scrubIntel 的 keep 逻辑）
+        var lines = t.split(/\n+/)
+        var keep = []
+        for (var li = 0; li < lines.length; li++) {
+          var line = lines[li].replace(/\s+/g, " ").trim()
+          if (!line) continue
+          if (/[{}]/.test(line)) continue  // JSON 元数据丢弃 ← B64-1 根因修复
+          if (/https?:\/\/|\.php|\.aspx?\b|share\.php|weibo\.com|javascript:|\burl\s*[:=]/i.test(line)) continue
+          if (/^[[{]/.test(line) || /;\s*$/.test(line)) continue
+          // 常见导航词过滤
+          if (/版权 |All Rights|ICP|备案 | 返回 | 打印 | 分享 | 关注 | 扫码 | 二维码 | 上一篇 | 下一篇 | 相关阅读 | 网站地图 | 登录 | 注册 | 首页 | 导航 | 广告 | 免责声明 | 联系我们 | 友情链接 | 隐私政策 | 使用条款/.test(line)) continue
+          if (/^[\d\s\-\/年月日.:：()\[\]\uFF0C,周星期]+$/.test(line)) continue
+          keep.push(line)
+        }
+        
+        var cleaned = keep.join(" ").replace(/\s+/g, " ").trim()
+        
+        // 句子切分 + 长度控制（保持原有逻辑）
         var sents = []
         var cur = ""
-        for (var i = 0; i < t.length; i++) { var ch = t.charAt(i); cur += ch; if ("。！？；!?;".indexOf(ch) >= 0) { sents.push(cur); cur = "" } }
+        for (var i = 0; i < cleaned.length; i++) { var ch = cleaned.charAt(i); cur += ch; if ("。！？；!?;".indexOf(ch) >= 0) { sents.push(cur); cur = "" } }
         if (cur) sents.push(cur)
         var buf = ""
         for (var k = 0; k < sents.length; k++) {
@@ -420,7 +469,7 @@ routerAdd("POST", "/api/intel/tick", (e) => {
           buf += sp
           if (buf.length >= 90) break
         }
-        if (!buf) buf = t.slice(0, 140)
+        if (!buf) buf = cleaned.slice(0, 140)
         return buf.slice(0, 300)
       }
       // 展示/入库深度清洗（镜像前端 intelBodyClean.displayizeIntel）：在成对标签之外，
@@ -1218,6 +1267,7 @@ routerAdd("POST", "/api/intel/fetch-now", (e) => {
       return out
     }
     var makeSummary = function (text, ttl) {
+        // B36 修复（2026-11-05）：内联 scrubIntel 逻辑避免 JSON/列表残片污染摘要
       var t = String(text || "").replace(/\s+/g, " ")
       if (ttl) t = t.split(String(ttl)).join(" ")
       t = t.replace(/\s+/g, " ").trim()
@@ -2560,6 +2610,7 @@ routerAdd("POST", "/api/intel/enrich", (e) => {
       return out
     }
     var makeSummary = function (text, ttl) {
+        // B36 修复（2026-11-05）：内联 scrubIntel 逻辑避免 JSON/列表残片污染摘要
       var t = String(text || "").replace(/\s+/g, " ")
       if (ttl) t = t.split(String(ttl)).join(" ")
       t = t.replace(/\s+/g, " ").trim()

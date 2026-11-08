@@ -24,6 +24,7 @@ export function DataTable<T>({
   selectedRowId = null,
   caption,
   className,
+  rowProps,
 }: DataTableProps<T>) {
   const [sort, setSort] = useState<DataTableSortState | null>(initialSort)
   const [page, setPage] = useState(1)
@@ -132,14 +133,17 @@ export function DataTable<T>({
               visible.map((row, i) => {
                 const id = getRowId(row, i)
                 const selected = selectedRowId != null && id === selectedRowId
+                const extra = rowProps?.(row, id, i)
                 return (
                   <tr
                     key={id}
-                    onClick={onRowClick ? () => onRowClick(row) : undefined}
+                    {...extra}
+                    onClick={onRowClick ? () => onRowClick(row) : extra?.onClick}
                     className={cn(
                       "border-b border-border/60 transition-colors last:border-b-0",
                       onRowClick && "cursor-pointer hover:bg-accent/60",
                       selected && "bg-primary/10 hover:bg-primary/10",
+                      extra?.className,
                     )}
                   >
                     {columns.map((col) => (

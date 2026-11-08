@@ -1,3 +1,4 @@
+// UX-R2: 产品映射 已按 docs/ux-review-2026-11 修复 2026-11-07（左右分栏/来源卡/骨架示意）
 import { useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { ArrowLeftRight, Brain, Database, Download, FileUp, ListChecks, Loader2, Save, ShieldCheck, Sparkles, Table2, Trash2, Upload } from "lucide-react"
@@ -31,12 +32,6 @@ import type { UseProductMapping } from "./useProductMapping"
 //   AI 语义匹配为可选手动触发（离线优先，数据出不出本机由用户决定）。
 // ---------------------------------------------------------------------------
 
-const SOURCE_TABS: { key: UseProductMapping["sourceTab"]; label: string }[] = [
-  { key: "paste", label: "上传 / 粘贴" },
-  { key: "bid", label: "从招标文件" },
-  { key: "solution", label: "从方案 / 需求" },
-]
-
 const VIEWS: { key: "compare" | "checklist"; label: string; icon: typeof Table2 }[] = [
   { key: "compare", label: "一一对照", icon: ArrowLeftRight },
   { key: "checklist", label: "建设清单", icon: ListChecks },
@@ -62,34 +57,51 @@ function NumCell({ value, ariaLabel, onCommit }: { value: number; ariaLabel: str
   )
 }
 
+// UX-R2（docs/ux-review-2026-11 §十六）：来源卡数据——上传 Excel / 粘贴文本 / 从招标文件 / 从方案需求
+const SOURCE_CARDS: { key: string; tab: UseProductMapping["sourceTab"]; title: string; desc: string; icon: typeof FileUp }[] = [
+  { key: "upload", tab: "paste", title: "上传 Excel", desc: "原表所有列保留进对照表", icon: FileUp },
+  { key: "paste", tab: "paste", title: "粘贴文本", desc: "每行一个系统 / 模块条目", icon: Table2 },
+  { key: "bid", tab: "bid", title: "从招标文件", desc: "一键导入采购清单", icon: FileUp },
+  { key: "solution", tab: "solution", title: "从方案 / 需求", desc: "带建设清单快照的方案", icon: ListChecks },
+]
+
 function SourcePanel({ p }: { p: UseProductMapping }) {
   const fileRef = useRef<HTMLInputElement | null>(null)
   const navigate = useNavigate()
   const [bidId, setBidId] = useState("")
   const [solId, setSolId] = useState("")
+  const [sourceCard, setSourceCard] = useState("paste")
 
   return (
     <Card className="mb-5 shadow-sm">
       <CardContent className="p-5">
-        <div className="mb-4 flex w-fit items-center gap-1 rounded-full bg-muted p-0.5">
-          {SOURCE_TABS.map((t) => {
-            const active = p.sourceTab === t.key
+        {/* UX-R2（docs/ux-review-2026-11 §十六）：来源入口改为并排来源卡，激活卡下方显示对应表单 */}
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {SOURCE_CARDS.map((c) => {
+            const active = p.sourceTab === c.tab && (c.tab !== "paste" || sourceCard === c.key)
             return (
               <button
-                key={t.key}
+                key={c.key}
                 type="button"
-                onClick={() => p.setSourceTab(t.key)}
-                className={`rounded-full px-4 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                  active ? "bg-card font-medium text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+                aria-pressed={active}
+                onClick={() => {
+                  p.setSourceTab(c.tab)
+                  setSourceCard(c.key)
+                  if (c.key === "upload") fileRef.current?.click()
+                }}
+                className={`rounded-lg border-2 p-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                  active ? "border-primary bg-primary/5" : "border-border bg-card hover:border-primary/40"
                 }`}
               >
-                {t.label}
+                <c.icon className={`mb-1 h-4 w-4 ${active ? "text-primary" : "text-muted-foreground"}`} />
+                <p className={`text-xs font-semibold ${active ? "text-primary" : "text-foreground"}`}>{c.title}</p>
+                <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{c.desc}</p>
               </button>
             )
           })}
         </div>
 
-        {p.sourceTab === "paste" && (
+        {(p.sourceTab === "paste" && sourceCard !== "upload") && (
           <div>
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <Button onClick={() => fileRef.current?.click()} disabled={p.productsLoading}>
@@ -527,15 +539,33 @@ export function ProductMappingPage(p: UseProductMapping) {
         </p>
       )}
 
-      <SourcePanel p={p} />
+      {/* UX-R2（docs/ux-review-2026-11 §十六）：左右分栏——左输入 / 右结果，两层 Tab 合并为一行 */}
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(340px,2fr)_3fr]">
+        <SourcePanel p={p} />
 
-      {p.hasResult ? (
-        <ResultSection p={p} />
-      ) : (
-        <p className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
-          上传清单或选择来源开始对照后，此处将按「原表列 + 映射列」展示对照结果。
-        </p>
-      )}
+        {p.hasResult ? (
+          <ResultSection p={p} />
+        ) : (
+          /* UX-R2：结果区骨架示意——「原表列 → 映射列」的形状预告 */
+          <div className="rounded-xl border border-dashed border-border bg-card/60 p-5">
+            <p className="mb-4 flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground">
+              结果将在这里展示：原表列 <ArrowLeftRight className="h-3.5 w-3.5 text-primary" /> 映射列
+            </p>
+            <div className="space-y-2" aria-hidden="true">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <div className="h-9 flex-1 animate-pulse rounded-md bg-muted" style={{ opacity: 1 - i * 0.18 }} />
+                  <ArrowLeftRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                  <div className="h-9 flex-1 animate-pulse rounded-md bg-primary/10" style={{ opacity: 1 - i * 0.18 }} />
+                </div>
+              ))}
+            </div>
+            <p className="mt-4 text-center text-xs text-muted-foreground">
+              从左侧任一来源开始：上传业主清单 / 粘贴条目 / 导入招标采购清单
+            </p>
+          </div>
+        )}
+      </div>
 
       <CostConfirmDialog {...p.costConfirm} />
 

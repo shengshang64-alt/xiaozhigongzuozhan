@@ -1,4 +1,6 @@
+// UX-R2: PPT 与报价 已按 docs/ux-review-2026-11 修复 2026-11-07（统计随 Tab 联动/空态主按钮/最近报价单）
 import { useMemo } from "react"
+import { ReceiptText } from "lucide-react"
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
 import { DeckEditorWorkspace } from "@/components/ppt-quote/DeckEditorWorkspace"
 import { DeckListPanel } from "@/components/ppt-quote/DeckListPanel"
@@ -49,12 +51,47 @@ export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
       <main>
         {inListMode && (
           <PptStatsRow
+            view={p.activeView}
             deckCount={pptStats.deckCount}
             deckDone={pptStats.deckDone}
             quoteCount={pptStats.quoteCount}
             quoteTotalAmount={pptStats.totalAmount}
           />
         )}
+        {p.activeView === "quote" && p.quoteMode === "list" && pptStats.quoteCount > 0 ? (
+          (() => {
+            const recent = [...p.quoteList]
+              .sort((a, b) => String(b.updated ?? "").localeCompare(String(a.updated ?? "")))
+              .slice(0, 3)
+            return (
+              <div className="mb-4 rounded-lg border border-border bg-card px-4 py-3 shadow-sm">
+                <p className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                  <ReceiptText className="h-3.5 w-3.5 text-primary" />
+                  最近报价单
+                  <span className="text-xs font-normal text-muted-foreground">最近更新的 3 份，点击直接打开</span>
+                </p>
+                <ul className="mt-2 flex flex-col gap-1">
+                  {recent.map((q) => (
+                    <li key={q.id}>
+                      <button
+                        type="button"
+                        onClick={() => p.openQuote(q)}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      >
+                        <span className="min-w-0 flex-1 truncate text-sm text-foreground">{q.quote_name}</span>
+                        {q.version ? <span className="shrink-0 text-xs text-muted-foreground">{q.version}</span> : null}
+                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                          ¥ {formatMoney(centsToYuan(quoteTotalCents(q.groups ?? [])))}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })()
+        ) : null}
+
         {p.activeView === "deck" ? (
           p.deckMode === "list" ? (
             <DeckListPanel

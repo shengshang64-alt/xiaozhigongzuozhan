@@ -103,3 +103,47 @@ describe("R250 资质台账接 DataTable（接线防回流）", () => {
     expect(code).toContain("qualDueBadge(row, todayMs)")
   })
 })
+
+// ---------------------------------------------------------------------------
+// UX-R2（docs/ux-review-2026-11 §十三 修复防回流，2026-11-07）：
+// 统计卡危险度排序与点击过滤 / 预警逐条定位高亮 / ⋯ 菜单 / 复选框批量 + 批量登记有效期。
+// 断言用子串匹配（不做行锚正则），CRLF/LF 皆稳（见 AGENTS.md 行尾纪律）。
+// ---------------------------------------------------------------------------
+describe("UX-R2 资质台账修复（防回流）", () => {
+  const code = readFileSync(path.join(SRC, "pages/QualCerts/QualCertsPage.tsx"), "utf-8")
+  const hookCode = readFileSync(path.join(SRC, "pages/QualCerts/useQualCerts.ts"), "utf-8")
+
+  it("统计卡按危险度排序：已过期→30天内→未登记→90天内→总数", () => {
+    expect(code).toContain('["expired", "critical", "unknown", "warning", "total"]')
+  })
+
+  it("统计卡可点击过滤（含未登记桶），过滤走 qualBucket 单一口径", () => {
+    expect(code).toContain("setBucketFilter")
+    expect(code).toContain("aria-pressed={active}")
+    expect(code).toContain("qualBucket(r.valid_to, todayMs)")
+  })
+
+  it("预警条每条可定位：data-qual-row 锚点 + animate-pulse 高亮", () => {
+    expect(code).toContain("locateRow")
+    expect(code).toContain('"data-qual-row"')
+    expect(code).toContain("animate-pulse")
+  })
+
+  it("行操作收敛为 ⋯ 菜单（旧裸删除按钮不得回流），删除保留二次确认", () => {
+    expect(code).toContain("DropdownMenu")
+    expect(code).toContain("ConfirmDialog")
+    expect(code).not.toContain("aria-label={`删除 ${row.cert_name}`}")
+    expect(code).toContain("续期登记")
+    expect(code).toContain("查看扫描件")
+  })
+
+  it("批量选择 + 浮动操作条 + 批量登记有效期弹窗接线", () => {
+    expect(code).toContain('aria-label="全选当前列表"')
+    expect(code).toContain("已选 {selectedIds.length} 项")
+    expect(code).toContain("批量登记有效期")
+    expect(code).toContain("batchRegisterValidity(selectedIds, batchDate)")
+    expect(hookCode).toContain("batchRegisterValidity")
+    // 批量只发局部字段（valid_to），服务端 PATCH 为局部更新语义
+    expect(hookCode).toContain("JSON.stringify({ valid_to: validTo })")
+  })
+})

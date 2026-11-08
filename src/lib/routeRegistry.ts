@@ -114,7 +114,9 @@ export const NAV_GROUPS: { title: string; paths: string[] }[] = [
   // AI 动态（模型调用记录/用量）属于"沉淀·团队"——元功能，不放"客户·线索"。
   { title: "客户 · 线索", paths: ["/", "/customer-management", "/intel-center"] },
   { title: "方案 · 标书 · 汇报", paths: ["/solution-studio", "/product-mapping", "/ppt-quote", "/materials", "/bid-workspace", "/bid-check", "/format-tool"] },
-  { title: "沉淀 · 团队", paths: ["/knowledge", "/qual-certs", "/competitors", "/assistant", "/model-config", "/ai-hot", "/team"] },
+  // UX-R2（docs/ux-review-2026-11 §二十三·减法项）：AI 动态并入情报中心的「行业前沿」来源过滤；
+  // 路由与页面保留（防外链失效），只从侧栏导航移除。
+  { title: "沉淀 · 团队", paths: ["/knowledge", "/qual-certs", "/competitors", "/assistant", "/model-config", "/team"] },
 ]
 
 // ---------------------------------------------------------------------------

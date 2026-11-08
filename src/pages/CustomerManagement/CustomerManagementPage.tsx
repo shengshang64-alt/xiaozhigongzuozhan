@@ -1,6 +1,8 @@
+// UX-R2: 客户管理 已按 docs/ux-review-2026-11 修复 2026-11-07（右栏默认健康度总览 / 缺 N 项可点击补全 / 模型提示收敛小黄点 / 批量补全先确认）
 import { useMemo, useState } from "react"
 import { Building2, LayoutGrid, Table2, Users } from "lucide-react"
 import { CustomerDataCheckupDialog } from "@/components/customer-management/CustomerDataCheckupDialog"
+import { CustomerHealthPanel } from "@/components/customer-management/CustomerHealthPanel"
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
 import { PageHeader } from "@/components/shell/PageHeader"
 import { CrmToolbar } from "@/components/customer-management/CrmToolbar"
@@ -22,6 +24,14 @@ import type { useCustomerManagement } from "./useCustomerManagement"
 export function CustomerManagementPage(p: ReturnType<typeof useCustomerManagement>) {
   // R216 数据体检面板
   const [checkupOpen, setCheckupOpen] = useState(false)
+  // UX-R2：「缺 N 项」角标逐项去补全——打开编辑弹窗后聚焦的草稿字段 key
+  const [fillFocusField, setFillFocusField] = useState<string | null>(null)
+  const handleFillField = (customerId: string, fieldKey: string) => {
+    p.selectCustomer(customerId)
+    const customer = p.customers.find((c) => c.id === customerId) ?? null
+    if (customer) p.openEditCustomer(customer)
+    setFillFocusField(fieldKey)
+  }
 
   // R236 客户「表格」视图列定义：全部取既有字段，零 schema；床位数右对齐便于扫读
   const tableColumns = useMemo<DataTableColumn<CustomerRow>[]>(
@@ -103,15 +113,14 @@ export function CustomerManagementPage(p: ReturnType<typeof useCustomerManagemen
                   savingContact={p.savingContact}
                 />
               ) : (
-                <div className="flex h-full min-h-60 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border bg-card py-16 text-center shadow-md">
-                  <Building2 className="h-8 w-8 text-muted-foreground" />
-                  <p className="text-sm font-medium text-foreground">
-                    从左侧选一位客户查看档案与商机
-                  </p>
-                  <p className="max-w-xs text-xs leading-relaxed text-muted-foreground">
-                    客户详情里可以补档案、加联系人、记跟进、开商机，并用 AI 生成下一步跟进建议
-                  </p>
-                </div>
+                // UX-R2（docs/ux-review-2026-11 §二）：未选客户时右栏不再空白——健康度总览面板
+                <CustomerHealthPanel
+                  customers={p.customers}
+                  partial={p.customersHasMore}
+                  totalCount={p.totalCustomers}
+                  onSelectCustomer={p.selectCustomer}
+                  onNewCustomer={p.openNewCustomer}
+                />
               )}
             </div>
   )
@@ -210,6 +219,7 @@ export function CustomerManagementPage(p: ReturnType<typeof useCustomerManagemen
               batchProgress={p.batchProgress}
               onBatchEnrich={(limit) => void p.runBatchEnrich(limit)}
               onCancelBatchEnrich={p.cancelBatchEnrich}
+              onRequestFillField={(customer, fieldKey) => handleFillField(customer.id, fieldKey)}
             />
 
             {detailPanel}
@@ -282,6 +292,7 @@ export function CustomerManagementPage(p: ReturnType<typeof useCustomerManagemen
         onSave={p.saveCustomer}
         saving={p.savingCustomer}
         profileSkills={p.customerProfileSkills}
+        focusField={fillFocusField}
       />
 
       <OpportunityDialog

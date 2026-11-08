@@ -36,6 +36,9 @@ const PERSONAL_CONFIG_UNAVAILABLE_HINT =
   "当前所选模型的个人配置不可用（可能已删除、缺少 API Key 或没有启用模型），也没有其他可用的已启用通道。请在顶部模型选择器切换到其他已配置的模型后重试。"
 export const TEST_PROMPT = "请用一句话介绍你自己"
 
+// R78-B15:真正的对话可用性探针提示词 (比单纯的/test 更真实)
+export const DIALOG_PROBE_PROMPT = "你好，请简述你的角色和能力范围，不超过 20 字。"
+
 export type ModelSource = "platform" | "personal"
 
 export interface ModelRef {
@@ -617,26 +620,33 @@ export async function testGatewayModel(ref: ModelRef): Promise<TestModelResult> 
     }
     return { ok: true, reply: r.text, elapsedMs }
   }
-  const testCtrl = new AbortController()
-  const testTimer = window.setTimeout(() => testCtrl.abort(), PERSONAL_CHAT_TIMEOUT_MS)
-  let res: GwResult<{ reply: string; elapsed_ms?: number }>
+  // R78-B15:不再只依赖/server 健康检查，而是真正调用/chat/completions 验证对话可用性
+  const dialogCtrl = new AbortController()
+  const dialogTimer = window.setTimeout(() => dialogCtrl.abort(), PERSONAL_CHAT_TIMEOUT_MS)
+  let chatRes: GwResult<{ reply: string; elapsed_ms?: number }>
   try {
-    res = await gwFetch<{ reply: string; elapsed_ms?: number }>(`/api/model-gw/test`, {
+    chatRes = await gwFetch<{ reply: string; elapsed_ms?: number }>(`/api/model-gw/chat`, {
       method: "POST",
-      signal: testCtrl.signal,
-      body: JSON.stringify({ config_id: ref.configId, model: ref.modelId }),
+      signal: dialogCtrl.signal,
+      body: JSON.stringify({
+        config_id: ref.configId,
+        model: ref.modelId,
+        messages: [{ role: "user", content: TEST_PROMPT }],
+        max_tokens: 200,
+      }),
     })
   } finally {
-    window.clearTimeout(testTimer)
+    window.clearTimeout(dialogTimer)
   }
-  if (!res.ok && testCtrl.signal.aborted) {
-    return { ok: false, elapsedMs: Date.now() - startedAt, message: "测试请求超时（可能网络波动或服务重启），请重试" }
+  if (!chatRes.ok && dialogCtrl.signal.aborted) {
+    return { ok: false, elapsedMs: Date.now() - startedAt, message: "对话请求超时（可能网络波动或服务重启），请重试" }
   }
-  if (!res.ok) {
-    // R296：「测试」是用户对不可用通道的处置闭环——失败按类别挂账，成功即清账
-    recordCallFailure(decodeRhToken()?.sub ?? null, modelRefKey(ref), res.message)
-    return { ok: false, needLogin: res.needLogin, message: res.message || "测试失败，请稍后重试" }
+  if (!chatRes.ok) {
+    // R78-B15:「对话测试」是用户对不可用通道的处置闭环——失败按类别挂账，成功即清账
+    recordCallFailure(decodeRhToken()?.sub ?? null, modelRefKey(ref), chatRes.message)
+    return { ok: false, needLogin: chatRes.needLogin, message: chatRes.message || "对话测试失败，请稍后重试" }
   }
   recordModelSuccess(decodeRhToken()?.sub ?? null, modelRefKey(ref))
-  return { ok: true, reply: res.reply, elapsedMs: res.elapsed_ms ?? Date.now() - startedAt }
+  // 成功调用/chat 说明接口可达 + 对话可用
+  return { ok: true, reply: chatRes.reply, elapsedMs: chatRes.elapsed_ms ?? Date.now() - startedAt }
 }
