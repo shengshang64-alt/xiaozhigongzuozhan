@@ -1997,37 +1997,47 @@ export function useBidWorkspace() {
     if (next) setProjects((prev) => prev.map((p) => (p.id === next.id ? next : p)))
   }
 
+  /**
+   * R82：返回值改为 PATCH 的响应体（原返回 void，52 处调用方均忽略返回值，行为零变化）。
+   * 供「保存后回读校验」用——PB 对不存在的列会 HTTP 200 但静默丢弃字段，
+   * 只有检查响应体才知道这次写入到底生效没有。
+   */
   const persistProject = useCallback(async (rec: BidProjectRecord, patch: Partial<BidProjectRecord>, quiet = false) => {
     const prev = persistChain.get(rec.id) ?? Promise.resolve()
     const run = prev.catch(() => undefined).then(() =>
-      apiFetch(`/api/bid_projects/${rec.id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+      apiFetch<Record<string, unknown>>(`/api/bid_projects/${rec.id}`, { method: "PATCH", body: JSON.stringify(patch) }),
     )
-    persistChain.set(rec.id, run)
+    const tail = run.then(() => undefined)
+    persistChain.set(rec.id, tail)
     try {
-      await run
+      const saved = await run
       if (quiet) {
         setAutoSaveState("saved")
         if (autoSaveResetRef.current) window.clearTimeout(autoSaveResetRef.current)
         autoSaveResetRef.current = window.setTimeout(() => setAutoSaveState("idle"), 2000)
       }
+      return saved
     } catch (e) {
       if (quiet) setAutoSaveState("idle")
       // R56：带服务端真实原因（1MB 上限事故就是被"请检查网络"吞掉后才拖了一整天）
       if (!quiet) toast.error(`保存失败：${saveFailureReason(e)}（内容未落库，请勿刷新）`)
+      return null
     } finally {
-      if (persistChain.get(rec.id) === run) persistChain.delete(rec.id)
+      if (persistChain.get(rec.id) === tail) persistChain.delete(rec.id)
     }
   }, [])
 
   const updateProject = useCallback(
-    (patch: Partial<BidProjectRecord>, opts?: { persist?: boolean; quiet?: boolean }) => {
+    (patch: Partial<BidProjectRecord>, opts?: { persist?: boolean; quiet?: boolean }): Promise<Record<string, unknown> | null> | undefined => {
       const cur = activeProjectRef.current
-      if (!cur) return
+      if (!cur) return undefined
       const merged: BidProjectRecord = { ...cur, ...patch }
       const nextStage: BidStage = patch.stage ?? deriveStage({ ...merged, stage: cur.stage })
       const next: BidProjectRecord = { ...merged, stage: nextStage }
       applyProjectState(next)
-      if (opts?.persist !== false) void persistProject(next, { ...patch, stage: nextStage }, opts?.quiet)
+      // R82：把 PATCH 响应体透传出去（原返回 void，调用方忽略返回值的写法不受影响）
+      if (opts?.persist === false) return Promise.resolve(null)
+      return persistProject(next, { ...patch, stage: nextStage }, opts?.quiet)
     },
     [persistProject],
   )
@@ -7684,6 +7694,12 @@ const kbEmptyHintShown = new Set<string>()
   /**
    * UX-R3 S12：主观分逐条确认——写 bid_projects.subjective_confirmations（S12 新增 json 列）。
    * 与 stage_gates 同款「确认留痕」口径：勾选即补时间戳、取消即清时间戳；不阻断流程，只做提醒与留痕。
+   *
+   * R82（2026-11-08）：**保存后回读校验**。实测发现运行中的 PocketBase 若还没有该列
+   * （hook 改了但服务未重启，`addField` 迁移未执行），`rec.set()` 不抛错、接口返回 200，
+   * 但字段被静默丢弃——旧实现走 `quiet: true` 乐观更新，UI 立刻显示「已确认」，
+   * 刷新后全部消失（用户以为存上了）。这里改为：PATCH 后检查响应体里是否真的带回了该字段，
+   * 没有就明确告知「未生效」，而不是假装成功。
    */
   const setSubjectiveConfirmation = useCallback(
     (id: string, patch: { confirmed?: boolean; strategy?: string }) => {
@@ -7691,7 +7707,15 @@ const kbEmptyHintShown = new Set<string>()
       const cur = activeProjectRef.current
       if (!cur) return
       const next = withSubjectiveConfirmation(cur.subjective_confirmations, id, patch)
-      updateProject({ subjective_confirmations: next }, { quiet: true })
+      void updateProject({ subjective_confirmations: next }, { quiet: true })?.then((saved) => {
+        // PB 对该列不存在时的行为：HTTP 200，但响应体里没有这个字段 → 静默丢弃。
+        // 这里如实告知，避免用户以为「已确认」而刷新后全部丢失。
+        if (saved && !("subjective_confirmations" in saved)) {
+          toast.error(
+            "主观分确认未生效：服务端还没有 subjective_confirmations 列（需重启 PocketBase 执行建列迁移），本次勾选刷新后会丢失",
+          )
+        }
+      })
     },
     [blockIfArchived, updateProject],
   )

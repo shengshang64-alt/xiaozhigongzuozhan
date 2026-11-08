@@ -1,8 +1,8 @@
 {
-  "round": 81,
+  "round": 82,
   "lastRound": {
-    "id": "R081",
-    "theme": "B46 技术偏离表长列表实测+分页：实测 200 行 = 4224 DOM 节点/338 button/225ms（超 1500 门槛）→ 每页 100 行后 2151 节点/−49%、118ms；跨页组头如实标注「本页 X/全部 Y」",
+    "id": "R082",
+    "theme": "R3 尾工核查：S5/S11 实测确认真落地；S12 发现「保存是假的」（PB 无 subjective_confirmations 列，PATCH 返回 200 静默丢弃字段）→ 修为回读校验 + 明确告知未生效",
     "verdict": "pass"
   },
   "eslintBaseline": 114,
@@ -17,6 +17,12 @@
     "eslint": "pass"
   },
   "backlog": [
+    {
+      "id": "B48-pb-restart-subjective-column",
+      "priority": "high",
+      "source": "self-found(R82)",
+      "title": "S12 主观分确认要真正可用，必须重启 :7000 PocketBase 一次：subjective_confirmations 列由 pb_hooks/bid_projects.pb.js 的 addField 在启动时建，当前 PB 进程（Nov 6 启动）早于 hook 修改（Nov 8），列不存在。实测 PATCH 该字段返回 200 但静默丢弃。R82 已让前端在此时明确提示「未生效」，但持久化要等重启。需用户择机重启，我未擅自结束进程（沿用 R69 纪律）。"
+    },
     {
       "id": "B47-loop-state-ledger-drift",
       "priority": "medium",
@@ -479,6 +485,12 @@
     {
       "id": "R81",
       "theme": "B46 技术偏离表分页（实测 4224→2151 节点，−49%；真实项目蚌埠 76.2 万字验证）",
+      "verdict": "pass",
+      "at": "2026-11-08"
+    },
+    {
+      "id": "R82",
+      "theme": "R3 尾工核查(S5/S11/S12) + 修 S12 静默丢弃（回读校验，反向验证有效）",
       "verdict": "pass",
       "at": "2026-11-08"
     }
