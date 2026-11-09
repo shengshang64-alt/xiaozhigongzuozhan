@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小智工作站 · 69 屏截图总览</title>
+<link rel="stylesheet" href="prototype/assets/design.css">
+<style>
+  body{background:var(--bg)}
+  .hub{max-width:1720px;margin:0 auto;padding:0 0 60px}
+  .hero{background:linear-gradient(120deg,#0B2430,#0E4A5E 55%,#0E7C99);color:#fff;padding:26px 34px 22px}
+  .hero h1{font-size:22px;font-weight:680;letter-spacing:-.02em}
+  .hero p{font-size:12.5px;opacity:.86;margin-top:6px;max-width:1000px;line-height:1.7}
+  .toolbar{position:sticky;top:0;z-index:50;background:#fff;border-bottom:1px solid var(--line);
+    padding:9px 34px;display:flex;gap:7px;flex-wrap:wrap;align-items:center;box-shadow:var(--sh-1)}
+  .toolbar button{border:1px solid var(--line-3);background:#fff;color:var(--ink-2);padding:5px 11px;
+    border-radius:var(--r-pill);font-size:12px;cursor:pointer;font-weight:500}
+  .toolbar button:hover{border-color:var(--primary-300);color:var(--primary-700)}
+  .toolbar button.on{background:var(--primary);border-color:var(--primary);color:#fff}
+  .toolbar .sp{flex:1}
+  .toolbar .cnt{font-size:11.5px;color:var(--ink-4);font-family:var(--font-mono)}
+  .wrap{padding:20px 34px 0}
+  .grp{margin-bottom:26px}
+  .grp-h{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .grp-h h2{font-size:15px;font-weight:650}
+  .grp-h .n{font-size:10.5px;color:var(--ink-4);font-family:var(--font-mono);background:var(--bg-2);border-radius:var(--r-pill);padding:1px 8px}
+  .grp-h .line{flex:1;height:1px;background:var(--line)}
+  .grp-h .mod{font-size:11px;color:var(--primary-700);background:var(--primary-50);border:1px solid var(--primary-100);border-radius:var(--r-pill);padding:1px 8px}
+  .gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
+  .shot{background:#fff;border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden;
+    box-shadow:var(--sh-1);transition:.14s;display:flex;flex-direction:column}
+  .shot:hover{box-shadow:var(--sh-3);border-color:var(--primary-300);transform:translateY(-1px)}
+  .shot .thumb{display:block;width:100%;height:auto;flex:none;background:var(--bg-2);aspect-ratio:16/10.4;overflow:hidden;position:relative}
+  .shot .thumb img{width:100%;height:100%;width:100%;height:100%;object-fit:cover;object-position:top center;display:block}
+  .shot .meta{display:flex;align-items:center;gap:7px;padding:9px 11px;border-top:1px solid var(--line-2)}
+  .shot .meta .no{font-family:var(--font-mono);font-size:10px;color:var(--ink-5);flex:0 0 auto}
+  .shot .meta b{font-size:12.3px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .shot .meta .tag{font-size:10px;color:var(--ink-4);background:var(--bg-2);border-radius:var(--r-xs);padding:1px 6px;flex:0 0 auto}
+  .shot .desc{font-size:11px;color:var(--ink-3);padding:0 11px 10px;line-height:1.55;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  @media(max-width:900px){.gal{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="hub">
+  <div class="hero">
+    <h1>小智工作站 · 69 屏截图总览 <span style="font-size:11px;font-weight:500;opacity:.75;border:1px solid rgba(255,255,255,.3);padding:2px 8px;border-radius:99px">1600×1100 视口 · 全页截图</span></h1>
+    <p>每张都是完整页面截图（fullPage）。点缩略图可打开对应静态原型。全部 69 屏实测：侧栏 16 项一致、页头齐全、翻屏条齐全、滚动高度 ≤1,600px。</p>
+  </div>
+  <div class="toolbar" id="bar"></div>
+  <div class="wrap" id="wrap"></div>
+</div>
+<script src="prototype/assets/manifest.js"></script>
+<script>
+(function(){
+  const P = window.PROTO;
+  const flat = [];
+  P.nav.forEach(g => g.items.forEach(it => {
+    const m = P.mods[it.mod];
+    if (!m) return;
+    m.screens.forEach((s, i) => flat.push({ ...s, mod: it.mod, modLabel: m.label, group: g.group, idx: i, total: m.screens.length }));
+  }));
+
+  let filter = "all";
+  const groups = [...new Set(P.nav.map(g => g.group))];
+
+  document.getElementById("bar").innerHTML =
+    `<button class="on" data-f="all">全部 <span class="cnt">${flat.length}</span></button>` +
+    groups.map(g => `<button data-f="${g}">${g}</button>`).join("") +
+    `<span class="sp"></span><span class="cnt" id="vis"></span>
+     <a class="btn btn--sm" href="prototype/index.html">打开原型总入口 →</a>`;
+
+  function render() {
+    const rows = flat.filter(f => filter === "all" || f.group === filter);
+    let html = "", curGroup = "";
+    rows.forEach(f => {
+      if (f.group !== curGroup) {
+        if (curGroup) html += `</div>`;
+        curGroup = f.group;
+        const n = flat.filter(x => x.group === f.group).length;
+        html += `<div class="grp"><div class="grp-h"><h2>${f.group}</h2><span class="n">${n} 屏</span><div class="line"></div></div><div class="gal">`;
+      }
+      const no = String(flat.indexOf(f) + 1).padStart(2, "0");
+      html += `<div class="shot">
+        <a class="thumb" href="prototype/${f.file}" target="_blank"><img loading="lazy" src="shots/${f.id}.png" alt="${f.modLabel} · ${f.tab}"></a>
+        <div class="meta"><span class="no">${no}</span><b>${f.modLabel} · ${f.tab}</b><span class="tag">${f.total > 1 ? f.idx + 1 + "/" + f.total : "单屏"}</span></div>
+        <div class="desc">${f.desc || ""}</div>
+      </div>`;
+    });
+    if (curGroup) html += `</div></div>`;
+    document.getElementById("wrap").innerHTML = html;
+    document.getElementById("vis").textContent = `显示 ${rows.length} / ${flat.length} 屏`;
+  }
+  render();
+
+  document.getElementById("bar").addEventListener("click", e => {
+    const b = e.target.closest("button[data-f]");
+    if (!b) return;
+    document.querySelectorAll("#bar button[data-f]").forEach(x => x.classList.remove("on"));
+    b.classList.add("on");
+    filter = b.dataset.f;
+    render();
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>建设清单 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="solution" data-screen="solution-checklist" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>建设清单<span class="badge badge--blue">立项阶段</span></h1>
+          <div class="desc">把客户需求原文转成<b>可报价的系统清单</b>，再一键转成方案大纲。清单独立于编辑器：它服务立项与报价，不参与正文写作。</div>
+          <div class="meta">
+            <span class="kv">客户 <b>顾县人民医院</b></span>
+            <span class="kv">系统 <b>9</b> 项</span>
+            <span class="kv">合计 <b>698.0 万</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn">导入需求原文</button>
+          <button class="btn">导出清单 Excel</button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：建设清单是方案工作室的第二个 Tab，与方案列表平铺，实际只被用了 1 次却占了导航一级入口；金额与系统清单没有与正文建立映射关系。<b>拆后</b>：独立成屏，三步走完「录入需求 → 生成系统清单 → 转大纲」，每项系统带勾选与建议金额。</div>
+      </div>
+
+      <div class="steps">
+        <div class="step done"><div class="n">1</div><div class="tx"><b>录入需求</b><span>已完成 · 4 段原文</span></div></div>
+        <div class="step on"><div class="n">2</div><div class="tx"><b>生成系统清单</b><span>进行中 · 9 项已确认 7 项</span></div></div>
+        <div class="step"><div class="n">3</div><div class="tx"><b>转大纲</b><span>待开始</span></div></div>
+      </div>
+
+      <div class="split split--l-wide">
+
+        <!-- 左：系统清单树 -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>系统清单</h3>
+              <span class="sub">9 项 · 已勾 7 项</span>
+              <div class="grow"></div>
+              <button class="btn btn--sm">＋ 加系统</button>
+            </div>
+            <div class="card-b tight">
+              <label class="check" style="display:flex;width:100%;padding:6px 8px"><input type="checkbox" checked> HIS 核心业务系统（升级） <span class="grow"></span><span class="mono small">168.0 万</span></label>
+              <label class="check" style="display:flex;width:100%;padding:6px 8px"><input type="checkbox" checked> EMR 电子病历（五级） <span class="grow"></span><span class="mono small">126.0 万</span></label>
+              <label class="check" style="display:flex;width:100%;padding:6px 8px"><input type="checkbox" checked> LIS 检验系统 <span class="grow"></span><span class="mono small">58.0 万</span></label>
+              <label class="check" style="display:flex;width:100%;padding:6px 8px"><input type="checkbox" checked> PACS 影像系统 <span class="grow"></span><span class="mono small">72.0 万</span></label>
+              <label class="check" style="display:flex;width:100%;padding:6px 8px"><input type="checkbox" checked> 集成平台（ESB 升级） <span class="grow"></span><span class="mono small">86.0 万</span></label>
+              <label class="check" style="display:flex;width:100%;padding:6px 8px"><input type="checkbox" checked> 数据中台与主数据治理 <span class="grow"></span><span class="mono small">98.0 万</span></label>
+              <label class="check" style="display:flex;width:100%;padding:6px 8px"><input type="checkbox" checked> 移动护理与输液闭环 <span class="grow"></span><span class="mono small">42.0 万</span></label>
+              <label class="check" style="display:flex;width:100%;padding:6px 8px"><input type="checkbox"> 互联网医院与掌上服务 <span class="grow"></span><span class="mono small">36.0 万</span></label>
+              <label class="check" style="display:flex;width:100%;padding:6px 8px"><input type="checkbox"> 等保三级安全加固 <span class="grow"></span><span class="mono small">12.0 万</span></label>
+            </div>
+            <div class="card-f row small">
+              <span class="muted">设备 210.0 · 软件 268.0 · 实施 120.0 · 服务 60.0 · 税 40.0</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>一键从知识库推荐</h3><span class="sub">按需求关键词 + 同区域中标记录</span></div>
+            <div class="card-b col col--gap-12">
+              <div class="row wrap">
+                <button class="btn btn--sm">从知识库推荐系统</button>
+                <button class="btn btn--sm">参考同类立项清单</button>
+              </div>
+              <div class="small b">推荐理由</div>
+              <div class="list-row" style="border:0;padding:6px">
+                <span class="badge badge--primary">1</span>
+                <div class="grow"><div class="s">需求 15「危急值 5 分钟上报」在 3 个同区域二级医院项目里都靠 <b>LIS + 集成平台</b> 实现，已自动勾选</div></div>
+              </div>
+              <div class="list-row" style="border:0;padding:6px">
+                <span class="badge badge--primary">2</span>
+                <div class="grow"><div class="s">顾县人民医院 2026 年预算口径含「互联互通四甲」，<b>数据中台</b>必须有，金额参考同类 98.0 万</div></div>
+              </div>
+              <div class="list-row" style="border:0;padding:6px">
+                <span class="badge badge--primary">3</span>
+                <div class="grow"><div class="s">院内已有 ESB，<b>集成平台</b>按升级计价（86.0 万）而非新建（约 140 万）</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 中 + 右 -->
+        <div class="split split--r">
+
+          <div class="col col--gap-16">
+            <div class="card">
+              <div class="card-h">
+                <h3>需求原文</h3>
+                <span class="sub">4 段 · 已映射 22 条</span>
+                <div class="grow"></div>
+                <span class="badge badge--green">已映射到清单</span>
+              </div>
+              <div class="card-b col col--gap-12" style="line-height:1.75">
+                <div class="hairline p12">
+                  <div class="row mb8"><span class="badge badge--green">已映射</span><span class="tiny muted-2">需求 1–6 · HIS / EMR / LIS</span></div>
+                  <p class="small">一、核心业务系统升级。医院现有 HIS 于 2019 年上线，需在不停机前提下完成升级，支持门急诊、住院、药房、医保结算全流程，并与电子病历系统做双向数据同步。</p>
+                </div>
+                <div class="hairline p12">
+                  <div class="row mb8"><span class="badge badge--green">已映射</span><span class="tiny muted-2">需求 7–12 · PACS / 移动护理</span></div>
+                  <p class="small">二、影像与护理。影像系统需支持云胶片调阅，门诊与住院均可通过移动端查看；护理需实现输液闭环管理，从医嘱、配液到执行扫码全流程可追溯。</p>
+                </div>
+                <div class="hairline p12">
+                  <div class="row mb8"><span class="badge badge--green">已映射</span><span class="tiny muted-2">需求 13–18 · 集成平台 / 数据中台</span></div>
+                  <p class="small">三、数据与集成。建设统一数据中台，完成患者主索引、主数据治理与历史数据清洗；集成平台需支持 HL7 V2.x 与 FHIR R4，向省级平台上传互联互通四甲要求的共享文档。</p>
+                </div>
+                <div class="hairline p12">
+                  <div class="row mb8"><span class="badge badge--amber">部分映射</span><span class="tiny muted-2">需求 19–22 · 安全与实施</span></div>
+                  <p class="small">四、安全与实施。系统需满足等保三级要求，提供双活机房切换演练方案；实施周期不超过 8 个月，上线后提供 3 年运维服务，驻场不少于 2 人。</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col col--gap-16">
+            <div class="card">
+              <div class="card-h"><h3>金额汇总</h3><span class="sub">含税</span></div>
+              <div class="card-b">
+                <div class="kv-row"><span class="k">设备</span><span class="v mono">210.0 万</span></div>
+                <div class="kv-row"><span class="k">软件</span><span class="v mono">268.0 万</span></div>
+                <div class="kv-row"><span class="k">实施</span><span class="v mono">120.0 万</span></div>
+                <div class="kv-row"><span class="k">服务（3 年）</span><span class="v mono">60.0 万</span></div>
+                <div class="kv-row"><span class="k">税</span><span class="v mono">40.0 万</span></div>
+                <div class="divider"></div>
+                <div class="row"><span class="b">合计</span><span class="grow"></span><span class="mono b" style="font-size:19px">698.0 万</span></div>
+                <p class="small muted-2 mt8">占客户 2026 年信息化预算 800 万的 87%，留 102 万空间给监理与培训。</p>
+              </div>
+              <div class="card-f col col--gap-4">
+                <button class="btn btn--sm btn--primary">生成大纲</button>
+                <span class="tiny muted-2">按勾选的 7 项生成 10 章大纲，未勾选项不写进正文</span>
+              </div>
+            </div>
+
+            <div class="alert alert--amber">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+              <div class="grow"><b>2 项未勾选</b>（互联网医院、等保加固）会在大纲里缺少对应章节，投标时可能被判「未响应」。</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>
+

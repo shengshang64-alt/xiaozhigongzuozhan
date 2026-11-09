@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>应标视角 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="competitor" data-screen="competitor-bidview" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>应标视角<span class="badge badge--primary">默认视图</span></h1>
+          <div class="desc">售前打开竞品分析，真正要回答的是三句话：<b>这标谁会来、他们大概报多少、我们该怎么打</b>。输入医院或项目，直接给结论。行业大盘与厂商档案分别收在「市场总览」与「厂商档案」。</div>
+          <div class="meta">
+            <span class="kv">覆盖中标记录 <b>2,318</b> 条</span>
+            <span class="kv">厂商档案 <b>15</b> 家</span>
+            <span class="kv">数据更新 <b>2026-11-01</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg><span>刷新数据</span></button>
+          <button class="btn">最近查询</button>
+          <button class="btn" data-toast="已按「厦门市中医院」重新分析（示例）">＋ 新建查询</button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：默认 Tab 是「市场总览」——四张亿级大盘卡 + 五年排行条形图，回答的是行业研究问题（原页 6,103 节点 / 1,641px，且悬停/点击全无反馈）。<b>拆后</b>：默认改成本屏，输入即得「谁可能来 + 报多少 + 怎么打」；市场总览降为第二 Tab，能力对标与厂商档案各承担一个后续动作。</div>
+      </div>
+
+      <!-- 查询区 -->
+      <div class="card mb16">
+        <div class="card-b">
+          <div class="row" style="gap:12px;align-items:flex-end;flex-wrap:wrap">
+            <div class="field" style="flex:1 1 340px">
+              <label class="label">医院 / 项目名称</label>
+              <input class="input" value="厦门市中医院 · 信息化整体提升（含电子病历评级）">
+            </div>
+            <div class="field" style="flex:0 0 150px">
+              <label class="label">时间范围</label>
+              <div class="dd">
+                <button class="btn" style="width:100%;justify-content:space-between" data-dd><span data-dd-label>近 3 年</span>
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+                <div class="dd-menu" style="width:100%">
+                  <div class="dd-item" data-label="近 1 年">近 1 年</div>
+                  <div class="dd-item on" data-label="近 3 年">近 3 年<span class="tick">✓</span></div>
+                  <div class="dd-item" data-label="近 5 年">近 5 年</div>
+                </div>
+              </div>
+            </div>
+            <div class="field" style="flex:0 0 150px">
+              <label class="label">项目类型</label>
+              <div class="dd">
+                <button class="btn" style="width:100%;justify-content:space-between" data-dd><span data-dd-label>同类（HIS/EMR）</span>
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+                <div class="dd-menu" style="width:100%">
+                  <div class="dd-item on" data-label="同类（HIS/EMR）">同类（HIS/EMR）<span class="tick">✓</span></div>
+                  <div class="dd-item" data-label="全院信息化">全院信息化</div>
+                  <div class="dd-item" data-label="数据中台">数据中台</div>
+                </div>
+              </div>
+            </div>
+            <button class="btn btn--primary" style="flex:0 0 auto">分析</button>
+          </div>
+          <div class="row small muted-2 mt12" style="gap:8px">
+            <span>已匹配 <b class="b">该院 6 条历史中标</b> · <b class="b">同类项目 5 条</b></span>
+            <span class="vdiv"></span>
+            <span>匹配依据：采购单位名称 + 三级医院 + 项目类型</span>
+            <span class="grow"></span>
+            <button class="btn btn--sm btn--ghost">查看匹配明细</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="split split--main">
+        <!-- 左：三块结论 -->
+        <div class="col col--gap-16">
+
+          <!-- ① 该院历史中标厂商 Top3 -->
+          <div class="card">
+            <div class="card-h">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>该院历史中标厂商 Top3</h3>
+              <span class="sub">厦门市中医院 · 近 3 年 6 条中标记录</span>
+              <div class="grow"></div>
+              <a class="btn btn--link" href="profile.html">全部厂商 →</a>
+            </div>
+            <div class="card-b flush">
+              <div class="tbl-wrap" style="border:0;box-shadow:none;border-radius:0">
+                <table class="tbl">
+                  <thead><tr><th>厂商</th><th class="num">中标次数</th><th class="num">中标总金额</th><th>最近中标</th><th>常用品牌 / 产品</th></tr></thead>
+                  <tbody>
+                    <tr>
+                      <td class="name">卫宁健康 <span class="badge badge--red">最强对手</span><div class="sub">上市公司 · 医疗信息化市占第一</div></td>
+                      <td class="num"><b>3</b></td>
+                      <td class="num"><b>842 万</b></td>
+                      <td class="mono small">2026-06-18</td>
+                      <td class="small">WiNEX 一体化 · WiNGPT</td>
+                    </tr>
+                    <tr>
+                      <td class="name">东软集团<div class="sub">老牌综合 IT · 医保系统强势</div></td>
+                      <td class="num">2</td>
+                      <td class="num">516 万</td>
+                      <td class="mono small">2025-09-02</td>
+                      <td class="small">RealOne HIS/EMR</td>
+                    </tr>
+                    <tr>
+                      <td class="name">创业慧康<div class="sub">院端 + 区域双轮</div></td>
+                      <td class="num">1</td>
+                      <td class="num">198 万</td>
+                      <td class="mono small">2024-11-25</td>
+                      <td class="small">HI-HIS · 慧康云</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="card-f small"><span class="red b">判断</span>：该院近 3 次公开招标均由卫宁健康中标，且金额逐年上升（198 万 → 284 万 → 360 万）。</div>
+          </div>
+
+          <!-- ② 价格区间 -->
+          <div class="card">
+            <div class="card-h">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg>价格区间 · 近 5 次同类项目中标价</h3>
+              <span class="sub">同类 = 三级中医院 HIS/EMR 升级，含集成平台</span>
+              <div class="grow"></div>
+              <span class="badge badge--gray">单位：万元</span>
+            </div>
+            <div class="card-b">
+              <div class="chart-bars">
+                <div class="cbar"><span class="k">2024-11 创业慧康</span><span class="track"><i class="fill" style="width:55%"></i></span><span class="v">198</span></div>
+                <div class="cbar"><span class="k">2025-04 某省级厂商</span><span class="track"><i class="fill" style="width:66%"></i></span><span class="v">238</span></div>
+                <div class="cbar"><span class="k">2025-09 东软集团</span><span class="track"><i class="fill" style="width:70%"></i></span><span class="v">252</span></div>
+                <div class="cbar"><span class="k">2026-06 卫宁健康</span><span class="track"><i class="fill" style="width:82%"></i></span><span class="v">296</span></div>
+                <div class="cbar"><span class="k">2026-10 卫宁健康</span><span class="track"><i class="fill gray" style="width:100%"></i></span><span class="v">360</span></div>
+              </div>
+              <div class="divider"></div>
+              <div class="row wrap" style="gap:10px 22px">
+                <div class="small"><span class="muted-2">同类均价</span> <b class="mono">268 万</b></div>
+                <div class="small"><span class="muted-2">区间</span> <b class="mono">198 – 360 万</b></div>
+                <div class="small"><span class="muted-2">我方上次报价</span> <b class="mono red">286 万</b> <span class="badge badge--orange">高于均价 6.7%</span></div>
+                <div class="grow"></div>
+                <span class="small muted-2">报价位置以「同口径建设内容」折算，不含运维</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ③ 常用参数倾向 -->
+          <div class="card">
+            <div class="card-h">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6h16M7 12h10M10 18h4"/></svg>常用参数倾向（从该院 3 份招标文件反推）</h3>
+              <div class="grow"></div>
+              <a class="btn btn--link" href="../bid/parse.html">看原文条款 →</a>
+            </div>
+            <div class="card-b flush">
+              <div class="list" style="border:0;box-shadow:none;border-radius:0">
+                <div class="list-row">
+                  <span class="badge badge--blue">1</span>
+                  <div class="grow"><div class="t">倾向国产化与信创目录内产品</div><div class="s">3 份文件均要求「数据库、中间件、操作系统须在信创目录内」，并附国产化率承诺函</div></div>
+                  <span class="badge badge--green">我方满足</span>
+                </div>
+                <div class="list-row">
+                  <span class="badge badge--blue">2</span>
+                  <div class="grow"><div class="t">指定某品牌数据库（达梦 / 人大金仓二选一）</div><div class="s">评分办法第 4.2 条：「数据库须提供原厂适配证明」，隐含限定范围</div></div>
+                  <span class="badge badge--amber">需补证明</span>
+                </div>
+                <div class="list-row">
+                  <span class="badge badge--blue">3</span>
+                  <div class="grow"><div class="t">要求本地化部署 + 驻场运维</div><div class="s">合同条款要求「验收后 3 年驻场，响应 ≤2 小时」，纯云方案会被判不响应</div></div>
+                  <span class="badge badge--green">我方满足</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 右：应标建议 -->
+        <div class="col col--gap-16 aside-sticky">
+          <div class="card">
+            <div class="card-h"><h3>应标建议</h3><div class="grow"></div><span class="badge badge--primary">3 条</span></div>
+            <div class="card-b col col--gap-12">
+              <div class="alert alert--red" style="margin:0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+                <div class="grow small">该院<b>近 3 次均为卫宁中标</b>，硬碰价格没有胜算。建议走<b>差异化报价</b>：把集成平台与数据治理拆成独立包件报价，用我方中型项目交付优势（500–1000 万区间占比 37%）换技术分。</div>
+              </div>
+              <div class="alert alert--amber" style="margin:0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                <div class="grow small">评分办法中<b>技术分占 55%</b>（价格 30% / 商务 15%），需重点覆盖：电子病历分级评价、互联互通测评、DRG 能力三项，各配 1 个同等级医院案例。</div>
+              </div>
+              <div class="alert alert--blue" style="margin:0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg>
+                <div class="grow small">上次同类项目<b>均价 268 万，我方上次报 286 万偏高</b>。建议本次报价落在 <b>255–265 万</b>，并单列「国产化适配」「3 年驻场」两项不计入比价。</div>
+              </div>
+              <button class="btn btn--sm" data-toast="已把 3 条建议带入标书大纲（示例）" style="width:100%">带入标书大纲</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>该院速览</h3></div>
+            <div class="card-b">
+              <div class="kv-row"><span class="k">医院等级</span><span class="v">三级甲等 · 中医</span></div>
+              <div class="kv-row"><span class="k">近 3 年信息化</span><span class="v">6 个项目 · 1,556 万</span></div>
+              <div class="kv-row"><span class="k">预算区间</span><span class="v mono">180 – 360 万</span></div>
+              <div class="kv-row"><span class="k">常用代理机构</span><span class="v">厦门市公物投资管理</span></div>
+              <div class="kv-row"><span class="k">评标办法</span><span class="v">综合评分法（技术 55）</span></div>
+            </div>
+            <div class="card-f"><a class="btn btn--link" href="profile.html">查看完整厂商档案 →</a></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mt16">
+        <div class="card-b row">
+          <div class="grow small muted">本屏只给结论。想做竞品单品深挖（中标记录 / 常用参数 / 报价区间 / 竞争话术），进厂商档案；想比产品能力，进能力对标。</div>
+          <a class="btn btn--sm" href="benchmark.html">能力对标</a>
+          <a class="btn btn--sm" href="profile.html">查看完整厂商档案 →</a>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>问知识库 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="kb" data-screen="kb-qa" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>问知识库<span class="badge badge--green">3 轮问答</span></h1>
+          <div class="desc">这一屏只做一件事：<b>用大白话提问，答案必须带得回来源</b>。每个结论后面都有 [1][2] 编号，点编号跳到那篇文档那一行；右侧把检索过程摊开给你看——召回了什么、重排后用了什么。</div>
+          <div class="meta">
+            <span class="kv">检索范围 <b>团队知识库 + 我的笔记</b></span>
+            <span class="kv">本次召回 <b>5 个片段</b></span>
+            <span class="kv">采用 <b>3 个片段</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn" data-toast="已新建会话（示例）">新建会话</button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：问不到内容时只有一句「知识库中没找到与这个问题相关的内容」，用户分不清是<b>没检索到</b>还是<b>库里真没资料</b>，于是得出"这个知识库不好用"的结论；答案也没有出处，不敢往标书里抄。<b>拆后</b>：答案带 [1][2] 编号 + 来源卡片；右侧摊开检索过程；未命中与真无资料用两条不同文案区分下一步。</div>
+      </div>
+
+      <div class="split split--r">
+        <!-- 左：对话 -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h">
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                会话
+              </h3>
+              <span class="sub">答案只引用库里真实存在的片段，不编造</span>
+              <div class="grow"></div>
+              <span class="badge badge--green badge--dot">已溯源 6 处</span>
+            </div>
+            <div class="card-b col col--gap-16">
+
+              <!-- 快捷问题 -->
+              <div class="row wrap" data-chips>
+                <span class="chip">四甲要改多少数据元？</span>
+                <span class="chip">等保三级有几条控制点？</span>
+                <span class="chip">电子病历五级要求什么？</span>
+              </div>
+
+              <!-- 第 1 轮 -->
+              <div class="col col--gap-8">
+                <div class="row top" style="gap:9px">
+                  <span class="badge badge--gray">我</span>
+                  <div class="grow">
+                    <div class="hairline p12">
+                      <div class="small">互联互通四甲到底要改多少个数据元？两个方案里写的数不一样。</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="row top" style="gap:9px">
+                  <span class="badge badge--primary">智</span>
+                  <div class="grow">
+                    <div class="hairline p12">
+                      <div class="small" style="line-height:1.75">
+                        按库里《互联互通标准化成熟度测评方案（四甲部分）》的口径，四甲要求完成 <b>43 个数据元</b>的标准化改造，覆盖患者基本信息、就诊记录、检验检查、医嘱处方四类业务域 [1]。<br>
+                        你看到另一个「38 个」来自内部整理的政策汇编，那份文件没有标注版本与出处，且与原文冲突（差异 11.6%）[2]。<b>对外投标请用 43 这个数，并注明依据测评方案原文。</b>
+                      </div>
+                      <div class="divider" style="margin:10px 0"></div>
+                      <div class="row wrap" style="gap:8px">
+                        <span class="badge badge--primary">[1]</span>
+                        <span class="tiny">互联互通标准化成熟度测评方案（四甲部分） · 第 8 页</span>
+                        <div class="grow"></div>
+                        <button class="btn btn--sm btn--ghost" data-toast="已打开原文第 8 页（示例）">打开原文</button>
+                      </div>
+                      <div class="row wrap mt4" style="gap:8px">
+                        <span class="badge badge--amber">[2]</span>
+                        <span class="tiny">政策法规汇编（内部整理） · 第 3 页 · 已被标为「冲突/待裁决」</span>
+                        <div class="grow"></div>
+                        <button class="btn btn--sm btn--ghost" data-toast="已打开原文第 3 页（示例）">打开原文</button>
+                      </div>
+                      <div class="row mt8">
+                        <span class="badge badge--green">答案置信：高</span>
+                        <span class="tiny muted-2">2 个来源互相印证 + 1 个冲突来源已标出</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 第 2 轮 -->
+              <div class="col col--gap-8">
+                <div class="row top" style="gap:9px">
+                  <span class="badge badge--gray">我</span>
+                  <div class="grow">
+                    <div class="hairline p12">
+                      <div class="small">那这个改造一般要多久？有没有做过的案例可以参考？</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="row top" style="gap:9px">
+                  <span class="badge badge--primary">智</span>
+                  <div class="grow">
+                    <div class="hairline p12">
+                      <div class="small" style="line-height:1.75">
+                        库里有两个可参考的案例：<br>
+                        · 宣城市人民医院四甲项目：43 个数据元改造 + 3 轮内部模拟自评，从启动到测评约 <b>7 个月</b> [3]；<br>
+                        · 三明市中西医结合医院：同期并行电子病历五级与四甲，整体周期 <b>9 个月</b>，其中四甲模块占 4 个月 [4]。<br>
+                        两个案例都把「3 轮模拟自评」列为必做项——这一项在答疑里经常被追问。
+                      </div>
+                      <div class="divider" style="margin:10px 0"></div>
+                      <div class="grid g2" style="gap:8px">
+                        <div class="hairline" style="padding:8px 10px">
+                          <div class="row"><span class="badge badge--primary">[3]</span><span class="tiny b trunc">宣城市人民医院四甲建设方案</span></div>
+                          <div class="tiny muted-2 mt4">第 12 页 · 实施计划</div>
+                        </div>
+                        <div class="hairline" style="padding:8px 10px">
+                          <div class="row"><span class="badge badge--primary">[4]</span><span class="tiny b trunc">三明市中西医结合医院技术方案</span></div>
+                          <div class="tiny muted-2 mt4">第 21 页 · 项目周期</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 第 3 轮 -->
+              <div class="col col--gap-8">
+                <div class="row top" style="gap:9px">
+                  <span class="badge badge--gray">我</span>
+                  <div class="grow">
+                    <div class="hairline p12">
+                      <div class="small">DRG 智能分组我们有没有现成能力？</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="row top" style="gap:9px">
+                  <span class="badge badge--amber">智</span>
+                  <div class="grow">
+                    <div class="alert alert--amber" style="margin:0">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+                      <div class="grow">
+                        <b>这个问题我答不了，但不能编。</b><br>
+                        在团队知识库 2,175 篇 + 我的笔记 4,825 条里，没有检索到与「DRG 智能分组」相关的片段（召回 0 个）。这不等于我们没有这个能力——可能资料只在你的本机硬盘里，而本机全文检索（AnyTXT）未启用。<br>
+                        建议：① 换个词再问（如「DRG 分组器」「病种分值付费」）；② 上传相关产品资料后我再答。
+                      </div>
+                    </div>
+                    <div class="row mt8">
+                      <button class="btn btn--sm" data-toast="已改用「DRG 分组器」重问（示例）">换个词再问</button>
+                      <a class="btn btn--sm" href="upload.html">上传相关文档</a>
+                      <div class="grow"></div>
+                      <span class="tiny muted-2">已记入待补答队列</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 输入 -->
+              <div class="hairline" style="padding:8px 10px">
+                <div class="row" style="gap:8px">
+                  <input class="input" style="border:0;box-shadow:none;height:30px" placeholder="接着问 —— 如「四甲测评的评审专家一般问什么」">
+                  <button class="btn btn--sm btn--icon" title="附加文档" data-toast="已添加附件（示例）">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>
+                  </button>
+                  <button class="btn btn--sm btn--primary" data-toast="已发送（示例）">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>
+                    发送
+                  </button>
+                </div>
+              </div>
+              <div class="tiny muted-2">答案只基于检索到的库内片段；检索不到时会直说，不会拿模型知识补。</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右：检索过程 -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h">
+              <h3>检索过程</h3>
+              <div class="grow"></div>
+              <span class="badge badge--gray">召回 5 · 采用 3</span>
+            </div>
+            <div class="card-b col col--gap-8">
+              <div class="tiny muted-2">① 召回（按关键词与向量混合检索，取前 5）</div>
+              <div class="list" style="box-shadow:none">
+                <div class="list-row" style="padding:8px 10px">
+                  <span class="badge badge--green">采用</span>
+                  <div class="grow" style="min-width:0">
+                    <div class="t" style="font-size:12px">互联互通测评方案（四甲）</div>
+                    <div class="s trunc">相关度 0.94 · 第 8 页</div>
+                  </div>
+                </div>
+                <div class="list-row" style="padding:8px 10px">
+                  <span class="badge badge--green">采用</span>
+                  <div class="grow" style="min-width:0">
+                    <div class="t" style="font-size:12px">政策法规汇编（内部整理）</div>
+                    <div class="s trunc">相关度 0.87 · 已标冲突</div>
+                  </div>
+                </div>
+                <div class="list-row" style="padding:8px 10px">
+                  <span class="badge badge--green">采用</span>
+                  <div class="grow" style="min-width:0">
+                    <div class="t" style="font-size:12px">宣城市人民医院四甲方案</div>
+                    <div class="s trunc">相关度 0.82 · 第 12 页</div>
+                  </div>
+                </div>
+                <div class="list-row" style="padding:8px 10px">
+                  <span class="badge badge--gray">舍弃</span>
+                  <div class="grow" style="min-width:0">
+                    <div class="t" style="font-size:12px">电子病历分级评价标准</div>
+                    <div class="s trunc">相关度 0.61 · 只提数据元未给数</div>
+                  </div>
+                </div>
+                <div class="list-row" style="padding:8px 10px">
+                  <span class="badge badge--gray">舍弃</span>
+                  <div class="grow" style="min-width:0">
+                    <div class="t" style="font-size:12px">PPT 中医特色方案</div>
+                    <div class="s trunc">相关度 0.44 · 主题不相关</div>
+                  </div>
+                </div>
+              </div>
+              <div class="tiny muted-2 mt4">② 重排后取前 3 作为答案依据，其余不进答案。</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>未命中 vs 真无资料</h3></div>
+            <div class="card-b col col--gap-8">
+              <div class="alert alert--blue" style="margin:0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                <div class="grow">
+                  <b>未命中</b> = 没检索到相关片段。可能是问法与原文用词不同，或资料还没入库。<b>下一步：换词、放宽范围、或启用本机全文检索。</b>
+                </div>
+              </div>
+              <div class="alert alert--blue" style="margin:0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                <div class="grow">
+                  <b>真无资料</b> = 检索到了相关片段，但内容不覆盖这个问题。<b>下一步：补充对应文档，或记入待补答队列。</b>
+                </div>
+              </div>
+              <div class="divider" style="margin:2px 0"></div>
+              <div class="row small"><span class="dot amber"></span><span>前者是"找不到"，后者是"找到了但没写"</span></div>
+              <div class="row small"><span class="dot green"></span><span>两种都绝不编造，都会记入待补答队列</span></div>
+              <div class="tiny muted-2">刚才第 3 轮问「DRG 智能分组」属于<b>未命中</b>：召回 0 个片段，库里确实没有相关文档。</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>会话可检索</h3></div>
+            <div class="card-b col col--gap-8">
+              <div class="small muted">这次会话会存进历史，下次搜「四甲 数据元」能翻到。</div>
+              <div class="row">
+                <a class="btn btn--sm" href="search.html">在检索中查会话</a>
+                <button class="btn btn--sm btn--ghost" data-toast="已清空当前会话（示例）">清空会话</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

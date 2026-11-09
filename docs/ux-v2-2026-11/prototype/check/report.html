@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>检查报告 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="check" data-screen="check-report" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>检查报告<span class="badge badge--red">23 个问题（阻断 2 / 警告 8 / 提示 13）</span></h1>
+          <div class="desc">这一屏只回答一件事：<b>哪几条必改、改在哪一页哪一段</b>。每条都能跳回原文位置；改完回「新建检查」重跑一次，或在「历史报告」对比新旧两次的差异。</div>
+        </div>
+        <div class="ph-actions">
+          <a class="btn" href="history.html">对比历史</a>
+          <button class="btn btn--primary" data-toast="正在生成带批注的 docx（示例）">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/></svg>
+            导出带批注的 docx
+          </button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：检查结果与「规则清单」挤在一个 Tab 里，问题只有一句标题，点不开原文；导出只有笼统的「导出」按钮，不知道导出什么格式、批注写到哪。<b>拆后</b>：报告独立成屏，左表给「级别 / 规则 / 描述 / 原文位置 / 定位」五要素，右侧按规则包看分布，导出三格式写清各自用途。</div>
+      </div>
+
+      <!-- 文件信息条 -->
+      <div class="databar">
+        <div class="item">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" class="muted-2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          <b style="font-family:var(--font);font-size:12.5px">蚌埠医科大学第一附属医院智慧医疗核心_终版.docx</b>
+        </div>
+        <div class="item">模式 <b>暗标严格</b></div>
+        <div class="item">耗时 <b>1:32</b></div>
+        <div class="item">规则包 <b>v3.2</b></div>
+        <div class="item">检查于 <b>2026-11-08 09:14</b></div>
+        <div class="grow"></div>
+        <div class="item"><span class="badge badge--red">阻断 2 项必改后方可交卷</span></div>
+      </div>
+
+      <div class="split" style="grid-template-columns:minmax(0,1fr) 380px">
+        <div class="col col--gap-16">
+
+          <!-- 问题清单 -->
+          <div class="card">
+            <div class="card-h">
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+                问题清单
+              </h3>
+              <span class="sub">按严重度排序，阻断项已置顶</span>
+              <div class="grow"></div>
+              <div class="row" data-chips>
+                <span class="chip on">全部 <span class="n">23</span></span>
+                <span class="chip">阻断 <span class="n">2</span></span>
+                <span class="chip">警告 <span class="n">8</span></span>
+                <span class="chip">提示 <span class="n">13</span></span>
+              </div>
+            </div>
+            <div class="card-b flush">
+              <div class="tbl-wrap" style="border:0;box-shadow:none;border-radius:0">
+                <table class="tbl">
+                  <thead>
+                    <tr>
+                      <th style="width:64px">级别</th>
+                      <th style="width:200px">规则名</th>
+                      <th>问题描述</th>
+                      <th style="width:150px">原文位置</th>
+                      <th class="w-ops" style="width:132px">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><span class="badge badge--red">阻断</span></td>
+                      <td class="name" style="font-size:12.5px">公司名称泄露 <span class="sub">L5-A1</span></td>
+                      <td class="small">第 3 章出现「智业软件股份有限公司」全称，暗标出现即判废</td>
+                      <td class="small mono">第 12 页 / 第 3 段</td>
+                      <td class="w-ops"><span class="row-ops">
+                        <button class="btn btn--sm" data-toast="已定位到第 12 页第 3 段">定位</button>
+                        <button class="btn btn--sm btn--ghost" data-toast="已忽略本条（可在「已忽略」中恢复）">忽略</button>
+                      </span></td>
+                    </tr>
+                    <tr>
+                      <td><span class="badge badge--red">阻断</span></td>
+                      <td class="name" style="font-size:12.5px">作者 / 最后保存者泄露 <span class="sub">L5-B1</span></td>
+                      <td class="small">文档属性 dc:creator、cp:lastModifiedBy 均非空，可反查编制人</td>
+                      <td class="small mono">文档属性 / core.xml</td>
+                      <td class="w-ops"><span class="row-ops">
+                        <button class="btn btn--sm" data-toast="已定位到文档属性面板">定位</button>
+                        <button class="btn btn--sm btn--ghost" data-toast="已忽略本条">忽略</button>
+                      </span></td>
+                    </tr>
+                    <tr>
+                      <td><span class="badge badge--orange">警告</span></td>
+                      <td class="name" style="font-size:12.5px">页眉页脚泄露 <span class="sub">L5-B8</span></td>
+                      <td class="small">页眉含公司简称，暗标要求页眉仅保留裸页码</td>
+                      <td class="small mono">页眉 / 第 5、12、23 页</td>
+                      <td class="w-ops"><span class="row-ops">
+                        <button class="btn btn--sm" data-toast="已定位到页眉">定位</button>
+                        <button class="btn btn--sm btn--ghost" data-toast="已忽略本条">忽略</button>
+                      </span></td>
+                    </tr>
+                    <tr>
+                      <td><span class="badge badge--orange">警告</span></td>
+                      <td class="name" style="font-size:12.5px">品牌 / 产品名泄露 <span class="sub">L5-A2</span></td>
+                      <td class="small">正文出现「ONE-LINK6.0」专有平台名，应改为通用功能描述</td>
+                      <td class="small mono">第 18 页 / 第 2 段</td>
+                      <td class="w-ops"><span class="row-ops">
+                        <button class="btn btn--sm" data-toast="已定位到第 18 页第 2 段">定位</button>
+                        <button class="btn btn--sm btn--ghost" data-toast="已忽略本条">忽略</button>
+                      </span></td>
+                    </tr>
+                    <tr>
+                      <td><span class="badge badge--orange">警告</span></td>
+                      <td class="name" style="font-size:12.5px">正文字体不一致 <span class="sub">L1-1</span></td>
+                      <td class="small">正文同时出现仿宋_GB2312 与宋体，同一层级应统一为一种</td>
+                      <td class="small mono">第 6~31 页 / 共 7 处</td>
+                      <td class="w-ops"><span class="row-ops">
+                        <button class="btn btn--sm" data-toast="已定位到第 6 页">定位</button>
+                        <button class="btn btn--sm btn--ghost" data-toast="已忽略本条">忽略</button>
+                      </span></td>
+                    </tr>
+                    <tr>
+                      <td><span class="badge badge--orange">警告</span></td>
+                      <td class="name" style="font-size:12.5px">正文字号不一致 <span class="sub">L1-2</span></td>
+                      <td class="small">小四（12pt）与小四加粗外挂 10.5pt 混用，共 4 处</td>
+                      <td class="small mono">第 8、15、27、34 页</td>
+                      <td class="w-ops"><span class="row-ops">
+                        <button class="btn btn--sm" data-toast="已定位到第 8 页">定位</button>
+                        <button class="btn btn--sm btn--ghost" data-toast="已忽略本条">忽略</button>
+                      </span></td>
+                    </tr>
+                    <tr>
+                      <td><span class="badge badge--orange">警告</span></td>
+                      <td class="name" style="font-size:12.5px">行距 / 段间距不统一 <span class="sub">L1-3</span></td>
+                      <td class="small">全文检测到 3 种行距（1.5 倍 / 固定 28 磅 / 单倍）</td>
+                      <td class="small mono">document.xml</td>
+                      <td class="w-ops"><span class="row-ops">
+                        <button class="btn btn--sm" data-toast="已定位到第 9 页">定位</button>
+                        <button class="btn btn--sm btn--ghost" data-toast="已忽略本条">忽略</button>
+                      </span></td>
+                    </tr>
+                    <tr>
+                      <td><span class="badge badge--orange">警告</span></td>
+                      <td class="name" style="font-size:12.5px">标题层级编号断裂 <span class="sub">L1-4</span></td>
+                      <td class="small">出现 4.2.1 但缺 4.2，暗标评审常据此判「章节不完整」</td>
+                      <td class="small mono">第 24 页 / 标题</td>
+                      <td class="w-ops"><span class="row-ops">
+                        <button class="btn btn--sm" data-toast="已定位到第 24 页">定位</button>
+                        <button class="btn btn--sm btn--ghost" data-toast="已忽略本条">忽略</button>
+                      </span></td>
+                    </tr>
+                    <tr>
+                      <td><span class="badge badge--orange">警告</span></td>
+                      <td class="name" style="font-size:12.5px">金额大小写一致性 <span class="sub">L1-T9</span></td>
+                      <td class="small">报价大写「贰佰捌拾陆万元整」与小写 286.0 万不一致</td>
+                      <td class="small mono">第 41 页 / 第 2 段</td>
+                      <td class="w-ops"><span class="row-ops">
+                        <button class="btn btn--sm" data-toast="已定位到第 41 页第 2 段">定位</button>
+                        <button class="btn btn--sm btn--ghost" data-toast="已忽略本条">忽略</button>
+                      </span></td>
+                    </tr>
+                    <tr>
+                      <td><span class="badge badge--orange">警告</span></td>
+                      <td class="name" style="font-size:12.5px">★ 条款正文回应核对 <span class="sub">L2-R1</span></td>
+                      <td class="small">3 条 ★ 条款正文未见逐字响应，丢分风险（未判废，需人工确认）</td>
+                      <td class="small mono">第 5 章 / 第 6 节</td>
+                      <td class="w-ops"><span class="row-ops">
+                        <button class="btn btn--sm" data-toast="已定位到第 5 章">定位</button>
+                        <button class="btn btn--sm btn--ghost" data-toast="已忽略本条">忽略</button>
+                      </span></td>
+                    </tr>
+                    <tr>
+                      <td><span class="badge badge--amber">提示</span></td>
+                      <td class="name" style="font-size:12.5px">章节正文单薄 <span class="sub">L3-C1</span></td>
+                      <td class="small">「7.3 培训方案」正文仅 96 字，低于配置阈值 300 字</td>
+                      <td class="small mono">第 36 页 / 7.3 节</td>
+                      <td class="w-ops"><span class="row-ops">
+                        <button class="btn btn--sm" data-toast="已定位到第 36 页">定位</button>
+                        <button class="btn btn--sm btn--ghost" data-toast="已忽略本条">忽略</button>
+                      </span></td>
+                    </tr>
+                    <tr>
+                      <td><span class="badge badge--amber">提示</span></td>
+                      <td class="name" style="font-size:12.5px">页码检测 <span class="sub">L1-6</span></td>
+                      <td class="small">未检测到页码域，若招标要求页码需补充（暗标口径另见 L5-C6）</td>
+                      <td class="small mono">页脚 / document.xml</td>
+                      <td class="w-ops"><span class="row-ops">
+                        <button class="btn btn--sm" data-toast="已定位到页脚">定位</button>
+                        <button class="btn btn--sm btn--ghost" data-toast="已忽略本条">忽略</button>
+                      </span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="tbl-foot">
+                <span>共 23 条 · 本页 12 条</span>
+                <div class="vdiv"></div>
+                <span class="small muted-2">已忽略 0 条</span>
+                <div class="grow"></div>
+                <div class="pager">
+                  <button disabled>‹</button><button class="on">1</button><button>2</button><button>›</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="fold">
+            <div class="fold-h" data-fold>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" style="width:15px;height:15px"><path d="M20 6 9 17l-5-5"/></svg>
+              已忽略的问题 <span class="badge badge--gray">0 条</span>
+              <span class="grow"></span>
+              <span class="small muted-2">默认收起</span>
+            </div>
+            <div class="fold-b" style="display:none">
+              <div class="empty empty--plain">
+                <h4>还没有忽略任何问题</h4>
+                <p>确认是误报时点行内「忽略」，条目会挪到这里，导出报告时不出现，但原文定位仍可回查。</p>
+                <div class="acts"><button class="btn btn--sm" data-toast="已回到问题清单">回到问题清单</button></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 右列 -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h">
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg>
+                按规则包分布
+              </h3>
+              <div class="grow"></div>
+              <span class="small muted-2">共 23</span>
+            </div>
+            <div class="card-b">
+              <div class="col col--gap-8">
+                <div class="row"><span class="small" style="width:76px">格式规则包</span><div class="bar grow" style="height:14px"><i style="width:100%"></i></div><span class="mono small" style="width:38px;text-align:right">9 个</span></div>
+                <div class="row"><span class="small" style="width:76px">暗标规则包</span><div class="bar grow" style="height:14px"><i style="width:67%"></i></div><span class="mono small" style="width:38px;text-align:right">6 个</span></div>
+                <div class="row"><span class="small" style="width:76px">内容规则包</span><div class="bar grow" style="height:14px"><i style="width:56%"></i></div><span class="mono small" style="width:38px;text-align:right">5 个</span></div>
+                <div class="row"><span class="small" style="width:76px">响应规则包</span><div class="bar grow" style="height:14px"><i style="width:33%"></i></div><span class="mono small" style="width:38px;text-align:right">3 个</span></div>
+                <div class="row"><span class="small muted" style="width:76px">查重规则包</span><div class="bar grow" style="height:14px"><i style="width:0"></i></div><span class="mono small muted-2" style="width:38px;text-align:right">0 个</span></div>
+              </div>
+              <div class="divider"></div>
+              <div class="row small">
+                <span class="badge badge--red">阻断 2</span>
+                <span class="badge badge--orange">警告 8</span>
+                <span class="badge badge--amber">提示 13</span>
+              </div>
+              <div class="small muted mt8">阻断项全在暗标规则包——这就是必须用暗标严格模式跑的原因。</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>导出报告</h3><span class="sub">三种格式，用途不同</span></div>
+            <div class="card-b col col--gap-8">
+              <div class="list" style="box-shadow:none">
+                <div class="list-row" style="padding:9px 10px">
+                  <div class="grow">
+                    <div class="t" style="font-size:12.5px">批注 docx</div>
+                    <div class="s">问题写进 Word 批注，直接给编制人改</div>
+                  </div>
+                  <button class="btn btn--sm" data-toast="正在生成批注 docx（示例）">导出</button>
+                </div>
+                <div class="list-row" style="padding:9px 10px">
+                  <div class="grow">
+                    <div class="t" style="font-size:12.5px">Excel 整改清单</div>
+                    <div class="s">逐条派活：责任人 / 截止 / 状态</div>
+                  </div>
+                  <button class="btn btn--sm" data-toast="正在导出 Excel（示例）">导出</button>
+                </div>
+                <div class="list-row" style="padding:9px 10px">
+                  <div class="grow">
+                    <div class="t" style="font-size:12.5px">HTML 报告</div>
+                    <div class="s">可发给领导看，含原文定位截图位</div>
+                  </div>
+                  <button class="btn btn--sm" data-toast="正在生成 HTML 报告（示例）">导出</button>
+                </div>
+              </div>
+              <div class="alert alert--amber">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+                <div class="grow">还有 <b>2 个阻断项</b>未处理，导出仅供内部整改，<b>不可直接交卷</b>。</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>生成修复建议</h3></div>
+            <div class="card-b">
+              <div class="small muted">把 23 条问题整理成「先改哪条、怎么改、改完怎么验」的清单。需要联网（只发送命中的句子片段，不发整篇文档）。</div>
+              <button class="btn btn--sm mt12" style="width:100%" data-toast="已生成修复建议：2 条必改 → 8 条建议改（示例）">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg>
+                生成修复建议
+              </button>
+              <div class="tiny muted-2 mt8">也可直接在「新建检查」里重跑一次验证是否清零。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

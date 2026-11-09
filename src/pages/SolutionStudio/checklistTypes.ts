@@ -412,3 +412,76 @@ export function parseMatchJson(text: string): { customer: string; product: strin
     return []
   }
 }
+
+
+// ---------------------------------------------------------------------------
+// UX-v2 屏 B：需求原文分段 / 映射 / 万元展示（纯函数，无 JSX）
+// ---------------------------------------------------------------------------
+
+export type ReqSegmentMapping = "mapped" | "partial" | "unmapped"
+
+export type RequirementSegment = {
+  id: string
+  text: string
+  lineIds: string[]
+  mapping: ReqSegmentMapping
+  /** 命中的系统名，供段头小字展示；无则空 */
+  hitLabels: string[]
+}
+
+/** 元 → 「698.0 万」（一位小数）。无有效数字时仍返回 0.0 万，调用方决定是否改显示「—」。 */
+export function formatAmountWan(yuan: number): string {
+  const n = Number(yuan)
+  const wan = Number.isFinite(n) ? n / 10000 : 0
+  return `${wan.toFixed(1)} 万`
+}
+
+/**
+ * 把 customer_raw 拆成展示段：优先空行分段，其次「一、/1.」类标题，再次按单行。
+ * 空字符串 → []。
+ */
+export function parseRequirementSegments(raw: string): { id: string; text: string }[] {
+  const t = (raw ?? "").replace(/\r\n/g, "\n").trim()
+  if (!t) return []
+  let parts = t.split(/\n\s*\n/).map((s) => s.trim()).filter(Boolean)
+  if (parts.length === 1) {
+    const numbered = t
+      .split(/(?=(?:^|\n)\s*(?:[一二三四五六七八九十百]+、|\d+\s*[.、]|[（(][一二三四五六七八九十\d]+[)）]))/u)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    if (numbered.length > 1) parts = numbered
+    else {
+      const lines = t.split("\n").map((s) => s.trim()).filter(Boolean)
+      parts = lines.length >= 2 ? lines : [t]
+    }
+  }
+  return parts.map((text, i) => ({ id: `seg-${i + 1}`, text }))
+}
+
+/**
+ * 段 ↔ 清单行映射（最小增量，不改后端模型）：
+ * 若段文本包含某行的产品名或模块名（长度 ≥ 2），则关联该行。
+ * 已映射 = 有命中且命中行均已勾选；部分映射 = 有命中但存在未勾选；未映射 = 无命中。
+ */
+export function mapRequirementSegments(raw: string, lines: ChecklistLine[]): RequirementSegment[] {
+  const usable = (lines ?? []).filter((l) => {
+    const a = (l.product_name ?? "").trim()
+    const b = (l.module_name ?? "").trim()
+    return a.length >= 2 || b.length >= 2
+  })
+  return parseRequirementSegments(raw).map((seg) => {
+    const hits = usable.filter((l) => {
+      const names = [(l.product_name ?? "").trim(), (l.module_name ?? "").trim()].filter((n) => n.length >= 2)
+      return names.some((n) => seg.text.includes(n))
+    })
+    const checkedHits = hits.filter((l) => l.checked !== false)
+    let mapping: ReqSegmentMapping = "unmapped"
+    if (hits.length === 0) mapping = "unmapped"
+    else if (checkedHits.length === hits.length) mapping = "mapped"
+    else mapping = "partial"
+    const hitLabels = Array.from(
+      new Set(hits.map((l) => (l.product_name ?? "").trim()).filter(Boolean)),
+    )
+    return { id: seg.id, text: seg.text, lineIds: hits.map((l) => l.line_id), mapping, hitLabels }
+  })
+}

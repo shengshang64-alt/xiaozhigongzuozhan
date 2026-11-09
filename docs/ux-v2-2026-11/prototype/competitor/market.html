@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>市场总览 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="competitor" data-screen="competitor-market" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>市场总览<span class="badge badge--gray">行业研究视角</span></h1>
+          <div class="desc">这一屏回答<b>「这个盘子有多大、钱被谁拿走了」</b>，用于季度规划与市场判断，不是日常应标用的。应标前请回「应标视角」查具体医院与厂商。</div>
+          <div class="meta">
+            <span class="kv">数据口径 <b>剑鱼标讯</b></span>
+            <span class="kv">统计区间 <b>2021–2025</b></span>
+            <span class="kv">数据更新时间 <b>2026-11-01</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn btn--primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/></svg><span>导出市场简报</span></button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：这是原竞品分析的<b>默认 Tab</b>——四张亿级大盘卡 + 排行条形图占首屏，售前找「这标谁可能来」要滚 1,641px 还得不到答案；口径说明条常驻最顶部，占了黄金位置。<b>拆后</b>：降级为第二 Tab，口径说明默认折叠，首屏直接给「盘子 + 份额 + 趋势」三个结论。</div>
+      </div>
+
+      <div class="split split--main">
+        <div class="col col--gap-16">
+
+          <!-- 市场规模四卡 -->
+          <div class="stat-row" style="margin-bottom:0">
+            <div class="stat is-primary">
+              <div class="lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4M8 6h.01M16 6h.01M8 10h.01M16 10h.01"/></svg>医疗信息化市场</div>
+              <div class="val">181.9<small>亿</small></div>
+              <div class="foot">2025 百万级以上政府采购 · 同比 <span class="green">+30%</span></div>
+            </div>
+            <div class="stat is-blue">
+              <div class="lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>电子病历</div>
+              <div class="val">42.2<small>亿</small></div>
+              <div class="foot">含运营商 · 移动 21.3 亿居首</div>
+            </div>
+            <div class="stat is-green">
+              <div class="lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg>数据中台</div>
+              <div class="val">53.7<small>亿</small></div>
+              <div class="foot">15 家核心厂商口径 · 2024 见底后回升</div>
+            </div>
+            <div class="stat is-amber">
+              <div class="lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>互联互通</div>
+              <div class="val">23.7<small>亿</small></div>
+              <div class="foot">千万级大单 · 111 个 · 均价 2,123 万</div>
+            </div>
+          </div>
+
+          <!-- 五年中标金额排行 -->
+          <div class="card">
+            <div class="card-h">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg>五年中标金额排行（2021–2025）</h3>
+              <span class="sub">15 家核心厂商 · 母公司投标口径，不含运营商与第三方总集</span>
+              <div class="grow"></div>
+              <a class="btn btn--sm" href="benchmark.html">去能力对标</a>
+            </div>
+            <div class="card-b">
+              <div class="chart-bars">
+                <div class="cbar"><span class="k">卫宁健康</span><span class="track"><i class="fill" style="width:100%"></i></span><span class="v">58.8 亿</span></div>
+                <div class="cbar"><span class="k">东软集团</span><span class="track"><i class="fill" style="width:71.8%"></i></span><span class="v">42.2 亿</span></div>
+                <div class="cbar"><span class="k">创业慧康</span><span class="track"><i class="fill" style="width:53.4%"></i></span><span class="v">31.4 亿</span></div>
+                <div class="cbar"><span class="k">万达信息</span><span class="track"><i class="fill" style="width:40.3%"></i></span><span class="v">23.7 亿</span></div>
+                <div class="cbar"><span class="k">深信服</span><span class="track"><i class="fill" style="width:32.1%"></i></span><span class="v">18.9 亿</span></div>
+                <div class="cbar"><span class="k">你司（智业软件）</span><span class="track"><i class="fill gray" style="width:3.8%"></i></span><span class="v">2.25 亿</span></div>
+              </div>
+              <div class="divider"></div>
+              <div class="row wrap small muted-2" style="gap:8px 20px">
+                <span>前五名合计 <b class="b">174.9 亿</b>，占 15 家核心厂商 <b class="b">60.9%</b></span>
+                <span class="vdiv"></span>
+                <span>我方排名 <b class="b">第 15</b> · 项目数 152 个，单项目均价偏低</span>
+                <span class="grow"></span>
+                <span class="tiny">点击条形可进厂商档案（原型仅示意）</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 年度趋势 -->
+          <div class="card">
+            <div class="card-h">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/></svg>年度中标趋势（15 家核心厂商口径，亿元）</h3>
+              <div class="grow"></div>
+              <span class="badge badge--amber">2024 为见底年</span>
+            </div>
+            <div class="card-b">
+              <div class="vbars">
+                <div class="col"><span class="n">76.2</span><div class="b" style="height:86px;flex:0 0 auto"></div><span class="l">2021</span></div>
+                <div class="col"><span class="n">71.1</span><div class="b" style="height:80px;flex:0 0 auto"></div><span class="l">2022</span></div>
+                <div class="col"><span class="n">57.1</span><div class="b" style="height:65px;flex:0 0 auto"></div><span class="l">2023</span></div>
+                <div class="col"><span class="n">50.4</span><div class="b mut" style="height:57px;flex:0 0 auto"></div><span class="l">2024</span></div>
+                <div class="col"><span class="n">53.7</span><div class="b" style="height:61px;flex:0 0 auto"></div><span class="l">2025</span></div>
+              </div>
+              <div class="row small mt12" style="gap:8px 20px">
+                <span class="muted"><span class="dot amber"></span> 连续三年下滑后在 2025 回升 <b class="green">+6.5%</b></span>
+                <span class="grow"></span>
+                <span class="muted-2 tiny">结论：大盘在收缩，头部集中度上升 → 中型项目是唯一还有增量的战场</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 右列 -->
+        <div class="col col--gap-16 aside-sticky">
+          <div class="card">
+            <div class="card-h"><h3>数据口径说明</h3><div class="grow"></div><span class="badge badge--gray">默认收起</span></div>
+            <div class="card-b">
+              <div class="fold">
+                <div class="fold-h" data-fold>
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                  <span>这份数据怎么来的 ▾</span>
+                  <div class="grow"></div>
+                  <span class="small muted-2">2021–2025</span>
+                </div>
+                <div class="fold-b" style="display:none">
+                  剑鱼标讯，全医疗行业 100 万元以上政府采购中标项目（含建设、维保、接口及分子公司），2021–2025。行业大盘含运营商总集；「15 家核心厂商」为母公司投标口径、不含运营商/第三方总集。软著仅作参考，不作对照主线。
+                </div>
+              </div>
+              <div class="kv-row mt12"><span class="k">数据来源</span><span class="v">剑鱼标讯（中标公告）</span></div>
+              <div class="kv-row"><span class="k">金额门槛</span><span class="v">≥ 100 万元</span></div>
+              <div class="kv-row"><span class="k">更新时间</span><span class="v mono"><b>2026-11-01</b></span></div>
+              <div class="kv-row"><span class="k">下次更新</span><span class="v mono">2026-12-01</span></div>
+            </div>
+            <div class="card-f small muted-2">口径变更会在此处留变更记录，历史简报不受影响</div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>金额区间结构（2025）</h3></div>
+            <div class="card-b col col--gap-12">
+              <div>
+                <div class="row small"><span>1000 万以上</span><span class="grow"></span><span class="mono b">44%</span></div>
+                <div class="bar mt4"><i style="width:44%"></i></div>
+              </div>
+              <div>
+                <div class="row small"><span>100–500 万</span><span class="grow"></span><span class="mono">25%</span></div>
+                <div class="bar mt4"><i style="width:25%"></i></div>
+              </div>
+              <div>
+                <div class="row small"><span>500–1000 万</span><span class="grow"></span><span class="mono">17%</span></div>
+                <div class="bar mt4"><i style="width:17%"></i></div>
+              </div>
+              <div>
+                <div class="row small"><span>100 万以下</span><span class="grow"></span><span class="mono">13%</span></div>
+                <div class="bar mt4"><i style="width:13%"></i></div>
+              </div>
+              <div class="small muted-2">我方在 500–1000 万区间占比 37%（行业 17%），这是唯一的结构性优势</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

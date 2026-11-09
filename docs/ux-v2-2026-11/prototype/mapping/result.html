@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>③ 结果 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="mapping" data-screen="mapping-result" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>③ 结果<span class="badge badge--green">已完成</span></h1>
+          <div class="desc">对照结果<strong>是这一屏的主角</strong>：128 行逐行可查，A/B/C 三级覆盖评级决定哪些条目能进方案大纲。右上角三种导出，分别服务投标、报价与方案三条线。</div>
+          <div class="meta">
+            <span class="kv">清单 <b>宣城市人民医院-系统清单.xlsx</b></span>
+            <span class="kv">对照完成 <b>2026-11-08 09:47</b></span>
+            <span class="kv">耗时 <b>18 秒</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/></svg><span>导出 Excel 对照表</span></button>
+          <button class="btn" data-toast="已重新对照（示例）">重新对照</button>
+          <a class="btn" href="compare.html">返回对照</a>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：结果区只是页面底部的一行灰色小字「上传清单后此处展示对照结果」，页面上 70% 是空白——作为向导任务的终点，它反而最没有存在感。<b>拆后</b>：结果表升为视觉主角，顶部 5 个关键数字，未匹配行红色置顶可筛，三种导出按用途分开。</div>
+      </div>
+
+      <div class="stat-row c5">
+        <div class="stat">
+          <div class="lab">总行数</div>
+          <div class="val">128</div>
+          <div class="foot">来自 1 份清单</div>
+        </div>
+        <div class="stat is-green">
+          <div class="lab">已匹配</div>
+          <div class="val">121</div>
+          <div class="foot">自动 96 · 人工确认 25</div>
+        </div>
+        <div class="stat is-red">
+          <div class="lab">未匹配</div>
+          <div class="val">7</div>
+          <div class="foot"><b>需人工判定后</b>才能带入大纲</div>
+        </div>
+        <div class="stat is-blue">
+          <div class="lab">A 级覆盖</div>
+          <div class="val">84</div>
+          <div class="foot">B 级 26 · C 级 11</div>
+        </div>
+        <div class="stat is-primary">
+          <div class="lab">覆盖得分</div>
+          <div class="val">91.2</div>
+          <div class="foot">≥ 85 分可带入方案</div>
+        </div>
+      </div>
+
+      <div class="split split--r">
+
+        <!-- 主：结果表 -->
+        <div class="col col--gap-16">
+          <div class="tbl-wrap">
+            <div class="row" style="padding:9px 12px;border-bottom:1px solid var(--line);gap:8px;flex-wrap:wrap">
+              <div class="row" data-chips>
+                <span class="chip on">全部 <span class="n">128</span></span>
+                <span class="chip">未匹配 <span class="n">7</span></span>
+                <span class="chip">A 级 <span class="n">84</span></span>
+                <span class="chip">B/C 级 <span class="n">37</span></span>
+              </div>
+              <div class="grow"></div>
+              <div class="search" style="max-width:220px;min-width:180px">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                <input class="input" placeholder="搜索原文 / 产品 / 厂商">
+              </div>
+            </div>
+            <div class="tbl-scroll">
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th style="width:52px">序号</th>
+                  <th>需求原文</th>
+                  <th>匹配产品</th>
+                  <th>厂商</th>
+                  <th class="num" style="width:64px">评分</th>
+                  <th class="center" style="width:88px">覆盖评级</th>
+                  <th class="w-ops">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="mono">1</td>
+                  <td class="name clip">门急诊挂号收费系统</td>
+                  <td>智康门急诊信息系统 V8.0</td>
+                  <td>智康医疗科技</td>
+                  <td class="num">96</td>
+                  <td class="center"><span class="badge badge--green">A</span></td>
+                  <td class="w-ops"><span class="row-ops"><button class="btn btn--sm">改</button></span></td>
+                </tr>
+                <tr>
+                  <td class="mono">2</td>
+                  <td class="name clip">住院医生工作站</td>
+                  <td>智康住院医护工作站 V6.5</td>
+                  <td>智康医疗科技</td>
+                  <td class="num">94</td>
+                  <td class="center"><span class="badge badge--green">A</span></td>
+                  <td class="w-ops"><span class="row-ops"><button class="btn btn--sm">改</button></span></td>
+                </tr>
+                <tr>
+                  <td class="mono">3</td>
+                  <td class="name clip">电子病历系统（含质控、护理文书）</td>
+                  <td>智康电子病历系统 V6.2</td>
+                  <td>智康医疗科技</td>
+                  <td class="num">94</td>
+                  <td class="center"><span class="badge badge--green">A</span></td>
+                  <td class="w-ops"><span class="row-ops"><button class="btn btn--sm">改</button></span></td>
+                </tr>
+                <tr>
+                  <td class="mono">4</td>
+                  <td class="name clip">集成平台 V3.0（含 ESB 与消息队列）</td>
+                  <td>智康集成平台 V3.0</td>
+                  <td>智康医疗科技</td>
+                  <td class="num">88</td>
+                  <td class="center"><span class="badge badge--green">A</span></td>
+                  <td class="w-ops"><span class="row-ops"><button class="btn btn--sm">改</button></span></td>
+                </tr>
+                <tr>
+                  <td class="mono">5</td>
+                  <td class="name clip">床旁结算与自助机（12 台）</td>
+                  <td class="muted-2">— 无候选</td>
+                  <td class="muted-2">—</td>
+                  <td class="num muted-2">—</td>
+                  <td class="center"><span class="badge badge--red">未匹配</span></td>
+                  <td class="w-ops"><span class="row-ops"><button class="btn btn--sm">指定产品</button></span></td>
+                </tr>
+                <tr>
+                  <td class="mono">6</td>
+                  <td class="name clip">医学影像系统 PACS</td>
+                  <td>智康影像归档与通信系统 V5.2</td>
+                  <td>智康医疗科技</td>
+                  <td class="num">92</td>
+                  <td class="center"><span class="badge badge--green">A</span></td>
+                  <td class="w-ops"><span class="row-ops"><button class="btn btn--sm">改</button></span></td>
+                </tr>
+                <tr>
+                  <td class="mono">7</td>
+                  <td class="name clip">检验信息系统 LIS</td>
+                  <td>智康检验信息系统 V4.6</td>
+                  <td>智康医疗科技</td>
+                  <td class="num">90</td>
+                  <td class="center"><span class="badge badge--green">A</span></td>
+                  <td class="w-ops"><span class="row-ops"><button class="btn btn--sm">改</button></span></td>
+                </tr>
+                <tr>
+                  <td class="mono">8</td>
+                  <td class="name clip">超声内镜图文报告</td>
+                  <td>智康影像归档与通信系统 V5.2<span class="sub">归入 PACS 子模块 · 待确认</span></td>
+                  <td>智康医疗科技</td>
+                  <td class="num">72</td>
+                  <td class="center"><span class="badge badge--amber">B</span></td>
+                  <td class="w-ops"><span class="row-ops"><button class="btn btn--sm">改</button></span></td>
+                </tr>
+                <tr>
+                  <td class="mono">9</td>
+                  <td class="name clip">数据中台（主数据 + 患者主索引）</td>
+                  <td>智康数据中台 V2.1</td>
+                  <td>智康医疗科技</td>
+                  <td class="num">91</td>
+                  <td class="center"><span class="badge badge--green">A</span></td>
+                  <td class="w-ops"><span class="row-ops"><button class="btn btn--sm">改</button></span></td>
+                </tr>
+                <tr>
+                  <td class="mono">10</td>
+                  <td class="name clip">排队叫号（软硬件一体）</td>
+                  <td class="muted-2">— 无候选</td>
+                  <td class="muted-2">—</td>
+                  <td class="num muted-2">—</td>
+                  <td class="center"><span class="badge badge--red">未匹配</span></td>
+                  <td class="w-ops"><span class="row-ops"><button class="btn btn--sm">指定产品</button></span></td>
+                </tr>
+              </tbody>
+            </table>
+            </div>
+            <div class="tbl-foot">
+              <span>显示 1–10 / 共 128 行 · 未匹配 7 行需处理</span>
+              <span class="grow"></span>
+              <div class="pager"><button disabled>‹</button><button class="on">1</button><button>2</button><button>3</button><button>…</button><button>13</button><button>›</button></div>
+            </div>
+          </div>
+
+          <div class="alert alert--red">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+            <div class="grow"><b>7 行未匹配</b>会在大纲里缺对应章节。其中「床旁结算与自助机」「排队叫号」含硬件，产品库里没有整包条目，需要先在产品库建 2 个硬件类目。</div>
+            <div class="acts"><a class="btn btn--sm" href="library.html">去产品库补</a></div>
+          </div>
+        </div>
+
+        <!-- 右：导出卡 -->
+        <div class="col col--gap-16 aside-sticky">
+
+          <div class="card">
+            <div class="card-h"><h3>导出</h3><span class="sub">按用途分三种</span></div>
+            <div class="card-b col col--gap-12">
+              <div>
+                <button class="btn" style="width:100%"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/></svg><span>导出 Excel 对照表</span></button>
+                <div class="tiny muted-2 mt4">原表列 + 匹配列，给业主与内部评审看</div>
+              </div>
+              <div>
+                <button class="btn" style="width:100%"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg><span>导出评分覆盖表</span></button>
+                <div class="tiny muted-2 mt4">按 A/B/C 汇总，给投标评分测算用</div>
+              </div>
+              <div class="divider" style="margin:2px 0"></div>
+              <div>
+                <button class="btn btn--primary" style="width:100%"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg><span>带入方案大纲</span></button>
+                <div class="tiny muted-2 mt4">生成 10 章大纲草稿，未匹配行留空位标注</div>
+              </div>
+            </div>
+            <div class="card-f small muted-2">带入大纲后会跳到方案编辑器，原对照结果仍可回看。</div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>覆盖评级说明</h3></div>
+            <div class="card-b col col--gap-12 small">
+              <div class="row"><span class="badge badge--green">A</span><span class="grow">功能完全覆盖，可直接写进方案正文</span><span class="mono">84</span></div>
+              <div class="row"><span class="badge badge--amber">B</span><span class="grow">部分覆盖，需在正文里写差异说明</span><span class="mono">26</span></div>
+              <div class="row"><span class="badge badge--gray">C</span><span class="grow">仅名称对应，正文里不能作为主打能力</span><span class="mono">11</span></div>
+              <div class="row"><span class="badge badge--red">未匹配</span><span class="grow">无对应产品，先补产品库或判为外购</span><span class="mono">7</span></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

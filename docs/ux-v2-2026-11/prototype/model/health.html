@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>健康看板 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="model" data-screen="model-health" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>健康看板<span class="badge badge--green badge--dot">近 7 天 98.7%</span></h1>
+          <div class="desc">这一屏只回答：<b>模型现在跑得好不好、慢在哪、花在哪</b>。按模型和功能两个维度拆开看，失败原因直接给出 Top1 与处置入口；要比对单条通道就回「通道与默认」。</div>
+          <div class="meta">
+            <span class="kv">统计区间 <b>近 7 天</b></span>
+            <span class="kv">采样 <b>1,284</b> 次</span>
+            <span class="kv">数据更新 <b>今天 12:30</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <div class="seg" data-seg><button class="on">24 小时</button><button>7 天</button><button>30 天</button></div>
+          <div class="dd">
+            <button class="btn" data-dd><span data-dd-label>全部通道</span>
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+            <div class="dd-menu">
+              <div class="dd-label">按通道</div>
+              <div class="dd-item on" data-label="全部通道">全部通道</div>
+              <div class="dd-item" data-label="Open Design">Open Design</div>
+              <div class="dd-item" data-label="直连 DeepSeek">直连 DeepSeek</div>
+              <div class="dd-item" data-label="本地 Ollama">本地 Ollama</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：原页右侧「测试面板」未点测试时是一整块说明文字占位，管理员看不到任何运行状况；调用失败只留一句技术报错。<b>拆后</b>：独立健康看板，5 个关键指标 + 按模型明细 + 趋势与功能分布 + 失败告警人话化（含「未配置模型」类）。</div>
+      </div>
+
+      <div class="stat-row c5">
+        <div class="stat is-primary">
+          <div class="lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg>本期调用</div>
+          <div class="val">1,284<small>次</small></div>
+          <div class="foot">今日 83 次（deepseek 62 / glm 21）</div>
+        </div>
+        <div class="stat is-green">
+          <div class="lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 6 9 17l-5-5"/></svg>成功率</div>
+          <div class="val">98.7<small>%</small></div>
+          <div class="foot">失败 17 次 · 较上期 <span class="green">+0.4%</span></div>
+        </div>
+        <div class="stat is-amber">
+          <div class="lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>P95 延迟</div>
+          <div class="val">4.2<small>s</small></div>
+          <div class="foot">P50 1.9s · 标书正文最长 12.6s</div>
+        </div>
+        <div class="stat is-blue">
+          <div class="lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>本期费用</div>
+          <div class="val">¥186.4</div>
+          <div class="foot">今日 ¥18.4 · 月预算 ¥500</div>
+        </div>
+        <div class="stat is-primary">
+          <div class="lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg>缓存命中</div>
+          <div class="val">31<small>%</small></div>
+          <div class="foot">省下约 ¥27.6 · 系统提示词复用</div>
+        </div>
+      </div>
+
+      <div class="split split--main">
+        <div class="col col--gap-16">
+
+          <!-- 按模型明细 -->
+          <div class="card">
+            <div class="card-h">
+              <h3>按模型</h3>
+              <span class="sub">1,284 次调用 · 失败 17 次</span>
+              <div class="grow"></div>
+              <button class="btn btn--sm">导出明细</button>
+              <button class="btn btn--sm">按失败原因看</button>
+            </div>
+            <div class="card-b flush">
+              <div class="tbl-wrap" style="border:0;box-shadow:none">
+                <table class="tbl">
+                  <thead><tr><th>模型</th><th>通道</th><th class="num">调用数</th><th class="num">成功率</th><th class="num">P50</th><th class="num">P95</th><th>失败原因 Top1</th><th class="num">费用</th></tr></thead>
+                  <tbody>
+                    <tr>
+                      <td class="name">deepseek-v4.1-flash<div class="sub">全局默认 · 4 项功能生效</div></td>
+                      <td class="small muted">Open Design</td>
+                      <td class="num">826</td>
+                      <td class="num"><span class="green">98.4%</span></td>
+                      <td class="num">1.8s</td>
+                      <td class="num">4.2s</td>
+                      <td class="small">上游限流（13 次）<span class="badge badge--amber">可重试</span></td>
+                      <td class="num">¥121.8</td>
+                    </tr>
+                    <tr>
+                      <td class="name">glm-5.3-flash<div class="sub">方案生成</div></td>
+                      <td class="small muted">Open Design</td>
+                      <td class="num">312</td>
+                      <td class="num"><span class="green">100%</span></td>
+                      <td class="num">2.4s</td>
+                      <td class="num">6.1s</td>
+                      <td class="small muted">—</td>
+                      <td class="num">¥42.6</td>
+                    </tr>
+                    <tr>
+                      <td class="name">qwen3-max<div class="sub">备用</div></td>
+                      <td class="small muted">Open Design</td>
+                      <td class="num">98</td>
+                      <td class="num"><span class="amber">96.9%</span></td>
+                      <td class="num">3.1s</td>
+                      <td class="num">8.4s</td>
+                      <td class="small">超时（3 次）<span class="badge badge--gray">已冷却</span></td>
+                      <td class="num">¥15.2</td>
+                    </tr>
+                    <tr>
+                      <td class="name">kimi-k2<div class="sub">标书正文 · 长上下文</div></td>
+                      <td class="small muted">Open Design</td>
+                      <td class="num">48</td>
+                      <td class="num"><span class="red">97.9%</span></td>
+                      <td class="num">6.8s</td>
+                      <td class="num">12.6s</td>
+                      <td class="small">上下文超长（1 次）<span class="badge badge--red">需处理</span></td>
+                      <td class="num">¥6.8</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="tbl-foot">
+                <span>合计 1,284 次 · ¥186.4 · 失败 17 次</span>
+                <span class="vdiv"></span>
+                <span class="tiny muted-2">成功率 = 成功调用 / 总调用；超时与限流计入失败但不扣费</span>
+                <span class="grow"></span>
+                <div class="pager"><button disabled>‹</button><button class="on">1</button><button>›</button></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 两图 -->
+          <div class="split split--2">
+            <div class="card">
+              <div class="card-h"><h3>调用量趋势</h3><span class="sub">近 7 天</span><div class="grow"></div><span class="tiny muted-2">峰値 11-06 268 次</span></div>
+              <div class="card-b">
+                <div class="vbars">
+                  <div class="col"><span class="n">142</span><span class="b" style="height:53%"></span><span class="l">11-02</span></div>
+                  <div class="col"><span class="n">168</span><span class="b" style="height:63%"></span><span class="l">11-03</span></div>
+                  <div class="col"><span class="n">204</span><span class="b" style="height:76%"></span><span class="l">11-04</span></div>
+                  <div class="col"><span class="n">196</span><span class="b" style="height:73%"></span><span class="l">11-05</span></div>
+                  <div class="col"><span class="n">268</span><span class="b" style="height:100%"></span><span class="l">11-06</span></div>
+                  <div class="col"><span class="n">223</span><span class="b" style="height:83%"></span><span class="l">11-07</span></div>
+                  <div class="col"><span class="n">83</span><span class="b mut" style="height:31%"></span><span class="l">今天</span></div>
+                </div>
+                <div class="row mt12 small muted-2">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                  <span class="grow">今天尚未跑完（半天数据），浅色柱不代表下降。</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-h"><h3>按功能维度</h3><span class="sub">哪些功能在烧 token</span></div>
+              <div class="card-b">
+                <div class="chart-bars">
+                  <div class="cbar"><span class="k">方案生成</span><span class="track"><div class="fill" style="width:100%"></div></span><span class="v">412</span></div>
+                  <div class="cbar"><span class="k">标书正文</span><span class="track"><div class="fill" style="width:82%"></div></span><span class="v">336</span></div>
+                  <div class="cbar"><span class="k">助手对话</span><span class="track"><div class="fill" style="width:69%"></div></span><span class="v">286</span></div>
+                  <div class="cbar"><span class="k">情报摘要</span><span class="track"><div class="fill" style="width:48%"></div></span><span class="v">198</span></div>
+                  <div class="cbar"><span class="k">其他</span><span class="track"><div class="fill gray" style="width:13%"></div></span><span class="v">52</span></div>
+                </div>
+                <div class="row mt12 small muted-2">
+                  <span class="grow">「方案生成」占调用 32%，但占费用 46%（长文本）。</span>
+                  <button class="btn btn--link tiny">按费用排 →</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="fold">
+            <div class="fold-h" data-fold>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              筛「本地 Ollama」只 0 次调用时是什么样
+              <div class="grow"></div>
+              <span class="tiny muted-2">展开看空态</span>
+            </div>
+            <div class="fold-b" hidden>
+              <div class="empty empty--plain">
+                <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg></div>
+                <h4>本地 Ollama 近 7 天没有调用</h4>
+                <p>通道是连通的，但没有任何功能把默认指到它。想用内网模型跑标书正文，去「通道与默认」把它设成某层默认。</p>
+                <div class="acts"><button class="btn btn--sm">去设默认模型</button><button class="btn btn--sm">换全部通道</button></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 右：失败告警 -->
+        <div class="col col--gap-16 aside-sticky">
+          <div class="card">
+            <div class="card-h"><h3>失败告警</h3><span class="badge badge--red">2 条待处理</span></div>
+            <div class="card-b col col--gap-12">
+              <div class="alert alert--red">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+                <div class="grow">
+                  <b>有 1 个功能未配置可用模型</b>（4 次失败）
+                  <div class="small mt4">「客户跟进建议」在 11-06 18:20 起连续失败：该功能指定的 glm-5.3-flashx 已下线，备用模型也没配，于是报「未配置模型」。</div>
+                  <div class="row mt8"><button class="btn btn--sm">去配置默认模型</button><button class="btn btn--sm btn--ghost">忽略本次</button></div>
+                </div>
+              </div>
+              <div class="alert alert--amber">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+                <div class="grow">
+                  <b>kimi-k2 上下文超长 1 次</b>（标书正文）
+                  <div class="small mt4">第 10 章一次带了 6 份参考资料，超出 200 万 token 上限被拒。建议按章节分批喂资料，或改用 deepseek-v4.1-flash。</div>
+                  <div class="row mt8"><button class="btn btn--sm">看这条失败详情</button></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="fold">
+            <div class="fold-h" data-fold>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              筛「本地 Ollama」无调用时
+              <div class="grow"></div>
+              <span class="tiny muted-2">展开看空态</span>
+            </div>
+            <div class="fold-b" hidden>
+              <div class="empty empty--plain">
+                <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg></div>
+                <h4>本地 Ollama 近 7 天没有调用</h4>
+                <p>通道是连通的，但没有任何功能把默认指到它。想用内网模型跑标书正文，去「通道与默认」把它设成某层默认。</p>
+                <div class="acts"><button class="btn btn--sm">去设默认模型</button><button class="btn btn--sm">换全部通道</button></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>关键耗时</h3><div class="grow"></div><span class="tiny muted-2">P95</span></div>
+            <div class="card-b col col--gap-8">
+              <div class="row small"><span class="grow">助手对话首字</span><span class="mono">0.8s</span></div>
+              <div class="row small"><span class="grow">方案大纲生成</span><span class="mono">6.1s</span></div>
+              <div class="row small"><span class="grow">标书正文（单章）</span><span class="mono">12.6s</span></div>
+              <div class="row small"><span class="grow">情报摘要（40 条）</span><span class="mono">3.4s</span></div>
+              <div class="divider" style="margin:0"></div>
+              <div class="tiny muted-2">超过 15s 的生成会自动转后台，关掉页面也不会丢。</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>费用结构</h3><div class="grow"></div><button class="btn btn--link tiny">预算 →</button></div>
+            <div class="card-b col col--gap-8">
+              <div class="row"><span class="small muted">输入 token</span><span class="grow"></span><span class="mono small">¥104.2 · 56%</span></div>
+              <div class="bar"><i style="width:56%"></i></div>
+              <div class="row"><span class="small muted">输出 token</span><span class="grow"></span><span class="mono small">¥82.2 · 44%</span></div>
+              <div class="bar green"><i style="width:44%"></i></div>
+              <div class="tiny muted-2">本月已用 ¥186.4 / 预算 ¥500（37%），按当前节奏月底约 ¥420。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

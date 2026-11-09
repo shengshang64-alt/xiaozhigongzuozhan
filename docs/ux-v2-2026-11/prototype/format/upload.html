@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>① 上传与模板 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="format" data-screen="format-upload" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>上传与模板<span class="badge badge--blue">第 2 步 · 选择标准模板</span></h1>
+          <div class="desc">这一屏只做「准备」：<b>传上要刷新的文档、挑一套标准模板、定刷新范围</b>。只统一版式，<b>不改任何文字</b>；预览对比在下一屏，套用前的覆盖确认也在下一屏。</div>
+          <div class="meta">
+            <span class="kv">已上传 <b>1</b> 份文档</span>
+            <span class="kv">模板库 <b>3</b> 套</span>
+            <span class="kv">刷新范围 <b>6 / 6</b> 项</span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn" data-toast="已打开「上传格式样张识别」（示例）">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 8 5-5 5 5M12 3v12"/></svg>
+            上传格式样张识别
+          </button>
+          <span class="badge badge--green">正文文字 0 改动</span>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：步骤条是好底子，坏在右栏塞了一段约 200 字的"保存与覆盖规则"小字（没人会读），「一键应用格式」与「导出刷新后文档」两个按钮先后无暗示，微调配置默认展开抢走预览位（全页 143 个按钮 / 1,491px）。<b>拆后</b>：长说明压成一句警示条 + 一个折叠；按钮在下一屏带 ③④ 序号；微调配置收进折叠面板。</div>
+      </div>
+
+      <!-- 步骤条 -->
+      <div class="steps">
+        <div class="step done"><div class="n">1</div><div class="tx"><b>上传文档</b><span>已完成 · 46 页</span></div></div>
+        <div class="step on"><div class="n">2</div><div class="tx"><b>选择标准模板</b><span>进行中 · 选一套</span></div></div>
+        <div class="step"><div class="n">3</div><div class="tx"><b>预览对比</b><span>待开始</span></div></div>
+        <div class="step"><div class="n">4</div><div class="tx"><b>保存套用</b><span>待开始</span></div></div>
+      </div>
+
+      <div class="grid g3" style="grid-template-columns:minmax(0,1fr) minmax(0,1.15fr) 300px">
+
+        <!-- 左：上传 -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h">
+              <h3>① 要刷新的文档</h3>
+              <div class="grow"></div>
+              <span class="badge badge--green">已上传</span>
+            </div>
+            <div class="card-b">
+              <div class="empty" style="padding:22px 16px">
+                <div class="ico">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 8 5-5 5 5M12 3v12"/></svg>
+                </div>
+                <h4>把 docx 拖到这里</h4>
+                <p>或点击选择 —— 纯前端解析，文档内容不上传</p>
+                <div class="acts">
+                  <button class="btn btn--sm" data-toast="已打开本地文件选择（示例）">选择 docx 文件</button>
+                </div>
+              </div>
+              <div class="list mt12">
+                <div class="list-row on">
+                  <span class="badge badge--green">已选</span>
+                  <div class="grow">
+                    <div class="t">蚌埠医科大学第一附属医院智慧医疗核心_终版.docx</div>
+                    <div class="s">4.2 MB · 46 页 · 字体混用 7 处 · 识别到 11 章 / 38 个标题</div>
+                  </div>
+                  <button class="icon-btn" title="移除">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="kv-row mt8"><span class="k">识别结果</span><span class="v">正文 仿宋_GB2312 / 12pt / 1.5 倍行距；一级标题 黑体 / 16pt</span></div>
+              <div class="kv-row"><span class="k">纸张边距</span><span class="v">A4 · 上 2.54 / 下 2.54 / 左 3.18 / 右 3.18 cm</span></div>
+              <div class="kv-row"><span class="k">版式问题</span><span class="v"><span class="red b">7 处字体混用</span> · 4 处字号不一 · 3 种行距</span></div>
+            </div>
+          </div>
+
+          <div class="fold">
+            <div class="fold-h" data-fold>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" style="width:15px;height:15px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              查看覆盖规则 ▸
+              <span class="grow"></span>
+              <span class="btn btn--link" style="pointer-events:none">默认收起</span>
+            </div>
+            <div class="fold-b" style="display:none">
+              <div class="kv-row"><span class="k">会改</span><span class="v">各级样式表（标题 1~6 / 正文 / 图注 / 表题）、写在文字与段落上的直接格式、页边距与纸张</span></div>
+              <div class="kv-row"><span class="k">不改</span><span class="v"><b>正文文字 0 改动</b>；段落顺序、图片、表格内容、批注、域代码一律不动</span></div>
+              <div class="kv-row"><span class="k">原文件</span><span class="v">套用时自动备份为 <span class="mono">.bak</span>，同目录保留；导出生成新文件，不覆盖原文件</span></div>
+              <div class="kv-row"><span class="k">不生效</span><span class="v">若原文把格式写死在每个 run 上，需勾选「覆盖文字级直接格式」（下一屏可勾），否则只改样式表会"看起来没变"</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 中：模板 -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h">
+              <h3>② 标准模板</h3>
+              <span class="sub">选一套作为刷新目标</span>
+              <div class="grow"></div>
+              <span class="badge badge--primary">默认模板</span>
+            </div>
+            <div class="card-b col col--gap-8">
+
+              <div class="card card--hover" style="box-shadow:none">
+                <div class="card-b tight">
+                  <div class="row">
+                    <label class="check"><input type="radio" name="fmt-tpl" checked><b>公司标准模板</b></label>
+                    <span class="badge badge--primary">当前选择</span>
+                    <div class="grow"></div>
+                    <span class="badge badge--gray">公司默认</span>
+                  </div>
+                  <div class="small muted mt4">适用于：对外正式标书、方案交付件。正文 仿宋_GB2312 小四 / 1.5 倍行距，一级标题 黑体 三号。</div>
+                  <div class="row wrap mt8">
+                    <span class="tag tag--line">A4</span>
+                    <span class="tag tag--line">页边距 2.54 / 3.18</span>
+                    <span class="tag tag--line">6 级标题</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card card--hover" style="box-shadow:none">
+                <div class="card-b tight">
+                  <div class="row">
+                    <label class="check"><input type="radio" name="fmt-tpl"><b>智业投标文件模板</b></label>
+                    <div class="grow"></div>
+                    <span class="badge badge--gray">2022-07-25 样张</span>
+                  </div>
+                  <div class="small muted mt4">适用于：政府采购公开招标的投标文件，正文 宋体 小四 / 首行缩进 2 字符，页边距更宽（留装订位）。</div>
+                  <div class="row wrap mt8">
+                    <span class="tag tag--line">A4</span>
+                    <span class="tag tag--line">左侧装订 3.5cm</span>
+                    <span class="tag tag--line">标题 1~3 级</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card card--hover" style="box-shadow:none">
+                <div class="card-b tight">
+                  <div class="row">
+                    <label class="check"><input type="radio" name="fmt-tpl"><b>政采通用模板</b></label>
+                    <div class="grow"></div>
+                    <span class="badge badge--gray">手动定义</span>
+                  </div>
+                  <div class="small muted mt4">适用于：政府采购中心统一格式要求（多数要求 宋体 小四 / 固定 28 磅行距）。</div>
+                  <div class="row wrap mt8">
+                    <span class="tag tag--line">A4</span>
+                    <span class="tag tag--line">固定 28 磅</span>
+                    <span class="tag tag--line">须加页码</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="row mt4">
+                <button class="btn btn--sm" data-toast="已打开模板编辑器（示例）">微调这套模板</button>
+                <button class="btn btn--sm" data-toast="已打开新建模板（示例）">＋ 从零定义</button>
+                <div class="grow"></div>
+                <span class="tiny muted-2">改模板只影响这次刷新，不会动模板库原配置</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="alert alert--amber">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+            <div class="grow"><b>套用会覆盖原文件的格式</b>，原文件自动备份为 <span class="mono">.bak</span>；正文文字与图片内容不会被改。详细覆盖规则见左侧折叠。</div>
+          </div>
+        </div>
+
+        <!-- 右：刷新范围 -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h">
+              <h3>③ 刷新范围</h3>
+              <div class="grow"></div>
+              <span class="small muted-2">默认全选</span>
+            </div>
+            <div class="card-b col col--gap-12">
+              <label class="check"><input type="checkbox" checked> 正文样式<span class="grow"></span><span class="tiny muted-2">字体 / 字号 / 缩进</span></label>
+              <label class="check"><input type="checkbox" checked> 标题编号<span class="grow"></span><span class="tiny muted-2">1~6 级层级</span></label>
+              <label class="check"><input type="checkbox" checked> 表格<span class="grow"></span><span class="tiny muted-2">表宽 / 表题 / 表内字号</span></label>
+              <label class="check"><input type="checkbox" checked> 图注<span class="grow"></span><span class="tiny muted-2">图题字号 / 居中</span></label>
+              <label class="check"><input type="checkbox" checked> 页眉页脚<span class="grow"></span><span class="tiny muted-2">保留原文内容，只统一版式</span></label>
+              <label class="check"><input type="checkbox" checked> 页边距<span class="grow"></span><span class="tiny muted-2">四边 + 纸张</span></label>
+              <div class="divider" style="margin:2px 0"></div>
+              <label class="check"><input type="checkbox" checked> 覆盖文字级直接格式</label>
+              <div class="tiny muted-2" style="margin-top:-6px">很多成稿把字体字号写死在每段文字上，不勾这项只改样式表会"看起来没变"。<b>建议保持勾选。</b></div>
+              <label class="check"><input type="checkbox"> 删除未引用的样式</label>
+              <div class="tiny muted-2" style="margin-top:-6px">清掉文档里没人用的冗余样式定义，体积会变小。</div>
+            </div>
+            <div class="card-f row small">
+              <span>预计处理 <b class="mono">46</b> 页</span>
+              <div class="grow"></div>
+              <span class="badge badge--green">正文文字 0 改动</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>本机处理</h3></div>
+            <div class="card-b col col--gap-8">
+              <div class="row small"><span class="dot green"></span><span>解析与改写都在浏览器内完成</span></div>
+              <div class="row small"><span class="dot green"></span><span>文档内容不上传服务器</span></div>
+              <div class="row small"><span class="dot green"></span><span>导出新文件，原文件不覆盖</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row mt16 hairline p12">
+        <div class="col col--gap-4">
+          <span class="b small">已选：公司标准模板 · 6 项刷新范围全开</span>
+          <span class="tiny muted-2">下一步先出「原文档 ↔ 刷新后」左右对比，确认差异后再套用</span>
+        </div>
+        <div class="grow"></div>
+        <button class="btn" data-toast="已保存为草稿（示例）">保存草稿</button>
+        <a class="btn btn--primary" href="preview.html">下一步：预览对比 →</a>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

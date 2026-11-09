@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>新建检查 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="check" data-screen="check-upload" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>新建检查<span class="badge badge--primary">规则包 v3.2</span></h1>
+          <div class="desc">这一屏只做一件事：<b>把要交的标书丢进来，选一个模式，点开始检查</b>。解析与检查全部在本地完成，文件内容不出本机；报告在「检查报告」屏，历史在「历史报告」屏。</div>
+          <div class="meta">
+            <span class="kv">上次检查 <b>今天 09:14</b></span>
+            <span class="kv">上次结果 <b>23 个问题</b></span>
+            <span class="kv">规则包 <b>5 层 · 68 条</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <a class="btn" href="history.html">历史报告（24）</a>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：「上传文件」与「选择标书项目」两个等宽大卡并列，用户得先想清楚文件在哪才选得对；「开始检查」置灰却不写原因；模式切换是两个灰色小按钮；下方 60% 区域只有一行引导文字（全页 61 个按钮）。<b>拆后</b>：单一居中上传区（两个入口在一个框里）+ 带说明的模式单选卡 + 最近报告直接可打开，一屏完成"进来→丢文件→开始查"。</div>
+      </div>
+
+      <!-- ① 检查对象：单一居中上传区 -->
+      <div class="card" style="max-width:1000px;margin:0 auto">
+        <div class="card-h">
+          <h3>① 选择检查对象</h3>
+          <span class="sub">.docx 可查元数据与版式；.pdf 只查正文与文档属性</span>
+          <div class="grow"></div>
+          <span class="badge badge--green">已选 1 个文件</span>
+        </div>
+        <div class="card-b">
+          <div class="empty" style="padding:30px 20px">
+            <div class="ico">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 8 5-5 5 5M12 3v12"/></svg>
+            </div>
+            <h4>把 docx / pdf 拖到这里</h4>
+            <p>或从下面两个入口挑一个 —— 文件在本机解析，原文不会上传，检查完也不会留在服务器上</p>
+            <div class="acts">
+              <button class="btn btn--sm" data-toast="已打开本地文件选择（示例）">点击选择文件</button>
+              <button class="btn btn--sm" data-toast="已打开标书项目列表（示例）">从标书项目选择</button>
+            </div>
+          </div>
+
+          <div class="list mt12">
+            <div class="list-row on">
+              <span class="badge badge--green">已选</span>
+              <div class="grow">
+                <div class="t">蚌埠医科大学第一附属医院智慧医疗核心_终版.docx</div>
+                <div class="s">4.2 MB · 46 页 · 识别到 11 章 / 38 个标题 · 字体混用 7 处</div>
+              </div>
+              <div class="r mono small">本地读取 62%</div>
+              <button class="icon-btn" title="移除">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="row mt8">
+            <span class="spin"></span>
+            <span class="small muted">正在识别版式与标题层级…（页眉页脚与文档属性随后一起读）</span>
+            <div class="grow"></div>
+            <span class="mono small muted-2">28 / 46 页</span>
+          </div>
+          <div class="bar mt8"><i style="width:62%"></i></div>
+        </div>
+      </div>
+
+      <!-- ② 检查模式：带说明的单选卡 -->
+      <div class="card mt16" style="max-width:1000px;margin-left:auto;margin-right:auto">
+        <div class="card-h">
+          <h3>② 选择检查模式</h3>
+          <span class="sub">两种模式跑的规则包不同，所以耗时差一倍</span>
+          <div class="grow"></div>
+          <span class="badge badge--amber">直接影响能查出什么</span>
+        </div>
+        <div class="card-b">
+          <div class="grid g2">
+            <div class="card card--hover">
+              <div class="card-b">
+                <div class="row">
+                  <label class="check"><input type="radio" name="chk-mode"><b>普通模式</b></label>
+                  <span class="badge badge--blue">约 40 秒</span>
+                  <div class="grow"></div>
+                  <span class="badge badge--gray">适合自查</span>
+                </div>
+                <div class="small muted mt8">只读正文层：格式禁则、数字与金额口径、正文章节单薄、★条款逐条响应。写完初稿先跑一遍，改起来最省事。</div>
+                <div class="row wrap mt8">
+                  <span class="tag tag--line">格式层 L1</span>
+                  <span class="tag tag--line">响应层 L2</span>
+                  <span class="tag tag--line">内容层 L3</span>
+                  <span class="tag tag--line">查重层 L4</span>
+                </div>
+              </div>
+            </div>
+            <div class="card card--hover">
+              <div class="card-b">
+                <div class="row">
+                  <label class="check"><input type="radio" name="chk-mode" checked><b>暗标严格模式</b></label>
+                  <span class="badge badge--orange">约 90 秒</span>
+                  <div class="grow"></div>
+                  <span class="badge badge--primary">当前选择</span>
+                </div>
+                <div class="small muted mt8">上面四层全跑，再加合规层 L5：页眉页脚、文档属性、字体嵌入、隐藏文字与修订痕迹、批注作者——暗标废标最常出问题的地方。</div>
+                <div class="row wrap mt8">
+                  <span class="tag tag--line">L1 ~ L4 全部</span>
+                  <span class="tag tag--line">合规层 L5</span>
+                  <span class="tag tag--line">需 .docx</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="alert alert--primary mt12">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            <div class="grow"><b>两种模式的关键差别</b>：普通模式<b>不读</b>文档属性（作者 / 最后保存者 / 公司字段）、页眉页脚、字体嵌入、隐藏文字与修订痕迹。这几项恰恰是暗标判废的高频点，而且肉眼翻不出来。<b>交卷前请用暗标严格模式再跑一遍</b>，别只跑普通模式就交。</div>
+          </div>
+
+          <div class="row mt12">
+            <button class="btn btn--lg btn--primary" data-toast="已开始检查：暗标严格模式，预计 90 秒（示例）">开始检查</button>
+            <div class="col col--gap-4">
+              <span class="small b">已选好 1 个文件 + 暗标严格模式，可以直接开始</span>
+              <span class="tiny muted-2">预计 90 秒 · 中断可随时取消，已出的问题不会丢</span>
+            </div>
+            <div class="grow"></div>
+            <button class="btn btn--lg is-disabled" aria-disabled="true">AI 复核</button>
+            <span class="small muted-2" style="max-width:150px">检查完成后可用：复核疑似误报的条目</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ③ 最近检查报告 -->
+      <div class="card mt16">
+        <div class="card-h">
+          <h3>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 15 2 2 4-4"/></svg>
+            最近检查报告
+          </h3>
+          <span class="sub">不用重跑，点开就是当时的结果与原文定位</span>
+          <div class="grow"></div>
+          <a class="btn btn--sm" href="history.html">全部历史（24）→</a>
+        </div>
+        <div class="card-b flush">
+          <div class="list">
+            <div class="list-row">
+              <span class="badge badge--red">阻断 2</span>
+              <div class="grow">
+                <div class="t">蚌埠医科大学第一附属医院智慧医疗核心_终版.docx</div>
+                <div class="s">暗标严格模式 · 23 个问题（阻断 2 / 警告 8 / 提示 13）· 阻断项为「公司名称泄露」「作者字段泄露」</div>
+              </div>
+              <div class="r mono small">今天 09:14 · 1 分 32 秒</div>
+              <a class="btn btn--sm" href="report.html">打开报告</a>
+            </div>
+            <div class="list-row">
+              <span class="badge badge--amber">8 个</span>
+              <div class="grow">
+                <div class="t">【UI测试】中医院信息化建设_初稿.docx</div>
+                <div class="s">普通模式 · 8 个问题（阻断 0 / 警告 3 / 提示 5）· 无阻断项，可继续编制</div>
+              </div>
+              <div class="r mono small">昨天 17:02 · 41 秒</div>
+              <a class="btn btn--sm" href="report.html">打开报告</a>
+            </div>
+            <div class="list-row">
+              <span class="badge badge--green">已通过</span>
+              <div class="grow">
+                <div class="t">安徽中医药大学第一附属医院一体化核心_终版.docx</div>
+                <div class="s">暗标严格模式 · 0 个问题（68 条规则全部通过或人工标记不改）</div>
+              </div>
+              <div class="r mono small">11-06 20:31 · 1 分 48 秒</div>
+              <a class="btn btn--sm" href="report.html">打开报告</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

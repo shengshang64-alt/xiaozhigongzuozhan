@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>客户详情 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="customer" data-screen="customer-detail" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <a class="ph-back" href="list.html"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m15 18-6-6 6-6"/></svg>返回客户列表</a>
+          <h1>厦门市中医院<span class="badge badge--primary">A 级</span><span class="badge badge--blue badge--dot">需求确认</span><span class="badge badge--orange">46 天未跟进</span></h1>
+          <div class="desc">独立路由页面，可直接分享给同事。档案看「这家医院是谁」，联系人与商机看「跟谁谈、谈什么」，右侧时间线看「上次聊到哪」。</div>
+          <div class="meta">
+            <span class="kv">编号 <b>C-00231</b></span>
+            <span class="kv">负责人 <b>系统管理员</b></span>
+            <span class="kv">建档 <b>2025-03-12</b></span>
+            <span class="kv">最近更新 <b>2026-11-08 09:14</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn" data-toast="已打开建档补全向导（示例）">建档补全</button>
+          <button class="btn btn--primary" data-toast="已新建商机（示例）">＋ 新建商机</button>
+          <div class="dd">
+            <button class="icon-btn" data-dd title="更多操作"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+            <div class="dd-menu" style="left:auto;right:0">
+              <div class="dd-item" data-toast="打开编辑客户档案">编辑档案</div>
+              <div class="dd-item" data-toast="已复制客户分享链接（示例）">复制分享链接</div>
+              <div class="dd-item" data-toast="正在导出客户档案 PDF（示例）">导出档案</div>
+              <div class="dd-sep"></div>
+              <div class="dd-item" onclick="Proto.open('archive-detail')"><span class="red">归档客户</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：详情以「右侧占位区」形式常驻列表页，未选中客户时整块空白（1600px 宽屏 50% 面积在显示「请从左侧选择」），且无法单独发链接给同事。<b>拆后</b>：独立路由 + 三栏同屏（档案 320 / 联系人与商机 1fr / 时间线与缺项 360），任何一栏都能单独滚动。</div>
+      </div>
+
+      <div class="alert alert--orange mb12">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        <div class="grow"><b>46 天未跟进，已进入该唤醒队列</b> · 上次沟通停在「等信息科内部排期」，之后再无记录。商机「信息化整体提升（含电子病历评级）」仍处需求确认阶段，286.0 万预算未确认。</div>
+        <div class="acts">
+          <button class="btn btn--sm" data-toast="已加入稍后提醒：11-12">稍后提醒</button>
+          <button class="btn btn--sm" data-toast="已创建跟进任务：本周内电话回访信息科">一键建跟进</button>
+        </div>
+      </div>
+
+      <div class="databar">
+        <div class="item">档案完整度 <b>82%</b></div>
+        <div class="item">在跟商机 <b>2</b></div>
+        <div class="item">累计金额 <b>698.0 万</b></div>
+        <div class="item">联系人 <b>5</b></div>
+        <div class="item red">最近跟进 <b>46 天前</b></div>
+        <div class="grow"></div>
+        <div class="item"><a class="btn btn--link" href="kanban.html">看它在看板的哪一列 →</a></div>
+      </div>
+
+      <div class="split" style="grid-template-columns:320px minmax(0,1fr) 360px">
+
+        <!-- 左：基本信息 -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4M8 6h.01M16 6h.01M8 10h.01M16 10h.01"/></svg>基本信息</h3><div class="grow"></div><button class="btn btn--sm" data-toast="打开编辑档案">编辑</button></div>
+            <div class="card-b">
+              <div class="kv-row"><span class="k">医院全称</span><span class="v"><b>厦门市中医院</b></span></div>
+              <div class="kv-row"><span class="k">统一社会信用代码</span><span class="v mono tiny">12350200MB1A2C3D4E</span></div>
+              <div class="kv-row"><span class="k">医院等级</span><span class="v"><span class="badge badge--primary">A 级</span> 三级甲等</span></div>
+              <div class="kv-row"><span class="k">所在地区</span><span class="v">福建省 · 厦门市 · 湖里区</span></div>
+              <div class="kv-row"><span class="k">客户来源</span><span class="v">历史中标（2023 年 HIS 运维项目）</span></div>
+              <div class="kv-row"><span class="k">负责人</span><span class="v">系统管理员</span></div>
+              <div class="kv-row"><span class="k">首次接触</span><span class="v mono">2025-03-12</span></div>
+              <div class="kv-row"><span class="k">标签</span><span class="v"><span class="tag">电子病历评级</span> <span class="tag">互联互通</span> <span class="tag">中医</span> <span class="tag">预算充足</span></span></div>
+            </div>
+            <div class="card-f row small"><span class="muted-2">缺 3 项档案</span><span class="grow"></span><button class="btn btn--link" data-toast="缺 3 项：官网、采购负责人电话、预算区间">去补全 →</button></div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>关联情报</h3><span class="sub">3 条</span></div>
+            <div class="card-b flush">
+              <div class="list">
+                <div class="list-row"><span class="badge badge--red">采购</span><div class="grow"><div class="t clamp2" style="font-size:12.5px">吉安市公立中医医院信息化建设项目变更澄清公告</div><div class="s">中国政府采购网 · 11-08</div></div></div>
+                <div class="list-row"><span class="badge badge--blue">政策</span><div class="grow"><div class="t clamp2" style="font-size:12.5px">电子病历系统应用水平分级评价新标准解读</div><div class="s">HIT专家网 · 11-06</div></div></div>
+                <div class="list-row"><span class="badge badge--amber">动态</span><div class="grow"><div class="t clamp2" style="font-size:12.5px">厦门市卫健委 2026 年公立医院信息化预算批复</div><div class="s">医院官网 · 10-28</div></div></div>
+              </div>
+            </div>
+            <div class="card-f row small"><span class="muted-2">按医院名自动匹配</span><span class="grow"></span><a class="btn btn--link" href="../intel/browse.html">看全部 →</a></div>
+          </div>
+        </div>
+
+        <!-- 中：联系人与商机 -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>联系人</h3><span class="sub">5 人 · 2 人未登记手机号</span><div class="grow"></div><button class="btn btn--sm" data-toast="已新增联系人（示例）">＋ 加联系人</button></div>
+            <div class="card-b flush">
+              <table class="tbl">
+                <thead><tr><th>姓名 / 职务</th><th>角色</th><th>联系方式</th><th>影响度</th><th class="w-ops">操作</th></tr></thead>
+                <tbody>
+                  <tr><td class="name">陈立群<span class="sub">信息科主任</span></td><td><span class="badge badge--primary">关键决策人</span></td><td class="mono">0592-2xxx-8811</td><td><span class="badge badge--green">高</span></td>
+                    <td class="w-ops"><div class="row-ops"><button class="btn btn--sm" data-toast="已记录本次沟通（示例）">记沟通</button><button class="icon-btn" title="更多"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></div></td></tr>
+                  <tr><td class="name">周慧敏<span class="sub">分管副院长</span></td><td><span class="badge badge--blue">决策参与</span></td><td class="mono">0592-2xxx-8802</td><td><span class="badge badge--green">高</span></td>
+                    <td class="w-ops"><div class="row-ops"><button class="btn btn--sm" data-toast="已记录本次沟通（示例）">记沟通</button><button class="icon-btn" title="更多"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></div></td></tr>
+                  <tr><td class="name">林志远<span class="sub">采购办主任</span></td><td><span class="badge badge--amber">流程把关</span></td><td class="mono">0592-2xxx-8835</td><td><span class="badge badge--amber">中</span></td>
+                    <td class="w-ops"><div class="row-ops"><button class="btn btn--sm" data-toast="已记录本次沟通（示例）">记沟通</button><button class="icon-btn" title="更多"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></div></td></tr>
+                  <tr><td class="name">吴晓岚<span class="sub">病案统计室</span></td><td><span class="badge badge--gray">使用部门</span></td><td><span class="muted-2">未登记</span></td><td><span class="badge badge--gray">低</span></td>
+                    <td class="w-ops"><div class="row-ops"><button class="btn btn--sm">补手机号</button><button class="icon-btn" title="更多"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></div></td></tr>
+                  <tr><td class="name">郑国栋<span class="sub">财务科科长</span></td><td><span class="badge badge--gray">使用部门</span></td><td><span class="muted-2">未登记</span></td><td><span class="badge badge--gray">低</span></td>
+                    <td class="w-ops"><div class="row-ops"><button class="btn btn--sm">补手机号</button><button class="icon-btn" title="更多"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/></svg>在跟商机</h3><span class="sub">2 个 · 合计 698.0 万</span><div class="grow"></div><a class="btn btn--sm" href="kanban.html">看板 →</a></div>
+            <div class="card-b flush">
+              <table class="tbl">
+                <thead><tr><th>商机名称</th><th>阶段</th><th>预计金额</th><th>最近跟进</th><th>下一步</th></tr></thead>
+                <tbody>
+                  <tr><td class="name">信息化整体提升（含电子病历评级）<span class="sub">编号 O-00312 · 预计 2026-12 挂网</span></td><td><span class="badge badge--blue">需求确认</span></td><td class="num">286.0 万</td><td><span class="badge badge--orange">46 天前</span></td><td class="small">确认预算口径</td></tr>
+                  <tr><td class="name">一体化核心业务系统扩容<span class="sub">编号 O-00284 · 预计 2027-Q1 挂网</span></td><td><span class="badge badge--purple">方案交流</span></td><td class="num">412.0 万</td><td><span class="badge badge--orange">38 天前</span></td><td class="small">出试点科室方案</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="card-f row small"><span class="muted-2">累计已中标 <b class="mono">118.0 万</b>（2023 年 HIS 运维）</span><span class="grow"></span><button class="btn btn--link" data-toast="已新建商机（示例）">＋ 新建商机</button></div>
+          </div>
+        </div>
+
+        <!-- 右：跟进时间线 + 缺项 -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>跟进时间线</h3><span class="sub">最近 6 条</span><div class="grow"></div><button class="btn btn--sm" data-toast="已创建跟进任务（示例）">＋ 建跟进</button></div>
+            <div class="card-b">
+              <div class="timeline">
+                <div class="tl-item on">
+                  <div class="when">09-23 · 46 天前 · 电话</div>
+                  <div class="what"><b>陈立群：等信息科内部排期</b><br>院方表示评级材料刚上报，预算口径要等市卫健委批复，让我们先别报价。</div>
+                </div>
+                <div class="tl-item done">
+                  <div class="when">09-11 · 方案</div>
+                  <div class="what"><b>提交《电子病历五级达标路径》初稿</b><br>信息科反馈：章节偏产品，希望补评级差距分析表。</div>
+                </div>
+                <div class="tl-item done">
+                  <div class="when">08-29 · 拜访</div>
+                  <div class="what"><b>现场拜访信息科（2 人）</b><br>确认在用 HIS 为 2016 年版本，机房虚拟化率约 60%。</div>
+                </div>
+                <div class="tl-item done">
+                  <div class="when">08-14 · 微信</div>
+                  <div class="what"><b>周慧敏：分管副院长已明确支持</b><br>提出「先做互联互通四甲、再上电子病历五级」的两步走思路。</div>
+                </div>
+                <div class="tl-item done">
+                  <div class="when">07-30 · 邮件</div>
+                  <div class="what"><b>发送政策解读材料</b><br>附《2026 年公立医院信息化建设重点任务》摘编。</div>
+                </div>
+                <div class="tl-item done">
+                  <div class="when">07-18 · 首次接触</div>
+                  <div class="what"><b>由 2023 年 HIS 运维项目续接</b><br>原项目验收顺利，运维负责人引荐信息科主任。</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>缺项待补</h3><span class="sub">3 项 · 影响 82% 完整度</span></div>
+            <div class="card-b flush">
+              <div class="list">
+                <div class="list-row"><span class="dot orange"></span><div class="grow"><div class="t" style="font-size:12.5px">官网地址</div><div class="s">用于抓取采购公告与评级公示</div></div><button class="btn btn--sm" data-toast="已发起官网自动抓取（示例）">去补全</button></div>
+                <div class="list-row"><span class="dot orange"></span><div class="grow"><div class="t" style="font-size:12.5px">采购负责人电话</div><div class="s">林志远 · 采购办主任 · 仅登记了科室总机</div></div><button class="btn btn--sm" data-toast="已填入待核验手机号（示例）">去补全</button></div>
+                <div class="list-row"><span class="dot orange"></span><div class="grow"><div class="t" style="font-size:12.5px">预算区间</div><div class="s">影响商机 286.0 万金额可信度</div></div><button class="btn btn--sm" data-toast="已标记为待院方确认">去补全</button></div>
+              </div>
+            </div>
+            <div class="card-f row small"><span class="muted-2">补全 3 项后完整度可达 100%</span><span class="grow"></span><a class="btn btn--link" href="import.html">批量补全 →</a></div>
+          </div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+
+<div class="mask" data-modal="archive-detail" style="display:none">
+  <div class="modal modal--danger" style="--mw:520px">
+    <div class="modal-h"><h3>归档「厦门市中医院」<div class="sub">客户将从列表中移除，商机转为只读</div></h3>
+      <button class="icon-btn" onclick="Proto.close('archive-detail')"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+    <div class="modal-b">
+      <div class="danger-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        <div>该客户有 <b>2 个在跟商机</b>（合计 698.0 万）与 <b>1 个在投标项目</b>引用。归档后商机进入只读，引用它的标书会提示「客户已归档」。</div>
+      </div>
+      <div class="small muted mt12">可在「客户设置 › 已归档客户」还原，历史跟进记录不会删除。</div>
+    </div>
+    <div class="modal-f"><span class="tip">影响 1 家客户 · 2 个商机</span><div class="grow"></div>
+      <button class="btn btn--sm" onclick="Proto.close('archive-detail')">取消</button>
+      <button class="btn btn--sm btn--danger-solid" data-toast="已归档（示例）">确认归档</button></div>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

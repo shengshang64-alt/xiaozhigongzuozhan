@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>浏览 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="intel" data-screen="intel-browse" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>浏览<span class="badge badge--primary">共 1,009 条</span><span class="badge badge--gray">含已确认 980</span></h1>
+          <div class="desc">这里是情报的<b>图书馆</b>：全部存量情报按类型与时间翻查，不做逐条审阅。要处理 29 条待确认请回「审阅」；单条情报的正文与转化动作在「详情」。</div>
+          <div class="meta">
+            <span class="kv">全部 <b>1,009</b> 条</span>
+            <span class="kv">待确认 <b>29</b></span>
+            <span class="kv">已确认 <b>980</b></span>
+            <span class="kv">已转商机 <b>6</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn" data-toast="已导出当前筛选结果（示例）">导出 CSV</button>
+          <button class="btn btn--primary" data-toast="已跳转到审阅工作台">去审阅 29 条待确认</button>
+        </div>
+      </div>
+
+      <div class="filterbar">
+        <div class="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input class="input" placeholder="搜索标题 / 正文关键词 / 医院名">
+        </div>
+        <div class="row" data-chips>
+          <span class="chip on">全部类型 <span class="n">1009</span></span>
+          <span class="chip">采购公告 <span class="n">412</span></span>
+          <span class="chip">政策法规 <span class="n">286</span></span>
+          <span class="chip">行业动态 <span class="n">231</span></span>
+          <span class="chip">数据安全 <span class="n">80</span></span>
+        </div>
+        <div class="dd">
+          <button class="btn btn--sm" data-dd><span data-dd-label>全部时间</span>
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="dd-menu">
+            <div class="dd-label">按发布时间</div>
+            <div class="dd-item on" data-label="全部时间">全部时间<span class="tick">✓</span></div>
+            <div class="dd-item" data-label="今天" data-toast="已筛选今天：8 条">今天</div>
+            <div class="dd-item" data-label="近 7 天" data-toast="已筛选近 7 天：40 条">近 7 天</div>
+            <div class="dd-item" data-label="近 30 天" data-toast="已筛选近 30 天：164 条">近 30 天</div>
+            <div class="dd-item" data-label="本季度" data-toast="已筛选本季度：402 条">本季度</div>
+          </div>
+        </div>
+        <div class="grow"></div>
+        <button class="btn btn--sm">高级筛选 <span class="badge badge--primary">2</span></button>
+      </div>
+
+      <div class="fold mb12">
+        <div class="fold-h" data-fold>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" style="width:15px;height:15px"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>
+          高级筛选
+          <span class="badge badge--primary">已启用 2 项</span>
+          <span class="grow"></span>
+          <span class="small muted-2">来源：中国政府采购网 · 状态：待确认 · 可转商机</span>
+        </div>
+        <div class="fold-b" style="display:none">
+          <div class="grid g4">
+            <div class="field"><label class="label">来源站点</label>
+              <select class="select"><option>中国政府采购网</option><option>全部来源</option></select></div>
+            <div class="field"><label class="label">状态</label>
+              <select class="select"><option>待确认</option><option>全部状态</option></select></div>
+            <div class="field"><label class="label">AI 标签</label>
+              <select class="select"><option>可转商机</option><option>全部标签</option></select></div>
+            <div class="field"><label class="label">关联客户</label>
+              <input class="input" placeholder="输入医院名称"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tbl-wrap">
+        <div class="tbl-scroll">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th class="w-ck"><input type="checkbox"></th>
+                <th>标题</th>
+                <th>来源</th>
+                <th>类型</th>
+                <th>发布时间</th>
+                <th>状态</th>
+                <th class="w-ops">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><input type="checkbox"></td>
+                <td class="name clip" style="max-width:420px">吉安市公立中医医院信息化建设项目变更澄清公告
+                  <span class="sub">可转商机 · 128.4 万 · 投标截止延至 11-21</span></td>
+                <td>中国政府采购网</td><td><span class="badge badge--red">采购公告</span></td>
+                <td class="mono small">11-08 08:40</td><td><span class="badge badge--orange">待确认</span></td>
+                <td class="w-ops"><span class="row-ops"><a class="btn btn--sm" href="detail.html">阅读</a>
+                  <button class="icon-btn" title="更多"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></span></td>
+              </tr>
+              <tr>
+                <td><input type="checkbox"></td>
+                <td class="name clip" style="max-width:420px">北京市属医院 2026 年医疗设备集中带量采购项目（第一批，第 21 包）中标公告
+                  <span class="sub">中标 3,462.0 万元 · 可转商机</span></td>
+                <td>中国政府采购网</td><td><span class="badge badge--red">采购公告</span></td>
+                <td class="mono small">11-08 08:12</td><td><span class="badge badge--orange">待确认</span></td>
+                <td class="w-ops"><span class="row-ops"><a class="btn btn--sm" href="detail.html">阅读</a>
+                  <button class="icon-btn" title="更多"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></span></td>
+              </tr>
+              <tr>
+                <td><input type="checkbox"></td>
+                <td class="name clip" style="max-width:420px">从接诊前提醒到用药随访，医疗 AI 能替哪一步？医疗大模型深度剖析
+                  <span class="sub">行业观察 · 阅读 1,284 次</span></td>
+                <td>HIT专家网</td><td><span class="badge badge--purple">行业动态</span></td>
+                <td class="mono small">11-08 08:00</td><td><span class="badge badge--orange">待确认</span></td>
+                <td class="w-ops"><span class="row-ops"><a class="btn btn--sm" href="detail.html">阅读</a>
+                  <button class="icon-btn" title="更多"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></span></td>
+              </tr>
+              <tr>
+                <td><input type="checkbox"></td>
+                <td class="name clip" style="max-width:420px">克拉玛依市中心医院（克拉玛依市人民医院）门诊智慧服务配套系统建设项目（二次）中标公告
+                  <span class="sub">可转商机 · 中标 1,186.0 万</span></td>
+                <td>中国政府采购网</td><td><span class="badge badge--red">采购公告</span></td>
+                <td class="mono small">11-07 17:26</td><td><span class="badge badge--orange">待确认</span></td>
+                <td class="w-ops"><span class="row-ops"><a class="btn btn--sm" href="detail.html">阅读</a>
+                  <button class="icon-btn" title="更多"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></span></td>
+              </tr>
+              <tr>
+                <td><input type="checkbox"></td>
+                <td class="name clip" style="max-width:420px">重磅！《医疗行业专科高质量数据集建设指南》发布
+                  <span class="sub">政策解读 · 适用于电子病历评级与数据中台</span></td>
+                <td>HIT专家网</td><td><span class="badge badge--blue">政策法规</span></td>
+                <td class="mono small">11-07 16:05</td><td><span class="badge badge--green">已确认</span></td>
+                <td class="w-ops"><span class="row-ops"><a class="btn btn--sm" href="detail.html">阅读</a>
+                  <button class="icon-btn" title="更多"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></span></td>
+              </tr>
+              <tr>
+                <td><input type="checkbox"></td>
+                <td class="name clip" style="max-width:420px">连续 12 年最高！医疗数据或泄露重灾区，医疗机构该如何做好数据安全？
+                  <span class="sub">数据安全 · 与等保三级/密评相关</span></td>
+                <td>HIT专家网</td><td><span class="badge badge--amber">数据安全</span></td>
+                <td class="mono small">11-07 14:20</td><td><span class="badge badge--green">已确认</span></td>
+                <td class="w-ops"><span class="row-ops"><a class="btn btn--sm" href="detail.html">阅读</a>
+                  <button class="icon-btn" title="更多"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></span></td>
+              </tr>
+              <tr>
+                <td><input type="checkbox"></td>
+                <td class="name clip" style="max-width:420px">厦门市卫健委 2026 年公立医院信息化预算批复（含 12 家市属医院）
+                  <span class="sub">可转商机 · 关联厦门市中医院 286.0 万</span></td>
+                <td>医院官网</td><td><span class="badge badge--blue">政策法规</span></td>
+                <td class="mono small">11-06 15:40</td><td><span class="badge badge--primary">已转商机</span></td>
+                <td class="w-ops"><span class="row-ops"><a class="btn btn--sm" href="detail.html">阅读</a>
+                  <button class="icon-btn" title="更多"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></span></td>
+              </tr>
+              <tr>
+                <td><input type="checkbox"></td>
+                <td class="name clip" style="max-width:420px">2026 广州互联网医院联盟成立暨全域健康服务能力提升会
+                  <span class="sub">会议通知 · 11-28 广州</span></td>
+                <td>健康界</td><td><span class="badge badge--purple">行业动态</span></td>
+                <td class="mono small">11-05 11:02</td><td><span class="badge badge--green">已确认</span></td>
+                <td class="w-ops"><span class="row-ops"><a class="btn btn--sm" href="detail.html">阅读</a>
+                  <button class="icon-btn" title="更多"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></span></td>
+              </tr>
+              <tr>
+                <td><input type="checkbox"></td>
+                <td class="name clip" style="max-width:420px">安徽省医保局关于 DRG/DIP 2.0 分组方案落地实施的补充通知
+                  <span class="sub">政策 · 影响 DRG 管理产品线</span></td>
+                <td>医院官网</td><td><span class="badge badge--blue">政策法规</span></td>
+                <td class="mono small">11-05 09:18</td><td><span class="badge badge--green">已确认</span></td>
+                <td class="w-ops"><span class="row-ops"><a class="btn btn--sm" href="detail.html">阅读</a>
+                  <button class="icon-btn" title="更多"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></span></td>
+              </tr>
+              <tr>
+                <td><input type="checkbox"></td>
+                <td class="name clip" style="max-width:420px">宣城市人民医院数据中台与互联互通四甲建设采购意向公示
+                  <span class="sub">可转商机 · 168.0 万 · 关联在跟商机</span></td>
+                <td>中国政府采购网</td><td><span class="badge badge--red">采购公告</span></td>
+                <td class="mono small">11-04 16:50</td><td><span class="badge badge--primary">已转商机</span></td>
+                <td class="w-ops"><span class="row-ops"><a class="btn btn--sm" href="detail.html">阅读</a>
+                  <button class="icon-btn" title="更多"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></span></td>
+              </tr>
+              <tr>
+                <td><input type="checkbox"></td>
+                <td class="name clip" style="max-width:420px">蚌埠医科大学第一附属医院智慧医疗核心系统采购需求公示
+                  <span class="sub">可转商机 · 预算未公开 · 关联在跟商机</span></td>
+                <td>医院官网</td><td><span class="badge badge--red">采购公告</span></td>
+                <td class="mono small">11-03 10:12</td><td><span class="badge badge--primary">已转商机</span></td>
+                <td class="w-ops"><span class="row-ops"><a class="btn btn--sm" href="detail.html">阅读</a>
+                  <button class="icon-btn" title="更多"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></span></td>
+              </tr>
+              <tr>
+                <td><input type="checkbox"></td>
+                <td class="name clip" style="max-width:420px">国家卫健委：《电子病历系统应用水平分级评价管理办法》修订征求意见稿
+                  <span class="sub">政策 · 最高级别由 8 级调整为 9 级</span></td>
+                <td>新华网健康频道</td><td><span class="badge badge--blue">政策法规</span></td>
+                <td class="mono small">11-02 08:36</td><td><span class="badge badge--orange">待确认</span></td>
+                <td class="w-ops"><span class="row-ops"><a class="btn btn--sm" href="detail.html">阅读</a>
+                  <button class="icon-btn" title="更多"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="tbl-foot">
+          <label class="check"><input type="checkbox"> 全选本页</label>
+          <span>已选 <b class="mono">0</b> / 共 1,009 条</span>
+          <div class="vdiv"></div>
+          <button class="btn btn--sm" data-toast="已批量确认 0 条（示例）">批量确认</button>
+          <button class="btn btn--sm" data-toast="已加入知识库（示例）">加入知识库</button>
+          <div class="grow"></div>
+          <span class="small muted-2">12 条/页</span>
+          <div class="pager"><button disabled>‹</button><button class="on">1</button><button>2</button><button>3</button><button>…</button><button>85</button><button>›</button></div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

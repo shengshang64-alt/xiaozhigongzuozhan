@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⑦ 组卷导出 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="bid" data-screen="bid-export" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <div class="ph-back" onclick="location.href='list.html'">← 返回项目列表</div>
+          <h1>【UI测试】中医院信息化建设项目 <span class="badge badge--blue">⑦ 组卷导出</span></h1>
+          <div class="desc">厦门市中医院 · 编号 ZB-TEST-2026 · 距开标 25 天 · 预算 286.0 万 · 交付物 8 个文件</div>
+          <div class="meta">
+            <span class="kv">已过交卷闸门 <b class="green">✓</b></span>
+            <span class="kv">预计总页数 <b>46</b></span>
+            <span class="kv">文件总计 <b>12.4 MB</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn">仅导出预览</button>
+          <button class="btn">导出分包件</button>
+          <button class="btn btn--primary" data-toast="已开始导出完整标书 docx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/></svg><span>导出完整标书 docx</span></button>
+        </div>
+      </div>
+
+      <div class="steps">
+        <div class="step done" onclick="location.href='import.html'"><div class="n">1</div><div class="tx"><b>导入招标</b><span>已完成</span></div></div>
+        <div class="step done" onclick="location.href='parse.html'"><div class="n">2</div><div class="tx"><b>解析确认</b><span>已完成</span></div></div>
+        <div class="step done" onclick="location.href='outline.html'"><div class="n">3</div><div class="tx"><b>大纲编制</b><span>已完成</span></div></div>
+        <div class="step done" onclick="location.href='draft.html'"><div class="n">4</div><div class="tx"><b>正文编写</b><span>11/11 章</span></div></div>
+        <div class="step done" onclick="location.href='deviation.html'"><div class="n">5</div><div class="tx"><b>偏离表</b><span>128/128</span></div></div>
+        <div class="step done" onclick="location.href='check.html'"><div class="n">6</div><div class="tx"><b>交卷自查</b><span>闸门已通过</span></div></div>
+        <div class="step on"><div class="n">7</div><div class="tx"><b>组卷导出</b><span>组卷中</span></div></div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：导出只是流水线末端一个按钮，组卷顺序、页眉页脚、封面盖章位全按系统默认，<b>导出后才发现商务卷排到了技术卷后面</b>。<b>拆后</b>：左定组卷顺序与必选锁、中定版式、右看导出清单，三块同屏确认后再一次性导出。</div>
+      </div>
+
+      <div class="split split--3">
+
+        <div class="col col--gap-12">
+
+          <div class="card">
+            <div class="card-h"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg>组卷顺序</h3><div class="grow"></div><span class="sub">拖动调整</span></div>
+            <div class="card-b flush">
+              <div class="tree">
+                <div class="tree-item"><span class="muted-2 mono">⠿</span>封面 <span class="n">1 页</span><span class="badge badge--gray">必选</span></div>
+                <div class="tree-item"><span class="muted-2 mono">⠿</span>目录 <span class="n">2 页</span><span class="badge badge--gray">必选</span></div>
+                <div class="tree-item"><span class="muted-2 mono">⠿</span>投标函 <span class="n">3 页</span><span class="badge badge--gray">必选</span></div>
+                <div class="tree-item"><span class="muted-2 mono">⠿</span>资格证明 <span class="n">8 页</span><span class="badge badge--gray">必选</span></div>
+                <div class="tree-item on"><span class="muted-2 mono">⠿</span>商务部分 <span class="n">6 页</span><span class="badge badge--gray">必选</span></div>
+                <div class="tree-item"><span class="muted-2 mono">⠿</span>技术部分 <span class="n">22 页</span><span class="badge badge--gray">必选</span></div>
+                <div class="tree-item"><span class="muted-2 mono">⠿</span>报价文件 <span class="n">3 页</span><span class="badge badge--gray">必选</span></div>
+                <div class="tree-item"><span class="muted-2 mono">⠿</span>附件 <span class="n">1 页</span><span class="badge badge--gray">可选</span></div>
+              </div>
+            </div>
+            <div class="card-f row small"><span class="muted">8 卷 · 46 页</span><span class="grow"></span><span class="badge badge--green">顺序符合招标要求</span></div>
+          </div>
+
+          <div class="alert alert--blue">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            <div class="grow">「必选」标记来自招标文件第五章「投标文件组成」要求，<b>缺少任一卷会被判无效投标</b>，因此锁死不可移除。</div>
+          </div>
+
+        </div>
+
+        <div class="col col--gap-12">
+
+          <div class="card">
+            <div class="card-h"><h3>版式设置</h3><div class="grow"></div><span class="sub">按招标文件格式要求预填</span></div>
+            <div class="card-b col col--gap-12">
+              <div class="field"><label class="label">页眉内容</label><input class="input" value="【UI测试】中医院信息化建设项目 · 技术部分"></div>
+              <div class="field"><label class="label">页脚内容</label><input class="input" value="投标人：智业软件股份有限公司"></div>
+              <div class="row row--gap-12">
+                <div class="field grow"><label class="label">页码位置</label><select class="select"><option>页脚居中</option><option>页脚右侧</option><option>页脚外侧</option></select></div>
+                <div class="field grow"><label class="label">纸张</label><select class="select"><option>A4 纵向</option><option>A4 横向</option><option>A3 横向</option></select></div>
+              </div>
+              <div class="row row--gap-12">
+                <div class="field grow"><label class="label">正文字体</label><select class="select"><option>宋体 · 小四</option><option>仿宋 · 三号</option><option>黑体 · 小四</option></select></div>
+                <div class="field grow"><label class="label">行距</label><select class="select"><option>1.5 倍</option><option>固定值 28 磅</option><option>单倍</option></select></div>
+              </div>
+              <div class="field">
+                <label class="label">封面盖章位</label>
+                <div class="row"><button class="switch on" data-toggle></button><span class="small muted">保留「单位公章」留白框（骑缝章位在右下）</span></div>
+                <span class="help">暗标模式下此项自动关闭，公章位由纸质打印时现场加盖</span>
+              </div>
+              <div class="field">
+                <label class="label">目录自动更新</label>
+                <div class="row"><button class="switch on" data-toggle></button><span class="small muted">导出时重新生成书签与目录页码</span></div>
+              </div>
+            </div>
+            <div class="card-f row small"><span class="muted">改动后需重新导出才会生效</span><span class="grow"></span><button class="btn btn--sm">恢复默认</button></div>
+          </div>
+
+        </div>
+
+        <div class="col col--gap-12">
+
+          <div class="card">
+            <div class="card-h"><h3>导出清单</h3><div class="grow"></div><span class="badge badge--green">已过交卷闸门 ✓</span></div>
+            <div class="card-b flush">
+              <div class="list">
+                <div class="list-row"><div class="grow"><div class="t">01 完整标书.docx</div><div class="s">8 卷合订 · 46 页</div></div><span class="mono small">4.2 MB</span></div>
+                <div class="list-row"><div class="grow"><div class="t">02 开标一览表.docx</div><div class="s">1 页 · 含大小写金额</div></div><span class="mono small">86 KB</span></div>
+                <div class="list-row"><div class="grow"><div class="t">03 投标函.docx</div><div class="s">3 页</div></div><span class="mono small">142 KB</span></div>
+                <div class="list-row"><div class="grow"><div class="t">04 资格证明.docx</div><div class="s">8 页 · 12 份证明材料</div></div><span class="mono small">2.8 MB</span></div>
+                <div class="list-row"><div class="grow"><div class="t">05 技术偏离表.docx</div><div class="s">128 条 · 分 3 组</div></div><span class="mono small">1.1 MB</span></div>
+                <div class="list-row"><div class="grow"><div class="t">06 分项报价表.xlsx</div><div class="s">含公式与合计校验</div></div><span class="mono small">64 KB</span></div>
+                <div class="list-row"><div class="grow"><div class="t">07 技术方案.pdf</div><div class="s">22 页 · 用于评审阅读</div></div><span class="mono small">3.9 MB</span></div>
+                <div class="list-row"><div class="grow"><div class="t">08 投标文件清单.pdf</div><div class="s">1 页 · 装订封面用</div></div><span class="mono small">120 KB</span></div>
+              </div>
+            </div>
+            <div class="card-f">
+              <div class="row small"><span class="muted">共 8 个文件</span><div class="grow"></div><span class="mono">12.4 MB</span></div>
+              <div class="bar green mt8"><i style="width:100%"></i></div>
+            </div>
+          </div>
+
+          <div class="alert alert--amber">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+            <div class="grow">导出后<b>仍需人工</b>：逐页盖章、法人签字、U 盘刻录与密封。系统只能保证电子稿内容与格式合规，签章与递交环节无法代劳。</div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

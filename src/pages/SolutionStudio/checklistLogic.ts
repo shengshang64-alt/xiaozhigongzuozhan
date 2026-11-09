@@ -1074,6 +1074,19 @@ export function useChecklist(deps: {
   const openChecklistDetail = useCallback((id: string) => setActiveChecklistId(id), [])
   const closeChecklistDetail = useCallback(() => setActiveChecklistId(null), [])
 
+  const updateActiveCustomerRaw = useCallback(
+    (customerRaw: string) => {
+      const cur = activeChecklist
+      if (!cur) return
+      const next = { ...cur, customer_raw: customerRaw }
+      setMyChecklists((prev) => prev.map((c) => (c.id === cur.id ? next : c)))
+      cancelCkPendingLineSave()
+      void persistChecklist(next, { customer_raw: customerRaw })
+    },
+    [activeChecklist, cancelCkPendingLineSave, persistChecklist],
+  )
+
+
   return {
     // 统一确认对话框 / 保存状态
     confirmRequest,
@@ -1125,6 +1138,7 @@ export function useChecklist(deps: {
     closeChecklistDetail,
     deleteChecklist,
     updateActiveLine,
+    updateActiveCustomerRaw,
     addActiveLineFromProduct,
     addActiveExternalLine,
     removeActiveLine,

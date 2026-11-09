@@ -1,0 +1,24 @@
+{
+  "aCheck": {
+    "loading": false,
+    "exportCsv": true,
+    "newBtn": true,
+    "chips": true,
+    "tag": true,
+    "cta": true,
+    "archive": true,
+    "trash": true,
+    "review": true,
+    "qBtn": true
+  },
+  "bCheck": {
+    "steps": true,
+    "badSteps": [],
+    "mid": true,
+    "midBad": [],
+    "amounts": true,
+    "gen": true,
+    "amountSlice": "金额汇总\n含税\n设备\n0.0 万\n软件\n18.0 万\n实施\n0.0 万\n服务（3 年）\n0.0 万\n税\n0.0 万\n合计\n18.0 万\n生成大纲\n按勾选的 85 项生成大纲，未勾选项不写进正文"
+  },
+  "at": "2026-11-09T01:45:43.664Z"
+}

@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>素材总览 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="material" data-screen="material-list" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>素材库<span class="badge badge--primary">486 个素材</span></h1>
+          <div class="desc">素材库的第一价值是<b>做 PPT 时被优先命中</b>，管理不是主线。所以本屏先给「被引用多少次」，再给分类与网格；导入和联网抓取是动作，已挪到右上角。</div>
+          <div class="meta">
+            <span class="kv">存储占用 <b>2.0 GB</b></span>
+            <span class="kv">被 PPT 引用 <b>1,284 次</b></span>
+            <span class="kv">最近入库 <b>11-08 09:02</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn" onclick="location.href='web.html'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 12.5a11 11 0 0 1 14 0"/><path d="M8.5 16a6 6 0 0 1 7 0"/><path d="M12 20h.01"/><path d="M2 9a16 16 0 0 1 20 0"/></svg>联网抓取</button>
+          <button class="btn btn--primary" onclick="location.href='import.html'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 8 5-5 5 5M12 3v12"/></svg>＋ 导入素材</button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：素材总览 / 联网抓取 / 本地导入 / 库设置 四个 Tab 平级，抓取这个「动作」被当成「视图」；四张统计卡里三张为 0、回收站 4，看起来像三个失败指标。<b>拆后</b>：只剩单视图，导入与抓取变右上角动作，回收站归设置；本屏补上「使用排行」，让素材价值可度量。</div>
+      </div>
+
+      <div class="databar">
+        <div class="item">素材 <b>486</b></div>
+        <div class="item">分类 <b>12</b></div>
+        <div class="item green">本月新增 <b>34</b></div>
+        <div class="item"><span class="muted-2">回收站</span> <b class="muted-2">4</b></div>
+        <div class="grow"></div>
+        <div class="item"><span class="small muted-2">未被引用 61 个 · 建议清理或补标签</span></div>
+      </div>
+
+      <div class="alert alert--blue mb12">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div class="grow"><b>素材库的第一价值是在 PPT 生成时被优先命中，管理不是主线。</b>因此「被引用次数」是第一排序依据；为了好看而堆素材，反而会稀释命中率。</div>
+        <div class="acts"><button class="btn btn--sm" onclick="location.href='../ppt/editor.html'">去 PPT 编辑器看命中</button></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:240px minmax(0,1fr);gap:14px;align-items:start">
+
+        <!-- 左：分类树 -->
+        <div class="col col--gap-12">
+          <div class="card">
+            <div class="card-h"><h3>分类</h3><div class="grow"></div><button class="icon-btn" title="新建分类"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 5v14M5 12h14"/></svg></button></div>
+            <div class="card-b tight">
+              <div class="tree">
+                <div class="tree-item on">全部素材 <span class="n">486</span></div>
+                <div class="tree-grp">主分类 · 6 个</div>
+                <div class="tree-item">产品图 <span class="n">168</span></div>
+                <div class="tree-item">架构图 <span class="n">112</span></div>
+                <div class="tree-item">场景图 <span class="n">96</span></div>
+                <div class="tree-item">资质扫描件 <span class="n">54</span></div>
+                <div class="tree-item">案例照片 <span class="n">42</span></div>
+                <div class="tree-item">图标 <span class="n">14</span></div>
+                <div class="tree-grp">其他</div>
+                <div class="tree-item">未分类 <span class="n">4</span></div>
+                <div class="tree-item">回收站 <span class="n">4</span></div>
+              </div>
+              <div class="tiny muted-2 mt8" style="padding:0 8px">6 个主分类 + 6 个子分类 = 12 个分类，可在「库设置」里增删。</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>来源</h3></div>
+            <div class="card-b tight">
+              <div class="tree">
+                <div class="tree-item">本地上传 <span class="n">372</span></div>
+                <div class="tree-item">Pexels <span class="n">68</span></div>
+                <div class="tree-item">Unsplash <span class="n">32</span></div>
+                <div class="tree-item">内部图库 <span class="n">14</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右：使用排行 + 网格 -->
+        <div class="col col--gap-14">
+
+          <div class="card">
+            <div class="card-h"><h3>使用排行 Top5</h3><span class="sub">被 PPT 引用次数（近 90 天）</span><div class="grow"></div><button class="btn btn--sm">看全部排行</button></div>
+            <div class="card-b">
+              <div class="chart-bars">
+                <div class="cbar" style="grid-template-columns:132px minmax(0,1fr) 62px"><span class="k">智慧医院总体架构图</span><span class="track"><i class="fill" style="width:100%"></i></span><span class="v">38 次</span></div>
+                <div class="cbar" style="grid-template-columns:132px minmax(0,1fr) 62px"><span class="k">数据中台分层示意</span><span class="track"><i class="fill" style="width:82%"></i></span><span class="v">31 次</span></div>
+                <div class="cbar" style="grid-template-columns:132px minmax(0,1fr) 62px"><span class="k">电子病历评级路径图</span><span class="track"><i class="fill" style="width:66%"></i></span><span class="v">25 次</span></div>
+                <div class="cbar" style="grid-template-columns:132px minmax(0,1fr) 62px"><span class="k">门诊大厅导诊台场景</span><span class="track"><i class="fill" style="width:53%"></i></span><span class="v">20 次</span></div>
+                <div class="cbar" style="grid-template-columns:132px minmax(0,1fr) 62px"><span class="k">互联互通四甲证书扫描</span><span class="track"><i class="fill" style="width:34%"></i></span><span class="v">13 次</span></div>
+              </div>
+              <div class="tiny muted-2 mt8">Top5 共被引用 127 次，占全库引用的 9.9%；前 20 个素材覆盖了 72% 的引用。</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="filterbar" style="margin-bottom:12px">
+              <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                <input class="input" placeholder="搜索素材名 / 标签"></div>
+              <div class="row" data-chips>
+                <span class="chip on">全部 <span class="n">486</span></span>
+                <span class="chip">本地上传 <span class="n">372</span></span>
+                <span class="chip">图库 <span class="n">100</span></span>
+                <span class="chip">未被引用 <span class="n">61</span></span>
+              </div>
+              <div class="grow"></div>
+              <button class="btn btn--sm">筛选 <span class="badge badge--primary">1</span></button>
+              <div class="dd">
+                <button class="btn btn--sm" data-dd><span data-dd-label>按引用降序</span>
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+                <div class="dd-menu">
+                  <div class="dd-label">排序</div>
+                  <div class="dd-item on" data-label="按引用降序">按引用降序<span class="tick">✓</span></div>
+                  <div class="dd-item" data-label="按入库时间">按入库时间</div>
+                  <div class="dd-item" data-label="按占用空间">按占用空间</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid g4">
+
+              <div class="card card--hover">
+                <div style="position:relative;height:96px;border-radius:var(--r-sm) var(--r-sm) 0 0;background:linear-gradient(135deg,var(--primary-400),var(--primary-700));overflow:hidden">
+                  <div style="position:absolute;left:14px;top:18px;right:14px;height:10px;border-radius:2px;background:var(--primary-100)"></div>
+                  <div style="position:absolute;left:14px;top:38px;width:38%;height:34px;border-radius:3px;background:var(--primary-100)"></div>
+                  <div style="position:absolute;right:14px;top:38px;width:44%;height:14px;border-radius:2px;background:var(--primary-100)"></div>
+                  <div style="position:absolute;right:14px;top:58px;width:36%;height:14px;border-radius:2px;background:var(--primary-100)"></div>
+                  <input type="checkbox" style="position:absolute;left:8px;bottom:8px;appearance:none;width:14px;height:14px;border:1.5px solid var(--primary-100);border-radius:3px;background:var(--primary-50)">
+                </div>
+                <div class="card-b tight">
+                  <div class="b trunc small">智慧医院总体架构图</div>
+                  <div class="tiny muted-2 mt4">1920×1080 · 1.2 MB · 架构图</div>
+                  <div class="row mt8"><span class="badge badge--primary">被 PPT 引用 38 次</span></div>
+                </div>
+              </div>
+
+              <div class="card card--hover">
+                <div style="position:relative;height:96px;border-radius:var(--r-sm) var(--r-sm) 0 0;background:linear-gradient(135deg,var(--primary-300),var(--primary-600));overflow:hidden">
+                  <div style="position:absolute;left:14px;top:16px;right:14px;height:11px;border-radius:2px;background:var(--primary-50)"></div>
+                  <div style="position:absolute;left:14px;top:34px;right:14px;height:11px;border-radius:2px;background:var(--primary-100)"></div>
+                  <div style="position:absolute;left:14px;top:52px;right:14px;height:11px;border-radius:2px;background:var(--primary-100)"></div>
+                  <div style="position:absolute;left:14px;top:70px;width:46%;height:11px;border-radius:2px;background:var(--primary-100)"></div>
+                </div>
+                <div class="card-b tight">
+                  <div class="b trunc small">数据中台分层示意</div>
+                  <div class="tiny muted-2 mt4">1600×900 · 860 KB · 架构图</div>
+                  <div class="row mt8"><span class="badge badge--primary">被 PPT 引用 31 次</span></div>
+                </div>
+              </div>
+
+              <div class="card card--hover">
+                <div style="position:relative;height:96px;border-radius:var(--r-sm) var(--r-sm) 0 0;background:linear-gradient(135deg,var(--blue-bg),var(--blue-line));overflow:hidden">
+                  <div style="position:absolute;left:14px;top:20px;width:60px;height:60px;border-radius:50%;border:6px solid var(--blue)"></div>
+                  <div style="position:absolute;left:88px;top:26px;right:14px;height:8px;border-radius:2px;background:var(--card)"></div>
+                  <div style="position:absolute;left:88px;top:44px;right:30px;height:8px;border-radius:2px;background:var(--card)"></div>
+                  <div style="position:absolute;left:88px;top:62px;right:48px;height:8px;border-radius:2px;background:var(--card)"></div>
+                </div>
+                <div class="card-b tight">
+                  <div class="b trunc small">电子病历评级路径图</div>
+                  <div class="tiny muted-2 mt4">1920×1080 · 720 KB · 产品图</div>
+                  <div class="row mt8"><span class="badge badge--primary">被 PPT 引用 25 次</span></div>
+                </div>
+              </div>
+
+              <div class="card card--hover">
+                <div style="position:relative;height:96px;border-radius:var(--r-sm) var(--r-sm) 0 0;background:linear-gradient(135deg,var(--green-bg),var(--green-line));overflow:hidden">
+                  <div style="position:absolute;left:14px;bottom:14px;width:44px;height:44px;border-radius:4px;background:var(--card)"></div>
+                  <div style="position:absolute;left:66px;bottom:14px;width:44px;height:34px;border-radius:4px;background:var(--card)"></div>
+                  <div style="position:absolute;left:118px;bottom:14px;width:44px;height:24px;border-radius:4px;background:var(--card)"></div>
+                  <div style="position:absolute;left:14px;top:16px;right:14px;height:8px;border-radius:2px;background:var(--card)"></div>
+                </div>
+                <div class="card-b tight">
+                  <div class="b trunc small">门诊大厅导诊台场景</div>
+                  <div class="tiny muted-2 mt4">2400×1600 · 2.4 MB · 场景图</div>
+                  <div class="row mt8"><span class="badge badge--primary">被 PPT 引用 20 次</span></div>
+                </div>
+              </div>
+
+              <div class="card card--hover">
+                <div style="position:relative;height:96px;border-radius:var(--r-sm) var(--r-sm) 0 0;background:linear-gradient(135deg,var(--bg-2),var(--line-3));overflow:hidden;border-bottom:1px solid var(--line)">
+                  <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:52px;height:66px;border-radius:2px;background:var(--card);border:1px solid var(--line-3)"></div>
+                  <div style="position:absolute;left:calc(50% - 18px);top:50%;width:36px;height:3px;background:var(--line-3);box-shadow:0 8px 0 var(--line-3),0 -8px 0 var(--line-3)"></div>
+                </div>
+                <div class="card-b tight">
+                  <div class="b trunc small">互联互通四甲证书</div>
+                  <div class="tiny muted-2 mt4">2480×3508 · 1.8 MB · 资质扫描件</div>
+                  <div class="row mt8"><span class="badge badge--primary">被 PPT 引用 13 次</span></div>
+                </div>
+              </div>
+
+              <div class="card card--hover">
+                <div style="position:relative;height:96px;border-radius:var(--r-sm) var(--r-sm) 0 0;background:linear-gradient(135deg,var(--primary-100),var(--primary-400));overflow:hidden">
+                  <div style="position:absolute;left:14px;top:14px;width:30px;height:30px;border-radius:3px;background:var(--card)"></div>
+                  <div style="position:absolute;left:52px;top:14px;width:30px;height:30px;border-radius:3px;background:var(--card)"></div>
+                  <div style="position:absolute;left:90px;top:14px;width:30px;height:30px;border-radius:3px;background:var(--card)"></div>
+                  <div style="position:absolute;left:14px;top:54px;right:14px;height:22px;border-radius:3px;background:var(--card)"></div>
+                </div>
+                <div class="card-b tight">
+                  <div class="b trunc small">三级医院评审现场照</div>
+                  <div class="tiny muted-2 mt4">2048×1365 · 1.4 MB · 案例照片</div>
+                  <div class="row mt8"><span class="badge badge--gray">被 PPT 引用 0 次</span></div>
+                </div>
+              </div>
+
+              <div class="card card--hover">
+                <div style="position:relative;height:96px;border-radius:var(--r-sm) var(--r-sm) 0 0;background:linear-gradient(135deg,var(--purple-bg),var(--purple-line));overflow:hidden">
+                  <div style="position:absolute;left:14px;top:18px;width:26px;height:26px;border-radius:5px;background:var(--purple)"></div>
+                  <div style="position:absolute;left:48px;top:18px;width:26px;height:26px;border-radius:5px;background:var(--card)"></div>
+                  <div style="position:absolute;left:82px;top:18px;width:26px;height:26px;border-radius:5px;background:var(--card)"></div>
+                  <div style="position:absolute;left:14px;top:56px;width:94px;height:20px;border-radius:3px;background:var(--card)"></div>
+                </div>
+                <div class="card-b tight">
+                  <div class="b trunc small">医疗图标集（线性）</div>
+                  <div class="tiny muted-2 mt4">24×24 · 96 KB · 图标</div>
+                  <div class="row mt8"><span class="badge badge--primary">被 PPT 引用 9 次</span></div>
+                </div>
+              </div>
+
+              <div class="card card--hover">
+                <div style="position:relative;height:96px;border-radius:var(--r-sm) var(--r-sm) 0 0;background:linear-gradient(135deg,var(--amber-bg),var(--amber-line));overflow:hidden">
+                  <div style="position:absolute;left:14px;top:16px;right:14px;height:9px;border-radius:2px;background:var(--card)"></div>
+                  <div style="position:absolute;left:14px;top:34px;width:70%;height:9px;border-radius:2px;background:var(--card)"></div>
+                  <div style="position:absolute;left:14px;top:52px;width:44%;height:9px;border-radius:2px;background:var(--card)"></div>
+                  <div style="position:absolute;left:14px;top:70px;width:56%;height:9px;border-radius:2px;background:var(--card)"></div>
+                </div>
+                <div class="card-b tight">
+                  <div class="b trunc small">实施计划甘特示意</div>
+                  <div class="tiny muted-2 mt4">1920×1080 · 540 KB · 架构图</div>
+                  <div class="row mt8"><span class="badge badge--gray">被 PPT 引用 0 次</span></div>
+                </div>
+              </div>
+
+            </div>
+
+            <div class="row mt12 small muted-2">
+              <span>已显示 8 / 486 个 · 按引用降序</span>
+              <div class="grow"></div>
+              <div class="pager"><button disabled>‹</button><button class="on">1</button><button>2</button><button>3</button><button>…</button><button>61</button><button>›</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

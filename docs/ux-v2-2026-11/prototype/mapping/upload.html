@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>① 选择清单 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="mapping" data-screen="mapping-upload" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>① 选择清单<span class="badge badge--blue">第 1 步 / 共 3 步</span></h1>
+          <div class="desc">把业主的<strong>系统清单</strong>喂进来：上传 Excel、粘贴文本、或直接从招标文件里抽。这一步只解决"输入从哪来"，对照与结果在后面两屏。</div>
+          <div class="meta">
+            <span class="kv">上次使用 <b>2026-11-06 15:20</b></span>
+            <span class="kv">历史清单 <b>12</b> 份</span>
+            <span class="kv">最近对照 <b>已对照 121 / 128 行</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.6 3.9A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg><span>从历史清单选</span></button>
+          <button class="btn">产品库</button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：两层 Tab 叠加（记忆库 / 公司库 / 导入 ONE-LINK × 上传粘贴 / 从招标文件 / 从方案需求），用户分不清层级；上半屏是输入区，下半屏一行小字"上传后此处展示对照结果"，结果区没有视觉存在感，页面 70% 是空白。<b>拆后</b>：向导第 1 步只做"选来源"，三种方式并排成卡片；示例文本改用占位符样式，与真实输入区分开。</div>
+      </div>
+
+      <div class="steps">
+        <div class="step on"><div class="n">1</div><div class="tx"><b>选择清单</b><span>上传 / 粘贴 / 抽取</span></div></div>
+        <div class="step"><div class="n">2</div><div class="tx"><b>对照</b><span>逐行匹配候选产品</span></div></div>
+        <div class="step"><div class="n">3</div><div class="tx"><b>结果</b><span>评分覆盖与导出</span></div></div>
+      </div>
+
+      <div class="split split--r">
+
+        <!-- 左：输入 -->
+        <div class="col col--gap-16">
+
+          <div class="grid g3">
+            <div class="card card--hover">
+              <div class="card-b tight">
+                <div class="row"><span class="badge badge--primary">推荐</span><span class="grow"></span>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" ><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                </div>
+                <div class="b mt8">上传 Excel</div>
+                <p class="small muted-2 mt4">原表所有列都会保留，进对照表后可随时回看业主原话。系统按表头自动认列。</p>
+                <div class="small muted mt8">支持 .xlsx / .xls / .csv</div>
+              </div>
+              <div class="card-f"><button class="btn btn--sm">选择文件</button></div>
+            </div>
+
+            <div class="card card--hover">
+              <div class="card-b tight">
+                <div class="row"><span class="badge badge--gray">最快</span><span class="grow"></span>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" ><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
+                </div>
+                <div class="b mt8">粘贴文本</div>
+                <p class="small muted-2 mt4">一行一条，序号可有可无。适合从微信、Word、PDF 里直接复制下来的清单。</p>
+                <div class="small muted mt8">无需排版，自动切行</div>
+              </div>
+              <div class="card-f"><button class="btn btn--sm">去粘贴</button></div>
+            </div>
+
+            <div class="card card--hover">
+              <div class="card-b tight">
+                <div class="row"><span class="badge badge--amber">需采招文件</span><span class="grow"></span>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" ><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 15 2 2 4-4"/></svg>
+                </div>
+                <div class="b mt8">从招标文件抽取</div>
+                <p class="small muted-2 mt4">直接读招标文件的「采购需求」章节，自动抽系统与模块条目，适合已有标书项目的场景。</p>
+                <div class="small muted mt8">关联标书项目：3 个进行中</div>
+              </div>
+              <div class="card-f"><button class="btn btn--sm">从标书抽取</button></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">
+              <h3>粘贴清单文本</h3>
+              <span class="sub">每行一个系统或模块条目</span>
+              <div class="grow"></div>
+              <span class="badge badge--gray">0 行</span>
+            </div>
+            <div class="card-b">
+              <div class="help mb8">示例格式（可直接粘贴）：<span class="mono">1. 电子病历系统（含质控）</span> / <span class="mono">2. 集成平台 V3.0</span> / <span class="mono">（3）门急诊挂号收费</span>——序号与括号可不写，系统按行切分。</div>
+              <textarea class="textarea" rows="6" placeholder="在此粘贴业主清单，例如：
+1. 电子病历系统（含质控）
+2. 集成平台 V3.0
+（3）门急诊挂号收费
+4. 医学影像系统 PACS
+5. 检验信息系统 LIS
+6. 数据中台与主数据治理"></textarea>
+              <div class="row mt8 small muted-2">
+                <span>自动识别序号、括号、全半角</span>
+                <span class="grow"></span>
+                <span>识别到 0 行 · 至少 1 行才能开始对照</span>
+              </div>
+            </div>
+            <div class="card-f row">
+              <span class="small muted-2">也可以先点上面任意来源卡片</span>
+              <span class="grow"></span>
+              <button class="btn btn--sm btn--primary" data-toast="开始对照（示例）">开始对照（预计 20 秒）</button>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 右：帮助 + 最近上传 -->
+        <div class="col col--gap-16 aside-sticky">
+
+          <div class="card">
+            <div class="card-h">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>这些清单从哪来？</h3>
+            </div>
+            <div class="card-b col col--gap-12 small">
+              <div class="row"><span class="badge badge--primary">①</span><span class="grow">业主发的<strong>系统清单 Excel</strong>——最常见，直接上传，保留原列</span></div>
+              <div class="row"><span class="badge badge--blue">②</span><span class="grow">招标文件里的<strong>采购需求章节</strong>——按目录找「采购清单 / 建设内容」</span></div>
+              <div class="row"><span class="badge badge--gray">③</span><span class="grow">方案或可研里的<strong>建设内容表</strong>——从方案编辑器导出即可</span></div>
+              <div class="divider" style="margin:2px 0"></div>
+              <p class="muted-2">对照只做"条目 → 产品"的映射，不会改动你的原清单。产品名与厂商来自公司产品库（486 个产品 / 34 家厂商）。</p>
+            </div>
+            <div class="card-f"><a class="btn btn--sm" href="library.html">去产品库维护 →</a></div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">
+              <h3>最近 3 次上传</h3>
+              <div class="grow"></div>
+              <span class="badge badge--gray">可复用</span>
+            </div>
+            <div class="card-b tight">
+              <div class="list-row" style="border:0;padding:7px 6px">
+                <span class="badge badge--green">128 行</span>
+                <div class="grow"><div class="t" style="font-size:12.2px">宣城市人民医院-系统清单.xlsx</div><div class="s">11-06 15:20 · 已对照 121 行</div></div>
+              </div>
+              <div class="list-row" style="border:0;padding:7px 6px">
+                <span class="badge badge--blue">64 行</span>
+                <div class="grow"><div class="t" style="font-size:12.2px">顾县人民医院-需求摘录.txt</div><div class="s">11-03 10:05 · 已对照 64 行</div></div>
+              </div>
+              <div class="list-row" style="border:0;padding:7px 6px">
+                <span class="badge badge--gray">36 行</span>
+                <div class="grow"><div class="t" style="font-size:12.2px">蚌埠医大一附院-招标文件（抽取）.xlsx</div><div class="s">10-29 16:42 · 已对照 36 行</div></div>
+              </div>
+              <div class="list-row" style="border:0;padding:7px 6px">
+                <span class="spin"></span>
+                <div class="grow"><div class="t" style="font-size:12.2px">正在解析：阜阳市妇幼-建设内容表.xlsx</div><div class="s">识别表头中，约 8 秒</div></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>
+

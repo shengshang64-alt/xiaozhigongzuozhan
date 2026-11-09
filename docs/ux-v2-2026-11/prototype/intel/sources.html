@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据源 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="intel" data-screen="intel-sources" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>数据源<span class="badge badge--green">5 个正常</span><span class="badge badge--red">1 个失败</span></h1>
+          <div class="desc">情报从哪来、多久抓一次、哪条抓不到了。原来写在情报中心首屏的蓝色说明书全部归到这里——业务页只放工作区，说明书放设置。</div>
+          <div class="meta">
+            <span class="kv">数据源 <b>6</b> 个</span>
+            <span class="kv">今日抓取 <b>40</b> 条</span>
+            <span class="kv">平均延迟 <b>1.4</b> 分钟</span>
+            <span class="kv">最近成功 <b>2026-11-08 08:40</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn" data-toast="已全部立即抓取一次（示例）">立即全部抓取</button>
+          <button class="btn btn--primary" data-toast="已新建数据源（示例）">＋ 新增数据源</button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：情报中心首屏有一大段蓝色说明文字，讲数据源与抓取频率——属于设置级信息，却永久占着业务页的黄金位；失败源在列表里只显示一个灰点，没人知道为什么抓不到。<b>拆后</b>：独立成屏，源健康度、失败原因、抓取计划一屏说清。</div>
+      </div>
+
+      <div class="alert alert--orange mb12">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        <div class="grow"><b>「健康界」连续 3 次抓取失败</b> · 最近成功时间停留在 11-05 14:20，已错过 3 条行业动态。原因：页面结构变更，选择器未命中（详见下表）。</div>
+        <div class="acts">
+          <button class="btn btn--sm" data-toast="已重新测试该源（示例）">重新测试</button>
+          <button class="btn btn--sm" data-toast="已打开选择器配置（示例）">修选择器</button>
+        </div>
+      </div>
+
+      <div class="tbl-wrap">
+        <div class="tbl-scroll">
+          <table class="tbl">
+            <thead>
+              <tr><th>源名称</th><th>类型</th><th>抓取频率</th><th>最近成功时间</th><th class="num">成功率</th><th>状态</th><th class="w-ops">操作</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="name">中国政府采购网 <span class="sub">ccgp.gov.cn · 采购公告 / 中标公告</span></td>
+                <td><span class="badge badge--primary">政府</span></td>
+                <td class="mono small">每 15 分钟</td>
+                <td class="mono small">11-08 08:40</td>
+                <td class="num">99.2%</td>
+                <td><span class="badge badge--green badge--dot">正常</span></td>
+                <td class="w-ops"><span class="row-ops"><button class="btn btn--sm" data-toast="测试通过：抓取 2 条，延迟 42 秒">测试</button>
+                  <button class="icon-btn" title="更多"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></span></td>
+              </tr>
+              <tr>
+                <td class="name">HIT专家网 <span class="sub">hit180.com · 行业 / 政策 / 技术</span></td>
+                <td><span class="badge badge--blue">媒体</span></td>
+                <td class="mono small">每 30 分钟</td>
+                <td class="mono small">11-08 08:36</td>
+                <td class="num">97.8%</td>
+                <td><span class="badge badge--green badge--dot">正常</span></td>
+                <td class="w-ops"><span class="row-ops"><button class="btn btn--sm" data-toast="测试通过：抓取 4 条，延迟 18 秒">测试</button>
+                  <button class="icon-btn" title="更多"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></span></td>
+              </tr>
+              <tr>
+                <td class="name">新华网健康频道 <span class="sub">health.news.cn · 政策权威口径</span></td>
+                <td><span class="badge badge--blue">媒体</span></td>
+                <td class="mono small">每 1 小时</td>
+                <td class="mono small">11-08 08:00</td>
+                <td class="num">98.6%</td>
+                <td><span class="badge badge--green badge--dot">正常</span></td>
+                <td class="w-ops"><span class="row-ops"><button class="btn btn--sm" data-toast="测试通过：抓取 1 条，延迟 26 秒">测试</button>
+                  <button class="icon-btn" title="更多"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></span></td>
+              </tr>
+              <tr>
+                <td class="name">医院官网（24 家已建档客户） <span class="sub">招标公告 / 采购意向 / 预算公开</span></td>
+                <td><span class="badge badge--purple">医院官网</span></td>
+                <td class="mono small">每 6 小时</td>
+                <td class="mono small">11-08 06:12</td>
+                <td class="num">94.1%</td>
+                <td><span class="badge badge--green badge--dot">正常</span></td>
+                <td class="w-ops"><span class="row-ops"><button class="btn btn--sm" data-toast="测试通过：24 站中 22 站可抓">测试</button>
+                  <button class="icon-btn" title="更多"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></span></td>
+              </tr>
+              <tr>
+                <td class="name">中国招标投标公共服务平台 <span class="sub">cebpubservice.com · 跨省标讯</span></td>
+                <td><span class="badge badge--primary">政府</span></td>
+                <td class="mono small">每 1 小时</td>
+                <td class="mono small">11-08 07:45</td>
+                <td class="num">96.3%</td>
+                <td><span class="badge badge--green badge--dot">正常</span></td>
+                <td class="w-ops"><span class="row-ops"><button class="btn btn--sm" data-toast="测试通过：抓取 6 条，延迟 51 秒">测试</button>
+                  <button class="icon-btn" title="更多"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></span></td>
+              </tr>
+              <tr>
+                <td class="name">健康界 <span class="sub">cn-healthcare.com · 行业深度</span></td>
+                <td><span class="badge badge--blue">媒体</span></td>
+                <td class="mono small">每 1 小时</td>
+                <td class="mono small">11-05 14:20</td>
+                <td class="num red">61.5%</td>
+                <td><span class="badge badge--red badge--dot">失败 3 次</span></td>
+                <td class="w-ops"><span class="row-ops"><button class="btn btn--sm" data-toast="测试失败：页面结构变更，选择器未命中">测试</button>
+                  <button class="icon-btn danger" title="停用"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="tbl-foot">
+          <span class="row" style="gap:6px"><span class="dot red"></span>失败原因：页面结构变更，选择器未命中（<span class="mono">list &gt; .article-card</span> 已失效，实际为 <span class="mono">.news-list &gt; li</span>）</span>
+          <div class="grow"></div>
+          <button class="btn btn--sm" data-toast="已更新选择器并重测通过（示例）">一键修正选择器</button>
+          <button class="btn btn--sm" data-toast="已重新抓取该源（示例）">重新抓取</button>
+        </div>
+      </div>
+
+      <div class="split split--2 mt16">
+        <div class="card">
+          <div class="card-h"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>抓取计划设置</h3><span class="sub">全局默认，单源可在上表覆盖</span><div class="grow"></div>
+            <button class="btn btn--sm" data-toast="已保存抓取计划">保存</button></div>
+          <div class="card-b">
+            <div class="grid g2">
+              <div class="field"><label class="label">默认抓取频率</label>
+                <select class="select"><option>每 15 分钟</option><option>每 30 分钟</option><option>每 1 小时</option><option>每 6 小时</option></select>
+                <span class="help">政府类源建议 15 分钟，媒体类 1 小时足够</span></div>
+              <div class="field"><label class="label">抓取时段</label>
+                <select class="select"><option>全天 24 小时</option><option>仅工作时间 08:00–20:00</option><option>每日 06:00 / 12:00 / 18:00</option></select>
+                <span class="help">错峰可降低被目标站限流的概率</span></div>
+              <div class="field"><label class="label req">并发数</label>
+                <input class="input" value="4">
+                <span class="help">当前 4 并发 · 上次 24 小时峰值 6 · 建议不超过 8</span></div>
+              <div class="field"><label class="label">单源超时</label>
+                <input class="input" value="30 秒">
+                <span class="help">连续 3 次超时自动标红并停止抓取</span></div>
+            </div>
+            <div class="divider"></div>
+            <div class="col col--gap-12">
+              <div class="row small"><span class="grow">新情报到达时推送通知</span><button class="switch on" data-toggle></button></div>
+              <div class="row small"><span class="grow">抓取失败时通知管理员</span><button class="switch on" data-toggle></button></div>
+              <div class="row small"><span class="grow">自动重试（失败后 5 / 15 / 30 分钟各一次）</span><button class="switch on" data-toggle></button></div>
+              <div class="row small"><span class="grow">按「与业务关联度」自动过滤低质资讯</span><button class="switch on" data-toggle></button></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h"><h3>近 7 天抓取量</h3><div class="grow"></div><span class="small muted-2">共 268 条</span></div>
+            <div class="card-b">
+              <div class="vbars">
+                <div class="col"><span class="n">31</span><span class="b" style="height:55%"></span><span class="l">11-02</span></div>
+                <div class="col"><span class="n">42</span><span class="b" style="height:74%"></span><span class="l">11-03</span></div>
+                <div class="col"><span class="n">36</span><span class="b" style="height:63%"></span><span class="l">11-04</span></div>
+                <div class="col"><span class="n">45</span><span class="b" style="height:79%"></span><span class="l">11-05</span></div>
+                <div class="col"><span class="n">39</span><span class="b" style="height:68%"></span><span class="l">11-06</span></div>
+                <div class="col"><span class="n">35</span><span class="b" style="height:61%"></span><span class="l">11-07</span></div>
+                <div class="col"><span class="n">40</span><span class="b" style="height:70%"></span><span class="l">11-08</span></div>
+              </div>
+              <div class="row small muted-2 mt8"><span class="dot red"></span><span class="grow">11-06 起健康界失败，日均少抓 6 条</span></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>抓取日志</h3><div class="grow"></div><span class="badge badge--red">1 条失败</span></div>
+            <div class="card-b flush">
+              <div class="list">
+                <div class="list-row"><span class="badge badge--green">成功</span><div class="grow"><div class="t" style="font-size:12.5px">中国政府采购网</div><div class="s">抓取 2 条 · 新增 2 · 去重 0</div></div><div class="r mono small">08:40</div></div>
+                <div class="list-row"><span class="badge badge--red">失败</span><div class="grow"><div class="t" style="font-size:12.5px">健康界</div><div class="s">选择器未命中，返回 0 条 · 第 3 次</div></div><div class="r mono small">08:36</div></div>
+                <div class="list-row"><span class="badge badge--green">成功</span><div class="grow"><div class="t" style="font-size:12.5px">HIT专家网</div><div class="s">抓取 4 条 · 新增 3 · 去重 1</div></div><div class="r mono small">08:36</div></div>
+                <div class="list-row"><span class="badge badge--green">成功</span><div class="grow"><div class="t" style="font-size:12.5px">新华网健康频道</div><div class="s">抓取 1 条 · 新增 1 · 去重 0</div></div><div class="r mono small">08:00</div></div>
+                <div class="list-row"><span class="badge badge--amber">跳过</span><div class="grow"><div class="t" style="font-size:12.5px">医院官网（24 站）</div><div class="s">2 站返回 404，已自动跳过</div></div><div class="r mono small">06:12</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

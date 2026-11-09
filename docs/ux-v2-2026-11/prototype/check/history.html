@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>历史报告 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="check" data-screen="check-history" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>历史报告<span class="badge badge--primary">24 次</span></h1>
+          <div class="desc">这一屏只做两件事：<b>翻旧报告</b>、<b>对比两次检查</b>。每次检查都留档，改完再查一遍就能看出"修好了什么、又新增了什么"，不用靠记忆。</div>
+          <div class="meta">
+            <span class="kv">累计检查 <b>24</b> 次</span>
+            <span class="kv">覆盖文件 <b>6</b> 份</span>
+            <span class="kv">最近检查 <b>2026-11-08 09:14</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <a class="btn" href="upload.html">新建检查</a>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：检查结果一次性——关掉页面就没了，想再看只能重跑一遍（普通 40 秒 / 暗标 90 秒）；也没有"这次是不是比上次好"的比较，全靠人记。<b>拆后</b>：每次结果按文件留档，可复访、可对比、可删；对比页直接列出「已修复 / 新增 / 仍在」三组。</div>
+      </div>
+
+      <!-- 对比两次检查 -->
+      <div class="card">
+        <div class="card-h">
+          <h3>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>
+            对比两次检查
+          </h3>
+          <span class="sub">同一份文件前后两次检查，看「修好了什么、新增了什么」</span>
+        </div>
+        <div class="card-b">
+          <div class="row wrap" style="gap:10px">
+            <div class="field" style="width:300px">
+              <label class="label">基准（旧）</label>
+              <div class="dd">
+                <button class="btn" data-dd style="width:100%;justify-content:space-between"><span data-dd-label>11-08 09:14 · 蚌埠_终版（23 个）</span>
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+                <div class="dd-menu" style="width:100%">
+                  <div class="dd-label">选一次历史检查</div>
+                  <div class="dd-item on" data-label="11-08 09:14 · 蚌埠_终版（23 个）">11-08 09:14 · 蚌埠_终版 · 23 个</div>
+                  <div class="dd-item" data-label="11-06 20:31 · 蚌埠_初稿（31 个）">11-06 20:31 · 蚌埠_初稿 · 31 个</div>
+                  <div class="dd-item" data-label="11-02 15:08 · 蚌埠_初稿（38 个）">11-02 15:08 · 蚌埠_初稿 · 38 个</div>
+                </div>
+              </div>
+            </div>
+            <div class="col col--gap-4" style="padding-top:20px">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" class="muted-2"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>
+            </div>
+            <div class="field" style="width:300px">
+              <label class="label">对比（新）</label>
+              <div class="dd">
+                <button class="btn" data-dd style="width:100%;justify-content:space-between"><span data-dd-label>11-08 09:14 · 蚌埠_终版（23 个）</span>
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+                <div class="dd-menu" style="width:100%">
+                  <div class="dd-label">选一次历史检查</div>
+                  <div class="dd-item on" data-label="11-08 09:14 · 蚌埠_终版（23 个）">11-08 09:14 · 蚌埠_终版 · 23 个</div>
+                  <div class="dd-item" data-label="11-06 20:31 · 蚌埠_初稿（31 个）">11-06 20:31 · 蚌埠_初稿 · 31 个</div>
+                  <div class="dd-item" data-label="11-02 15:08 · 蚌埠_初稿（38 个）">11-02 15:08 · 蚌埠_初稿 · 38 个</div>
+                </div>
+              </div>
+            </div>
+            <div class="col col--gap-4" style="padding-top:20px">
+              <button class="btn btn--primary" data-toast="已生成对比：已修复 11 条 / 新增 3 条 / 仍在 20 条（示例）">开始对比</button>
+            </div>
+          </div>
+          <div class="alert alert--blue mt12">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            <div class="grow">对比结果按 <b>规则编号 + 原文位置</b> 配对，同一条问题改写后位置变了也能识别；只有真新增的才算「新增」。<b>建议同一份文件用同一模式对比</b>——暗标严格模式比普通模式多查 21 条，混着比会误判成"新增"。</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="split split--r mt16">
+        <!-- 历史表格 -->
+        <div class="card">
+          <div class="card-h">
+            <h3>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+              检查记录
+            </h3>
+            <span class="sub">按检查时间倒序</span>
+            <div class="grow"></div>
+            <div class="row" data-chips>
+              <span class="chip on">全部 <span class="n">24</span></span>
+              <span class="chip">暗标严格 <span class="n">9</span></span>
+              <span class="chip">普通 <span class="n">15</span></span>
+            </div>
+          </div>
+          <div class="card-b flush">
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th>文件</th>
+                  <th style="width:94px">模式</th>
+                  <th class="num" style="width:88px">问题数</th>
+                  <th style="width:132px">检查时间</th>
+                  <th class="num" style="width:70px">耗时</th>
+                  <th class="w-ops" style="width:150px">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="name">蚌埠医科大学第一附属医院智慧医疗核心_终版.docx<span class="sub">4.2 MB · 46 页</span></td>
+                  <td><span class="badge badge--orange">暗标严格</span></td>
+                  <td class="num"><b class="red">23</b> <span class="tiny muted-2">阻断 2</span></td>
+                  <td class="small mono">11-08 09:14</td>
+                  <td class="num muted">1:32</td>
+                  <td class="w-ops"><span class="row-ops">
+                    <a class="btn btn--sm" href="report.html">打开</a>
+                    <button class="btn btn--sm btn--ghost" data-toast="已设为对比基准">对比</button>
+                    <button class="icon-btn danger" title="删除报告" onclick="Proto.open('del-report')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+                  </span></td>
+                </tr>
+                <tr>
+                  <td class="name">【UI测试】中医院信息化建设_初稿.docx<span class="sub">2.6 MB · 28 页</span></td>
+                  <td><span class="badge badge--blue">普通</span></td>
+                  <td class="num"><b>8</b> <span class="tiny muted-2">阻断 0</span></td>
+                  <td class="small mono">11-07 17:02</td>
+                  <td class="num muted">41s</td>
+                  <td class="w-ops"><span class="row-ops">
+                    <a class="btn btn--sm" href="report.html">打开</a>
+                    <button class="btn btn--sm btn--ghost" data-toast="已设为对比基准">对比</button>
+                    <button class="icon-btn danger" title="删除报告" onclick="Proto.open('del-report')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+                  </span></td>
+                </tr>
+                <tr>
+                  <td class="name">安徽中医药大学第一附属医院一体化核心_终版.docx<span class="sub">3.8 MB · 42 页</span></td>
+                  <td><span class="badge badge--orange">暗标严格</span></td>
+                  <td class="num"><b class="green">0</b> <span class="tiny muted-2">阻断 0</span></td>
+                  <td class="small mono">11-06 20:31</td>
+                  <td class="num muted">1:48</td>
+                  <td class="w-ops"><span class="row-ops">
+                    <a class="btn btn--sm" href="report.html">打开</a>
+                    <button class="btn btn--sm btn--ghost" data-toast="已设为对比基准">对比</button>
+                    <button class="icon-btn danger" title="删除报告" onclick="Proto.open('del-report')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+                  </span></td>
+                </tr>
+                <tr>
+                  <td class="name">蚌埠医科大学第一附属医院智慧医疗核心_初稿.docx<span class="sub">4.0 MB · 44 页</span></td>
+                  <td><span class="badge badge--orange">暗标严格</span></td>
+                  <td class="num"><b class="red">31</b> <span class="tiny muted-2">阻断 5</span></td>
+                  <td class="small mono">11-06 20:31</td>
+                  <td class="num muted">1:29</td>
+                  <td class="w-ops"><span class="row-ops">
+                    <a class="btn btn--sm" href="report.html">打开</a>
+                    <button class="btn btn--sm btn--ghost" data-toast="已设为对比基准">对比</button>
+                    <button class="icon-btn danger" title="删除报告" onclick="Proto.open('del-report')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+                  </span></td>
+                </tr>
+                <tr>
+                  <td class="name">宣城市人民医院数据中台_送审版.docx<span class="sub">3.1 MB · 35 页</span></td>
+                  <td><span class="badge badge--orange">暗标严格</span></td>
+                  <td class="num"><b class="red">17</b> <span class="tiny muted-2">阻断 1</span></td>
+                  <td class="small mono">11-05 14:20</td>
+                  <td class="num muted">1:21</td>
+                  <td class="w-ops"><span class="row-ops">
+                    <a class="btn btn--sm" href="report.html">打开</a>
+                    <button class="btn btn--sm btn--ghost" data-toast="已设为对比基准">对比</button>
+                    <button class="icon-btn danger" title="删除报告" onclick="Proto.open('del-report')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+                  </span></td>
+                </tr>
+                <tr>
+                  <td class="name">蚌埠医科大学第一附属医院智慧医疗核心_初稿.docx<span class="sub">3.9 MB · 43 页</span></td>
+                  <td><span class="badge badge--blue">普通</span></td>
+                  <td class="num"><b>38</b> <span class="tiny muted-2">阻断 0</span></td>
+                  <td class="small mono">11-02 15:08</td>
+                  <td class="num muted">38s</td>
+                  <td class="w-ops"><span class="row-ops">
+                    <a class="btn btn--sm" href="report.html">打开</a>
+                    <button class="btn btn--sm btn--ghost" data-toast="已设为对比基准">对比</button>
+                    <button class="icon-btn danger" title="删除报告" onclick="Proto.open('del-report')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+                  </span></td>
+                </tr>
+                <tr>
+                  <td class="name">顾县人民医院HIS升级改造_送审版.docx<span class="sub">2.8 MB · 31 页</span></td>
+                  <td><span class="badge badge--orange">暗标严格</span></td>
+                  <td class="num"><b>12</b> <span class="tiny muted-2">阻断 0</span></td>
+                  <td class="small mono">10-31 10:42</td>
+                  <td class="num muted">1:16</td>
+                  <td class="w-ops"><span class="row-ops">
+                    <a class="btn btn--sm" href="report.html">打开</a>
+                    <button class="btn btn--sm btn--ghost" data-toast="已设为对比基准">对比</button>
+                    <button class="icon-btn danger" title="删除报告" onclick="Proto.open('del-report')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+                  </span></td>
+                </tr>
+                <tr>
+                  <td class="name">宣城市人民医院数据中台_初稿.docx<span class="sub">2.9 MB · 33 页</span></td>
+                  <td><span class="badge badge--blue">普通</span></td>
+                  <td class="num"><b>26</b> <span class="tiny muted-2">阻断 0</span></td>
+                  <td class="small mono">10-29 16:55</td>
+                  <td class="num muted">44s</td>
+                  <td class="w-ops"><span class="row-ops">
+                    <a class="btn btn--sm" href="report.html">打开</a>
+                    <button class="btn btn--sm btn--ghost" data-toast="已设为对比基准">对比</button>
+                    <button class="icon-btn danger" title="删除报告" onclick="Proto.open('del-report')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+                  </span></td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="tbl-foot">
+              <span>共 24 条 · 本页 8 条</span>
+              <div class="vdiv"></div>
+              <span class="small muted-2">留档上限 90 天，超期自动清理</span>
+              <div class="grow"></div>
+              <div class="pager">
+                <button disabled>‹</button><button class="on">1</button><button>2</button><button>3</button><button>›</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右列统计 -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h">
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/></svg>
+                检查统计
+              </h3>
+              <span class="sub">近 30 天</span>
+            </div>
+            <div class="card-b col col--gap-12">
+              <div class="row">
+                <div class="col col--gap-4">
+                  <div class="tiny muted-2">检查次数</div>
+                  <div class="mono" style="font-size:22px;font-weight:680">24<small class="small muted-2"> 次</small></div>
+                </div>
+                <div class="grow"></div>
+                <div class="col col--gap-4" style="text-align:right">
+                  <div class="tiny muted-2">平均问题数</div>
+                  <div class="mono" style="font-size:22px;font-weight:680">18.4<small class="small muted-2"> 个</small></div>
+                </div>
+              </div>
+              <div class="divider" style="margin:4px 0"></div>
+              <div class="row">
+                <span class="small b">阻断类问题</span>
+                <div class="grow"></div>
+                <span class="badge badge--green badge--dot">下降 62%</span>
+              </div>
+              <div class="vbars" style="height:96px">
+                <div class="col"><span class="n">9</span><span class="b" style="height:90%"></span><span class="l">10月</span></div>
+                <div class="col"><span class="n">7</span><span class="b" style="height:70%"></span><span class="l">11-01</span></div>
+                <div class="col"><span class="n">5</span><span class="b" style="height:50%"></span><span class="l">11-04</span></div>
+                <div class="col"><span class="n">3</span><span class="b" style="height:30%"></span><span class="l">11-06</span></div>
+                <div class="col"><span class="n">2</span><span class="b" style="height:20%"></span><span class="l">11-08</span></div>
+              </div>
+              <div class="tiny muted-2">同一份文件的阻断项从 9 条降到 2 条，主要靠"文档属性 + 页眉页脚"两项修掉。</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>最常命中的 5 条规则</h3></div>
+            <div class="card-b col col--gap-8">
+              <div class="row"><span class="small" style="width:88px">正文字体不一致</span><div class="bar grow"><i style="width:100%"></i></div><span class="mono small muted" style="width:32px;text-align:right">18</span></div>
+              <div class="row"><span class="small" style="width:88px">作者字段泄露</span><div class="bar grow"><i style="width:72%"></i></div><span class="mono small muted" style="width:32px;text-align:right">13</span></div>
+              <div class="row"><span class="small" style="width:88px">页眉页脚泄露</span><div class="bar grow"><i style="width:56%"></i></div><span class="mono small muted" style="width:32px;text-align:right">10</span></div>
+              <div class="row"><span class="small" style="width:88px">行距不统一</span><div class="bar grow"><i style="width:44%"></i></div><span class="mono small muted" style="width:32px;text-align:right">8</span></div>
+              <div class="row"><span class="small" style="width:88px">章节正文单薄</span><div class="bar grow"><i style="width:28%"></i></div><span class="mono small muted" style="width:32px;text-align:right">5</span></div>
+              <div class="tiny muted-2 mt8">前两条都是"改一次能全清"的类型，建议写进编制前的模板检查项。</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>留档说明</h3></div>
+            <div class="card-b col col--gap-8">
+              <div class="row small"><span class="dot green"></span><span>报告只存问题清单与定位，不存原文</span></div>
+              <div class="row small"><span class="dot green"></span><span>同一文件默认只保留最近 5 次</span></div>
+              <div class="row small"><span class="dot amber"></span><span>删除报告不影响已导出的文件</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<div class="mask" data-modal="del-report" style="display:none">
+  <div class="modal modal--danger" style="--mw:500px">
+    <div class="modal-h"><h3>删除这份检查报告？<div class="sub">蚌埠医科大学第一附属医院智慧医疗核心_终版.docx · 11-08 09:14</div></h3>
+      <button class="icon-btn" onclick="Proto.close('del-report')"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+    <div class="modal-b">
+      <div class="danger-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        <div>删除后这份报告无法再打开或参与对比；<b>已导出的批注 docx / Excel / HTML 不受影响</b>。要再看同等结果只能重跑一次（暗标严格模式 90 秒）。</div>
+      </div>
+      <div class="small muted mt12">同文件的其余 4 次记录不受影响，可在「历史报告」继续对比。</div>
+    </div>
+    <div class="modal-f"><span class="tip">影响 1 份报告 · 不可恢复</span><div class="grow"></div>
+      <button class="btn btn--sm" onclick="Proto.close('del-report')">取消</button>
+      <button class="btn btn--sm btn--danger-solid" data-toast="已删除该报告（示例）">确认删除</button></div>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

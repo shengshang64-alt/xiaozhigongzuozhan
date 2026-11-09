@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>会话 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="assistant" data-screen="assistant-chat" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>会话<span class="badge badge--primary">上下文感知</span><span class="badge badge--amber">会话自动命名</span></h1>
+          <div class="desc">这一屏只做一件事：<b>把工作站里的数据问出来</b>。会话标题由首条问题自动生成，可搜索、可复访；<b>记忆</b>与<b>技能</b>是助手区别于普通聊天框的资产，入口在对话工具条上带红点引导。</div>
+          <div class="meta">
+            <span class="kv">会话 <b>8</b> 个</span>
+            <span class="kv">记忆 <b>42</b> 条（活跃 38）</span>
+            <span class="kv">技能 <b>6</b> 个</span>
+            <span class="kv">当前上下文 <b>标书工作台</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn" data-toast="已导出对话为 Markdown">导出对话</button>
+          <button class="btn" data-toast="已新建会话「未命名会话」">＋ 新会话</button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：会话列表全是「快捷会话 14 天前」——8 条长得一模一样，找不回历史；3 个快捷问题不随所在页面变化；能力边界只写在底部一行小字。<b>拆后</b>：会话自动命名 + 最后一条消息预览，快捷问题按上下文变，能力边界与上下文前置到右栏。</div>
+      </div>
+
+      <div class="split" style="grid-template-columns:260px minmax(0,1fr) 320px">
+
+        <!-- ================= 左：会话列表 ================= -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>会话</h3>
+              <span class="sub">8 个</span>
+              <div class="grow"></div>
+              <button class="btn btn--sm" data-toast="已新建会话「未命名会话」，首次提问后自动命名">＋ 新会话</button>
+            </div>
+            <div class="card-b flush">
+              <div class="list-row on">
+                <div class="grow"><div class="t">蚌埠标书还差哪几章</div><div class="s trunc">还差 2 章（补遗新增）：第 10、11 章</div></div>
+                <div class="r tiny muted-2 mono">09:12</div>
+              </div>
+              <div class="list-row">
+                <div class="grow"><div class="t">资质台账哪些 30 天内到期</div><div class="s trunc">3 张：等保三级 11-21、ISO 9001 11-30…</div></div>
+                <div class="r tiny muted-2 mono">08:40</div>
+              </div>
+              <div class="list-row">
+                <div class="grow"><div class="t">厦门市中医院历史中标价</div><div class="s trunc">近三年 3 次中标，均值 268 万</div></div>
+                <div class="r tiny muted-2 mono">昨天</div>
+              </div>
+              <div class="list-row">
+                <div class="grow"><div class="t">顾县人民医院 HIS 方案大纲</div><div class="s trunc">已出 9 章大纲，3 处数值待核</div></div>
+                <div class="r tiny muted-2 mono">昨天</div>
+              </div>
+              <div class="list-row">
+                <div class="grow"><div class="t">安徽中医药大项目交卷自查</div><div class="s trunc">废标项 0，一致性 2 处待改</div></div>
+                <div class="r tiny muted-2 mono">11-06</div>
+              </div>
+              <div class="list-row">
+                <div class="grow"><div class="t">上周中标情报摘要</div><div class="s trunc">医疗信息化 12 条，6 条可转商机</div></div>
+                <div class="r tiny muted-2 mono">11-05</div>
+              </div>
+              <div class="list-row">
+                <div class="grow"><div class="t">报价 92 折能不能批</div><div class="s trunc">92 折可直接出，低于 85% 需二级审批</div></div>
+                <div class="r tiny muted-2 mono">11-04</div>
+              </div>
+              <div class="list-row">
+                <div class="grow"><div class="t">本地 Ollama 起不来怎么排查</div><div class="s trunc">11434 被占用，改 11435 后连通</div></div>
+                <div class="r tiny muted-2 mono">11-02</div>
+              </div>
+            </div>
+            <div class="card-f">
+              <div class="search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                <input class="input" placeholder="搜索会话标题或内容">
+              </div>
+            </div>
+          </div>
+
+          <div class="fold">
+            <div class="fold-h" data-fold>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              搜不到会话时是什么样
+              <div class="grow"></div>
+              <span class="tiny muted-2">展开看空态</span>
+            </div>
+            <div class="fold-b" hidden>
+              <div class="empty empty--plain">
+                <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></div>
+                <h4>没有找到「等保」相关会话</h4>
+                <p>会话标题按首条问题自动生成，试试换成「资质」「到期」「证书」；或直接开一个新会话问。</p>
+                <div class="acts"><button class="btn btn--sm">＋ 用「等保」新建会话</button><button class="btn btn--sm btn--ghost">清空搜索</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ================= 中：对话区 ================= -->
+        <div class="card">
+          <div class="card-h">
+            <h3>蚌埠标书还差哪几章</h3>
+            <span class="sub">4 条消息 · 记忆命中 2 条</span>
+            <div class="grow"></div>
+            <button class="icon-btn" title="重命名会话" data-toast="会话标题已改为「蚌埠标书还差哪几章」"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+            <button class="btn btn--sm" data-toast="已导出对话为 Markdown">导出对话</button>
+            <button class="btn btn--sm btn--danger" onclick="Proto.open('clear-confirm')">清空</button>
+            <span class="vdiv"></span>
+            <button class="btn btn--sm" data-toast="记忆 42 条：活跃 38 / 已失效 4">记忆 <span class="pill-count">2</span></button>
+            <button class="btn btn--sm" data-toast="技能 6 个，本会话用了「查资质证书」">技能 <span class="pill-count">3</span></button>
+          </div>
+
+          <div class="card-b tight col col--gap-12">
+
+            <!-- 欢迎区：4 张能力卡 -->
+            <div>
+              <div class="row mb8">
+                <h3 class="b">我能帮你做什么</h3>
+                <span class="tiny muted-2">点任意问句填入输入框</span>
+                <div class="grow"></div>
+                <span class="tiny muted-2">「跑流程」只给草稿，落地仍需你在对应页面确认</span>
+              </div>
+              <div class="grid g4">
+                <div class="hairline p8">
+                  <div class="row small"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><b class="small">查数据</b><div class="grow"></div><span class="dot green"></span></div>
+                  <div class="col col--gap-4 mt8">
+                    <button class="btn btn--link tiny trunc" data-toast="已填入：我手上哪些商机最久没跟进？">› 哪些商机最久没跟进？</button>
+                    <button class="btn btn--link tiny trunc" data-toast="已填入：厦门市中医院历史中标价是多少？">› 厦门市中医院中标价？</button>
+                  </div>
+                </div>
+                <div class="hairline p8">
+                  <div class="row small"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg><b class="small">写文档</b><div class="grow"></div><span class="dot green"></span></div>
+                  <div class="col col--gap-4 mt8">
+                    <button class="btn btn--link tiny trunc" data-toast="已填入：按评分点写第 10 章数据中台方案">› 写第 10 章方案</button>
+                    <button class="btn btn--link tiny trunc" data-toast="已填入：把这段方案改得更像人写的">› 改得像人写的</button>
+                  </div>
+                </div>
+                <div class="hairline p8">
+                  <div class="row small"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg><b class="small">做检查</b><div class="grow"></div><span class="dot green"></span></div>
+                  <div class="col col--gap-4 mt8">
+                    <button class="btn btn--link tiny trunc" data-toast="已填入：这份标书还有哪些废标风险？">› 还有哪些废标风险？</button>
+                    <button class="btn btn--link tiny trunc" data-toast="已填入：资质台账哪些 30 天内到期？">› 哪些资质 30 天内到期？</button>
+                  </div>
+                </div>
+                <div class="hairline p8">
+                  <div class="row small"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg><b class="small">跑流程</b><div class="grow"></div><span class="dot amber"></span></div>
+                  <div class="col col--gap-4 mt8">
+                    <button class="btn btn--link tiny trunc" data-toast="已填入：把这份招标文件拆成七步流水线">› 拆成七步流水线</button>
+                    <button class="btn btn--link tiny trunc" data-toast="已填入：按上周中标情报生成 3 条跟进建议">› 生成 3 条跟进建议</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 第 1 轮 -->
+            <div class="row top">
+              <div class="grow"></div>
+              <div class="card"><div class="card-b tight">蚌埠项目标书还差哪几章？</div></div>
+              <div class="avatar">我</div>
+            </div>
+
+            <div class="row top">
+              <div class="avatar">智</div>
+              <div class="grow">
+                <div class="small muted-2">小智 · 09:12 · deepseek-v4.1-flash · 读了 1 个项目 / 1 份招标解析</div>
+                <div class="card mt8">
+                  <div class="card-b col col--gap-12">
+                    <div>蚌埠医科大学第一附属医院智慧医疗核心（<span class="mono">BB2026SQCGZ052</span>）正文 <b>11 章已成稿</b>；按 11-06 的澄清补遗要求，<b class="red">还差 2 章</b>才能过「交卷自查」：</div>
+                    <div class="list">
+                      <div class="list-row">
+                        <span class="badge badge--red">未开始</span>
+                        <div class="grow"><div class="t">第 10 章 数据中台与互联互通方案</div><div class="s">补遗新增 4 个评分点（共 12 分），尚无素材；知识库可复用 3 篇案例</div></div>
+                        <button class="btn btn--sm">去写第 10 章</button>
+                      </div>
+                      <div class="list-row">
+                        <span class="badge badge--orange">草稿 42%</span>
+                        <div class="grow"><div class="t">第 11 章 运维服务与培训计划</div><div class="s">缺 2 张现场服务照片，SLA 响应表 6 行未填</div></div>
+                        <button class="btn btn--sm">继续第 11 章</button>
+                      </div>
+                    </div>
+                    <div class="row small"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg><span class="grow">另有 3 处「未逐条应答」风险条款未修复，自查会判废标；<b>第 10 / 11 章未完成，导出门禁不放行</b>。</span><span class="tiny muted-2">引用：招标解析 · 项目进度</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 第 2 轮 -->
+            <div class="row top">
+              <div class="grow"></div>
+              <div class="card"><div class="card-b tight">资质台账里哪些 30 天内到期？</div></div>
+              <div class="avatar">我</div>
+            </div>
+
+            <div class="row top">
+              <div class="avatar">智</div>
+              <div class="grow">
+                <div class="small muted-2">小智 · 09:14 · deepseek-v4.1-flash · 读了资质台账 34 张 / 在投项目 2 个 <span class="spin"></span></div>
+                <div class="card mt8">
+                  <div class="card-b col col--gap-12">
+                    <div>30 天内有 <b class="orange">3 张</b>证书到期，其中 1 张被 2 个在投项目引用，过期即触发废标条款：</div>
+                    <table class="tbl">
+                      <thead><tr><th>证书</th><th>到期日</th><th class="num">剩余</th><th>被引用</th></tr></thead>
+                      <tbody>
+                        <tr><td class="name">信息系统安全等级保护三级<div class="sub">编号 DJBX-2023-0187</div></td><td class="mono">2026-11-21</td><td class="num red">13 天</td><td><span class="badge badge--red">2 个项目</span></td></tr>
+                        <tr><td class="name">ISO 9001 质量管理体系</td><td class="mono">2026-11-30</td><td class="num orange">22 天</td><td><span class="badge badge--gray">0</span></td></tr>
+                        <tr><td class="name">CMMI 五级</td><td class="mono">2026-12-05</td><td class="num amber">27 天</td><td><span class="badge badge--amber">1 个项目</span></td></tr>
+                      </tbody>
+                    </table>
+                    <div class="row small"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="grow">另有 1 张<b class="red">已过期</b>（计算机信息系统集成二级，2026-10-30），以及 25 张未登记有效期，建议一起补。</span></div>
+                    <div class="row">
+                      <button class="btn btn--sm">去资质台账</button>
+                      <button class="btn btn--sm">只看到期预警（1）</button>
+                      <div class="grow"></div>
+                      <span class="tiny muted-2">引用：资质台账 · 已用 1 次站内取数</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="card-f">
+            <div class="row mb8">
+              <span class="badge badge--primary badge--dot">上下文</span>
+              <span class="small muted-2">在「标书工作台 · 蚌埠项目」中提问，答案自动带该项目章节与资质引用</span>
+            </div>
+            <textarea class="textarea" placeholder="问点什么… 例如「第 10 章按补遗的 4 个评分点怎么写」"></textarea>
+            <div class="row mt8">
+              <button class="icon-btn" title="添加附件"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg></button>
+              <div class="dd">
+                <button class="btn btn--sm" data-dd><span data-dd-label>deepseek-v4.1-flash</span>
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+                <div class="dd-menu">
+                  <div class="dd-label">本会话使用的模型</div>
+                  <div class="dd-item on" data-label="deepseek-v4.1-flash">deepseek-v4.1-flash</div>
+                  <div class="dd-item" data-label="glm-5.3-flash">glm-5.3-flash</div>
+                  <div class="dd-item" data-label="qwen3-max">qwen3-max</div>
+                  <div class="dd-item" data-label="kimi-k2">kimi-k2</div>
+                </div>
+              </div>
+              <span class="small muted-2">Enter 发送 · Shift+Enter 换行</span>
+              <div class="grow"></div>
+              <span class="tiny muted-2">本次预计 ¥0.02</span>
+              <button class="btn btn--primary" data-toast="已发送（静态原型，不产生真实调用）">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>发送
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ================= 右：边界 / 上下文 / 引用 ================= -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>能力边界</h3></div>
+            <div class="card-b col col--gap-12">
+              <div class="alert alert--primary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                <div class="grow">我能读工作站里的<b>客户 / 标书 / 情报 / 知识库</b>数据，能生成文档草稿，但<b>不能替你提交审批</b>，也不会对外发送任何文件。</div>
+              </div>
+              <div class="col col--gap-4">
+                <div class="row small"><span class="dot green"></span><span class="grow">读：客户 160 · 标书 3 · 情报 1,009 · 知识库 2,175 篇</span></div>
+                <div class="row small"><span class="dot green"></span><span class="grow">写：方案草稿 / 标书章节草稿 / 检查报告</span></div>
+                <div class="row small"><span class="dot amber"></span><span class="grow">改：只能改草稿，定稿数据要你确认</span></div>
+                <div class="row small"><span class="dot red"></span><span class="grow">不做：提交审批 / 对外发邮件 / 改报价金额</span></div>
+              </div>
+              <div class="tiny muted-2">答不了时会直说「读不到」，不会编一个数糊弄你。</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>当前上下文</h3><div class="grow"></div><button class="btn btn--sm">切换</button></div>
+            <div class="card-b col col--gap-8">
+              <div class="row"><span class="badge badge--primary badge--dot">标书工作台</span><div class="grow"></div><span class="tiny muted-2 mono">11-08 09:10</span></div>
+              <div class="b">蚌埠医科大学第一附属医院智慧医疗核心</div>
+              <div class="kv-row"><div class="k">编号</div><div class="v mono">BB2026SQCGZ052</div></div>
+              <div class="kv-row"><div class="k">当前步骤</div><div class="v">④ 正文编写 · 9/11 章</div></div>
+              <div class="small muted-2">用这个上下文回答：问「还差哪几章」不会反问你项目名。</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>最近引用</h3><span class="sub">3 条</span></div>
+            <div class="card-b flush">
+              <div class="list-row">
+                <div class="grow"><div class="t">招标文件解析结果</div><div class="s">22 个评分点 · 7 条废标条款 · 09:12</div></div>
+              </div>
+              <div class="list-row">
+                <div class="grow"><div class="t">项目进度（蚌埠 · 11 章）</div><div class="s">章节状态与成稿字数 · 09:12</div></div>
+              </div>
+              <div class="list-row">
+                <div class="grow"><div class="t">资质证书台账（34 张）</div><div class="s">到期三档 + 引用关系 · 09:14</div></div>
+              </div>
+            </div>
+            <div class="card-f row small"><span class="muted-2">每条结论都能点开看原始记录</span><div class="grow"></div><button class="btn btn--link tiny">全部 →</button></div>
+          </div>
+        </div>
+
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+
+<!-- 清空对话二次确认 -->
+<div class="mask" data-modal="clear-confirm" style="display:none">
+  <div class="modal modal--danger" style="--mw:520px">
+    <div class="modal-h">
+      <h3>清空「蚌埠标书还差哪几章」？<div class="sub">本会话 4 条消息将被删除，不可恢复</div></h3>
+      <button class="icon-btn" onclick="Proto.close('clear-confirm')">✕</button>
+    </div>
+    <div class="modal-b">
+      <div class="danger-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        <div>清空只删这 4 条对话，<b>不会</b>删除从本会话提取的 2 条记忆，也不影响标书正文与资质台账。</div>
+      </div>
+      <div class="mt12 small muted">建议先「导出对话」存一份，再清空。</div>
+    </div>
+    <div class="modal-f">
+      <span class="tip">影响范围：本会话消息 4 条</span>
+      <div class="grow"></div>
+      <button class="btn btn--sm" onclick="Proto.close('clear-confirm')">取消</button>
+      <button class="btn btn--sm btn--danger-solid" onclick="Proto.close('clear-confirm')">确认清空</button>
+    </div>
+  </div>
+</div>
+
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

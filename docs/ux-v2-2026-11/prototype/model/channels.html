@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>通道与默认 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="model" data-screen="model-channels" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>通道与默认<span class="badge badge--green badge--dot">3 个通道已连通</span></h1>
+          <div class="desc">这屏只回答两件事：<b>模型从哪条通道来</b>、<b>默认用哪个</b>。不常用的平台内置模型收进一张折叠信息卡，不再用红条挂着吓人；改默认必须看影响范围再确认。</div>
+          <div class="meta">
+            <span class="kv">通道 <b>3</b> 可用 / 1 不可用</span>
+            <span class="kv">可用模型 <b>10</b> 个</span>
+            <span class="kv">当前默认 <b>deepseek-v4.1-flash</b></span>
+            <span class="kv">最近测试 <b>今天 08:52</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn btn--primary" onclick="Proto.open('add-channel')">＋ 添加通道</button>
+          <button class="btn" data-toast="已刷新全部通道状态（示例）">刷新状态</button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：「公共模型 本地不可用」红色警告条永久悬挂（2,791px 单页，832 个按钮），「设为默认」点一下立即生效、无确认。原页 5 个配置未设默认，靠「启用列表第一个」兜底，顺序一变默认就静默改。<b>拆后</b>：不可用项折叠为灰色信息卡，默认模型链分三层显式声明，变更走确认弹窗。</div>
+      </div>
+
+      <div class="split split--r">
+        <div class="col col--gap-16">
+
+          <!-- 折叠的平台内置信息卡（原红条降级） -->
+          <div class="fold">
+            <div class="fold-h" data-fold>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+              平台内置模型（线上部署时可用）
+              <span class="badge badge--gray">1 个 · 本地不可用</span>
+              <div class="grow"></div>
+              <span class="tiny muted-2">为什么本地用不了 / 怎么替代</span>
+            </div>
+            <div class="fold-b" style="display:none">
+              <div class="row wrap mb8">
+                <span class="badge badge--gray">平台内置 · gpt-5.5</span>
+                <span class="tiny muted-2">按 token 用量计费 · 需平台登录态</span>
+              </div>
+              <div>平台内置模型只在<b>线上部署环境</b>可用：它依赖平台侧的登录凭证，本地 / 内网部署拿不到，所以调用必然失败——这是环境事实，不是配置错误，也不是网络问题。</div>
+              <div class="mt8">本地想用同类能力，请改用 <b>Open Design 通道的 deepseek-v4.1-flash</b>（当前默认，已连通）。这条信息卡收起来就不再占版面。</div>
+            </div>
+          </div>
+
+          <!-- 可用通道 -->
+          <div class="row mb8"><h3 class="b">可用通道（3）</h3><div class="grow"></div><span class="tiny muted-2">点「测试」发一条固定消息，看首字延迟与返回</span></div>
+          <div class="grid g3">
+
+            <div class="card">
+              <div class="card-b tight">
+                <div class="row">
+                  <span class="dot green"></span><b>Open Design</b>
+                  <span class="badge badge--green">已连通</span>
+                  <div class="grow"></div>
+                  <span class="badge badge--primary">默认来源</span>
+                </div>
+                <div class="small muted-2 mt4 trunc">https://amr-link.open-design.ai/*** · Key sk-***woQ7</div>
+                <div class="kv-row"><div class="k">模型</div><div class="v"><b>6</b> 个 · 4 个已启用</div></div>
+                <div class="kv-row"><div class="k">最近测试</div><div class="v mono">今天 08:52 · 1.2s</div></div>
+                <div class="kv-row"><div class="k">今日调用</div><div class="v mono">62 次 · 成功率 98.4%</div></div>
+                <div class="row mt8">
+                  <button class="btn btn--sm">测试</button>
+                  <button class="btn btn--sm">编辑</button>
+                  <div class="grow"></div>
+                  <button class="btn btn--sm btn--ghost" data-toast="已刷新模型列表，新增 qwen3-max">刷新模型</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-b tight">
+                <div class="row">
+                  <span class="dot green"></span><b>直连 DeepSeek</b>
+                  <span class="badge badge--green">已连通</span>
+                  <div class="grow"></div>
+                  <span class="badge badge--gray">备用</span>
+                </div>
+                <div class="small muted-2 mt4 trunc">https://api.deepseek.com/v1 · Key sk-***9f2a</div>
+                <div class="kv-row"><div class="k">模型</div><div class="v"><b>2</b> 个 · 2 个已启用</div></div>
+                <div class="kv-row"><div class="k">最近测试</div><div class="v mono">今天 08:41 · 2.6s</div></div>
+                <div class="kv-row"><div class="k">今日调用</div><div class="v mono">21 次 · 成功率 100%</div></div>
+                <div class="row mt8">
+                  <button class="btn btn--sm">测试</button>
+                  <button class="btn btn--sm">编辑</button>
+                  <div class="grow"></div>
+                  <button class="btn btn--sm btn--ghost" data-toast="已刷新模型列表">刷新模型</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-b tight">
+                <div class="row">
+                  <span class="dot green"></span><b>本地 Ollama</b>
+                  <span class="badge badge--green">已连通</span>
+                  <div class="grow"></div>
+                  <span class="badge badge--amber">仅内网</span>
+                </div>
+                <div class="small muted-2 mt4 trunc">http://127.0.0.1:11435 · 无需 Key</div>
+                <div class="kv-row"><div class="k">模型</div><div class="v"><b>2</b> 个 · 1 个已启用</div></div>
+                <div class="kv-row"><div class="k">最近测试</div><div class="v mono">昨天 18:20 · 4.8s</div></div>
+                <div class="kv-row"><div class="k">今日调用</div><div class="v mono">0 次（未走量）</div></div>
+                <div class="row mt8">
+                  <button class="btn btn--sm">测试</button>
+                  <button class="btn btn--sm">编辑</button>
+                  <div class="grow"></div>
+                  <button class="btn btn--sm btn--ghost" data-toast="已刷新模型列表">刷新模型</button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- 不可用通道折叠 -->
+          <div class="fold">
+            <div class="fold-h" data-fold>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+              不可用通道（1）
+              <span class="badge badge--gray">达梦 · 已停用</span>
+              <div class="grow"></div>
+              <span class="tiny muted-2">展开看原因</span>
+            </div>
+            <div class="fold-b" style="display:none">
+              <div class="row small"><span class="dot gray"></span><b>达梦 AI 网关</b><span class="muted">· 2026-09 起停用</span></div>
+              <div class="mt8">原因：上游服务已下线（返回 404），该通道下 1 个模型随之不可用。不影响其他通道；如需恢复，请先拿到新的 base_url 再添加。</div>
+            </div>
+          </div>
+
+          <!-- 空态：还没配任何通道 -->
+          <div class="fold">
+            <div class="fold-h" data-fold>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              一条通道都没配时是什么样
+              <div class="grow"></div>
+              <span class="tiny muted-2">展开看空态</span>
+            </div>
+            <div class="fold-b" hidden>
+              <div class="empty empty--plain">
+                <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg></div>
+                <h4>还没有配置任何模型通道</h4>
+                <p>添加一条 OpenAI 兼容通道（填 Base URL 与 Key），系统会自动拉取模型列表；也可先用平台内置模型在线上环境跑。</p>
+                <div class="acts"><button class="btn btn--sm">＋ 添加通道</button><button class="btn btn--sm">看配置示例</button></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 默认模型链 -->
+          <div class="card">
+            <div class="card-h">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg>默认模型链</h3>
+              <span class="sub">没单独指定的功能会落到「全局默认」；越靠上影响面越大</span>
+              <div class="grow"></div>
+              <span class="badge badge--amber">3 层已显式声明</span>
+            </div>
+            <div class="card-b flush">
+              <table class="tbl">
+                <thead><tr><th>层级</th><th>影响什么</th><th>当前模型</th><th>备选</th><th class="w-ops">操作</th></tr></thead>
+                <tbody>
+                  <tr>
+                    <td class="name">① 全局默认<div class="sub">兜底：任何未单独指定的功能</div></td>
+                    <td class="small">助手对话 / 情报摘要 / 客户跟进建议 / 记忆提取</td>
+                    <td>
+                      <div class="dd">
+                        <button class="btn btn--sm" data-dd><span data-dd-label>deepseek-v4.1-flash</span>
+                          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+                        <div class="dd-menu">
+                          <div class="dd-label">选一个模型</div>
+                          <div class="dd-item on" data-label="deepseek-v4.1-flash">deepseek-v4.1-flash <span class="tick">✓</span></div>
+                          <div class="dd-item" data-label="glm-5.3-flash">glm-5.3-flash</div>
+                          <div class="dd-item" data-label="qwen3-max">qwen3-max</div>
+                          <div class="dd-item" data-label="kimi-k2">kimi-k2</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td class="small muted">glm-5.3-flash · qwen3-max</td>
+                    <td class="w-ops"><button class="btn btn--sm" onclick="Proto.open('default-confirm')">设为默认</button></td>
+                  </tr>
+                  <tr>
+                    <td class="name">② 方案生成<div class="sub">方案大纲 / 方案正文 / 建设清单</div></td>
+                    <td class="small">方案工作室全链路生成</td>
+                    <td>
+                      <div class="dd">
+                        <button class="btn btn--sm" data-dd><span data-dd-label>glm-5.3-flash</span>
+                          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+                        <div class="dd-menu">
+                          <div class="dd-label">选一个模型</div>
+                          <div class="dd-item on" data-label="glm-5.3-flash">glm-5.3-flash <span class="tick">✓</span></div>
+                          <div class="dd-item" data-label="deepseek-v4.1-flash">deepseek-v4.1-flash</div>
+                          <div class="dd-item" data-label="qwen3-max">qwen3-max</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td class="small muted">deepseek-v4.1-flash</td>
+                    <td class="w-ops"><button class="btn btn--sm" onclick="Proto.open('default-confirm')">设为默认</button></td>
+                  </tr>
+                  <tr>
+                    <td class="name">③ 标书正文<div class="sub">④ 正文编写 / ⑤ 偏离表应答</div></td>
+                    <td class="small">标书正文与偏离表长文本生成（要长上下文）</td>
+                    <td>
+                      <div class="dd">
+                        <button class="btn btn--sm" data-dd><span data-dd-label>kimi-k2</span>
+                          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+                        <div class="dd-menu">
+                          <div class="dd-label">选一个模型</div>
+                          <div class="dd-item on" data-label="kimi-k2">kimi-k2 <span class="tick">✓</span></div>
+                          <div class="dd-item" data-label="deepseek-v4.1-flash">deepseek-v4.1-flash</div>
+                          <div class="dd-item" data-label="qwen3-max">qwen3-max</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td class="small muted">deepseek-v4.1-flash（200 万长上下文）</td>
+                    <td class="w-ops"><button class="btn btn--sm" onclick="Proto.open('default-confirm')">设为默认</button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="card-f row small">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+              <span class="grow">如果你没给某个功能单独指定模型，它会自动使用「全局默认」；三层都显式声明后，就不会因为模型列表顺序变化而静默改变。</span>
+              <button class="btn btn--link tiny">看完整生效范围 →</button>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 右栏 -->
+        <div class="col col--gap-16 aside-sticky">
+          <div class="card">
+            <div class="card-h"><h3>当前生效模型</h3><div class="grow"></div><span class="badge badge--green badge--dot">在线</span></div>
+            <div class="card-b col col--gap-12">
+              <div class="b" style="font-size:18px">deepseek-v4.1-flash</div>
+              <div class="small muted-2">Open Design 通道 · v4 迭代版 · 兼顾速度与质量</div>
+              <div class="divider" style="margin:0"></div>
+              <div class="kv-row"><div class="k">生效范围</div><div class="v">助手对话 · 情报摘要 · 客户跟进建议 · 记忆提取</div></div>
+              <div class="kv-row"><div class="k">不覆盖</div><div class="v muted">方案生成（glm-5.3-flash）· 标书正文（kimi-k2）</div></div>
+              <div class="kv-row"><div class="k">今日调用</div><div class="v mono">62 次 · 成功率 98.4%</div></div>
+              <div class="kv-row"><div class="k">P95 延迟</div><div class="v mono">4.2s</div></div>
+              <div class="kv-row"><div class="k">今日费用</div><div class="v mono">¥18.4</div></div>
+              <button class="btn btn--sm" onclick="location.href='health.html'">看健康看板 →</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>模型清单</h3><span class="sub">4 个常用</span></div>
+            <div class="card-b col col--gap-8">
+              <div class="row small"><span class="dot green"></span><span class="grow mono">deepseek-v4.1-flash</span><span class="badge badge--primary">全局默认</span></div>
+              <div class="row small"><span class="dot green"></span><span class="grow mono">glm-5.3-flash</span><span class="badge badge--blue">方案</span></div>
+              <div class="row small"><span class="dot green"></span><span class="grow mono">kimi-k2</span><span class="badge badge--purple">标书</span></div>
+              <div class="row small"><span class="dot green"></span><span class="grow mono">qwen3-max</span><span class="badge badge--gray">备用</span></div>
+              <div class="divider" style="margin:0"></div>
+              <div class="row small"><span class="dot gray"></span><span class="grow mono muted">gpt-5.5</span><span class="badge badge--gray">平台内置</span></div>
+              <div class="tiny muted-2">点任一模型可在「连通测试」页单独发一条消息验证。</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>配置卫生</h3></div>
+            <div class="card-b col col--gap-8">
+              <div class="row small"><span class="dot green"></span><span class="grow">三层默认均已显式声明</span><span class="tiny muted-2">正常</span></div>
+              <div class="row small"><span class="dot amber"></span><span class="grow">1 个模型已启用但实测失效</span><span class="tiny muted-2">待处理</span></div>
+              <div class="row small"><span class="dot green"></span><span class="grow">Key 只存服务端，仅显示后四位</span><span class="tiny muted-2">正常</span></div>
+              <button class="btn btn--sm">去处理失效模型</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+
+<!-- 设为默认确认 -->
+<div class="mask" data-modal="default-confirm" style="display:none">
+  <div class="modal" style="--mw:560px">
+    <div class="modal-h"><h3>把「全局默认」改为 glm-5.3-flash？<div class="sub">原默认 deepseek-v4.1-flash 退为备用</div></h3><button class="icon-btn" onclick="Proto.close('default-confirm')">✕</button></div>
+    <div class="modal-b col col--gap-12">
+      <div class="alert alert--amber">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        <div class="grow">这是<b>全站级</b>设置：改完之后，所有用「全局默认」的功能都会立刻改用 glm-5.3-flash。</div>
+      </div>
+      <div class="kv-row"><div class="k">影响功能</div><div class="v">助手对话 · 情报摘要 · 客户跟进建议 · 记忆提取 · 4 个未单独指定的功能</div></div>
+      <div class="kv-row"><div class="k">不受影响</div><div class="v">方案生成（glm-5.3-flash）· 标书正文（kimi-k2）</div></div>
+      <div class="kv-row"><div class="k">生效时间</div><div class="v">保存后立即生效，进行中的生成不受影响</div></div>
+      <div class="kv-row"><div class="k">回退方式</div><div class="v">在本页把「全局默认」改回 deepseek-v4.1-flash 即可</div></div>
+    </div>
+    <div class="modal-f"><span class="tip">影响 4 项功能 · 不回退历史生成结果</span><div class="grow"></div>
+      <button class="btn btn--sm" onclick="Proto.close('default-confirm')">取消</button>
+      <button class="btn btn--sm" onclick="Proto.close('default-confirm')">确认切换（影响全站）</button></div>
+  </div>
+</div>
+
+<!-- 添加通道 -->
+<div class="mask" data-modal="add-channel" style="display:none">
+  <div class="modal" style="--mw:560px">
+    <div class="modal-h"><h3>添加通道<div class="sub">支持任意 OpenAI 兼容接口</div></h3><button class="icon-btn" onclick="Proto.close('add-channel')">✕</button></div>
+    <div class="modal-b col col--gap-12">
+      <div class="field"><label class="label req">通道名称</label><input class="input" placeholder="例：直连 DeepSeek"></div>
+      <div class="field"><label class="label req">Base URL</label><input class="input" placeholder="https://api.example.com/v1"></div>
+      <div class="field"><label class="label req">API Key</label><input class="input" placeholder="sk-…（只存服务端，回显仅后四位）"></div>
+      <div class="field"><label class="label">备注</label><input class="input" placeholder="可选"></div>
+      <div class="tiny muted-2">保存后会自动拉取该通道的模型列表，再逐个启用。</div>
+    </div>
+    <div class="modal-f"><span class="tip">Key 不会出现在任何页面</span><div class="grow"></div>
+      <button class="btn btn--sm" onclick="Proto.close('add-channel')">取消</button>
+      <button class="btn btn--sm" onclick="Proto.close('add-channel')">保存并拉取模型</button></div>
+  </div>
+</div>
+
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

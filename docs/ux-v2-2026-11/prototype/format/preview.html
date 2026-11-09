@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>② 预览套用 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="format" data-screen="format-preview" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>预览套用<span class="badge badge--primary">128 处变更</span></h1>
+          <div class="desc">这一屏只做一件事：<b>看清改哪里，再决定套不套</b>。左边是原文档、右边是刷新后，虚线框标出差异位置；确认无误后按 ③ 套用、④ 导出。文字一个字都没动。</div>
+          <div class="meta">
+            <span class="kv">模板 <b>公司标准模板</b></span>
+            <span class="kv">页数 <b>46</b> 页不变</span>
+            <span class="kv">文字改动 <b>0</b> 处</span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <a class="btn" href="upload.html">← 改模板与范围</a>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：预览区只放了"上传文档后这里会显示对比"一个图标加两行字，占掉右栏一半；套用与导出两个按钮并排、无先后暗示；微调配置默认展开抢位。<b>拆后</b>：左右纸张对比成为主角，差异逐条带角标 ①②③ 可点；按钮加 ③④ 序号；微调配置默认收起。</div>
+      </div>
+
+      <div class="steps">
+        <div class="step done"><div class="n">1</div><div class="tx"><b>上传文档</b><span>已完成</span></div></div>
+        <div class="step done"><div class="n">2</div><div class="tx"><b>选择标准模板</b><span>公司标准模板</span></div></div>
+        <div class="step on"><div class="n">3</div><div class="tx"><b>预览对比</b><span>进行中 · 128 处差异</span></div></div>
+        <div class="step"><div class="n">4</div><div class="tx"><b>保存套用</b><span>待开始</span></div></div>
+      </div>
+
+      <!-- 差异摘要 -->
+      <div class="databar">
+        <div class="item">共 <b>128</b> 处变更</div>
+        <div class="item">字号 <b>62</b></div>
+        <div class="item">行距 <b>31</b></div>
+        <div class="item">编号 <b>22</b></div>
+        <div class="item">表格 <b>13</b></div>
+        <div class="item green">文字改动 <b>0</b></div>
+        <div class="grow"></div>
+        <div class="item"><span class="badge badge--gray">第 3 页 / 共 46 页</span></div>
+      </div>
+
+      <div class="split" style="grid-template-columns:minmax(0,1fr) 340px">
+        <div class="col col--gap-16">
+
+          <!-- 左右对比 -->
+          <div class="card">
+            <div class="card-h">
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                原文档 ↔ 刷新后
+              </h3>
+              <span class="sub">虚线框 = 会变的位置，角标对应右侧「微调配置」里的项</span>
+              <div class="grow"></div>
+              <div class="seg" data-seg>
+                <button class="on">并排</button>
+                <button>叠加</button>
+              </div>
+            </div>
+            <div class="card-b">
+              <div class="grid g2" style="gap:12px">
+
+                <!-- 原文档 -->
+                <div class="hairline p12">
+                  <div class="row mb8">
+                    <span class="badge badge--gray">原文档</span>
+                    <div class="grow"></div>
+                    <span class="tiny muted-2 mono">仿宋_GB2312 · 12pt · 1.5 倍</span>
+                  </div>
+                  <div class="b small">第三章 技术方案总体设计</div>
+                  <div class="divider" style="margin:8px 0"></div>
+                  <div class="row" style="align-items:flex-start;gap:6px">
+                    <span class="badge badge--amber">①</span>
+                    <div class="col col--gap-4 grow">
+                      <span class="tiny">3.1 建设目标</span>
+                      <span class="tiny muted">本项目围绕医院信息化整体提升，建设覆盖临床、</span>
+                      <span class="tiny muted">管理、服务的一体化核心业务系统，实现数据互联</span>
+                      <span class="tiny muted">互通与业务协同。</span>
+                    </div>
+                  </div>
+                  <div class="row mt8" style="align-items:flex-start;gap:6px">
+                    <span class="badge badge--amber">②</span>
+                    <div class="col col--gap-4 grow">
+                      <span class="tiny">3.1.1 总体架构</span>
+                      <span class="tiny muted">系统采用微服务架构，分为接入层、业务层、数据</span>
+                      <span class="tiny muted">层与基础支撑层四层结构…</span>
+                    </div>
+                  </div>
+                  <div class="row mt8" style="align-items:flex-start;gap:6px">
+                    <span class="badge badge--amber">③</span>
+                    <div class="col col--gap-4 grow">
+                      <span class="tiny muted-2">表 3-1 系统模块清单</span>
+                      <div class="row wrap" style="gap:4px">
+                        <span class="tag">HIS</span><span class="tag">EMR</span><span class="tag">LIS</span><span class="tag">PACS</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="divider" style="margin:8px 0"></div>
+                  <div class="tiny muted-2">页边距 上 2.54 / 下 2.54 / 左 3.18 / 右 3.18 cm</div>
+                </div>
+
+                <!-- 刷新后 -->
+                <div class="hairline p12">
+                  <div class="row mb8">
+                    <span class="badge badge--primary">刷新后</span>
+                    <div class="grow"></div>
+                    <span class="tiny muted-2 mono">仿宋_GB2312 · 小四 · 1.5 倍</span>
+                  </div>
+                  <div class="b small">第三章 技术方案总体设计</div>
+                  <div class="divider" style="margin:8px 0"></div>
+                  <div class="row" style="align-items:flex-start;gap:6px">
+                    <span class="badge badge--primary">①</span>
+                    <div class="col col--gap-4 grow">
+                      <span class="tiny b">3.1 建设目标</span>
+                      <span class="tiny muted">本项目围绕医院信息化整体提升，建设覆盖临床、</span>
+                      <span class="tiny muted">管理、服务的一体化核心业务系统，实现数据互联</span>
+                      <span class="tiny muted">互通与业务协同。</span>
+                    </div>
+                  </div>
+                  <div class="row mt8" style="align-items:flex-start;gap:6px">
+                    <span class="badge badge--primary">②</span>
+                    <div class="col col--gap-4 grow">
+                      <span class="tiny b">3.1.1 总体架构</span>
+                      <span class="tiny muted">系统采用微服务架构，分为接入层、业务层、数据</span>
+                      <span class="tiny muted">层与基础支撑层四层结构…</span>
+                    </div>
+                  </div>
+                  <div class="row mt8" style="align-items:flex-start;gap:6px">
+                    <span class="badge badge--primary">③</span>
+                    <div class="col col--gap-4 grow">
+                      <span class="tiny b">表 3-1 系统模块清单</span>
+                      <div class="row wrap" style="gap:4px">
+                        <span class="tag tag--line">HIS</span><span class="tag tag--line">EMR</span><span class="tag tag--line">LIS</span><span class="tag tag--line">PACS</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="divider" style="margin:8px 0"></div>
+                  <div class="tiny muted-2">页边距 上 2.54 / 下 2.54 / 左 3.0 / 右 3.0 cm（按模板）</div>
+                </div>
+              </div>
+
+              <div class="row mt12">
+                <button class="btn btn--sm" data-toast="已切到上一页对比">‹ 上一页</button>
+                <button class="btn btn--sm" data-toast="已切到下一页对比">下一页 ›</button>
+                <div class="vdiv"></div>
+                <button class="btn btn--sm" data-toast="已跳到第 1 处差异">第 1 处差异</button>
+                <div class="grow"></div>
+                <span class="small muted-2">共 128 处，本页 4 处</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 差异清单 -->
+          <div class="card">
+            <div class="card-h">
+              <h3>差异清单</h3>
+              <span class="sub">只列会变的地方；「不改」的项不出现</span>
+              <div class="grow"></div>
+              <div class="row" data-chips>
+                <span class="chip on">全部 <span class="n">128</span></span>
+                <span class="chip">字号 <span class="n">62</span></span>
+                <span class="chip">行距 <span class="n">31</span></span>
+                <span class="chip">编号 <span class="n">22</span></span>
+                <span class="chip">表格 <span class="n">13</span></span>
+              </div>
+            </div>
+            <div class="card-b flush">
+              <table class="tbl">
+                <thead>
+                  <tr><th style="width:52px">角标</th><th>差异项</th><th>原文档</th><th>刷新后</th><th class="num" style="width:84px">处数</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><span class="badge badge--primary">①</span></td>
+                    <td class="name">正文字号</td>
+                    <td class="small">12pt（部分段落写死 10.5pt）</td>
+                    <td class="small">小四（12pt）统一</td>
+                    <td class="num">62</td>
+                  </tr>
+                  <tr>
+                    <td><span class="badge badge--primary">②</span></td>
+                    <td class="name">一级标题字体</td>
+                    <td class="small">宋体 16pt</td>
+                    <td class="small">黑体 三号（16pt）</td>
+                    <td class="num">22</td>
+                  </tr>
+                  <tr>
+                    <td><span class="badge badge--primary">③</span></td>
+                    <td class="name">表格内字号</td>
+                    <td class="small">五号（10.5pt）与正文同</td>
+                    <td class="small">小五（9pt）+ 表题居中</td>
+                    <td class="num">13</td>
+                  </tr>
+                  <tr>
+                    <td><span class="badge badge--gray">—</span></td>
+                    <td class="name">正文行距</td>
+                    <td class="small">3 种混用（1.5 倍 / 固定 28 磅 / 单倍）</td>
+                    <td class="small">1.5 倍统一</td>
+                    <td class="num">31</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="tbl-foot">
+                <span>共 128 处 · 本页 4 类</span>
+                <div class="vdiv"></div>
+                <span class="small muted-2">文字内容改动 0 处</span>
+                <div class="grow"></div>
+                <div class="pager"><button disabled>‹</button><button class="on">1</button><button>2</button><button>›</button></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 右列 -->
+        <div class="col col--gap-16">
+          <div class="fold">
+            <div class="fold-h" data-fold>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" style="width:15px;height:15px"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg>
+              微调配置
+              <span class="grow"></span>
+              <span class="tiny muted-2">默认收起</span>
+            </div>
+            <div class="fold-b" style="display:none">
+              <div class="field mb8">
+                <label class="label">纸张</label>
+                <div class="dd">
+                  <button class="btn" data-dd style="width:100%;justify-content:space-between"><span data-dd-label>A4（21 × 29.7cm）</span>
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+                  <div class="dd-menu" style="width:100%">
+                    <div class="dd-item on" data-label="A4（21 × 29.7cm）">A4（21 × 29.7cm）</div>
+                    <div class="dd-item" data-label="A3（29.7 × 42cm）">A3（29.7 × 42cm）</div>
+                    <div class="dd-item" data-label="16K（19.7 × 27.3cm）">16K（19.7 × 27.3cm）</div>
+                  </div>
+                </div>
+              </div>
+              <div class="grid g2 mb8">
+                <div class="field"><label class="label">上边距（cm）</label><input class="input" value="2.54"></div>
+                <div class="field"><label class="label">下边距（cm）</label><input class="input" value="2.54"></div>
+                <div class="field"><label class="label">左边距（cm）</label><input class="input" value="3.00"></div>
+                <div class="field"><label class="label">右边距（cm）</label><input class="input" value="3.00"></div>
+              </div>
+              <div class="field mb8">
+                <label class="label">正文字体</label>
+                <div class="dd">
+                  <button class="btn" data-dd style="width:100%;justify-content:space-between"><span data-dd-label>仿宋_GB2312</span>
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+                  <div class="dd-menu" style="width:100%">
+                    <div class="dd-item on" data-label="仿宋_GB2312">仿宋_GB2312</div>
+                    <div class="dd-item" data-label="宋体">宋体</div>
+                    <div class="dd-item" data-label="黑体">黑体</div>
+                    <div class="dd-item" data-label="楷体">楷体</div>
+                  </div>
+                </div>
+              </div>
+              <div class="row">
+                <span class="small muted">正文字号</span>
+                <div class="grow"></div>
+                <span class="badge badge--gray">小四 12pt</span>
+              </div>
+              <div class="divider"></div>
+              <div class="tiny muted-2">改这里只会重新计算差异（128 处可能变成 96 处），不会直接改文件。</div>
+              <button class="btn btn--sm mt8" style="width:100%" data-toast="已按新配置重算差异：96 处（示例）">重新计算差异</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>套用与导出</h3><span class="sub">先 ③ 再 ④</span></div>
+            <div class="card-b col col--gap-12">
+
+              <div class="col col--gap-4">
+                <div class="row">
+                  <span class="badge badge--primary">③</span>
+                  <span class="small b">一键应用到文档</span>
+                </div>
+                <div class="tiny muted-2">按当前模板改写样式并自动复检四项范围，生成校验报告。会先弹确认。</div>
+                <button class="btn btn--primary" style="width:100%" onclick="Proto.open('apply-confirm')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg>
+                  ③ 一键应用到文档
+                </button>
+              </div>
+
+              <div class="divider" style="margin:2px 0"></div>
+
+              <div class="col col--gap-4">
+                <div class="row">
+                  <span class="badge badge--gray">④</span>
+                  <span class="small b">导出刷新后文档</span>
+                  <span class="badge badge--amber">需先 ③</span>
+                </div>
+                <div class="tiny muted-2">导出的就是 ③ 应用后的同一份产物，不会重复改写；正文文字 0 改动。</div>
+                <button class="btn is-disabled" aria-disabled="true" style="width:100%">④ 导出刷新后文档</button>
+                <span class="tiny muted-2">原因：还没点 ③ 一键应用，现在没有可导出的产物</span>
+              </div>
+
+              <div class="divider" style="margin:2px 0"></div>
+              <div class="row small">
+                <span class="dot green"></span><span>原文件自动备份为 <span class="mono">.bak</span></span>
+              </div>
+              <div class="row small">
+                <span class="dot green"></span><span>正文文字改动 0 处</span>
+              </div>
+            </div>
+            <div class="card-f row small">
+              <span>46 页 · 128 处变更待套用</span>
+              <div class="grow"></div>
+              <a class="btn btn--link" href="upload.html">改范围</a>
+            </div>
+          </div>
+
+          <div class="alert alert--amber">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+            <div class="grow">套用会覆盖原文件格式（文字不动），<b>原文件自动备份为 .bak</b>。点 ③ 时还会再确认一次。</div>
+          </div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<div class="mask" data-modal="apply-confirm" style="display:none">
+  <div class="modal modal--danger" style="--mw:560px">
+    <div class="modal-h">
+      <h3>应用到「蚌埠医科大学第一附属医院智慧医疗核心_终版.docx」？<div class="sub">46 页 · 128 处格式变更 · 正文文字不改</div></h3>
+      <button class="icon-btn" onclick="Proto.close('apply-confirm')"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="modal-b">
+      <div class="danger-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        <div><b>将覆盖原文件，原文件会自动备份为 .bak</b>（同目录，保留 7 天）。套用后正文文字、图片、表格内容一律不动，只改字体字号、行距、标题编号、页边距与页眉页脚版式。若结果不满意，用 .bak 还原即可。</div>
+      </div>
+      <div class="kv-row mt8"><span class="k">模板</span><span class="v">公司标准模板 · 仿宋_GB2312 小四 / 1.5 倍行距</span></div>
+      <div class="kv-row"><span class="k">刷新范围</span><span class="v">正文样式 / 标题编号 / 表格 / 图注 / 页眉页脚 / 页边距（6 项全开）</span></div>
+      <div class="kv-row"><span class="k">预计耗时</span><span class="v">8 ~ 12 秒（本机处理，不上传）</span></div>
+      <label class="check mt8"><input type="checkbox" checked> 同时覆盖文字级直接格式（推荐）</label>
+      <div class="tiny muted-2" style="margin-top:4px">不勾这项的话，写死在每段文字上的字体字号不会改，看起来像"没变化"。</div>
+    </div>
+    <div class="modal-f">
+      <span class="tip">影响 1 份文档 · 128 处格式 · 文字 0 改动</span>
+      <div class="grow"></div>
+      <button class="btn btn--sm" onclick="Proto.close('apply-confirm')">取消</button>
+      <button class="btn btn--sm btn--danger-solid" data-toast="已套用：128 处格式已刷新，原文件已备份为 .bak（示例）">确认应用</button>
+    </div>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

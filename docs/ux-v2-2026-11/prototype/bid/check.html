@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⑥ 交卷自查 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="bid" data-screen="bid-check" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <div class="ph-back" onclick="location.href='list.html'">← 返回项目列表</div>
+          <h1>【UI测试】中医院信息化建设项目 <span class="badge badge--amber">⑥ 交卷自查</span></h1>
+          <div class="desc">厦门市中医院 · 编号 ZB-TEST-2026 · 距开标 25 天 · 预算 286.0 万 · 自查 09:38 运行（用时 42 秒）</div>
+          <div class="meta">
+            <span class="kv">四类闸门 <b>2 通过 / 2 未通过</b></span>
+            <span class="kv">问题 <b class="red">1 阻断</b> · <b class="amber">3 警告</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn is-disabled">去组卷导出</button>
+          <span class="small red">修复 1 项阻断问题后可导出</span>
+          <button class="btn btn--primary" data-toast="已重新检查：仍有 1 项阻断"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg><span>重新检查</span></button>
+        </div>
+      </div>
+
+      <div class="steps">
+        <div class="step done" onclick="location.href='import.html'"><div class="n">1</div><div class="tx"><b>导入招标</b><span>已完成</span></div></div>
+        <div class="step done" onclick="location.href='parse.html'"><div class="n">2</div><div class="tx"><b>解析确认</b><span>已完成</span></div></div>
+        <div class="step done" onclick="location.href='outline.html'"><div class="n">3</div><div class="tx"><b>大纲编制</b><span>已完成</span></div></div>
+        <div class="step done" onclick="location.href='draft.html'"><div class="n">4</div><div class="tx"><b>正文编写</b><span>11/11 章</span></div></div>
+        <div class="step done" onclick="location.href='deviation.html'"><div class="n">5</div><div class="tx"><b>偏离表</b><span>121/128 已应答</span></div></div>
+        <div class="step warn"><div class="n">6</div><div class="tx"><b>交卷自查</b><span>1 项阻断</span></div></div>
+        <div class="step"><div class="n">7</div><div class="tx"><b>组卷导出</b><span>未解锁</span></div></div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：导出门禁散在流水线末端，只给一句「检查未通过」，<b>不说哪一类没过、也不说在哪一章</b>，用户只能凭猜改。<b>拆后</b>：四类闸门各自给通过/未通过与证据，问题清单带级别、类别、位置与自动修复动作；未过闸门时导出一律禁用并写明原因。</div>
+      </div>
+
+      <div class="alert alert--red">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        <div class="grow"><b>当前不可导出</b>：有 1 项阻断问题未修复——投标函保证金金额（6.0 万）与正文（5.0 万）不一致，唱标即判无效标。</div>
+        <div class="acts"><button class="btn btn--sm btn--danger">定位并修复</button></div>
+      </div>
+
+      <div class="grid g2 mt12">
+
+        <div class="card">
+          <div class="card-h"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 15 2 2 4-4"/></svg>废标项闸门</h3><div class="grow"></div><span class="badge badge--green">12 条全过 ✓</span></div>
+          <div class="card-b">
+            <div class="row"><span class="small muted">逐条应答</span><div class="grow"></div><span class="mono">12 / 12</span></div>
+            <div class="bar green mt8"><i style="width:100%"></i></div>
+            <div class="row mt8 small"><span class="muted">★ 条款</span><div class="grow"></div><span class="badge badge--green">9 / 9 已响应</span></div>
+            <div class="row mt8 small"><span class="muted">资格性审查（等保三级 / 营业执照 / 社保）</span><div class="grow"></div><span class="badge badge--green">5 / 5 有效</span></div>
+            <div class="row mt8 small"><span class="muted">格式与签章（逐页盖章 / 法人签字）</span><div class="grow"></div><span class="badge badge--green">3 / 3 合规</span></div>
+            <div class="row mt8 small"><span class="muted">投标有效期与保证金</span><div class="grow"></div><span class="badge badge--green">符合要求</span></div>
+            <div class="row mt8 small"><span class="muted">报价未超预算（286.0 万）</span><div class="grow"></div><span class="badge badge--green">246.0 万</span></div>
+          </div>
+          <div class="card-f row small"><span class="muted">含资质有效性 5 项、格式签章 3 项</span><span class="grow"></span><span class="green b">通过</span></div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/></svg>一致性闸门</h3><div class="grow"></div><span class="badge badge--red">2 处不一致 ✗</span></div>
+          <div class="card-b">
+            <div class="list">
+              <div class="list-row"><span class="dot red"></span><div class="grow"><div class="t">保证金金额</div><div class="s">投标函 6.0 万 · 正文 5.0 万</div></div><button class="btn btn--sm">修复</button></div>
+              <div class="list-row"><span class="dot amber"></span><div class="grow"><div class="t">门诊人次表述</div><div class="s">8,000 人次 · 8,500 人次</div></div><button class="btn btn--sm">修复</button></div>
+            </div>
+          </div>
+          <div class="card-f row small"><span class="muted">三处金额必须一致：开标一览表 / 投标函 / 分项报价表</span><span class="grow"></span><span class="red b">未通过</span></div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>暗标闸门</h3><div class="grow"></div><span class="badge badge--red">1 项未通过 ✗</span></div>
+          <div class="card-b">
+            <div class="row small"><span class="muted">公司名称与 Logo</span><div class="grow"></div><span class="badge badge--green">已清除</span></div>
+            <div class="row small mt8"><span class="muted">页眉页脚标识</span><div class="grow"></div><span class="badge badge--green">已清除</span></div>
+            <div class="row small mt8"><span class="muted">图片 EXIF 元数据</span><div class="grow"></div><span class="badge badge--green">已清除</span></div>
+            <div class="row small mt8"><span class="muted">正文隐藏文字</span><div class="grow"></div><span class="badge badge--red">第 7 章 2 处</span></div>
+          </div>
+          <div class="card-f row small"><span class="muted">暗标模式下出现任何可识别投标人的信息即废标</span><span class="grow"></span><button class="btn btn--sm">一键清理</button></div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg>格式闸门</h3><div class="grow"></div><span class="badge badge--green">通过 ✓</span></div>
+          <div class="card-b">
+            <div class="row small"><span class="muted">目录与页码</span><div class="grow"></div><span class="badge badge--green">已更新</span></div>
+            <div class="row small mt8"><span class="muted">字体字号</span><div class="grow"></div><span class="badge badge--green">全文统一</span></div>
+            <div class="row small mt8"><span class="muted">表格与图注编号</span><div class="grow"></div><span class="badge badge--green">连续无断号</span></div>
+            <div class="row small mt8"><span class="muted">空白页</span><div class="grow"></div><span class="badge badge--green">0 页</span></div>
+          </div>
+          <div class="card-f row small"><span class="muted">按招标文件「投标文件格式」要求比对</span><span class="grow"></span><span class="green b">通过</span></div>
+        </div>
+
+      </div>
+
+      <div class="card mt12">
+        <div class="card-h"><h3>问题清单</h3><span class="sub">按 阻断 → 警告 排序，阻断项清零才解锁导出</span><div class="grow"></div>
+          <div class="row" data-chips><span class="chip on">全部 4</span><span class="chip">阻断 1</span><span class="chip">警告 3</span></div>
+        </div>
+        <div class="card-b flush">
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th>级别</th><th>类别</th><th>问题</th><th>位置</th><th class="w-ops">操作</th></tr></thead>
+              <tbody>
+                <tr class="on">
+                  <td><span class="badge badge--red">阻断</span></td>
+                  <td>一致性</td>
+                  <td class="name">保证金金额不一致：投标函 6.0 万 / 正文 5.0 万</td>
+                  <td class="mono">投标函 · 第 2 页</td>
+                  <td class="w-ops"><div class="row-ops"><button class="btn btn--sm">定位</button><button class="btn btn--sm">自动修复</button></div></td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge--orange">警告</span></td>
+                  <td>暗标</td>
+                  <td class="name">第 7 章存在 2 处隐藏文字（含旧版公司名）</td>
+                  <td class="mono">第 7 章 · 7.3 节</td>
+                  <td class="w-ops"><div class="row-ops"><button class="btn btn--sm">定位</button><button class="btn btn--sm">自动修复</button></div></td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge--orange">警告</span></td>
+                  <td>一致性</td>
+                  <td class="name">门诊人次表述不一致：8,000 / 8,500 人次</td>
+                  <td class="mono">第 7 章 · 7.3 节</td>
+                  <td class="w-ops"><div class="row-ops"><button class="btn btn--sm">定位</button><button class="btn btn--sm">自动修复</button></div></td>
+                </tr>
+                <tr>
+                  <td><span class="badge badge--amber">提示</span></td>
+                  <td>偏离表</td>
+                  <td class="name">7 条技术参数未应答（含 2 条 ★ 条款）</td>
+                  <td class="mono">偏离表 · 第 1 / 2 页</td>
+                  <td class="w-ops"><div class="row-ops"><a class="btn btn--sm" href="deviation.html">去应答</a></div></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="tbl-foot">
+            <span>共 4 条 · 阻断 1 / 警告 2 / 提示 1</span>
+            <span class="grow"></span>
+            <span class="muted-2 small">修复阻断后点「重新检查」解锁导出</span>
+            <button class="btn btn--sm">批量自动修复（2）</button>
+          </div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

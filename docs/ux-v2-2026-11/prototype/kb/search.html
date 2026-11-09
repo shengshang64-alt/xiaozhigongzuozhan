@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>全文检索 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="kb" data-screen="kb-search" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>全文检索<span class="badge badge--primary">42 条命中</span></h1>
+          <div class="desc">这一屏只做一件事：<b>一个框搜到底，结果按「标题命中 / 正文命中」分组</b>。标题命中通常就是你要的那篇；正文命中给你语境片段，点开能跳到原文位置。</div>
+          <div class="meta">
+            <span class="kv">检索词 <b>互联互通四甲</b></span>
+            <span class="kv">范围 <b>团队知识库 + 我的笔记</b></span>
+            <span class="kv">耗时 <b>0.28 秒</b></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：两个搜索框（标题 / 正文）二选一，用户不知道该用哪个，也不知道结果差异；搜不到时只有一句「未找到相关内容」，无法区分"没检索到"和"库里真没有"。<b>拆后</b>：单框 + 范围 seg，结果分两组并高亮命中词；未命中态明说「未命中 ≠ 库里没有」，并给出两条出路。</div>
+      </div>
+
+      <!-- 搜索区 -->
+      <div class="card">
+        <div class="card-b">
+          <div class="row wrap" style="gap:10px">
+            <div class="search" style="flex:1;min-width:420px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input class="input" style="height:38px;font-size:14px" value="互联互通四甲" placeholder="搜标题与正文">
+            </div>
+            <button class="btn btn--lg btn--primary" data-toast="已按「互联互通四甲」重新检索（示例）">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              检索
+            </button>
+          </div>
+          <div class="row wrap mt12">
+            <span class="small muted-2">搜索范围</span>
+            <div class="seg" data-seg>
+              <button class="on">全部</button>
+              <button>标题</button>
+              <button>正文</button>
+              <button>知识原子</button>
+            </div>
+            <div class="vdiv"></div>
+            <span class="tiny muted-2">共 42 条结果 · 标题命中 8 条 · 正文命中 34 条 · 0.28 秒</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="split split--l mt16">
+        <!-- 左：筛选 -->
+        <div class="col col--gap-16 aside-sticky">
+          <div class="card">
+            <div class="card-h"><h3>筛选</h3><div class="grow"></div><button class="btn btn--link" data-toast="已清空全部筛选">清空</button></div>
+            <div class="card-b col col--gap-12">
+              <div class="col col--gap-4">
+                <div class="tiny muted-2">分类</div>
+                <div class="row wrap" data-chips>
+                  <span class="chip on">全部 <span class="n">42</span></span>
+                  <span class="chip">标书范本 <span class="n">12</span></span>
+                  <span class="chip">方案素材 <span class="n">9</span></span>
+                  <span class="chip">政策法规 <span class="n">14</span></span>
+                  <span class="chip">案例复盘 <span class="n">5</span></span>
+                  <span class="chip">产品资料 <span class="n">2</span></span>
+                </div>
+              </div>
+              <div class="divider" style="margin:2px 0"></div>
+              <div class="col col--gap-4">
+                <div class="tiny muted-2">来源</div>
+                <div class="row wrap" data-chips>
+                  <span class="chip on">全部</span>
+                  <span class="chip">团队知识库 <span class="n">31</span></span>
+                  <span class="chip">我的笔记 <span class="n">11</span></span>
+                </div>
+              </div>
+              <div class="divider" style="margin:2px 0"></div>
+              <div class="col col--gap-4">
+                <div class="tiny muted-2">时间</div>
+                <div class="row wrap" data-chips>
+                  <span class="chip">近 7 天 <span class="n">3</span></span>
+                  <span class="chip on">近 90 天 <span class="n">26</span></span>
+                  <span class="chip">更早 <span class="n">16</span></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>检索提示</h3></div>
+            <div class="card-b col col--gap-8">
+              <div class="small muted">· 一个框同时查标题与正文，不用切换。</div>
+              <div class="small muted">· 命中词在片段里高亮，点开直接跳到原文那一行。</div>
+              <div class="row">
+                <span class="tiny muted-2">想按语义提问？</span>
+                <a class="btn btn--link" href="qa.html">去问知识库 →</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右：结果 -->
+        <div class="col col--gap-16">
+
+          <!-- 标题命中 -->
+          <div class="card">
+            <div class="card-h">
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                标题命中
+              </h3>
+              <span class="badge badge--primary">8 条</span>
+              <span class="sub">标题里直接含检索词，通常就是要找的那篇</span>
+              <div class="grow"></div>
+              <span class="tiny muted-2">按更新排序</span>
+            </div>
+            <div class="card-b flush">
+              <div class="list">
+                <div class="list-row">
+                  <span class="badge badge--blue">DOCX</span>
+                  <div class="grow">
+                    <div class="t">互联互通四甲测评准备清单（含数据元对照）</div>
+                    <div class="s">团队知识库 / 政策法规 · 2026-09-14 · 被引用 21 次 · 可对客</div>
+                  </div>
+                  <div class="row" style="gap:4px">
+                    <button class="btn btn--sm" data-toast="已打开文档（示例）">打开</button>
+                    <button class="btn btn--sm btn--ghost" data-toast="已在项目中引用（示例）">在项目中引用</button>
+                    <button class="btn btn--sm btn--ghost" data-toast="已加入知识原子抽取队列（示例）">加入原子</button>
+                  </div>
+                </div>
+                <div class="list-row">
+                  <span class="badge badge--blue">DOCX</span>
+                  <div class="grow">
+                    <div class="t">宣城市人民医院互联互通四甲建设方案</div>
+                    <div class="s">团队知识库 / 方案素材 · 2026-10-21 · 被引用 6 次 · 含医院名称需脱敏</div>
+                  </div>
+                  <div class="row" style="gap:4px">
+                    <button class="btn btn--sm" data-toast="已打开文档（示例）">打开</button>
+                    <button class="btn btn--sm btn--ghost" data-toast="已在项目中引用（示例）">在项目中引用</button>
+                    <button class="btn btn--sm btn--ghost" data-toast="已加入知识原子抽取队列（示例）">加入原子</button>
+                  </div>
+                </div>
+                <div class="list-row">
+                  <span class="badge badge--gray">PDF</span>
+                  <div class="grow">
+                    <div class="t">互联互通标准化成熟度测评方案（四甲部分）</div>
+                    <div class="s">团队知识库 / 政策法规 · 2026-08-30 · 被引用 17 次 · 可对客</div>
+                  </div>
+                  <div class="row" style="gap:4px">
+                    <button class="btn btn--sm" data-toast="已打开文档（示例）">打开</button>
+                    <button class="btn btn--sm btn--ghost" data-toast="已在项目中引用（示例）">在项目中引用</button>
+                    <button class="btn btn--sm btn--ghost" data-toast="已加入知识原子抽取队列（示例）">加入原子</button>
+                  </div>
+                </div>
+                <div class="list-row">
+                  <span class="badge badge--amber">MD</span>
+                  <div class="grow">
+                    <div class="t">四甲答辩常见问题与口径（互联互通）</div>
+                    <div class="s">我的笔记 / 答疑话术 · 2026-10-02 · 被引用 4 次 · 仅内部</div>
+                  </div>
+                  <div class="row" style="gap:4px">
+                    <button class="btn btn--sm" data-toast="已打开文档（示例）">打开</button>
+                    <button class="btn btn--sm btn--ghost" data-toast="已在项目中引用（示例）">在项目中引用</button>
+                    <button class="btn btn--sm btn--ghost" data-toast="已加入知识原子抽取队列（示例）">加入原子</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="card-f row small">
+              <span>标题命中 8 条 · 已显示 4 条</span>
+              <div class="grow"></div>
+              <button class="btn btn--sm">显示全部 8 条</button>
+            </div>
+          </div>
+
+          <!-- 正文命中 -->
+          <div class="card">
+            <div class="card-h">
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+                正文命中
+              </h3>
+              <span class="badge badge--amber">34 条</span>
+              <span class="sub">标题不含检索词，但正文段落里出现了</span>
+              <div class="grow"></div>
+              <span class="tiny muted-2">按相关度排序</span>
+            </div>
+            <div class="card-b flush">
+              <div class="list">
+                <div class="list-row">
+                  <span class="badge badge--blue">DOCX</span>
+                  <div class="grow">
+                    <div class="t">蚌埠医科大学第一附属医院智慧医疗核心 技术方案</div>
+                    <div class="s clamp2">…本期建设以「电子病历五级 + <span class="badge badge--amber">互联互通四甲</span>」为双目标，其中互联互通侧需完成 43 个数据元的标准化改造，并在测评前完成 3 轮内部模拟…</div>
+                    <div class="tiny muted-2 mt4">团队知识库 / 标书范本 · 命中 4 处 · 2026-11-03</div>
+                  </div>
+                  <div class="row" style="gap:4px">
+                    <button class="btn btn--sm" data-toast="已跳到正文命中处（示例）">跳到原文</button>
+                    <button class="btn btn--sm btn--ghost" data-toast="已在项目中引用（示例）">引用</button>
+                  </div>
+                </div>
+                <div class="list-row">
+                  <span class="badge badge--gray">PDF</span>
+                  <div class="grow">
+                    <div class="t">电子病历系统应用水平分级评价标准（2018 版）</div>
+                    <div class="s clamp2">…四级要求实现全院信息系统集成，与「<span class="badge badge--amber">互联互通四甲</span>」的数据元标准存在 12 项交叉要求，测评时应同步准备…</div>
+                    <div class="tiny muted-2 mt4">团队知识库 / 政策法规 · 命中 2 处 · 2026-09-08</div>
+                  </div>
+                  <div class="row" style="gap:4px">
+                    <button class="btn btn--sm" data-toast="已跳到正文命中处（示例）">跳到原文</button>
+                    <button class="btn btn--sm btn--ghost" data-toast="已在项目中引用（示例）">引用</button>
+                  </div>
+                </div>
+                <div class="list-row">
+                  <span class="badge badge--amber">MD</span>
+                  <div class="grow">
+                    <div class="t">宣城市人民医院项目答疑记录（第 2 轮）</div>
+                    <div class="s clamp2">…问：<span class="badge badge--amber">互联互通四甲</span>测评未通过是否影响验收？答：按合同约定以通过四甲为验收前置条件，我方承担测评辅导责任…</div>
+                    <div class="tiny muted-2 mt4">我的笔记 / 答疑话术 · 命中 1 处 · 2026-10-11</div>
+                  </div>
+                  <div class="row" style="gap:4px">
+                    <button class="btn btn--sm" data-toast="已跳到正文命中处（示例）">跳到原文</button>
+                    <button class="btn btn--sm btn--ghost" data-toast="已在项目中引用（示例）">引用</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="card-f row small">
+              <span>正文命中 34 条 · 已显示 3 条</span>
+              <div class="grow"></div>
+              <span class="tiny muted-2">命中词用琥珀徽标标出</span>
+              <button class="btn btn--sm">显示全部 34 条</button>
+            </div>
+          </div>
+
+          <!-- 未命中演示 -->
+          <div class="card">
+            <div class="card-h">
+              <h3>未命中演示</h3>
+              <span class="sub">搜一个库里确实没有的词，看系统怎么如实说明</span>
+              <div class="grow"></div>
+              <span class="badge badge--gray">检索词：DRG 智能分组</span>
+            </div>
+            <div class="card-b">
+              <div class="empty empty--plain" style="padding:10px 12px">
+                <div class="ico">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M8 11h6"/></svg>
+                </div>
+                <h4>没有找到「DRG 智能分组」相关文档</h4>
+                <p>在团队知识库 2,175 篇 + 我的笔记 4,825 条范围内，标题与正文都没有命中。</p>
+                <div class="acts">
+                  <button class="btn btn--sm" data-toast="已改为检索「DRG 分组器」（示例）">换个词试试</button>
+                  <a class="btn btn--sm" href="qa.html">去问知识库</a>
+                </div>
+              </div>
+              <div class="row" style="align-items:flex-start;gap:8px">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" class="amber" style="flex:0 0 14px;margin-top:2px"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+                <span class="small muted"><b>未命中 ≠ 库里没有</b>：可能只在本地文件里（AnyTXT 未启用）。</span>
+                <div class="grow"></div>
+                <button class="btn btn--sm" data-toast="已打开 AnyTXT 配置指引（示例）">查看配置</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

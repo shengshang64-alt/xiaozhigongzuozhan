@@ -1,0 +1,31 @@
+{
+  "base": "http://127.0.0.1:8000",
+  "login": "登录成功",
+  "rows": [
+    {
+      "id": "solution-checklist",
+      "tab": "建设清单",
+      "moduleLabel": "方案工作室",
+      "path": "/solution-studio/checklist",
+      "h1": "建设清单",
+      "h1Count": 1,
+      "primaryCtaCount": 2,
+      "primaryCtaTexts": [
+        "2生成系统清单进行中 · 85 项已确认 85 项",
+        "生成大纲"
+      ],
+      "innerTabs": [
+        "方案列表",
+        "方案编辑器",
+        "建设清单",
+        "交付检查"
+      ],
+      "chars": 3977,
+      "scrollH": 5541,
+      "hasError": false,
+      "hasEmpty": true,
+      "hasLoading": false,
+      "bodyText": "方案列表\n方案编辑器\n建设清单\n交付检查\n建设清单\n\n把客户需求原文转成可报价的系统清单，再一键转成方案大纲。清单独立于编辑器：它服务立项与报价，不参与正文写作。\n\n客户 —\n系统 85 项\n合计 18.0 万\n切换清单\n导入需求原文\n导出清单 Excel\n1\n录入需求\n已完成 · 63 段原文\n2\n生成系统清单\n进行中 · 85 项已确认 85 项\n3\n转大纲\n待开始\n系统清单\n85 项 · 已勾 85 项\n从产品库追加\n＋ 加系统\nONE-LINK-实施配置 · 配置管理系统\n0.0 万\nONE-LINK-实施配置 · 物价管理系统\n0.0 万\n医院集成平台 · 基础服务平台\n0.0 万\nONE-LINK-HIS · 门急诊挂号收费系统\n0.0 万\nONE-LINK-数据中心 · 患者主索引管理\n0.0 万\nONE-LINK-HIS · 门急诊挂号收费系统\n0.0 万\n全院级排队叫号系"
+    }
+  ]
+}

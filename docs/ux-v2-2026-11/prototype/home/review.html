@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>投标复盘 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="home" data-screen="home-review" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>投标复盘</h1>
+          <div class="desc">原首页把「投标复盘」做成 5 个几乎全空的统计卡放在最上面，<b>占了黄金位置却零信息</b>。本屏只在有已结束项目时才出现数据，且从「漏斗 → 归因 → 单项目」三层下钻。</div>
+          <div class="meta">
+            <span class="kv">已结束项目 <b>15</b></span>
+            <span class="kv">统计区间 <b>2025-01 ~ 2026-11</b></span>
+            <span class="kv">最近更新 <b>2026-11-07 18:20</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <div class="dd">
+            <button class="btn" data-dd><span data-dd-label>近 24 个月</span>
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+            <div class="dd-menu">
+              <div class="dd-item on" data-label="近 24 个月">近 24 个月</div>
+              <div class="dd-item" data-label="近 12 个月">近 12 个月</div>
+              <div class="dd-item" data-label="本年度">本年度</div>
+            </div>
+          </div>
+          <button class="btn">导出复盘报告</button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：复盘卡在项目列表上方、5 个指标（投标项目 3 / 中标率 — / 中标金额 0.00 / 结果待回填 3 / 废标原因 Top3 暂无）基本全空，且与列表同屏抢位置。<b>拆后</b>：独立复盘屏；无数据时列表页只显示一行提示「暂无已结束项目」，不再占位。</div>
+      </div>
+
+      <div class="stat-row">
+        <div class="stat is-primary"><div class="lab">有效投标</div><div class="val">13<small>个</small></div><div class="foot">报送 15 · 废标 2</div></div>
+        <div class="stat is-green"><div class="lab">中标</div><div class="val">3<small>个</small></div><div class="foot">中标率 <b class="green">23.1%</b> · 行业均值约 18%</div></div>
+        <div class="stat is-blue"><div class="lab">中标金额</div><div class="val">1,286.4<small>万</small></div><div class="foot">平均单标 428.8 万</div></div>
+        <div class="stat is-amber"><div class="lab">结果待回填</div><div class="val">2<small>个</small></div><div class="foot">安徽中医药大 / 宣城市人民医院</div></div>
+      </div>
+
+      <div class="split split--main">
+        <div class="col col--gap-16">
+
+          <div class="card">
+            <div class="card-h"><h3>投标漏斗</h3><span class="sub">从报送走到中标，每一层都能看到流失原因</span></div>
+            <div class="card-b">
+              <div class="chart-bars">
+                <div class="cbar"><span class="k">报送</span><span class="track"><i class="fill gray" style="width:100%"></i></span><span class="v">15</span></div>
+                <div class="cbar"><span class="k">通过资格性审查</span><span class="track"><i class="fill gray" style="width:87%"></i></span><span class="v">13</span></div>
+                <div class="cbar"><span class="k">进入详细评审</span><span class="track"><i class="fill" style="width:53%"></i></span><span class="v">8</span></div>
+                <div class="cbar"><span class="k">成为中标候选人</span><span class="track"><i class="fill" style="width:27%"></i></span><span class="v">4</span></div>
+                <div class="cbar"><span class="k">中标</span><span class="track"><i class="fill" style="width:20%"></i></span><span class="v">3</span></div>
+              </div>
+              <div class="alert alert--amber mt16" style="margin-bottom:0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+                <div class="grow"><b>最大流失点在「进入详细评审 → 候选人」</b>：8 进 4，流失 4 个，主要原因是技术分不足（3 个）与报价偏高（1 个）。这是最值得投入改进的一段。</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>落标原因聚类</h3><span class="sub">按原因归类，点击可筛选下方项目明细</span></div>
+            <div class="card-b">
+              <div class="split split--2">
+                <div class="chart-bars">
+                  <div class="cbar"><span class="k">技术分不足</span><span class="track"><i class="fill" style="width:80%"></i></span><span class="v">4 个</span></div>
+                  <div class="cbar"><span class="k">报价偏高</span><span class="track"><i class="fill" style="width:60%"></i></span><span class="v">3 个</span></div>
+                  <div class="cbar"><span class="k">资质缺失</span><span class="track"><i class="fill" style="width:40%"></i></span><span class="v">2 个</span></div>
+                  <div class="cbar"><span class="k">格式问题废标</span><span class="track"><i class="fill" style="width:20%"></i></span><span class="v">1 个</span></div>
+                  <div class="cbar"><span class="k">响应缺项</span><span class="track"><i class="fill" style="width:20%"></i></span><span class="v">1 个</span></div>
+                </div>
+                <div>
+                  <div class="row small"><b>可改进度评估</b></div>
+                  <div class="col col--gap-8 mt8">
+                    <div class="row small"><span class="dot green"></span><span class="grow">报价偏高（3 个）</span><span class="badge badge--green">可改善</span></div>
+                    <div class="row small"><span class="dot green"></span><span class="grow">格式问题废标（1 个）</span><span class="badge badge--green">已修复</span></div>
+                    <div class="row small"><span class="dot amber"></span><span class="grow">技术分不足（4 个）</span><span class="badge badge--amber">需积累</span></div>
+                    <div class="row small"><span class="dot red"></span><span class="grow">资质缺失（2 个）</span><span class="badge badge--red">有硬门槛</span></div>
+                  </div>
+                  <div class="small muted-2 mt12">「格式问题废标」自 2026-09 上线交卷自查闸门后未再发生。</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>已结束项目（15）</h3><div class="grow"></div><button class="btn btn--sm">导出明细</button></div>
+            <div class="card-b flush">
+              <div class="tbl-wrap" style="border:0;box-shadow:none">
+                <table class="tbl">
+                  <thead><tr><th>项目</th><th>开标日</th><th>结果</th><th class="num">我方报价</th><th class="num">中标价</th><th>主要竞争对手</th><th class="w-ops">复盘</th></tr></thead>
+                  <tbody>
+                    <tr><td class="name">蚌埠医科大学第一附属医院智慧医疗核心<div class="sub">BB2026SQCGZ052</div></td><td class="mono small">2026-11-03</td><td><span class="badge badge--amber">待回填</span></td><td class="num">286.0 万</td><td class="num">—</td><td>卫宁健康</td><td class="w-ops"><button class="btn btn--sm">去回填</button></td></tr>
+                    <tr><td class="name">安徽中医药大学第一附属医院一体化核心<div class="sub">2026BFAFZ50845</div></td><td class="mono small">2026-09-18</td><td><span class="badge badge--green">中标</span></td><td class="num">412.0 万</td><td class="num">412.0 万</td><td>东软集团</td><td class="w-ops"><a class="btn btn--sm" href="../bid/archive.html">查看</a></td></tr>
+                    <tr><td class="name">宣城市人民医院数据中台<div class="sub">XC2026-0712</div></td><td class="mono small">2026-08-21</td><td><span class="badge badge--red">未中标</span></td><td class="num">198.0 万</td><td class="num">176.5 万</td><td>创业慧康</td><td class="w-ops"><button class="btn btn--sm">查看</button></td></tr>
+                    <tr><td class="name">顾县人民医院 HIS 升级改造<div class="sub">GX2026-0331</div></td><td class="mono small">2026-07-09</td><td><span class="badge badge--green">中标</span></td><td class="num">156.8 万</td><td class="num">156.8 万</td><td>万达信息</td><td class="w-ops"><button class="btn btn--sm">查看</button></td></tr>
+                    <tr><td class="name">某市妇幼保健院电子病历评级<div class="sub">FY2026-0107</div></td><td class="mono small">2026-06-12</td><td><span class="badge badge--red">废标</span></td><td class="num">—</td><td class="num">—</td><td>—</td><td class="w-ops"><button class="btn btn--sm">查看</button></td></tr>
+                  </tbody>
+                </table>
+                <div class="tbl-foot"><span>共 15 条 · 显示前 5 条</span><span class="grow"></span>
+                  <div class="pager"><button disabled>‹</button><button class="on">1</button><button>2</button><button>3</button><button>›</button></div></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="col col--gap-16 aside-sticky">
+          <div class="card">
+            <div class="card-h"><h3>中标率趋势</h3></div>
+            <div class="card-b">
+              <div class="vbars">
+                <div class="col"><span class="n">12%</span><span class="b mut" style="height:30%"></span><span class="l">Q1</span></div>
+                <div class="col"><span class="n">18%</span><span class="b mut" style="height:46%"></span><span class="l">Q2</span></div>
+                <div class="col"><span class="n">21%</span><span class="b" style="height:56%"></span><span class="l">Q3</span></div>
+                <div class="col"><span class="n">31%</span><span class="b" style="height:82%"></span><span class="l">Q4</span></div>
+              </div>
+              <div class="small muted-2 mt8">2026 年 Q4 中标率 31%，为近两年最高。主要来自交卷闸门与价格建议功能上线。</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>复盘结论回流</h3></div>
+            <div class="card-b col col--gap-12">
+              <div class="small muted">已从中标/落标项目提炼出可复用结论：</div>
+              <div class="hairline p12">
+                <div class="row"><span class="badge badge--green">已入库</span><span class="grow"></span><span class="tiny muted-2">引用 6 次</span></div>
+                <div class="small mt4">三级医院 EMR 评级项目，报价区间 150-200 万时中标率最高。</div>
+              </div>
+              <div class="hairline p12">
+                <div class="row"><span class="badge badge--green">已入库</span><span class="grow"></span><span class="tiny muted-2">引用 3 次</span></div>
+                <div class="small mt4">技术分占比 ≥55% 的项目，方案页数需 ≥40 页，否则技术分平均低 6.2 分。</div>
+              </div>
+              <div class="hairline p12">
+                <div class="row"><span class="badge badge--amber">待审核</span><span class="grow"></span><span class="tiny muted-2">新</span></div>
+                <div class="small mt4">卫宁健康在厦门区域近 5 次投标均使用本地化部署话术，建议差异化。</div>
+              </div>
+              <a class="btn btn--sm" href="../kb/atoms.html">去知识原子库查看全部 →</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

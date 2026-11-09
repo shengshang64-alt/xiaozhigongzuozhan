@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>② 对照 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="mapping" data-screen="mapping-compare" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>② 对照<span class="badge badge--blue">进行中</span></h1>
+          <div class="desc">左边是<strong>业主原话</strong>，右边是<strong>公司产品库里的候选</strong>。你只需要做三件事：<b>接受</b>、<b>换一个</b>、或判它<b>未匹配</b>。判过的行会写进对照记忆库，下次同类条目自动命中。</div>
+          <div class="meta">
+            <span class="kv">清单 <b>宣城市人民医院-系统清单.xlsx</b></span>
+            <span class="kv">共 <b>128</b> 行</span>
+            <span class="kv">已对照 <b>34</b> 行</span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 4v16M16 4v16"/></svg><span>暂停</span></button>
+          <button class="btn">跳过本行</button>
+          <button class="btn" data-toast="已保存 34 行对照（示例）">保存并看结果</button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：对照过程没有左右关系，原文与候选产品在同一张长表里上下排，用户要来回滚；未匹配行与已匹配行视觉权重相同，"哪一行还没判"完全看不出来。<b>拆后</b>：<b>左原文、右候选</b>一眼对照，置信度用色条标在行首，未匹配行强制标红并要求人工处置。</div>
+      </div>
+
+      <div class="steps">
+        <div class="step done"><div class="n">1</div><div class="tx"><b>选择清单</b><span>已完成 · 128 行</span></div></div>
+        <div class="step on"><div class="n">2</div><div class="tx"><b>对照</b><span>进行中 · 34 / 128</span></div></div>
+        <div class="step"><div class="n">3</div><div class="tx"><b>结果</b><span>待开始</span></div></div>
+      </div>
+
+      <div class="card mb12">
+        <div class="card-b tight">
+          <div class="row">
+            <span class="b">已对照 <span class="mono">34</span> / 128 行</span>
+            <span class="badge badge--green">自动匹配 29</span>
+            <span class="badge badge--orange">待人工 5</span>
+            <span class="badge badge--red">未匹配 3</span>
+            <div class="grow"></div>
+            <span class="small muted-2">预计剩余 <b>1 分 40 秒</b> · 每行确认即写入记忆库</span>
+          </div>
+          <div class="bar mt8"><i style="width:27%"></i></div>
+        </div>
+      </div>
+
+      <div class="split split--l-wide">
+
+        <!-- 左：原文行 -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h">
+              <h3>原文行</h3>
+              <span class="sub">128 行 · 按清单顺序</span>
+              <div class="grow"></div>
+              <span class="badge badge--gray">只看待处理</span>
+            </div>
+            <div class="card-b tight">
+              <div class="list">
+                <div class="list-row">
+                  <span class="mono tiny muted-2" style="width:22px">31</span>
+                  <div class="bar green" style="width:3px;height:24px;flex:0 0 3px;border-radius:2px"><i style="width:100%"></i></div><span class="badge badge--green">已匹配</span>
+                  <div class="grow"><div class="t" style="font-size:12.2px">门急诊挂号收费系统</div></div>
+                </div>
+                <div class="list-row">
+                  <span class="mono tiny muted-2" style="width:22px">32</span>
+                  <div class="bar green" style="width:3px;height:24px;flex:0 0 3px;border-radius:2px"><i style="width:100%"></i></div><span class="badge badge--green">已匹配</span>
+                  <div class="grow"><div class="t" style="font-size:12.2px">住院医生工作站</div></div>
+                </div>
+                <div class="list-row on">
+                  <span class="mono tiny muted-2" style="width:22px">33</span>
+                  <div class="bar" style="width:3px;height:24px;flex:0 0 3px;border-radius:2px"><i style="width:100%"></i></div><span class="badge badge--amber">待确认</span>
+                  <div class="grow"><div class="t" style="font-size:12.2px">电子病历系统（含质控、护理文书）</div><div class="s">置信度 0.94 · 命中知识库 3 次</div></div>
+                </div>
+                <div class="list-row">
+                  <span class="mono tiny muted-2" style="width:22px">34</span>
+                  <div class="bar" style="width:3px;height:24px;flex:0 0 3px;border-radius:2px"><i style="width:100%"></i></div><span class="badge badge--amber">待确认</span>
+                  <div class="grow"><div class="t" style="font-size:12.2px">集成平台 V3.0（含 ESB 与消息队列）</div><div class="s">置信度 0.88 · 与在售版本有差异</div></div>
+                </div>
+                <div class="list-row">
+                  <span class="mono tiny muted-2" style="width:22px">35</span>
+                  <div class="bar red" style="width:3px;height:24px;flex:0 0 3px;border-radius:2px"><i style="width:100%"></i></div><span class="badge badge--red">未匹配</span>
+                  <div class="grow"><div class="t" style="font-size:12.2px">床旁结算与自助机（12 台）</div><div class="s">无候选 · 需人工判定或新建产品</div></div>
+                </div>
+                <div class="list-row">
+                  <span class="mono tiny muted-2" style="width:22px">36</span>
+                  <div class="bar green" style="width:3px;height:24px;flex:0 0 3px;border-radius:2px"><i style="width:100%"></i></div><span class="badge badge--green">已匹配</span>
+                  <div class="grow"><div class="t" style="font-size:12.2px">医学影像系统 PACS</div></div>
+                </div>
+                <div class="list-row">
+                  <span class="mono tiny muted-2" style="width:22px">37</span>
+                  <div class="bar green" style="width:3px;height:24px;flex:0 0 3px;border-radius:2px"><i style="width:100%"></i></div><span class="badge badge--green">已匹配</span>
+                  <div class="grow"><div class="t" style="font-size:12.2px">检验信息系统 LIS</div></div>
+                </div>
+                <div class="list-row">
+                  <span class="mono tiny muted-2" style="width:22px">38</span>
+                  <div class="bar red" style="width:3px;height:24px;flex:0 0 3px;border-radius:2px"><i style="width:100%"></i></div><span class="badge badge--red">未匹配</span>
+                  <div class="grow"><div class="t" style="font-size:12.2px">超声内镜图文报告</div><div class="s">无候选 · 建议归入 PACS 子模块</div></div>
+                </div>
+                <div class="list-row">
+                  <span class="mono tiny muted-2" style="width:22px">39</span>
+                  <div class="bar" style="width:3px;height:24px;flex:0 0 3px;border-radius:2px"><i style="width:100%"></i></div><span class="badge badge--amber">待确认</span>
+                  <div class="grow"><div class="t" style="font-size:12.2px">数据中台（主数据 + 患者主索引）</div><div class="s">置信度 0.91</div></div>
+                </div>
+                <div class="list-row">
+                  <span class="mono tiny muted-2" style="width:22px">40</span>
+                  <div class="bar green" style="width:3px;height:24px;flex:0 0 3px;border-radius:2px"><i style="width:100%"></i></div><span class="badge badge--green">已匹配</span>
+                  <div class="grow"><div class="t" style="font-size:12.2px">互联网医院与掌上服务</div></div>
+                </div>
+              </div>
+            </div>
+            <div class="card-f row small">
+              <span class="muted-2">左侧色条：<span class="green b">高置信</span> / <span class="amber b">待核</span> / <span class="red b">无候选</span></span>
+              <span class="grow"></span>
+              <span class="mono">33 / 128</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右：候选产品 -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h">
+              <h3>原始行 33 · 电子病历系统（含质控、护理文书）</h3>
+              <div class="grow"></div>
+              <span class="badge badge--green">置信度 0.94</span>
+            </div>
+            <div class="card-b col col--gap-12">
+
+              <div class="hairline p12">
+                <div class="row mb8">
+                  <div class="grow">
+                    <div class="b" style="font-size:14px">智康电子病历系统 V6.2</div>
+                    <div class="small muted mt4">厂商 智康医疗科技 · 型号 ZK-EMR-620 · 在售</div>
+                  </div>
+                  <div class="badge badge--primary" style="height:24px">匹配分 94</div>
+                </div>
+                <div class="row wrap mb8">
+                  <span class="tag tag--line">含质控</span>
+                  <span class="tag tag--line">护理文书</span>
+                  <span class="tag tag--line">电子病历五级</span>
+                  <span class="tag tag--line">病历质控规则库</span>
+                </div>
+                <div class="alert alert--green">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 6 9 17l-5-5"/></svg>
+                  <div class="grow"><b>为什么匹配</b>：原文提到「质控」与「护理文书」两个特征，该产品覆盖电子病历系统质控规则库与护理文书模块；同厂商在安徽省 3 家二级医院有中标记录，其中顾县人民医院已上线 V5.8。</div>
+                </div>
+                <div class="row mt8"><span class="small muted-2">同类项目参考价 126.0 万 · 含 3 年运维</span><span class="grow"></span>
+                  <button class="btn btn--sm">看案例 3 个</button></div>
+              </div>
+
+              <div class="hairline p12">
+                <div class="row mb8">
+                  <div class="grow">
+                    <div class="b" style="font-size:14px">医联电子病历质控平台 V4.0</div>
+                    <div class="small muted mt4">厂商 医联信息 · 型号 YL-QC-400 · 在售</div>
+                  </div>
+                  <div class="badge badge--gray" style="height:24px">匹配分 81</div>
+                </div>
+                <div class="row wrap mb8">
+                  <span class="tag tag--line">仅质控</span>
+                  <span class="tag tag--line">护理文书需外挂</span>
+                </div>
+                <div class="small muted-2">只覆盖质控部分，护理文书需另外挂模块，整包报价会比上一条高约 18 万。</div>
+              </div>
+
+              <div class="hairline p12">
+                <div class="row mb8">
+                  <div class="grow">
+                    <div class="b" style="font-size:14px">智康电子病历系统 V5.8（存量版）</div>
+                    <div class="small muted mt4">厂商 智康医疗科技 · 型号 ZK-EMR-580 · 医院在用</div>
+                  </div>
+                  <div class="badge badge--gray" style="height:24px">匹配分 76</div>
+                </div>
+                <div class="small muted-2">医院现网版本，可直接升级到 V6.2；若业主已认可现网，此选项改造量最小。</div>
+              </div>
+
+            </div>
+            <div class="card-f">
+              <div class="row wrap">
+                <button class="btn btn--sm btn--primary">接受这条</button>
+                <button class="btn btn--sm">换一个</button>
+                <button class="btn btn--sm btn--danger">标记未匹配</button>
+                <div class="grow"></div>
+                <span class="tiny muted-2">接受后自动写入对照记忆库，下次命中同条不再询问</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="alert alert--red">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+            <div class="grow"><b>3 行未匹配 · 需人工</b>：35 床旁结算与自助机、38 超声内镜图文报告、44 排队叫号（软硬件一体）。没有候选不等于可以不处理，未处理行会以红色带入结果表。</div>
+            <div class="acts"><button class="btn btn--sm">逐行处理 3 条</button></div>
+          </div>
+        </div>
+
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>
+

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>预警处理 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="qual" data-screen="qual-alerts" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>预警处理<span class="badge badge--red">4 项等你决定</span></h1>
+          <div class="desc">台账只告诉你「哪张要出事」，<b>这一屏把它处理掉</b>：左边挑一条预警，右边看清它影响哪两个在投项目，再选一个动作——续期、标记不适用、还是换新证。25 张未登记有效期的批量补录在「批量登记」。</div>
+          <div class="meta">
+            <span class="kv">预警总数 <b>4</b></span>
+            <span class="kv">涉及在投项目 <b class="red">2</b></span>
+            <span class="kv">已处理 <b>0</b></span>
+            <span class="kv">今日到期 <b>0</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg><span>处理记录（0）</span></button>
+          <a class="btn" href="list.html">回台账</a>
+          <button class="btn" data-toast="已发送 4 条预警到企微（示例）">全部推送提醒</button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：预警条只有一行字「到期预警 4 项」，点进去是 34 行台账，还要自己找是哪张、影响哪个项目、该怎么改（原页 682 个按钮里没有一个属于「处理预警」）。<b>拆后</b>：一屏完成「选中 → 看清影响 → 选动作」，三个动作各自写清后果，处理完自动回写台账。</div>
+      </div>
+
+      <div class="alert alert--orange mb12">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        <div class="grow"><b>这 4 项中任意一项过期，将导致 2 个在投项目失去投标资格</b>（蚌埠医科大一附院 BB2026SQCGZ052、【UI测试】中医院 ZB-TEST-2026）。开标前 3 个工作日仍未处理，系统会在交卷自查里直接判红。</div>
+        <div class="acts"><button class="btn btn--sm" data-toast="已复制 2 个项目编号（示例）">复制项目编号</button></div>
+      </div>
+
+      <div class="split" style="grid-template-columns:340px minmax(0,1fr)">
+        <!-- 左：预警列表 -->
+        <div class="card">
+          <div class="card-h"><h3>预警列表（4）</h3><div class="grow"></div><span class="badge badge--red">2 项致命</span></div>
+          <div class="card-b flush">
+            <div class="list" style="border:0;box-shadow:none;border-radius:0">
+              <div class="list-row on">
+                <div class="grow">
+                  <div class="t" style="display:block">信息系统集成及服务资质（二级）</div>
+                  <div class="s">硬资质 · <span class="red b">已过期 101 天</span> · 原有效期 2026-07-30</div>
+                  <div class="row mt8" style="gap:6px"><span class="badge badge--red">影响 2 个项目</span><span class="tag tag--line">必备资格条件</span></div>
+                </div>
+              </div>
+              <div class="list-row">
+                <div class="grow">
+                  <div class="t" style="display:block">医疗器械经营许可证（第二类 / 第三类）</div>
+                  <div class="s">硬资质 · <span class="orange b">剩 5 天</span> · 2026-11-13 到期</div>
+                  <div class="row mt8" style="gap:6px"><span class="badge badge--orange">影响 2 个项目</span><span class="tag tag--line">资格条款</span></div>
+                </div>
+              </div>
+              <div class="list-row">
+                <div class="grow">
+                  <div class="t" style="display:block">信息系统安全等级保护三级</div>
+                  <div class="s">硬资质 · <span class="orange b">剩 13 天</span> · 2026-11-21 到期</div>
+                  <div class="row mt8" style="gap:6px"><span class="badge badge--orange">影响 2 个项目</span><span class="tag tag--line">必备资格条件</span></div>
+                </div>
+              </div>
+              <div class="list-row">
+                <div class="grow">
+                  <div class="t" style="display:block">高新技术企业证书</div>
+                  <div class="s">硬资质 · <span class="orange b">剩 16 天</span> · 2026-11-22 到期</div>
+                  <div class="row mt8" style="gap:6px"><span class="badge badge--amber">影响 2 个项目</span><span class="tag tag--line">加分项</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card-f small muted-2">按「是否致命 × 剩余天数」排序；已过期永远置顶</div>
+        </div>
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>信息系统集成及服务资质（二级）</h3>
+              <span class="badge badge--red">已过期 101 天</span>
+              <div class="grow"></div>
+              <span class="small muted-2">最近核验 2026-11-06 · 王工</span>
+              <button class="btn btn--sm">编辑信息</button>
+            </div>
+            <div class="card-b">
+              <div class="grid g2" style="gap:0 24px">
+                <div class="kv-row"><span class="k">证书类别</span><span class="v">硬资质</span></div>
+                <div class="kv-row"><span class="k">持证主体</span><span class="v"><b>智业软件股份有限公司</b></span></div>
+                <div class="kv-row"><span class="k">证书编号</span><span class="v mono">CS2-3502-2021-0088</span></div>
+                <div class="kv-row"><span class="k">发证机构</span><span class="v">中国电子工业标准化技术协会</span></div>
+                <div class="kv-row"><span class="k">有效期</span><span class="v mono">2025-04-20 至 2026-07-30</span></div>
+                <div class="kv-row"><span class="k">剩余</span><span class="v"><b class="red">已过期 101 天（2026-07-30）</b></span></div>
+                <div class="kv-row"><span class="k">扫描件</span><span class="v">知识库 / 资质扫描件 / 集成资质-二级-2021.pdf</span></div>
+                <div class="kv-row"><span class="k">被引用</span><span class="v"><b>2 个在投项目</b> · 历史 7 个已归档项目</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>受影响项目（2）</h3>
+              <span class="sub">这两个项目的招标文件都把该证书写成了资格条件</span>
+              <div class="grow"></div>
+              <a class="btn btn--link" href="../bid/list.html">全部项目 →</a>
+            </div>
+            <div class="card-b flush">
+              <div class="list" style="border:0;box-shadow:none;border-radius:0">
+                <div class="list-row">
+                  <span class="badge badge--red">必备资格条件</span>
+                  <div class="grow">
+                    <div class="t">蚌埠医科大学第一附属医院智慧医疗核心系统</div>
+                    <div class="s">BB2026SQCGZ052 · 编制中 11/11 章 · 已开标 · 招标文件第 3.2 条要求提供二级及以上集成资质</div>
+                  </div>
+                  <div class="r"><span class="mono small red">已过期</span><div class="tiny muted-2">该证书是必备资格条件</div></div>
+                  <a class="btn btn--sm" href="../bid/draft.html">去补附件</a>
+                </div>
+                <div class="list-row">
+                  <span class="badge badge--red">必备资格条件</span>
+                  <div class="grow">
+                    <div class="t">【UI测试】中医院信息化建设项目</div>
+                    <div class="s">ZB-TEST-2026 · 厦门市中医院 · 卡在大纲 0/0 章 · 距开标 25 天</div>
+                  </div>
+                  <div class="r"><span class="mono small red">已过期</span><div class="tiny muted-2">该证书是必备资格条件</div></div>
+                  <a class="btn btn--sm" href="../bid/outline.html">去核对</a>
+                </div>
+              </div>
+            </div>
+            <div class="card-f small"><span class="red b">注意</span>：资质过期不必然废标，但资格条件不满足会被判「资格性审查不通过」——评标现场无法补交。</div>
+          </div>
+
+          <!-- 处理动作三选一 -->
+          <div class="grid g3">
+            <div class="card card--hover">
+              <div class="card-b tight">
+                <div class="row"><span class="badge badge--primary">推荐</span><span class="grow"></span><span class="small muted-2">1 分钟</span></div>
+                <div class="b mt8">立即续期登记</div>
+                <div class="small muted-2 mt4" style="line-height:1.55">填新的有效期至与扫描件，台账与 2 个项目的附件同时更新。适用于证书已续、只是没录入。</div>
+              </div>
+              <div class="card-f"><button class="btn btn--sm btn--primary" data-toast="已打开续期登记表单（示例）" style="width:100%">续期登记</button></div>
+            </div>
+            <div class="card card--hover">
+              <div class="card-b tight">
+                <div class="row"><span class="tag tag--line">仅限本项目</span><span class="grow"></span><span class="small muted-2">留痕</span></div>
+                <div class="b mt8">标记「本项目不适用」</div>
+                <div class="small muted-2 mt4" style="line-height:1.55">仅从当前投标的资格条件里剔除该证书，台账记录不删。适用于招标文件实际未强制要求的情形。</div>
+              </div>
+              <div class="card-f"><button class="btn btn--sm" data-toast="已标记不适用并写入操作日志（示例）" style="width:100%">标记不适用</button></div>
+            </div>
+            <div class="card card--hover">
+              <div class="card-b tight">
+                <div class="row"><span class="tag tag--line">换证</span><span class="grow"></span><span class="small muted-2">需扫描件</span></div>
+                <div class="b mt8">已换新证（上传扫描件）</div>
+                <div class="small muted-2 mt4" style="line-height:1.55">新证与旧证并存归档，旧证标记「已换发」，历史项目仍可追溯原编号。</div>
+              </div>
+              <div class="card-f"><button class="btn btn--sm" data-toast="已打开上传扫描件抽屉（示例）" style="width:100%">上传新证</button></div>
+            </div>
+          </div>
+
+          <div class="alert alert--amber">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            <div class="grow small"><b>处理完记得回写附件</b>：台账只记录证书信息，投标文件里的扫描件由各项目自行组卷。续期后系统会把这 2 个项目标记为「附件待更新」，在交卷自查第 ⑥ 步拦截。</div>
+            <div class="acts"><a class="btn btn--sm" href="../bid/check.html">看自查清单</a></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 空态演示：本屏数据非空，用「本周期还没有处理记录」演示空态四要素 -->
+      <div class="card mt16">
+        <div class="card-h"><h3>本周期处理记录</h3><div class="grow"></div><span class="badge badge--gray">0 条</span></div>
+        <div class="empty empty--plain">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg></div>
+          <h4>本周还没有处理记录</h4>
+          <p>上面 4 条预警处理完（续期 / 标记不适用 / 换新证）后，这里会出现谁在什么时候处理了哪张证书，可直接导出给行政复核。</p>
+          <div class="acts"><button class="btn btn--sm" data-toast="已打开第一条预警的续期登记（示例）">处理第一条预警</button><a class="btn btn--sm" href="list.html">回台账看全部</a></div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

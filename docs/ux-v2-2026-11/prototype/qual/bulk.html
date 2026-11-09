@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>批量登记 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="qual" data-screen="qual-bulk" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>批量登记有效期<span class="badge badge--amber">25 张待补录</span></h1>
+          <div class="desc">这 25 张证书是从知识库批量导入的，<b>有效期一栏是空的</b>——投标引用时无法判断是否过期，导出会被硬拦截。本屏一次性补齐：选证书 → 填日期 → 看影响 → 执行。</div>
+          <div class="meta">
+            <span class="kv">待补录 <b class="amber">25</b></span>
+            <span class="kv">已选 <b>25</b></span>
+            <span class="kv">其中软著 <b>18</b></span>
+            <span class="kv">预计耗时 <b>&lt; 10 秒</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <a class="btn" href="list.html">回台账</a>
+          <button class="btn">下载填写模板</button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：25 张未登记有效期只能逐个点「编辑」填，一张 4 个字段 = 100 次输入，实际没人做（所以这 25 张一直空着）。<b>拆后</b>：三步批量补录，且在写库前先告诉你会产生几张新预警，避免「补录完突然多出一堆红色」的意外。</div>
+      </div>
+
+      <div class="steps">
+        <div class="step done"><div class="n">1</div><div class="tx"><b>选择证书</b><span>已选 25 / 待补录 25</span></div></div>
+        <div class="step on"><div class="n">2</div><div class="tx"><b>填写有效期</b><span>进行中 · 统一或按类型</span></div></div>
+        <div class="step"><div class="n">3</div><div class="tx"><b>预览影响</b><span>待开始 · 确认后写库</span></div></div>
+      </div>
+
+      <div class="split" style="grid-template-columns:minmax(0,1fr) 380px">
+        <!-- 左：证书表 -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>未登记有效期的证书（25）</h3>
+              <div class="grow"></div>
+              <label class="check"><input type="checkbox" checked> 全选</label>
+            </div>
+            <div class="card-b flush">
+              <div class="tbl-wrap" style="border:0;box-shadow:none;border-radius:0;--tbl-h:700px">
+                <div class="tbl-scroll">
+                  <table class="tbl">
+                    <thead>
+                      <tr><th class="w-ck"><input type="checkbox" checked></th><th>证书名称</th><th>类别</th><th>证书编号</th><th>来源</th><th class="w-ops">补录</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr><td><input type="checkbox" checked></td><td class="name">软件著作权 · 智慧 HIS 核心业务系统 V1.0<div class="sub">2023SR0451236</div></td><td><span class="tag tag--line">软件著作权</span></td><td class="mono small">2023SR0451236</td><td class="small muted-2">知识库导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">软件著作权 · 电子病历系统 V2.0<div class="sub">2022SR0918877</div></td><td><span class="tag tag--line">软件著作权</span></td><td class="mono small">2022SR0918877</td><td class="small muted-2">知识库导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">软件著作权 · 检验信息系统（LIS）V1.5<div class="sub">2021SR1330092</div></td><td><span class="tag tag--line">软件著作权</span></td><td class="mono small">2021SR1330092</td><td class="small muted-2">知识库导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">软件著作权 · 医疗大数据平台 V2.0<div class="sub">2022SR0447810</div></td><td><span class="tag tag--line">软件著作权</span></td><td class="mono small">2022SR0447810</td><td class="small muted-2">知识库导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">软件著作权 · DRG 分组管理系统 V1.0<div class="sub">2024SR0120083</div></td><td><span class="tag tag--line">软件著作权</span></td><td class="mono small">2024SR0120083</td><td class="small muted-2">知识库导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">软件著作权 · 互联网医院平台 V3.0<div class="sub">2023SR0772401</div></td><td><span class="tag tag--line">软件著作权</span></td><td class="mono small">2023SR0772401</td><td class="small muted-2">知识库导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">软件著作权 · 集成平台 ESB V2.0<div class="sub">2022SR1102386</div></td><td><span class="tag tag--line">软件著作权</span></td><td class="mono small">2022SR1102386</td><td class="small muted-2">知识库导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">软件著作权 · 移动护理系统 V1.2<div class="sub">2021SR0889145</div></td><td><span class="tag tag--line">软件著作权</span></td><td class="mono small">2021SR0889145</td><td class="small muted-2">知识库导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">软件著作权 · 智慧病房系统 V1.0<div class="sub">2023SR0661204</div></td><td><span class="tag tag--line">软件著作权</span></td><td class="mono small">2023SR0661204</td><td class="small muted-2">知识库导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">软件著作权 · 病案质控系统 V2.1<div class="sub">2022SR0553018</div></td><td><span class="tag tag--line">软件著作权</span></td><td class="mono small">2022SR0553018</td><td class="small muted-2">知识库导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">软件著作权 · 区域卫健数据中台 V1.0<div class="sub">2024SR0330917</div></td><td><span class="tag tag--line">软件著作权</span></td><td class="mono small">2024SR0330917</td><td class="small muted-2">知识库导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">软件著作权 · 医保结算清单系统 V1.3<div class="sub">2023SR1002488</div></td><td><span class="tag tag--line">软件著作权</span></td><td class="mono small">2023SR1002488</td><td class="small muted-2">知识库导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">AAA 信用等级证书<div class="sub">无编号 · 中国中小企业协会</div></td><td><span class="tag tag--line">其他</span></td><td class="mono small">—</td><td class="small muted-2">资质目录导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">信息系统集成及服务资质（三级）<div class="sub">历史证书 · 已被二级替代</div></td><td><span class="tag tag--line">硬资质</span></td><td class="mono small">CS3-3502-2018-0042</td><td class="small muted-2">资质目录导入</td><td class="w-ops"><span class="badge badge--gray">本批跳过</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">计算机软件著作权 · 智慧体检系统 V1.0<div class="sub">2020SR1220451</div></td><td><span class="tag tag--line">软件著作权</span></td><td class="mono small">2020SR1220451</td><td class="small muted-2">知识库导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">软件著作权 · 智慧妇幼系统 V2.0<div class="sub">2021SR0455127</div></td><td><span class="tag tag--line">软件著作权</span></td><td class="mono small">2021SR0455127</td><td class="small muted-2">知识库导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">软件著作权 · 慢病管理系统 V1.0<div class="sub">2022SR0778123</div></td><td><span class="tag tag--line">软件著作权</span></td><td class="mono small">2022SR0778123</td><td class="small muted-2">知识库导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">软件著作权 · 分级诊疗平台 V1.1<div class="sub">2023SR0220096</div></td><td><span class="tag tag--line">软件著作权</span></td><td class="mono small">2023SR0220096</td><td class="small muted-2">知识库导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">软件著作权 · 医院运营决策系统 V2.0<div class="sub">2022SR0911456</div></td><td><span class="tag tag--line">软件著作权</span></td><td class="mono small">2022SR0911456</td><td class="small muted-2">知识库导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">软件著作权 · 智慧药房系统 V1.0<div class="sub">2023SR0554021</div></td><td><span class="tag tag--line">软件著作权</span></td><td class="mono small">2023SR0554021</td><td class="small muted-2">知识库导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">软件著作权 · 临床路径系统 V2.0<div class="sub">2021SR1004455</div></td><td><span class="tag tag--line">软件著作权</span></td><td class="mono small">2021SR1004455</td><td class="small muted-2">知识库导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">软件著作权 · 手麻信息系统 V1.2<div class="sub">2022SR0332187</div></td><td><span class="tag tag--line">软件著作权</span></td><td class="mono small">2022SR0332187</td><td class="small muted-2">知识库导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">ISO20000 信息技术服务管理体系证书<div class="sub">体系认证正本</div></td><td><span class="tag tag--line">体系认证</span></td><td class="mono small">00123IT</td><td class="small muted-2">资质目录导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">ISO45001 职业健康安全管理体系证书<div class="sub">体系认证正本</div></td><td><span class="tag tag--line">体系认证</span></td><td class="mono small">00123S</td><td class="small muted-2">资质目录导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                      <tr><td><input type="checkbox" checked></td><td class="name">软件著作权 · 智慧后勤管理系统 V1.0<div class="sub">2020SR0998120</div></td><td><span class="tag tag--line">软件著作权</span></td><td class="mono small">2020SR0998120</td><td class="small muted-2">知识库导入</td><td class="w-ops"><span class="badge badge--blue">已填</span></td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="tbl-foot">
+                  <span>已选 25 / 共 25 条</span>
+                  <span class="vdiv"></span>
+                  <span class="small muted-2">未勾选的证书不会被修改</span>
+                  <span class="grow"></span>
+                  <div class="pager"><button disabled>‹</button><button class="on">1</button><button>›</button></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右：统一填写 -->
+        <div class="col col--gap-16 aside-sticky">
+          <div class="card">
+            <div class="card-h">
+              <h3>统一填写</h3>
+              <span class="sub">套用到已选 25 张</span>
+              <div class="grow"></div>
+              <span class="badge badge--primary">第 2 步</span>
+            </div>
+            <div class="card-b col col--gap-12">
+              <div class="field">
+                <label class="label req">发证日期</label>
+                <input class="input" value="2026-01-01">
+              </div>
+              <div class="field">
+                <label class="label req">有效期至</label>
+                <input class="input" value="2029-12-31">
+                <span class="help">软著为长期有效，可勾选下方「长期有效」跳过此字段</span>
+              </div>
+              <div class="field">
+                <label class="label">发证机构</label>
+                <input class="input" value="中华人民共和国国家版权局">
+              </div>
+              <label class="check"><input type="checkbox" checked> 这批证书标注为「长期有效」</label>
+              <div class="divider" style="margin:2px 0"></div>
+              <div class="row small"><button class="switch" data-toggle title="开启后按证书类型分组填写"></button><span>按证书类型分别填写</span></div>
+              <div class="small muted-2" style="line-height:1.55">开启后右侧会按「硬资质 / 体系认证 / 软件著作权」分三组，各组可填不同日期。当前为关闭态（统一填写）。</div>
+            </div>
+            <div class="card-f row small">
+              <span class="muted-2">将套用到</span><b>25 张</b>
+              <span class="grow"></span>
+              <button class="btn btn--sm btn--ghost" data-toast="已恢复上次填写（示例）">恢复上次</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>填写规则</h3></div>
+            <div class="card-b col col--gap-8">
+              <div class="row small"><span class="dot green"></span><span>已登记有效期的证书<b>不会被覆盖</b></span></div>
+              <div class="row small"><span class="dot amber"></span><span>软著按「长期有效」处理，不计入到期预警</span></div>
+              <div class="row small"><span class="dot blue"></span><span>写库后可在台账逐条修改，支持撤销本批</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 影响预览 + 执行 -->
+      <div class="card mt16">
+        <div class="card-h">
+          <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>影响预览</h3>
+          <span class="sub">写库前先算一遍：这次批量登记会改变哪些状态</span>
+        </div>
+        <div class="card-b">
+          <div class="databar" style="margin-bottom:12px">
+            <div class="item">将更新证书 <b>25</b> 张</div>
+            <div class="item orange">新进入 30 天内到期预警 <b>3</b> 张</div>
+            <div class="item green">变为长期有效 <b>18</b> 张</div>
+            <div class="item">未登记剩余 <b>0</b> 张</div>
+            <div class="grow"></div>
+            <div class="item small muted-2">台账总数保持 34</div>
+          </div>
+          <div class="grid g2">
+            <div class="alert alert--orange" style="margin:0">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+              <div class="grow"><b>3 张会自动进入 30 天内到期预警</b>：ISO20000（2026-11-30）、ISO45001（2026-12-05）、AAA 信用等级（2026-11-28）。这 3 张目前被 1 个在投项目引用，写库后会立刻出现在台账红色预警条里。</div>
+            </div>
+            <div class="alert alert--green" style="margin:0">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/></svg>
+              <div class="grow"><b>25 张补齐后，「未登记有效期」归零</b>，投标导出不再因「有效期未知」被硬拦截；台账顶部四张风险卡只剩「已过期 1 / 30 天内 6 / 未登记 0」。</div>
+            </div>
+          </div>
+        </div>
+        <div class="card-f row">
+          <span class="small muted-2">执行后写入操作日志，可在「台账 → 操作记录」撤销本批（24 小时内）</span>
+          <span class="grow"></span>
+          <button class="btn btn--sm" onclick="location.href='list.html'">返回上一步</button>
+          <button class="btn btn--sm btn--primary" onclick="Proto.open('bulk-confirm')">登记 25 张有效期</button>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+
+<!-- 执行确认 -->
+<div class="mask" data-modal="bulk-confirm" style="display:none">
+  <div class="modal" style="--mw:520px">
+    <div class="modal-h"><h3>确认登记 25 张证书的有效期<div class="sub">这是一次批量写库，会直接改变台账状态</div></h3>
+      <button class="icon-btn" onclick="Proto.close('bulk-confirm')">✕</button></div>
+    <div class="modal-b">
+      <div class="kv-row"><span class="k">登记范围</span><span class="v"><b>25 张</b>未登记有效期的证书</span></div>
+      <div class="kv-row"><span class="k">统一有效期</span><span class="v mono">2026-01-01 至 2029-12-31</span></div>
+      <div class="kv-row"><span class="k">长期有效</span><span class="v">18 张软著（不计入到期预警）</span></div>
+      <div class="kv-row"><span class="k">新增预警</span><span class="v"><b class="orange">3 张</b> 30 天内到期（见影响预览）</span></div>
+      <div class="kv-row"><span class="k">可撤销</span><span class="v">24 小时内可从操作记录整批撤销</span></div>
+      <div class="alert alert--amber mt12">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div class="grow">批量登记的值来自统一填写，不等于原件核实。<b>投标引用前仍需核对扫描件</b>，系统会把这批标记为「批量登记 · 待核验」。</div>
+      </div>
+    </div>
+    <div class="modal-f"><span class="tip">写库后 25 张会同时更新</span><div class="grow"></div>
+      <button class="btn btn--sm" onclick="Proto.close('bulk-confirm')">取消</button>
+      <button class="btn btn--sm btn--primary" data-toast="已登记 25 张证书有效期（示例，未真正写库）" onclick="Proto.close('bulk-confirm')">确认登记</button>
+    </div>
+  </div>
+</div>
+
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

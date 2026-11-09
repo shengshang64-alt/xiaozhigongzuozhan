@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>设置与审计 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="team" data-screen="team-settings" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>设置与审计<span class="badge badge--primary">本机存储</span></h1>
+          <div class="desc">这一屏收两件事：<b>团队层面的开关</b>（团队信息 / 登录策略 / 数据与备份）与<b>谁在什么时候做了什么</b>（操作审计）。成员与角色的管理在各自 Tab，这里不再重复。</div>
+          <div class="meta">
+            <span class="kv">数据存储 <b>本机 PocketBase · 7000 端口</b></span>
+            <span class="kv">最近备份 <b>昨天 23:00</b></span>
+            <span class="kv">审计记录 <b>1,842</b> 条</span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn" data-toast="已重新加载配置">刷新</button>
+          <button class="btn btn--primary" onclick="Proto.open('backup-now')">立即备份</button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：团队管理只有一张成员表，登录策略散在服务端、备份要手工敲命令、出问题无从查证（6,710 节点 / 902px 全给了成员表）。<b>拆后</b>：设置集中在三张折叠卡，审计日志独立成表，本机存储与备份节奏写在最上面一条。</div>
+      </div>
+
+      <div class="alert alert--blue">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div class="grow">数据保存在<b>本机 PocketBase（127.0.0.1:7000）</b>，不上云、不对外同步。备份建议<b>每周至少一次</b>，并把手动备份文件拷到另一块盘——同一块盘上的备份挡不住盘坏。</div>
+        <div class="acts"><button class="btn btn--sm">看数据目录</button></div>
+      </div>
+
+      <div class="split split--main">
+        <div class="col col--gap-12">
+
+          <!-- ① 团队信息 -->
+          <div class="fold">
+            <div class="fold-h" data-fold>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18z"/><path d="M2 22h20M10 6h4M10 10h4M10 14h4"/></svg>
+              ① 团队信息
+              <span class="badge badge--gray">销售一部 · 7 名成员</span>
+              <div class="grow"></div>
+              <span class="tiny muted-2">团队名 / 主体 / 时区</span>
+            </div>
+            <div class="fold-b">
+              <div class="grid g3">
+                <div class="field"><label class="label req">团队名</label><input class="input" value="医疗售前一部"></div>
+                <div class="field"><label class="label req">公司主体</label><input class="input" value="小智科技（合肥）有限公司"></div>
+                <div class="field"><label class="label">时区</label><select class="select"><option>Asia/Shanghai（UTC+8）</option><option>Asia/Hong_Kong</option><option>UTC</option></select></div>
+              </div>
+              <div class="grid g3 mt8">
+                <div class="field"><label class="label">默认货币</label><select class="select"><option>人民币 ¥</option><option>美元 $</option></select></div>
+                <div class="field"><label class="label">金额小数位</label><select class="select"><option>1 位（如 286.0 万）</option><option>2 位</option></select></div>
+                <div class="field"><label class="label">工作台语言</label><select class="select"><option>简体中文</option><option>English</option></select></div>
+              </div>
+              <div class="row mt8"><span class="tiny muted-2">时区影响所有时间显示与开标倒计时计算，改动后全员刷新生效。</span><div class="grow"></div><button class="btn btn--sm" data-toast="团队信息已保存">保存</button></div>
+            </div>
+          </div>
+
+          <!-- ② 登录策略 -->
+          <div class="fold">
+            <div class="fold-h" data-fold>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              ② 登录策略
+              <span class="badge badge--amber">2 项偏松</span>
+              <div class="grow"></div>
+              <span class="tiny muted-2">密码 / 会话 / 注册 / 锁定</span>
+            </div>
+            <div class="fold-b">
+              <div class="grid g4">
+                <div class="field"><label class="label">密码最小长度</label><select class="select"><option>8 位</option><option>10 位</option><option>12 位</option></select><span class="help">建议 ≥ 10 位</span></div>
+                <div class="field"><label class="label">会话有效期</label><select class="select"><option>7 天</option><option>1 天</option><option>30 天</option></select><span class="help">到期需重新登录</span></div>
+                <div class="field"><label class="label">失败锁定时长</label><select class="select"><option>5 次 / 15 分钟</option><option>3 次 / 30 分钟</option><option>关闭</option></select><span class="help">连续失败即锁定</span></div>
+                <div class="field"><label class="label">允许自助注册</label><div class="row mt4"><button class="switch" data-toggle></button><span class="small muted">关：只能由管理员添加</span></div></div>
+              </div>
+              <div class="row mt8">
+                <span class="tiny muted-2">当前 7 名成员共用一套策略；如需按人加严，改角色即可（只读账号会自动限制导出范围）。</span>
+                <div class="grow"></div>
+                <button class="btn btn--sm" data-toast="登录策略已保存，下次登录生效">保存</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ③ 数据与备份 -->
+          <div class="fold">
+            <div class="fold-h" data-fold>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>
+              ③ 数据与备份
+              <span class="badge badge--green">昨天已备份</span>
+              <div class="grow"></div>
+              <span class="tiny muted-2">频率 / 保留份数 / 立即备份</span>
+            </div>
+            <div class="fold-b">
+              <div class="grid g4">
+                <div class="field"><label class="label">备份频率</label><select class="select"><option>每周一次</option><option>每天一次</option><option>手动</option></select></div>
+                <div class="field"><label class="label">保留份数</label><select class="select"><option>最近 8 份</option><option>最近 4 份</option><option>最近 30 份</option></select></div>
+                <div class="field"><label class="label">备份位置</label><input class="input" value="D:\xiaozhi\backups" readonly></div>
+                <div class="field"><label class="label">数据体积</label><input class="input" value="1.8 GB · 数据库 + 附件" readonly></div>
+              </div>
+              <div class="row mt8">
+                <span class="tiny muted-2">上次备份 昨天 23:00 · 耗时 42s · 校验通过 · 现有 5 份</span>
+                <div class="grow"></div>
+                <button class="btn btn--sm" onclick="Proto.open('backup-now')">立即备份</button>
+                <button class="btn btn--sm btn--danger" onclick="Proto.open('restore-confirm')">从备份恢复</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 操作审计日志 -->
+          <div class="card">
+            <div class="card-h">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>操作审计日志</h3>
+              <span class="sub">最近 8 条 · 共 1,842 条</span>
+              <div class="grow"></div>
+              <div class="dd">
+                <button class="btn btn--sm" data-dd><span data-dd-label>全部动作</span>
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+                <div class="dd-menu">
+                  <div class="dd-label">按动作</div>
+                  <div class="dd-item on" data-label="全部动作">全部动作</div>
+                  <div class="dd-item" data-label="登录">登录</div>
+                  <div class="dd-item" data-label="修改">修改</div>
+                  <div class="dd-item" data-label="删除">删除</div>
+                  <div class="dd-item" data-label="导出">导出</div>
+                </div>
+              </div>
+              <button class="btn btn--sm">导出日志</button>
+            </div>
+            <div class="card-b flush">
+              <div class="tbl-wrap" style="border:0;box-shadow:none">
+                <table class="tbl">
+                  <thead><tr><th>时间</th><th>成员</th><th>动作</th><th>对象</th><th>结果</th><th>IP</th></tr></thead>
+                  <tbody>
+                    <tr><td class="mono small">今天 12:14</td><td>系统管理员</td><td>登录</td><td class="small">本地工作台 · Chrome</td><td><span class="badge badge--green">成功</span></td><td class="mono small">127.0.0.1</td></tr>
+                    <tr><td class="mono small">今天 11:02</td><td>张经理</td><td>修改</td><td class="small">客户 · 厦门市中医院（阶段）</td><td><span class="badge badge--green">成功</span></td><td class="mono small">192.168.1.24</td></tr>
+                    <tr><td class="mono small">今天 10:48</td><td>李工</td><td>导出</td><td class="small">标书 · 蚌埠项目（第 9 章 docx）</td><td><span class="badge badge--green">成功</span></td><td class="mono small">192.168.1.31</td></tr>
+                    <tr><td class="mono small">今天 09:41</td><td>系统管理员</td><td>修改</td><td class="small">团队 · 角色权限（编辑）</td><td><span class="badge badge--green">成功</span></td><td class="mono small">127.0.0.1</td></tr>
+                    <tr><td class="mono small">今天 09:12</td><td>系统管理员</td><td>登录</td><td class="small">本地工作台 · 失败 1 次（密码错误）</td><td><span class="badge badge--red">失败</span></td><td class="mono small">127.0.0.1</td></tr>
+                    <tr><td class="mono small">昨天 19:41</td><td>李工</td><td>修改</td><td class="small">资质 · 等保三级（有效期登记）</td><td><span class="badge badge--green">成功</span></td><td class="mono small">192.168.1.31</td></tr>
+                    <tr><td class="mono small">昨天 18:20</td><td>王工</td><td>删除</td><td class="small">素材 · 重复上传的 3 张架构图</td><td><span class="badge badge--green">成功</span></td><td class="mono small">192.168.1.19</td></tr>
+                    <tr><td class="mono small">昨天 23:00</td><td>系统</td><td>备份</td><td class="small">全库 1.8 GB → D:\xiaozhi\backups</td><td><span class="badge badge--green">成功</span></td><td class="mono small">—</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="tbl-foot">
+                <span>共 1,842 条 · 当前筛选 8 条</span>
+                <span class="vdiv"></span>
+                <span class="tiny muted-2">审计日志只追加、不可编辑；删除成员后其记录仍保留</span>
+                <span class="grow"></span>
+                <div class="pager"><button disabled>‹</button><button class="on">1</button><button>2</button><button>3</button><button>›</button></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 右栏 -->
+        <div class="col col--gap-16 aside-sticky">
+          <div class="card">
+            <div class="card-h"><h3>本机存储</h3><div class="grow"></div><span class="badge badge--green badge--dot">在线</span></div>
+            <div class="card-b col col--gap-8">
+              <div class="kv-row"><div class="k">服务</div><div class="v mono">PocketBase 127.0.0.1:7000</div></div>
+              <div class="kv-row"><div class="k">数据体积</div><div class="v mono">1.8 GB</div></div>
+              <div class="kv-row"><div class="k">磁盘余量</div><div class="v mono">142 GB</div></div>
+              <div class="kv-row"><div class="k">备份</div><div class="v">5 份 · 最近 昨天 23:00</div></div>
+              <div class="bar"><i style="width:37%"></i></div>
+              <div class="tiny muted-2">磁盘占用 37%，短期内无需清理。</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>最近备份</h3><div class="grow"></div><button class="btn btn--link tiny">全部 →</button></div>
+            <div class="card-b col col--gap-8">
+              <div class="row small"><span class="dot green"></span><span class="grow mono">11-07 23:00</span><span class="muted-2 tiny">312 MB</span></div>
+              <div class="row small"><span class="dot green"></span><span class="grow mono">10-31 23:00</span><span class="muted-2 tiny">308 MB</span></div>
+              <div class="row small"><span class="dot green"></span><span class="grow mono">10-24 23:00</span><span class="muted-2 tiny">301 MB</span></div>
+              <div class="row small"><span class="dot green"></span><span class="grow mono">10-17 23:00</span><span class="muted-2 tiny">296 MB</span></div>
+              <div class="row small"><span class="dot gray"></span><span class="grow mono">10-10 23:00</span><span class="muted-2 tiny">290 MB</span></div>
+              <div class="tiny muted-2">保留 8 份后最早的会被自动清理。</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>安全提示</h3></div>
+            <div class="card-b col col--gap-8">
+              <div class="row small"><span class="dot amber"></span><span class="grow">密码最小长度 8 位，建议提到 10 位</span></div>
+              <div class="row small"><span class="dot amber"></span><span class="grow">会话 7 天偏长，公用电脑建议改 1 天</span></div>
+              <div class="row small"><span class="dot green"></span><span class="grow">自助注册已关闭，账号只能管理员创建</span></div>
+              <div class="row small"><span class="dot green"></span><span class="grow">失败 5 次锁定 15 分钟，已开启</span></div>
+            </div>
+          </div>
+
+          <div class="fold">
+            <div class="fold-h" data-fold>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              筛「删除」类动作无结果时是什么样
+              <div class="grow"></div>
+              <span class="tiny muted-2">展开看空态</span>
+            </div>
+            <div class="fold-b" hidden>
+              <div class="empty empty--plain">
+                <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg></div>
+                <h4>近 7 天没有「删除」类操作</h4>
+                <p>这是好事——说明没有成员在删数据。换个动作类型，或把时间范围放宽到 30 天。</p>
+                <div class="acts"><button class="btn btn--sm">回到全部动作</button><button class="btn btn--sm">导出全量日志</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+
+<!-- 立即备份 -->
+<div class="mask" data-modal="backup-now" style="display:none">
+  <div class="modal" style="--mw:520px">
+    <div class="modal-h"><h3>立即备份？<div class="sub">约 312 MB，预计 40 秒</div></h3><button class="icon-btn" onclick="Proto.close('backup-now')">✕</button></div>
+    <div class="modal-b col col--gap-12">
+      <div class="kv-row"><div class="k">备份内容</div><div class="v">数据库 + 附件（客户 / 标书 / 方案 / 知识库 / 资质）</div></div>
+      <div class="kv-row"><div class="k">保存到</div><div class="v mono">D:\xiaozhi\backups</div></div>
+      <div class="kv-row"><div class="k">影响</div><div class="v">备份期间可正常使用，不锁库</div></div>
+      <div class="alert alert--blue">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div class="grow">同一块盘上的备份挡不住盘坏，建议备份完把文件拷到移动硬盘。</div>
+      </div>
+    </div>
+    <div class="modal-f"><span class="tip">不中断当前操作</span><div class="grow"></div>
+      <button class="btn btn--sm" onclick="Proto.close('backup-now')">取消</button>
+      <button class="btn btn--sm" onclick="Proto.close('backup-now')">开始备份</button></div>
+  </div>
+</div>
+
+<!-- 从备份恢复（危险） -->
+<div class="mask" data-modal="restore-confirm" style="display:none">
+  <div class="modal modal--danger" style="--mw:560px">
+    <div class="modal-h"><h3>从备份恢复？<div class="sub">当前数据会被覆盖</div></h3><button class="icon-btn" onclick="Proto.close('restore-confirm')">✕</button></div>
+    <div class="modal-b">
+      <div class="danger-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        <div>恢复会把数据库回滚到所选备份时点，<b>之后新增的客户、标书、跟进记录全部丢失</b>。建议先「立即备份」把当前状态存一份，再执行恢复。</div>
+      </div>
+      <div class="field mt12"><label class="label req">选择备份</label>
+        <select class="select"><option>11-07 23:00 · 312 MB</option><option>10-31 23:00 · 308 MB</option><option>10-24 23:00 · 301 MB</option></select></div>
+    </div>
+    <div class="modal-f"><span class="tip">影响范围：全库 · 不可撤销</span><div class="grow"></div>
+      <button class="btn btn--sm" onclick="Proto.close('restore-confirm')">取消</button>
+      <button class="btn btn--sm btn--danger-solid" onclick="Proto.close('restore-confirm')">确认恢复</button></div>
+  </div>
+</div>
+
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>检查中 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="check" data-screen="check-running" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>检查中<span class="badge badge--blue badge--dot">暗标严格模式</span></h1>
+          <div class="desc">蚌埠医科大学第一附属医院智慧医疗核心_终版.docx 正在本机跑 5 个规则包。这一屏只回答两件事：<b>还要多久</b>、<b>已经查出什么</b>。跑完自动落到「检查报告」屏。</div>
+          <div class="meta">
+            <span class="kv">文件 <b>4.2 MB · 46 页</b></span>
+            <span class="kv">规则包 <b>5 个</b></span>
+            <span class="kv">已发现问题 <b>11</b></span>
+            <span class="kv">已用时 <b>00:42</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <a class="btn" href="upload.html">换个文件重查</a>
+          <a class="btn btn--primary" href="report.html">先看已出的 11 个问题 →</a>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：检查过程只有一个转圈图标与一行「检查中…」，用户不知道跑到哪一层、会不会卡死、还要不要等，只能反复刷新；中途也没有取消入口。<b>拆后</b>：进度卡写清百分比与当前规则包，右侧逐包显示执行状态与命中数，问题一冒出来就可见。</div>
+      </div>
+
+      <!-- 中央进度卡 + 右侧实时问题 -->
+      <div class="split split--main">
+        <div class="col col--gap-16">
+
+          <div class="card">
+            <div class="card-b">
+              <div class="row top" style="gap:22px">
+                <div class="donut" style="background:conic-gradient(var(--primary) 0 68%,var(--line-2) 68% 100%)">
+                  <div class="ctr"><b>68%</b><span>总进度</span></div>
+                </div>
+                <div class="grow">
+                  <div class="b" style="font-size:15px">正在执行：暗标规则包 3/5 · 格式规则包 2/6</div>
+                  <div class="small muted mt4">当前在第 5 个规则包（合规层 L5）的第 3 条：<b>文档属性与页眉页脚扫描</b>。这一包最慢，因为它要把 46 页的页眉页脚逐个拆开比对。</div>
+                  <div class="row mt12">
+                    <span class="badge badge--blue badge--dot">已用时 00:42</span>
+                    <span class="badge badge--gray">预计剩余 26 秒</span>
+                    <span class="badge badge--amber">已发现 11 个问题</span>
+                    <div class="grow"></div>
+                    <span class="small muted-2">开始于 09:14:03</span>
+                  </div>
+                </div>
+              </div>
+              <div class="bar bar--lg mt16"><i style="width:68%"></i></div>
+              <div class="row mt8">
+                <span class="tiny muted-2">0%</span><div class="grow"></div>
+                <span class="tiny muted-2">100%</span>
+              </div>
+            </div>
+            <div class="card-f row small">
+              <span>取消后已出的 11 个问题仍会保留，可在「检查报告」里继续看</span>
+              <div class="grow"></div>
+              <button class="btn btn--sm btn--danger" onclick="Proto.open('cancel-check')">取消检查</button>
+            </div>
+          </div>
+
+          <!-- 规则包执行清单 -->
+          <div class="card">
+            <div class="card-h">
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg>
+                规则包执行清单
+              </h3>
+              <span class="sub">按层依次跑，前一层跑完才进下一层</span>
+              <div class="grow"></div>
+              <span class="small muted-2">2 / 5 完成</span>
+            </div>
+            <div class="card-b flush">
+              <table class="tbl">
+                <thead>
+                  <tr><th>规则包</th><th>检查内容</th><th>状态</th><th class="num">已发现问题</th><th class="num">耗时</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="name">格式规则包 <span class="sub">L1 · 14 条</span></td>
+                    <td class="small">正文字体/字号/行距、页边距、标题编号断裂、页码</td>
+                    <td><span class="badge badge--green badge--dot">完成</span></td>
+                    <td class="num"><b>7</b></td>
+                    <td class="num muted">00:09</td>
+                  </tr>
+                  <tr>
+                    <td class="name">响应规则包 <span class="sub">L2 · 2 条</span></td>
+                    <td class="small">★/▲ 实质性条款逐条回应、技术评分项落点</td>
+                    <td><span class="badge badge--green badge--dot">完成</span></td>
+                    <td class="num"><b>3</b></td>
+                    <td class="num muted">00:06</td>
+                  </tr>
+                  <tr>
+                    <td class="name">内容规则包 <span class="sub">L3 · 2 条</span></td>
+                    <td class="small">章节正文单薄/空缺、成稿偏短章节</td>
+                    <td><span class="badge badge--blue badge--dot">进行中</span></td>
+                    <td class="num"><b>1</b></td>
+                    <td class="num muted">00:11</td>
+                  </tr>
+                  <tr>
+                    <td class="name">查重规则包 <span class="sub">L4 · 1 条</span></td>
+                    <td class="small">跨章重复段落（同一段话在两个以上章节出现）</td>
+                    <td><span class="badge badge--gray">等待</span></td>
+                    <td class="num muted">—</td>
+                    <td class="num muted">—</td>
+                  </tr>
+                  <tr>
+                    <td class="name">暗标规则包 <span class="sub">L5 · 21 条</span></td>
+                    <td class="small">公司名/品牌/人名/联系方式、元数据、页眉页脚、隐藏文字与修订、第一人称</td>
+                    <td><span class="badge badge--primary badge--dot">进行中 3/21</span></td>
+                    <td class="num muted">—</td>
+                    <td class="num muted">00:16</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 右列：实时冒出的问题 -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h">
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+                实时冒出的问题
+              </h3>
+              <div class="grow"></div>
+              <span class="spin"></span>
+            </div>
+            <div class="card-b flush">
+              <div class="list">
+                <div class="list-row">
+                  <span class="badge badge--red">阻断</span>
+                  <div class="grow">
+                    <div class="t" style="font-size:12.5px">公司名称泄露</div>
+                    <div class="s">第 3 章 3.2 节 · 「智业软件股份有限公司」</div>
+                  </div>
+                  <div class="r tiny muted-2">刚刚</div>
+                </div>
+                <div class="list-row">
+                  <span class="badge badge--red">阻断</span>
+                  <div class="grow">
+                    <div class="t" style="font-size:12.5px">作者 / 最后保存者泄露</div>
+                    <div class="s">文档属性 · dc:creator 非空</div>
+                  </div>
+                  <div class="r tiny muted-2">4 秒前</div>
+                </div>
+                <div class="list-row">
+                  <span class="badge badge--orange">警告</span>
+                  <div class="grow">
+                    <div class="t" style="font-size:12.5px">正文字体不一致</div>
+                    <div class="s">出现字体：仿宋_GB2312、宋体（7 处）</div>
+                  </div>
+                  <div class="r tiny muted-2">12 秒前</div>
+                </div>
+              </div>
+            </div>
+            <div class="card-f row small">
+              <span>共 11 个，跑完统一排序</span>
+              <div class="grow"></div>
+              <a class="btn btn--link" href="report.html">先看报告 →</a>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>本机检查 · 文件不出门</h3></div>
+            <div class="card-b col col--gap-8">
+              <div class="row small"><span class="dot green"></span><span>解析与规则执行都在浏览器内完成</span></div>
+              <div class="row small"><span class="dot green"></span><span>原文与文档属性不回传服务器</span></div>
+              <div class="row small"><span class="dot green"></span><span>关闭页面即释放，不留缓存副本</span></div>
+              <div class="divider"></div>
+              <div class="tiny muted-2">仅「导出报告」时由你主动生成文件，那份文件也只落到你本机。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="alert alert--green mt16">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <div class="grow"><b>检查会在本地完成，不上传文件内容。</b>断网也能跑；网络只用于可选的 AI 复核（复核时只发送命中的句子片段，不发整篇文档）。</div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<div class="mask" data-modal="cancel-check" style="display:none">
+  <div class="modal modal--danger" style="--mw:520px">
+    <div class="modal-h"><h3>取消本次检查？<div class="sub">暗标严格模式还剩 26 秒跑完</div></h3>
+      <button class="icon-btn" onclick="Proto.close('cancel-check')"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+    <div class="modal-b">
+      <div class="danger-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        <div>取消后<b>不会生成完整报告</b>：格式包与响应包已完成（10 个问题可看），内容包与暗标包只跑了 3/21 条——<b>暗标项没查完，不能据此判断可交卷</b>。下次要重跑一遍全量。</div>
+      </div>
+      <div class="small muted mt12">已出的 11 个问题会保留在「历史报告」里，标注为「未完成」。</div>
+    </div>
+    <div class="modal-f"><span class="tip">影响 1 次检查 · 需重跑 90 秒</span><div class="grow"></div>
+      <button class="btn btn--sm" onclick="Proto.close('cancel-check')">继续等 26 秒</button>
+      <button class="btn btn--sm btn--danger-solid" data-toast="已取消检查，10 个已出问题已保留（示例）">确认取消</button></div>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

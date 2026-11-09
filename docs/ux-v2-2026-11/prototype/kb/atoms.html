@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>知识原子 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="kb" data-screen="kb-atoms" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>知识原子<span class="badge badge--primary">1,842 条</span><span class="badge badge--red">3 条冲突待裁决</span></h1>
+          <div class="desc">知识原子 = <b>可被方案 / 标书直接引用的最小事实单元</b>：一句话说清一个事实、一个指标、一条政策条款。<b>它和文档的区别：文档是原文，原子是可复用的那句结论</b>——引用原子不会带进整篇文档的口径污染。</div>
+          <div class="meta">
+            <span class="kv">原子总数 <b>1,842</b></span>
+            <span class="kv">待审核 <b>312</b></span>
+            <span class="kv">本月新增 <b>96</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <a class="btn" href="review.html">审核 <span class="pill-count">312</span></a>
+          <button class="btn btn--primary" data-toast="已新建知识原子（示例）">＋ 新建原子</button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：知识库只有"文档"一种粒度的资产，原子抽取结果藏在审核页里，看不到总量、看不到哪些被方案/标书反复引用、更看不到同一条事实有两个版本（前者被引用 47 次、后者 3 次，谁都不敢用）。<b>拆后</b>：原子成为一等公民——独立视图给出引用次数、适用场景、冲突提示与来源溯源；冲突项单独可裁决。</div>
+      </div>
+
+      <!-- 数据条 -->
+      <div class="databar">
+        <div class="item">原子总数 <b>1,842</b></div>
+        <div class="item orange">待审核 <b>312</b></div>
+        <div class="item green">本月新增 <b>96</b></div>
+        <div class="item red">冲突待裁决 <b>3</b></div>
+        <div class="item">本月被引用 <b>418</b> 次</div>
+        <div class="grow"></div>
+        <div class="item"><span class="badge badge--gray">引用次数 Top 3：电子病历分级评价 / 等保三级 / 互联互通四甲</span></div>
+      </div>
+
+      <div class="split split--r">
+        <!-- 左：原子表 -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h">
+              <h3>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg>
+                原子清单
+              </h3>
+              <span class="sub">一句话事实 + 适用场景 + 引用次数，冲突项标红</span>
+              <div class="grow"></div>
+              <div class="row" data-chips>
+                <span class="chip on">全部 <span class="n">1842</span></span>
+                <span class="chip">冲突 <span class="n">3</span></span>
+                <span class="chip">政策 <span class="n">76</span></span>
+                <span class="chip">指标 <span class="n">214</span></span>
+                <span class="chip">资质 <span class="n">38</span></span>
+              </div>
+            </div>
+            <div class="card-b flush">
+              <div class="tbl-wrap" style="border:0;box-shadow:none;border-radius:0">
+                <table class="tbl">
+                  <thead>
+                    <tr>
+                      <th>原子内容（一句话事实）</th>
+                      <th style="width:78px">类型</th>
+                      <th style="width:118px">适用场景</th>
+                      <th class="num" style="width:70px">引用</th>
+                      <th style="width:118px">来源文档</th>
+                      <th style="width:96px">状态</th>
+                      <th class="w-ops" style="width:96px">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td class="name" style="font-weight:600">电子病历系统应用水平分级评价最高为 8 级，五级要求全院数据集成与统一管理<div class="sub">编号 A-1042 · 2026-09-08 入库</div></td>
+                      <td><span class="badge badge--blue">政策</span></td>
+                      <td class="small">标书 · 方案 · 答疑</td>
+                      <td class="num"><b>47</b></td>
+                      <td class="small">电子病历分级评价标准（2018）</td>
+                      <td><span class="badge badge--green">已通过</span></td>
+                      <td class="w-ops"><span class="row-ops">
+                        <button class="icon-btn" title="引用到项目" data-toast="已引用到当前标书章节（示例）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></button>
+                        <button class="icon-btn" title="编辑" data-toast="已打开编辑（示例）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+                      </span></td>
+                    </tr>
+                    <tr>
+                      <td class="name" style="font-weight:600">信息系统安全等级保护三级测评要求包含 211 个控制点，其中技术要求 8 类<div class="sub">编号 A-1018 · 2026-08-30 入库</div></td>
+                      <td><span class="badge badge--blue">政策</span></td>
+                      <td class="small">标书 · 方案</td>
+                      <td class="num"><b>38</b></td>
+                      <td class="small">等保三级测评整改清单</td>
+                      <td><span class="badge badge--green">已通过</span></td>
+                      <td class="w-ops"><span class="row-ops">
+                        <button class="icon-btn" title="引用到项目" data-toast="已引用到当前标书章节（示例）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></button>
+                        <button class="icon-btn" title="编辑" data-toast="已打开编辑（示例）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+                      </span></td>
+                    </tr>
+                    <tr>
+                      <td class="name" style="font-weight:600">互联互通标准化成熟度四甲要求完成 43 个数据元的标准化改造<div class="sub">编号 A-1185 · 2026-10-21 入库 · <span class="red">与 #A-1182 冲突</span></div></td>
+                      <td><span class="badge badge--amber">指标</span></td>
+                      <td class="small">标书 · 方案 · 答疑</td>
+                      <td class="num"><b>31</b></td>
+                      <td class="small">宣城市人民医院四甲建设方案</td>
+                      <td><span class="badge badge--red">冲突</span></td>
+                      <td class="w-ops"><span class="row-ops">
+                        <button class="btn btn--sm" data-toast="已打开冲突裁决（示例）">裁决</button>
+                        <button class="icon-btn" title="编辑" data-toast="已打开编辑（示例）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+                      </span></td>
+                    </tr>
+                    <tr>
+                      <td class="name" style="font-weight:600">互联互通标准化成熟度四甲要求完成 38 个数据元的标准化改造<div class="sub">编号 A-1182 · 2026-10-19 入库 · <span class="red">与 #A-1185 冲突</span></div></td>
+                      <td><span class="badge badge--amber">指标</span></td>
+                      <td class="small">标书 · 方案</td>
+                      <td class="num"><b>3</b></td>
+                      <td class="small">政策法规汇编（内部整理）</td>
+                      <td><span class="badge badge--red">冲突</span></td>
+                      <td class="w-ops"><span class="row-ops">
+                        <button class="btn btn--sm" data-toast="已打开冲突裁决（示例）">裁决</button>
+                        <button class="icon-btn" title="编辑" data-toast="已打开编辑（示例）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+                      </span></td>
+                    </tr>
+                    <tr>
+                      <td class="name" style="font-weight:600">公司持有信息系统安全等级保护三级备案证明，有效期至 2027-03<div class="sub">编号 A-0921 · 2026-07-12 入库</div></td>
+                      <td><span class="badge badge--purple">资质</span></td>
+                      <td class="small">标书 · 报价</td>
+                      <td class="num"><b>26</b></td>
+                      <td class="small">等保三级备案证明扫描件</td>
+                      <td><span class="badge badge--green">已通过</span></td>
+                      <td class="w-ops"><span class="row-ops">
+                        <button class="icon-btn" title="引用到项目" data-toast="已引用到当前标书章节（示例）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></button>
+                        <button class="icon-btn" title="编辑" data-toast="已打开编辑（示例）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+                      </span></td>
+                    </tr>
+                    <tr>
+                      <td class="name" style="font-weight:600">ONE-LINK6.0 支持中医治未病中心的体质辨识与干预方案管理<div class="sub">编号 A-1077 · 2026-09-22 入库</div></td>
+                      <td><span class="badge badge--green">产品能力</span></td>
+                      <td class="small">方案 · PPT</td>
+                      <td class="num"><b>19</b></td>
+                      <td class="small">ONE-LINK6.0 中医特色方案</td>
+                      <td><span class="badge badge--green">已通过</span></td>
+                      <td class="w-ops"><span class="row-ops">
+                        <button class="icon-btn" title="引用到项目" data-toast="已引用到当前标书章节（示例）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></button>
+                        <button class="icon-btn" title="编辑" data-toast="已打开编辑（示例）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+                      </span></td>
+                    </tr>
+                    <tr>
+                      <td class="name" style="font-weight:600">三明市中西医结合医院项目于 2026-06 通过电子病历五级评审<div class="sub">编号 A-1130 · 2026-10-02 入库</div></td>
+                      <td><span class="badge badge--orange">案例</span></td>
+                      <td class="small">标书 · 方案 · PPT</td>
+                      <td class="num"><b>14</b></td>
+                      <td class="small">三明市中西医结合医院技术方案</td>
+                      <td><span class="badge badge--green">已通过</span></td>
+                      <td class="w-ops"><span class="row-ops">
+                        <button class="icon-btn" title="引用到项目" data-toast="已引用到当前标书章节（示例）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></button>
+                        <button class="icon-btn" title="编辑" data-toast="已打开编辑（示例）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+                      </span></td>
+                    </tr>
+                    <tr>
+                      <td class="name" style="font-weight:600">数据中台建设需覆盖 12 类主数据与 8 个业务域的主题库<div class="sub">编号 A-1055 · 2026-09-14 入库</div></td>
+                      <td><span class="badge badge--amber">指标</span></td>
+                      <td class="small">方案 · 标书</td>
+                      <td class="num"><b>12</b></td>
+                      <td class="small">数据中台建设方案模板</td>
+                      <td><span class="badge badge--green">已通过</span></td>
+                      <td class="w-ops"><span class="row-ops">
+                        <button class="icon-btn" title="引用到项目" data-toast="已引用到当前标书章节（示例）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></button>
+                        <button class="icon-btn" title="编辑" data-toast="已打开编辑（示例）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+                      </span></td>
+                    </tr>
+                    <tr>
+                      <td class="name" style="font-weight:600">投标文件中承诺的驻场人数不得低于招标文件要求的 2 人<div class="sub">编号 A-0862 · 2026-06-30 入库</div></td>
+                      <td><span class="badge badge--purple">打法</span></td>
+                      <td class="small">标书 · 报价</td>
+                      <td class="num"><b>9</b></td>
+                      <td class="small">蚌埠项目投标复盘</td>
+                      <td><span class="badge badge--green">已通过</span></td>
+                      <td class="w-ops"><span class="row-ops">
+                        <button class="icon-btn" title="引用到项目" data-toast="已引用到当前标书章节（示例）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></button>
+                        <button class="icon-btn" title="编辑" data-toast="已打开编辑（示例）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+                      </span></td>
+                    </tr>
+                    <tr>
+                      <td class="name" style="font-weight:600">被问「能否通过四甲」时应答口径：先答测评周期，再答数据元差距，不承诺具体等级<div class="sub">编号 A-0844 · 2026-06-18 入库 · 待审核</div></td>
+                      <td><span class="badge badge--gray">话术</span></td>
+                      <td class="small">答疑</td>
+                      <td class="num muted">0</td>
+                      <td class="small">四甲答辩常见问题（我的笔记）</td>
+                      <td><span class="badge badge--amber">待审核</span></td>
+                      <td class="w-ops"><span class="row-ops">
+                        <button class="btn btn--sm" data-toast="已通过本条原子（示例）">通过</button>
+                        <button class="icon-btn" title="编辑" data-toast="已打开编辑（示例）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+                      </span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="tbl-foot">
+                <span>共 1,842 条 · 本页 10 条</span>
+                <div class="vdiv"></div>
+                <span class="small muted-2">3 条冲突· 312 条待审核</span>
+                <div class="grow"></div>
+                <div class="pager">
+                  <button disabled>‹</button><button class="on">1</button><button>2</button><button>3</button><button>…</button><button>185</button><button>›</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="alert alert--blue">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            <div class="grow"><b>为什么原子比文档好用</b>：写方案时引用的是"一句话事实"，不是整篇文档——不会把别的项目的医院名、报价、口径一起带进来；标书检查的「数字口径一致性」也是拿原子表对正文，能抓到同一个指标在两个章节写两个数。</div>
+          </div>
+        </div>
+
+        <!-- 右列 -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h"><h3>高频引用原子 Top5</h3><div class="grow"></div><span class="tiny muted-2">近 90 天</span></div>
+            <div class="card-b col col--gap-8">
+              <div class="row"><span class="small trunc" style="width:104px">电子病历分级评价</span><div class="bar grow"><i style="width:100%"></i></div><span class="mono small muted" style="width:30px;text-align:right">47</span></div>
+              <div class="row"><span class="small trunc" style="width:104px">等保三级控制点</span><div class="bar grow"><i style="width:81%"></i></div><span class="mono small muted" style="width:30px;text-align:right">38</span></div>
+              <div class="row"><span class="small trunc" style="width:104px">四甲数据元</span><div class="bar grow"><i style="width:66%"></i></div><span class="mono small muted" style="width:30px;text-align:right">31</span></div>
+              <div class="row"><span class="small trunc" style="width:104px">等保备案有效期</span><div class="bar grow"><i style="width:55%"></i></div><span class="mono small muted" style="width:30px;text-align:right">26</span></div>
+              <div class="row"><span class="small trunc" style="width:104px">中医治未病能力</span><div class="bar grow"><i style="width:40%"></i></div><span class="mono small muted" style="width:30px;text-align:right">19</span></div>
+              <div class="tiny muted-2 mt8">引用次数高 = 被方案与标书反复验证过，优先复用它，别重写。</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">
+              <h3>冲突待裁决</h3>
+              <span class="badge badge--red">3</span>
+            </div>
+            <div class="card-b flush">
+              <div class="list">
+                <div class="list-row">
+                  <span class="badge badge--red">冲突</span>
+                  <div class="grow">
+                    <div class="t" style="font-size:12.5px">四甲数据元数量：43 vs 38</div>
+                    <div class="s">A-1185（引用 31 次） vs A-1182（引用 3 次）</div>
+                  </div>
+                  <button class="btn btn--sm" data-toast="已打开冲突裁决（示例）">裁决</button>
+                </div>
+                <div class="list-row">
+                  <span class="badge badge--red">冲突</span>
+                  <div class="grow">
+                    <div class="t" style="font-size:12.5px">等保三级控制点数：211 vs 218</div>
+                    <div class="s">A-1018（引用 38 次） vs A-1090（引用 1 次）</div>
+                  </div>
+                  <button class="btn btn--sm" data-toast="已打开冲突裁决（示例）">裁决</button>
+                </div>
+                <div class="list-row">
+                  <span class="badge badge--red">冲突</span>
+                  <div class="grow">
+                    <div class="t" style="font-size:12.5px">电子病历五级要求：全院集成 vs 院内集成</div>
+                    <div class="s">A-1042（引用 47 次） vs A-1108（引用 2 次）</div>
+                  </div>
+                  <button class="btn btn--sm" data-toast="已打开冲突裁决（示例）">裁决</button>
+                </div>
+              </div>
+            </div>
+            <div class="card-f row small">
+              <span>裁决规则：数值差异 &gt; 5% 才算冲突</span>
+              <div class="grow"></div>
+              <a class="btn btn--link" href="review.html">去审核 →</a>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>按类型分布</h3></div>
+            <div class="card-b col col--gap-8">
+              <div class="row"><span class="small" style="width:76px">政策</span><div class="bar grow"><i style="width:100%"></i></div><span class="mono small muted" style="width:36px;text-align:right">642</span></div>
+              <div class="row"><span class="small" style="width:76px">指标</span><div class="bar grow"><i style="width:33%"></i></div><span class="mono small muted" style="width:36px;text-align:right">214</span></div>
+              <div class="row"><span class="small" style="width:76px">产品能力</span><div class="bar grow"><i style="width:52%"></i></div><span class="mono small muted" style="width:36px;text-align:right">336</span></div>
+              <div class="row"><span class="small" style="width:76px">案例</span><div class="bar grow"><i style="width:40%"></i></div><span class="mono small muted" style="width:36px;text-align:right">258</span></div>
+              <div class="row"><span class="small" style="width:76px">资质</span><div class="bar grow"><i style="width:6%"></i></div><span class="mono small muted" style="width:36px;text-align:right">38</span></div>
+              <div class="row"><span class="small" style="width:76px">打法 / 话术</span><div class="bar grow"><i style="width:55%"></i></div><span class="mono small muted" style="width:36px;text-align:right">354</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

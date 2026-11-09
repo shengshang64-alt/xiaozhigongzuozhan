@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>② 解析确认 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="bid" data-screen="bid-parse" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <div class="ph-back" onclick="location.href='list.html'">← 返回项目列表</div>
+          <h1>【UI测试】中医院信息化建设项目 <span class="badge badge--blue">② 解析确认</span></h1>
+          <div class="desc">厦门市中医院 · 编号 ZB-TEST-2026 · 距开标 25 天 · 预算 286.0 万 · 包 1 软件</div>
+          <div class="meta">
+            <span class="kv">解析耗时 <b>86 秒</b></span>
+            <span class="kv">来源 <b>招标文件.docx / 技术需求书.pdf</b></span>
+            <span class="kv">待确认 <b class="red">3</b> 条</span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <span class="small red">还有 3 条废标条款待确认</span>
+          <button class="btn">重新解析</button>
+          <button class="btn btn--primary is-disabled">确认解析结果，进入大纲编制</button>
+        </div>
+      </div>
+
+      <div class="steps">
+        <div class="step done" onclick="location.href='import.html'"><div class="n">1</div><div class="tx"><b>导入招标</b><span>已完成</span></div></div>
+        <div class="step on"><div class="n">2</div><div class="tx"><b>解析确认</b><span>3 条待确认</span></div></div>
+        <div class="step"><div class="n">3</div><div class="tx"><b>大纲编制</b><span>待开始</span></div></div>
+        <div class="step"><div class="n">4</div><div class="tx"><b>正文编写</b><span>待开始</span></div></div>
+        <div class="step"><div class="n">5</div><div class="tx"><b>偏离表</b><span>待开始</span></div></div>
+        <div class="step"><div class="n">6</div><div class="tx"><b>交卷自查</b><span>待开始</span></div></div>
+        <div class="step"><div class="n">7</div><div class="tx"><b>组卷导出</b><span>待开始</span></div></div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：四类解析结果（废标条款 / 评分办法 / 技术参数 / 时间节点）散在流水线折叠块里，看得到数字点不到原文，<b>漏一条废标项就直接废标</b>。<b>拆后</b>：本屏只做一件事——把这四类结果逐条确认，确认完才允许进 ③ 大纲；未确认条数常驻在按钮旁。</div>
+      </div>
+
+      <div class="grid g4">
+
+        <div class="card card--hover">
+          <div class="card-b tight">
+            <div class="row"><span class="badge badge--red">废标项</span><div class="grow"></div><span class="mono b">12</span></div>
+            <div class="row mt8 tiny"><span class="badge badge--red">3 条待确认</span><span class="badge badge--green">9 已确认</span></div>
+            <div class="small muted mt8">资格性 5 · 符合性 4 · 格式性 3</div>
+          </div>
+        </div>
+
+        <div class="card card--hover">
+          <div class="card-b tight">
+            <div class="row"><span class="badge badge--blue">评分办法</span><div class="grow"></div><span class="mono b">22</span></div>
+            <div class="row mt8 tiny"><span class="badge badge--green">已通过</span><span class="badge badge--gray">技术 45 / 商务 25 / 价格 30</span></div>
+            <div class="small muted mt8">22 个评分点已拆出，③ 大纲按此对齐</div>
+          </div>
+        </div>
+
+        <div class="card card--hover">
+          <div class="card-b tight">
+            <div class="row"><span class="badge badge--amber">技术参数</span><div class="grow"></div><span class="mono b">128</span></div>
+            <div class="row mt8 tiny"><span class="badge badge--red">★ 9 条</span><span class="badge badge--amber">2 条待确认</span></div>
+            <div class="small muted mt8">表格 6 张 · 已拆到 5 个系统分组</div>
+          </div>
+        </div>
+
+        <div class="card card--hover">
+          <div class="card-b tight">
+            <div class="row"><span class="badge badge--purple">时间节点</span><div class="grow"></div><span class="mono b">5</span></div>
+            <div class="row mt8 tiny"><span class="badge badge--green">已通过</span><span class="badge badge--gray">最近 报名 11-12</span></div>
+            <div class="small muted mt8">报名 / 答疑 / 保证金 / 递交 / 开标</div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="split split--l-wide mt12">
+
+        <div class="col col--gap-12">
+
+          <div class="card">
+            <div class="card-h"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg>评分办法分布</h3><div class="grow"></div><span class="sub">总分 100</span></div>
+            <div class="card-b">
+              <div class="chart-bars">
+                <div class="cbar"><span class="k">技术分</span><span class="bar bar--lg"><i style="width:45%"></i></span><span class="v">45</span></div>
+                <div class="cbar"><span class="k">商务分</span><span class="bar bar--lg"><i style="width:25%"></i></span><span class="v">25</span></div>
+                <div class="cbar"><span class="k">价格分</span><span class="bar bar--lg"><i style="width:30%"></i></span><span class="v">30</span></div>
+              </div>
+              <div class="divider"></div>
+              <div class="kv-row"><span class="k">评分点</span><span class="v"><b>22</b> 个 · 技术 12 / 商务 7 / 价格 3</span></div>
+              <div class="kv-row"><span class="k">主观分</span><span class="v">6 个评分点需评委主观打分，占 <b>18</b> 分</span></div>
+              <div class="kv-row"><span class="k">价格公式</span><span class="v">最低价 / 评标价 × 30，低于成本价须书面说明</span></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>解析目录</h3><div class="grow"></div><span class="sub">42 条</span></div>
+            <div class="card-b flush">
+              <div class="tree">
+                <div class="tree-item on">废标条款 <span class="n">12</span></div>
+                <div class="tree-item indent">资格性审查 <span class="n">5</span></div>
+                <div class="tree-item indent">符合性审查 <span class="n">4</span></div>
+                <div class="tree-item indent">格式与签章 <span class="n">3</span></div>
+                <div class="tree-item">评分办法 <span class="n">22</span></div>
+                <div class="tree-item">技术参数 <span class="n">128</span></div>
+                <div class="tree-item">时间节点 <span class="n">5</span></div>
+                <div class="tree-item">合同条款 <span class="n">9</span></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="col col--gap-12">
+
+          <div class="card">
+            <div class="card-h">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>解析质量</h3>
+              <div class="grow"></div>
+              <button class="btn btn--sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg><span>可重新解析</span></button>
+            </div>
+            <div class="card-b">
+              <div class="row row--gap-16">
+                <div class="grow">
+                  <div class="small muted">条款覆盖率</div>
+                  <div class="row mt4"><span class="mono b big">94%</span><span class="badge badge--green">达标</span></div>
+                  <div class="bar mt8"><i style="width:94%"></i></div>
+                </div>
+                <div class="vdiv"></div>
+                <div class="grow">
+                  <div class="small muted">疑似漏项</div>
+                  <div class="row mt4"><span class="mono b big red">2</span><span class="small muted-2">处待人工看</span></div>
+                  <div class="small muted-2 mt4">建议回原文第 58、121 页</div>
+                </div>
+                <div class="vdiv"></div>
+                <div class="grow">
+                  <div class="small muted">表格识别</div>
+                  <div class="row mt4"><span class="mono b big">6</span><span class="small muted-2">张</span></div>
+                  <div class="small muted-2 mt4">技术需求书 4 张 · 评分表 2 张</div>
+                </div>
+                <div class="vdiv"></div>
+                <div class="grow">
+                  <div class="small muted">页码可回溯</div>
+                  <div class="row mt4"><span class="mono b big">100%</span><span class="badge badge--green">可定位</span></div>
+                  <div class="small muted-2 mt4">每条结论都带来源页码</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>废标条款 <span class="badge badge--red">3 条待确认</span></h3>
+              <span class="sub">逐条确认处理方式，未确认不可进 ③</span>
+              <div class="grow"></div>
+              <button class="btn btn--sm">全部标为「已响应」</button>
+            </div>
+            <div class="card-b flush">
+              <div class="tbl-wrap">
+                <div class="tbl-scroll">
+                <table class="tbl">
+                  <thead><tr><th class="w-ck"><input type="checkbox"></th><th>条款原文</th><th>来源页码</th><th>风险等级</th><th>处理方式</th><th class="w-ops">确认</th></tr></thead>
+                  <tbody>
+                    <tr class="on">
+                      <td><input type="checkbox"></td>
+                      <td class="clip">投标人须提供有效期内《信息系统安全等级保护三级》证书，未提供或过期视为无效投标。</td>
+                      <td class="mono">P12</td>
+                      <td><span class="badge badge--red">阻断</span></td>
+                      <td><select class="select select--sm"><option>资质响应</option><option>需外部办理</option><option>不适用</option></select></td>
+                      <td class="w-ops"><label class="check"><input type="checkbox"></label></td>
+                    </tr>
+                    <tr class="on">
+                      <td><input type="checkbox"></td>
+                      <td class="clip">★ 条款为实质性要求，任一条负偏离或未响应即作无效投标处理。</td>
+                      <td class="mono">P34</td>
+                      <td><span class="badge badge--red">阻断</span></td>
+                      <td><select class="select select--sm"><option>逐条应答</option><option>技术偏离表响应</option><option>不适用</option></select></td>
+                      <td class="w-ops"><label class="check"><input type="checkbox"></label></td>
+                    </tr>
+                    <tr class="on">
+                      <td><input type="checkbox"></td>
+                      <td class="clip">投标文件须逐页加盖投标人公章，未加盖公章或盖章不清晰者按无效标处理。</td>
+                      <td class="mono">P8</td>
+                      <td><span class="badge badge--red">阻断</span></td>
+                      <td><select class="select select--sm"><option>格式要求</option><option>交卷自查项</option><option>不适用</option></select></td>
+                      <td class="w-ops"><label class="check"><input type="checkbox"></label></td>
+                    </tr>
+                    <tr>
+                      <td><input type="checkbox" checked></td>
+                      <td class="clip">投标保证金 5.0 万元，须于递交截止前从基本账户转出，否则投标无效。</td>
+                      <td class="mono">P15</td>
+                      <td><span class="badge badge--red">阻断</span></td>
+                      <td><select class="select select--sm"><option selected>财务办理</option><option>不适用</option></select></td>
+                      <td class="w-ops"><span class="badge badge--green">已确认 ✓</span></td>
+                    </tr>
+                    <tr>
+                      <td><input type="checkbox" checked></td>
+                      <td class="clip">投标人近三年内无重大违法记录，须提供信用中国查询截图。</td>
+                      <td class="mono">P18</td>
+                      <td><span class="badge badge--orange">高风险</span></td>
+                      <td><select class="select select--sm"><option selected>证明材料</option><option>不适用</option></select></td>
+                      <td class="w-ops"><span class="badge badge--green">已确认 ✓</span></td>
+                    </tr>
+                    <tr>
+                      <td><input type="checkbox" checked></td>
+                      <td class="clip">投标报价超过预算金额 286.0 万元的，按无效投标处理。</td>
+                      <td class="mono">P6</td>
+                      <td><span class="badge badge--red">阻断</span></td>
+                      <td><select class="select select--sm"><option selected>报价约束</option><option>不适用</option></select></td>
+                      <td class="w-ops"><span class="badge badge--green">已确认 ✓</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+                </div>
+                <div class="tbl-foot">
+                  <span>已确认 3 / 共 12 条</span><span class="muted-2 small">· 本页 6 条（资格性审查 + 符合性审查）</span>
+                  <span class="grow"></span>
+                  <div class="pager"><button disabled>‹</button><button class="on">1</button><button>2</button><button>›</button></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

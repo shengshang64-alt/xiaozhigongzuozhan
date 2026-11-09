@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⑤ 偏离表 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="bid" data-screen="bid-deviation" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <div class="ph-back" onclick="location.href='list.html'">← 返回项目列表</div>
+          <h1>【UI测试】中医院信息化建设项目 <span class="badge badge--blue">⑤ 偏离表</span></h1>
+          <div class="desc">厦门市中医院 · 编号 ZB-TEST-2026 · 距开标 25 天 · 预算 286.0 万 · 技术偏离表 128 条</div>
+          <div class="meta">
+            <span class="kv">应答率 <b>94.5%</b></span>
+            <span class="kv">负偏离 <b class="red">2</b> 条需商务决策</span>
+            <span class="kv">最近保存 <b>09:41</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn">导入应答模板</button>
+          <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/></svg><span>导出 xlsx 核对</span></button>
+          <button class="btn btn--primary" data-toast="已生成偏离表 docx">生成偏离表 docx</button>
+        </div>
+      </div>
+
+      <div class="steps">
+        <div class="step done" onclick="location.href='import.html'"><div class="n">1</div><div class="tx"><b>导入招标</b><span>已完成</span></div></div>
+        <div class="step done" onclick="location.href='parse.html'"><div class="n">2</div><div class="tx"><b>解析确认</b><span>已完成</span></div></div>
+        <div class="step done" onclick="location.href='outline.html'"><div class="n">3</div><div class="tx"><b>大纲编制</b><span>已完成</span></div></div>
+        <div class="step done" onclick="location.href='draft.html'"><div class="n">4</div><div class="tx"><b>正文编写</b><span>11/11 章</span></div></div>
+        <div class="step on"><div class="n">5</div><div class="tx"><b>偏离表</b><span>121/128 已应答</span></div></div>
+        <div class="step"><div class="n">6</div><div class="tx"><b>交卷自查</b><span>待开始</span></div></div>
+        <div class="step"><div class="n">7</div><div class="tx"><b>组卷导出</b><span>待开始</span></div></div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：技术偏离表内联在 ④ 正文编写页下方，4,224 节点一展开就把正文顶出视口，写作上下文被冲散；它又是要导出 Word 的交付物，与「写作过程」心智不一致。<b>拆后</b>：独立成屏，按系统分组长表逐条应答，未应答可批量补。</div>
+      </div>
+
+      <div class="databar">
+        <div class="item">参数总数 <b>128</b></div>
+        <div class="item green">已应答 <b>121</b></div>
+        <div class="item green">正偏离 <b>6</b></div>
+        <div class="item orange">负偏离 <b>2</b></div>
+        <div class="item red">未应答 <b>7</b></div>
+        <div class="grow"></div>
+        <div class="item">★ 条款 <b>9</b></div>
+      </div>
+
+      <div class="alert alert--red">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        <div class="grow">还有 <b>7 条未应答</b>，其中 <b>2 条为 ★ 实质性条款</b>。未逐条应答的 ★ 条款按无效投标处理，请在 ⑥ 交卷自查前处理完。</div>
+        <div class="acts"><button class="btn btn--sm">只看未应答</button></div>
+      </div>
+
+      <div class="split split--r-wide mt12">
+
+        <div class="col col--gap-12">
+
+          <div class="card">
+            <div class="card-h">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v18M8 21h8"/><path d="m3 7 4-4 4 4"/><path d="M5 7 3 14h8z"/><path d="m13 7 4-4 4 4"/><path d="m21 7-2 7h-8z"/></svg>技术偏离表</h3>
+              <span class="sub">按系统分组，招标原文逐字保留</span>
+              <div class="grow"></div>
+              <span class="small muted-2">共 3 组 / 128 条</span>
+              <div class="row" data-chips>
+                <span class="chip on">全部</span>
+                <span class="chip">未应答 <span class="n">7</span></span>
+                <span class="chip">负偏离 <span class="n">2</span></span>
+              </div>
+            </div>
+            <div class="card-b flush">
+              <div class="tbl-wrap">
+                <div class="tbl-scroll">
+                  <table class="tbl">
+                    <thead>
+                      <tr><th style="width:52px">序号</th><th>招标要求原文</th><th>投标响应</th><th style="width:88px">偏离</th><th style="width:96px">证明材料</th><th class="w-ops">操作</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr><td colspan="6"><div class="row small b"><span>HIS 组</span><span class="badge badge--gray">52 条</span><div class="grow"></div><span class="muted-2">已应答 49 · 正 3 · 负 0 · 未应答 3</span></div></td></tr>
+                      <tr>
+                        <td class="mono">1</td>
+                        <td class="clip">支持门急诊挂号、分时段预约、退号退费全流程，与医保结算系统实时对接。</td>
+                        <td class="clip">完全满足，已在 12 家三级医院上线运行。</td>
+                        <td><span class="badge badge--gray">无偏离</span></td>
+                        <td><span class="tag tag--line">业绩 3 份</span></td>
+                        <td class="w-ops"><button class="btn btn--sm">编辑</button></td>
+                      </tr>
+                      <tr>
+                        <td class="mono">2</td>
+                        <td class="clip">门诊高峰期单点登录响应时间 ≤ 2 秒。</td>
+                        <td class="clip">实测 1.2 秒（1,000 并发），优于要求。</td>
+                        <td><span class="badge badge--green">正偏离</span></td>
+                        <td><span class="tag tag--line">压测报告</span></td>
+                        <td class="w-ops"><button class="btn btn--sm">编辑</button></td>
+                      </tr>
+                      <tr class="on">
+                        <td class="mono">3</td>
+                        <td class="clip"><b class="red">★</b> 须支持住院预交金与日清单自助查询。</td>
+                        <td class="clip">—</td>
+                        <td><span class="badge badge--red">未应答</span></td>
+                        <td><span class="muted-2">—</span></td>
+                        <td class="w-ops"><button class="btn btn--sm">应答</button></td>
+                      </tr>
+                      <tr><td colspan="6"><div class="row small b"><span>EMR 组</span><span class="badge badge--gray">46 条</span><div class="grow"></div><span class="muted-2">已应答 43 · 正 2 · 负 1 · 未应答 3</span></div></td></tr>
+                      <tr>
+                        <td class="mono">53</td>
+                        <td class="clip">电子病历系统须通过国家电子病历应用水平分级评价四级。</td>
+                        <td class="clip">已通过四级评价，证书编号见资质第 7 项。</td>
+                        <td><span class="badge badge--gray">无偏离</span></td>
+                        <td><span class="tag tag--line">证书</span></td>
+                        <td class="w-ops"><button class="btn btn--sm">编辑</button></td>
+                      </tr>
+                      <tr>
+                        <td class="mono">54</td>
+                        <td class="clip">结构化病历模板数量 ≥ 200 套。</td>
+                        <td class="clip">提供 268 套专科模板。</td>
+                        <td><span class="badge badge--green">正偏离</span></td>
+                        <td><span class="tag tag--line">清单</span></td>
+                        <td class="w-ops"><button class="btn btn--sm">编辑</button></td>
+                      </tr>
+                      <tr>
+                        <td class="mono">55</td>
+                        <td class="clip">病历质控规则可自定义，支持科室级配置。</td>
+                        <td class="clip">支持院级规则，科室级配置需二次开发（约 15 人日）。</td>
+                        <td><span class="badge badge--orange">负偏离</span></td>
+                        <td><span class="tag tag--line">说明函</span></td>
+                        <td class="w-ops"><button class="btn btn--sm">编辑</button></td>
+                      </tr>
+                      <tr class="on">
+                        <td class="mono">56</td>
+                        <td class="clip"><b class="red">★</b> 须支持病历文书电子签名与时间戳。</td>
+                        <td class="clip">—</td>
+                        <td><span class="badge badge--red">未应答</span></td>
+                        <td><span class="muted-2">—</span></td>
+                        <td class="w-ops"><button class="btn btn--sm">应答</button></td>
+                      </tr>
+                      <tr><td colspan="6"><div class="row small b"><span>集成平台组</span><span class="badge badge--gray">30 条</span><div class="grow"></div><span class="muted-2">已应答 29 · 正 1 · 负 1 · 未应答 1</span></div></td></tr>
+                      <tr>
+                        <td class="mono">99</td>
+                        <td class="clip">提供 ≥ 150 个标准服务，支持 HL7 V2 / FHIR 双协议。</td>
+                        <td class="clip">提供 168 个标准服务，双协议均支持。</td>
+                        <td><span class="badge badge--green">正偏离</span></td>
+                        <td><span class="tag tag--line">服务清单</span></td>
+                        <td class="w-ops"><button class="btn btn--sm">编辑</button></td>
+                      </tr>
+                      <tr>
+                        <td class="mono">100</td>
+                        <td class="clip">主数据变更同步时延 ≤ 5 分钟。</td>
+                        <td class="clip">实时同步，时延 ≤ 3 秒。</td>
+                        <td><span class="badge badge--green">正偏离</span></td>
+                        <td><span class="tag tag--line">方案 §7.3</span></td>
+                        <td class="w-ops"><button class="btn btn--sm">编辑</button></td>
+                      </tr>
+                      <tr>
+                        <td class="mono">101</td>
+                        <td class="clip">支持互联互通四甲测评要求的 168 项服务复用。</td>
+                        <td class="clip">复用率 76%，低于测评建议的 80%。</td>
+                        <td><span class="badge badge--orange">负偏离</span></td>
+                        <td><span class="tag tag--line">说明函</span></td>
+                        <td class="w-ops"><button class="btn btn--sm">编辑</button></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="tbl-foot">
+                  <span>共 128 条 · 每页 100 条</span>
+                  <span class="muted-2 small">· 当前为第 1 页（本页示意 11 行）</span>
+                  <span class="grow"></span>
+                  <label class="check"><input type="checkbox"> 仅看未应答</label>
+                  <div class="pager"><button disabled>‹</button><button class="on">1</button><button>2</button><button>›</button></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="col col--gap-12">
+
+          <div class="card">
+            <div class="card-h"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>未应答 <span class="badge badge--red">7</span></h3><div class="grow"></div><span class="sub">★ 2 条</span></div>
+            <div class="card-b flush">
+              <div class="list">
+                <div class="list-row">
+                  <span class="badge badge--red">★</span>
+                  <div class="grow"><div class="t">住院预交金与日清单自助查询</div><div class="s">HIS 组 · 序号 3 · P42</div></div>
+                  <button class="btn btn--sm">应答</button>
+                </div>
+                <div class="list-row">
+                  <span class="badge badge--red">★</span>
+                  <div class="grow"><div class="t">病历文书电子签名与时间戳</div><div class="s">EMR 组 · 序号 56 · P61</div></div>
+                  <button class="btn btn--sm">应答</button>
+                </div>
+                <div class="list-row">
+                  <span class="badge badge--gray">普通</span>
+                  <div class="grow"><div class="t">检验仪器单双工数量备注</div><div class="s">HIS 组 · 序号 18 · P47</div></div>
+                  <button class="btn btn--sm">应答</button>
+                </div>
+                <div class="list-row">
+                  <span class="badge badge--gray">普通</span>
+                  <div class="grow"><div class="t">移动护理 PDA 离线缓存时长</div><div class="s">HIS 组 · 序号 31 · P50</div></div>
+                  <button class="btn btn--sm">应答</button>
+                </div>
+                <div class="list-row">
+                  <span class="badge badge--gray">普通</span>
+                  <div class="grow"><div class="t">病案首页上报接口版本</div><div class="s">EMR 组 · 序号 68 · P64</div></div>
+                  <button class="btn btn--sm">应答</button>
+                </div>
+                <div class="list-row">
+                  <span class="badge badge--gray">普通</span>
+                  <div class="grow"><div class="t">CDR 临床数据存储年限</div><div class="s">EMR 组 · 序号 74 · P66</div></div>
+                  <button class="btn btn--sm">应答</button>
+                </div>
+                <div class="list-row">
+                  <span class="badge badge--gray">普通</span>
+                  <div class="grow"><div class="t">集成平台监控告警阈值</div><div class="s">集成平台组 · 序号 112 · P78</div></div>
+                  <button class="btn btn--sm">应答</button>
+                </div>
+              </div>
+            </div>
+            <div class="card-f">
+              <div class="row small"><span class="muted">批量操作</span><div class="grow"></div><span class="mono">7 条</span></div>
+              <div class="row mt8">
+                <button class="btn btn--sm">批量带入模板应答</button>
+                <button class="btn btn--sm">逐条应答</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>负偏离 <span class="badge badge--orange">2</span></h3><div class="grow"></div><span class="sub">需商务决策</span></div>
+            <div class="card-b flush">
+              <div class="list">
+                <div class="list-row"><div class="grow"><div class="t">科室级质控规则配置</div><div class="s">需二次开发约 15 人日 · 影响技术分 2 分</div></div><span class="badge badge--orange">负</span></div>
+                <div class="list-row"><div class="grow"><div class="t">互联互通服务复用率 76%</div><div class="s">低于测评建议 80% · 影响技术分 1 分</div></div><span class="badge badge--orange">负</span></div>
+              </div>
+            </div>
+            <div class="card-f row small"><span class="muted">负偏离会扣分，但如实填写才不会判虚假投标</span></div>
+          </div>
+
+          <div class="alert alert--blue">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            <div class="grow">偏离表的行与 ④ 正文里的「参数响应表」<b>同源</b>：这里改一条，正文表格同步更新，无需改两遍。</div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

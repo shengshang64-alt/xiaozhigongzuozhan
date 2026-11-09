@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>审阅 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="intel" data-screen="intel-review" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>审阅<span class="badge badge--primary">待确认 29</span><span class="badge badge--orange">可转商机 6</span></h1>
+          <div class="desc">这一屏只做一件事：<b>把 29 条待确认情报逐条处理掉</b>。左边选、右边看，J/K 上下切换、Enter 确认。想翻全部 980 条存量情报请切到「浏览」。</div>
+          <div class="meta">
+            <span class="kv">待确认 <b>29</b> 条</span>
+            <span class="kv">今日已确认 <b>12</b> 条</span>
+            <span class="kv">本周新增 <b>40</b> 条</span>
+            <span class="kv">最近抓取 <b>2026-11-08 08:40</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn" data-toast="已打开批量模式（示例）">批量模式</button>
+          <button class="btn" data-toast="已确认本条并进入下一条（示例）">确认并转下一条</button>        </div>
+      </div>
+
+      <div class="alert alert--primary mb12">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div class="grow"><b>当前是「审阅模式」</b>：左侧只列待确认（29 条），一次只处理一条，确认后自动进入下一条。要看全部情报、按类型/时间筛选、批量导出，请切到 <b>浏览模式</b>。两种模式互斥，不在一屏里并存两个筛选面板。</div>
+        <div class="acts"><a class="btn btn--sm" href="browse.html">切到浏览 →</a></div>
+      </div>
+
+      <div class="filterbar">
+        <span class="small b">今日进度</span>
+        <span class="mono small">12 / 29</span>
+        <div class="bar" style="width:180px"><i style="width:41%"></i></div>
+        <div class="vdiv"></div>
+        <span class="chip on">全部待确认 <span class="n">29</span></span>
+        <span class="chip">可转商机 <span class="n">6</span></span>
+        <span class="chip">采购公告 <span class="n">11</span></span>
+        <div class="grow"></div>
+        <span class="tiny muted-2 mono">J/K 切换</span>
+        <span class="tiny muted-2 mono">Enter 确认</span>
+        <span class="tiny muted-2 mono">X 忽略</span>
+        <div class="vdiv"></div>
+        <span class="small muted-2">批量模式</span>
+        <button class="switch" data-toggle></button>
+      </div>
+
+      <div class="split split--l-wide">
+
+        <!-- 左：待确认列表 -->
+        <div class="card">
+          <div class="card-h"><h3>待确认 <span class="sub">29 条</span></h3><div class="grow"></div>
+            <button class="btn btn--sm" data-toast="已按可转商机优先排序">可转商机优先</button></div>
+          <div class="card-b flush">
+            <div class="list">
+              <div class="list-row on">
+                <span class="badge badge--red">采购</span>
+                <div class="grow">
+                  <div class="t clamp2" style="font-size:12.5px;line-height:1.45">吉安市公立中医医院信息化建设项目变更澄清公告</div>
+                  <div class="s row" style="gap:6px"><span>中国政府采购网</span><span>·</span><span class="mono">11-08 08:40</span><span class="badge badge--amber">可转商机</span></div>
+                </div>
+              </div>
+              <div class="list-row">
+                <span class="badge badge--blue">政策</span>
+                <div class="grow">
+                  <div class="t clamp2" style="font-size:12.5px;line-height:1.45">北京市属医院 2026 年医疗设备集中带量采购项目（第一批，第 21 包）中标公告</div>
+                  <div class="s row" style="gap:6px"><span>中国政府采购网</span><span>·</span><span class="mono">11-08 08:12</span><span class="badge badge--amber">可转商机</span></div>
+                </div>
+              </div>
+              <div class="list-row">
+                <span class="badge badge--purple">行业</span>
+                <div class="grow">
+                  <div class="t clamp2" style="font-size:12.5px;line-height:1.45">从接诊前提醒到用药随访，医疗 AI 能替哪一步？医疗大模型深度剖析</div>
+                  <div class="s row" style="gap:6px"><span>HIT专家网</span><span>·</span><span class="mono">11-08 08:00</span></div>
+                </div>
+              </div>
+              <div class="list-row">
+                <span class="badge badge--red">采购</span>
+                <div class="grow">
+                  <div class="t clamp2" style="font-size:12.5px;line-height:1.45">克拉玛依市中心医院（克拉玛依市人民医院）门诊智慧服务配套系统建设项目（二次）中标公告</div>
+                  <div class="s row" style="gap:6px"><span>中国政府采购网</span><span>·</span><span class="mono">11-07 17:26</span><span class="badge badge--amber">可转商机</span></div>
+                </div>
+              </div>
+              <div class="list-row">
+                <span class="badge badge--purple">行业</span>
+                <div class="grow">
+                  <div class="t clamp2" style="font-size:12.5px;line-height:1.45">重磅！《医疗行业专科高质量数据集建设指南》发布</div>
+                  <div class="s row" style="gap:6px"><span>HIT专家网</span><span>·</span><span class="mono">11-07 16:05</span></div>
+                </div>
+              </div>
+              <div class="list-row">
+                <span class="badge badge--amber">数据</span>
+                <div class="grow">
+                  <div class="t clamp2" style="font-size:12.5px;line-height:1.45">连续 12 年最高！医疗数据或泄露重灾区，医疗机构该如何做好数据安全？</div>
+                  <div class="s row" style="gap:6px"><span>HIT专家网</span><span>·</span><span class="mono">11-07 14:20</span></div>
+                </div>
+              </div>
+              <div class="list-row">
+                <span class="badge badge--purple">行业</span>
+                <div class="grow">
+                  <div class="t clamp2" style="font-size:12.5px;line-height:1.45">与京东共创一起，科学优选全球好营养</div>
+                  <div class="s row" style="gap:6px"><span>新华网健康频道</span><span>·</span><span class="mono">11-06 09:30</span></div>
+                </div>
+              </div>
+              <div class="list-row">
+                <span class="badge badge--blue">政策</span>
+                <div class="grow">
+                  <div class="t clamp2" style="font-size:12.5px;line-height:1.45">2026 广州互联网医院联盟成立暨全域健康服务能力提升会</div>
+                  <div class="s row" style="gap:6px"><span>健康界</span><span>·</span><span class="mono">11-05 11:02</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card-f row small"><span class="muted-2">已显示 8 / 29 条</span><span class="grow"></span>
+            <button class="btn btn--sm" data-toast="已加载后 21 条（示例）">加载更多</button></div>
+        </div>
+
+        <!-- 右：审阅面板 -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>审阅面板</h3>
+              <span class="sub">第 13 条 / 共 29 条</span>
+              <div class="grow"></div>
+              <span class="badge badge--red">采购公告</span>
+              <span class="badge badge--amber badge--dot">可转商机</span>
+              <button class="icon-btn" title="打开原文" data-toast="已在新标签打开原文（示例）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14 21 3"/></svg></button>
+            </div>
+            <div class="card-b col col--gap-12">
+              <div>
+                <h2 style="font-size:17px;font-weight:650;line-height:1.45;letter-spacing:-.01em">吉安市公立中医医院信息化建设项目变更澄清公告</h2>
+                <div class="row wrap small muted-2 mt8" style="gap:14px">
+                  <span class="row" style="gap:4px"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>中国政府采购网</span>
+                  <span class="row" style="gap:4px"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>2026-11-08 08:40 发布</span>
+                  <span class="row" style="gap:4px"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>抓取于 08:41 · 延迟 1 分钟</span>
+                  <a class="btn btn--link" href="detail.html">看原文快照 →</a>
+                </div>
+              </div>
+
+              <div class="alert alert--amber">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+                <div class="grow"><b>这是一条变更澄清</b>：原公告的投标截止时间与包件划分均有调整。已关联到在跟商机「吉安市公立中医医院信息化建设」，请确认后同步更新商机阶段与截止时间。</div>
+              </div>
+
+              <div class="divider" style="margin:0"></div>
+
+              <div class="col col--gap-8 small" style="line-height:1.75">
+                <p>一、项目基本情况：原公告的采购项目编号为 JXTC2026-JA-0088，原公告的采购项目名称为吉安市公立中医医院信息化建设项目，首次公告日期为 2026 年 10 月 24 日。</p>
+                <p>二、更正信息：更正事项为采购公告、采购文件。更正内容为原采购文件中「投标文件递交截止时间及开标时间」由 2026 年 11 月 14 日 09:30 调整为 2026 年 11 月 21 日 09:30；「获取招标文件时间」延长至 2026 年 11 月 12 日 17:00。</p>
+                <p>三、其他补充事宜：本项目包件划分由原 2 个包件调整为 3 个包件，新增「智慧服务分级评价配套」包件，预算金额 128.4 万元。已获取招标文件的潜在投标人请自行下载最新版采购文件，其余内容不变。</p>
+              </div>
+
+              <div class="alert alert--primary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z"/></svg>
+                <div class="grow">
+                  <div class="small b mb8">AI 摘要</div>
+                  <div class="small" style="line-height:1.75">吉安市公立中医医院信息化项目发布变更澄清：<b>投标截止延后 7 天至 11-21</b>；包件由 2 个拆为 3 个，新增「智慧服务分级评价配套」包件，预算 128.4 万元。已购标书的投标人需重新下载采购文件，其余条款不变。</div>
+                  <div class="row wrap mt8" style="gap:5px">
+                    <span class="tag tag--line">变更澄清</span><span class="tag tag--line">截止延期</span><span class="tag tag--line">包件拆分</span><span class="tag tag--line">128.4 万</span><span class="tag tag--line">智慧服务分级</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="alert alert--blue">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                <div class="grow"><b>关联客户：厦门市中医院</b> · 同属中医系统、同批智慧服务评级预算。可把这条澄清作为触点，问一句「你们的评级配套什么时候挂网」。</div>
+                <div class="acts"><a class="btn btn--sm" href="../customer/detail.html">看客户</a></div>
+              </div>
+            </div>
+            <div class="card-f row">
+              <button class="btn btn--sm" data-toast="已忽略，进入下一条（示例）">忽略</button>
+              <button class="btn btn--sm" data-toast="已仅确认，未创建商机">仅确认</button>
+              <span class="grow"></span>
+              <span class="small muted-2 mono">13 / 29</span>
+              <button class="btn btn--sm btn--primary" data-toast="已确认并创建商机：吉安市公立中医医院（128.4 万）">确认并转商机</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>同类情报</h3><span class="sub">3 条 · 按标题相似度匹配</span><div class="grow"></div>
+              <a class="btn btn--sm" href="browse.html">浏览全部 →</a></div>
+            <div class="card-b flush">
+              <div class="list">
+                <div class="list-row"><span class="badge badge--red">采购</span>
+                  <div class="grow"><div class="t clamp2" style="font-size:12.5px">吉安市公立中医医院信息化建设项目（第二次）公开招标公告</div>
+                  <div class="s">中国政府采购网 · 10-24 · 相似度 88%</div></div></div>
+                <div class="list-row"><span class="badge badge--red">采购</span>
+                  <div class="grow"><div class="t clamp2" style="font-size:12.5px">吉安市公立中医医院智慧服务分级评价配套采购意向公示</div>
+                  <div class="s">中国政府采购网 · 10-18 · 相似度 74%</div></div></div>
+                <div class="list-row"><span class="badge badge--blue">政策</span>
+                  <div class="grow"><div class="t clamp2" style="font-size:12.5px">江西省 2026 年中医医院智慧服务分级评价工作安排</div>
+                  <div class="s">健康界 · 10-09 · 相似度 61%</div></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

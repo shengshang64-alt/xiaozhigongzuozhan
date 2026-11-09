@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>原子审核 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="kb" data-screen="kb-review" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>原子审核<span class="badge badge--orange">待审核 312</span></h1>
+          <div class="desc">这一屏只做一件事：<b>把抽取出来的候选原子逐条判「留 / 改 / 丢」</b>。审核员不问"这条有用吗"，只问"以后能在哪儿用"——所以每条必须先勾适用场景才能通过。</div>
+          <div class="meta">
+            <span class="kv">今日已审 <b>18</b> / 312</span>
+            <span class="kv">高置信（≥0.9）<b>96</b> 条</span>
+            <span class="kv">冲突优先 <b>3</b> 条</span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn" data-toast="已开启批量模式：可多选原子批量处理（示例）">批量模式</button>
+          <a class="btn" href="atoms.html">查看已通过原子</a>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：抽取结果只在审核页里逐条过，看不到"原文长什么样"——用户要一边翻文档一边判断，或者干脆无脑点通过；也没有置信度、来源、快捷键，312 条要审到天亮。<b>拆后</b>：左队列按「冲突优先 → 高价值 → 低置信最后」排序，中栏原文与抽出的事实并排对照，右栏一键采纳并提示快捷键。</div>
+      </div>
+
+      <!-- 顶部工具条：批量 + 阈值 -->
+      <div class="card mb16">
+        <div class="card-b">
+          <div class="row wrap" style="gap:14px">
+            <div class="row">
+              <button class="switch" data-toggle></button>
+              <span class="small b">批量模式</span>
+              <span class="tiny muted-2">开启后可多选，批量采纳 / 驳回（仍受用途勾选约束）</span>
+            </div>
+            <div class="vdiv" style="height:20px"></div>
+            <div class="row">
+              <span class="small">自动采纳阈值</span>
+              <div class="dd">
+                <button class="btn btn--sm" data-dd><span data-dd-label>置信度 &gt; 0.90</span>
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+                <div class="dd-menu">
+                  <div class="dd-label">置信度高于此值时自动通过</div>
+                  <div class="dd-item" data-label="关闭（全部人工）">关闭（全部人工）</div>
+                  <div class="dd-item" data-label="置信度 &gt; 0.80">置信度 &gt; 0.80</div>
+                  <div class="dd-item on" data-label="置信度 &gt; 0.90">置信度 &gt; 0.90 · 当前</div>
+                  <div class="dd-item" data-label="置信度 &gt; 0.95">置信度 &gt; 0.95（更保守）</div>
+                </div>
+              </div>
+              <span class="tiny muted-2">仅对「无冲突 + 已勾用途」的原子生效</span>
+            </div>
+            <div class="grow"></div>
+            <span class="badge badge--blue">今日已审 18 / 312</span>
+            <div class="bar" style="width:120px"><i style="width:6%"></i></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid" style="grid-template-columns:272px minmax(0,1fr) 288px;align-items:start">
+
+        <!-- 左：待审核队列 -->
+        <div class="card">
+          <div class="card-h">
+            <h3>待审核队列</h3>
+            <div class="grow"></div>
+            <span class="badge badge--gray">312</span>
+          </div>
+          <div class="card-b tight" style="padding-bottom:0">
+            <div class="row wrap" data-chips style="gap:4px">
+              <span class="chip on">全部</span>
+              <span class="chip">冲突 <span class="n">3</span></span>
+              <span class="chip">高置信</span>
+              <span class="chip">低置信</span>
+            </div>
+          </div>
+          <div class="card-b flush" style="padding-top:8px">
+            <div class="list" style="border:0;box-shadow:none;border-radius:0">
+              <div class="list-row on">
+                <div class="grow" style="min-width:0">
+                  <div class="t" style="font-size:12.3px">宣城市人民医院四甲建设方案.docx</div>
+                  <div class="s">10-21 抽取 · 置信度 <span class="badge badge--red">0.71</span></div>
+                  <div class="s">四甲数据元数量 · 1 条</div>
+                </div>
+              </div>
+              <div class="list-row">
+                <div class="grow" style="min-width:0">
+                  <div class="t" style="font-size:12.3px">政策法规汇编（内部整理）.md</div>
+                  <div class="s">10-19 抽取 · 置信度 <span class="badge badge--red">0.68</span></div>
+                  <div class="s">四甲数据元数量 · 1 条</div>
+                </div>
+              </div>
+              <div class="list-row">
+                <div class="grow" style="min-width:0">
+                  <div class="t" style="font-size:12.3px">电子病历分级评价标准（2018）.pdf</div>
+                  <div class="s">09-08 抽取 · 置信度 <span class="badge badge--green">0.95</span></div>
+                  <div class="s">分级评价条款 · 12 条</div>
+                </div>
+              </div>
+              <div class="list-row">
+                <div class="grow" style="min-width:0">
+                  <div class="t" style="font-size:12.3px">三明市中西医结合医院技术方案.docx</div>
+                  <div class="s">10-02 抽取 · 置信度 <span class="badge badge--green">0.92</span></div>
+                  <div class="s">项目案例 · 6 条</div>
+                </div>
+              </div>
+              <div class="list-row">
+                <div class="grow" style="min-width:0">
+                  <div class="t" style="font-size:12.3px">ONE-LINK6.0 中医特色方案.pptx</div>
+                  <div class="s">09-22 抽取 · 置信度 <span class="badge badge--amber">0.84</span></div>
+                  <div class="s">产品能力 · 9 条</div>
+                </div>
+              </div>
+              <div class="list-row">
+                <div class="grow" style="min-width:0">
+                  <div class="t" style="font-size:12.3px">四甲答辩常见问题（我的笔记）.md</div>
+                  <div class="s">06-18 抽取 · 置信度 <span class="badge badge--amber">0.79</span></div>
+                  <div class="s">答疑话术 · 4 条</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card-f row small">
+            <span class="tiny muted-2">排序：冲突 → 高潜在价值 → 近期 → 低置信置后</span>
+          </div>
+        </div>
+
+        <!-- 中：当前原子详情 -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h">
+              <h3>原文对照</h3>
+              <span class="sub">来源文档第 12 页 / 第 3 段</span>
+              <div class="grow"></div>
+              <span class="badge badge--red">冲突待裁决</span>
+              <button class="btn btn--sm btn--ghost" data-toast="已展开全文（示例）">展开全文</button>
+            </div>
+            <div class="card-b">
+              <div class="hairline p12">
+                <div class="small muted">…本期建设按照《国家医疗健康信息互联互通标准化成熟度测评方案》四甲要求推进，需完成 <span class="badge badge--amber">43 个数据元</span>的标准化改造，并在测评前完成 3 轮内部模拟自评。数据元改造范围覆盖患者基本信息、就诊记录、检验检查、医嘱处方四类业务域…</div>
+              </div>
+              <div class="tiny muted-2 mt8">原文命中已用琥珀徽标标出（不写颜色），高亮即为抽取依据。</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">
+              <h3>抽取出的事实</h3>
+              <span class="sub">2 条，可逐条编辑后采纳</span>
+              <div class="grow"></div>
+              <span class="badge badge--amber">置信度 0.71</span>
+            </div>
+            <div class="card-b col col--gap-12">
+              <div class="field">
+                <label class="label">原子 1 · 事实内容</label>
+                <input class="input" value="互联互通标准化成熟度四甲要求完成 43 个数据元的标准化改造">
+                <span class="help">与 #A-1182「38 个数据元」冲突 —— 差异 11.6%，超过 5% 阈值</span>
+              </div>
+              <div class="grid g2">
+                <div class="field">
+                  <label class="label">类型</label>
+                  <div class="dd">
+                    <button class="btn" data-dd style="width:100%;justify-content:space-between"><span data-dd-label>指标</span>
+                      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+                    <div class="dd-menu" style="width:100%">
+                      <div class="dd-item" data-label="事实">事实</div>
+                      <div class="dd-item on" data-label="指标">指标</div>
+                      <div class="dd-item" data-label="案例">案例</div>
+                      <div class="dd-item" data-label="政策">政策</div>
+                      <div class="dd-item" data-label="产品能力">产品能力</div>
+                      <div class="dd-item" data-label="资质">资质</div>
+                      <div class="dd-item" data-label="打法">打法</div>
+                      <div class="dd-item" data-label="话术">话术</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="field">
+                  <label class="label">指标名 · 指标值</label>
+                  <input class="input" value="四甲数据元数量 | 43 个">
+                </div>
+              </div>
+              <div class="field">
+                <label class="label">适用场景（必须至少勾 1 个才能通过）</label>
+                <div class="row wrap">
+                  <label class="check"><input type="checkbox" checked> 方案</label>
+                  <label class="check"><input type="checkbox" checked> 标书</label>
+                  <label class="check"><input type="checkbox"> PPT</label>
+                  <label class="check"><input type="checkbox"> 报价</label>
+                  <label class="check"><input type="checkbox" checked> 答疑</label>
+                </div>
+              </div>
+              <div class="divider" style="margin:2px 0"></div>
+              <div class="field">
+                <label class="label">原子 2 · 事实内容</label>
+                <input class="input" value="四甲测评前需完成 3 轮内部模拟自评">
+                <span class="help">置信度较高，无冲突</span>
+              </div>
+              <div class="row">
+                <span class="badge badge--green">来源可溯源</span>
+                <span class="tiny muted-2">来源：宣城市人民医院四甲建设方案.docx · 第 12 页第 3 段</span>
+                <div class="grow"></div>
+                <button class="btn btn--sm btn--ghost" data-toast="已定位到原文（示例）">看原文</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="alert alert--amber">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+            <div class="grow"><b>这条与 #A-1182 冲突</b>：同一条事实两个版本（43 vs 38）。裁决时不是"选一个删一个"，而是保留有原文可溯源的那条，另一条标为「已被替代」，历史引用不受影响。</div>
+            <div class="acts"><button class="btn btn--sm" data-toast="已打开冲突对比（示例）">对比两条</button></div>
+          </div>
+        </div>
+
+        <!-- 右：操作区 -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h"><h3>操作</h3><span class="sub">当前第 1 / 312 条</span></div>
+            <div class="card-b col col--gap-8">
+              <button class="btn btn--primary" style="width:100%" data-toast="已采纳：适用于 方案 / 标书 / 答疑（示例）">采纳（A）</button>
+              <button class="btn" style="width:100%" data-toast="已改写后采纳（示例）">改写后采纳（E）</button>
+              <button class="btn" style="width:100%" data-toast="已合并到已有原子 #A-1018（示例）">合并到已有原子</button>
+              <button class="btn btn--danger" style="width:100%" onclick="Proto.open('reject-atom')">丢弃（R）</button>
+              <div class="divider" style="margin:4px 0"></div>
+              <button class="btn btn--ghost" style="width:100%" data-toast="已撤销上一步（10 秒内有效）">撤销上一步（U）</button>
+              <div class="row" style="gap:4px">
+                <button class="btn btn--sm" style="flex:1" data-toast="已跳到上一条（K）">← 上一条 K</button>
+                <button class="btn btn--sm" style="flex:1" data-toast="已跳到下一条（J）">下一条 J →</button>
+              </div>
+            </div>
+            <div class="card-f small">
+              <div class="row"><span class="mono">A</span><span class="tiny muted-2">通过（需先勾用途）</span></div>
+              <div class="row mt4"><span class="mono">R</span><span class="tiny muted-2">驳回（5 选 1 原因）</span></div>
+              <div class="row mt4"><span class="mono">1-8</span><span class="tiny muted-2">快速改类型</span></div>
+              <div class="row mt4"><span class="mono">空格</span><span class="tiny muted-2">展开 / 收起原文</span></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>审核进度</h3></div>
+            <div class="card-b col col--gap-8">
+              <div class="row">
+                <span class="small">今日已审</span>
+                <div class="grow"></div>
+                <span class="mono small b">18 / 312</span>
+              </div>
+              <div class="bar"><i style="width:6%"></i></div>
+              <div class="row small">
+                <span class="badge badge--green">采纳 12</span>
+                <span class="badge badge--red">驳回 5</span>
+                <span class="badge badge--amber">改写 1</span>
+              </div>
+              <div class="divider" style="margin:2px 0"></div>
+              <div class="row small"><span class="dot amber"></span><span>冲突组优先 3 条</span></div>
+              <div class="row small"><span class="dot green"></span><span>高置信 96 条可批量过</span></div>
+              <div class="row small"><span class="dot gray"></span><span>低置信 58 条需细看</span></div>
+              <div class="tiny muted-2 mt4">按每天 20 条算，312 条约需 16 个工作日；开启「置信度 &gt; 0.9 自动采纳」可压到 11 天。</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>驳回原因（5 选 1）</h3></div>
+            <div class="card-b">
+              <div class="row wrap" data-chips>
+                <span class="chip">套话</span>
+                <span class="chip">重复</span>
+                <span class="chip">过期</span>
+                <span class="chip">不准</span>
+                <span class="chip">不适用</span>
+              </div>
+              <div class="tiny muted-2 mt8">为什么必须选原因：月度复盘看「套话 / 不准」占比，才知道抽取提示词该往哪调。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<div class="mask" data-modal="reject-atom" style="display:none">
+  <div class="modal modal--danger" style="--mw:480px">
+    <div class="modal-h"><h3>丢弃这条原子？<div class="sub">互联互通四甲要求完成 43 个数据元的标准化改造</div></h3>
+      <button class="icon-btn" onclick="Proto.close('reject-atom')"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+    <div class="modal-b">
+      <div class="danger-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        <div>丢弃后这条<b>不会进入原子库</b>，原文依旧保留在来源文档里。若它<b>正是 43 这个数字的最后依据</b>，另一条冲突项（38）会被默认保留——裁决前请先「对比两条」。</div>
+      </div>
+      <div class="field mt12"><label class="label req">驳回原因</label>
+        <div class="row wrap" data-chips>
+          <span class="chip on">不准</span>
+          <span class="chip">套话</span>
+          <span class="chip">重复</span>
+          <span class="chip">过期</span>
+          <span class="chip">不适用</span>
+        </div>
+      </div>
+      <div class="small muted mt8">10 秒内可按 U 撤销。</div>
+    </div>
+    <div class="modal-f"><span class="tip">影响 1 条原子 · 可 10 秒内撤销</span><div class="grow"></div>
+      <button class="btn btn--sm" onclick="Proto.close('reject-atom')">取消</button>
+      <button class="btn btn--sm btn--danger-solid" data-toast="已丢弃（10 秒内可按 U 撤销）">确认丢弃</button></div>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

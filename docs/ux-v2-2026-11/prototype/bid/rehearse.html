@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>模拟答辩 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="bid" data-screen="bid-rehearse" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <div class="ph-back" onclick="location.href='list.html'">← 返回项目列表</div>
+          <h1>【UI测试】中医院信息化建设项目 <span class="badge badge--purple">答辩</span></h1>
+          <div class="desc">厦门市中医院 · 编号 ZB-TEST-2026 · 距开标 25 天 · 问题 12 条，按评分维度分组</div>
+          <div class="meta">
+            <span class="kv">已演练 <b>3</b> 次</span>
+            <span class="kv">平均用时 <b>2 分 48 秒</b></span>
+            <span class="kv">高危问题 <b class="red">2</b> 条</span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn">导出讲标稿</button>
+          <button class="btn btn--primary" data-toast="已开始计时，每题 3 分钟"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m6 3 14 9-14 9z"/></svg><span>开始演练</span></button>
+        </div>
+      </div>
+
+      <div class="steps">
+        <div class="step done" onclick="location.href='import.html'"><div class="n">1</div><div class="tx"><b>导入招标</b><span>已完成</span></div></div>
+        <div class="step done" onclick="location.href='parse.html'"><div class="n">2</div><div class="tx"><b>解析确认</b><span>已完成</span></div></div>
+        <div class="step done" onclick="location.href='outline.html'"><div class="n">3</div><div class="tx"><b>大纲编制</b><span>已完成</span></div></div>
+        <div class="step done" onclick="location.href='draft.html'"><div class="n">4</div><div class="tx"><b>正文编写</b><span>11/11 章</span></div></div>
+        <div class="step done" onclick="location.href='deviation.html'"><div class="n">5</div><div class="tx"><b>偏离表</b><span>128/128</span></div></div>
+        <div class="step done" onclick="location.href='check.html'"><div class="n">6</div><div class="tx"><b>交卷自查</b><span>闸门已通过</span></div></div>
+        <div class="step done" onclick="location.href='export.html'"><div class="n">7</div><div class="tx"><b>组卷导出</b><span>已导出</span></div></div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：七步走完就结束，<b>答辩环节在系统里没有落点</b>，问题预测、讲标稿、倒计时全靠售前自己另开文档。<b>拆后</b>：⑦ 之后新增本屏——问题由评分办法与历史同类项目生成，逐条给应答要点与讲标稿，并留演练记录。</div>
+      </div>
+
+      <div class="alert alert--primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div class="grow">这是<b>模拟答辩</b>：问题由评分办法与历史同类项目生成，<b>不代表真实评委提问</b>。真实答辩以招标文件评审办法与现场评委为准。</div>
+      </div>
+
+      <div class="split split--l mt12">
+
+        <div class="col col--gap-12">
+
+          <div class="card">
+            <div class="card-h"><h3>评委问题预测</h3><div class="grow"></div><span class="sub">12 条</span></div>
+            <div class="card-b flush">
+              <div class="tree">
+                <div class="tree-grp">技术方案 · 4 条</div>
+                <div class="tree-item on">集成平台如何支撑四甲测评 <span class="n">92%</span></div>
+                <div class="tree-item">HIS 替换期间的业务连续性 <span class="n">85%</span></div>
+                <div class="tree-item">数据中台与既有系统边界 <span class="n">71%</span></div>
+                <div class="tree-item">等保三级的技术落地细节 <span class="n">64%</span></div>
+                <div class="tree-grp">实施能力 · 3 条</div>
+                <div class="tree-item">类似项目业绩与验收证明 <span class="n">88%</span></div>
+                <div class="tree-item">项目团队驻场人数与资质 <span class="n">76%</span></div>
+                <div class="tree-item">工期 180 天如何保证 <span class="n">69%</span></div>
+                <div class="tree-grp">售后 · 3 条</div>
+                <div class="tree-item">7×24 响应时效如何兑现 <span class="n">82%</span></div>
+                <div class="tree-item">本地化服务团队位置 <span class="n">58%</span></div>
+                <div class="tree-item">免费升级与版本迭代策略 <span class="n">47%</span></div>
+                <div class="tree-grp">价格 · 2 条</div>
+                <div class="tree-item red">报价低于成本的合理性 <span class="n red">93%</span></div>
+                <div class="tree-item">分项报价与总价的口径 <span class="n">61%</span></div>
+              </div>
+            </div>
+            <div class="card-f row small"><span class="muted">按命中概率排序</span><span class="grow"></span><span class="badge badge--red">2 条高危</span></div>
+          </div>
+
+        </div>
+
+        <div class="col col--gap-12">
+
+          <div class="split split--r">
+
+            <div class="col col--gap-12">
+
+              <div class="card">
+                <div class="card-h">
+                  <h3>集成平台如何支撑互联互通四甲测评</h3>
+                  <div class="grow"></div>
+                  <span class="badge badge--red">命中概率 92%</span>
+                  <span class="badge badge--blue">技术方案</span>
+                </div>
+                <div class="card-b col col--gap-12">
+                  <div class="row small"><span class="muted">来源评分点</span><span class="badge badge--gray">7-3 集成平台互联互通</span><span class="badge badge--gray">9-1 接口标准与数量</span><div class="grow"></div><span class="mono muted-2">共 9 分</span></div>
+                  <div class="divider"></div>
+                  <div>
+                    <div class="b small">建议应答要点</div>
+                    <div class="list mt8">
+                      <div class="list-row"><span class="badge badge--primary">1</span><div class="grow"><div class="t">先讲标准</div><div class="s">平台按四甲四个维度建设：数据资源标准化、互联互通服务、基础设施与安全、应用建设</div></div></div>
+                      <div class="list-row"><span class="badge badge--primary">2</span><div class="grow"><div class="t">再给数字</div><div class="s">42 个业务系统接入、168 个标准服务、服务复用率 76%，可现场出示测评报告</div></div></div>
+                      <div class="list-row"><span class="badge badge--primary">3</span><div class="grow"><div class="t">最后给兜底</div><div class="s">若测评未通过，我方承担整改直至通过，费用已含在报价内（见商务承诺函第 4 条）</div></div></div>
+                    </div>
+                  </div>
+                  <div class="divider"></div>
+                  <div>
+                    <div class="row"><span class="b small">讲标稿</span><div class="grow"></div><span class="small muted-2">约 200 字 · 预计 1 分 20 秒</span></div>
+                    <p class="small mt8 muted">各位评委，我院集成平台建设从 2024 年启动，目前已接入 42 个业务系统，发布 168 个标准服务，服务复用率 76%。平台按国家互联互通四级甲等标准建设，四个维度均有对应交付物：数据资源方面完成 12 类主数据统一；互联互通服务方面通过 168 个服务实现跨系统调阅；基础设施与安全方面通过等保三级测评；应用建设方面支撑 9 个临床场景闭环。测评材料可在答疑环节提供，若测评未通过，我方承担整改责任直至通过，相关费用已包含在本次报价内。</p>
+                  </div>
+                </div>
+                <div class="card-f row small">
+                  <span class="muted">建议结合 ④ 第 7.3 节正文与 ⑤ 偏离表第 100 条作答</span>
+                  <span class="grow"></span>
+                  <button class="btn btn--sm">换一条问题</button>
+                  <button class="btn btn--sm">加入讲标稿</button>
+                </div>
+              </div>
+
+            </div>
+
+            <div class="col col--gap-12">
+
+              <div class="card">
+                <div class="card-h"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>倒计时设置</h3><div class="grow"></div><span class="sub">按题计时</span></div>
+                <div class="card-b">
+                  <div class="row"><span class="big mono b">03:00</span><div class="grow"></div><span class="badge badge--blue">每题 3 分钟</span></div>
+                  <div class="bar mt8"><i style="width:100%"></i></div>
+                  <div class="divider"></div>
+                  <div class="row small"><span class="muted">超时提醒</span><div class="grow"></div><button class="switch on" data-toggle></button></div>
+                  <div class="row small mt8"><span class="muted">语音朗读问题</span><div class="grow"></div><button class="switch" data-toggle></button></div>
+                </div>
+                <div class="card-f row small"><span class="muted">超时 30 秒自动提示收尾</span><span class="grow"></span><button class="btn btn--sm">调整</button></div>
+              </div>
+
+              <div class="card">
+                <div class="card-h"><h3>演练记录</h3><div class="grow"></div><span class="sub">最近 3 次</span></div>
+                <div class="card-b flush">
+                  <div class="list">
+                    <div class="list-row"><div class="grow"><div class="t">11-07 已演练 12 题</div><div class="s">平均 2 分 48 秒 · 超时 2 题</div></div><span class="badge badge--green">已完成</span></div>
+                    <div class="list-row"><div class="grow"><div class="t">11-06 已演练 8 题</div><div class="s">平均 3 分 12 秒 · 超时 4 题</div></div><span class="badge badge--amber">偏慢</span></div>
+                    <div class="list-row"><div class="grow"><div class="t">11-05 已演练 12 题</div><div class="s">平均 2 分 35 秒 · 超时 0 题</div></div><span class="badge badge--green">达标</span></div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

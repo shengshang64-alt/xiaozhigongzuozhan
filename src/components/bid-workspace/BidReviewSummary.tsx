@@ -64,49 +64,47 @@ function StatCard({ label, value, hint }: { label: string; value: string; hint?:
 
 export function BidReviewSummary({ projects }: { projects: BidProjectRecord[] }) {
   const stats = useMemo(() => summarizeBidResults(projects), [projects])
-  if (stats.total === 0) return null
-  // UX-R3 S5：无已结束项目时不再占一整块卡片位置，折叠为一行提示（出结果后自动恢复完整复盘）
   if (stats.finished === 0) {
     return (
-      <section className="mx-auto max-w-7xl px-4 pt-6">
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-xs text-muted-foreground shadow-sm">
-          <TrendingUp className="h-3.5 w-3.5 text-primary" />
-          <span className="font-medium text-foreground">投标复盘</span>
-          <span>暂无已结束项目，出结果（中标 / 落标）后这里自动生成中标率与落标原因汇总</span>
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-[13px] text-sky-950">
+        <TrendingUp className="h-3.5 w-3.5 text-sky-700" />
+        <div className="min-w-0 flex-1">
+          暂无已结束项目（已结束 {stats.finished} · 中标 {stats.won} · 落标 {stats.lost}），出结果后这里会生成复盘：中标率、中标金额、落标原因 Top3。
         </div>
-      </section>
+        <a href="/review" className="shrink-0 text-xs font-medium text-primary hover:underline">
+          投标复盘 →
+        </a>
+      </div>
     )
   }
   return (
-    <section className="mx-auto max-w-7xl px-4 pt-6">
-      <div className="rounded-xl border border-border bg-card px-6 py-5 shadow-md">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
-            <TrendingUp className="h-4 w-4 text-primary" />
-            投标复盘
-          </h2>
-          {stats.smallSample && (
-            <span className="rounded-full border border-warning/40 bg-warning/10 px-2.5 py-0.5 text-xs text-warning">
-              已结束样本不足 5 个，中标率仅供参考
-            </span>
-          )}
-        </div>
-        <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-          <StatCard label="投标项目" value={`${stats.total}`} hint={`已结束 ${stats.finished} · 中标 ${stats.won} · 落标 ${stats.lost}`} />
-          <StatCard
-            label="中标率"
-            value={stats.winRate === null ? "—" : `${stats.winRate}%`}
-            hint={stats.winRate === null ? "暂无已结束项目" : `${stats.won}/${stats.finished} 个已结束项目`}
-          />
-          <StatCard label="中标金额合计" value={formatMoney(stats.wonAmount)} hint="单位：万元（按项目录入值累计）" />
-          <StatCard label="结果待回填" value={`${stats.pendingCount}`} hint="在项目详情录入中标/落标与金额" />
-          <StatCard
-            label="落标原因 Top3"
-            value={stats.topReasons.length ? `${stats.topReasons[0][1]} 条` : "—"}
-            hint={stats.topReasons.length ? stats.topReasons.map(([r, n]) => `${r}（${n}）`).join("；") : "暂无落标记录或未填原因"}
-          />
-        </div>
+    <div className="rounded-xl border border-border bg-card px-6 py-5 shadow-md">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
+          <TrendingUp className="h-4 w-4 text-primary" />
+          投标复盘
+        </h2>
+        {stats.smallSample && (
+          <span className="rounded-full border border-warning/40 bg-warning/10 px-2.5 py-0.5 text-xs text-warning">
+            已结束样本不足 5 个，中标率仅供参考
+          </span>
+        )}
       </div>
-    </section>
+      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        <StatCard label="投标项目" value={`${stats.total}`} hint={`已结束 ${stats.finished} · 中标 ${stats.won} · 落标 ${stats.lost}`} />
+        <StatCard
+          label="中标率"
+          value={stats.winRate === null ? "—" : `${stats.winRate}%`}
+          hint={stats.winRate === null ? "暂无已结束项目" : `${stats.won}/${stats.finished} 个已结束项目`}
+        />
+        <StatCard label="中标金额合计" value={formatMoney(stats.wonAmount)} hint="单位：万元（按项目录入值累计）" />
+        <StatCard label="结果待回填" value={`${stats.pendingCount}`} hint="在项目详情录入中标/落标与金额" />
+        <StatCard
+          label="落标原因 Top3"
+          value={stats.topReasons.length ? `${stats.topReasons[0][1]} 条` : "—"}
+          hint={stats.topReasons.length ? stats.topReasons.map(([r, n]) => `${r}（${n}）`).join("；") : "暂无落标记录或未填原因"}
+        />
+      </div>
+    </div>
   )
 }

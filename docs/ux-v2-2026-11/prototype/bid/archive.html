@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>归档复盘 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="bid" data-screen="bid-archive" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <div class="ph-back" onclick="location.href='list.html'">← 返回项目列表</div>
+          <h1>安徽中医药大学第一附属医院一体化核心 <span class="badge badge--gray">归档</span></h1>
+          <div class="desc">安徽中医药大学第一附属医院 · 编号 2026BFAFZ50845 · 开标 2026-11-04 · 预算 412.0 万 · 9/9 章成稿</div>
+          <div class="meta">
+            <span class="kv">结果 <b class="amber">待回填</b></span>
+            <span class="kv">竞争对手 <b>3</b> 家</span>
+            <span class="kv">归档时间 <b>2026-11-05 18:20</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn">导出复盘报告</button>
+          <button class="btn btn--primary" data-toast="已保存开标结果并生成复盘">保存结果并生成复盘</button>
+        </div>
+      </div>
+
+      <div class="steps">
+        <div class="step done" onclick="location.href='import.html'"><div class="n">1</div><div class="tx"><b>导入招标</b><span>已完成</span></div></div>
+        <div class="step done" onclick="location.href='parse.html'"><div class="n">2</div><div class="tx"><b>解析确认</b><span>已完成</span></div></div>
+        <div class="step done" onclick="location.href='outline.html'"><div class="n">3</div><div class="tx"><b>大纲编制</b><span>已完成</span></div></div>
+        <div class="step done" onclick="location.href='draft.html'"><div class="n">4</div><div class="tx"><b>正文编写</b><span>9/9 章</span></div></div>
+        <div class="step done" onclick="location.href='deviation.html'"><div class="n">5</div><div class="tx"><b>偏离表</b><span>已完成</span></div></div>
+        <div class="step done" onclick="location.href='check.html'"><div class="n">6</div><div class="tx"><b>交卷自查</b><span>已通过</span></div></div>
+        <div class="step done" onclick="location.href='export.html'"><div class="n">7</div><div class="tx"><b>组卷导出</b><span>已导出</span></div></div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：开标结果回填、中标率漏斗、落标原因全挤在列表页顶部的「投标复盘」卡里，且全部为空，<b>空指标占据最关键位置</b>。<b>拆后</b>：归档项目独立成屏——先回填结果，再看漏斗与归因，最后把中标要素回流知识库。</div>
+      </div>
+
+      <div class="split split--l">
+
+        <div class="col col--gap-12">
+
+          <div class="card">
+            <div class="card-h"><h3>开标结果回填</h3><div class="grow"></div><span class="badge badge--amber">必填 4 项</span></div>
+            <div class="card-b col col--gap-12">
+              <div class="field">
+                <label class="label req">开标结果</label>
+                <div class="row wrap" data-chips>
+                  <span class="chip on">中标</span>
+                  <span class="chip">未中标</span>
+                  <span class="chip">废标</span>
+                </div>
+              </div>
+              <div class="row row--gap-12">
+                <div class="field grow"><label class="label">中标金额</label><input class="input" value="398.0"><span class="help">单位：万元 · 预算 412.0 万，下浮 3.4%</span></div>
+                <div class="field"><label class="label">报价排名</label><select class="select"><option>第 1 名</option><option>第 2 名</option><option>第 3 名</option></select></div>
+              </div>
+              <div class="field">
+                <label class="label req">竞争对手（3 家）</label>
+                <div class="col col--gap-4">
+                  <div class="row"><span class="tag tag--line">卫宁健康</span><div class="grow"></div><span class="mono small">报价 405.6 万</span><span class="badge badge--gray">未中标</span></div>
+                  <div class="row"><span class="tag tag--line">东软集团</span><div class="grow"></div><span class="mono small">报价 412.0 万</span><span class="badge badge--gray">未中标</span></div>
+                  <div class="row"><span class="tag tag--line">创业慧康</span><div class="grow"></div><span class="mono small">报价 396.8 万</span><span class="badge badge--gray">未中标</span></div>
+                </div>
+              </div>
+              <div class="field"><label class="label">废标原因</label><input class="input" placeholder="本项目无废标"><span class="help">仅在结果为「废标」时填写，会进入落标原因聚类</span></div>
+              <div class="field"><label class="label">一句话复盘</label><textarea class="textarea">技术分领先 6 分，价格略高于创业慧康但商务与技术综合第一。</textarea></div>
+            </div>
+            <div class="card-f row small"><span class="muted">结果保存后自动归档，项目转只读</span><span class="grow"></span><button class="btn btn--sm">保存草稿</button></div>
+          </div>
+
+        </div>
+
+        <div class="col col--gap-12">
+
+          <div class="split split--r">
+
+            <div class="col col--gap-12">
+
+              <div class="card">
+                <div class="card-h"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/></svg>中标率漏斗</h3><div class="grow"></div><span class="sub">近 12 个月 · 15 个项目</span></div>
+                <div class="card-b">
+                  <div class="chart-bars">
+                    <div class="cbar"><span class="k">投标</span><span class="bar bar--lg"><i style="width:100%"></i></span><span class="v">15</span></div>
+                    <div class="cbar"><span class="k">有效投标</span><span class="bar bar--lg"><i style="width:87%"></i></span><span class="v">13</span></div>
+                    <div class="cbar"><span class="k">入围</span><span class="bar bar--lg"><i style="width:53%"></i></span><span class="v">8</span></div>
+                    <div class="cbar"><span class="k">中标</span><span class="bar bar--lg"><i style="width:20%"></i></span><span class="v">3</span></div>
+                  </div>
+                  <div class="divider"></div>
+                  <div class="row row--gap-16 small">
+                    <div class="grow"><div class="muted">有效率</div><div class="mono b">86.7%</div></div>
+                    <div class="grow"><div class="muted">入围率</div><div class="mono b">61.5%</div></div>
+                    <div class="grow"><div class="muted">中标率</div><div class="mono b">20.0%</div></div>
+                  </div>
+                </div>
+                <div class="card-f row small"><span class="muted">2 个无效标：1 个格式签章、1 个资质过期</span></div>
+              </div>
+
+              <div class="card">
+                <div class="card-h"><h3>废标 / 落标原因聚类</h3><div class="grow"></div><span class="sub">11 个未中标项目</span></div>
+                <div class="card-b">
+                  <div class="chart-bars">
+                    <div class="cbar"><span class="k">技术分不足</span><span class="bar bar--lg"><i style="width:80%"></i></span><span class="v">4</span></div>
+                    <div class="cbar"><span class="k">报价偏高</span><span class="bar bar--lg"><i style="width:60%"></i></span><span class="v">3</span></div>
+                    <div class="cbar"><span class="k">资质缺失</span><span class="bar bar--lg"><i style="width:40%"></i></span><span class="v">2</span></div>
+                    <div class="cbar"><span class="k">格式问题</span><span class="bar bar--lg"><i style="width:20%"></i></span><span class="v">1</span></div>
+                    <div class="cbar"><span class="k">响应缺项</span><span class="bar bar--lg"><i style="width:20%"></i></span><span class="v">1</span></div>
+                  </div>
+                </div>
+                <div class="card-f row small"><span class="red b">技术分不足</span><span class="muted">是首要原因，占 36%，对应 ③ 大纲评分点覆盖</span></div>
+              </div>
+
+            </div>
+
+            <div class="col col--gap-12">
+
+              <div class="card">
+                <div class="card-h"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>结论回流知识库</h3><div class="grow"></div><span class="badge badge--primary">可提炼 3 条</span></div>
+                <div class="card-b col col--gap-8">
+                  <div class="small muted">勾选后写入知识原子，下次同类项目可直接复用：</div>
+                  <label class="check"><input type="checkbox" checked> <span><b>中标要素 1</b>：技术分领先 6 分源于「四甲服务复用率」写进 7.3 节，可复用为技术章模板</span></label>
+                  <label class="check"><input type="checkbox" checked> <span><b>中标要素 2</b>：报价下浮 3.4% 是本地医院的中标区间，高于 5% 会被质疑成本</span></label>
+                  <label class="check"><input type="checkbox" checked> <span><b>中标要素 3</b>：竞争对手卫宁、东软报价规律：卫宁普遍高 2~3 万，东软贴预算顶格</span></label>
+                  <div class="divider"></div>
+                  <div class="row small"><span class="muted">写入位置</span><div class="grow"></div><span class="badge badge--gray">团队知识库 · 案例复盘</span></div>
+                </div>
+                <div class="card-f row small">
+                  <span class="muted">写入后需在知识原子页审核</span>
+                  <span class="grow"></span>
+                  <a class="btn btn--sm" href="../kb/atoms.html">看知识原子</a>
+                  <button class="btn btn--sm">写入 3 条</button>
+                </div>
+              </div>
+
+              <div class="alert alert--blue">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                <div class="grow">归档项目的正文与偏离表<b>转为只读</b>，但可作为「从模板新建」的起点，下次同类项目直接继承 9 章成稿。</div>
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

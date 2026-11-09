@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>投标节点 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="home" data-screen="home-calendar" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>投标节点</h1>
+          <div class="desc">把每个投标项目的<b>五类硬节点</b>铺在同一条时间轴上：报名、答疑、保证金、递交、开标。首页只显示最近 4 条，全部时间安排在这里看。</div>
+        </div>
+        <div class="ph-actions">
+          <div class="seg" data-seg><button class="on">月视图</button><button>周视图</button><button>列表</button></div>
+          <button class="btn">导出日历（.ics）</button>
+          <button class="btn btn--primary" data-toast="已新建节点（示例）">＋ 新建节点</button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：节点信息分散在首页「投标节点」小卡（只列 1 条）与各项目详情里，且无法回溯「这周我有哪些动作」。<b>拆后</b>：独立时间轴屏，五类节点按颜色区分，逾期未完成自动标红。</div>
+      </div>
+
+      <div class="databar">
+        <div class="item">本月节点 <b>11</b></div>
+        <div class="item red">已逾期 <b>1</b></div>
+        <div class="item orange">7 天内 <b>3</b></div>
+        <div class="item green">已完成 <b>6</b></div>
+        <div class="item">涉及项目 <b>3</b></div>
+        <div class="grow"></div>
+        <div class="row" style="gap:8px;padding-right:8px">
+          <span class="row tiny muted-2"><span class="dot blue"></span>报名</span>
+          <span class="row tiny muted-2"><span class="dot purple"></span>答疑</span>
+          <span class="row tiny muted-2"><span class="dot amber"></span>保证金</span>
+          <span class="row tiny muted-2"><span class="dot orange"></span>递交</span>
+          <span class="row tiny muted-2"><span class="dot red"></span>开标</span>
+        </div>
+      </div>
+
+      <div class="split split--main">
+        <div class="card">
+          <div class="card-h">
+            <h3>2026 年 11 月</h3>
+            <span class="sub">点击任意节点查看所属项目与前置条件</span>
+            <div class="grow"></div>
+            <div class="btn-group">
+              <button class="btn btn--sm btn--icon">‹</button>
+              <button class="btn btn--sm">今天</button>
+              <button class="btn btn--sm btn--icon">›</button>
+            </div>
+          </div>
+          <div class="card-b flush">
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid var(--line);background:var(--card-2)">
+              <div class="tiny muted-2" style="padding:7px 10px;text-align:center">周一</div>
+              <div class="tiny muted-2" style="padding:7px 10px;text-align:center">周二</div>
+              <div class="tiny muted-2" style="padding:7px 10px;text-align:center">周三</div>
+              <div class="tiny muted-2" style="padding:7px 10px;text-align:center">周四</div>
+              <div class="tiny muted-2" style="padding:7px 10px;text-align:center">周五</div>
+              <div class="tiny muted-2" style="padding:7px 10px;text-align:center">周六</div>
+              <div class="tiny muted-2" style="padding:7px 10px;text-align:center">周日</div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:96px" id="cal">
+              <!-- 10月补位 -->
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px;background:var(--card-2)"><span class="tiny muted-2">27</span></div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px;background:var(--card-2)"><span class="tiny muted-2">28</span></div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px;background:var(--card-2)"><span class="tiny muted-2">29</span></div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px;background:var(--card-2)"><span class="tiny muted-2">30</span></div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px;background:var(--card-2)"><span class="tiny muted-2">31</span></div>
+              <!-- 11月 -->
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px"></div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px"></div>
+
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">1</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">2</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">3</span></div>
+                <div class="tag tiny mt4" style="background:var(--red-bg);color:var(--red);border:0">开标 · 蚌埠</div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">4</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">5</span></div>
+                <div class="tag tiny mt4" style="background:var(--amber-bg);color:var(--amber);border:0">保证金 · 安徽中医药大</div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">6</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">7</span></div>
+              </div>
+
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px;background:var(--primary-50)">
+                <div class="row" style="gap:4px"><span class="tiny mono b primary">8</span><span class="badge badge--primary tiny">今天</span></div>
+                <div class="tag tiny mt4" style="background:var(--card);color:var(--amber);border:1px solid var(--amber-line)">保证金截止 · UI测试</div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">9</span></div>
+                <div class="tag tiny mt4" style="background:var(--purple-bg);color:var(--purple);border:0">客户拜访 · 厦门市中医院</div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">10</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">11</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">12</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">13</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">14</span></div>
+                <div class="tag tiny mt4" style="background:var(--purple-bg);color:var(--purple);border:0">答疑截止 · 蚌埠</div>
+              </div>
+
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">15</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">16</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">17</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">18</span></div>
+                <div class="tag tiny mt4" style="background:var(--orange-bg);color:var(--orange);border:0">递交 · 蚌埠</div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">19</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">20</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">21</span></div>
+                <div class="tag tiny mt4" style="background:var(--red-bg);color:var(--red);border:0">证书到期 · 等保三级</div>
+              </div>
+
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">22</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">23</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">24</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">25</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">26</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">27</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);border-bottom:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">28</span></div>
+              </div>
+
+              <div style="border-right:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">29</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);padding:6px">
+                <div class="row" style="gap:4px"><span class="tiny mono b">30</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);padding:6px;background:var(--card-2)">
+                <div class="row" style="gap:4px"><span class="tiny mono muted-2">1</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);padding:6px;background:var(--card-2)">
+                <div class="row" style="gap:4px"><span class="tiny mono muted-2">2</span></div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);padding:6px;background:var(--card-2)">
+                <div class="row" style="gap:4px"><span class="tiny mono muted-2">3</span></div>
+                <div class="tag tiny mt4" style="background:var(--red-bg);color:var(--red);border:0">开标 · UI测试</div>
+              </div>
+              <div style="border-right:1px solid var(--line-2);padding:6px;background:var(--card-2)">
+                <div class="row" style="gap:4px"><span class="tiny mono muted-2">4</span></div>
+              </div>
+              <div style="padding:6px;background:var(--card-2)">
+                <div class="row" style="gap:4px"><span class="tiny mono muted-2">5</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col col--gap-16 aside-sticky">
+          <div class="card">
+            <div class="card-h"><h3>逾期未完成（1）</h3></div>
+            <div class="card-b">
+              <div class="alert alert--red" style="margin:0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+                <div class="grow"><b>蚌埠项目 · 保证金凭证未归档</b><br>节点日期 11-03，已逾期 5 天，尚未上传缴纳凭证。</div>
+              </div>
+              <button class="btn btn--sm btn--danger mt12" style="width:100%">立即补录凭证</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>节点说明</h3></div>
+            <div class="card-b col col--gap-12">
+              <div class="kv-row"><span class="k">报名</span><span class="v">获取招标文件后 1 个工作日内录入</span></div>
+              <div class="kv-row"><span class="k">答疑</span><span class="v">提出问题截止日，逾期不可质疑</span></div>
+              <div class="kv-row"><span class="k">保证金</span><span class="v">到账日 = 递交前 2 个工作日</span></div>
+              <div class="kv-row"><span class="k">递交</span><span class="v">电子件上传 + 纸质件送达</span></div>
+              <div class="kv-row"><span class="k">开标</span><span class="v">结果回填后自动进「归档复盘」</span></div>
+              <div class="small muted-2 mt4">任一节点逾期，系统会在首页与待办中心同时提醒。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

@@ -32,8 +32,14 @@ describe("R250 投标项目列表表格视图（接线防回流）", () => {
     }
   })
 
-  it("回收站不显示成稿进度，与卡片同口径", () => {
-    expect(code).toContain('p.listView === "trash" ? [] : [chaptersColumn]')
+  it("回收站不显示成稿进度（B11：回收站改为同页独立区块，不再走表格列）", () => {
+    // 重构后：表格只服务「进行中」，回收站是独立 section 的列表，天然没有成稿进度列。
+    // 守两点：① 表格列里保留 chaptersColumn；② 回收站区块只渲染名称/剩余天数/还原/删除。
+    expect(code).toContain("    chaptersColumn,")
+    const trashBlock = code.slice(code.indexOf("回收站：卡片"), code.indexOf("招标文件在浏览器本地解析"))
+    expect(trashBlock).toContain("TrashRemainChip")
+    expect(trashBlock).not.toContain("chaptersColumn")
+    expect(trashBlock).not.toContain("progressStatusLabel")
   })
 
   it("剩余天数 chip 单一来源：卡片与表格都走 TrashRemainChip", () => {

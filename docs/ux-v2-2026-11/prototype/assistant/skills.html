@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>技能 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="assistant" data-screen="assistant-skills" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>技能<span class="badge badge--primary">6 个</span><span class="badge badge--green">本周调用 128 次</span></h1>
+          <div class="desc">技能是<b>把重复工作固定下来的快捷键</b>：一句「输入」进去，一份「输出」出来。既能<b>在对话里直接用</b>，也能<b>挂到标书七步的流程节点上</b>自动跑。记忆管「按谁的规矩」，技能管「怎么干」。</div>
+          <div class="meta">
+            <span class="kv">技能 <b>6</b> 个</span>
+            <span class="kv">已挂流程节点 <b>3</b> 个</span>
+            <span class="kv">本月节省 <b>≈ 14.5 小时</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn" data-toast="已打开技能包导入（支持 .md / .json）">导入技能包</button>
+          <button class="btn btn--primary" onclick="Proto.open('new-skill')">＋ 新建技能</button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：技能只在「技能」Tab 里列个名字 + prompt，没人知道它输入什么、输出什么、能挂哪。<b>拆后</b>：一屏 6 张卡，每张写清输入输出示例、适用范围，并给「在对话中使用」「挂到流程节点」两个明确去处。</div>
+      </div>
+
+      <div class="split split--main">
+        <div class="col col--gap-16">
+
+          <div class="filterbar">
+            <div class="search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input class="input" placeholder="搜索技能名或说明">
+            </div>
+            <div class="row" data-chips>
+              <span class="chip on">全部 <span class="n">6</span></span>
+              <span class="chip">写文档 <span class="n">3</span></span>
+              <span class="chip">查数据 <span class="n">2</span></span>
+              <span class="chip">做分析 <span class="n">1</span></span>
+            </div>
+            <div class="grow"></div>
+            <div class="dd">
+              <button class="btn" data-dd><span data-dd-label>按调用次数</span>
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+              <div class="dd-menu">
+                <div class="dd-label">排序方式</div>
+                <div class="dd-item on" data-label="按调用次数">按调用次数</div>
+                <div class="dd-item" data-label="按最近使用">按最近使用</div>
+                <div class="dd-item" data-label="按创建时间">按创建时间</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid g3">
+
+            <!-- 1 写标书章节 -->
+            <div class="card card--hover">
+              <div class="card-b tight col col--gap-8">
+                <div class="row">
+                  <span class="hairline" style="width:26px;height:26px;display:grid;place-items:center">
+                    <svg class="primary" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/></svg>
+                  </span>
+                  <b>写标书章节</b>
+                  <div class="grow"></div>
+                  <span class="badge badge--green">已挂流程</span>
+                </div>
+                <div class="small muted">给章节名与评分点，直接出可交的正文章节，自动按「我方」自称、避开 AI 味。</div>
+                <div class="hairline p8">
+                  <div class="tiny muted-2">输入</div>
+                  <div class="small">蚌埠项目 · 第 10 章 · 4 个评分点</div>
+                  <div class="tiny muted-2 mt4">输出</div>
+                  <div class="small">约 3,200 字正文 + 评分点覆盖表</div>
+                </div>
+                <div class="row small muted-2"><span class="mono">调用 46 次</span><span class="vdiv"></span><span>挂载：④ 正文编写</span></div>
+                <div class="row">
+                  <button class="btn btn--sm" data-toast="已在对话中使用「写标书章节」">在对话中使用</button>
+                  <button class="btn btn--sm" data-toast="已打开流程挂载设置">挂到流程节点</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 2 生成方案大纲 -->
+            <div class="card card--hover">
+              <div class="card-b tight col col--gap-8">
+                <div class="row">
+                  <span class="hairline" style="width:26px;height:26px;display:grid;place-items:center">
+                    <svg class="blue" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg>
+                  </span>
+                  <b>生成方案大纲</b>
+                  <div class="grow"></div>
+                  <span class="badge badge--green">已挂流程</span>
+                </div>
+                <div class="small muted">从客户需求与建设清单推 12 章大纲，自动补「数据迁移」「等保合规」两节。</div>
+                <div class="hairline p8">
+                  <div class="tiny muted-2">输入</div>
+                  <div class="small">项目名 + 建设清单</div>
+                  <div class="tiny muted-2 mt4">输出</div>
+                  <div class="small">12 章大纲（含每章评分点映射）</div>
+                </div>
+                <div class="row small muted-2"><span class="mono">调用 31 次</span><span class="vdiv"></span><span>挂载：方案列表 → 新建</span></div>
+                <div class="row">
+                  <button class="btn btn--sm" data-toast="已在对话中使用「生成方案大纲」">在对话中使用</button>
+                  <button class="btn btn--sm" data-toast="已打开流程挂载设置">挂到流程节点</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 3 做技术偏离表 -->
+            <div class="card card--hover">
+              <div class="card-b tight col col--gap-8">
+                <div class="row">
+                  <span class="hairline" style="width:26px;height:26px;display:grid;place-items:center">
+                    <svg class="amber" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v18M8 21h8"/><path d="m3 7 4-4 4 4"/><path d="M5 7 3 14h8z"/><path d="m13 7 4-4 4 4"/><path d="m21 7-2 7h-8z"/></svg>
+                  </span>
+                  <b>做技术偏离表</b>
+                  <div class="grow"></div>
+                  <span class="badge badge--green">已挂流程</span>
+                </div>
+                <div class="small muted">逐条比对招标参数与产品参数，标正/负偏离，给出应答话术。</div>
+                <div class="hairline p8">
+                  <div class="tiny muted-2">输入</div>
+                  <div class="small">招标技术参数表（1 份）</div>
+                  <div class="tiny muted-2 mt4">输出</div>
+                  <div class="small">偏离表：正偏离 18 / 无偏离 163 / 负偏离 0</div>
+                </div>
+                <div class="row small muted-2"><span class="mono">调用 22 次</span><span class="vdiv"></span><span>挂载：⑤ 偏离表</span></div>
+                <div class="row">
+                  <button class="btn btn--sm" data-toast="已在对话中使用「做技术偏离表」">在对话中使用</button>
+                  <button class="btn btn--sm" data-toast="已打开流程挂载设置">挂到流程节点</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 4 查资质证书 -->
+            <div class="card card--hover">
+              <div class="card-b tight col col--gap-8">
+                <div class="row">
+                  <span class="hairline" style="width:26px;height:26px;display:grid;place-items:center">
+                    <svg class="green" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                  </span>
+                  <b>查资质证书</b>
+                  <div class="grow"></div>
+                  <span class="badge badge--gray">未挂流程</span>
+                </div>
+                <div class="small muted">按证书名 / 适用场景查台账，返回有效期、被引用项目与到期风险。</div>
+                <div class="hairline p8">
+                  <div class="tiny muted-2">输入</div>
+                  <div class="small">「等保三级还有多久到期」</div>
+                  <div class="tiny muted-2 mt4">输出</div>
+                  <div class="small">13 天到期 · 被 2 个在投项目引用</div>
+                </div>
+                <div class="row small muted-2"><span class="mono">调用 18 次</span><span class="vdiv"></span><span class="amber">建议挂 ⑥ 交卷自查</span></div>
+                <div class="row">
+                  <button class="btn btn--sm" data-toast="已在对话中使用「查资质证书」">在对话中使用</button>
+                  <button class="btn btn--sm" data-toast="已打开流程挂载设置">挂到流程节点</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 5 分析竞品中标 -->
+            <div class="card card--hover">
+              <div class="card-b tight col col--gap-8">
+                <div class="row">
+                  <span class="hairline" style="width:26px;height:26px;display:grid;place-items:center">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4M8 6h.01M16 6h.01M8 10h.01M16 10h.01"/></svg>
+                  </span>
+                  <b>分析竞品中标</b>
+                  <div class="grow"></div>
+                  <span class="badge badge--gray">未挂流程</span>
+                </div>
+                <div class="small muted">给定医院与项目，返回历史中标厂商 Top3、价格区间与参数倾向。</div>
+                <div class="hairline p8">
+                  <div class="tiny muted-2">输入</div>
+                  <div class="small">厦门市中医院 · 电子病历评级</div>
+                  <div class="tiny muted-2 mt4">输出</div>
+                  <div class="small">Top3 厂商 + 268 万均值 + 3 条参数倾向</div>
+                </div>
+                <div class="row small muted-2"><span class="mono">调用 7 次</span><span class="vdiv"></span><span>仅对话可用</span></div>
+                <div class="row">
+                  <button class="btn btn--sm" data-toast="已在对话中使用「分析竞品中标」">在对话中使用</button>
+                  <button class="btn btn--sm" data-toast="已打开流程挂载设置">挂到流程节点</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 6 整理情报摘要 -->
+            <div class="card card--hover">
+              <div class="card-b tight col col--gap-8">
+                <div class="row">
+                  <span class="hairline" style="width:26px;height:26px;display:grid;place-items:center">
+                    <svg class="orange" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/></svg>
+                  </span>
+                  <b>整理情报摘要</b>
+                  <div class="grow"></div>
+                  <span class="badge badge--amber">待完善</span>
+                </div>
+                <div class="small muted">把当日情报压成 5 条「结论 + 来源」，可直接进周报或晨会。</div>
+                <div class="hairline p8">
+                  <div class="tiny muted-2">输入</div>
+                  <div class="small">今日情报 40 条</div>
+                  <div class="tiny muted-2 mt4">输出</div>
+                  <div class="small">5 条结论 + 6 条可转商机提示</div>
+                </div>
+                <div class="row small muted-2"><span class="mono">调用 4 次</span><span class="vdiv"></span><span class="amber">缺「来源必带」规则</span></div>
+                <div class="row">
+                  <button class="btn btn--sm" data-toggle-note data-toast="已在对话中使用「整理情报摘要」">在对话中使用</button>
+                  <button class="btn btn--sm" data-toast="已打开流程挂载设置">挂到流程节点</button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- 底部：技能在三处生效 -->
+          <div class="card">
+            <div class="card-h"><h3>技能在哪三处生效</h3><span class="sub">同一份技能，三种用法</span></div>
+            <div class="card-b">
+              <div class="grid g3">
+                <div class="hairline p12">
+                  <div class="row small b"><span class="badge badge--primary">1</span>对话中手动调</div>
+                  <div class="tiny muted-2 mt4">输入框上方选技能，助手按模板问你缺的参数。</div>
+                </div>
+                <div class="hairline p12">
+                  <div class="row small b"><span class="badge badge--primary">2</span>挂到七步流程</div>
+                  <div class="tiny muted-2 mt4">到该步骤自动执行，结果落成草稿等你确认。</div>
+                </div>
+                <div class="hairline p12">
+                  <div class="row small b"><span class="badge badge--primary">3</span>悬浮球快捷入口</div>
+                  <div class="tiny muted-2 mt4">任何页面呼出助手，先选中技能再选上下文。</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 空态：某分类无结果 -->
+          <div class="empty empty--plain">
+            <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg></div>
+            <h4>「做分析」分类下只有一个技能</h4>
+            <p>再建一个就能把竞品监测、价格趋势这类分析固定下来，不用每次重写提示词。</p>
+            <div class="acts"><button class="btn btn--sm">＋ 新建分析类技能</button><button class="btn btn--sm">从技能包导入</button></div>
+          </div>
+
+        </div>
+
+        <div class="col col--gap-16 aside-sticky">
+          <div class="card">
+            <div class="card-h"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg>本周调用 128 次</h3></div>
+            <div class="card-b col col--gap-12">
+              <div class="chart-bars">
+                <div class="cbar"><span class="k">写标书章节</span><span class="track"><div class="fill" style="width:100%"></div></span><span class="v">46</span></div>
+                <div class="cbar"><span class="k">生成方案大纲</span><span class="track"><div class="fill" style="width:67%"></div></span><span class="v">31</span></div>
+                <div class="cbar"><span class="k">做技术偏离表</span><span class="track"><div class="fill" style="width:48%"></div></span><span class="v">22</span></div>
+                <div class="cbar"><span class="k">查资质证书</span><span class="track"><div class="fill" style="width:39%"></div></span><span class="v">18</span></div>
+                <div class="cbar"><span class="k">分析竞品中标</span><span class="track"><div class="fill" style="width:15%"></div></span><span class="v">7</span></div>
+                <div class="cbar"><span class="k">整理情报摘要</span><span class="track"><div class="fill gray" style="width:9%"></div></span><span class="v">4</span></div>
+              </div>
+              <div class="divider" style="margin:0"></div>
+              <div class="row small"><span class="muted">对比上周</span><div class="grow"></div><span class="green mono">+23%</span></div>
+              <div class="row small"><span class="muted">平均节省</span><div class="grow"></div><span class="mono">6.8 分钟 / 次</span></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>被引用最多的记忆</h3><div class="grow"></div><button class="btn btn--link tiny">记忆 →</button></div>
+            <div class="card-b col col--gap-8">
+              <div class="row small"><span class="mono muted-2">21</span><span class="grow trunc">标书正文统一自称「我方」</span></div>
+              <div class="row small"><span class="mono muted-2">15</span><span class="grow trunc">金额用万元保留 1 位小数</span></div>
+              <div class="row small"><span class="mono muted-2">12</span><span class="grow trunc">报价按 92% 折扣出</span></div>
+              <div class="tiny muted-2">技能执行时会自动带上这些记忆，不用在模板里重复写。</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>技能包</h3><div class="grow"></div><button class="btn btn--sm">导入</button></div>
+            <div class="card-b col col--gap-8">
+              <div class="row small"><span class="badge badge--primary">官方</span><span class="grow">标书七步技能包 · 6 个</span><button class="btn btn--link tiny">查看</button></div>
+              <div class="row small"><span class="badge badge--gray">团队</span><span class="grow">医疗售前话术包 · 4 个</span><button class="btn btn--link tiny">查看</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+
+<!-- 新建技能 -->
+<div class="mask" data-modal="new-skill" style="display:none">
+  <div class="modal" style="--mw:600px">
+    <div class="modal-h"><h3>新建技能<div class="sub">把一套固定下来的问法存成技能</div></h3><button class="icon-btn" onclick="Proto.close('new-skill')">✕</button></div>
+    <div class="modal-b col col--gap-12">
+      <div class="grid g2">
+        <div class="field"><label class="label req">技能名</label><input class="input" placeholder="例：做技术偏离表"></div>
+        <div class="field"><label class="label req">分类</label><select class="select"><option>写文档</option><option>查数据</option><option>做分析</option></select></div>
+      </div>
+      <div class="field"><label class="label">一句话说明</label><input class="input" placeholder="例：逐条比对参数，标正/负偏离并给应答话术"></div>
+      <div class="field"><label class="label req">提示词模板</label>
+        <textarea class="textarea" placeholder="用 {项目名} 与 {评分点} 生成正文；金额用万元；自称「我方」…"></textarea>
+        <span class="help">用花括号标注需要你填的参数，助手执行前会逐项问你。</span></div>
+      <div class="field"><label class="label">默认挂到流程节点</label></div>
+      <div class="row wrap">
+        <label class="check"><input type="checkbox"> ② 解析确认</label>
+        <label class="check"><input type="checkbox" checked> ④ 正文编写</label>
+        <label class="check"><input type="checkbox"> ⑤ 偏离表</label>
+        <label class="check"><input type="checkbox"> ⑥ 交卷自查</label>
+      </div>
+    </div>
+    <div class="modal-f"><span class="tip">保存后立即可在对话中使用</span><div class="grow"></div>
+      <button class="btn btn--sm" onclick="Proto.close('new-skill')">取消</button>
+      <button class="btn btn--sm btn--primary" onclick="Proto.close('new-skill')">保存技能</button></div>
+  </div>
+</div>
+
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

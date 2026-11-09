@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PPT 编辑器 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="ppt" data-screen="ppt-editor" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>蚌埠医科大一附院 · 智慧医疗核心系统<span class="badge badge--amber">待排版</span></h1>
+          <div class="desc">左页序、中画布、右属性；<b>一屏装下整份 12 页</b>，不再滚去找页面。底部常驻一致性检查，导出前必须清零。</div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn btn--sm"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m15 18-6-6 6-6"/></svg>返回列表</button>
+          <span class="small muted-2">11-08 09:14 自动保存</span>
+        </div>
+      </div>
+
+      <div class="card" style="overflow:hidden">
+
+        <!-- 顶部工具条 -->
+        <div class="row" style="padding:8px 12px;border-bottom:1px solid var(--line-2);gap:6px">
+          <button class="btn btn--sm btn--icon" title="撤销"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button>
+          <button class="btn btn--sm btn--icon is-disabled" title="重做"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button>
+          <span class="vdiv" style="height:18px;margin:0 4px"></span>
+          <button class="btn btn--sm"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>预览</button>
+          <button class="btn btn--sm"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>重新生成本页</button>
+          <button class="btn btn--sm"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z"/></svg>AI 润色本页</button>
+          <span class="vdiv" style="height:18px;margin:0 4px"></span>
+          <span class="small muted-2">缩放</span>
+          <div class="seg" data-seg style="height:26px"><button>适应</button><button class="on">100%</button><button>放大</button></div>
+          <div class="grow"></div>
+          <span class="tag tag--line">医疗科技蓝</span>
+          <span class="tag tag--line">12 页 · 讲标 22 分钟</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:200px minmax(0,1fr) 320px;align-items:stretch">
+
+          <!-- 左：页序栏 -->
+          <div style="border-right:1px solid var(--line-2);background:var(--card-2);padding:8px 6px;height:470px;overflow:hidden">
+            <div class="row small muted-2" style="padding:0 6px 6px"><span>页序</span><span class="grow"></span><span class="mono">12</span></div>
+            <div class="tree">
+              <div class="tree-item"><span class="mono tiny muted-2" style="width:14px">1</span><span style="width:44px;height:25px;border-radius:2px;background:var(--primary-100);flex:0 0 44px"></span><span class="trunc">封面</span></div>
+              <div class="tree-item"><span class="mono tiny muted-2" style="width:14px">2</span><span style="width:44px;height:25px;border-radius:2px;background:var(--line-2);flex:0 0 44px"></span><span class="trunc">建设背景</span></div>
+              <div class="tree-item"><span class="mono tiny muted-2" style="width:14px">3</span><span style="width:44px;height:25px;border-radius:2px;background:var(--line-2);flex:0 0 44px"></span><span class="trunc">现状痛点</span></div>
+              <div class="tree-item on"><span class="mono tiny" style="width:14px">4</span><span style="width:44px;height:25px;border-radius:2px;background:var(--primary-300);border:1px solid var(--primary);flex:0 0 44px"></span><span class="trunc">总体建设架构</span></div>
+              <div class="tree-item"><span class="mono tiny muted-2" style="width:14px">5</span><span style="width:44px;height:25px;border-radius:2px;background:var(--line-2);flex:0 0 44px"></span><span class="trunc">系统架构</span></div>
+              <div class="tree-item"><span class="mono tiny muted-2" style="width:14px">6</span><span style="width:44px;height:25px;border-radius:2px;background:var(--line-2);flex:0 0 44px"></span><span class="trunc">数据中台</span></div>
+              <div class="tree-item"><span class="mono tiny muted-2" style="width:14px">7</span><span style="width:44px;height:25px;border-radius:2px;background:var(--line-2);flex:0 0 44px"></span><span class="trunc">互联互通</span></div>
+              <div class="tree-item"><span class="mono tiny muted-2" style="width:14px">8</span><span style="width:44px;height:25px;border-radius:2px;background:var(--line-2);flex:0 0 44px"></span><span class="trunc">电子病历评级</span></div>
+              <div class="tree-item"><span class="mono tiny muted-2" style="width:14px">9</span><span style="width:44px;height:25px;border-radius:2px;background:var(--line-2);flex:0 0 44px"></span><span class="trunc">实施计划</span></div>
+              <div class="tree-item"><span class="mono tiny muted-2" style="width:14px">10</span><span style="width:44px;height:25px;border-radius:2px;background:var(--line-2);flex:0 0 44px"></span><span class="trunc">项目团队</span></div>
+              <div class="tree-item"><span class="mono tiny muted-2" style="width:14px">11</span><span style="width:44px;height:25px;border-radius:2px;background:var(--line-2);flex:0 0 44px"></span><span class="trunc">价值收益</span></div>
+              <div class="tree-item"><span class="mono tiny muted-2" style="width:14px">12</span><span style="width:44px;height:25px;border-radius:2px;background:var(--line-2);flex:0 0 44px"></span><span class="trunc">结束页</span></div>
+            </div>
+            <div class="tiny muted-2" style="padding:6px">拖动可调整页序</div>
+          </div>
+
+          <!-- 中：画布 -->
+          <div style="background:var(--bg-2);padding:14px;height:470px;overflow:hidden">
+            <div style="position:relative;width:100%;max-width:760px;margin:0 auto;aspect-ratio:16/9;background:var(--card);border:1px solid var(--line-3);border-radius:var(--r-xs);box-shadow:var(--sh-2);overflow:hidden">
+
+              <div style="position:absolute;left:36px;top:26px;font-size:19px;font-weight:650;color:var(--ink);letter-spacing:-.01em">总体建设架构</div>
+              <div style="position:absolute;left:36px;top:56px;width:44px;height:3px;border-radius:2px;background:var(--primary)"></div>
+              <div style="position:absolute;right:36px;top:28px;font-size:9px;color:var(--ink-4)">蚌埠医科大学第一附属医院 · 智慧医疗核心系统</div>
+
+              <!-- 三层架构块 -->
+              <div style="position:absolute;left:36px;top:82px;right:36px;height:58px;border-radius:var(--r-xs);background:var(--primary-50);border:1px solid var(--primary-100)">
+                <div style="position:absolute;left:10px;top:8px;font-size:10px;font-weight:600;color:var(--primary-700)">应用层</div>
+                <div style="position:absolute;left:10px;top:26px;right:10px;display:flex;gap:6px">
+                  <span style="flex:1;height:22px;border-radius:3px;background:var(--card);border:1px solid var(--primary-100);font-size:8.5px;color:var(--ink-2);display:grid;place-items:center">门诊业务</span>
+                  <span style="flex:1;height:22px;border-radius:3px;background:var(--card);border:1px solid var(--primary-100);font-size:8.5px;color:var(--ink-2);display:grid;place-items:center">住院业务</span>
+                  <span style="flex:1;height:22px;border-radius:3px;background:var(--card);border:1px solid var(--primary-100);font-size:8.5px;color:var(--ink-2);display:grid;place-items:center">电子病历</span>
+                  <span style="flex:1;height:22px;border-radius:3px;background:var(--card);border:1px solid var(--primary-100);font-size:8.5px;color:var(--ink-2);display:grid;place-items:center">运营管理</span>
+                </div>
+              </div>
+
+              <div style="position:absolute;left:36px;top:150px;right:36px;height:52px;border-radius:var(--r-xs);background:var(--primary-100);border:1px solid var(--primary-300)">
+                <div style="position:absolute;left:10px;top:7px;font-size:10px;font-weight:600;color:var(--primary-700)">平台层</div>
+                <div style="position:absolute;left:10px;top:23px;right:10px;display:flex;gap:6px">
+                  <span style="flex:1;height:20px;border-radius:3px;background:var(--card);font-size:8.5px;color:var(--ink-2);display:grid;place-items:center">数据中台</span>
+                  <span style="flex:1;height:20px;border-radius:3px;background:var(--card);font-size:8.5px;color:var(--ink-2);display:grid;place-items:center">集成引擎</span>
+                  <span style="flex:1;height:20px;border-radius:3px;background:var(--card);font-size:8.5px;color:var(--ink-2);display:grid;place-items:center">统一主数据</span>
+                </div>
+              </div>
+
+              <div style="position:absolute;left:36px;top:212px;right:36px;height:40px;border-radius:var(--r-xs);background:var(--bg-2);border:1px solid var(--line-3)">
+                <div style="position:absolute;left:10px;top:7px;font-size:10px;font-weight:600;color:var(--ink-2)">基础设施层</div>
+                <div style="position:absolute;left:96px;top:9px;right:10px;display:flex;gap:6px">
+                  <span style="flex:1;height:20px;border-radius:3px;background:var(--card);border:1px solid var(--line);font-size:8.5px;color:var(--ink-3);display:grid;place-items:center">服务器</span>
+                  <span style="flex:1;height:20px;border-radius:3px;background:var(--card);border:1px solid var(--line);font-size:8.5px;color:var(--ink-3);display:grid;place-items:center">存储</span>
+                  <span style="flex:1;height:20px;border-radius:3px;background:var(--card);border:1px solid var(--line);font-size:8.5px;color:var(--ink-3);display:grid;place-items:center">网络与安全</span>
+                </div>
+              </div>
+
+              <div style="position:absolute;left:36px;bottom:16px;right:36px;font-size:8.5px;color:var(--ink-4);border-top:1px solid var(--line-2);padding-top:6px">
+                注：三层架构对应招标文件「技术需求」第 3.2 节；电子病历评级要求见第 4.1 节，实施期 180 天。
+              </div>
+            </div>
+            <div class="row tiny muted-2" style="max-width:760px;margin:8px auto 0">
+              <span>第 4 页 · 版式：架构图（3 层）</span>
+              <span class="grow"></span>
+              <span>拖动元素可微调位置 · ⌥ 拖动复制</span>
+            </div>
+          </div>
+
+          <!-- 右：属性面板 -->
+          <div style="border-left:1px solid var(--line-2);padding:10px 12px;height:470px;overflow:hidden">
+
+            <div class="row small" style="margin-bottom:6px"><span class="b">版式</span><span class="grow"></span><span class="muted-2 tiny">6 种</span></div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px">
+              <div style="height:34px;border-radius:var(--r-xs);border:1px solid var(--line-3);background:var(--card);display:grid;place-items:center"><span style="width:22px;height:12px;border-radius:1px;background:var(--line-3)"></span></div>
+              <div style="height:34px;border-radius:var(--r-xs);border:1px solid var(--primary);background:var(--primary-50);display:grid;place-items:center"><span style="width:22px;height:12px;border-radius:1px;background:var(--primary-300)"></span></div>
+              <div style="height:34px;border-radius:var(--r-xs);border:1px solid var(--line-3);background:var(--card);display:grid;place-items:center"><span style="width:22px;height:7px;border-radius:1px;background:var(--line-3)"></span></div>
+              <div style="height:34px;border-radius:var(--r-xs);border:1px solid var(--line-3);background:var(--card);display:grid;place-items:center"><span style="width:22px;height:12px;border-radius:1px;background:var(--line-3)"></span></div>
+              <div style="height:34px;border-radius:var(--r-xs);border:1px solid var(--line-3);background:var(--card);display:grid;place-items:center"><span style="width:22px;height:9px;border-radius:1px;background:var(--line-3)"></span></div>
+              <div style="height:34px;border-radius:var(--r-xs);border:1px solid var(--line-3);background:var(--card);display:grid;place-items:center"><span style="width:12px;height:9px;border-radius:1px;background:var(--line-3)"></span></div>
+            </div>
+
+            <div class="row small" style="margin-bottom:6px"><span class="b">主题色</span><span class="grow"></span><span class="muted-2 tiny">医疗科技蓝</span></div>
+            <div class="row" style="gap:6px;margin-bottom:10px">
+              <span style="width:24px;height:24px;border-radius:50%;background:var(--primary);box-shadow:0 0 0 2px var(--card),0 0 0 3px var(--primary)"></span>
+              <span style="width:24px;height:24px;border-radius:50%;background:var(--blue)"></span>
+              <span style="width:24px;height:24px;border-radius:50%;background:var(--green)"></span>
+              <span style="width:24px;height:24px;border-radius:50%;background:var(--ink-2)"></span>
+            </div>
+
+            <div class="row small" style="margin-bottom:6px"><span class="b">字体</span><span class="grow"></span></div>
+            <div class="row" style="gap:6px;margin-bottom:10px">
+              <button class="btn btn--sm">思源黑体</button>
+              <button class="btn btn--sm">微软雅黑</button>
+              <button class="btn btn--sm">宋体</button>
+            </div>
+
+            <div class="row small" style="margin-bottom:6px"><span class="b">图片素材</span><span class="grow"></span><a class="btn btn--link tiny" href="../material/list.html">素材库 →</a></div>
+            <div class="row" style="gap:6px;margin-bottom:10px">
+              <div style="flex:1;height:44px;border-radius:var(--r-xs);background:linear-gradient(135deg,var(--primary-300),var(--primary-600))"></div>
+              <div style="flex:1;height:44px;border-radius:var(--r-xs);background:linear-gradient(135deg,var(--bg-2),var(--line-3));border:1px solid var(--line)"></div>
+              <div style="flex:1;height:44px;border-radius:var(--r-xs);background:linear-gradient(135deg,var(--primary-100),var(--primary-400))"></div>
+            </div>
+
+            <div class="row small" style="margin-bottom:4px"><span class="b">备注（讲标提词）</span><span class="grow"></span><span class="muted-2 tiny">仅演讲者可见</span></div>
+            <textarea class="textarea" style="min-height:56px;font-size:11.5px" placeholder="讲解要点">强调统一数据标准是本项目与院内既有 HIS 的最大差异点，可回答评委「重复建设」质疑。</textarea>
+
+            <div class="row small muted-2" style="margin-top:8px"><span>本页引用素材 2 个</span><span class="grow"></span><span class="mono">18.4KB</span></div>
+          </div>
+        </div>
+
+        <!-- 底部条 -->
+        <div class="row" style="padding:9px 14px;border-top:1px solid var(--line-2);background:var(--card-2);gap:10px">
+          <span class="small muted">页数 <b class="mono">4 / 12</b></span>
+          <span class="vdiv" style="height:16px"></span>
+          <span class="badge badge--amber badge--dot">一致性检查 · 3 处标题字号不一致</span>
+          <span class="small muted-2">第 5、8、11 页标题为 20pt，母版要求 19pt</span>
+          <span class="vdiv" style="height:16px"></span>
+          <span class="small muted-2">缺图 3 页 · 讲标 22 分钟</span>
+          <div class="grow"></div>
+          <button class="btn btn--sm btn--ghost">查看检查明细</button>
+          <button class="btn btn--sm" data-toast="已导出 12 页 pptx（含讲标稿）"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/></svg>导出讲标稿</button>
+          <button class="btn btn--sm btn--primary">导出 pptx</button>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

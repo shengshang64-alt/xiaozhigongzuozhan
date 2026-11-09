@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>上传文档 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="kb" data-screen="kb-upload" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>上传文档<span class="badge badge--primary">团队知识库 2,175 篇</span></h1>
+          <div class="desc">这一屏只做一件事：<b>把文件放进库里，并且知道它解析到哪一步了</b>。上传即建索引；「参与原子抽取」开关决定这篇会不会被拆成可复用的事实单元。</div>
+          <div class="meta">
+            <span class="kv">支持格式 <b>md / txt / docx / pdf / pptx / xlsx</b></span>
+            <span class="kv">本机解析 <b>不上传原文件</b></span>
+            <span class="kv">今日已上传 <b>9</b> 篇</span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <a class="btn" href="browse.html">← 回文档库</a>
+          <button class="btn btn--primary" data-toast="已开始上传并解析（示例）">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 8 5-5 5 5M12 3v12"/></svg>
+            开始上传
+          </button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：上传只有一个按钮加一句"支持 md/docx/pdf"，传完就消失——不知道解析成功没有、失败了为什么、传到了哪个目录；也没有"这篇要不要抽原子"的选择，导致 312 条待审核里混进大量 PPT 空页碎片。<b>拆后</b>：上传区 + 分类 + 标签 + 抽离开关一屏配齐，队列逐条显示解析进度与失败原因。</div>
+      </div>
+
+      <div class="split split--r">
+        <div class="col col--gap-16">
+
+          <!-- 上传区 + 配置 -->
+          <div class="card">
+            <div class="card-h">
+              <h3>① 选择文件</h3>
+              <span class="sub">可多选，一次最多 50 个 / 单文件 ≤ 100MB</span>
+              <div class="grow"></div>
+              <span class="badge badge--gray">已选 3 个</span>
+            </div>
+            <div class="card-b">
+              <div class="empty" style="padding:26px 18px">
+                <div class="ico">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 8 5-5 5 5M12 3v12"/></svg>
+                </div>
+                <h4>把文件拖到这里</h4>
+                <p>或点击选择 —— md / txt / docx / pdf / pptx / xlsx，也可直接拖 zip 或整个文件夹，自动保留目录结构</p>
+                <div class="acts">
+                  <button class="btn btn--sm" data-toast="已打开文件选择（示例）">选择文件</button>
+                  <button class="btn btn--sm" data-toast="已打开文件夹选择（示例）">选择文件夹</button>
+                </div>
+              </div>
+
+              <div class="divider"></div>
+
+              <div class="grid g2">
+                <div class="field">
+                  <label class="label req">归入分类</label>
+                  <div class="dd">
+                    <button class="btn" data-dd style="width:100%;justify-content:space-between"><span data-dd-label>团队知识库 / 政策法规</span>
+                      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+                    <div class="dd-menu" style="width:100%">
+                      <div class="dd-label">团队知识库</div>
+                      <div class="dd-item" data-label="团队知识库 / 标书范本">标书范本 · 142</div>
+                      <div class="dd-item" data-label="团队知识库 / 方案素材">方案素材 · 318</div>
+                      <div class="dd-item on" data-label="团队知识库 / 政策法规">政策法规 · 76</div>
+                      <div class="dd-item" data-label="团队知识库 / 产品资料">产品资料 · 264</div>
+                      <div class="dd-item" data-label="团队知识库 / 案例复盘">案例复盘 · 93</div>
+                      <div class="dd-item" data-label="团队知识库 / 医院客户">医院客户 · 180</div>
+                      <div class="dd-sep"></div>
+                      <div class="dd-label">我的笔记</div>
+                      <div class="dd-item" data-label="我的笔记 / 技术备忘">技术备忘 · 1,047</div>
+                      <div class="dd-item" data-label="我的笔记 / 答疑记录">答疑记录 · 386</div>
+                    </div>
+                  </div>
+                  <span class="help">分类决定"这是什么"；能用在哪些环节由原子场景决定</span>
+                </div>
+                <div class="field">
+                  <label class="label">标签</label>
+                  <input class="input" value="互联互通, 四甲, 测评标准">
+                  <span class="help">逗号分隔，用于检索筛选与按主题聚合</span>
+                </div>
+              </div>
+
+              <div class="divider"></div>
+
+              <div class="row">
+                <button class="switch on" data-toggle></button>
+                <div class="grow">
+                  <div class="small b">参与知识原子抽取</div>
+                  <div class="tiny muted-2">开启后自动拆成"一句话事实"候选，进入「原子审核」队列（312 条待审）。正文少于 200 字的碎片会自动跳过。</div>
+                </div>
+                <span class="badge badge--blue">推荐开启</span>
+              </div>
+              <div class="row mt12">
+                <label class="check"><input type="checkbox" checked> 同名文档自动去重（按标题 + 正文指纹）</label>
+                <div class="grow"></div>
+                <label class="check"><input type="checkbox" checked> 解析后自动建全文索引</label>
+              </div>
+            </div>
+            <div class="card-f row small">
+              <span>3 个文件 · 合计 8.4 MB · 预计 20 秒解析完</span>
+              <div class="grow"></div>
+              <button class="btn btn--sm" data-toast="已取消本次上传（示例）">取消</button>
+              <button class="btn btn--sm" data-toast="已开始上传并解析（示例）">开始上传（3）</button>
+            </div>
+          </div>
+
+          <!-- 已上传队列 -->
+          <div class="card">
+            <div class="card-h">
+              <h3>② 解析队列</h3>
+              <span class="sub">逐条显示解析状态，失败的写明原因</span>
+              <div class="grow"></div>
+              <div class="row" data-chips>
+                <span class="chip on">全部 <span class="n">3</span></span>
+                <span class="chip">解析中 <span class="n">1</span></span>
+                <span class="chip">已完成 <span class="n">1</span></span>
+                <span class="chip">失败 <span class="n">1</span></span>
+              </div>
+            </div>
+            <div class="card-b flush">
+              <table class="tbl">
+                <thead>
+                  <tr><th>文件名</th><th class="num" style="width:70px">大小</th><th style="width:120px">分类</th><th style="width:180px">解析状态</th><th class="w-ops" style="width:88px">操作</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="name">互联互通标准化成熟度测评方案（四甲部分）.pdf<span class="sub">含 68 页 · 抽取 46 条原子</span></td>
+                    <td class="num">2.8 MB</td>
+                    <td class="small">政策法规</td>
+                    <td>
+                      <div class="row" style="gap:5px"><span class="badge badge--green badge--dot">已完成</span><span class="tiny muted-2">18 秒</span></div>
+                      <div class="bar green mt4"><i style="width:100%"></i></div>
+                    </td>
+                    <td class="w-ops"><span class="row-ops">
+                      <button class="icon-btn" title="打开" data-toast="已打开文档（示例）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                    </span></td>
+                  </tr>
+                  <tr>
+                    <td class="name">智业软件文档编辑使用规范 V3.2.docx<span class="sub">24 页 · 已进入原子抽取</span></td>
+                    <td class="num">1.9 MB</td>
+                    <td class="small">标书范本</td>
+                    <td>
+                      <div class="row" style="gap:5px"><span class="spin"></span><span class="small">解析中 62%</span></div>
+                      <div class="bar mt4"><i style="width:62%"></i></div>
+                    </td>
+                    <td class="w-ops"><span class="row-ops">
+                      <button class="icon-btn" title="暂停" data-toast="已暂停解析（示例）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 4v16M16 4v16"/></svg></button>
+                    </span></td>
+                  </tr>
+                  <tr>
+                    <td class="name">2022-07-25 智业软件中医特色方案.pptx<span class="sub">多为图片页，正文过短</span></td>
+                    <td class="num">3.7 MB</td>
+                    <td class="small">方案素材</td>
+                    <td>
+                      <div class="row" style="gap:5px"><span class="badge badge--red badge--dot">失败</span><span class="tiny muted-2">正文仅 96 字</span></div>
+                      <div class="tiny muted-2 mt4">不足 200 字，撑不起一条原子（多为图片型 PPT 页）</div>
+                    </td>
+                    <td class="w-ops"><span class="row-ops">
+                      <button class="btn btn--sm" data-toast="已改为「仅入库、不抽原子」并重试（示例）">重试</button>
+                    </span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="card-f row small">
+              <span>共 3 个 · 成功 1 · 解析中 1 · 失败 1</span>
+              <div class="grow"></div>
+              <span class="tiny muted-2">失败不影响其它文件，可单独重试</span>
+            </div>
+          </div>
+
+          <div class="alert alert--amber">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+            <div class="grow"><b>解析质量说明</b>：PDF 若为扫描件（无文字层）会解析失败，需先 OCR；PPT 以图片为主时正文极少，建议只入库不抽原子。上传当天可随时看队列，关闭页面也不影响后台解析。</div>
+            <div class="acts"><button class="btn btn--sm" data-toast="已打开解析质量细则（示例）">看细则</button></div>
+          </div>
+
+        </div>
+
+        <!-- 右列 -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h">
+              <h3>上传记录</h3>
+              <div class="grow"></div>
+              <span class="tiny muted-2">最近 5 条</span>
+            </div>
+            <div class="card-b flush">
+              <div class="list">
+                <div class="list-row" style="padding:9px 12px">
+                  <span class="badge badge--green">成功</span>
+                  <div class="grow" style="min-width:0">
+                    <div class="t" style="font-size:12.3px;font-weight:600">互联互通测评方案（四甲）.pdf</div>
+                    <div class="s">入库 1 篇 · 政策法规 · 今天 10:22</div>
+                  </div>
+                </div>
+                <div class="list-row" style="padding:9px 12px">
+                  <span class="badge badge--green">成功</span>
+                  <div class="grow" style="min-width:0">
+                    <div class="t" style="font-size:12.3px;font-weight:600">三明市中西医结合医院技术方案.docx</div>
+                    <div class="s">入库 1 篇 · 案例复盘 · 昨天 16:40</div>
+                  </div>
+                </div>
+                <div class="list-row" style="padding:9px 12px">
+                  <span class="badge badge--red">失败</span>
+                  <div class="grow" style="min-width:0">
+                    <div class="t" style="font-size:12.3px;font-weight:600">扫描件_等保测评报告.pdf</div>
+                    <div class="s">无文字层，需先 OCR · 昨天 15:12</div>
+                  </div>
+                </div>
+                <div class="list-row" style="padding:9px 12px">
+                  <span class="badge badge--green">成功</span>
+                  <div class="grow" style="min-width:0">
+                    <div class="t" style="font-size:12.3px;font-weight:600">四甲答辩常见问题（我的笔记）.md</div>
+                    <div class="s">入库 1 篇 · 我的笔记 · 11-06 09:30</div>
+                  </div>
+                </div>
+                <div class="list-row" style="padding:9px 12px">
+                  <span class="badge badge--green">成功</span>
+                  <div class="grow" style="min-width:0">
+                    <div class="t" style="font-size:12.3px;font-weight:600">医院客户资料包.zip</div>
+                    <div class="s">入库 14 篇 · 医院客户 · 11-05 14:05</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="card-f row small">
+              <span>保留最近 50 条</span>
+              <div class="grow"></div>
+              <button class="btn btn--link" data-toast="已清空上传记录（示例）">清空记录</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>上传后会发生什么</h3></div>
+            <div class="card-b col col--gap-8">
+              <div class="row small"><span class="dot green"></span><span>切分段落，建全文索引 → 立刻可被检索</span></div>
+              <div class="row small"><span class="dot green"></span><span>识别分类与来源，补进目录树</span></div>
+              <div class="row small"><span class="dot amber"></span><span>开抽离开关的，生成候选原子进审核队列</span></div>
+              <div class="row small"><span class="dot gray"></span><span>原文件不上传，正文只留在本机与团队库</span></div>
+              <div class="divider" style="margin:2px 0"></div>
+              <div class="tiny muted-2">今天上传 9 篇，其中 2 篇因正文过短未参与抽取。当前待审核 312 条。</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>常见解析问题</h3></div>
+            <div class="card-b col col--gap-8">
+              <div class="field">
+                <label class="label">PDF 解析为空？</label>
+                <span class="help">多为扫描件（图片型），需先 OCR 再上传，或上传原始 Word 稿。</span>
+              </div>
+              <div class="field">
+                <label class="label">PPT 正文很少？</label>
+                <span class="help">PPT 多为图片与图表，正文极少；建议只入库、关闭抽原子。</span>
+              </div>
+              <div class="field">
+                <label class="label">重复上传会怎样？</label>
+                <span class="help">按标题 + 正文指纹判重，同名同内容只保留一条，并提示「已存在」。</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

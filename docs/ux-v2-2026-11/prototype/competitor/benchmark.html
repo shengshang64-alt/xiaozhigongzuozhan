@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>能力对标 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="competitor" data-screen="competitor-benchmark" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>能力对标<span class="badge badge--blue">我方 vs 卫宁健康</span></h1>
+          <div class="desc">写技术分之前先看这张表：<b>12 个维度上我们赢哪几项、输哪几项</b>。每格是「强弱 + 分值（5 分制）」，分值来自档案与中标数据估算，不是厂商官方口径，用于定位差异而非排名。</div>
+          <div class="meta">
+            <span class="kv">对标维度 <b>12</b></span>
+            <span class="kv">对标厂商 <b>3</b> 家 + 行业均值</span>
+            <span class="kv">我方领先 <b class="green">3</b> 项</span>
+            <span class="kv">落后 <b class="red">6</b> 项</span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn">切换为订单口径</button>
+          <button class="btn" data-toast="已导出对标表（示例）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/></svg><span>导出对标表</span></button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：能力对标是并列的第二个 Tab，一进来就是一张没有筛选、没有结论的六维雷达图，看不出「该重点写哪几章」。<b>拆后</b>：维度扩到 12 个（对齐招标文件的评分项），选中厂商即可比，右侧直接给 3 条差异说明 + 导出到标书技术分。</div>
+      </div>
+
+      <div class="filterbar">
+        <div class="row" style="gap:6px"><span class="small muted">我方</span>
+          <div class="dd">
+            <button class="btn btn--sm" data-dd><span data-dd-label>智业软件</span>
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+            <div class="dd-menu">
+              <div class="dd-label">选择我方主体</div>
+              <div class="dd-item on" data-label="智业软件">智业软件<span class="tick">✓</span></div>
+              <div class="dd-item" data-label="智业软件（厦门）">智业软件（厦门）</div>
+            </div>
+          </div>
+        </div>
+        <span class="muted-2">vs</span>
+        <div class="dd">
+          <button class="btn btn--sm" data-dd><span data-dd-label>卫宁健康</span>
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="dd-menu">
+            <div class="dd-label">选择对标厂商</div>
+            <div class="dd-item on" data-label="卫宁健康">卫宁健康<span class="tick">✓</span></div>
+            <div class="dd-item" data-label="东软集团">东软集团</div>
+            <div class="dd-item" data-label="创业慧康">创业慧康</div>
+            <div class="dd-item" data-label="东华医为">东华医为</div>
+          </div>
+        </div>
+        <span class="vdiv"></span>
+        <div class="row" data-chips>
+          <span class="chip on">全部 12</span>
+          <span class="chip">产品能力 6</span>
+          <span class="chip">交付服务 3</span>
+          <span class="chip">资质与信创 3</span>
+        </div>
+        <div class="grow"></div>
+        <span class="badge badge--gray">分值为档案估算，非厂商官方</span>
+      </div>
+
+      <div class="split split--main">
+        <!-- 能力矩阵 -->
+        <div class="card">
+          <div class="card-h">
+            <h3>能力矩阵</h3>
+            <span class="sub">5 分制 · 强 ≥4 / 中 3 / 弱 ≤2 / 无 0</span>
+            <div class="grow"></div>
+            <span class="small muted-2">数据来源：档案文本 + 五年中标订单 + 软著规模</span>
+          </div>
+          <div class="card-b flush">
+            <div class="tbl-wrap" style="border:0;box-shadow:none;border-radius:0">
+              <table class="tbl">
+                <thead>
+                  <tr>
+                    <th>能力维度</th>
+                    <th class="center">我方</th>
+                    <th class="center">卫宁健康</th>
+                    <th class="center">东软集团</th>
+                    <th class="center">行业均值</th>
+                    <th>判断</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td class="name">HIS 核心业务</td>
+                    <td class="center"><span class="badge badge--blue">中 3</span></td>
+                    <td class="center"><span class="badge badge--green">强 5</span></td>
+                    <td class="center"><span class="badge badge--green">强 4</span></td>
+                    <td class="center"><span class="mono small">3.6</span></td>
+                    <td class="small muted-2">落后 2 分</td></tr>
+                  <tr><td class="name">电子病历 EMR</td>
+                    <td class="center"><span class="badge badge--green">强 4</span></td>
+                    <td class="center"><span class="badge badge--green">强 5</span></td>
+                    <td class="center"><span class="badge badge--green">强 4</span></td>
+                    <td class="center"><span class="mono small">3.8</span></td>
+                    <td class="small muted-2">落后 1 分</td></tr>
+                  <tr><td class="name">检验 LIS</td>
+                    <td class="center"><span class="badge badge--blue">中 3</span></td>
+                    <td class="center"><span class="badge badge--green">强 4</span></td>
+                    <td class="center"><span class="badge badge--blue">中 3</span></td>
+                    <td class="center"><span class="mono small">3.2</span></td>
+                    <td class="small muted-2">持平行业</td></tr>
+                  <tr><td class="name">影像 PACS</td>
+                    <td class="center"><span class="badge badge--red">弱 2</span></td>
+                    <td class="center"><span class="badge badge--blue">中 3</span></td>
+                    <td class="center"><span class="badge badge--green">强 4</span></td>
+                    <td class="center"><span class="mono small">3.1</span></td>
+                    <td class="small muted-2"><b class="red">短板</b> · 建议联合伙伴</td></tr>
+                  <tr><td class="name">集成平台 ESB</td>
+                    <td class="center"><span class="badge badge--green">强 4</span></td>
+                    <td class="center"><span class="badge badge--green">强 5</span></td>
+                    <td class="center"><span class="badge badge--green">强 4</span></td>
+                    <td class="center"><span class="mono small">3.5</span></td>
+                    <td class="small muted-2">可打平</td></tr>
+                  <tr><td class="name">数据中台 / CDR</td>
+                    <td class="center"><span class="badge badge--green">强 4</span></td>
+                    <td class="center"><span class="badge badge--green">强 5</span></td>
+                    <td class="center"><span class="badge badge--green">强 4</span></td>
+                    <td class="center"><span class="mono small">3.4</span></td>
+                    <td class="small muted-2">落后 1 分</td></tr>
+                  <tr><td class="name">DRG / DIP</td>
+                    <td class="center"><span class="badge badge--green">强 4</span></td>
+                    <td class="center"><span class="badge badge--green">强 4</span></td>
+                    <td class="center"><span class="badge badge--green">强 5</span></td>
+                    <td class="center"><span class="mono small">3.3</span></td>
+                    <td class="small muted-2"><b class="green">领先</b> · 可作技术分主攻</td></tr>
+                  <tr><td class="name">互联网医院</td>
+                    <td class="center"><span class="badge badge--blue">中 3</span></td>
+                    <td class="center"><span class="badge badge--green">强 4</span></td>
+                    <td class="center"><span class="badge badge--blue">中 3</span></td>
+                    <td class="center"><span class="mono small">3.0</span></td>
+                    <td class="small muted-2">持平行业</td></tr>
+                  <tr><td class="name">AI 辅助 / 大模型</td>
+                    <td class="center"><span class="badge badge--red">弱 2</span></td>
+                    <td class="center"><span class="badge badge--green">强 5</span></td>
+                    <td class="center"><span class="badge badge--green">强 4</span></td>
+                    <td class="center"><span class="mono small">3.4</span></td>
+                    <td class="small muted-2"><b class="red">最大差距</b> · 需重点应对</td></tr>
+                  <tr><td class="name">信创适配</td>
+                    <td class="center"><span class="badge badge--green">强 4</span></td>
+                    <td class="center"><span class="badge badge--blue">中 3</span></td>
+                    <td class="center"><span class="badge badge--green">强 4</span></td>
+                    <td class="center"><span class="mono small">3.0</span></td>
+                    <td class="small muted-2"><b class="green">领先</b> · ONE-LINK 入选典型案例</td></tr>
+                  <tr><td class="name">实施交付</td>
+                    <td class="center"><span class="badge badge--green">强 4</span></td>
+                    <td class="center"><span class="badge badge--green">强 4</span></td>
+                    <td class="center"><span class="badge badge--green">强 5</span></td>
+                    <td class="center"><span class="mono small">3.5</span></td>
+                    <td class="small muted-2"><b class="green">领先</b> · 本地服务网密</td></tr>
+                  <tr><td class="name">售后服务</td>
+                    <td class="center"><span class="badge badge--green">强 4</span></td>
+                    <td class="center"><span class="badge badge--blue">中 3</span></td>
+                    <td class="center"><span class="badge badge--blue">中 3</span></td>
+                    <td class="center"><span class="mono small">3.2</span></td>
+                    <td class="small muted-2"><b class="green">领先</b> · 驻场 ≤2h 响应可承诺</td></tr>
+                </tbody>
+              </table>
+              <div class="tbl-foot">
+                <span class="small">12 个维度 · 我方胜 3 / 平 3 / 负 6</span>
+                <span class="vdiv"></span>
+                <span class="small muted-2">分值口径：档案关键词命中密度 + 软著规模 + 五年订单归一化</span>
+                <span class="grow"></span>
+                <span class="badge badge--blue">中</span><span class="small muted-2">3 分</span>
+                <span class="badge badge--red">弱</span><span class="small muted-2">≤2 分</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右：差异说明 -->
+        <div class="col col--gap-16 aside-sticky">
+          <div class="card">
+            <div class="card-h"><h3>差异说明</h3><div class="grow"></div><span class="badge badge--amber">3 条</span></div>
+            <div class="card-b col col--gap-12">
+              <div class="alert alert--green" style="margin:0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 6 9 17l-5-5"/></svg>
+                <div class="grow small"><b>我方优势（可攻）</b>：信创适配 4 vs 3、实施交付 4 vs 4（本地服务网更密）、DRG 4 vs 4。技术分里「国产化率」「驻场方案」两章应写足，这是我们唯一能拉开差距的地方。</div>
+              </div>
+              <div class="alert alert--red" style="margin:0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+                <div class="grow small"><b>最大差距（要防）</b>：AI 辅助落后卫宁 3 分（WiNGPT 已在 150+ 医院落地），PACS 落后东软 2 分。建议 AI 章节不硬碰自研，改打「已集成的第三方 AI 能力 + 数据治理底座」。</div>
+              </div>
+              <div class="alert alert--amber" style="margin:0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                <div class="grow small"><b>评分办法对应</b>：本项目技术分 55 分中，「系统集成与数据治理」占 18 分、「国产化适配」占 7 分——正好落在我方强项，建议这两章各配 2 个同等级医院案例。</div>
+              </div>
+            </div>
+            <div class="card-f">
+              <div class="small muted-2 mb8">导出内容：矩阵 CSV + 差异说明 + 建议引用页码</div>
+              <button class="btn btn--sm btn--primary" data-toast="已导出对标表，用于标书技术分（示例）" style="width:100%">导出对标表（用于标书技术分）</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>对标厂商快照</h3></div>
+            <div class="card-b">
+              <div class="kv-row"><span class="k">卫宁健康</span><span class="v">总分 46 / 60 · 市占第一（12.6%）</span></div>
+              <div class="kv-row"><span class="k">东软集团</span><span class="v">总分 45 / 60 · 医保系统第一</span></div>
+              <div class="kv-row"><span class="k">行业均值</span><span class="v">总分 38.3 / 60</span></div>
+              <div class="kv-row"><span class="k">我方</span><span class="v"><b>总分 38 / 60</b>（略低于均值）</span></div>
+            </div>
+            <div class="card-f"><a class="btn btn--link" href="profile.html">查看厂商档案 →</a></div>
+          </div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

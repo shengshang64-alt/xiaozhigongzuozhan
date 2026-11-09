@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工作台总览 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="home" data-screen="home" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>上午好，系统管理员<span class="badge badge--primary" style="font-size:11px">周五 · 11月8日</span></h1>
+          <div class="desc">这一屏只回答三件事：<b>今天必须处理什么</b>、<b>手上的项目卡在哪</b>、<b>下一步点哪里</b>。其余内容分别收在「待办中心」「投标节点」「投标复盘」三个 Tab 里，不再往下堆。</div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg><span>切换视图</span></button>
+          <button class="btn">消息中心 <span class="pill-count">6</span></button>
+          <button class="btn btn--primary" data-toast="已新建投标项目（示例）">＋ 新建投标项目</button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：首页 14 个区块、2,958px（滚 4 屏），欢迎横幅吃掉首屏 1/4，进行中事项被压到第 5 屏。<b>拆后</b>：本屏 5 个区块、目标高度 ≈1,050px，其余 3 屏各司其职。</div>
+      </div>
+
+      <!-- 关键预警：可点击直达 -->
+      <div class="stat-row">
+        <div class="stat is-red">
+          <div class="lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>资质到期（含未登记）</div>
+          <div class="val">4<small>项</small></div>
+          <div class="foot">已过期 1 · 30 天内 3 · <span class="red b">25 张未登记有效期</span></div>
+        </div>
+        <div class="stat is-orange">
+          <div class="lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>情报待确认</div>
+          <div class="val">29<small>条</small></div>
+          <div class="foot">较上周 <span class="green">-15%</span> · 其中 6 条为中标公告</div>
+        </div>
+        <div class="stat is-amber">
+          <div class="lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>最近投标截止</div>
+          <div class="val">25<small>天后</small></div>
+          <div class="foot">【UI测试】中医院信息化建设项目 · 厦门市中医院</div>
+        </div>
+        <div class="stat is-primary">
+          <div class="lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 5v14M5 12h14"/></svg>进行中事项</div>
+          <div class="val">3<small>项</small></div>
+          <div class="foot">标书 2 · 方案 1 · 本周需交付 1</div>
+        </div>
+      </div>
+
+      <div class="split split--main">
+        <div class="col col--gap-16">
+
+          <!-- 今日优先任务 -->
+          <div class="card">
+            <div class="card-h">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>今日优先任务</h3>
+              <span class="sub">按「截止时间 × 阻塞程度 × 是否本人负责」排序，只显示前 3 项</span>
+              <div class="grow"></div>
+              <a class="btn btn--sm" href="tasks.html">全部待办（7）→</a>
+            </div>
+            <div class="card-b flush">
+              <div class="list">
+                <div class="list-row">
+                  <span class="badge badge--red">阻断</span>
+                  <div class="grow">
+                    <div class="t">【UI测试】中医院信息化建设项目 · 补齐 3 项废标风险条款应答</div>
+                    <div class="s">标书④正文编写 · 距开标 25 天 · 系统检出「未逐条应答」3 处，未修复将判废标</div>
+                  </div>
+                  <div class="r mono small">今天 18:00</div>
+                  <button class="btn btn--sm btn--primary">去处理</button>
+                </div>
+                <div class="list-row">
+                  <span class="badge badge--orange">临期</span>
+                  <div class="grow">
+                    <div class="t">资质「信息系统安全等级保护三级」30 天内到期</div>
+                    <div class="s">资质台账 · 该证书被 2 个在投标项目引用，过期即触发废标条款</div>
+                  </div>
+                  <div class="r mono small">11月21日</div>
+                  <button class="btn btn--sm">续期登记</button>
+                </div>
+                <div class="list-row">
+                  <span class="badge badge--blue">待确认</span>
+                  <div class="grow">
+                    <div class="t">情报中心 29 条待确认，其中 6 条疑似可转商机</div>
+                    <div class="s">情报中心 · 已由 AI 完成摘要与打标，人工只需逐条确认</div>
+                  </div>
+                  <div class="r mono small">本周</div>
+                  <button class="btn btn--sm">开始审阅</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 进行中事项 -->
+          <div class="card">
+            <div class="card-h">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg>进行中事项</h3>
+              <span class="sub">点卡片回到上次中断的那一屏</span>
+              <div class="grow"></div>
+              <button class="btn btn--sm">按截止日排序</button>
+            </div>
+            <div class="card-b">
+              <div class="grid g3">
+                <div class="card card--hover" style="box-shadow:none">
+                  <div class="card-b tight">
+                    <div class="row"><span class="tag tag--line">标书</span><span class="grow"></span><span class="badge badge--blue">④ 正文</span></div>
+                    <div class="b mt8" style="font-size:12.8px">蚌埠医科大学第一附属医院智慧医疗核心</div>
+                    <div class="small muted-2 mono">BB2026SQCGZ052</div>
+                    <div class="mini-dots mt8"><i class="done"></i><i class="done"></i><i class="done"></i><i class="now"></i><i></i><i></i><i></i></div>
+                    <div class="row mt8 small"><span class="muted">11/11 章成稿</span><span class="grow"></span><span class="mono">已开标</span></div>
+                    <div class="bar mt8"><i style="width:72%"></i></div>
+                  </div>
+                  <div class="card-f row small"><span>3 处废标风险</span><span class="grow"></span><a class="btn btn--link" href="../bid/draft.html">继续编写 →</a></div>
+                </div>
+                <div class="card card--hover" style="box-shadow:none">
+                  <div class="card-b tight">
+                    <div class="row"><span class="tag tag--line">标书</span><span class="grow"></span><span class="badge badge--amber">③ 大纲</span></div>
+                    <div class="b mt8" style="font-size:12.8px">【UI测试】中医院信息化建设项目</div>
+                    <div class="small muted-2 mono">ZB-TEST-2026</div>
+                    <div class="mini-dots mt8"><i class="done"></i><i class="done"></i><i class="now"></i><i></i><i></i><i></i><i></i></div>
+                    <div class="row mt8 small"><span class="muted">大纲待确认（未确认不可生成正文）</span></div>
+                    <div class="bar amber mt8"><i style="width:34%"></i></div>
+                  </div>
+                  <div class="card-f row small"><span class="mono">距开标 25 天</span><span class="grow"></span><a class="btn btn--link" href="../bid/outline.html">去确认大纲 →</a></div>
+                </div>
+                <div class="card card--hover" style="box-shadow:none">
+                  <div class="card-b tight">
+                    <div class="row"><span class="tag tag--line">方案</span><span class="grow"></span><span class="badge badge--green">编写中</span></div>
+                    <div class="b mt8" style="font-size:12.8px">顾县人民医院 HIS 升级改造建设方案</div>
+                    <div class="small muted-2 mono">R01-solution-20261004</div>
+                    <div class="row mt8 small"><span class="muted">需求覆盖 18/22 · 事实接地 3 处待核</span></div>
+                    <div class="bar mt8"><i style="width:81%"></i></div>
+                  </div>
+                  <div class="card-f row small"><span>近期编辑</span><span class="grow"></span><a class="btn btn--link" href="../solution/editor.html">打开编辑 →</a></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 待跟进商机 -->
+          <div class="card">
+            <div class="card-h">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/></svg>该唤醒的商机</h3>
+              <span class="sub">超 30 天无跟进且有明确预算的商机（共 12 条，此处显示 4 条）</span>
+              <div class="grow"></div>
+              <a class="btn btn--sm" href="../customer/followup.html">跟进队列 →</a>
+            </div>
+            <div class="card-b flush">
+              <div class="tbl-wrap" style="border:0;box-shadow:none">
+                <table class="tbl">
+                  <thead><tr><th>客户 / 商机</th><th>阶段</th><th class="num">预算</th><th>最近跟进</th><th class="w-ops">操作</th></tr></thead>
+                  <tbody>
+                    <tr><td class="name">厦门市中医院 <span class="sub">信息化整体提升（含电子病历评级）</span></td><td><span class="badge badge--blue">需求确认</span></td><td class="num">286.0 万</td><td><span class="badge badge--orange">46 天前</span></td>
+                      <td class="w-ops"><button class="btn btn--sm">建跟进</button></td></tr>
+                    <tr><td class="name">安徽中医药大学第一附属医院 <span class="sub">一体化核心业务系统扩容</span></td><td><span class="badge badge--purple">方案交流</span></td><td class="num">412.0 万</td><td><span class="badge badge--orange">38 天前</span></td>
+                      <td class="w-ops"><button class="btn btn--sm">建跟进</button></td></tr>
+                    <tr><td class="name">蚌埠医科大学第一附属医院 <span class="sub">智慧医疗核心系统</span></td><td><span class="badge badge--amber">初步接洽</span></td><td class="num">—</td><td><span class="badge badge--red">92 天前</span></td>
+                      <td class="w-ops"><button class="btn btn--sm">建跟进</button></td></tr>
+                    <tr><td class="name">宣城市人民医院 <span class="sub">数据中台与互联互通四甲</span></td><td><span class="badge badge--blue">需求确认</span></td><td class="num">168.0 万</td><td><span class="badge badge--amber">31 天前</span></td>
+                      <td class="w-ops"><button class="btn btn--sm">建跟进</button></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 右列 -->
+        <div class="col col--gap-16 aside-sticky">
+
+          <div class="card">
+            <div class="card-h"><h3>快捷入口</h3></div>
+            <div class="card-b col col--gap-4">
+              <a class="list-row" style="border:0;padding:7px 6px;border-radius:var(--r-xs)" href="../bid/import.html">
+                <span class="ico" style="width:26px;height:26px;border-radius:6px;background:var(--primary-50);color:var(--primary-700);display:grid;place-items:center">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 8 5-5 5 5M12 3v12"/></svg></span>
+                <div class="grow"><div class="t" style="font-size:12.5px">导入招标文件</div><div class="s">解析评分办法与废标条款</div></div>
+              </a>
+              <a class="list-row" style="border:0;padding:7px 6px;border-radius:var(--r-xs)" href="../solution/list.html">
+                <span class="ico" style="width:26px;height:26px;border-radius:6px;background:var(--blue-bg);color:var(--blue);display:grid;place-items:center">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
+                <div class="grow"><div class="t" style="font-size:12.5px">新建方案</div><div class="s">从需求或模板起步</div></div>
+              </a>
+              <a class="list-row" style="border:0;padding:7px 6px;border-radius:var(--r-xs)" href="../ppt/quote-editor.html">
+                <span class="ico" style="width:26px;height:26px;border-radius:6px;background:var(--amber-bg);color:var(--amber);display:grid;place-items:center">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg></span>
+                <div class="grow"><div class="t" style="font-size:12.5px">做报价单</div><div class="s">改上次报价 / 从清单导入</div></div>
+              </a>
+              <a class="list-row" style="border:0;padding:7px 6px;border-radius:var(--r-xs)" href="../check/upload.html">
+                <span class="ico" style="width:26px;height:26px;border-radius:6px;background:var(--green-bg);color:var(--green);display:grid;place-items:center">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg></span>
+                <div class="grow"><div class="t" style="font-size:12.5px">标书交卷检查</div><div class="s">暗标 / 格式 / 废标项</div></div>
+              </a>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>未来 30 天节点</h3><div class="grow"></div><a class="btn btn--link" href="calendar.html">日历 →</a></div>
+            <div class="card-b">
+              <div class="timeline">
+                <div class="tl-item on">
+                  <div class="when">11-08 · 还有 0 天</div>
+                  <div class="what"><b>保证金缴纳截止</b><br>【UI测试】中医院 · 5.0 万元</div>
+                </div>
+                <div class="tl-item">
+                  <div class="when">11-14 · 6 天后</div>
+                  <div class="what"><b>答疑截止</b><br>蚌埠医科大一附院智慧医疗</div>
+                </div>
+                <div class="tl-item">
+                  <div class="when">11-21 · 13 天后</div>
+                  <div class="what"><b>证书到期</b><br>等保三级（被 2 个项目引用）</div>
+                </div>
+                <div class="tl-item">
+                  <div class="when">12-03 · 25 天后</div>
+                  <div class="what"><b>开标</b><br>【UI测试】中医院信息化建设项目</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>模型用量（今日）</h3><div class="grow"></div><a class="btn btn--link" href="../model/health.html">健康看板 →</a></div>
+            <div class="card-b col col--gap-12">
+              <div class="row"><span class="small muted">deepseek-v4.1-flash</span><span class="grow"></span><span class="mono small">62 次 · 98.4%</span></div>
+              <div class="bar"><i style="width:74%"></i></div>
+              <div class="row"><span class="small muted">glm-5.3-flash</span><span class="grow"></span><span class="mono small">21 次 · 100%</span></div>
+              <div class="bar green"><i style="width:26%"></i></div>
+              <div class="small muted-2">估算费用 ¥18.4 · 命中缓存 31%</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

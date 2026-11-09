@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>方案编辑器 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="solution" data-screen="solution-editor" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>顾县人民医院 HIS 升级改造建设方案<span class="badge badge--green">编写中</span></h1>
+          <div class="meta">
+            <span class="kv">编号 <b>R01-solution-20261004</b></span>
+            <span class="kv">类型 <b>定制方案</b></span>
+            <span class="kv green">已保存 <b>09:42</b></span>
+            <span class="kv">正文 <b>8/10</b> 章</span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn btn--icon" title="撤销"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7v6h6"/><path d="M3.5 13a9 9 0 1 0 2.6-8.4L3 7"/></svg></button>
+          <button class="btn btn--icon" title="重做"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 7v6h-6"/><path d="M20.5 13a9 9 0 1 1-2.6-8.4L21 7"/></svg></button>
+          <button class="btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg><span>预览</span></button>
+          <button class="btn">交付检查</button>
+          <button class="btn btn--primary" data-toast="正在导出 docx（示例）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/></svg><span>导出 docx</span></button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：编辑器以「页内嵌一块」的形式塞在方案列表下方，大纲树 / 正文 / 素材 / 评分卡 / 覆盖检查 / 格式设置 / 导出模板 8 个区块同屏（918 个按钮里近一半在这块），写作区实际只有 600px 宽。<b>拆后</b>：独立路由，<b>三栏各司其职</b>——左大纲、中正文、右自检，正文区宽度翻倍。</div>
+      </div>
+
+      <div class="split split--l">
+
+        <!-- 左：大纲树 -->
+        <div class="col col--gap-16">
+          <div class="card">
+            <div class="card-h">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>大纲</h3>
+              <span class="sub">10 章 · 4 个子节</span>
+            </div>
+            <div class="card-b tight">
+              <div class="tree">
+                <div class="tree-grp">第一章 项目背景与建设目标</div>
+                <div class="tree-item">1 项目背景</div>
+                <div class="tree-item">2 建设目标与范围</div>
+                <div class="tree-grp">第二章 现状与差距分析</div>
+                <div class="tree-item">3 现状调研结论</div>
+                <div class="tree-item indent">3.1 HIS 现状与瓶颈</div>
+                <div class="tree-item indent">3.2 与评级标准差距</div>
+                <div class="tree-grp">第三章 总体架构设计</div>
+                <div class="tree-item on">4 总体架构设计 <span class="n">编辑中</span></div>
+                <div class="tree-item indent">4.1 总体技术架构</div>
+                <div class="tree-item indent">4.2 应用架构</div>
+                <div class="tree-item indent">4.3 数据架构</div>
+                <div class="tree-item">5 技术路线与标准规范</div>
+                <div class="tree-grp">第四章 建设内容与投资</div>
+                <div class="tree-item">6 建设内容与系统清单</div>
+                <div class="tree-item">7 安全体系与等保合规 <span class="n red">缺 2 段</span></div>
+                <div class="tree-item">8 实施计划与组织保障</div>
+                <div class="tree-item">9 投资估算</div>
+                <div class="tree-item">10 效益与风险分析</div>
+              </div>
+            </div>
+            <div class="card-f row small">
+              <span class="muted">本章字数</span>
+              <span class="grow"></span>
+              <span class="mono"><b>1,240</b> / 2,000</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>素材弹药</h3><span class="sub">本章可引用 6 条</span></div>
+            <div class="card-b tight col col--gap-4">
+              <div class="list-row" style="border:0;padding:6px 6px">
+                <span class="badge badge--primary">知识原子</span>
+                <div class="grow"><div class="t" style="font-size:12.2px">一云一平台多应用架构</div><div class="s">来自 3 个已中标方案</div></div>
+              </div>
+              <div class="list-row" style="border:0;padding:6px 6px">
+                <span class="badge badge--blue">案例</span>
+                <div class="grow"><div class="t" style="font-size:12.2px">顾县人民医院现网拓扑</div><div class="s">客户档案附件 · 2026-09-12</div></div>
+              </div>
+              <div class="list-row" style="border:0;padding:6px 6px">
+                <span class="badge badge--gray">标准</span>
+                <div class="grow"><div class="t" style="font-size:12.2px">WS/T 500-2016 电子病历共享文档规范</div><div class="s">政策法规库</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 中 + 右 -->
+        <div class="split split--r">
+
+          <!-- 中：正文编辑区 -->
+          <div class="col col--gap-16">
+            <div class="card">
+              <div class="card-h">
+                <h3>第 3 章 总体架构设计<span class="sub">4.1 总体技术架构</span></h3>
+                <div class="grow"></div>
+                <span class="badge badge--amber">AI 味 0.18</span>
+              </div>
+              <div class="card-b tight">
+                <div class="row wrap" style="gap:4px">
+                  <button class="btn btn--sm">H1</button>
+                  <button class="btn btn--sm">H2</button>
+                  <button class="btn btn--sm"><b>B</b></button>
+                  <button class="btn btn--sm">表格</button>
+                  <button class="btn btn--sm">图表</button>
+                  <button class="btn btn--sm">引用</button>
+                  <button class="btn btn--sm">插入知识原子</button>
+                  <span class="grow"></span>
+                  <button class="btn btn--sm">去 AI 味精修</button>
+                </div>
+              </div>
+              <div class="card-b" style="line-height:1.85">
+                <p style="font-size:14px;font-weight:650;margin-bottom:8px">4.1 总体技术架构</p>
+                <p class="mb8">本项目在顾县人民医院现有 HIS 基础上做<b>升级改造而非推倒重建</b>：保留 2019 年上线的核心业务库与医保结算链路，替换应用层与集成层，采用「一云一平台多应用」的总体架构。基础设施层沿用院内虚拟化资源池，新增 4 台超融合节点做双活部署，单节点故障不影响门急诊业务连续性。</p>
+                <p class="mb8">应用层按智慧医疗、智慧服务、智慧管理三个域重组。三个域之间不直接调用，全部经统一集成平台交换数据，接口同时支持 HL7 V2.x 与 FHIR R4，避免后续对接省级平台时二次改造。集成平台复用医院 2023 年采购的 ESB，仅做版本升级与消息队列扩容。</p>
+                <p class="mb8">数据层建设统一数据中台：以患者主索引 EMRPI 为基准，按 WS/T 500 与 WS 445 完成主数据治理，历史数据做增量清洗而非全量迁移，保证切换期间门诊不停机。中台同时承担互联互通四甲的文档共享库职责。</p>
+                <div class="hairline mb8" style="padding:18px 14px;text-align:center">
+                  <div class="row" style="justify-content:center;gap:7px">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg>
+                    <span class="small b">总体架构图占位</span>
+                  </div>
+                  <div class="small muted-2 mt4">Mermaid 源码已生成 · 可切换为上传图片 / 复用素材库架构图</div>
+                  <div class="row mt8" style="justify-content:center;gap:6px">
+                    <button class="btn btn--sm">编辑 Mermaid</button>
+                    <button class="btn btn--sm">替换为图片</button>
+                  </div>
+                </div>
+                <p class="mb8">安全层按等保三级要求设计，边界部署下一代防火墙与数据库审计，院内终端准入与 HIS 账号体系打通。等保测评安排在系统上线前 30 天，与医院现有等保三级证书到期时间错开。</p>
+                <div class="tbl-wrap mt8" style="box-shadow:none">
+                  <table class="tbl">
+                    <thead><tr><th>层次</th><th>建设方式</th><th>关键指标</th></tr></thead>
+                    <tbody>
+                      <tr><td class="name">基础设施层</td><td>沿用资源池 + 4 节点超融合双活</td><td class="mono">可用性 ≥ 99.9%</td></tr>
+                      <tr><td class="name">数据层</td><td>统一数据中台 + EMRPI 主索引</td><td class="mono">主数据一致率 ≥ 98%</td></tr>
+                      <tr><td class="name">应用层</td><td>三大域重组，经集成平台互联</td><td class="mono">接口响应 &lt; 300ms</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="card-f row small">
+                <span class="muted">本章 <b class="mono">1,240</b> 字 · 图表 1 · 表格 1</span>
+                <span class="grow"></span>
+                <span class="muted-2">AI 续写会沿用本节语气与术语</span>
+                <button class="btn btn--sm">AI 续写本段</button>
+              </div>
+            </div>
+
+            <div class="alert alert--amber">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+              <div class="grow"><b>第 7 章仍缺 2 段结论</b>（安全体系与等保合规），现在导出会在目录页留空并在交付检查里标红。</div>
+              <div class="acts"><button class="btn btn--sm">跳到第 7 章</button></div>
+            </div>
+          </div>
+
+          <!-- 右：检查栏 -->
+          <div class="col col--gap-16">
+            <div class="card">
+              <div class="card-h"><h3>需求覆盖</h3><span class="sub">22 条要求</span></div>
+              <div class="card-b">
+                <div class="row" style="justify-content:center">
+                  <div class="donut" style="width:104px;height:104px;flex:0 0 104px;background:conic-gradient(var(--primary) 0 82%,var(--line-2) 82% 100%)">
+                    <div class="ctr"><b style="font-size:16px">82%</b><span>覆盖率</span></div>
+                  </div>
+                </div>
+                <div class="row mt8" style="justify-content:center;gap:14px">
+                  <span class="small"><span class="dot green"></span> 已覆盖 <b class="mono">18</b></span>
+                  <span class="small"><span class="dot amber"></span> 部分 <b class="mono">0</b></span>
+                  <span class="small"><span class="dot red"></span> 未覆盖 <b class="mono">4</b></span>
+                </div>
+                <div class="divider"></div>
+                <div class="small b mb8">4 条未覆盖（点击定位）</div>
+                <div class="col col--gap-4">
+                  <div class="list-row" style="border:0;padding:5px 6px">
+                    <span class="badge badge--red">未覆盖</span>
+                    <div class="grow"><div class="t" style="font-size:12.2px">移动护理与输液闭环</div><div class="s">需求 12 · 建议写入第 4 章</div></div>
+                  </div>
+                  <div class="list-row" style="border:0;padding:5px 6px">
+                    <span class="badge badge--red">未覆盖</span>
+                    <div class="grow"><div class="t" style="font-size:12.2px">检验危急值 5 分钟上报</div><div class="s">需求 15 · 缺具体时效承诺</div></div>
+                  </div>
+                  <div class="list-row" style="border:0;padding:5px 6px">
+                    <span class="badge badge--red">未覆盖</span>
+                    <div class="grow"><div class="t" style="font-size:12.2px">影像云胶片调阅</div><div class="s">需求 18 · 建议引用 PACS 案例</div></div>
+                  </div>
+                  <div class="list-row" style="border:0;padding:5px 6px">
+                    <span class="badge badge--red">未覆盖</span>
+                    <div class="grow"><div class="t" style="font-size:12.2px">双活机房切换演练</div><div class="s">需求 21 · 缺实施计划支撑</div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-h"><h3>事实接地检查</h3><span class="sub">3 处待核</span></div>
+              <div class="card-b tight">
+                <div class="list-row" style="border:0;padding:6px">
+                  <span class="badge badge--amber">数值</span>
+                  <div class="grow"><div class="t" style="font-size:12.2px">「门诊峰值 4,200 人次」</div><div class="s">来源未标注，知识库无对应记录</div></div>
+                  <button class="btn btn--sm">核实</button>
+                </div>
+                <div class="list-row" style="border:0;padding:6px">
+                  <span class="badge badge--amber">厂商名</span>
+                  <div class="grow"><div class="t" style="font-size:12.2px">「原 HIS 由东华承建」</div><div class="s">客户档案记载为创业慧康</div></div>
+                  <button class="btn btn--sm">核实</button>
+                </div>
+                <div class="list-row" style="border:0;padding:6px">
+                  <span class="badge badge--red">资质</span>
+                  <div class="grow"><div class="t" style="font-size:12.2px">引用等保三级证书已 30 天内到期</div><div class="s">资质台账编号 Q-2023-018</div></div>
+                  <button class="btn btn--sm">核实</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-h"><h3>写作体检</h3><span class="sub">本章</span></div>
+              <div class="card-b col col--gap-12">
+                <div>
+                  <div class="row small"><span class="muted">AI 味</span><span class="grow"></span><span class="mono green b">0.18</span><span class="muted-2 tiny">目标 ≤ 0.25</span></div>
+                  <div class="bar green mt4"><i style="width:18%"></i></div>
+                </div>
+                <div>
+                  <div class="row small"><span class="muted">枚举密度</span><span class="grow"></span><span class="mono amber b">17%</span><span class="muted-2 tiny">偏高</span></div>
+                  <div class="bar amber mt4"><i style="width:17%"></i></div>
+                </div>
+                <div>
+                  <div class="row small"><span class="muted">术语一致性</span><span class="grow"></span><span class="mono green b">96%</span><span class="muted-2 tiny">「电子病历」3 处写「EMR」</span></div>
+                  <div class="bar green mt4"><i style="width:96%"></i></div>
+                </div>
+                <div class="row"><button class="btn btn--sm">一键统一术语</button><button class="btn btn--sm">查看体检报告</button></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

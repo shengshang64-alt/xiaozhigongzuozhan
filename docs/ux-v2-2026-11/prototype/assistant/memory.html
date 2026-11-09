@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>记忆 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="assistant" data-screen="assistant-memory" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>记忆<span class="badge badge--primary">42 条</span></h1>
+          <div class="desc">记忆是<b>助手区别于普通聊天框的核心资产</b>：它记住你的口径、习惯与项目事实，下次不用重复交代。每条记忆都能看到<b>从哪个会话学的</b>，也能随时改、停用、删。技能解决「怎么干」，记忆解决「按谁的规矩干」。</div>
+          <div class="meta">
+            <span class="kv">最近提取 <b>今天 09:14</b></span>
+            <span class="kv">本月新增 <b>6</b> 条</span>
+            <span class="kv">近 7 天被引用 <b>38</b> 次</span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn" data-toast="已导出 42 条记忆为 CSV">导出记忆</button>
+          <button class="btn btn--primary" onclick="Proto.open('add-memory')">＋ 新增记忆</button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：记忆只是「记忆」Tab 里的一片列表，没有状态、没有来源、不能停用——学错了也只能整条删。<b>拆后</b>：独立成屏，补上类型、来源会话、最近使用、活跃/已失效状态，并给出「记忆被怎么使用」的说明与自动提取开关。</div>
+      </div>
+
+      <div class="databar">
+        <div class="item">记忆条目 <b>42</b></div>
+        <div class="item green">活跃 <b>38</b></div>
+        <div class="item">已失效 <b>4</b></div>
+        <div class="item blue">本月新增 <b>6</b></div>
+        <div class="item">近 7 天引用 <b>38</b> 次</div>
+        <div class="grow"></div>
+        <div class="item">自动提取 <b>开</b></div>
+      </div>
+
+      <div class="filterbar">
+        <div class="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input class="input" placeholder="搜索记忆内容，如「折扣」「本地化」「等保」">
+        </div>
+        <div class="row" data-chips>
+          <span class="chip on">全部 <span class="n">42</span></span>
+          <span class="chip">偏好 <span class="n">19</span></span>
+          <span class="chip">事实 <span class="n">17</span></span>
+          <span class="chip">决策 <span class="n">6</span></span>
+        </div>
+        <div class="grow"></div>
+        <div class="dd">
+          <button class="btn" data-dd><span data-dd-label>按最近使用</span>
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div class="dd-menu">
+            <div class="dd-label">排序方式</div>
+            <div class="dd-item on" data-label="按最近使用">按最近使用</div>
+            <div class="dd-item" data-label="按创建时间">按创建时间</div>
+            <div class="dd-item" data-label="按引用次数">按引用次数</div>
+          </div>
+        </div>
+        <button class="btn">类型筛选 <span class="badge badge--primary">1</span></button>
+      </div>
+
+      <div class="split split--main">
+        <div class="tbl-wrap">
+          <div class="tbl-scroll">
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th>记忆内容</th>
+                  <th>类型</th>
+                  <th>来源会话</th>
+                  <th>创建时间</th>
+                  <th>最近使用</th>
+                  <th>状态</th>
+                  <th class="w-ops">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="name">我方报价习惯按 92% 折扣出，低于 85% 需走二级审批<div class="sub">引用 12 次 · 在报价单与方案报价页生效</div></td>
+                  <td><span class="badge badge--purple">偏好</span></td>
+                  <td class="small muted">报价 92 折能不能批</td>
+                  <td class="mono small">2026-10-28</td>
+                  <td class="small">今天 09:14</td>
+                  <td><span class="badge badge--green">活跃</span></td>
+                  <td class="w-ops"><span class="row-ops">
+                    <button class="icon-btn" title="编辑"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+                    <button class="icon-btn" title="失效"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M4.9 4.9l14.2 14.2"/></svg></button>
+                    <button class="icon-btn danger" title="删除" onclick="Proto.open('del-memory')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+                  </span></td>
+                </tr>
+                <tr>
+                  <td class="name">蚌埠医科大学第一附属医院偏好本地化部署，不接受公有云方案<div class="sub">引用 5 次 · 与该客户相关的方案会自动带此前提</div></td>
+                  <td><span class="badge badge--blue">事实</span></td>
+                  <td class="small muted">蚌埠标书还差哪几章</td>
+                  <td class="mono small">2026-11-02</td>
+                  <td class="small">今天 09:12</td>
+                  <td><span class="badge badge--green">活跃</span></td>
+                  <td class="w-ops"><span class="row-ops">
+                    <button class="icon-btn" title="编辑"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+                    <button class="icon-btn" title="失效"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M4.9 4.9l14.2 14.2"/></svg></button>
+                    <button class="icon-btn danger" title="删除" onclick="Proto.open('del-memory')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+                  </span></td>
+                </tr>
+                <tr>
+                  <td class="name">本人职称是医疗售前工程师，汇报对象是科室主任，方案要能直接给院方看<div class="sub">引用 9 次 · 决定输出语气与详略</div></td>
+                  <td><span class="badge badge--blue">事实</span></td>
+                  <td class="small muted">首次会话 · 自我介绍</td>
+                  <td class="mono small">2026-09-20</td>
+                  <td class="small">11-07</td>
+                  <td><span class="badge badge--green">活跃</span></td>
+                  <td class="w-ops"><span class="row-ops">
+                    <button class="icon-btn" title="编辑"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+                    <button class="icon-btn" title="失效"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M4.9 4.9l14.2 14.2"/></svg></button>
+                    <button class="icon-btn danger" title="删除" onclick="Proto.open('del-memory')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2-2L5 6"/></svg></button>
+                  </span></td>
+                </tr>
+                <tr>
+                  <td class="name">标书正文统一自称「我方」，不用「我司」「本公司」<div class="sub">引用 21 次 · 标书正文与方案全文生效</div></td>
+                  <td><span class="badge badge--purple">偏好</span></td>
+                  <td class="small muted">安徽中医药大项目交卷自查</td>
+                  <td class="mono small">2026-10-15</td>
+                  <td class="small">11-06</td>
+                  <td><span class="badge badge--green">活跃</span></td>
+                  <td class="w-ops"><span class="row-ops">
+                    <button class="icon-btn" title="编辑"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+                    <button class="icon-btn" title="失效"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M4.9 4.9l14.2 14.2"/></svg></button>
+                    <button class="icon-btn danger" title="删除" onclick="Proto.open('del-memory')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2-2L5 6"/></svg></button>
+                  </span></td>
+                </tr>
+                <tr>
+                  <td class="name">每份方案必须写「数据迁移」与「等保合规」两节，评审必看<div class="sub">引用 7 次 · 方案大纲生成时自动补这两节</div></td>
+                  <td><span class="badge badge--amber">决策</span></td>
+                  <td class="small muted">顾县人民医院 HIS 方案大纲</td>
+                  <td class="mono small">2026-10-30</td>
+                  <td class="small">11-06</td>
+                  <td><span class="badge badge--green">活跃</span></td>
+                  <td class="w-ops"><span class="row-ops">
+                    <button class="icon-btn" title="编辑"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+                    <button class="icon-btn" title="失效"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M4.9 4.9l14.2 14.2"/></svg></button>
+                    <button class="icon-btn danger" title="删除" onclick="Proto.open('del-memory')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2-2L5 6"/></svg></button>
+                  </span></td>
+                </tr>
+                <tr>
+                  <td class="name">竞品对比只写卫宁健康 / 东软集团 / 创业慧康三家，其余不入表<div class="sub">引用 4 次 · 竞品分析页与标书对比章节生效</div></td>
+                  <td><span class="badge badge--amber">决策</span></td>
+                  <td class="small muted">上周中标情报摘要</td>
+                  <td class="mono small">2026-09-28</td>
+                  <td class="small">11-05</td>
+                  <td><span class="badge badge--green">活跃</span></td>
+                  <td class="w-ops"><span class="row-ops">
+                    <button class="icon-btn" title="编辑"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+                    <button class="icon-btn" title="失效"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M4.9 4.9l14.2 14.2"/></svg></button>
+                    <button class="icon-btn danger" title="删除" onclick="Proto.open('del-memory')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2-2L5 6"/></svg></button>
+                  </span></td>
+                </tr>
+                <tr>
+                  <td class="name">金额一律用「万元」并保留 1 位小数，不用「元」<div class="sub">引用 15 次 · 涉及金额的输出统一换算</div></td>
+                  <td><span class="badge badge--purple">偏好</span></td>
+                  <td class="small muted">报价 92 折能不能批</td>
+                  <td class="mono small">2026-09-25</td>
+                  <td class="small">11-04</td>
+                  <td><span class="badge badge--green">活跃</span></td>
+                  <td class="w-ops"><span class="row-ops">
+                    <button class="icon-btn" title="编辑"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+                    <button class="icon-btn" title="失效"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M4.9 4.9l14.2 14.2"/></svg></button>
+                    <button class="icon-btn danger" title="删除" onclick="Proto.open('del-memory')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2-2L5 6"/></svg></button>
+                  </span></td>
+                </tr>
+                <tr>
+                  <td class="name">情报摘要先给结论再给来源，单次不超过 5 条<div class="sub">引用 6 次 · 已于 11-03 被新口径替换</div></td>
+                  <td><span class="badge badge--purple">偏好</span></td>
+                  <td class="small muted">上周中标情报摘要</td>
+                  <td class="mono small">2026-09-22</td>
+                  <td class="small muted">11-03</td>
+                  <td><span class="badge badge--gray">已失效</span></td>
+                  <td class="w-ops"><span class="row-ops">
+                    <button class="icon-btn" title="编辑"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+                    <button class="icon-btn" title="恢复"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></button>
+                    <button class="icon-btn danger" title="删除" onclick="Proto.open('del-memory')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+                  </span></td>
+                </tr>
+                <tr>
+                  <td class="name">旧口径：标书章节标题需带「第 X 章」中文编号<div class="sub">引用 0 次 · 已改由格式刷新统一处理</div></td>
+                  <td><span class="badge badge--blue">事实</span></td>
+                  <td class="small muted">蚌埠标书还差哪几章</td>
+                  <td class="mono small">2026-08-10</td>
+                  <td class="small muted">10-20</td>
+                  <td><span class="badge badge--gray">已失效</span></td>
+                  <td class="w-ops"><span class="row-ops">
+                    <button class="icon-btn" title="编辑"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+                    <button class="icon-btn" title="恢复"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></button>
+                    <button class="icon-btn danger" title="删除" onclick="Proto.open('del-memory')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+                  </span></td>
+                </tr>
+                <tr>
+                  <td class="name">顾县人民医院决策链：设备科提需求、信息科把关、院长拍板<div class="sub">引用 3 次 · 跟进话术会自动按这条排人</div></td>
+                  <td><span class="badge badge--blue">事实</span></td>
+                  <td class="small muted">顾县人民医院 HIS 方案大纲</td>
+                  <td class="mono small">2026-10-25</td>
+                  <td class="small">11-02</td>
+                  <td><span class="badge badge--green">活跃</span></td>
+                  <td class="w-ops"><span class="row-ops">
+                    <button class="icon-btn" title="编辑"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg></button>
+                    <button class="icon-btn" title="失效"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M4.9 4.9l14.2 14.2"/></svg></button>
+                    <button class="icon-btn danger" title="删除" onclick="Proto.open('del-memory')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+                  </span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="tbl-foot">
+            <span>共 42 条 · 当前筛选 10 条</span>
+            <span class="vdiv"></span>
+            <button class="btn btn--sm">批量失效</button>
+            <button class="btn btn--sm">批量删除</button>
+            <span class="grow"></span>
+            <div class="pager"><button disabled>‹</button><button class="on">1</button><button>2</button><button>3</button><button>›</button></div>
+          </div>
+        </div>
+
+        <div class="col col--gap-16 aside-sticky">
+          <div class="card">
+            <div class="card-h"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>记忆是怎么被用的</h3></div>
+            <div class="card-b col col--gap-12">
+              <div class="alert alert--primary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>
+                <div class="grow">每次提问，助手会先挑<b>最多 5 条相关记忆</b>放进上下文，再回答。所以「报价折扣」这种偏好不需要你每次重复。</div>
+              </div>
+              <div class="col col--gap-4 small">
+                <div class="row"><span class="badge badge--gray">1</span><span class="grow">你提问 → 按关键词 + 类型召回记忆</span></div>
+                <div class="row"><span class="badge badge--gray">2</span><span class="grow">命中的记忆作为「前提」参与生成</span></div>
+                <div class="row"><span class="badge badge--gray">3</span><span class="grow">回答末尾标注「引用：记忆 2 条」</span></div>
+                <div class="row"><span class="badge badge--gray">4</span><span class="grow">已失效记忆不再参与召回，但保留可查</span></div>
+              </div>
+              <div class="divider" style="margin:0"></div>
+              <div class="row">
+                <div class="grow"><div class="small b">AI 自动提取记忆</div><div class="tiny muted-2">从对话里自动识别偏好与事实，月度上限 20 条</div></div>
+                <button class="switch on" data-toggle></button>
+              </div>
+              <div class="row small muted-2">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+                <span class="grow">自动提取的记忆会在列表里标「待确认」，确认后才参与召回。</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>本月提取 6 条</h3><div class="grow"></div><button class="btn btn--link tiny">待确认 2 →</button></div>
+            <div class="card-b col col--gap-8">
+              <div class="row small"><span class="dot amber"></span><span class="grow trunc">客户不接受「分三年付款」的表述</span><span class="muted-2 tiny">待确认</span></div>
+              <div class="row small"><span class="dot amber"></span><span class="grow trunc">标书偏离表须标注正/负偏离</span><span class="muted-2 tiny">待确认</span></div>
+              <div class="row small"><span class="dot green"></span><span class="grow trunc">金额用万元并保留 1 位小数</span><span class="muted-2 tiny">已采纳</span></div>
+              <div class="row small"><span class="dot green"></span><span class="grow trunc">蚌埠项目偏好本地化部署</span><span class="muted-2 tiny">已采纳</span></div>
+            </div>
+          </div>
+
+          <div class="fold">
+            <div class="fold-h" data-fold>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              搜不到记忆时是什么样
+              <div class="grow"></div>
+              <span class="tiny muted-2">展开看空态</span>
+            </div>
+            <div class="fold-b" hidden>
+              <div class="empty empty--plain">
+                <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg></div>
+                <h4>没有「昆明」相关的记忆</h4>
+                <p>助手只记长期有效的东西——换一个关键词，或直接把这条口径手动加进来，下次问答就会自动带上。</p>
+                <div class="acts"><button class="btn btn--sm">＋ 新增这条记忆</button><button class="btn btn--sm">清空搜索</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+
+<!-- 新增记忆 -->
+<div class="mask" data-modal="add-memory" style="display:none">
+  <div class="modal" style="--mw:560px">
+    <div class="modal-h"><h3>新增记忆<div class="sub">写一句以后不用再交代的话</div></h3><button class="icon-btn" onclick="Proto.close('add-memory')">✕</button></div>
+    <div class="modal-b col col--gap-12">
+      <div class="field"><label class="label req">记忆内容</label>
+        <textarea class="textarea" placeholder="例：我方报价习惯按 92% 折扣出，低于 85% 需二级审批"></textarea>
+        <span class="help">写「口径 / 事实 / 已定的决策」，不要写会变的信息（如某次开标时间）。</span></div>
+      <div class="grid g2">
+        <div class="field"><label class="label req">类型</label><select class="select"><option>偏好</option><option>事实</option><option>决策</option></select></div>
+        <div class="field"><label class="label">生效范围</label><select class="select"><option>全部功能</option><option>仅助手对话</option><option>仅标书 / 方案</option></select></div>
+      </div>
+    </div>
+    <div class="modal-f"><span class="tip">新增后立即参与召回</span><div class="grow"></div>
+      <button class="btn btn--sm" onclick="Proto.close('add-memory')">取消</button>
+      <button class="btn btn--sm btn--primary" onclick="Proto.close('add-memory')">保存记忆</button></div>
+  </div>
+</div>
+
+<!-- 删除记忆 -->
+<div class="mask" data-modal="del-memory" style="display:none">
+  <div class="modal modal--danger" style="--mw:480px">
+    <div class="modal-h"><h3>删除这条记忆？<div class="sub">助手将不再按这条前提回答</div></h3><button class="icon-btn" onclick="Proto.close('del-memory')">✕</button></div>
+    <div class="modal-b">
+      <div class="danger-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        <div>删除不可恢复。如果只是<b>暂时不想让它生效</b>，用「失效」更合适——失效后不再参与召回，但记录还在。</div>
+      </div>
+    </div>
+    <div class="modal-f"><span class="tip">影响范围：1 条记忆</span><div class="grow"></div>
+      <button class="btn btn--sm" onclick="Proto.close('del-memory')">取消</button>
+      <button class="btn btn--sm btn--danger-solid" onclick="Proto.close('del-memory')">确认删除</button></div>
+  </div>
+</div>
+
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>

@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>报价编辑 · 小智工作站</title>
+<link rel="stylesheet" href="../assets/design.css">
+</head>
+<body data-mod="ppt" data-screen="quote-editor" data-base="../">
+<div class="app">
+  <div id="shell-side"></div>
+  <div class="main">
+    <div id="shell-top"></div>
+    <div id="shell-tabs"></div>
+    <main class="content">
+      <div data-subtabs></div>
+
+      <div class="ph">
+        <div class="ph-main">
+          <h1>Q-20261108-04 · 厦门市中医院<span class="badge badge--blue">已发出 v3</span><span class="badge badge--orange">超 100 万 · 二级审批中</span></h1>
+          <div class="desc">左边逐行改数量、单价与折扣，右边金额实时变；<b>折扣低于 85% 会先弹确认</b>，不允许悄悄出单。</div>
+          <div class="meta">
+            <span class="kv">明细 <b>8</b> 项</span>
+            <span class="kv">含税合计 <b>286.0 万</b></span>
+            <span class="kv">毛利率 <b class="orange">21.4%</b></span>
+          </div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn btn--sm"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m15 18-6-6 6-6"/></svg>返回清单</button>
+          <button class="btn btn--sm">查看历史版本</button>
+        </div>
+      </div>
+
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <div><b>拆前</b>：报价与 PPT 同页，改一行单价要在「PPT 与报价」Tab 之间来回切，右侧同步显示的是 PPT 指标；折扣无底线提示，最低价靠人记。<b>拆后</b>：报价编辑独占一屏，四类明细 + 税 + 毛利常驻右侧，触底价强制二次确认。</div>
+      </div>
+
+      <!-- 顶部：客户 / 项目 / 有效期 -->
+      <div class="card mb12">
+        <div class="card-b tight">
+          <div class="row wrap" style="gap:12px;align-items:flex-end">
+            <div class="field" style="width:190px"><label class="label req">客户</label><input class="input" value="厦门市中医院"></div>
+            <div class="field" style="flex:1;min-width:230px"><label class="label req">项目</label><input class="input" value="信息化整体提升（含电子病历评级）"></div>
+            <div class="field" style="width:136px"><label class="label">有效期至</label><input class="input mono" value="2026-12-06"></div>
+            <div class="field" style="width:88px"><label class="label">版本</label><input class="input mono" value="v3"></div>
+            <div class="field" style="width:168px"><label class="label">关联商机</label>
+              <div class="dd"><button class="btn" data-dd style="width:100%;justify-content:space-between"><span data-dd-label>信息化整体提升</span>
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+                <div class="dd-menu">
+                  <div class="dd-label">该客户商机</div>
+                  <div class="dd-item on" data-label="信息化整体提升">信息化整体提升<span class="tick">✓</span></div>
+                  <div class="dd-item" data-label="电子病历五级专项">电子病历五级专项</div>
+                  <div class="dd-item" data-label="不关联">不关联</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="row small mt8" style="gap:14px">
+            <span class="muted-2">编制人 系统管理员</span>
+            <span class="muted-2">税率 13%</span>
+            <span class="badge badge--amber">整单折扣 94% · 未触底</span>
+            <span class="grow"></span>
+            <span class="muted-2">最近保存 11-08 08:52</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:14px;align-items:start">
+
+        <!-- 左：明细表 -->
+        <div class="tbl-wrap">
+          <div class="row" style="padding:9px 12px;border-bottom:1px solid var(--line-2)">
+            <span class="b small">明细</span>
+            <span class="tag tag--line">设备 2</span>
+            <span class="tag tag--line">软件 4</span>
+            <span class="tag tag--line">实施 1</span>
+            <span class="tag tag--line">服务 1</span>
+            <div class="grow"></div>
+            <button class="btn btn--sm">按产品库刷新单价</button>
+          </div>
+          <div class="tbl-scroll">
+            <table class="tbl">
+              <thead><tr>
+                <th style="width:40px" class="num">#</th><th>产品 / 型号</th><th class="num">数量</th><th>单位</th><th class="num">单价（元）</th><th class="num">折扣</th><th class="num">小计（元）</th><th class="w-ops"></th>
+              </tr></thead>
+              <tbody>
+                <tr>
+                  <td class="num">1</td>
+                  <td class="name">HIS 核心业务系统 V6<div class="sub">软件 · 含门诊/住院/医嘱</div></td>
+                  <td class="num">1</td><td>套</td>
+                  <td class="num">620,000.00</td>
+                  <td class="num">94%</td>
+                  <td class="num">582,800.00</td>
+                  <td class="w-ops"><button class="icon-btn" title="删除行"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></td>
+                </tr>
+                <tr>
+                  <td class="num">2</td>
+                  <td class="name">电子病历系统 EMR V5<div class="sub">软件 · 五级评级要求</div></td>
+                  <td class="num">1</td><td>套</td>
+                  <td class="num">430,000.00</td>
+                  <td class="num">94%</td>
+                  <td class="num">404,200.00</td>
+                  <td class="w-ops"><button class="icon-btn" title="删除行"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></td>
+                </tr>
+                <tr>
+                  <td class="num">3</td>
+                  <td class="name">数据中台（含主数据管理）<div class="sub">软件 · 互联互通四甲底座</div></td>
+                  <td class="num">1</td><td>套</td>
+                  <td class="num">560,000.00</td>
+                  <td class="num amber">88%</td>
+                  <td class="num">492,800.00</td>
+                  <td class="w-ops"><button class="icon-btn" title="删除行"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></td>
+                </tr>
+                <tr>
+                  <td class="num">4</td>
+                  <td class="name">集成引擎（ESB）<div class="sub">软件 · 含 68 个标准接口</div></td>
+                  <td class="num">1</td><td>套</td>
+                  <td class="num">96,000.00</td>
+                  <td class="num">94%</td>
+                  <td class="num">90,240.00</td>
+                  <td class="w-ops"><button class="icon-btn" title="删除行"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></td>
+                </tr>
+                <tr>
+                  <td class="num">5</td>
+                  <td class="name">应用服务器<div class="sub">设备 · 2U 双路 64 核</div></td>
+                  <td class="num">4</td><td>台</td>
+                  <td class="num">52,000.00</td>
+                  <td class="num">96%</td>
+                  <td class="num">199,680.00</td>
+                  <td class="w-ops"><button class="icon-btn" title="删除行"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></td>
+                </tr>
+                <tr>
+                  <td class="num">6</td>
+                  <td class="name">分布式存储<div class="sub">设备 · 96TB 可用</div></td>
+                  <td class="num">1</td><td>套</td>
+                  <td class="num">98,000.00</td>
+                  <td class="num">96%</td>
+                  <td class="num">94,080.00</td>
+                  <td class="w-ops"><button class="icon-btn" title="删除行"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></td>
+                </tr>
+                <tr>
+                  <td class="num">7</td>
+                  <td class="name">实施与上线服务<div class="sub">实施 · 180 天驻场</div></td>
+                  <td class="num">1</td><td>项</td>
+                  <td class="num">262,000.00</td>
+                  <td class="num">100%</td>
+                  <td class="num">262,000.00</td>
+                  <td class="w-ops"><button class="icon-btn" title="删除行"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></td>
+                </tr>
+                <tr>
+                  <td class="num">8</td>
+                  <td class="name">三年运维服务<div class="sub">服务 · 7×24 响应</div></td>
+                  <td class="num">3</td><td>年</td>
+                  <td class="num">135,000.00</td>
+                  <td class="num">100%</td>
+                  <td class="num">405,000.00</td>
+                  <td class="w-ops"><button class="icon-btn" title="删除行"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="tbl-foot">
+            <button class="btn btn--sm"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 5v14M5 12h14"/></svg>添加行</button>
+            <button class="btn btn--sm">从产品库追加</button>
+            <button class="btn btn--sm">从建设清单导入</button>
+            <span class="grow"></span>
+            <span>8 项 · 未税小计 <b class="mono">2,530,800.00</b></span>
+          </div>
+        </div>
+
+        <!-- 右：金额汇总 / 折扣 / 毛利 / 价格建议 -->
+        <div class="col col--gap-12">
+
+          <div class="card">
+            <div class="card-h"><h3>金额汇总</h3><span class="sub">未税 → 含税</span></div>
+            <div class="card-b col col--gap-8">
+              <div class="row small"><span class="muted">设备小计</span><span class="grow"></span><span class="mono">293,760.00</span></div>
+              <div class="row small"><span class="muted">软件小计</span><span class="grow"></span><span class="mono">1,570,040.00</span></div>
+              <div class="row small"><span class="muted">实施小计</span><span class="grow"></span><span class="mono">262,000.00</span></div>
+              <div class="row small"><span class="muted">服务小计</span><span class="grow"></span><span class="mono">405,000.00</span></div>
+              <div class="row small"><span class="muted">增值税 13%</span><span class="grow"></span><span class="mono">329,004.00</span></div>
+              <div class="divider" style="margin:2px 0"></div>
+              <div class="row"><span class="b">合计（含税）</span><span class="grow"></span><span class="mono bb" style="font-size:17px;color:var(--primary-700)">286.0 万</span></div>
+              <div class="tiny muted-2">人民币贰佰捌拾陆万元整</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>折扣</h3><div class="grow"></div><span class="badge badge--amber">94%</span></div>
+            <div class="card-b col col--gap-8">
+              <div style="position:relative;height:8px;border-radius:4px;background:var(--line-2)">
+                <i style="position:absolute;left:0;top:0;bottom:0;width:94%;border-radius:4px;background:var(--primary);display:block"></i>
+                <i style="position:absolute;left:85%;top:-3px;bottom:-3px;width:2px;background:var(--red);display:block"></i>
+                <i style="position:absolute;left:94%;top:-4px;width:12px;height:16px;border-radius:3px;background:var(--card);border:1px solid var(--primary);display:block"></i>
+              </div>
+              <div class="row tiny muted-2"><span>85%（底线）</span><span class="grow"></span><span>100%</span></div>
+              <div class="row small"><span class="muted">整单折扣</span><span class="grow"></span><span class="mono b">94%</span></div>
+              <button class="btn btn--sm" onclick="Proto.open('discount-confirm')">试算 82% 折扣</button>
+              <div class="tiny muted-2">低于 85% 将进入二级审批，且不可直接生成对外报价单。</div>
+            </div>
+          </div>
+
+          <div class="alert alert--amber" style="padding:9px 11px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+            <div class="grow"><b>当前毛利率 21.4%，低于公司建议 25%</b>。压价主要来自第 3 行数据中台（88%）与两行设备（96%），建议先调软件折扣。</div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3>价格建议</h3><span class="sub">同类项目历史</span></div>
+            <div class="card-b col col--gap-8">
+              <div>
+                <div class="row small"><span>厦门市中医院 · 电子病历五级</span><span class="grow"></span><span class="mono">200.2 万</span></div>
+                <div class="bar mt4"><i style="width:40%"></i></div>
+              </div>
+              <div>
+                <div class="row small"><span>同规模三甲 · 核心系统整体</span><span class="grow"></span><span class="mono">272.0 万</span></div>
+                <div class="bar mt4"><i style="width:95%"></i></div>
+              </div>
+              <div>
+                <div class="row small"><span>宣城市人民医院 · 数据中台</span><span class="grow"></span><span class="mono">168.0 万</span></div>
+                <div class="bar mt4"><i style="width:34%"></i></div>
+              </div>
+              <div class="tiny muted-2">本单 286.0 万，高于同规模三甲均价 5.1%；折扣 94% 属中位。若客户压到 90%，毛利降至 17.9%。</div>
+            </div>
+          </div>
+
+          <div class="fold">
+            <div class="fold-h" data-fold>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+              <span>审批记录（0）</span>
+              <div class="grow"></div>
+              <span class="tiny muted-2">二级审批中</span>
+            </div>
+            <div class="fold-b" style="padding:0">
+              <div class="empty empty--plain" style="padding:16px 12px">
+                <h4>还没有审批记录</h4>
+                <p>本单含税 286.0 万已超 100 万门槛，进入二级审批队列；张经理处理后这里会出现通过或驳回的完整留痕。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部动作 -->
+      <div class="row mt12" style="padding:10px 14px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--sh-1);gap:10px">
+        <span class="small muted">8 项明细 · 含税 286.0 万 · 折扣 94%</span>
+        <span class="grow"></span>
+        <button class="btn" data-toast="已保存草稿（v3）">保存草稿</button>
+        <button class="btn btn--primary">生成报价单</button>
+      </div>
+
+      <div data-pager></div>
+    </main>
+  </div>
+</div>
+
+<!-- 折扣超限确认弹窗 -->
+<div class="mask" data-modal="discount-confirm" style="display:none">
+  <div class="modal modal--danger" style="--mw:560px">
+    <div class="modal-h">
+      <h3>折扣 82% 低于公司底线<div class="sub">Q-20261108-04 · 厦门市中医院 · 信息化整体提升</div></h3>
+      <button class="icon-btn" onclick="Proto.close('discount-confirm')">✕</button>
+    </div>
+    <div class="modal-b col col--gap-12">
+      <div class="danger-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        <div><b>82% 低于底线 85%，需二级审批。</b>提交后本单锁定为「待审批」，张经理同意前不能导出对外报价单、不能发送给客户；若审批被驳回，折扣会退回 94%。</div>
+      </div>
+      <div class="kv-row"><span class="k">当前折扣</span><span class="v"><b class="mono">94%</b> → <b class="mono red">82%</b></span></div>
+      <div class="kv-row"><span class="k">含税合计</span><span class="v"><b class="mono">286.0 万</b> → <b class="mono">249.5 万</b>（少 36.5 万）</span></div>
+      <div class="kv-row"><span class="k">毛利率</span><span class="v"><b class="mono">21.4%</b> → <b class="mono red">9.9%</b>（公司建议不低于 25%）</span></div>
+      <div class="field"><label class="label req">申请理由（审批人必看）</label>
+        <textarea class="textarea" placeholder="例如：客户已拿到两家竞品报价，预算上限 250 万，请求按 82% 报以保住份额">客户已拿到两家竞品报价，预算上限 250 万，请求按 82% 报以保住份额。</textarea>
+      </div>
+      <label class="check"><input type="checkbox" checked> 我已确认该价格低于公司底线，并知悉毛利影响</label>
+    </div>
+    <div class="modal-f">
+      <span class="tip">提交后进入二级审批队列</span>
+      <div class="grow"></div>
+      <button class="btn btn--sm" onclick="Proto.close('discount-confirm')">取消</button>
+      <button class="btn btn--sm btn--danger-solid" onclick="Proto.close('discount-confirm');Proto.toast('已提交二级审批')">提交审批</button>
+    </div>
+  </div>
+</div>
+
+<script src="../assets/manifest.js"></script>
+<script src="../assets/shell.js"></script>
+</body>
+</html>
