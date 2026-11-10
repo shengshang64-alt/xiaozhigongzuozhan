@@ -6,6 +6,7 @@ import {
   createGatewayConfig,
   deleteGatewayConfig,
   listGatewayConfigs,
+  modelRefKey,
   modelRefLabel,
   refreshGatewayModels,
   testGatewayModel,
@@ -33,6 +34,7 @@ import {
   type ModelQuota,
 } from "@/lib/modelMetaLocal"
 import { isPlatformModelLocallyUnusable } from "@/lib/platformModelAvailability"
+import { onTestLogChange, readTestLog, recordTestResult, type ModelTestLogEntry } from "@/lib/modelTestLog"
 
 export interface FormValues {
   config_name: string
@@ -60,6 +62,11 @@ export function useModelConfig() {
   )
   useEffect(() => onModelMetaChange(() => setModelMeta(readAllModelMeta(userId))), [userId])
 
+  // 「连通测试」台账：只记用户亲手点过的真实测试（网关本身不落测试历史）。
+  // 通道卡的「最近测试」、测试屏的「最近 5 次」都从这里读，别另开第二份口径。
+  const [testLog, setTestLog] = useState<ModelTestLogEntry[]>(() => readTestLog(userId))
+  useEffect(() => onTestLogChange(() => setTestLog(readTestLog(userId))), [userId])
+
   const handleAccountChange = useCallback((account: RhAccountInfo | null) => {
     setAccountInfo(account)
     const uid = account?.userId ?? decodeRhToken()?.sub ?? null
@@ -71,6 +78,8 @@ export function useModelConfig() {
     // R296：档案按用户分桶，换账号即换桶——在事件回调里就地重读，不留陈旧徽标
     setModelHealth(readModelHealth(uid))
     setModelMeta(readAllModelMeta(uid))
+    // 台账与档案同族：按用户分桶，换账号即换桶
+    setTestLog(readTestLog(uid))
   }, [])
 
   // ------------------------------ 配置列表 ------------------------------
@@ -327,6 +336,16 @@ export function useModelConfig() {
       const r = await testGatewayModel(ref)
       setTestRunning(false)
       setTestResult(r)
+      // 落一笔真实测试台账（失败也记——换 Key / 换通道前后的差异就是要靠失败记录对比）
+      recordTestResult(userId, {
+        key: modelRefKey(ref),
+        configId: ref.configId,
+        configName: ref.configName,
+        modelId: ref.modelId,
+        ok: r.ok,
+        elapsedMs: typeof r.elapsedMs === "number" ? r.elapsedMs : null,
+        message: r.ok ? "" : r.message ?? "",
+      })
       if (r.ok) toast.success("测试成功，模型可用")
       else if (!r.needLogin) toast.error(r.message || "测试失败")
       else {
@@ -334,7 +353,7 @@ export function useModelConfig() {
         toast.error("当前无法执行测试，请稍后重试")
       }
     },
-    [],
+    [userId],
   )
 
   const rerunTest = useCallback(() => {
@@ -367,6 +386,8 @@ export function useModelConfig() {
     loadConfigs,
     platformConfig,
     personalConfigs,
+    /** 已启用的可用模型（扁平清单，通道页右栏「模型清单」用） */
+    availableModels: available.models,
     // R3：平台内置本地不可用标注（模型配置页 + 下拉共用）
     platformLocallyUnusable,
     defaultLabel,
@@ -402,6 +423,7 @@ export function useModelConfig() {
     testResult,
     runTest,
     rerunTest,
+    testLog,
     // R-038 模型元数据
     modelMeta,
     updateModelMeta,
