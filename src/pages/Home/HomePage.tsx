@@ -1,15 +1,17 @@
 import { useContext, useMemo, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { ChevronDown } from "lucide-react"
 import { ActiveWorkSection } from "@/components/home/ActiveWorkSection"
 import { ActivityFeedSection } from "@/components/home/ActivityFeedSection"
+import { BidNodesCard } from "@/components/home/BidNodesCard"
 import { BidReviewCard } from "@/components/home/BidReviewCard"
 import { OppsCard } from "@/components/home/CustomerOverviewSection"
 import { CompactProgressPanel } from "@/components/home/CompactProgressPanel"
 import { CompactWelcomeBar } from "@/components/home/CompactWelcomeBar"
 import { FollowUpReminderCard } from "@/components/home/FollowUpReminderCard"
 import { FunnelCard } from "@/components/home/FunnelCard"
+import { HomeSubtabs } from "@/components/home/HomeSubtabs"
 import { IntelSection } from "@/components/home/IntelSection"
-import { BidNodesCard } from "@/components/home/BidNodesCard"
 import { MustSeeTodayBar } from "@/components/home/MustSeeTodayBar"
 import { NewKeyMetrics } from "@/components/home/NewKeyMetrics"
 import { PriorityTasksBoard } from "@/components/home/PriorityTasksBoard"
@@ -25,90 +27,35 @@ import {
   priorityTasksOf,
   todayStartMs,
 } from "./homeLayout"
+import { parseHomeTab } from "./homeTabs"
 import type { useHome } from "./useHome"
 
 // ---------------------------------------------------------------------------
-// Phase 1 改版（UI/UX 升级，docs/AI-Implementation-Specification-v2.md 任务 1.1）：
-// 首屏只保留 5 个核心模块（欢迎条 / 关键指标 / 优先任务 / 快捷操作 / 进度速览），
-// 目标首屏高度 ≤1200px（原 14 卡竖排约 2958px）。
-//
-// 零破坏性约束：原有 11 个模块一个不删——全部原样收进底部「更多工作台模块」折叠区
-// （默认收起，展开即回到改版前的完整首页，含待办增删改与项目详情弹框等全部功能）。
-// 今日必看条（MustSeeTodayBar）与新的优先任务看板同源（mustSee），前者保留在折叠区
-// 兜底展示全部行动项，后者只取前 3 项强聚焦。
+// UX-v2（prototype/home/ 四屏）：原首页 14 个区块竖排约 2958px、投标节点与复盘被折进
+// 「更多模块」里看不见——拆成四个屏内 Tab（?tab= 切换，口径见 homeTabs.ts）：
+//   总览     = 欢迎条 + 关键预警 + 今日优先任务 + 进行中事项 + 该唤醒的商机 + 快捷入口；
+//              非原型区块（商机概览 / 团队动态 / 情报摘要 / 进行中全量）收进底部折叠区
+//              「更多首页模块」，新建投标项目与项目详情弹窗（ProjectsSection）常驻挂载，
+//              保证从优先任务/预警点「去处理」时详情弹窗一定在。
+//   待办中心 = 全部待办分桶（逾期/今天/明天/本周/无日期）+ 增删改 + 今日必看全量；
+//   投标节点 = 未来 60 天开标/截标节点（BidNodesCard 自拉取，紧急度分档 + 补录提示）；
+//   投标复盘 = 商机漏斗 + 胜负复盘（有真结果才出数据，空态由卡片自带，不造中标率）。
+// 零破坏性约束：所有模块一个不删，只在四个 Tab 间重新归位。
 // ---------------------------------------------------------------------------
 
-/** 折叠区里的原有模块：按改版前的页面顺序原样保留 */
-function MoreWorkbenchModules(p: ReturnType<typeof useHome>) {
+/** 总览底部折叠区里的非原型模块：原样保留，不给总览首屏添堵 */
+function MoreHomeModules(p: ReturnType<typeof useHome>) {
   return (
     <div className="space-y-5 p-4">
-      <MustSeeTodayBar
-        data={p.mustSee}
-        loading={p.todosLoading || p.crmLoading || p.projectsLoading}
-        onOpenProject={p.openProjectDetail}
-      />
-      <BidNodesCard />
-      <StatsRow
-        activeWorkCount={p.activeWorkTotal}
-        activeWorkByKind={p.activeWorkByKind}
-        activeWorkTruncated={p.activeWorkTruncated}
-        activeWorkCaveat={p.activeWorkCaveat}
-        pendingTodoCount={p.pendingTodoCount}
-        doneTodoCount={p.doneTodoCount}
-        overdueTodoCount={p.overdueTodoCount}
-      />
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <FunnelCard data={p.oppFunnel} total={p.oppFunnelTotal} loading={p.crmLoading} />
-        <TodoCard
-          buckets={p.todoBuckets}
-          todosLoading={p.todosLoading}
-          todoInput={p.todoInput}
-          setTodoInput={p.setTodoInput}
-          todoDueDate={p.todoDueDate}
-          setTodoDueDate={p.setTodoDueDate}
-          addTodo={p.addTodo}
-          todoAdding={p.todoAdding}
-          toggleTodo={p.toggleTodo}
-          deleteTodo={p.deleteTodo}
-          pendingTodoCount={p.pendingTodoCount}
-          overdueTodoCount={p.overdueTodoCount}
-          todosCapped={p.todosCapped}
-        />
-      </div>
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <OppsCard stats={p.crmStats} recentOpps={p.crmRecentOpps} loading={p.crmLoading} />
-        <FollowUpReminderCard items={p.followDueOpps} loading={p.crmLoading} />
-      </div>
-      <BidReviewCard review={p.bidReview} loading={p.crmLoading} />
+      <OppsCard stats={p.crmStats} recentOpps={p.crmRecentOpps} loading={p.crmLoading} />
+      <ActiveWorkSection items={p.activeWork} loading={p.activeWorkLoading} total={p.activeWorkTotal} />
       <ActivityFeedSection events={p.activityEvents} loading={p.activityLoading} />
       <IntelSection intelItems={p.intelItems} intelLoading={p.intelLoading} />
-      <ActiveWorkSection items={p.activeWork} loading={p.activeWorkLoading} total={p.activeWorkTotal} />
-      <ProjectsSection
-        projects={p.projects}
-        projectsLoading={p.projectsLoading}
-        projectsCapped={p.projectsCapped}
-        newProjectOpen={p.newProjectOpen}
-        openNewProject={p.openNewProject}
-        closeNewProject={p.closeNewProject}
-        projectForm={p.projectForm}
-        setProjectField={p.setProjectField}
-        submitProject={p.submitProject}
-        savingProject={p.savingProject}
-        selectedProject={p.selectedProject}
-        openProjectDetail={p.openProjectDetail}
-        closeProjectDetail={p.closeProjectDetail}
-        progressDraft={p.progressDraft}
-        setProgressDraft={p.setProgressDraft}
-        notesDraft={p.notesDraft}
-        setNotesDraft={p.setNotesDraft}
-        saveProjectDetail={p.saveProjectDetail}
-        savingDetail={p.savingDetail}
-      />
     </div>
   )
 }
 
-export function HomePage(p: ReturnType<typeof useHome>) {
+function OverviewTab(p: ReturnType<typeof useHome>) {
   const shellAccount = useContext(ShellAccountContext)
   const displayName = shellAccount?.displayName ?? p.accountInfo?.displayName ?? null
   const todayLabel = new Date().toLocaleDateString("zh-CN", {
@@ -116,11 +63,9 @@ export function HomePage(p: ReturnType<typeof useHome>) {
     day: "numeric",
     weekday: "long",
   })
-
-  // 折叠区默认收起：改版后首屏高度预算的关键开关
   const [moreOpen, setMoreOpen] = useState(false)
 
-  // 首屏 5 模块的派生数据（纯函数见 homeLayout.ts，可单测）；时钟用 useHome 的 30s 心跳 nowTick，
+  // 首屏派生数据（纯函数见 homeLayout.ts，可单测）；时钟用 useHome 的 30s 心跳 nowTick，
   // 不在渲染期直接调 Date.now()（react-hooks/purity 约束，且与待办分桶的口径同源）
   const { nowTick } = p
   const deadline = useMemo(() => nearestDeadlineOf(p.projects, todayStartMs(nowTick)), [p.projects, nowTick])
@@ -129,7 +74,7 @@ export function HomePage(p: ReturnType<typeof useHome>) {
   const todayEvents = useMemo(() => eventsTodayOf(p.activityEvents, nowTick), [p.activityEvents, nowTick])
 
   return (
-    <div className="animate-in fade-in duration-500 text-foreground">
+    <>
       <CompactWelcomeBar
         dateLabel={todayLabel}
         greeting={p.greeting}
@@ -161,6 +106,15 @@ export function HomePage(p: ReturnType<typeof useHome>) {
         }}
       />
 
+      <CompactProgressPanel
+        activeWork={p.activeWork}
+        activeWorkTotal={p.activeWorkTotal}
+        activeWorkLoading={p.activeWorkLoading}
+        todayEvents={todayEvents}
+        eventsLoading={p.activityLoading}
+      />
+
+      {/* 原型右列「快捷入口」：待办速记 + 常用动作（既有能力，位置不变） */}
       <QuickActionButtons
         todoInput={p.todoInput}
         setTodoInput={p.setTodoInput}
@@ -170,15 +124,10 @@ export function HomePage(p: ReturnType<typeof useHome>) {
         todoAdding={p.todoAdding}
       />
 
-      <CompactProgressPanel
-        activeWork={p.activeWork}
-        activeWorkTotal={p.activeWorkTotal}
-        activeWorkLoading={p.activeWorkLoading}
-        todayEvents={todayEvents}
-        eventsLoading={p.activityLoading}
-      />
+      {/* 原型「该唤醒的商机」：超期未跟进商机提醒（真数据，来自客户管理口径） */}
+      <FollowUpReminderCard items={p.followDueOpps} loading={p.crmLoading} />
 
-      {/* 原有 11 个模块整体折叠：展开即回到改版前首页，零功能损失 */}
+      {/* 原有非原型模块整体折叠：展开即回看商机概览 / 动态 / 情报，零功能损失 */}
       <section className="mb-5 rounded-xl border border-border bg-card shadow-md">
         <button
           type="button"
@@ -190,15 +139,129 @@ export function HomePage(p: ReturnType<typeof useHome>) {
             <ChevronDown className={`h-4 w-4 transition-transform ${moreOpen ? "rotate-180" : ""}`} aria-hidden="true" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold text-foreground">更多工作台模块</span>
-            <span className="block truncate text-xs text-muted-foreground">
-              今日必看 · 投标节点 · 商机漏斗 · 待办 · 项目跟进 · 团队动态 · 情报摘要
-            </span>
+            <span className="block text-sm font-semibold text-foreground">更多首页模块</span>
+            <span className="block truncate text-xs text-muted-foreground">商机概览 · 进行中全量 · 团队动态 · 情报摘要</span>
           </span>
           <span className="shrink-0 text-xs text-muted-foreground">{moreOpen ? "收起" : "展开"}</span>
         </button>
-        {moreOpen ? <MoreWorkbenchModules {...p} /> : null}
+        {moreOpen ? <MoreHomeModules {...p} /> : null}
       </section>
+
+      {/* 新建投标项目 + 项目详情弹窗挂载点：必须常驻，折叠区收起时优先任务仍能打开详情 */}
+      <ProjectsSection
+        projects={p.projects}
+        projectsLoading={p.projectsLoading}
+        projectsCapped={p.projectsCapped}
+        newProjectOpen={p.newProjectOpen}
+        openNewProject={p.openNewProject}
+        closeNewProject={p.closeNewProject}
+        projectForm={p.projectForm}
+        setProjectField={p.setProjectField}
+        submitProject={p.submitProject}
+        savingProject={p.savingProject}
+        selectedProject={p.selectedProject}
+        openProjectDetail={p.openProjectDetail}
+        closeProjectDetail={p.closeProjectDetail}
+        progressDraft={p.progressDraft}
+        setProgressDraft={p.setProgressDraft}
+        notesDraft={p.notesDraft}
+        setNotesDraft={p.setNotesDraft}
+        saveProjectDetail={p.saveProjectDetail}
+        savingDetail={p.savingDetail}
+      />
+    </>
+  )
+}
+
+/** 待办中心：统计行（真值）+ 分桶待办（增删改）+ 今日必看全量（按来源分组） */
+function TodosTab(p: ReturnType<typeof useHome>) {
+  return (
+    <>
+      <StatsRow
+        activeWorkCount={p.activeWorkTotal}
+        activeWorkByKind={p.activeWorkByKind}
+        activeWorkTruncated={p.activeWorkTruncated}
+        activeWorkCaveat={p.activeWorkCaveat}
+        pendingTodoCount={p.pendingTodoCount}
+        doneTodoCount={p.doneTodoCount}
+        overdueTodoCount={p.overdueTodoCount}
+      />
+      <TodoCard
+        buckets={p.todoBuckets}
+        todosLoading={p.todosLoading}
+        todoInput={p.todoInput}
+        setTodoInput={p.setTodoInput}
+        todoDueDate={p.todoDueDate}
+        setTodoDueDate={p.setTodoDueDate}
+        addTodo={p.addTodo}
+        todoAdding={p.todoAdding}
+        toggleTodo={p.toggleTodo}
+        deleteTodo={p.deleteTodo}
+        pendingTodoCount={p.pendingTodoCount}
+        overdueTodoCount={p.overdueTodoCount}
+        todosCapped={p.todosCapped}
+      />
+      <div className="mt-5">
+        <MustSeeTodayBar
+          data={p.mustSee}
+          loading={p.todosLoading || p.crmLoading || p.projectsLoading}
+          onOpenProject={p.openProjectDetail}
+        />
+      </div>
+    </>
+  )
+}
+
+/** 投标节点：未来 60 天开标/截标时间轴（组件自持拉取，紧急度分档 + 未填开标时间补录提示） */
+function CalendarTab() {
+  return (
+    <>
+      <BidNodesCard />
+      {/* BidNodesCard 拉取失败时会整卡隐藏（hidden），这里给一行兜底出口，避免本屏空白无解释 */}
+      <BidNodesCardFallbackNote />
+    </>
+  )
+}
+
+/** BidNodesCard 失败即自隐，兜底说明写在卡外，保证「投标节点」屏永不死白 */
+function BidNodesCardFallbackNote() {
+  return (
+    <p className="mt-4 rounded-lg border border-dashed border-border px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+      这里汇总各投标项目的开标 / 截标日期（数据来自投标工作台项目档案）。如果上方没有内容：
+      项目尚未填开标时间，或列表暂时拉取失败——去「标书工作台 · ① 导入招标」补录开标时间后，节点会自动出现在这里。
+    </p>
+  )
+}
+
+/** 投标复盘：商机漏斗 + 胜负复盘。数据全 0 时两张卡自带空态，不画空图不造中标率 */
+function ReviewTab(p: ReturnType<typeof useHome>) {
+  return (
+    <>
+      <FunnelCard data={p.oppFunnel} total={p.oppFunnelTotal} loading={p.crmLoading} />
+      <div className="mt-5">
+        <BidReviewCard review={p.bidReview} loading={p.crmLoading} />
+      </div>
+    </>
+  )
+}
+
+export function HomePage(p: ReturnType<typeof useHome>) {
+  const [searchParams] = useSearchParams()
+  const tab = parseHomeTab(searchParams.get("tab"))
+
+  return (
+    <div className="animate-in fade-in duration-500 text-foreground">
+      <HomeSubtabs active={tab} />
+
+      {tab === "todos" ? (
+        <TodosTab {...p} />
+      ) : tab === "calendar" ? (
+        <CalendarTab />
+      ) : tab === "review" ? (
+        <ReviewTab {...p} />
+      ) : (
+        <OverviewTab {...p} />
+      )}
     </div>
   )
 }
