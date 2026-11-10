@@ -25,7 +25,9 @@ import { PageHeader } from "@/components/shell/PageHeader"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { FormatDiffPreview } from "@/components/format-tool/FormatDiffPreview"
-import { FormatWizardStepper } from "@/components/format-tool/FormatWizardStepper"
+import { useSearchParams } from "react-router-dom"
+import { FormatSubtabs } from "./FormatSubtabs"
+import { parseFormatTab, type FormatTab } from "./formatTabs"
 import {
   FORMAT_ALIGN_OPTIONS,
   FORMAT_FONT_OPTIONS,
@@ -110,8 +112,12 @@ export function FormatToolPage(vm: UseFormatTool) {
   }
 
   const diffs = useMemo(() => computeFormatDiff(vm.spec, vm.settings, scopes), [vm.spec, vm.settings, scopes])
-  const anomalyCount = diffs.filter((d) => !d.same).length
-  const activeStep = justSaved ? 4 : vm.sourceFile || vm.spec ? 3 : vm.editingId ? 2 : 1
+  // 原向导条角标的 anomalyCount 随步进条退役；差异清单由 FormatDiffPreview 逐条渲染
+  // UX-v2：两屏 Tab（?tab=）——缺省按会话派生：已有文档/方案 → 预览套用，否则上传与模板。
+  // 原四步向导条退役（第 1/2 步归①屏、第 3/4 步归②屏），「只改格式不改文字」逻辑不动。
+  const [searchParams] = useSearchParams()
+  const derivedTab: FormatTab = vm.sourceFile || vm.spec ? "preview" : "upload"
+  const tab = parseFormatTab(searchParams.get("tab")) ?? derivedTab
   const settingsSummary = `${vm.settings.paper} · 正文${vm.settings.body.font}${vm.settings.body.size} · 标题${vm.settings.heading.length}级`
 
   // R-009：当前报告里 ✗ 未生效的槽位（导出前二次确认的依据）
@@ -158,12 +164,14 @@ export function FormatToolPage(vm: UseFormatTool) {
         }
       />
 
+      {/* UX-v2：两屏 SubTab（① 上传与模板 / ② 预览套用），原四步向导条退役 */}
       <div className="mb-5">
-        <FormatWizardStepper activeStep={activeStep} anomalyCount={anomalyCount} />
+        <FormatSubtabs active={tab} />
       </div>
 
-      <div className="grid items-start gap-5 lg:grid-cols-[330px_minmax(0,1fr)]">
-        {/* ---------------- 左：第 1/2 步配置 + 刷新范围 + 安全承诺 ---------------- */}
+      {/* UX-v2：① 上传与模板 / ② 预览套用 两屏同位条件渲染（区段原位不动，只按 Tab 显隐） */}
+      <div className={`grid items-start gap-5 ${tab === "upload" ? "lg:grid-cols-2" : ""}`}>
+        {tab === "upload" ? (
         <section className="space-y-4 rounded-xl border border-border bg-card p-4 shadow-sm">
           <div>
             <p className="mb-2 text-sm font-semibold text-foreground">第 1 步 · 上传要刷新的文档</p>
@@ -253,8 +261,9 @@ export function FormatToolPage(vm: UseFormatTool) {
             安全承诺：仅修改样式，正文文字内容 0 改动；套用在标书 / 方案导出时生效。
           </p>
         </section>
+        ) : null}
 
-        {/* ---------------- 右：第 3 步对比 + 第 4 步保存 + 微调编辑器 ---------------- */}
+        {tab === "preview" ? (
         <section className="space-y-4">
           <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
             <FormatDiffPreview spec={vm.spec} settings={vm.settings} diffs={diffs} />
@@ -525,6 +534,7 @@ export function FormatToolPage(vm: UseFormatTool) {
             </div>
           </details>
         </section>
+        ) : null}
       </div>
       {/* R95-A：删除模板二次确认（避免误点 Trash2 直接 DELETE） */}
       <ConfirmDialog
