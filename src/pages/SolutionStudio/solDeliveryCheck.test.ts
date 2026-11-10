@@ -258,15 +258,20 @@ describe("分组、截断与整改清单", () => {
 
 describe("接线与无障碍哨兵", () => {
   const ws = readFileSync(new URL("../../components/solution-studio/EditorWorkspace.tsx", import.meta.url), "utf-8")
+  const screen = readFileSync(
+    new URL("../../components/solution-studio/SolutionDeliveryScreen.tsx", import.meta.url),
+    "utf-8",
+  )
   const card = readFileSync(
     new URL("../../components/solution-studio/SolutionDeliveryCheckCard.tsx", import.meta.url),
     "utf-8",
   )
 
-  it("编辑器工作区已挂上体检卡，且复用既有 chapters / selectChapter（零 hook 改动）", () => {
-    expect(ws).toContain("<SolutionDeliveryCheckCard")
-    expect(ws).toContain("chapters={sol.chapters}")
-    expect(ws).toContain("onSelectChapter={p.selectChapter}")
+  it("UX-v2 拆屏：体检卡挂在交付检查屏并复用既有 chapters / selectChapter，编辑器写作区不再叠卡", () => {
+    expect(screen).toContain("<SolutionDeliveryCheckCard")
+    expect(screen).toContain("chapters={chapters}")
+    expect(screen).toContain("onSelectChapter={p.selectChapter}")
+    expect(ws).not.toContain("<SolutionDeliveryCheckCard")
   })
 
   it("R282：卡片已挂失败归因聚合视图（同因归一组 + 复制失败归因），仍只报不拦", () => {

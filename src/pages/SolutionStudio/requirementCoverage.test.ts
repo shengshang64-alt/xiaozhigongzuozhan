@@ -135,12 +135,21 @@ describe("buildRequirementPendingText（待补清单复制口径）", () => {
   })
 })
 
-describe("EditorWorkspace 接线与无障碍（防回流）", () => {
-  it("工作台挂载落位核验卡并传入清单快照、章节与跳转回调", () => {
-    const code = readFileSync(new URL("../../components/solution-studio/EditorWorkspace.tsx", import.meta.url), "utf-8")
-    expect(code).toContain("RequirementCoverageCard")
-    expect(code).toContain("snapshot={sol.hospital_info?.ref_checklist_snapshot}")
-    expect(code).toContain("onSelectChapter={p.selectChapter}")
+describe("编辑器/交付检查屏 覆盖卡接线（UX-v2 拆屏后防回流）", () => {
+  it("编辑器右栏挂紧凑覆盖 Rail（同快照、同章节、同跳章回调），不再挂全量卡压写作区", () => {
+    const ws = readFileSync(new URL("../../components/solution-studio/EditorWorkspace.tsx", import.meta.url), "utf-8")
+    expect(ws).toContain("<RequirementCoverageRail")
+    expect(ws).toContain("snapshot={sol.hospital_info?.ref_checklist_snapshot}")
+    expect(ws).toContain("onSelectChapter={p.selectChapter}")
+    expect(ws).not.toContain("<RequirementCoverageCard")
+  })
+
+  it("交付检查屏挂全量核验卡（网格列变体）并把跳章回调接进缺口清单", () => {
+    const screen = readFileSync(new URL("../../components/solution-studio/SolutionDeliveryScreen.tsx", import.meta.url), "utf-8")
+    expect(screen).toContain("<RequirementCoverageCard")
+    expect(screen).toContain("snapshot={snapshot}")
+    expect(screen).toContain("chapters={chapters}")
+    expect(screen).toContain("onSelectChapter={p.selectChapter}")
   })
 
   it("卡片展开明细按钮带 aria-expanded（R136 无障碍主线）", () => {

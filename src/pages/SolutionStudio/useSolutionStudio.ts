@@ -44,6 +44,7 @@ import { useChecklist } from "./checklistLogic"
 import { snapshotFromChecklist, type ChecklistRecord } from "./checklistTypes"
 import { checklistToOutlineSkeleton } from "./checklistToOutline"
 import { bulkResumeNotice, deriveSolutionDocStatus, shouldRecoverStaleGenerating } from "./bulkResume"
+import { parseSolutionStudioTab, type SolutionStudioTab } from "./solutionStudioTabs"
 import {
   addChildToTree,
   buildChapterMessages,
@@ -230,7 +231,22 @@ export function useSolutionStudio() {
 
   // ------------------------------ 建设清单（方案前置环节） ------------------------------
   const checklist = useChecklist({ userId, runCostConfirm: costConfirm.runWithCostConfirm })
-  const [studioView, setStudioView] = useState<"checklist" | "solution">("solution")
+
+  // ------------------------------ 屏内 Tab（UX-v2：?tab=，口径见 solutionStudioTabs.ts） ------------------------------
+  // 不拆顶层路由：拆成四条会让工作区标签栏多出四个「方案工作室」标签，且本 hook 的
+  // 方案列表要各拉一遍。一个路由 + ?tab= 切换，与模型配置 / 素材库同款。
+  const [searchParams, setSearchParams] = useSearchParams()
+  const studioTab = parseSolutionStudioTab(searchParams.get("tab"))
+  /** 编辑器会话写入地址（tab=editor + solution=<id>）：刷新 / 分享链接可还原当前方案 */
+  const setEditorUrl = useCallback(
+    (solutionId?: string) => {
+      const params = new URLSearchParams(searchParams)
+      params.set("tab", "editor")
+      if (solutionId) params.set("solution", solutionId)
+      setSearchParams(params, { replace: true })
+    },
+    [searchParams, setSearchParams],
+  )
 
   // ------------------------------ 全站技能带入（方案侧 3 个功能点） ------------------------------
   const outlineSkills = useScopeSkills("solution-outline", userId ?? undefined)
@@ -591,11 +607,15 @@ export function useSolutionStudio() {
     [applyChecklistPrefill, checklist.myChecklists],
   )
 
-  /** 清单详情「按此清单生成方案」：切方案编制视图并开向导预填 */
+  /** 清单详情「按此清单生成方案」：切到方案列表屏并开向导预填（向导浮在列表上） */
   const startSolutionFromChecklist = useCallback(
     (id: string) => {
       const rec = checklist.myChecklists.find((c) => c.id === id)
-      setStudioView("solution")
+      // UX-v2：默认屏就是方案列表（地址不带 tab 参数）；从清单发起时不在编辑器会话里，无需 flush
+      const params = new URLSearchParams(searchParams)
+      params.delete("tab")
+      params.delete("solution")
+      setSearchParams(params, { replace: true })
       openNewWizard()
       if (!rec) return
       setFormChecklistId(rec.id)
@@ -603,7 +623,7 @@ export function useSolutionStudio() {
       applyChecklistPrefill(rec)
       setWizardStep(2)
     },
-    [applyChecklistPrefill, checklist.myChecklists, openNewWizard],
+    [applyChecklistPrefill, checklist.myChecklists, openNewWizard, searchParams, setSearchParams],
   )
 
   const generateOutlineDraft = useCallback(async () => {
@@ -730,6 +750,7 @@ export function useSolutionStudio() {
       setActiveChapterId(record.chapters[0]?.node_id ?? null)
       setEditingContent("")
       setMode("editor")
+      setEditorUrl(record.id)
       // 轮次 F 轨 2：选了关联商机则把商机 ref 指回本方案（商机详情即可看到关联方案）
       if (formOpportunityId) {
         try {
@@ -750,7 +771,7 @@ export function useSolutionStudio() {
       confirmingRef.current = false
       setConfirming(false)
     }
-  }, [applySolutionState, checklist.myChecklists, formChecklistId, formHospital, formInfo, formOpportunityId, formSolutionName, formTypeKey, outlineDraft, userId])
+  }, [applySolutionState, checklist.myChecklists, formChecklistId, formHospital, formInfo, formOpportunityId, formSolutionName, formTypeKey, outlineDraft, setEditorUrl, userId])
 
   // ------------------------------ 编辑工作台 ------------------------------
   const [activeChapterId, setActiveChapterId] = useState<string | null>(null)
@@ -868,21 +889,40 @@ export function useSolutionStudio() {
       editingContentRef.current = content
       setEditingContentState(content)
       setMode("editor")
+      setEditorUrl(target.id)
     },
-    [applySolutionState, persistSolution, userId],
+    [applySolutionState, persistSolution, setEditorUrl, userId],
   )
 
-  const backToList = useCallback(() => {
-    flushEditingContent()
-    cancelBulkRef.current = true
-    setMode("list")
-    setActiveSolution(null)
-    activeSolutionRef.current = null
-    if (userId) void loadSolutions(userId)
-  }, [flushEditingContent, loadSolutions, userId])
+  // UX-v2：?tab= 屏内切换统一入口。「方案列表」同旧 backToList 口径（先落盘、停批量、
+  // 清活动方案、重拉列表）；切到其余屏只把未落盘正文 flush 掉（幂等：内容没变不发请求），
+  // 活动方案保留——交付检查屏还要用它。
+  const goStudioTab = useCallback(
+    (next: SolutionStudioTab) => {
+      flushEditingContent()
+      if (next === "list") {
+        cancelBulkRef.current = true
+        setActiveSolution(null)
+        activeSolutionRef.current = null
+        if (userId) void loadSolutions(userId)
+      }
+      const params = new URLSearchParams(searchParams)
+      if (next === "list") {
+        params.delete("tab")
+        params.delete("solution")
+        setMode("list")
+      } else {
+        params.set("tab", next)
+      }
+      setSearchParams(params, { replace: true })
+    },
+    [flushEditingContent, loadSolutions, searchParams, setSearchParams, userId],
+  )
+
+  const backToList = useCallback(() => goStudioTab("list"), [goStudioTab])
 
   // 轮次 B + D2：全局搜索/活动流深链 ?solution= 消费（ref 存「已消费 id」，URL id 变化即重新消费）
-  const [searchParams] = useSearchParams()
+  // searchParams 复用屏内 Tab 处声明的同一份（setSearchParams 由 openSolution 经 setEditorUrl 写入）
   const solutionDeepLinkIdRef = useRef<string | null>(null)
   useEffect(() => {
     const sid = searchParams.get("solution")
@@ -1900,9 +1940,10 @@ export function useSolutionStudio() {
     // 登录
     userId,
     handleAccountChange,
-    // 视图页签（建设清单 / 方案编制）
-    studioView,
-    setStudioView,
+    // 屏内 Tab（UX-v2：方案列表 / 方案编辑器 / 建设清单 / 交付检查，?tab= 切换）
+    studioTab,
+    goStudioTab,
+    backToList,
     // 建设清单
     checklist,
     formChecklistId,
@@ -1921,7 +1962,6 @@ export function useSolutionStudio() {
     deleteSolution,
     // 视图
     mode,
-    backToList,
     // 向导
     wizardOpen,
     wizardStep,

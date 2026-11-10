@@ -1,19 +1,25 @@
 import { useState, type CSSProperties } from "react"
-import { FileText, Library, Loader2, Play, Square } from "lucide-react"
+import { ClipboardCheck, FileText, Library, Loader2, Play, Square } from "lucide-react"
 import { PrintChapterFlow, PrintExportButton } from "@/components/common/PrintExport"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ChapterEditor } from "@/components/solution-studio/ChapterEditor"
 import { ChapterNavTree } from "@/components/solution-studio/ChapterNavTree"
+import { FactGroundingRail } from "@/components/solution-studio/FactGroundingRail"
 import { MaterialAmmoPanel } from "@/components/solution-studio/MaterialAmmoPanel"
-import { RequirementCoverageCard } from "@/components/solution-studio/RequirementCoverageCard"
-import { SolutionDeliveryCheckCard } from "@/components/solution-studio/SolutionDeliveryCheckCard"
-import { SolutionSelfCheckOverviewCard } from "@/components/solution-studio/SolutionSelfCheckOverviewCard"
+import { RequirementCoverageRail } from "@/components/solution-studio/RequirementCoverageRail"
 import { SkillPickerFor } from "@/components/common/SkillPicker"
 import { useResizableSidebar } from "@/components/common/useResizableSidebar"
 import type { UseSolutionStudio } from "@/pages/SolutionStudio/useSolutionStudio"
 import { typeLabel, SOL_COMPLIANCE_MODES, SOL_COMPLIANCE_MODE_LABEL, SOL_COMPLIANCE_MODE_HINT } from "@/pages/SolutionStudio/solutionTypes"
 import { bulkResumeNotice, resumeBannerVisible } from "@/pages/SolutionStudio/bulkResume"
+
+// UX-v2（prototype/solution/editor.html）：编辑器独立成屏、三栏各司其职——
+//   左：大纲树（主）+ 素材弹药（收成竖条小卡，点开可用，不再是主右栏）；
+//   中：正文宽写作区；
+//   右：需求覆盖（本地真审计）+ 事实接地（引擎未接入，诚实骨架）。
+// 原先压在写作区上方的三张体检卡整体迁到「交付检查」屏（SolutionDeliveryScreen），
+// 右栏随时能看到覆盖缺口，写作区不再被横幅挤窄。
 
 type EditorWorkspaceProps = Pick<
   UseSolutionStudio,
@@ -30,11 +36,6 @@ type EditorWorkspaceProps = Pick<
   | "refineChapter"
   | "reviewChapter"
   | "optimizeByIssues"
-  | "selfCheckOverview"
-  | "bulkReviewBusy"
-  | "reviewProgress"
-  | "startBulkReview"
-  | "cancelBulkReview"
   | "chapterTextareaRef"
   | "materialTab"
   | "setMaterialTab"
@@ -66,11 +67,15 @@ type EditorWorkspaceProps = Pick<
   | "setSolComplianceMode"
   | "solGen"
   | "setSolGenPatch"
->
+> & {
+  /** 顶栏「交付检查」按钮：跳交付检查屏（体检卡已整体迁出写作屏） */
+  onGoDelivery: () => void
+}
 
 export function EditorWorkspace(p: EditorWorkspaceProps) {
-  // 素材栏折叠 / 窄屏抽屉均为纯 UI 状态，留在 View 层
-  const [materialCollapsed, setMaterialCollapsed] = useState(false)
+  // 素材栏折叠 / 窄屏抽屉均为纯 UI 状态，留在 View 层。
+  // UX-v2：素材弹药降为左栏小卡，默认收成竖条，把左栏高度留给大纲树
+  const [materialCollapsed, setMaterialCollapsed] = useState(true)
   const [mobileMaterialOpen, setMobileMaterialOpen] = useState(false)
   // 大纲侧栏可拖拽宽度：拖动右侧分隔条调宽，双击恢复默认，localStorage 持久化（与标书侧一致）
   const { width: outlineW, onDragStart: outlineDrag, reset: outlineReset } = useResizableSidebar({
@@ -146,6 +151,15 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
                 </Button>
               </>
             )}
+            <Button
+              variant="outline"
+              onClick={p.onGoDelivery}
+              title="需求覆盖 / 事实接地 / 导出门禁三块体检已迁到交付检查屏"
+              className="border-border text-card-foreground shadow-sm hover:bg-secondary"
+            >
+              <ClipboardCheck className="mr-1.5 h-4 w-4 text-primary" />
+              交付检查
+            </Button>
             <Button variant="outline" onClick={() => void p.exportWord()} disabled={p.exportingWord} className="border-border text-card-foreground shadow-sm hover:bg-secondary disabled:opacity-60">
               {p.exportingWord ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin text-primary" /> : <FileText className="mr-1.5 h-4 w-4" />}
               {p.exportingWord ? "导出中…" : "导出 Word"}
@@ -244,39 +258,23 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
         </div>
       )}
 
-      {/* R162 需求条目落位核验：关联清单条目与大纲/正文两级逐字命中（零 AI 零费用），补写后随自动保存实时复核 */}
-      <RequirementCoverageCard
-        snapshot={sol.hospital_info?.ref_checklist_snapshot}
-        chapters={sol.chapters}
-        onSelectChapter={p.selectChapter}
-      />
-
-      {/* R252 交付前本地体检：与标书交卷体检同口径的确定性硬核验（零 AI 零费用），随正文自动保存实时重算；只报不拦 */}
-      <SolutionDeliveryCheckCard
-        chapters={sol.chapters}
-        onSelectChapter={p.selectChapter}
-      />
-
-      {/* R276 整本五维自检总览 + 一键批量自检：汇总各章 AI 自检评分，弱项/待重写一目了然，可逐章跳转整改 */}
-      <SolutionSelfCheckOverviewCard
-        overview={p.selfCheckOverview}
-        busy={p.bulkReviewBusy}
-        progress={p.reviewProgress}
-        onStart={p.startBulkReview}
-        onCancel={p.cancelBulkReview}
-        onSelectChapter={p.selectChapter}
-      />
-
-      {/* 窄屏：素材栏改为成稿区上方抽屉式弹层（按钮唤出，默认隐藏） */}
-      {mobileMaterialOpen && <div className="mt-4 lg:hidden">{materialPanel}</div>}
+      {/* 窄屏：右栏两卡折叠到成稿区上方（宽屏在右栏常驻）；素材弹药按钮唤出；体检明细卡在「交付检查」屏 */}
+      <div className="mt-4 flex flex-col gap-4 lg:hidden">
+        <RequirementCoverageRail
+          snapshot={sol.hospital_info?.ref_checklist_snapshot}
+          chapters={sol.chapters}
+          onSelectChapter={p.selectChapter}
+        />
+        <FactGroundingRail />
+        {mobileMaterialOpen && materialPanel}
+      </div>
 
       <div
-        className={`mt-5 grid grid-cols-1 items-start gap-4 ${
-          materialCollapsed ? "lg:grid-cols-[var(--ow)_minmax(0,1fr)_2.75rem]" : "lg:grid-cols-[var(--ow)_minmax(0,1fr)_300px]"
-        }`}
+        className="mt-5 grid grid-cols-1 items-start gap-4 lg:grid-cols-[var(--ow)_minmax(0,1fr)_300px]"
         style={{ "--ow": `${outlineW}px` } as CSSProperties}
       >
-        <div className="relative lg:sticky lg:top-20">
+        {/* 左：大纲树（主）+ 素材弹药（收成竖条小卡）——原型 editor.html 左栏同构 */}
+        <div className="relative flex max-h-[calc(100vh-9rem)] flex-col gap-4 lg:sticky lg:top-20">
           <div
             role="separator"
             aria-orientation="vertical"
@@ -287,12 +285,18 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
           >
             <span className="h-full w-0.5 rounded-full bg-border transition-colors group-hover:bg-primary/60" />
           </div>
-          <ChapterNavTree
-            activeSolution={p.activeSolution}
-            activeChapterId={p.activeChapterId}
-            selectChapter={p.selectChapter}
-            doneChapterCount={p.doneChapterCount}
-          />
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <ChapterNavTree
+              activeSolution={p.activeSolution}
+              activeChapterId={p.activeChapterId}
+              selectChapter={p.selectChapter}
+              doneChapterCount={p.doneChapterCount}
+            />
+          </div>
+          {/* 弹药在窄屏走上方抽屉（mobileMaterialOpen），左栏这份只在宽屏出现，避免重复渲染 */}
+          <div className={`hidden shrink-0 lg:block ${materialCollapsed ? "" : "max-h-[46vh] overflow-y-auto pr-0.5"}`}>
+            {materialPanel}
+          </div>
         </div>
         <ChapterEditor
           activeChapter={p.activeChapter}
@@ -316,7 +320,15 @@ export function EditorWorkspace(p: EditorWorkspaceProps) {
           genPickerSlot={<SkillPickerFor scope="solution-chapter" source={p.chapterSkills} align="right" />}
           refinePickerSlot={<SkillPickerFor scope="solution-rewrite" source={p.rewriteSkills} align="right" />}
         />
-        <div className="hidden lg:block">{materialPanel}</div>
+        {/* 右：需求覆盖（本地真审计）+ 事实接地（引擎未接入，诚实骨架）——不是素材主栏 */}
+        <div className="hidden flex-col gap-4 lg:flex">
+          <RequirementCoverageRail
+            snapshot={sol.hospital_info?.ref_checklist_snapshot}
+            chapters={sol.chapters}
+            onSelectChapter={p.selectChapter}
+          />
+          <FactGroundingRail />
+        </div>
       </div>
 
       {/* 循环 11 块 B：打印 / 存 PDF 只读正文块（屏幕隐藏，打印独占显示） */}

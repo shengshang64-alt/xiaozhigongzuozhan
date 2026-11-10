@@ -22,6 +22,8 @@ type RequirementCoverageCardProps = {
   snapshot: ChecklistSnapshot | undefined
   chapters: Chapter[]
   onSelectChapter: (nodeId: string) => void
+  /** 根节点样式；缺省自带 mt-4（流式布局用），交付检查屏以网格列传入时用无顶距版本 */
+  className?: string
 }
 
 const LEVEL_TONE: Record<RequirementCoverageLevel, string> = {
@@ -42,7 +44,7 @@ function toneOf(level: RequirementCoverageLevel, noBody: boolean): string {
   return LEVEL_TONE[level]
 }
 
-export function RequirementCoverageCard({ snapshot, chapters, onSelectChapter }: RequirementCoverageCardProps) {
+export function RequirementCoverageCard({ snapshot, chapters, onSelectChapter, className }: RequirementCoverageCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [filter, setFilter] = useState<"all" | RequirementCoverageLevel>("all")
   // 依赖直接取快照里的数组本体（不在渲染期用 ?? [] 造新数组，否则 useMemo 每轮失稳）
@@ -56,7 +58,7 @@ export function RequirementCoverageCard({ snapshot, chapters, onSelectChapter }:
   const listName = (snapshot?.checklist_name ?? "").trim()
 
   return (
-    <section className="mt-4 rounded-lg border border-border bg-card px-4 py-3 shadow-md">
+    <section className={className ?? "mt-4 rounded-lg border border-border bg-card px-4 py-3 shadow-md"}>
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="flex items-center gap-1.5 text-sm font-semibold text-card-foreground">
           <ListChecks className="h-4 w-4 text-primary" />
