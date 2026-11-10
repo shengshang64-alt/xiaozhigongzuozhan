@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import * as HoverCard from "@radix-ui/react-hover-card"
 import { CheckCircle2, ChevronDown, ChevronRight, Copy, Inbox, Info, LayoutGrid, Loader2, Plus, RefreshCw, SlidersHorizontal, Star, Table2 } from "lucide-react"
 import { copyTextToClipboard } from "@/lib/clipboard"
@@ -6,8 +7,11 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
 import { PageHeader } from "@/components/shell/PageHeader"
+import { AiHotPage } from "@/pages/AiHot/AiHotPage"
+import { useAiHot } from "@/pages/AiHot/useAiHot"
 import { IntelToolbar } from "@/components/intel-center/IntelToolbar"
 import { IntelStatsRow } from "@/components/intel-center/IntelStatsRow"
+import { IntelSubtabs } from "@/components/intel-center/IntelSubtabs"
 import { IntelItemCard } from "@/components/intel-center/IntelItemCard"
 import { IntelBrowseRow } from "@/components/intel-center/IntelBrowseRow"
 import { IntelDailyBrief } from "@/components/intel-center/IntelDailyBrief"
@@ -19,6 +23,7 @@ import { SourceManagerPanel } from "@/components/intel-center/SourceManagerPanel
 import { DataTable, type DataTableColumn } from "@/components/ui/DataTable"
 import { localDateStamp } from "@/lib/dateStamp"
 import { ITEM_STATUS_LABEL, SOURCE_TYPE_LABEL, type IntelItemRow, type IntelSourceType, type IntelListSortKey, type useIntelCenter } from "./useIntelCenter"
+import { parseIntelTab, type IntelTab } from "./intelTabs"
 import { shouldScrollDetailIntoView } from "./detailScroll"
 import { describeAutoFetch, describeWaitForNextRound } from "./intelAutoFetchCopy"
 
@@ -26,6 +31,11 @@ import { describeAutoFetch, describeWaitForNextRound } from "./intelAutoFetchCop
 // （双模式：待办（默认，仅待确认大卡 + 实心确认 + 滑出动画）/ 浏览（紧凑行 + 表格）；
 //   指标卡语义化可点击；数据源说明收进 ⓘ 弹层；筛选收敛为一行 + 高级筛选抽屉；
 //   操作分层：确认实心主按钮，AI 打标/忽略/标线索/原文收 ⋯ 菜单）
+//
+// UX-v2（2026-11-11）：按 prototype/intel/ 拆五个屏内 Tab（?tab= 切换，口径见 intelTabs.ts）——
+// 审阅 / 浏览 / 详情 / 行业前沿 / 数据源。原「待办/浏览」双模式 pill 对应前两个 Tab；
+// 详情升独立屏（整屏阅读）；行业前沿收编 /ai-hot（同一组件共用数据，两入口一套 UI）；
+// 数据源把右栏「信息源状态」块收拢成屏。零能力丢失，只在 Tab 间重新归位。
 
 // 筛选行片组（与原 IntelFilterRail 同口径；rail 组件保留作回滚，不再挂载）
 const TYPE_ITEMS: { key: "all" | IntelSourceType; label: string }[] = [
@@ -54,6 +64,12 @@ function chipClass(on: boolean): string {
     : "rounded-full border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
 }
 
+/** UX-v2：「行业前沿」Tab 内容 = /ai-hot 同一页面组件（共用 hook 与数据，仅本 Tab 挂载时首拉） */
+function IndustryTab() {
+  const vm = useAiHot()
+  return <AiHotPage {...vm} />
+}
+
 export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
   const enabledCount = p.sources.filter((s) => s.enabled).length
   const errorCount = p.sources.filter((s) => s.last_status === "error").length
@@ -69,15 +85,17 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
   }, [])
   const autoFetchCopy = describeAutoFetch({ pageVisible })
   const waitNextRoundCopy = describeWaitForNextRound({ pageVisible })
-  // intel-01 降噪：右栏低频面板默认折叠为一行，压进场屏数
-  const [srcOpen, setSrcOpen] = useState(false)
   const [aiHelpOpen, setAiHelpOpen] = useState(false)
 
   // R237 情报「表格」视图：卡片/表格切换，表格便于横向比对与排序（复用 DataTable）
-  // UX-R2：intelView 现只在浏览模式下生效（rows=紧凑行 / table=表格）；待办模式固定大卡片
+  // UX-v2：intelView 只在「浏览」Tab 生效（rows=紧凑行 / table=表格）；「审阅」Tab 固定大卡片
   const [intelView, setIntelView] = useState<"rows" | "table">("rows")
-  // UX-R2：双模式——「待办」（默认，只看待确认）与「浏览」（全部情报）
-  const [viewMode, setViewMode] = useState<"todo" | "browse">("todo")
+  // UX-v2：原「待办/浏览」双模式 pill 升级为五 Tab（?tab=，口径见 intelTabs.ts）——
+  // 审阅=原待办模式、浏览=原浏览模式；详情/行业前沿/数据源各自成屏
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab = parseIntelTab(searchParams.get("tab"))
+  const goTab = (next: IntelTab) => setSearchParams(next === "review" ? {} : { tab: next }, { replace: true })
+  const viewMode: "todo" | "browse" = tab === "browse" ? "browse" : "todo"
   // UX-R2：高级筛选抽屉（时间/标签/地区/来源/排序收拢）
   const [advancedOpen, setAdvancedOpen] = useState(false)
   // UX-R2：确认/忽略后的滑出动画——条目状态已变但仍保留渲染 300ms 播退出动画
@@ -160,99 +178,60 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
           desc="政策动态、竞品动向、招标中标、行业媒体四类医疗信息化情报聚合，公共情报全员共享，确认/忽略/收藏每人独立"
         />
 
-        {/* UX-R2：双模式开关（页面顶部）——处理与浏览两种心智分开 */}
-        <div className="mb-4 inline-flex items-center gap-1 rounded-full bg-muted p-0.5">
-          <button
-            type="button"
-            onClick={() => setViewMode("todo")}
-            aria-pressed={viewMode === "todo"}
-            className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-              viewMode === "todo" ? "bg-card font-medium text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <CheckCircle2 className="h-4 w-4" />
-            待办模式
-            {p.pendingTotal > 0 ? (
-              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${viewMode === "todo" ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary"}`}>
-                {p.pendingTotal}
-              </span>
-            ) : null}
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode("browse")}
-            aria-pressed={viewMode === "browse"}
-            className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-              viewMode === "browse" ? "bg-card font-medium text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <LayoutGrid className="h-4 w-4" />
-            浏览模式
-          </button>
-        </div>
+        {/* UX-v2：五屏 SubTab（审阅=原待办模式；浏览=原浏览模式；详情/行业前沿/数据源各自成屏） */}
+        <IntelSubtabs active={tab} />
 
-        <IntelStatsRow
-          enabledCount={enabledCount}
-          sourceCount={p.sources.length}
-          errorCount={errorCount}
-          totalItems={p.totalItems}
-          pendingTotal={p.pendingTotal}
-          starredCount={p.starredIds.length}
-          onOpenTodo={() => {
-            setViewMode("todo")
-            p.handleStatusTab("pending")
-          }}
-          onOpenBrowse={() => setViewMode("browse")}
-          onOpenSources={p.openSourcesPanel}
-        />
+        {tab === "review" ? (
+          <IntelStatsRow
+            enabledCount={enabledCount}
+            sourceCount={p.sources.length}
+            errorCount={errorCount}
+            totalItems={p.totalItems}
+            pendingTotal={p.pendingTotal}
+            starredCount={p.starredIds.length}
+            onOpenTodo={() => goTab("review")}
+            onOpenBrowse={() => goTab("browse")}
+            onOpenSources={() => goTab("sources")}
+          />
+        ) : null}
 
-        {/* UX-R2：数据源与抓取说明收进 ⓘ 弹层（原整段说明条不再占据首屏） */}
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <HoverCard.Root>
-            <HoverCard.Trigger asChild>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground shadow-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                <Info className="h-3.5 w-3.5 text-primary" />
-                数据源与抓取说明
-              </button>
-            </HoverCard.Trigger>
-            <HoverCard.Portal>
-              <HoverCard.Content side="bottom" align="start" sideOffset={6} className="z-50 w-[26rem] rounded-lg border border-border bg-card p-4 shadow-lg animate-in fade-in zoom-in-95 duration-200">
-                <p className="text-xs leading-relaxed text-foreground">
-                  <RefreshCw className="mr-1 inline h-3.5 w-3.5 text-primary" />
-                  {autoFetchCopy}
-                </p>
-                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{waitNextRoundCopy}</p>
-                <p className="mt-2 text-xs text-muted-foreground">情报来源为公开网站，仅供售前参考；抓取失败的源请结合手动录入使用。</p>
-              </HoverCard.Content>
-            </HoverCard.Portal>
-          </HoverCard.Root>
-          <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
-            启用源 {enabledCount}/{p.sources.length}
-          </span>
-          {errorCount > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                setSrcOpen(true)
-                document.getElementById("intel-src-status")?.scrollIntoView({ behavior: "smooth", block: "center" })
-                p.openSourcesPanel()
-              }}
-              title="点击打开信息源管理，查看失败的源并重试"
-              className="rounded-full bg-destructive/10 px-2.5 py-1 text-xs font-medium text-destructive transition-colors hover:bg-destructive/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            >
-              {errorCount} 个源抓取失败 · 点击处理
-            </button>
-          )}
-          <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
-            当前筛选 {p.totalItems} 条
-          </span>
-        </div>
+        {/* UX-v2：数据源与抓取说明收进「数据源」Tab（原首页 ⓘ 弹层与状态块一并归位） */}
+        {tab === "sources" ? (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <HoverCard.Root>
+              <HoverCard.Trigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground shadow-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <Info className="h-3.5 w-3.5 text-primary" />
+                  数据源与抓取说明
+                </button>
+              </HoverCard.Trigger>
+              <HoverCard.Portal>
+                <HoverCard.Content side="bottom" align="start" sideOffset={6} className="z-50 w-[26rem] rounded-lg border border-border bg-card p-4 shadow-lg animate-in fade-in zoom-in-95 duration-200">
+                  <p className="text-xs leading-relaxed text-foreground">
+                    <RefreshCw className="mr-1 inline h-3.5 w-3.5 text-primary" />
+                    {autoFetchCopy}
+                  </p>
+                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{waitNextRoundCopy}</p>
+                  <p className="mt-2 text-xs text-muted-foreground">情报来源为公开网站，仅供售前参考；抓取失败的源请结合手动录入使用。</p>
+                </HoverCard.Content>
+              </HoverCard.Portal>
+            </HoverCard.Root>
+            <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+              启用源 {enabledCount}/{p.sources.length}
+            </span>
+            <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
+              当前筛选 {p.totalItems} 条
+            </span>
+          </div>
+        ) : null}
 
-        {/* UX-R2：筛选收敛——一行主筛选（类型 / 状态 / 搜索）+「高级筛选」抽屉（时间 / 标签 / 地区 / 来源 / 排序）；
-            原左筛选栏（IntelFilterRail）与中部筛选行（IntelFilterBar）合并于此，两套并存的问题消除 */}
+        {/* UX-v2：筛选收敛——一行主筛选（类型 / 状态 / 搜索）+「高级筛选」抽屉（时间 / 标签 / 地区 / 来源 / 排序）；
+            原左筛选栏（IntelFilterRail）与中部筛选行（IntelFilterBar）合并于此，两套并存的问题消除。
+            UX-v2 起筛选只属「浏览」Tab：审阅队列固定只看待确认，不需要筛选。 */}
+        {tab === "browse" ? (
         <section className="mb-4 rounded-lg border border-border bg-card p-3 shadow-md">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[11px] font-semibold text-muted-foreground">类型</span>
@@ -378,8 +357,10 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
             </div>
           ) : null}
         </section>
+        ) : null}
 
-        {/* UX-R2：双栏布局（原左筛选栏并入上方筛选行） */}
+        {/* UX-v2：审阅 / 浏览 双栏（队列或列表 + 右侧审阅面板与收藏）；详情/行业前沿/数据源各自成屏 */}
+        {tab === "review" || tab === "browse" ? (
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
           <section className="min-w-0 space-y-4">
             <IntelDailyBrief
@@ -469,9 +450,9 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
                   <CheckCircle2 className="h-8 w-8 text-emerald-500" />
                   <p className="text-sm font-medium text-foreground">待办清空了，一条待确认的情报都没有</p>
                   <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
-                    新情报抓取入库后会出现在这里；想浏览已确认/已忽略的历史情报，切到「浏览模式」
+                    新情报抓取入库后会出现在这里；想浏览已确认/已忽略的历史情报，切到「浏览」Tab
                   </p>
-                  <Button type="button" size="sm" variant="outline" onClick={() => setViewMode("browse")}>
+                  <Button type="button" size="sm" variant="outline" onClick={() => goTab("browse")}>
                     切到浏览模式
                   </Button>
                 </div>
@@ -628,53 +609,6 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
             </div>
 
             <div className="rounded-lg border border-border bg-card p-4 shadow-md">
-              <button
-                type="button"
-                id="intel-src-status"
-                aria-expanded={srcOpen}
-                onClick={() => setSrcOpen((v) => !v)}
-                className="flex w-full items-center gap-1.5 text-left"
-              >
-                {srcOpen ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
-                <h2 className="text-sm font-semibold text-foreground">信息源状态</h2>
-                <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                  {p.sources.length} 个{errorCount > 0 ? `·${errorCount} 异常` : ""}
-                </span>
-              </button>
-              {srcOpen && (
-                <>
-                  <p className="mt-2 text-xs text-muted-foreground">内置 {p.sources.filter((s) => s.is_builtin).length} 个 · 自定义 {p.sources.filter((s) => !s.is_builtin).length} 个</p>
-                  <ul className="mt-3 space-y-2">
-                    {p.sources.slice(0, 6).map((source) => (
-                      <li key={source.id} className="flex items-center gap-2 text-xs">
-                        <span
-                          className={
-                            source.last_status === "error"
-                              ? "h-2 w-2 shrink-0 rounded-full bg-destructive"
-                              : source.enabled
-                                ? "h-2 w-2 shrink-0 rounded-full bg-primary"
-                                : "h-2 w-2 shrink-0 rounded-full bg-muted-foreground/40"
-                          }
-                        />
-                        <span className="truncate text-foreground">{source.source_name}</span>
-                        <span className="ml-auto shrink-0 text-muted-foreground">
-                          {SOURCE_TYPE_LABEL[source.source_type] ?? ""}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                  <button
-                    type="button"
-                    onClick={p.openSourcesPanel}
-                    className="mt-3.5 w-full rounded-md border border-border px-3 py-2 text-sm text-card-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  >
-                    查看全部并管理
-                  </button>
-                </>
-              )}
-            </div>
-
-            <div className="rounded-lg border border-border bg-card p-4 shadow-md">
               <h2 className="text-sm font-semibold text-foreground">我的收藏</h2>
               <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
                 已收藏 {p.starredIds.length} 条情报。在情报卡片上点星标即可收藏。
@@ -708,6 +642,124 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
             </p>
           </aside>
         </div>
+        ) : tab === "detail" ? (
+          /* UX-v2：详情独立屏——整屏阅读当前打开的这条情报（审阅/浏览里仍是右栏面板） */
+          p.detailItem ? (
+            <div className="mx-auto max-w-3xl pb-10">
+              <IntelDetailPanel
+                item={p.detailItem}
+                starred={p.isStarred(p.detailItem.id)}
+                aiTagging={p.aiTagging(p.detailItem.id)}
+                lead={p.isLead(p.detailItem.id)}
+                onClose={p.closeDetail}
+                onConfirm={p.confirmItem}
+                onIgnore={p.ignoreItem}
+                onAiTag={p.aiTagItem}
+                onToggleStar={p.toggleStar}
+                onToggleLead={p.toggleLead}
+                onCreateBidTask={p.createBidTask}
+                onConvertToOpp={p.convertToOpportunity}
+                onSaveStructured={p.saveStructured}
+              />
+            </div>
+          ) : (
+            <div className="mx-auto mt-10 max-w-md rounded-lg border border-dashed border-border bg-card px-6 py-10 text-center shadow-md">
+              <Info className="mx-auto h-8 w-8 text-muted-foreground/60" />
+              <h2 className="mt-3 text-sm font-semibold text-card-foreground">还没有打开的情报</h2>
+              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                在「审阅」或「浏览」里点开一条情报（右侧面板），再用本屏整屏细读；关键实体、原文快照与转商机/建标书任务都在。
+              </p>
+              <div className="mt-4 flex items-center justify-center gap-2">
+                <Button size="sm" variant="outline" onClick={() => goTab("review")} className="border-border text-card-foreground hover:bg-secondary">
+                  去审阅
+                </Button>
+                <Button size="sm" onClick={() => goTab("browse")} className="bg-primary text-primary-foreground hover:bg-primary/90">
+                  去浏览
+                </Button>
+              </div>
+            </div>
+          )
+        ) : tab === "industry" ? (
+          /* UX-v2：行业前沿收编 /ai-hot——同一组件共用同一份数据与 UI，两个入口不再两套界面
+             （hook 只在本 Tab 挂载时才首拉，不给情报中心其他屏添请求） */
+          <div className="pb-10">
+            <IndustryTab />
+          </div>
+        ) : (
+          /* UX-v2：数据源屏——源状态全量 + 抓取说明 + 管理入口（增删/抓取/重试在既有弹窗内） */
+          <div className="pb-10">
+            <div className="rounded-lg border border-border bg-card shadow-md">
+              <header className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
+                <h2 className="text-sm font-semibold text-foreground">信息源状态</h2>
+                <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                  启用 {enabledCount} / 共 {p.sources.length}
+                </span>
+                {errorCount > 0 && (
+                  <span className="rounded-full bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive">
+                    {errorCount} 个异常
+                  </span>
+                )}
+                <div className="ml-auto flex items-center gap-2">
+                  {errorCount > 0 && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={p.retryingFailed}
+                      onClick={() => void p.retryFailedSources()}
+                      className="h-7 border-destructive/40 px-2 text-xs text-destructive hover:bg-destructive/10"
+                    >
+                      {p.retryingFailed ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <RefreshCw className="mr-1 h-3 w-3" />}
+                      重试失败源
+                    </Button>
+                  )}
+                  <Button type="button" size="sm" onClick={p.openSourcesPanel} className="h-7 bg-primary px-2 text-xs text-primary-foreground hover:bg-primary/90">
+                    <Plus className="mr-1 h-3 w-3" />
+                    管理信息源
+                  </Button>
+                </div>
+              </header>
+              {p.sourcesLoading ? (
+                <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  正在加载数据源…
+                </div>
+              ) : p.sources.length === 0 ? (
+                <p className="px-4 py-10 text-center text-xs text-muted-foreground">
+                  还没有配置任何信息源——点右上「管理信息源」添加，或先用「手动录入」顶上。
+                </p>
+              ) : (
+                <ul className="divide-y divide-border/60">
+                  {p.sources.map((source) => (
+                    <li key={source.id} className="flex items-center gap-2 px-4 py-2.5 text-sm">
+                      <span
+                        title={source.last_status === "error" ? "最近一次抓取失败" : source.enabled ? "已启用" : "已停用"}
+                        className={
+                          source.last_status === "error"
+                            ? "h-2 w-2 shrink-0 rounded-full bg-destructive"
+                            : source.enabled
+                              ? "h-2 w-2 shrink-0 rounded-full bg-primary"
+                              : "h-2 w-2 shrink-0 rounded-full bg-border"
+                        }
+                      />
+                      <span className="min-w-0 flex-1 truncate text-card-foreground">{source.source_name}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{SOURCE_TYPE_LABEL[source.source_type] ?? ""}</span>
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${source.enabled ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+                        {source.enabled ? "启用中" : "已停用"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <p className="mt-4 px-1 text-xs leading-relaxed text-muted-foreground">
+              <RefreshCw className="mr-1 inline h-3.5 w-3.5 text-primary" />
+              {autoFetchCopy}
+              {waitNextRoundCopy}
+              情报来源为公开网站，仅供售前参考；抓取失败的源请结合手动录入使用。源的新增 / 立即抓取 / 富化在「管理信息源」弹窗内。
+            </p>
+          </div>
+        )}
       </main>
 
       {/* 重构轮：AI 情报周报弹窗 */}
