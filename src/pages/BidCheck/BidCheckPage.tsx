@@ -1,14 +1,5 @@
-// UX-R2: 标书检查 已按 docs/ux-review-2026-11 修复 2026-11-07（拖拽大区/禁用原因显形/模式单选卡/最近报告）
-// ---------------------------------------------------------------------------
-// BidCheckPage —— 标书检查中枢页面（与 7 步流水线平级的独立入口 /bid-check）。
-//
-// R262 界面改造：结果态改为「三栏阅读视图」（左章节导航 / 中只读正文+问题标记 / 右问题清单），
-// 并与「规则清单页」并列为两个 Tab。输入 / 模式开关 / 配置弹窗 / 导出门禁沿用一期。
-// ⚠️ 只标不改：页面呈现的是覆盖层结论，正文纯只读，不提供任何改正文的入口。
-// ---------------------------------------------------------------------------
-
 import { useMemo, useRef, useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import {
   ClipboardCheck,
   Upload,
@@ -18,13 +9,11 @@ import {
   Loader2,
   X,
   ListChecks,
-  BookOpenCheck,
   Sparkles,
   History,
   ChevronDown,
   FileWarning,
 } from "lucide-react"
-import { cn } from "@/lib/utils"
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -46,12 +35,27 @@ import { hasBlockingCritical } from "./bidCheckTypes"
 // 所以这个回潮一直没被守卫抓住。改回按需后两处重库不再进入本页 chunk。
 import { exportHtmlReport } from "./report/toHtml"
 import { BidCheckConfigDialog } from "./BidCheckConfigDialog"
+import { BidCheckSubtabs } from "./BidCheckSubtabs"
 import { ReadingView } from "./ReadingView"
 import { RulesListPanel } from "./RulesListPanel"
 import { dedupeProjectOptions, excludeDeletedProjects, filterProjectOptions, sortProjectOptions } from "./projectOptions"
+import { parseBidCheckTab, type BidCheckTab } from "./bidCheckTabs"
 import type { BidCheckVm } from "./useBidCheck"
 
-type Tab = "result" | "rules"
+// UX-R2: 标书检查 已按 docs/ux-review-2026-11 修复 2026-11-07（拖拽大区/禁用原因显形/模式单选卡/最近报告）
+// ---------------------------------------------------------------------------
+// BidCheckPage —— 标书检查中枢页面（与 7 步流水线平级的独立入口 /bid-check）。
+//
+// R262 界面改造：结果态改为「三栏阅读视图」（左章节导航 / 中只读正文+问题标记 / 右问题清单）。
+// ⚠️ 只标不改：页面呈现的是覆盖层结论，正文纯只读，不提供任何改正文的入口。
+//
+// UX-v2（2026-11-11）：按 prototype/check/ 拆四个屏内 Tab（?tab=，口径见 bidCheckTabs.ts）——
+// 新建检查（对象+模式+规则开关）/ 检查中（本机执行）/ 检查报告（三栏阅读+导出）/ 历史报告。
+// URL ?tab= 缺省时按会话派生：检查进行中→检查中、有结果→检查报告、否则新建检查——
+// 因此点「开始检查」不写地址也会自动走到检查中→报告的流程；历史报告为本机摘要留痕
+// （完整报告属当次会话，跨会话持久化另行立项，如实标注）。规则清单（规则开关配置）
+// 归入「新建检查」屏的折叠区，配置弹窗入口不变。
+// ---------------------------------------------------------------------------
 
 // UX-R2（docs/ux-review-2026-11 §十）：最近检查报告——本地 localStorage 摘要（上限 10 条）。
 // 检查结果本体含全文与命中定位（MB 级），不适合塞 localStorage；此处只存可复访的元信息，
@@ -112,7 +116,11 @@ export function BidCheckPage(vm: BidCheckVm) {
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [showConfig, setShowConfig] = useState(false)
-  const [tab, setTab] = useState<Tab>("result")
+  // UX-v2：四屏 Tab（?tab=）；缺省按会话派生——检查中 / 有结果看报告 / 否则新建检查
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [rulesOpen, setRulesOpen] = useState(false)
+  const derivedTab: BidCheckTab = running ? "running" : result ? "report" : "upload"
+  const tab = parseBidCheckTab(searchParams.get("tab")) ?? derivedTab
   const [gateOpen, setGateOpen] = useState(false)
   const [pendingExport, setPendingExport] = useState<null | "excel" | "html" | "docx">(null)
   // UX-R2：拖拽高亮 / 项目次入口折叠 / 最近检查报告
@@ -181,7 +189,7 @@ export function BidCheckPage(vm: BidCheckVm) {
     void doExport(kind)
   }
 
-  const issueCount = useMemo(() => (result ? result.summary.fail + result.summary.warn : 0), [result])
+  // 原「检查结果」Tab 角标的 issueCount 随双 Tab 一起退役；三栏视图内的问题计数由 ReadingView 自行汇总
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-4 p-4 sm:p-6">
@@ -211,6 +219,11 @@ export function BidCheckPage(vm: BidCheckVm) {
         </div>
       </div>
 
+      {/* ---------- UX-v2：四屏 SubTab（新建检查/检查中/检查报告/历史报告） ---------- */}
+      <BidCheckSubtabs active={tab} />
+
+      {tab === "upload" ? (
+      <>
       {/* ---------- UX-R2：模式单选卡（带一行说明，替代原灰按钮切换 + 独立警示条） ---------- */}
       <div className="grid gap-3 sm:grid-cols-2">
         {([
@@ -392,6 +405,7 @@ export function BidCheckPage(vm: BidCheckVm) {
                 {reviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 AI 复核
               </Button>
+              {/* UX-v2：点击后不写地址——缺省派生会自动 走 检查中 → 检查报告 */}
               <Button onClick={run} disabled={running || source.kind === "none"}>
                 {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}
                 开始检查
@@ -401,8 +415,93 @@ export function BidCheckPage(vm: BidCheckVm) {
         </CardContent>
       </Card>
 
-      {/* ---------- UX-R2：最近检查报告（本地摘要；完整三栏视图仍属当次会话的 result） ---------- */}
-      {tab === "result" ? (
+      {/* ---------- 规则包清单（可调开关）：检查前的配置项，折叠收起不占首屏 ---------- */}
+      <details className="rounded-lg border border-border bg-card shadow-md" open={rulesOpen}>
+        <summary
+          onClick={(e) => {
+            e.preventDefault()
+            setRulesOpen((v) => !v)
+          }}
+          className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 [&::-webkit-details-marker]:hidden"
+        >
+          <ListChecks className="h-4 w-4 shrink-0 text-primary" />
+          <span className="text-sm font-semibold text-foreground">规则包清单</span>
+          <span className="text-xs text-muted-foreground">点开可逐条调整规则开关（配置会记住）</span>
+          <ChevronDown className={`ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform ${rulesOpen ? "rotate-180" : ""}`} />
+        </summary>
+        <div className="border-t border-border px-4 py-3">
+          <RulesListPanel checkCfg={checkCfg} patchCheckCfg={patchCheckCfg} anbidCfg={anbidCfg} />
+        </div>
+      </details>
+      </>
+      ) : null}
+
+      {/* ---------- UX-v2：检查中 —— 本机执行说明 + 完成后入口（不画假进度条） ---------- */}
+      {tab === "running" ? (
+        running ? (
+          <Card>
+            <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-sm font-medium text-foreground">正在按当前规则包逐条扫描…</p>
+              <p className="max-w-md text-xs leading-relaxed text-muted-foreground">
+                纯规则 · 零 AI · 文件不出门：全部比对在本机完成，检出即标（正文只读，不改一个字）。
+              </p>
+            </CardContent>
+          </Card>
+        ) : result ? (
+          <Card>
+            <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+              <ClipboardCheck className="h-7 w-7 text-primary" />
+              <p className="text-sm font-medium text-foreground">检查完成</p>
+              <p className="text-xs text-muted-foreground">
+                共检出 <span className="font-medium text-destructive">{result.summary.fail}</span> 项必改 ·{" "}
+                <span className="font-medium text-amber-600">{result.summary.warn}</span> 项提醒
+              </p>
+              <Button size="sm" onClick={() => setSearchParams({ tab: "report" }, { replace: true })} className="bg-primary text-primary-foreground hover:bg-primary/90">
+                看检查报告 →
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+              <ClipboardCheck className="h-7 w-7 text-muted-foreground" />
+              <p className="text-sm font-medium text-foreground">当前没有进行中的检查</p>
+              <p className="max-w-md text-xs leading-relaxed text-muted-foreground">
+                到「新建检查」选好对象与模式后点「开始检查」，执行过程会出现在这里。
+              </p>
+              <Button size="sm" variant="outline" onClick={() => setSearchParams({}, { replace: true })} className="border-border text-card-foreground hover:bg-secondary">
+                去新建检查
+              </Button>
+            </CardContent>
+          </Card>
+        )
+      ) : null}
+
+      {/* ---------- UX-v2：检查报告 —— 三栏阅读 + 四件套导出 ---------- */}
+      {tab === "report" ? (
+        result ? (
+          <ReadingView
+            result={result}
+            blocked={blocked}
+            hardFatal={hardFatal}
+            onExportExcel={() => tryExport("excel")}
+            onExportHtml={() => tryExport("html")}
+            onExportDocx={() => tryExport("docx")}
+          />
+        ) : (
+          <Card>
+            <CardContent className="py-10 text-center text-sm text-muted-foreground">
+              {source.kind === "none"
+                ? "先到「新建检查」上传文件或选择项目并开始检查；报告会在这里以三栏视图呈现"
+                : "点击「开始检查」后，三栏检查视图会出现在这里"}
+            </CardContent>
+          </Card>
+        )
+      ) : null}
+
+      {/* ---------- UX-v2：历史报告（本机摘要；完整三栏视图仍属当次会话的 result） ---------- */}
+      {tab === "history" ? (
         recentChecks.length > 0 ? (
           <div className="rounded-lg border border-border bg-card shadow-md">
             <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
@@ -451,54 +550,14 @@ export function BidCheckPage(vm: BidCheckVm) {
             </p>
             <button
               type="button"
-              onClick={() => setTab("rules")}
+              onClick={() => setSearchParams({}, { replace: true })}
               className="text-xs text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
-              先看看检查了哪些规则 →
+              去新建检查 →
             </button>
           </div>
         )
       ) : null}
-
-      {/* ---------- Tab：检查结果（三栏） / 规则清单 ---------- */}
-      <div className="inline-flex overflow-hidden rounded-md border">
-        <button
-          className={cn("flex items-center gap-1.5 px-3 py-1.5 text-sm", tab === "result" ? "bg-primary text-primary-foreground" : "bg-background hover:bg-accent")}
-          onClick={() => setTab("result")}
-        >
-          <BookOpenCheck className="h-4 w-4" /> 检查结果
-          {issueCount > 0 ? <span className="rounded-full bg-destructive px-1.5 text-[10px] text-destructive-foreground">{issueCount}</span> : null}
-        </button>
-        <button
-          className={cn("flex items-center gap-1.5 px-3 py-1.5 text-sm", tab === "rules" ? "bg-primary text-primary-foreground" : "bg-background hover:bg-accent")}
-          onClick={() => setTab("rules")}
-        >
-          <ListChecks className="h-4 w-4" /> 规则清单
-        </button>
-      </div>
-
-      {tab === "rules" ? (
-        <Card>
-          <CardContent className="py-4">
-            <RulesListPanel checkCfg={checkCfg} patchCheckCfg={patchCheckCfg} anbidCfg={anbidCfg} />
-          </CardContent>
-        </Card>
-      ) : result ? (
-        <ReadingView
-          result={result}
-          blocked={blocked}
-          hardFatal={hardFatal}
-          onExportExcel={() => tryExport("excel")}
-          onExportHtml={() => tryExport("html")}
-          onExportDocx={() => tryExport("docx")}
-        />
-      ) : (
-        <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            {source.kind === "none" ? "上传文件或选择项目后点击「开始检查」，或切到「规则清单」查看/调整规则开关" : "点击「开始检查」生成三栏检查视图"}
-          </CardContent>
-        </Card>
-      )}
 
       {/* ---------- 配置弹窗 ---------- */}
       <BidCheckConfigDialog
