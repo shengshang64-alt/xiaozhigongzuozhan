@@ -81,6 +81,9 @@ export function useMaterialLibrary() {
   const [category, setCategory] = useState("")
   const [source, setSource] = useState("")
   const [trashedView, setTrashedView] = useState(false)
+  // 排序（UX-v2 素材总览）：原型有「按引用降序 / 按入库时间 / 按占用空间」三档。
+  // 默认按入库时间（与拆改前行为一致），用户可切到「按引用降序」以「价值」而非「时间」看库。
+  const [sort, setSort] = useState<"created" | "usage" | "bytes">("created")
   const [stats, setStats] = useState<MaterialStats | null>(null)
   const reqSeq = useRef(0)
 
@@ -102,6 +105,7 @@ export function useMaterialLibrary() {
         if (category) qs.set("category", category)
         if (source) qs.set("source", source)
         if (trashedView) qs.set("trashed", "1")
+        if (sort !== "created") qs.set("sort", sort)
         const data = await apiFetch<MaterialListResult>(`/api/materials?${qs.toString()}`, { headers: vibexAuthHeaders() })
         if (seq !== reqSeq.current) return // 请求序号守卫，防乱序覆盖
         setTotalItems(data.totalItems ?? 0)
@@ -115,7 +119,7 @@ export function useMaterialLibrary() {
         if (seq === reqSeq.current) setItemsLoading(false)
       }
     },
-    [q, category, source, trashedView],
+    [q, category, source, trashedView, sort],
   )
 
   // 筛选变化 → 延迟一拍重拉（顺带防抖；清理函数取消上一次未触发的请求）
@@ -506,6 +510,7 @@ export function useMaterialLibrary() {
     // 列表
     items, itemsLoading, itemsLoaded, totalItems, hasMore, loadMore,
     q, setQ, category, setCategory, source, setSource, trashedView, setTrashedView,
+    sort, setSort,
     stats, reloadAll: () => Promise.all([loadItems(1), loadStats()]),
     // 详情/编辑/回收站
     detail, openDetail, setDetail, updateItem, trashItem, restoreItem, purgeTrashed,

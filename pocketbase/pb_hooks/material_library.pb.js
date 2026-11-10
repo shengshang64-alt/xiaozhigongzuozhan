@@ -171,12 +171,21 @@ routerAdd("GET", "/api/materials", function (e) {
     if (query.q !== undefined && String(query.q) !== "") { parts.push("(name ~ {:q} || tags_text ~ {:q})"); params.q = "%" + String(query.q) + "%" }
     if (query.sha256 !== undefined && String(query.sha256) !== "") { parts.push("sha256 = {:sha}"); params.sha = String(query.sha256) }
     var filter = parts.join(" && ")
+    // 排序：原型素材总览有「按引用降序 / 按入库时间 / 按占用空间」三种。
+    // 白名单映射，绝不把 query 原样拼进排序串（防注入与非法字段报错）。
+    var SORTS = {
+      usage: "-usage,-created",   // 按被 PPT 引用降序（默认；同引用数按更新时间新→旧）
+      created: "-created",        // 按入库时间
+      bytes: "-bytes,-created",   // 按占用空间
+    }
+    var sortKey = String(query.sort || "created")
+    var sortExpr = SORTS[sortKey] || SORTS.created
     // 计数与 hasMore：一次多捞 1 条判 hasMore；总数用大 limit 全捞后取 length（元数据行小，可承受）
-    var records = $app.findRecordsByFilter("material_library", filter, "-created", perPage + 1, (page - 1) * perPage, params)
+    var records = $app.findRecordsByFilter("material_library", filter, sortExpr, perPage + 1, (page - 1) * perPage, params)
     var hasMore = records.length > perPage
     if (hasMore) records = records.slice(0, perPage)
     var total = 0
-    try { total = $app.findRecordsByFilter("material_library", filter, "-created", 10000, 0, params).length } catch (_) { total = records.length }
+    try { total = $app.findRecordsByFilter("material_library", filter, sortExpr, 10000, 0, params).length } catch (_) { total = records.length }
     var items = []
     for (var i = 0; i < records.length; i++) items.push(exportMode(records[i], mode))
     return e.json(200, { items: items, page: page, perPage: perPage, totalItems: total, hasMore: hasMore })
@@ -432,6 +441,14 @@ routerAdd("POST", "/api/materials-trash/purge", function (e) {
 })
 
 // GET /api/materials-stats — 总览统计（元数据行小，全量聚合可承受）
+//
+// UX-v2 素材总览（prototype/material/list.html）需要「本月新增 / 被引用总次数 /
+// 未被引用数 / 使用排行 Top N」。这些**全部能从已有记录直接聚合**，不是估算：
+//   · newThisMonth   —— created 落在本自然月且未进回收站
+//   · usageTotal     —— 未进回收站记录的 usage 求和（PPT 插入时 +1，见 /usage 路由）
+//   · unused         —— 未进回收站且 usage = 0 的条数
+//   · topUsed        —— 未进回收站且 usage > 0，按 usage 降序取前 N
+// 口径注意：usage 只统计未删除素材；回收站里的历史引用不计入（它们已从库里消失）。
 routerAdd("GET", "/api/materials-stats", function (e) {
   function uidOf() {
     return String(e.get("rhUserId") || "")
@@ -439,13 +456,26 @@ routerAdd("GET", "/api/materials-stats", function (e) {
   try {
     var __uid = uidOf()
     if (!__uid) return e.json(401, { error: "login_required", message: "请先登录后再访问该数据" })
+    function emptyStats() {
+      return {
+        total: 0, trashed: 0, bytes: 0, categories: [], sources: [],
+        newThisMonth: 0, usageTotal: 0, unused: 0, topUsed: [], topLimit: 5,
+      }
+    }
     try { $app.findCollectionByNameOrId("material_library") } catch (_) {
-      return e.json(200, { total: 0, trashed: 0, bytes: 0, categories: [], sources: [] })
+      return e.json(200, emptyStats())
     }
     var records = []
     try { records = $app.findRecordsByFilter("material_library", "owner = {:uid}", "-created", 10000, 0, { uid: __uid }) } catch (_) { records = [] }
+
+    var query = (e.requestInfo() || {}).query || {}
+    var topLimit = Math.min(Math.max(Number(query.top) || 5, 1), 50)
+
+    var now = new Date()
+    var monthPrefix = now.getFullYear() + "-" + (now.getMonth() + 1 < 10 ? "0" : "") + (now.getMonth() + 1)
     var total = 0, trashed = 0, bytes = 0
-    var catMap = {}, srcMap = {}
+    var newThisMonth = 0, usageTotal = 0, unused = 0
+    var catMap = {}, srcMap = {}, topList = []
     for (var i = 0; i < records.length; i++) {
       var r = records[i]
       if (r.getBool("trashed")) { trashed++; continue }
@@ -455,13 +485,31 @@ routerAdd("GET", "/api/materials-stats", function (e) {
       var src = r.getString("source") || "manual"
       catMap[cat] = (catMap[cat] || 0) + 1
       srcMap[src] = (srcMap[src] || 0) + 1
+      // 本月新增：ISO 串前 7 位形如 2026-11，与本地自然月前缀比较
+      var created = String(r.getString("created") || "")
+      if (created.substring(0, 7) === monthPrefix) newThisMonth++
+      var usage = r.getInt("usage") || 0
+      usageTotal += usage
+      if (usage === 0) unused++
+      else topList.push({
+        id: r.id,
+        name: r.getString("name") || "未命名素材",
+        usage: usage,
+        category: cat,
+      })
     }
     var categories = [], sources = []
     for (var c in catMap) categories.push({ name: c, count: catMap[c] })
     for (var s in srcMap) sources.push({ name: s, count: srcMap[s] })
     categories.sort(function (a, b) { return b.count - a.count })
     sources.sort(function (a, b) { return b.count - a.count })
-    return e.json(200, { total: total, trashed: trashed, bytes: bytes, categories: categories, sources: sources })
+    topList.sort(function (a, b) { return b.usage - a.usage })
+    return e.json(200, {
+      total: total, trashed: trashed, bytes: bytes,
+      categories: categories, sources: sources,
+      newThisMonth: newThisMonth, usageTotal: usageTotal, unused: unused,
+      topUsed: topList.slice(0, topLimit), topLimit: topLimit,
+    })
   } catch (err) {
     var msg = String(err && err.message || err)
     return e.json(500, { error: "stats_failed", message: msg, fingerprint: msg.substring(0, 80) })

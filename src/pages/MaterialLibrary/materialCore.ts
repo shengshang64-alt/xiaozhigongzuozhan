@@ -46,6 +46,22 @@ export function formatBytes(n: number): string {
   return `${(v / 1024 / 1024).toFixed(2)} MB`
 }
 
+/**
+ * 统计值渲染：`null/undefined` = 统计还没到手（→「—」），0 = 真值就是 0（→「0」）。
+ *
+ * 为什么不直接 `stats?.total ?? 0`：那会把「接口还没回来」画成「库里有 0 个素材」，
+ * 与审查口径「未加载/失败不得伪装成空」相悖（仓库 dataStatesGuard 已多次抓过这类回归）。
+ * 只有 stats 到手之后的 0 才是可信的 0。
+ */
+export function statText(v: number | null | undefined): string {
+  return typeof v === "number" && Number.isFinite(v) ? String(v) : "—"
+}
+
+/** formatBytes 的「未加载」版本，口径同 statText */
+export function statBytes(v: number | null | undefined): string {
+  return typeof v === "number" && Number.isFinite(v) ? formatBytes(v) : "—"
+}
+
 // ---------- dataURL / 哈希 ----------
 
 /** dataURL 的二进制字节数（base64 段 3/4 折算，扣 padding） */

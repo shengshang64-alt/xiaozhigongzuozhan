@@ -12,7 +12,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 
 describe("R248 素材库「取消选择」清空整批选择（防回流）", () => {
   const hook = readFileSync(path.join(HERE, "useMaterialLibrary.ts"), "utf-8")
-  const page = readFileSync(path.join(HERE, "MaterialLibraryPage.tsx"), "utf-8")
+  // UX-v2 四屏拆分后，抓取结果区从 MaterialLibraryPage 迁到 MaterialWebScreen；
+  // 哨兵口径不变，扫描对象跟着搬到新家。
+  const page = readFileSync(path.join(HERE, "MaterialWebScreen.tsx"), "utf-8")
 
   it("hook 暴露 clearSelection 且确为整批清空", () => {
     expect(hook).toContain("const clearSelection = useCallback(() => setSelectedUrls([]), [])")
@@ -20,7 +22,8 @@ describe("R248 素材库「取消选择」清空整批选择（防回流）", ()
   })
 
   it("「取消选择」按钮接 clearSelection，不再误用单项 toggle", () => {
-    expect(page).toContain("<Button size=\"sm\" variant=\"ghost\" onClick={p.clearSelection}>")
+    // 按钮样式在四屏重排里会调 className，所以只钉「ghost 变体 + onClick={p.clearSelection}」这对语义
+    expect(page).toMatch(/<Button[^>]*variant="ghost"[^>]*onClick=\{p\.clearSelection\}/)
     expect(page).not.toContain("p.toggleSelectUrl(p.selectedUrls[0])")
   })
 })

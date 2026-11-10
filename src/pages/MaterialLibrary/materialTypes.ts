@@ -37,6 +37,15 @@ export type MaterialStats = {
   bytes: number
   categories: { name: string; count: number }[]
   sources: { name: string; count: number }[]
+  /** 本月新增（created 落在本自然月、未进回收站）—— 后端真聚合，非估算 */
+  newThisMonth?: number
+  /** 未进回收站素材的 usage 之和（PPT 插入时 +1） */
+  usageTotal?: number
+  /** 未进回收站且 usage = 0 的素材数（「未被引用」建议清理的依据） */
+  unused?: number
+  /** 使用排行（按 usage 降序，默认 Top5）；没有任何素材被引用时为空数组 */
+  topUsed?: { id: string; name: string; usage: number; category: string }[]
+  topLimit?: number
 }
 
 /** 内部源配置（Q-014：地址未配置显示「未配置」，不报错不阻塞；存 localStorage，本地优先） */
