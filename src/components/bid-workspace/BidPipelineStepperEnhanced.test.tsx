@@ -4,6 +4,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
 import { cleanup } from "@testing-library/react"
 import "@testing-library/jest-dom/vitest"
 import { BidPipelineStepperEnhanced } from "./BidPipelineStepperEnhanced"
+import { BidChapterNavTree } from "./BidChapterNavTree"
 import type { BidProjectRecord } from "@/pages/BidWorkspace/bidTypes"
 import type { Chapter } from "@/pages/SolutionStudio/solutionTypes"
 
@@ -12,13 +13,19 @@ import type { Chapter } from "@/pages/SolutionStudio/solutionTypes"
 // 断言文案与组件源码逐字对齐（PIPELINE_STEPS 实际标签：标书查重 / 废标项检查 / 模拟评标），
 // 夹具形状与真实类型对齐（Chapter 需 node_id/sections/gen_status；BidStage 无 "in_progress"），
 // 最小夹具 + 收窄转换沿用仓库既有惯例（BidCheck/rules/dedup.test.ts 的 rec()）。
+//
+// UX-v2 拆屏（2026-11-11）：步骤条里的通栏「章节导航」面板拆除，章节树整体迁到
+// ComposeStep 左栏 BidChapterNavTree——S1 分组/三态/S4 商务组卷用例改锚到该组件直渲染；
+// 步骤条用例（跳转 / 按钮态 / 闸门徽标 / 进度）仍走 BidPipelineStepperEnhanced。
 // ---------------------------------------------------------------------------
 
 // Mock 数据工厂：每次调用返回全新对象，避免测试间状态污染
+// 注意：树的行文案是「第{下标+1}章 {title}」（与正文标题、Word 预览同编号），
+// 夹具 title 不带章号，断言里的「第1章 测试章节」由树拼出。
 function makeChapters(count: number, doneCount: number): Chapter[] {
   return Array.from({ length: count }, (_, i) => ({
     node_id: `ch-${i + 1}`,
-    title: `第${i + 1}章 测试章节`,
+    title: `测试章节`,
     sections: [],
     content: i < doneCount ? `第${i + 1}章的正文内容` : "",
     gen_status: "done" as const,
@@ -49,42 +56,56 @@ function renderStepper(opts: {
   activeStep?: number
   project?: BidProjectRecord
   requestStep?: (step: number) => void
+} = {}) {
+  const { activeStep = 1, project = makeProject(), requestStep = vi.fn() } = opts
+  return {
+    requestStep,
+    ...render(<BidPipelineStepperEnhanced activeStep={activeStep} requestStep={requestStep} activeProject={project} />),
+  }
+}
+
+/** UX-v2 拆屏后，章节树用例直渲染 BidChapterNavTree（原经步骤条面板间接渲染） */
+function renderTree(opts: {
+  chapters?: Chapter[]
+  budgets?: number[]
   activeChapterId?: string | null
   selectChapter?: (nodeId: string) => void
-  chapterBudgets?: number[]
   generateChapter?: (nodeId: string) => void
   continueChapter?: (nodeId: string) => void
   refineChapter?: (nodeId: string, kind: "rewrite" | "expand" | "condense") => void
   addBizAssemblyItems?: (titles: string[]) => void
 } = {}) {
   const {
-    activeStep = 1,
-    project = makeProject(),
-    requestStep = vi.fn(),
-    activeChapterId,
-    selectChapter,
-    chapterBudgets,
+    chapters = makeChapters(2, 1),
+    budgets = [],
+    activeChapterId = null,
+    selectChapter = vi.fn(),
     generateChapter,
     continueChapter,
     refineChapter,
-    addBizAssemblyItems,
+    addBizAssemblyItems = vi.fn(),
   } = opts
   return {
-    requestStep,
     selectChapter,
+    addBizAssemblyItems,
     ...render(
-      <BidPipelineStepperEnhanced
-        activeStep={activeStep}
-        requestStep={requestStep}
-        activeProject={project}
+      <BidChapterNavTree
+        chapters={chapters}
+        chapterBudgets={budgets}
         activeChapterId={activeChapterId}
-        selectChapter={selectChapter}
-        chapterBudgets={chapterBudgets}
+        supplementState={null}
+        sectionState={null}
+        doneChapterCount={chapters.filter((c) => (c.content ?? "").trim().length > 0).length}
+        techChapterTotal={chapters.length}
+        emptyBizCount={0}
+        onFillBizSkeletons={() => {}}
+        onSelectChapter={selectChapter}
+        onFocusSection={() => {}}
         generateChapter={generateChapter}
         continueChapter={continueChapter}
         refineChapter={refineChapter}
         addBizAssemblyItems={addBizAssemblyItems}
-      />
+      />,
     ),
   }
 }
@@ -208,32 +229,36 @@ describe("BidPipelineStepperEnhanced", () => {
   })
 
   // -----------------------------------------------------------
-  // 9. 上下文面板仅在第 3 步出现
+  // 9. UX-v2 拆屏：通栏章节导航整体拆除（树在 ComposeStep 左栏）
   // -----------------------------------------------------------
-  it("activeStep=3 时显示章节导航与快速工具", () => {
+  it("activeStep=3 不再渲染通栏「章节导航」与假「快速工具」行", () => {
     renderStepper({ activeStep: 3 })
-
-    expect(screen.getByText(/章节导航/)).toBeInTheDocument()
-    expect(screen.getByText(/快速工具/)).toBeInTheDocument()
-  })
-
-  it("activeStep≠3 时不显示章节导航", () => {
-    renderStepper({ activeStep: 1 })
 
     expect(screen.queryByText(/章节导航/)).not.toBeInTheDocument()
     expect(screen.queryByText(/快速工具/)).not.toBeInTheDocument()
   })
 
+  it("activeStep≠3 同样不显示章节导航", () => {
+    renderStepper({ activeStep: 1 })
+
+    expect(screen.queryByText(/章节导航/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/快速工具/)).not.toBeInTheDocument()
+  })
+})
+
+describe("BidChapterNavTree（正文编写左栏树 · UX-v2）", () => {
+  beforeEach(() => {
+    document.body.innerHTML = ""
+  })
+
+  afterEach(cleanup)
+
   // -----------------------------------------------------------
   // 10. 章节完成态样式（UX-R3 S1：绿色左边框行保留，行级三态见下方新用例）
   // -----------------------------------------------------------
   it("已完成章节显示绿色左边框与绿色背景", () => {
-    const project = makeProject({
-      bid_chapters: makeChapters(2, 1), // 第 1 章完成
-    })
-    renderStepper({ activeStep: 3, project })
+    renderTree() // 默认 2 章 1 章完成
 
-    // UX-R3 S1 后行容器带 data-chapter-row 标记，左边框压到 3px
     const chapterTitle = screen.getByText("第1章 测试章节")
     const chapterRow = chapterTitle.closest("[data-chapter-row]")
     expect(chapterRow).toHaveClass("border-green-500")
@@ -243,16 +268,11 @@ describe("BidPipelineStepperEnhanced", () => {
   // -----------------------------------------------------------
   // 11. 空章节数组容错
   // -----------------------------------------------------------
-  it("空章节数组时组件不崩溃，面板以「共 0 章」渲染", () => {
-    // 脚本原预期「面板不渲染」，但组件实际判据是 !project?.bid_chapters（真值判断），
-    // 空数组为真值 → 面板仍渲染、章节列表为空。按脚本 Part 1 指引「对照组件源码
-    // 调整断言」：这里钉住真实行为——不崩溃 + 空清单 + 计数为 0。
-    const project = makeProject({ bid_chapters: [] })
-    renderStepper({ activeStep: 3, project })
+  it("空章节数组时组件不崩溃，给出「先生成大纲」空态", () => {
+    renderTree({ chapters: [] })
 
-    expect(screen.getByText(/章节导航/)).toBeInTheDocument()
-    expect(screen.getByText(/共 0 章/)).toBeInTheDocument()
-    expect(screen.queryByText("第1章 测试章节")).not.toBeInTheDocument()
+    expect(screen.getByText(/还没有章节大纲/)).toBeInTheDocument()
+    expect(screen.queryByText(/测试章节/)).not.toBeInTheDocument()
   })
 
   // -----------------------------------------------------------
@@ -275,8 +295,7 @@ describe("BidPipelineStepperEnhanced", () => {
       gen_status: "pending",
       part: "tech",
     }
-    const project = makeProject({ bid_chapters: [bizCh, techCh] })
-    renderStepper({ activeStep: 3, project })
+    renderTree({ chapters: [bizCh, techCh] })
 
     expect(screen.getByText("商务部分")).toBeInTheDocument()
     expect(screen.getByText("技术部分")).toBeInTheDocument()
@@ -287,8 +306,7 @@ describe("BidPipelineStepperEnhanced", () => {
 
   it("无 part 字段的存量章节归入技术部分", () => {
     // 与 bidTypes.isBizPart「无 part 一律按技术章」存量语义一致
-    const project = makeProject({ bid_chapters: makeChapters(2, 0) })
-    renderStepper({ activeStep: 3, project })
+    renderTree({ chapters: makeChapters(2, 0) })
 
     expect(screen.getByText("技术部分")).toBeInTheDocument()
     expect(screen.queryByText("商务部分")).not.toBeInTheDocument()
@@ -302,10 +320,9 @@ describe("BidPipelineStepperEnhanced", () => {
       content: "一二三四五", // 5 字，远低于 100 字预算的 80%
       gen_status: "done",
     }
-    const project = makeProject({ bid_chapters: [partialCh] })
-    renderStepper({ activeStep: 3, project, chapterBudgets: [100] })
+    renderTree({ chapters: [partialCh], budgets: [100] })
 
-    const row = screen.getByText("半成品章").closest("[data-chapter-row]")
+    const row = screen.getByText(/半成品章/).closest("[data-chapter-row]")
     expect(row).toHaveClass("border-blue-400")
     expect(screen.getByText("5字")).toBeInTheDocument()
   })
@@ -318,17 +335,14 @@ describe("BidPipelineStepperEnhanced", () => {
       content: "正".repeat(90), // 90 字 ≥ 100 × 80%
       gen_status: "done",
     }
-    const project = makeProject({ bid_chapters: [doneCh] })
-    renderStepper({ activeStep: 3, project, chapterBudgets: [100] })
+    renderTree({ chapters: [doneCh], budgets: [100] })
 
-    const row = screen.getByText("达标章").closest("[data-chapter-row]")
+    const row = screen.getByText(/达标章/).closest("[data-chapter-row]")
     expect(row).toHaveClass("border-green-500")
   })
 
   it("当前编辑章整行蓝色高亮", () => {
-    const chapters = makeChapters(2, 1)
-    const project = makeProject({ bid_chapters: chapters })
-    renderStepper({ activeStep: 3, project, activeChapterId: "ch-2" })
+    renderTree({ activeChapterId: "ch-2" })
 
     const row = screen.getByText("第2章 测试章节").closest("[data-chapter-row]")
     expect(row).toHaveClass("border-blue-500")
@@ -337,8 +351,7 @@ describe("BidPipelineStepperEnhanced", () => {
 
   it("传入选章回调后点击章节行触发 selectChapter", () => {
     const selectChapter = vi.fn()
-    const project = makeProject({ bid_chapters: makeChapters(2, 0) })
-    renderStepper({ activeStep: 3, project, selectChapter })
+    renderTree({ chapters: makeChapters(2, 0), selectChapter })
 
     fireEvent.click(screen.getByText("第2章 测试章节").closest("[data-chapter-row]")!)
     expect(selectChapter).toHaveBeenCalledWith("ch-2")
@@ -348,8 +361,7 @@ describe("BidPipelineStepperEnhanced", () => {
     const generateChapter = vi.fn()
     const continueChapter = vi.fn()
     const refineChapter = vi.fn()
-    const project = makeProject({ bid_chapters: makeChapters(1, 0) })
-    renderStepper({ activeStep: 3, project, generateChapter, continueChapter, refineChapter })
+    renderTree({ chapters: makeChapters(1, 0), generateChapter, continueChapter, refineChapter })
 
     fireEvent.click(screen.getByTitle("生成本章正文"))
     fireEvent.click(screen.getByTitle("从断点续写本章"))
@@ -367,10 +379,23 @@ describe("BidPipelineStepperEnhanced", () => {
       content: "字".repeat(1234),
       gen_status: "done",
     }
-    const project = makeProject({ bid_chapters: [partialCh] })
-    renderStepper({ activeStep: 3, project, chapterBudgets: [4000] })
+    renderTree({ chapters: [partialCh], budgets: [4000] })
 
     expect(screen.getByText("1.2k字")).toBeInTheDocument()
+  })
+
+  // -----------------------------------------------------------
+  // UX-v2：底部总进度（原型 draft.html 口径，字数为全文真实累计）
+  // -----------------------------------------------------------
+  it("底部总进度显示已完成章数与全文真实字数", () => {
+    const chs = makeChapters(2, 1)
+    renderTree({ chapters: chs })
+
+    expect(screen.getByText("总进度")).toBeInTheDocument()
+    // 「1/2 章」在头部徽标与底部总进度各出现一次
+    expect(screen.getAllByText("1/2 章").length).toBeGreaterThanOrEqual(1)
+    // 第 1 章夹具正文「第1章的正文内容」= 8 个字符 → 8字
+    expect(screen.getByText("· 8字")).toBeInTheDocument()
   })
 
   // -----------------------------------------------------------
@@ -379,16 +404,14 @@ describe("BidPipelineStepperEnhanced", () => {
   it("商务组头显示「组卷检查」入口，技术组无此入口", () => {
     const bizCh: Chapter = { node_id: "b1", title: "投标函", sections: [], content: "", gen_status: "pending", part: "biz" }
     const techCh: Chapter = { node_id: "t1", title: "技术方案", sections: [], content: "", gen_status: "pending", part: "tech" }
-    const project = makeProject({ bid_chapters: [bizCh, techCh] })
-    renderStepper({ activeStep: 3, project })
+    renderTree({ chapters: [bizCh, techCh] })
 
     expect(screen.getAllByText(/组卷检查/)).toHaveLength(1)
   })
 
   it("点击「组卷检查」打开齐套/缺失/需注意三态清单", () => {
     const bizCh: Chapter = { node_id: "b1", title: "投标函", sections: [], content: "", gen_status: "pending", part: "biz" }
-    const project = makeProject({ bid_chapters: [bizCh] })
-    renderStepper({ activeStep: 3, project })
+    renderTree({ chapters: [bizCh] })
 
     fireEvent.click(screen.getByText(/组卷检查/))
     // 标题
@@ -404,8 +427,7 @@ describe("BidPipelineStepperEnhanced", () => {
   it("缺失项「补入」透传 addBizAssemblyItems", () => {
     const addBizAssemblyItems = vi.fn()
     const bizCh: Chapter = { node_id: "b1", title: "投标函", sections: [], content: "", gen_status: "pending", part: "biz" }
-    const project = makeProject({ bid_chapters: [bizCh] })
-    renderStepper({ activeStep: 3, project, addBizAssemblyItems })
+    renderTree({ chapters: [bizCh], addBizAssemblyItems })
 
     fireEvent.click(screen.getByText(/组卷检查/))
     fireEvent.click(screen.getByText(/^补入「法定代表人授权书」$/))
@@ -415,8 +437,7 @@ describe("BidPipelineStepperEnhanced", () => {
   it("一键补齐全部缺失项", () => {
     const addBizAssemblyItems = vi.fn()
     const bizCh: Chapter = { node_id: "b1", title: "投标函", sections: [], content: "", gen_status: "pending", part: "biz" }
-    const project = makeProject({ bid_chapters: [bizCh] })
-    renderStepper({ activeStep: 3, project, addBizAssemblyItems })
+    renderTree({ chapters: [bizCh], addBizAssemblyItems })
 
     fireEvent.click(screen.getByText(/组卷检查/))
     fireEvent.click(screen.getByText(/一键补齐/))
@@ -433,8 +454,7 @@ describe("BidPipelineStepperEnhanced", () => {
       gen_status: "done",
       part: "biz",
     }
-    const project = makeProject({ bid_chapters: [bizCh] })
-    renderStepper({ activeStep: 3, project })
+    renderTree({ chapters: [bizCh] })
 
     fireEvent.click(screen.getByText(/组卷检查/))
     expect(screen.getByText("齐套 1")).toBeInTheDocument()

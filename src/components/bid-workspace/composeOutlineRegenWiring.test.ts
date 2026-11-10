@@ -9,6 +9,8 @@ import { describe, expect, it } from "vitest"
 
 // 读取走 src/testing/hookSources 单一入口（R57 · 审计 §3.1）。
 const COMPOSE = sourceText("src/components/bid-workspace/ComposeStep.tsx")
+// UX-v2 拆屏（2026-11-11）：左树（重生成入口按钮、全部展开、小节展开）在独立组件里
+const TREE = sourceText("src/components/bid-workspace/BidChapterNavTree.tsx")
 
 describe("编制阶段重新生成大纲接线守卫", () => {
   it("分支条件允许编制阶段打开大纲视图", () => {
@@ -16,7 +18,7 @@ describe("编制阶段重新生成大纲接线守卫", () => {
   })
 
   it("大纲目录面板头带重生成入口，且接了回调", () => {
-    expect(COMPOSE).toContain("重新生成大纲")
+    expect(TREE).toContain("重新生成大纲")
     expect(COMPOSE).toContain("onRegenerateOutline")
     // 编制阶段的口径：先切到大纲视图，再弹"重新生成大纲？"确认（复用既有弹窗）
     expect(COMPOSE).toContain("setOutlineViewOpen(true)")
@@ -24,10 +26,10 @@ describe("编制阶段重新生成大纲接线守卫", () => {
   })
 
   it("章节导航支持「全部展开」（默认只展开当前章，避免误以为小节丢了）", () => {
-    expect(COMPOSE).toContain("expandAllSections")
-    expect(COMPOSE).toContain("全部展开")
+    expect(TREE).toContain("expandAllSections")
+    expect(TREE).toContain("全部展开")
     // 渲染条件同时放行"当前章"与"全部展开"
-    expect(COMPOSE).toContain("(isActive || expandAllSections) &&")
+    expect(TREE).toContain("(isCurrent || expandAllSections) &&")
   })
 
   it("已有章节时能返回逐章编制，确认大纲后自动回到该视图", () => {

@@ -127,18 +127,12 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               </div>
             </div>
           </div>
-          {/* UX-R3 S1：接线当前章/选章/预算/生成通道——章节导航面板获得三态分组树与行级快捷动作 */}
+          {/* UX-v2 拆屏（2026-11-11）：步骤条只管步骤与闸门；章节树/快捷动作/商务组卷
+              全部由 ComposeStep 左栏 BidChapterNavTree 承担，不再渲染通栏「章节导航」 */}
           <BidPipelineStepperEnhanced
             activeStep={p.activeStep}
             requestStep={p.requestStep}
             activeProject={p.activeProject}
-            activeChapterId={p.activeChapterId}
-            selectChapter={p.selectChapter}
-            chapterBudgets={p.chapterBudgets}
-            generateChapter={p.generateChapter}
-            continueChapter={p.continueChapter}
-            refineChapter={p.refineChapter}
-            addBizAssemblyItems={p.addBizAssemblyItems}
           />
           {/* 循环 5 A3：归档只读硬锁横幅——导出与查看保留，解除归档后可编辑 */}
           {p.isArchivedLocked && (
@@ -454,6 +448,8 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               // 2026-10-31：为空商务章补填写框架
               fillBizSkeletons={p.fillBizSkeletons}
               emptyBizChapters={p.emptyBizChapters}
+              // UX-v2 拆屏：左树里的商务组卷一键核对补入（原步骤条面板接线迁来）
+              addBizAssemblyItems={p.addBizAssemblyItems}
               formatSettings={p.formatSettings}
               effectiveFormatSettings={p.effectiveFormatSettings}
               formatCheckItems={p.formatCheckItems}

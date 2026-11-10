@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { Link } from "react-router-dom"
-import { Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardPaste, Download, Eye, FileUp, FolderInput, LayoutGrid, Loader2, PenLine, Play, RefreshCw, Sparkles, Square, Wand2 } from "lucide-react"
+import { ChevronDown, ChevronLeft, ChevronRight, ClipboardPaste, Download, Eye, FileUp, FolderInput, LayoutGrid, Loader2, PenLine, Play, RefreshCw, Sparkles, Square, Wand2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { ChapterEditor } from "@/components/solution-studio/ChapterEditor"
 import { OutlineTreeEditor } from "@/components/solution-studio/OutlineTreeEditor"
 import { ChapterBudgetBar } from "@/components/bid-workspace/ChapterBudgetBar"
+import { BidChapterNavTree } from "@/components/bid-workspace/BidChapterNavTree"
 import { DeviationPanel } from "@/components/bid-workspace/DeviationPanel"
 import { TechParamResponsePanel } from "@/components/bid-workspace/TechParamResponsePanel"
 import { SubjectiveScorePanel } from "@/components/bid-workspace/SubjectiveScorePanel"
@@ -25,7 +26,6 @@ import { PrintChapterFlow, PrintExportButton } from "@/components/common/PrintEx
 import { useResizableSidebar } from "@/components/common/useResizableSidebar"
 import { BidWordPreview } from "./BidWordPreview"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
-import { healMustWriteOnRead } from "@/pages/BidWorkspace/mustWriteSelfHeal"
 import { BID_OUTLINE_REQ_KEY, bulkQueueClear, bulkQueueLoad, FIGURES_UNLIMITED, sectionText } from "@/pages/BidWorkspace/bidTypes"
 // UX-R3 S3：偏离与响应表 Tab 角标——与 TechParamResponsePanel 同一套纯本地函数（零 AI）算「待人工确认」数
 import {
@@ -39,7 +39,6 @@ import {
 import { pickTableOfKind, tableToParamItems } from "@/pages/BidWorkspace/tenderTables"
 import { isIncompleteSectionChapter } from "@/pages/BidWorkspace/chapterCompletion"
 import { summarizeBidGenFailures } from "@/pages/BidWorkspace/bidGenFailure"
-import type { Chapter, OutlineNode } from "@/pages/SolutionStudio/solutionTypes"
 import { typeLabel } from "@/pages/SolutionStudio/solutionTypes"
 // R-302：按字符偏移定位 textarea（抽成纯函数，jsdom 单测覆盖边界）
 import { jumpTextareaToOffset } from "@/pages/BidWorkspace/bidFocusJump"
@@ -93,6 +92,8 @@ type ComposeStepProps = Pick<
   // 2026-10-31：为空商务章补填写框架
   | "fillBizSkeletons"
   | "emptyBizChapters"
+  // UX-v2 拆屏：步骤条通栏「章节导航」拆除后，S4 商务组卷一键核对入口随左树迁入本步
+  | "addBizAssemblyItems"
   | "globalFactsSource"
   | "factDraft"
   | "setFactDraft"
@@ -228,178 +229,12 @@ const LEVEL_HINT: Record<0 | 1 | 2 | 3, string> = {
   3: "两级：章 + 节（本产品的「三级」等价于两级，第三层由正文（一）/（1）/① 承载）",
 }
 
-function OutlineNavTree({
-  chapters,
-  activeChapterId,
-  supplementState,
-  sectionState,
-  onSelectChapter,
-  onFocusSection,
-  doneChapterCount,
-  techChapterTotal,
-  emptyBizCount,
-  onFillBizSkeletons,
-  onRegenerateOutline,
-}: {
-  outline: OutlineNode[]
-  chapters: Chapter[]
-  chapterBudgets: number[]
-  activeChapterId: string | null
-  supplementState: { nodeId: string; round: number } | null
-  sectionState: { nodeId: string; current: number; total: number } | null
-  chapterBusy: string | null
-  bulkGenerating: boolean
-  locked: boolean
-  onSelectChapter: (nodeId: string) => void
-  onFocusSection: (nodeId: string, title: string) => void
-  onRegenerateSection: (nodeId: string, sectionIdx: number) => void
-  onResizeSection: (nodeId: string, sectionIdx: number, mode: "expand" | "shrink") => void
-  doneChapterCount: number
-  techChapterTotal: number
-  /** 编制阶段（已有章节）的大纲重生成入口；不传则不渲染按钮（大纲未确认时的旧行为不变） */
-  onRegenerateOutline?: () => void
-  generateDemo: boolean
-  /** 2026-10-31：空商务章数量与补框架入口（商务材料由用户填，系统只给骨架） */
-  emptyBizCount: number
-  onFillBizSkeletons: () => void
-}) {
-  // 复刻方案编制 ChapterNavTree 形态：扁平章列表 + 仅当前章展开小节 + 右侧状态图标（无徽标 / 无折叠箭头）
-  // 章号/小节号按整本正文编号（商务章占前 12 章，技术章自「第13章」起），与正文标题、Word 预览、导出完全一致，按号即可查询
-  // 用户反馈（2026-10-15）：确认大纲后进入编制，这里只展开"当前章"的小节，看着像"小章节没了"。
-  // 补一个「全部展开」开关（默认关 = 原形态），需要通览整本目录时一键铺开所有章的小节。
-  const [expandAllSections, setExpandAllSections] = useState(false)
-
-  const statusDot = (genStatus: Chapter["gen_status"], isActive: boolean): string => {
-    if (genStatus === "done") return "bg-primary"
-    if (genStatus === "generating") return "bg-primary animate-pulse"
-    if (genStatus === "failed") return "bg-destructive"
-    return isActive ? "bg-muted-foreground" : "bg-border"
-  }
-  const pct = techChapterTotal ? Math.round((doneChapterCount / techChapterTotal) * 100) : 0
-  return (
-    <aside className="flex h-full flex-col rounded-lg border border-border bg-card shadow-md">
-      <div className="flex min-h-14 shrink-0 items-center justify-between border-b border-border px-4">
-        <p className="text-sm font-semibold text-foreground">大纲目录</p>
-        <span className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setExpandAllSections((v) => !v)}
-            title={expandAllSections ? "收起到只展开当前章的小节" : "展开所有章的小节，通览整本目录"}
-            className="rounded-md border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            {expandAllSections ? "只看当前章" : "全部展开"}
-          </button>
-          {onRegenerateOutline && (
-            <button
-              type="button"
-              onClick={onRegenerateOutline}
-              title="按当前生成设置重新生成大纲（会替换现有大纲，需再次确认后才重建章节清单）"
-              className="flex items-center gap-1 rounded-md border border-primary/40 px-2 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            >
-              <RefreshCw className="h-3 w-3" />
-              重新生成大纲
-            </button>
-          )}
-          <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
-            {doneChapterCount}/{techChapterTotal} 章
-          </span>
-        </span>
-      </div>
-      <div className="shrink-0 px-4 pt-3">
-        <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-          <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${pct}%` }} />
-        </div>
-      </div>
-      {/* 2026-10-31：空商务章提示——商务材料由你方填写，系统给框架不给内容 */}
-      {emptyBizCount > 0 && (
-        <div className="mx-2 mt-2 rounded-md border border-warning/40 bg-warning/5 px-2.5 py-2">
-          <p className="text-[11px] leading-relaxed text-foreground">
-            <span className="font-medium text-warning">{emptyBizCount} 个商务章还没有内容</span>
-            <br />
-            <span className="text-muted-foreground">
-              投标函/授权书/报价表属法律文件，需按招标文件范本填真实信息并盖章，系统不代写。
-            </span>
-          </p>
-          <button
-            type="button"
-            onClick={onFillBizSkeletons}
-            className="mt-1.5 w-full rounded border border-warning/50 bg-background px-2 py-1 text-[11px] font-medium text-warning transition-colors hover:bg-warning/10"
-          >
-            一键补上填写框架
-          </button>
-        </div>
-      )}
-      <nav className="mt-2 flex-1 overflow-y-auto p-2">
-        {chapters.map((ch, idx) => {
-          const isActive = ch.node_id === activeChapterId
-          const isBiz = ch.part === "biz"
-          const chNo = idx + 1
-          return (
-            <div key={ch.node_id} className="mb-0.5">
-              <button
-                type="button"
-                onClick={() => onSelectChapter(ch.node_id)}
-                title={ch.gen_status === "failed" ? (ch.genError ? `失败原因：${ch.genError}` : "生成失败，可重试（旧记录未留存原因）") : undefined}
-                className={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                  isActive
-                    ? "border border-primary/40 bg-primary/10 font-medium text-primary"
-                    : "border border-transparent text-card-foreground hover:bg-secondary"
-                }`}
-              >
-                <span className={`h-2 w-2 shrink-0 rounded-full ${statusDot(ch.gen_status, isActive)}`} />
-                <span className="min-w-0 flex-1 truncate">{isBiz ? ch.title : `第${chNo}章 ${ch.title}`}</span>
-                {sectionState?.nodeId === ch.node_id ? (
-                  <span className="flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    小节 {sectionState.current}/{sectionState.total}
-                  </span>
-                ) : supplementState?.nodeId === ch.node_id ? (
-                  <span className="flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    补足中 第 {supplementState.round} 轮
-                  </span>
-                ) : (
-                  <>
-                    {ch.gen_status === "generating" && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />}
-                    {ch.gen_status === "done" && <Check className="h-3.5 w-3.5 shrink-0 text-primary" />}
-                  </>
-                )}
-              </button>
-              {(isActive || expandAllSections) && (ch.sections ?? []).length > 0 && (
-                <ul className="ml-4 mt-0.5 border-l border-border pl-3">
-                  {(ch.sections ?? []).map((sec, j) => (
-                    <li
-                      key={`${ch.node_id}-sec-${j}`}
-                      title="点击定位到该小节（预览与编辑均可查询）"
-                      onClick={() => onFocusSection(ch.node_id, sec)}
-                      className="cursor-pointer py-1 text-xs text-muted-foreground transition-colors hover:text-primary"
-                    >
-                      {chNo}.{j + 1} {sec}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )
-        })}
-      </nav>
-      <div className="shrink-0 border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
-        待生成 / 生成中 / 已生成 状态实时同步，可离开后回来继续
-      </div>
-    </aside>
-  )
-}
-
 export function ComposeStep(p: ComposeStepProps) {
   const proj = p.activeProject
-  // R-039②（R259）mustWrite 读时自愈：存量项目打开时本地按评分办法/必备技术关键词/★▲ 补必写标记
-  // （零 AI、零 DB 写、口径与生成侧 applyMustWrite 一致；无需自愈则原样引用，免多余重渲染）→ 大纲「必写」标识即时可见，不白跑重跑
-  const projBidOutline = proj?.bid_outline
-  const projParseReport = proj?.parse_report
-  const navOutline = useMemo(
-    () => healMustWriteOnRead(projBidOutline ?? [], projParseReport ?? null),
-    [projBidOutline, projParseReport],
-  )
+  // R-039②（R259）mustWrite 读时自愈注（2026-11-11 UX-v2 拆屏）：原 navOutline =
+  // healMustWriteOnRead(bid_outline) 只喂给旧 OutlineNavTree 的 outline prop，而该组件
+  // 从未消费它（新 BidChapterNavTree 同样以 bid_chapters 为准），属死代码，连同
+  // healMustWriteOnRead 导入一并移除；读时自愈的真实生效点在生成/导出侧。
   // 性能（2026-10-20）：这条「继续上次批量生成」的判据原来直接写在渲染体里，每次渲染都要跑
   // bulkQueueLoad(proj.id)——它是 localStorage.getItem + JSON.parse + O(队列 × 章数) 的嵌套扫描
   // （bidTypes.ts 的 bulkQueueLoad）。而正文编辑是逐键触发重渲染（setEditingContent 未防抖，
@@ -1422,30 +1257,27 @@ export function ComposeStep(p: ComposeStepProps) {
               >
                 <span className="h-full w-0.5 rounded-full bg-border transition-colors group-hover:bg-primary/60" />
               </div>
-              <OutlineNavTree
-                outline={navOutline}
+              <BidChapterNavTree
                 chapters={proj.bid_chapters}
                 chapterBudgets={p.chapterBudgets}
                 activeChapterId={p.activeChapterId}
                 supplementState={p.supplementState}
                 sectionState={p.sectionGenState}
-                chapterBusy={p.chapterBusy}
-                bulkGenerating={p.bulkGenerating}
-                locked={locked}
-                onSelectChapter={p.selectChapter}
-                onFocusSection={p.focusSectionInChapter}
-                onRegenerateSection={p.regenerateSection}
+                doneChapterCount={p.doneChapterCount}
+                techChapterTotal={p.techChapterTotal}
                 emptyBizCount={p.emptyBizChapters.length}
                 onFillBizSkeletons={p.fillBizSkeletons}
+                onSelectChapter={p.selectChapter}
+                onFocusSection={p.focusSectionInChapter}
                 onRegenerateOutline={() => {
                   // 编制阶段的重生成：先切到大纲视图（确认弹窗后面能看到大纲），确认后按当前生成设置重跑
                   setOutlineViewOpen(true)
                   setRegenConfirmOpen(true)
                 }}
-                onResizeSection={p.resizeSection}
-                doneChapterCount={p.doneChapterCount}
-                techChapterTotal={p.techChapterTotal}
-                generateDemo={p.genOptions?.generate_demo === true}
+                generateChapter={p.generateChapter}
+                continueChapter={p.continueChapter}
+                refineChapter={p.refineChapter}
+                addBizAssemblyItems={p.addBizAssemblyItems}
               />
             </div>
             <div>
