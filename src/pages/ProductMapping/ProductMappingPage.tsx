@@ -1,11 +1,17 @@
 // UX-R2: 产品映射 已按 docs/ux-review-2026-11 修复 2026-11-07（左右分栏/来源卡/骨架示意）
+//
+// UX-v2（2026-11-11）：按 prototype/mapping/ 拆四个步骤屏（?tab= 切换，口径见 mappingTabs.ts）——
+// ①选择清单（来源卡 + 清单预览）→ ②对照（对照表 + 建议/AI 兜底）→ ③结果（覆盖视角 + 导出保存）
+// → 产品库（公司库 / 记忆库 / 导入 ONE-LINK 资产页，manifest 口径三合一）。
+// 沿用既有对照与记忆库能力，不重写算法；无结果时 ②③ 给出指向 ① 的空态。
 import { useRef, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { ArrowLeftRight, Brain, Database, Download, FileUp, ListChecks, Loader2, Save, ShieldCheck, Sparkles, Table2, Trash2, Upload } from "lucide-react"
 import { CompanyLibraryDialog } from "./CompanyLibraryDialog"
 import { CompareTable } from "./CompareTable"
 import { MappingMemoryDialog } from "./MappingMemoryDialog"
 import { UploadWizardDialog } from "./UploadWizardDialog"
+import { MappingSubtabs } from "@/components/product-mapping/MappingSubtabs"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -23,6 +29,7 @@ import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
 import { SkillPickerFor } from "@/components/common/SkillPicker"
 import { calcTotal, fmtMoney, RATING_GROUPS, type ChecklistLine } from "@/pages/SolutionStudio/checklistTypes"
 import { ratingSelectionText } from "./ratingCoverage"
+import { parseMappingTab, type MappingTab } from "./mappingTabs"
 import type { UseProductMapping } from "./useProductMapping"
 
 // ---------------------------------------------------------------------------
@@ -31,11 +38,6 @@ import type { UseProductMapping } from "./useProductMapping"
 //   → 人工调整（可搜索目录选择器）→ 记忆库沉淀 → 导出（对照表 / 覆盖视角 / 骨架回填）
 //   AI 语义匹配为可选手动触发（离线优先，数据出不出本机由用户决定）。
 // ---------------------------------------------------------------------------
-
-const VIEWS: { key: "compare" | "checklist"; label: string; icon: typeof Table2 }[] = [
-  { key: "compare", label: "一一对照", icon: ArrowLeftRight },
-  { key: "checklist", label: "建设清单", icon: ListChecks },
-]
 
 function NumCell({ value, ariaLabel, onCommit }: { value: number; ariaLabel: string; onCommit: (n: number) => void }) {
   const [draft, setDraft] = useState<string | null>(null)
@@ -367,47 +369,35 @@ function RatingFilterBar({ p }: { p: UseProductMapping }) {
   )
 }
 
-function ResultSection({ p }: { p: UseProductMapping }) {
-  const skeletonRef = useRef<HTMLInputElement | null>(null)
+/** 命中/待确认/无匹配统计行（②③两屏共用，全部为真实计数） */
+function MappingStatsRow({ p }: { p: UseProductMapping }) {
+  return (
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <span className="text-emerald-600">命中 {p.matchedCount}</span>
+        <span>·</span>
+        <span className="text-amber-600">待确认 {p.suggestedCount}</span>
+        <span>·</span>
+        <span className="text-red-600">无匹配 {p.unmatchedCount}</span>
+        <span>·</span>
+        <span>外购 {p.externalCount}</span>
+        <span>·</span>
+        <span>忽略 {p.ignoredCount}</span>
+      </div>
+    </div>
+  )
+}
+
+/** ② 对照屏：建议采纳 / AI 兜底 + 一一对照表（原型 compare.html） */
+function CompareWorkSection({ p }: { p: UseProductMapping }) {
   const aiLeft = p.rows.filter((r) => r.kind === "none" && r.resolution === "company").length
   return (
     <Card className="shadow-sm">
       <CardContent className="p-5">
         <RatingFilterBar p={p} />
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex w-fit items-center gap-1 rounded-full bg-muted p-0.5">
-            {VIEWS.map((v) => {
-              const active = p.view === v.key
-              const Icon = v.icon
-              return (
-                <button
-                  key={v.key}
-                  type="button"
-                  onClick={() => p.setView(v.key)}
-                  className={`inline-flex items-center gap-1 rounded-full px-4 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                    active ? "bg-card font-medium text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  {v.label}
-                </button>
-              )
-            })}
-          </div>
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span className="text-emerald-600">命中 {p.matchedCount}</span>
-            <span>·</span>
-            <span className="text-amber-600">待确认 {p.suggestedCount}</span>
-            <span>·</span>
-            <span className="text-red-600">无匹配 {p.unmatchedCount}</span>
-            <span>·</span>
-            <span>外购 {p.externalCount}</span>
-            <span>·</span>
-            <span>忽略 {p.ignoredCount}</span>
-          </div>
-        </div>
+        <MappingStatsRow p={p} />
 
-        {(p.suggestedCount > 0 || aiLeft > 0) && p.view === "compare" && (
+        {(p.suggestedCount > 0 || aiLeft > 0) && (
           <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-secondary/40 px-3 py-2">
             {p.suggestedCount > 0 && (
               <Button size="sm" variant="outline" onClick={() => void p.adoptAllSuggestions()}>
@@ -432,7 +422,22 @@ function ResultSection({ p }: { p: UseProductMapping }) {
           </p>
         )}
 
-        {p.view === "compare" ? <CompareTable p={p} /> : <ChecklistTable p={p} />}
+        <CompareTable p={p} />
+      </CardContent>
+    </Card>
+  )
+}
+
+/** ③ 结果屏：覆盖视角清单 + 命名 + 导出与保存（原型 result.html「结果区成为视觉主角」） */
+function ResultExportSection({ p }: { p: UseProductMapping }) {
+  const skeletonRef = useRef<HTMLInputElement | null>(null)
+  return (
+    <Card className="shadow-sm">
+      <CardContent className="p-5">
+        <RatingFilterBar p={p} />
+        <MappingStatsRow p={p} />
+
+        <ChecklistTable p={p} />
 
         <div className="mt-5 grid grid-cols-1 gap-3 border-t border-border pt-4 sm:grid-cols-2">
           <div>
@@ -491,45 +496,106 @@ function ResultSection({ p }: { p: UseProductMapping }) {
   )
 }
 
+/** ②③ 共用的「还没有清单」空态：指向 ① 选择清单，不渲染死白页 */
+function EmptyStepHint({ onGoUpload }: { onGoUpload: () => void }) {
+  return (
+    <div className="mx-auto mt-10 max-w-md rounded-lg border border-dashed border-border bg-card px-6 py-10 text-center shadow-md">
+      <ArrowLeftRight className="mx-auto h-8 w-8 text-muted-foreground/60" />
+      <h2 className="mt-3 text-sm font-semibold text-card-foreground">还没有可对照的清单</h2>
+      <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+        先在「① 选择清单」上传业主清单 / 粘贴条目 / 关联招标采购清单，系统按「记忆库 → 离线规则」自动对照后，这里就是工作区。
+      </p>
+      <Button size="sm" className="mt-4 bg-primary text-primary-foreground hover:bg-primary/90" onClick={onGoUpload}>
+        去①选择清单
+      </Button>
+    </div>
+  )
+}
+
+/** ④ 产品库资产页：公司库 / 记忆库 / 导入 ONE-LINK 三合一（manifest 口径） */
+function LibraryHub({
+  p,
+  onOpenCompanyLib,
+  onOpenMemory,
+}: {
+  p: UseProductMapping
+  onOpenCompanyLib: () => void
+  onOpenMemory: () => void
+}) {
+  const oneLinkRef = useRef<HTMLInputElement | null>(null)
+  return (
+    <div className="grid items-start gap-4 pb-10 lg:grid-cols-3">
+      <section className="rounded-lg border border-border bg-card px-4 py-4 shadow-md">
+        <header className="flex items-center gap-2">
+          <Database className="h-4 w-4 shrink-0 text-primary" />
+          <h3 className="text-sm font-semibold text-card-foreground">公司库 · ONE-LINK 标准清单</h3>
+        </header>
+        <p className="mt-2.5 text-xs leading-relaxed text-muted-foreground">
+          公司交付的标准产品与模块目录，是自动对照的目标库（当前 {p.companyProducts.length} 个产品）。
+          浏览、核对与维护在库表里进行。
+        </p>
+        <Button size="sm" onClick={onOpenCompanyLib} className="mt-3 bg-primary text-primary-foreground hover:bg-primary/90">
+          打开公司库
+        </Button>
+      </section>
+
+      <section className="rounded-lg border border-border bg-card px-4 py-4 shadow-md">
+        <header className="flex items-center gap-2">
+          <Brain className="h-4 w-4 shrink-0 text-primary" />
+          <h3 className="text-sm font-semibold text-card-foreground">映射记忆库</h3>
+        </header>
+        <p className="mt-2.5 text-xs leading-relaxed text-muted-foreground">
+          人工指定的「原文条目 → 标准产品」会自动记进记忆库，下次同类条目直接命中；
+          这里可查全部记忆并删除错记。
+        </p>
+        <Button size="sm" variant="outline" onClick={onOpenMemory} className="mt-3 border-border text-card-foreground hover:bg-secondary">
+          打开记忆库
+        </Button>
+      </section>
+
+      <section className="rounded-lg border border-border bg-card px-4 py-4 shadow-md">
+        <header className="flex items-center gap-2">
+          <Upload className="h-4 w-4 shrink-0 text-primary" />
+          <h3 className="text-sm font-semibold text-card-foreground">导入 ONE-LINK 清单</h3>
+        </header>
+        <p className="mt-2.5 text-xs leading-relaxed text-muted-foreground">
+          上传公司标准清单 Excel，解析后写入公司库（已存在的映射记忆与对照结果不受影响，导入前有确认）。
+        </p>
+        <Button size="sm" variant="outline" onClick={() => oneLinkRef.current?.click()} disabled={p.oneLinkBusy} className="mt-3 border-border text-card-foreground hover:bg-secondary">
+          {p.oneLinkBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Upload className="mr-1 h-3.5 w-3.5" />}
+          选择 Excel 导入
+        </Button>
+        <input
+          ref={oneLinkRef}
+          type="file"
+          accept=".xlsx,.xls"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file) void p.previewOneLink(file)
+            e.target.value = ""
+          }}
+        />
+      </section>
+    </div>
+  )
+}
+
 export function ProductMappingPage(p: UseProductMapping) {
   const [companyLibOpen, setCompanyLibOpen] = useState(false)
   const [memoryOpen, setMemoryOpen] = useState(false)
-  const oneLinkRef = useRef<HTMLInputElement | null>(null)
+  // UX-v2：屏内 Tab 走 ?tab=（?tab=upload 为默认，地址栏干净）
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab = parseMappingTab(searchParams.get("tab"))
+  const goTab = (next: MappingTab) => setSearchParams(next === "upload" ? {} : { tab: next }, { replace: true })
   return (
     <div className="animate-in fade-in duration-500 text-foreground">
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">产品映射</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            上传业主清单（Excel 原表保留），系统按「记忆库 → 离线规则」自动对照公司 ONE-LINK 标准清单；
-            匹配不上的人工指定并自动记忆，下次同类条目自动命中。支持对照表与目录覆盖视角导出。
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => setMemoryOpen(true)} className="border-border text-muted-foreground hover:text-foreground">
-            <Brain className="mr-1 h-4 w-4" />
-            记忆库
-          </Button>
-          <Button variant="outline" onClick={() => setCompanyLibOpen(true)} className="border-border text-muted-foreground hover:text-foreground">
-            <Database className="mr-1 h-4 w-4" />
-            公司库
-          </Button>
-          <Button variant="outline" onClick={() => oneLinkRef.current?.click()} disabled={p.oneLinkBusy} className="border-border text-muted-foreground hover:text-foreground">
-            {p.oneLinkBusy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Upload className="mr-1 h-4 w-4" />}
-            导入 ONE-LINK 到公司库
-          </Button>
-          <input
-            ref={oneLinkRef}
-            type="file"
-            accept=".xlsx,.xls"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0]
-              if (file) void p.previewOneLink(file)
-              e.target.value = ""
-            }}
-          />
-        </div>
+      <header className="mb-5">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">产品映射</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          上传业主清单（Excel 原表保留），系统按「记忆库 → 离线规则」自动对照公司 ONE-LINK 标准清单；
+          匹配不上的人工指定并自动记忆，下次同类条目自动命中。支持对照表与目录覆盖视角导出。
+        </p>
       </header>
 
       {p.productsLoading && (
@@ -539,33 +605,28 @@ export function ProductMappingPage(p: UseProductMapping) {
         </p>
       )}
 
-      {/* UX-R2（docs/ux-review-2026-11 §十六）：左右分栏——左输入 / 右结果，两层 Tab 合并为一行 */}
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(340px,2fr)_3fr]">
-        <SourcePanel p={p} />
+      <MappingSubtabs active={tab} onSelect={goTab} />
 
-        {p.hasResult ? (
-          <ResultSection p={p} />
+      <main>
+        {tab === "compare" ? (
+          p.hasResult ? (
+            <CompareWorkSection p={p} />
+          ) : (
+            <EmptyStepHint onGoUpload={() => goTab("upload")} />
+          )
+        ) : tab === "result" ? (
+          p.hasResult ? (
+            <ResultExportSection p={p} />
+          ) : (
+            <EmptyStepHint onGoUpload={() => goTab("upload")} />
+          )
+        ) : tab === "library" ? (
+          <LibraryHub p={p} onOpenCompanyLib={() => setCompanyLibOpen(true)} onOpenMemory={() => setMemoryOpen(true)} />
         ) : (
-          /* UX-R2：结果区骨架示意——「原表列 → 映射列」的形状预告 */
-          <div className="rounded-xl border border-dashed border-border bg-card/60 p-5">
-            <p className="mb-4 flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground">
-              结果将在这里展示：原表列 <ArrowLeftRight className="h-3.5 w-3.5 text-primary" /> 映射列
-            </p>
-            <div className="space-y-2" aria-hidden="true">
-              {[0, 1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <div className="h-9 flex-1 animate-pulse rounded-md bg-muted" style={{ opacity: 1 - i * 0.18 }} />
-                  <ArrowLeftRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
-                  <div className="h-9 flex-1 animate-pulse rounded-md bg-primary/10" style={{ opacity: 1 - i * 0.18 }} />
-                </div>
-              ))}
-            </div>
-            <p className="mt-4 text-center text-xs text-muted-foreground">
-              从左侧任一来源开始：上传业主清单 / 粘贴条目 / 导入招标采购清单
-            </p>
-          </div>
+          /* ① 选择清单：三来源卡 + 清单预览（原左栏 SourcePanel 升为主内容） */
+          <SourcePanel p={p} />
         )}
-      </div>
+      </main>
 
       <CostConfirmDialog {...p.costConfirm} />
 
