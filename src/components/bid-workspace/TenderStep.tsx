@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, FileUp, Loader2, ScanSearch, Save, ClipboardPaste, 
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ImportRecognizePanel } from "@/components/bid-workspace/ImportRecognizePanel"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import { classifyTenderTable, summarizeTenderTables } from "@/pages/BidWorkspace/tenderTables"
 import { TENDER_FILE_ROLE_HINTS, TENDER_FILE_ROLE_LABELS, TENDER_FILE_ROLES, type TenderFileRole } from "@/pages/BidWorkspace/tenderFiles"
@@ -30,6 +31,8 @@ type TenderStepProps = Pick<
   | "startParse"
   | "setActiveStep"
   | "isArchivedLocked"
+  /** UX-v2：①「同编号拦截」用——全部项目列表（在组件内筛同编号） */
+  | "projects"
 >
 
 export function TenderStep({
@@ -54,7 +57,14 @@ export function TenderStep({
   startParse,
   setActiveStep,
   isArchivedLocked,
+  projects,
 }: TenderStepProps) {
+  // UX-v2 ①：同编号拦截——把「除本项目外、编号相同」的项目挑出来（无编号或无同名时为空）
+  const duplicateTenderProjects = (() => {
+    const no = (activeProject?.tender_no ?? "").trim()
+    if (!no || !activeProject) return []
+    return projects.filter((pr) => pr.id !== activeProject.id && (pr.tender_no ?? "").trim() === no)
+  })()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const refTemplateInputRef = useRef<HTMLInputElement>(null)
   const refMaterialsInputRef = useRef<HTMLInputElement>(null)
@@ -301,7 +311,12 @@ export function TenderStep({
           </div>
         </div>
 
-        <div className="flex h-full flex-col rounded-lg border border-border bg-card shadow-md">
+        <div className="flex h-full flex-col gap-4">
+          {/* UX-v2（prototype/bid/import.html 右栏）：自动识别信息 + 同编号拦截。
+              识别值全部取项目档案真值（项目名 / 招标编号 / 采购人 / 代理机构 / 预算 / 开标时间），
+              必填项缺失标「需确认」；同编号项目走既有判重口径提示，不静默覆盖。 */}
+          <ImportRecognizePanel project={activeProject} duplicateProjects={duplicateTenderProjects} busy={parseLoading} />
+          <div className="flex h-full flex-col rounded-lg border border-border bg-card shadow-md">
           <div className="flex min-h-14 shrink-0 items-center justify-between border-b border-border px-4">
             <div>
               <p className="text-sm font-semibold text-foreground">招标文件文本</p>
@@ -350,6 +365,7 @@ export function TenderStep({
               )}
             </div>
           )}
+        </div>
         </div>
       </div>
 

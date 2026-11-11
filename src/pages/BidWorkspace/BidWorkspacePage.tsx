@@ -188,6 +188,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               startParse={p.startParse}
               setActiveStep={p.setActiveStep}
               isArchivedLocked={p.isArchivedLocked}
+              projects={p.projects}
             />
           )}
           {p.activeStep === 2 && (
