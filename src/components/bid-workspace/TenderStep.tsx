@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ImportRecognizePanel } from "@/components/bid-workspace/ImportRecognizePanel"
+import { ParseScopeCards } from "@/components/bid-workspace/ParseScopeCards"
 import { TenderLotsCard } from "@/components/bid-workspace/TenderLotsCard"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import { classifyTenderTable, summarizeTenderTables } from "@/pages/BidWorkspace/tenderTables"
@@ -164,9 +165,19 @@ export function TenderStep({
           {tenderFiles.length > 0 && (
             <div className="rounded-lg border border-border bg-card p-4 shadow-md">
               <div className="flex flex-wrap items-baseline justify-between gap-1">
-                <p className="text-sm font-semibold text-foreground">文件清单（{tenderFiles.length} 份）</p>
-                <span className="text-[11px] text-muted-foreground">角色决定解析时哪些项会读这份文件</span>
+                {/* UX-v2 ①：原型 import.html 第 2 块标题是「已上传 N」，副标给总量。
+                    现网只保存字数（原文件在浏览器内解析、不上传），所以这里给「共 N 字」而不是编一个 MB。 */}
+                <p className="text-sm font-semibold text-foreground">
+                  已上传
+                  <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 text-[10.5px] font-medium tabular-nums text-muted-foreground">
+                    {tenderFiles.length}
+                  </span>
+                </p>
+                <span className="text-[11px] text-muted-foreground">
+                  共 {tenderFiles.reduce((s, f) => s + f.chars, 0).toLocaleString("zh-CN")} 字
+                </span>
               </div>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">角色决定解析时哪些项会读这份文件</p>
               <ul className="mt-2 flex flex-col gap-2">
                 {tenderFiles.map((file, index) => (
                   <li key={`${file.name}-${index}`} className="rounded-md border border-border bg-background px-2.5 py-2">
@@ -276,6 +287,9 @@ export function TenderStep({
               locked={isArchivedLocked}
             />
           )}
+
+          {/* UX-v2 ① 左栏「本次解析会抽取这四类」：已解析时数值与 ② 屏同源，未解析时不给「预计」假数 */}
+          {activeProject && <ParseScopeCards project={activeProject} />}
 
           <div className="rounded-lg border border-border bg-card p-4 shadow-md">
             <p className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
