@@ -464,6 +464,8 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               emptyBizChapters={p.emptyBizChapters}
               // UX-v2 拆屏：左树里的商务组卷一键核对补入（原步骤条面板接线迁来）
               addBizAssemblyItems={p.addBizAssemblyItems}
+              // UX-v2：③ 大纲编制右栏评分点覆盖热力表（buildScoreCheckup 真值）
+              scoreCheckup={p.scoreCheckup}
               formatSettings={p.formatSettings}
               effectiveFormatSettings={p.effectiveFormatSettings}
               formatCheckItems={p.formatCheckItems}

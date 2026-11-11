@@ -10,6 +10,7 @@ import { OutlineTreeEditor } from "@/components/solution-studio/OutlineTreeEdito
 import { ChapterBudgetBar } from "@/components/bid-workspace/ChapterBudgetBar"
 import { BidChapterNavTree } from "@/components/bid-workspace/BidChapterNavTree"
 import { ConsistencyRail, ProseCheckRail, VoidRiskRail } from "@/components/bid-workspace/ComposeRightRail"
+import { ScoreCoverageRail } from "@/components/bid-workspace/ScoreCoverageRail"
 import { DeviationPanel } from "@/components/bid-workspace/DeviationPanel"
 import { TechParamResponsePanel } from "@/components/bid-workspace/TechParamResponsePanel"
 import { SubjectiveScorePanel } from "@/components/bid-workspace/SubjectiveScorePanel"
@@ -95,6 +96,8 @@ type ComposeStepProps = Pick<
   | "emptyBizChapters"
   // UX-v2 拆屏：步骤条通栏「章节导航」拆除后，S4 商务组卷一键核对入口随左树迁入本步
   | "addBizAssemblyItems"
+  // UX-v2：③ 大纲编制右栏评分点覆盖热力表（buildScoreCheckup 真值）
+  | "scoreCheckup"
   | "globalFactsSource"
   | "factDraft"
   | "setFactDraft"
@@ -246,6 +249,16 @@ export function ComposeStep(p: ComposeStepProps) {
     if (!proj) return false
     const queued = bulkQueueLoad(proj.id)
     return queued.length > 0 && queued.some((nid) => proj.bid_chapters.some((c) => c.node_id === nid && c.gen_status !== "done"))
+  }, [proj])
+  /** UX-v2：评分点覆盖表的「已覆盖章标题 → node_id」映射（点条目跳章；同一标题多章取首个）。
+      必须在 `if (!proj) return null` 之前声明——hooks 不能放在早退之后。 */
+  const chapterIdByTitle = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const c of proj?.bid_chapters ?? []) {
+      const title = (c.title ?? "").trim()
+      if (title && !map[title]) map[title] = c.node_id
+    }
+    return map
   }, [proj])
   // 循环 5 A3：归档只读——编辑/生成控件禁用，导出与查看保留
   const locked = p.isArchivedLocked
@@ -724,7 +737,10 @@ export function ComposeStep(p: ComposeStepProps) {
       )}
 
       {!hasChapters || outlineViewOpen ? (
-        <div className="mt-5 grid grid-cols-1 items-start gap-4 lg:grid-cols-[2fr_3fr]">
+        /* UX-v2：③ 大纲编制按 prototype/bid/outline.html 复刻三栏——
+           左：大纲树（条款覆盖 + 树编辑器）；中：确认/重生成动作；右：评分点覆盖热力表。
+           原为两栏（左树 + 右条款覆盖），缺原型右栏的评分点覆盖表，本轮补上。 */
+        <div className="mt-5 grid grid-cols-1 items-start gap-4 xl:grid-cols-[300px_minmax(0,1fr)_340px]">
           <div>
             {outlineReqActive && (
               <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2">
@@ -801,6 +817,15 @@ export function ComposeStep(p: ComposeStepProps) {
             )}
           </div>
           <aside className="flex flex-col gap-4">
+            {/* UX-v2（prototype/bid/outline.html 右栏首位）：评分点覆盖热力表——真数据来自
+                buildScoreCheckup（已覆盖/总分 + 逐条 ✓ 或「缺」，未覆盖按分值降序排最前）。
+                点已覆盖项可跳章；「看缺的评分点」展开大纲体检明细。 */}
+            <ScoreCoverageRail
+              checkup={p.scoreCheckup}
+              chapterIdByTitle={chapterIdByTitle}
+              onSelectChapter={p.selectChapter}
+              onJumpToMissing={() => setOutlineViewOpen(true)}
+            />
             <div className="rounded-lg border border-border bg-card p-5 shadow-md">
               <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
                 <Sparkles className="h-4 w-4 text-primary" />

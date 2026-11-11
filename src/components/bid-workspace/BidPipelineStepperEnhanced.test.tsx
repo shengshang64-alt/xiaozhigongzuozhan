@@ -140,37 +140,41 @@ describe("BidPipelineStepperEnhanced", () => {
   })
 
   // -----------------------------------------------------------
-  // 2. 完成态标记（UX-v2 胶囊步骤条：完成 = 主色浅底胶囊）
+  // 2. 完成态标记（按 prototype design.css .step.done：主色实心圆圈 + 标题实色）
   // -----------------------------------------------------------
-  it("已完成步骤显示主色浅底胶囊", () => {
+  it("已完成步骤显示主色实心圆圈", () => {
     // tender_text 非空 → 步骤 1 完成（默认夹具即如此，切到第 2 步观察第 1 步样式）
     const project = makeProject({ tender_text: "有内容" })
     renderStepper({ activeStep: 2, project })
 
     const step1Label = screen.getByText("招标文件")
-    const pill = step1Label.closest("button")
-    expect(pill).toHaveClass("bg-primary/5")
-    expect(pill).toHaveClass("text-primary")
+    const step = step1Label.closest("button")!
+    // 圆圈：24px 圆形（rounded-full），主色底（原型 .step.done .n → 本站主色 token）
+    const circle = step.querySelector("span.rounded-full")!
+    expect(circle).toHaveClass("bg-primary")
+    expect(circle).toHaveClass("text-primary-foreground")
+    // 标题：done 态用实色（不是灰）
+    expect(step1Label).toHaveClass("text-card-foreground")
   })
 
   // -----------------------------------------------------------
-  // 3. 第 3 步显示真实章进度（唯一有真进度数据的步骤；不再编造百分比与时长）
+  // 3. 第 3 步显示真实章进度（唯一有真进度数据的步骤；不编造百分比与时长）
   // -----------------------------------------------------------
-  it("第 3 步显示真实章进度（N/M 章）", () => {
+  it("第 3 步显示真实章进度（已写 N/M 章）", () => {
     const project = makeProject({
       bid_chapters: makeChapters(4, 2),
     })
     renderStepper({ activeStep: 3, project })
 
-    expect(screen.getByText("2/4 章")).toBeInTheDocument()
+    expect(screen.getByText("已写 2/4 章")).toBeInTheDocument()
     // 拍脑袋的时长演示值（“3 小时 / 45 分钟”）已按铁律删除
     expect(screen.queryByText("3 小时")).not.toBeInTheDocument()
   })
 
   // -----------------------------------------------------------
-  // 4. 当前步骤高亮
+  // 4. 当前步骤高亮（原型 .step.on：主色实心圈 + 4px 主色光环 + 主色标题）
   // -----------------------------------------------------------
-  it("当前步骤显示主色实底胶囊", () => {
+  it("当前步骤显示主色圆圈与光环", () => {
     // 注意：组件逻辑「完成态优先于当前态」——只要第 3 步任一章节有正文就算完成，
     // 因此这里必须用 0 章有正文的夹具，第 3 步才会以 current 渲染。
     const project = makeProject({
@@ -179,16 +183,18 @@ describe("BidPipelineStepperEnhanced", () => {
     renderStepper({ activeStep: 3, project })
 
     const currentLabel = screen.getByText("投标文件编制")
-    const pill = currentLabel.closest("button")
-    expect(pill).toHaveClass("border-primary")
-    expect(pill).toHaveClass("bg-primary/10")
-    expect(pill).toHaveClass("font-semibold")
+    const step = currentLabel.closest("button")!
+    const circle = step.querySelector("span.rounded-full")!
+    expect(circle).toHaveClass("bg-primary")
+    expect(circle.className).toContain("shadow-[0_0_0_4px")
+    expect(currentLabel).toHaveClass("text-primary")
+    expect(currentLabel).toHaveClass("font-semibold")
   })
 
   // -----------------------------------------------------------
   // 5. 点击步骤触发跳转
   // -----------------------------------------------------------
-  it("点击步骤胶囊可触发 requestStep 回调", () => {
+  it("点击步骤可触发 requestStep 回调", () => {
     const requestStep = vi.fn()
     renderStepper({ activeStep: 1, requestStep })
 
@@ -200,13 +206,13 @@ describe("BidPipelineStepperEnhanced", () => {
   // 6. UX-v2：假「保存草稿」按钮与前后步按钮组退役
   //    （保存草稿只有 console.log，自动保存一直存在；返回/继续与点步骤跳转重复）
   // -----------------------------------------------------------
-  it("不再渲染「返回上一步 / 保存草稿 / 继续编写」按钮组", () => {
+  it("不再渲染「返回上一步 / 保存草稿 / 继续编写 / 完成」按钮组", () => {
     renderStepper({ activeStep: 3 })
 
     expect(screen.queryByText(/返回上一步/)).not.toBeInTheDocument()
     expect(screen.queryByText(/保存草稿/)).not.toBeInTheDocument()
     expect(screen.queryByText(/继续编写/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/完成/)).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /^完成/ })).not.toBeInTheDocument()
   })
 
   // -----------------------------------------------------------
