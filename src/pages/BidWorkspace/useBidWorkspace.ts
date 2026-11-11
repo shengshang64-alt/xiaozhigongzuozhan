@@ -10605,6 +10605,8 @@ const kbEmptyHintShown = new Set<string>()
     startSubmissionCheck,
     setSubmissionReviewStatus,
     jumpToSubmissionGap,
+    /** UX-v2 ⑥ 闸门总览「重新检查」：本地格式体检重算（零 AI、不扣费），只刷新 format_report */
+    refreshFormatReport,
     // ⑥ 讲标与答辩（第六轮改造）
     defense,
     defenseBusy,

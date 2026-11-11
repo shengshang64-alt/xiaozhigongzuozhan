@@ -13,6 +13,7 @@ import { ComplianceMatrixPanel } from "@/components/bid-workspace/ComplianceMatr
 import { ComposeStep } from "@/components/bid-workspace/ComposeStep"
 import { DraftMergePanel } from "@/components/bid-workspace/DraftMergePanel"
 import { ExportComposeScreen } from "@/components/bid-workspace/ExportComposeScreen"
+import { CheckGateOverview } from "@/components/bid-workspace/CheckGateOverview"
 import { DupCheckPanel } from "@/components/bid-workspace/DupCheckPanel"
 import { DefensePanel } from "@/components/bid-workspace/DefensePanel"
 import { DeviationPanel } from "@/components/bid-workspace/DeviationPanel"
@@ -909,6 +910,18 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               )}
               <Step6Tabs
                 tabs={[
+                  { key: "gates", label: "闸门总览", node: (
+                    <CheckGateOverview
+                      project={p.activeProject}
+                      format={p.effectiveFormatSettings}
+                      deviationUncovered={p.techParamCoverage.uncovered}
+                      deviationTotal={p.techParamCoverage.total}
+                      onGo={(step) => p.requestStep(step)}
+                      onRunSubmissionCheck={() => p.refreshFormatReport()}
+                      submissionLoading={p.submissionLoading}
+                      isArchivedLocked={p.isArchivedLocked}
+                    />
+                  ) },
                   { key: "dup", label: "标书查重", node: (
                     <DupCheckPanel
                       activeProject={p.activeProject}
