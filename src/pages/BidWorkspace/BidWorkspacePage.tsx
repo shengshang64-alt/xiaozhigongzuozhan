@@ -128,12 +128,15 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
             </div>
           </div>
           {/* UX-v2 拆屏（2026-11-11）：步骤条只管步骤与闸门；章节树/快捷动作/商务组卷
-              全部由 ComposeStep 左栏 BidChapterNavTree 承担，不再渲染通栏「章节导航」 */}
-          <BidPipelineStepperEnhanced
-            activeStep={p.activeStep}
-            requestStep={p.requestStep}
-            activeProject={p.activeProject}
-          />
+              全部由 ComposeStep 左栏 BidChapterNavTree 承担，不再渲染通栏「章节导航」。
+              与项目卡同容器对齐（原裸奔全宽导致首尾步骤被视口裁切） */}
+          <div className="mx-auto mt-2.5 max-w-7xl px-4">
+            <BidPipelineStepperEnhanced
+              activeStep={p.activeStep}
+              requestStep={p.requestStep}
+              activeProject={p.activeProject}
+            />
+          </div>
           {/* 循环 5 A3：归档只读硬锁横幅——导出与查看保留，解除归档后可编辑 */}
           {p.isArchivedLocked && (
             <div className="mx-auto mt-4 flex max-w-7xl flex-wrap items-center justify-between gap-2 rounded-md border border-warning/30 bg-warning/10 px-4 py-2.5 shadow-sm">

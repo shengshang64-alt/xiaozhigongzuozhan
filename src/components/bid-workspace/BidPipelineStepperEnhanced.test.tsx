@@ -140,92 +140,73 @@ describe("BidPipelineStepperEnhanced", () => {
   })
 
   // -----------------------------------------------------------
-  // 2. 完成态标记
+  // 2. 完成态标记（UX-v2 胶囊步骤条：完成 = 主色浅底胶囊）
   // -----------------------------------------------------------
-  it("已完成步骤显示绿色文字", () => {
+  it("已完成步骤显示主色浅底胶囊", () => {
     // tender_text 非空 → 步骤 1 完成（默认夹具即如此，切到第 2 步观察第 1 步样式）
     const project = makeProject({ tender_text: "有内容" })
     renderStepper({ activeStep: 2, project })
 
     const step1Label = screen.getByText("招标文件")
-    expect(step1Label).toHaveClass("text-green-600")
+    const pill = step1Label.closest("button")
+    expect(pill).toHaveClass("bg-primary/5")
+    expect(pill).toHaveClass("text-primary")
   })
 
   // -----------------------------------------------------------
-  // 3. 第 3 步进度信息
+  // 3. 第 3 步显示真实章进度（唯一有真进度数据的步骤；不再编造百分比与时长）
   // -----------------------------------------------------------
-  it("第 3 步显示章节进度百分比与进度条", () => {
+  it("第 3 步显示真实章进度（N/M 章）", () => {
     const project = makeProject({
-      bid_chapters: makeChapters(4, 2), // 2/4 = 50%
+      bid_chapters: makeChapters(4, 2),
     })
     renderStepper({ activeStep: 3, project })
 
-    // 百分比文本
-    expect(screen.getByText("50% (2/4章)")).toBeInTheDocument()
-    // 进度条容器存在（蓝色渐变条）
-    const progressBar = document.querySelector(".bg-gradient-to-r")
-    expect(progressBar).not.toBeNull()
+    expect(screen.getByText("2/4 章")).toBeInTheDocument()
+    // 拍脑袋的时长演示值（“3 小时 / 45 分钟”）已按铁律删除
+    expect(screen.queryByText("3 小时")).not.toBeInTheDocument()
   })
 
   // -----------------------------------------------------------
   // 4. 当前步骤高亮
   // -----------------------------------------------------------
-  it("当前步骤标签显示蓝色高亮", () => {
+  it("当前步骤显示主色实底胶囊", () => {
     // 注意：组件逻辑「完成态优先于当前态」——只要第 3 步任一章节有正文就算完成，
-    // 因此这里必须用 0 章有正文的夹具，第 3 步才会以 current（蓝色）渲染。
+    // 因此这里必须用 0 章有正文的夹具，第 3 步才会以 current 渲染。
     const project = makeProject({
       bid_chapters: makeChapters(2, 0),
     })
     renderStepper({ activeStep: 3, project })
 
     const currentLabel = screen.getByText("投标文件编制")
-    expect(currentLabel).toHaveClass("text-blue-600")
+    const pill = currentLabel.closest("button")
+    expect(pill).toHaveClass("border-primary")
+    expect(pill).toHaveClass("bg-primary/10")
+    expect(pill).toHaveClass("font-semibold")
   })
 
   // -----------------------------------------------------------
   // 5. 点击步骤触发跳转
   // -----------------------------------------------------------
-  it("点击步骤可触发 requestStep 回调", () => {
+  it("点击步骤胶囊可触发 requestStep 回调", () => {
     const requestStep = vi.fn()
     renderStepper({ activeStep: 1, requestStep })
 
-    // 点击步骤 2 的容器（通过标签文本向上找到可点击元素）
-    const step2Label = screen.getByText("AI 解析报告")
-    const clickable = step2Label.closest("[class*='cursor-pointer']")
-    expect(clickable).not.toBeNull()
-    fireEvent.click(clickable!)
-
+    fireEvent.click(screen.getByText("AI 解析报告").closest("button")!)
     expect(requestStep).toHaveBeenCalledWith(2)
   })
 
   // -----------------------------------------------------------
-  // 6. 上一步按钮在第一步禁用
+  // 6. UX-v2：假「保存草稿」按钮与前后步按钮组退役
+  //    （保存草稿只有 console.log，自动保存一直存在；返回/继续与点步骤跳转重复）
   // -----------------------------------------------------------
-  it("activeStep=1 时「返回上一步」按钮禁用", () => {
-    renderStepper({ activeStep: 1 })
-
-    const prevBtn = screen.getByRole("button", { name: /返回上一步/ })
-    expect(prevBtn).toBeDisabled()
-  })
-
-  // -----------------------------------------------------------
-  // 7. 下一步按钮在非最后一步可用
-  // -----------------------------------------------------------
-  it("activeStep=3 时「继续编写」按钮可用", () => {
+  it("不再渲染「返回上一步 / 保存草稿 / 继续编写」按钮组", () => {
     renderStepper({ activeStep: 3 })
 
-    const nextBtn = screen.getByRole("button", { name: /继续编写/ })
-    expect(nextBtn).not.toBeDisabled()
-  })
-
-  // -----------------------------------------------------------
-  // 8. 最后一步按钮文案变为「完成」
-  // -----------------------------------------------------------
-  it("activeStep=7 时按钮文案为「完成」", () => {
-    renderStepper({ activeStep: 7 })
-
-    const doneBtn = screen.getByRole("button", { name: /完成/ })
-    expect(doneBtn).toBeInTheDocument()
+    expect(screen.queryByText(/返回上一步/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/保存草稿/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/继续编写/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/完成/)).not.toBeInTheDocument()
   })
 
   // -----------------------------------------------------------

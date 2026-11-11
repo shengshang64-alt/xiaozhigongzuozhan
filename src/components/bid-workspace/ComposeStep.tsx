@@ -456,19 +456,28 @@ export function ComposeStep(p: ComposeStepProps) {
   const pageCapExceeded = p.pageCap !== null && p.targetPages !== null && p.targetPages > p.pageCap
 
   return (
-    <section className="mx-auto max-w-7xl px-4 pb-14 pt-5">
-      <header className="rounded-2xl border border-border bg-gradient-to-br from-background via-secondary to-card px-6 py-6 shadow-md animate-in fade-in slide-in-from-bottom-4 duration-500">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="truncate text-xl font-semibold tracking-tight text-foreground lg:text-2xl">投标文件编制</h1>
-            <p className="mt-1 text-xs tabular-nums text-muted-foreground">
+    <section className="mx-auto max-w-7xl px-4 pb-14 pt-3">
+      {/* UX-v2 视觉收口：项目名/状态/开标/商机已由页级项目卡承担，本行只保留
+          「步骤名 + 真实进度 + 本步动作」，不再用大标题渐变卡与页头抢层级 */}
+      <header className="rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h1 className="shrink-0 text-sm font-semibold tracking-tight text-foreground">③ 投标文件编制</h1>
+            <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium tabular-nums text-primary">
               已写 {(proj.bid_chapters ?? []).filter((c) => (c.content ?? "").trim().length > 0).length}/{(proj.bid_chapters ?? []).length} 章
-            </p>
-            <p className="mt-1.5 text-sm text-muted-foreground">
+            </span>
+            <span
+              className="hidden min-w-0 truncate text-xs text-muted-foreground sm:block"
+              title={
+                hasParse
+                  ? "未上传底稿时，按招标文件解析出的响应文件组成与评分要求自动编排全部内容；可从方案编制引入底稿"
+                  : "尚未完成招标文件解析，建议先回到「AI 解析报告」环节，大纲才能对准评分办法"
+              }
+            >
               {hasParse
-                ? "未上传底稿时，按招标文件解析出的响应文件组成与评分要求自动编排全部内容；可从方案编制引入底稿"
-                : "尚未完成招标文件解析，建议先回到「AI 解析报告」环节，大纲才能对准评分办法"}
-            </p>
+                ? "未上传底稿时按解析出的响应文件组成与评分要求自动编排；可从方案编制引入底稿"
+                : "尚未完成招标文件解析，建议先回「AI 解析报告」再编制"}
+            </span>
           </div>
           {hasChapters && p.bidSourceMode !== "external" && (
             <div className="flex shrink-0 flex-wrap items-center gap-2">
