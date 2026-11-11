@@ -27,7 +27,7 @@ import {
   PAGE_ESTIMATE_HINT,
   type ExportFileKey,
 } from "@/pages/BidWorkspace/exportComposeModel"
-import { pickExportChapters } from "@/pages/BidWorkspace/bidFiles"
+import { pickExportChapters } from "@/pages/BidWorkspace/exportChapterPick"
 import { normalizeBidScope } from "@/pages/BidWorkspace/bidTypes"
 import type { TechParamCoverage } from "@/pages/BidWorkspace/techParamCoverage"
 
