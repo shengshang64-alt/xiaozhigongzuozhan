@@ -11,6 +11,7 @@ import { ChapterBudgetBar } from "@/components/bid-workspace/ChapterBudgetBar"
 import { BidChapterNavTree } from "@/components/bid-workspace/BidChapterNavTree"
 import { ConsistencyRail, ProseCheckRail, VoidRiskRail } from "@/components/bid-workspace/ComposeRightRail"
 import { ScoreCoverageRail } from "@/components/bid-workspace/ScoreCoverageRail"
+import { OutlineNodeEditor } from "@/components/bid-workspace/OutlineNodeEditor"
 import { DeviationPanel } from "@/components/bid-workspace/DeviationPanel"
 import { TechParamResponsePanel } from "@/components/bid-workspace/TechParamResponsePanel"
 import { SubjectiveScorePanel } from "@/components/bid-workspace/SubjectiveScorePanel"
@@ -266,6 +267,40 @@ export function ComposeStep(p: ComposeStepProps) {
     }
     return map
   }, [proj])
+
+  /**
+   * UX-v2：③大纲编制 中栏「章节编辑」的选中节点。
+   * 原型是「左树点选 → 中栏编辑该章」；现网 OutlineTreeEditor 没有选中态，
+   * 这里在大纲草稿里按 id 找节点，选中项由本组件的 outlineSelId 维护。
+   */
+  const [outlineSelId, setOutlineSelId] = useState<string | null>(null)
+  // 依赖直接取数组本体（不在渲染期用 ?? [] 造新数组，否则下游 useMemo 每轮失稳）
+  const draftOutlineNodes = p.outlineDraft
+  const projectOutlineNodes = proj?.bid_outline
+  const outlineTree = useMemo(
+    () => ((draftOutlineNodes?.length ?? 0) > 0 ? draftOutlineNodes : projectOutlineNodes ?? []),
+    [draftOutlineNodes, projectOutlineNodes],
+  )
+  const outlineSel = useMemo(() => {
+    if (!outlineSelId) return null
+    const walk = (nodes: typeof outlineTree, depth: number): { node: (typeof nodes)[number]; depth: number; part?: string } | null => {
+      for (const n of nodes) {
+        if (n.id === outlineSelId) return { node: n, depth }
+        const hit = walk(n.children ?? [], depth + 1)
+        if (hit) return hit
+      }
+      return null
+    }
+    return walk(outlineTree, 0)
+  }, [outlineTree, outlineSelId])
+  /** 评分点编号 → 名称（中栏 chip 显示用；来自 scoreCheckup 真数据） */
+  const scoreNameByCode = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const r of p.scoreCheckup.rows ?? []) {
+      if (r.id) map[r.id] = r.name || r.id
+    }
+    return map
+  }, [p.scoreCheckup])
   // 循环 5 A3：归档只读——编辑/生成控件禁用，导出与查看保留
   const locked = p.isArchivedLocked
   // 大纲「重新生成」覆盖前的二次确认（本地 UI 状态）
@@ -785,6 +820,8 @@ export function ComposeStep(p: ComposeStepProps) {
                 onAddChild={p.outlineAddChild}
                 onAddRoot={p.outlineAddRoot}
                 onSetPart={p.outlineSetPart}
+                selectedId={outlineSelId}
+                onSelect={setOutlineSelId}
               />
             </div>
             {p.outlineDraft.length > 0 && (
@@ -830,6 +867,79 @@ export function ComposeStep(p: ComposeStepProps) {
                 )}
               </div>
             )}
+          </div>
+          {/* 中栏（原型 outline.html split--3col 中间）：章节编辑 + 编号与层级校验 */}
+          <div className="flex flex-col gap-4">
+            <OutlineNodeEditor
+              node={outlineSel?.node ?? null}
+              depth={outlineSel?.depth ?? 0}
+              budget={
+                // 字数预算按章对齐（chapterBudgets 以 bid_chapters 下标为准；大纲节暂无独立预算）
+                outlineSel && outlineSel.depth === 0
+                  ? p.chapterBudgets[proj.bid_chapters.findIndex((c) => c.title === outlineSel.node.title)] ?? 0
+                  : 0
+              }
+              partLabel={outlineSel?.node.part === "biz" ? "商务部分" : "技术部分"}
+              childCount={outlineSel?.node.children?.length ?? 0}
+              locked={locked}
+              onRename={p.outlineRename}
+              onRemove={p.outlineRemove}
+              onAddChild={p.outlineAddChild}
+              scoreNameByCode={scoreNameByCode}
+              onAddScorePoint={
+                p.uncoveredClauses.length > 0
+                  ? () => p.addClauseToOutline(p.uncoveredClauses[0].id)
+                  : undefined
+              }
+              onShowCoverage={() => {
+                /* 右栏评分点覆盖常驻可见，无需滚动定位 */
+              }}
+            />
+            {/* 原型中栏第二卡：编号与层级全纲校验（真值：章数/节数 + 评分点缺口） */}
+            <section className="rounded-lg border border-border bg-card shadow-sm">
+              <header className="flex items-center gap-2 border-b border-border px-3.5 py-2.5">
+                <h3 className="text-[13.5px] font-semibold text-card-foreground">编号与层级</h3>
+                <div className="flex-1" />
+                <span className="text-[11.5px] text-muted-foreground">全纲校验</span>
+              </header>
+              <ul className="divide-y divide-border/60">
+                <li className="flex items-center gap-2 px-3.5 py-2 text-[12px]">
+                  <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[10.5px] font-medium text-primary">
+                    {outlineTree.length > 0 ? "通过" : "待生成"}
+                  </span>
+                  <span className="min-w-0 flex-1 text-card-foreground">大纲层级</span>
+                  <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
+                    {outlineTree.length} 章 · {outlineTree.reduce((s, n) => s + (n.children?.length ?? 0), 0)} 节
+                  </span>
+                </li>
+                <li className="flex items-center gap-2 px-3.5 py-2 text-[12px]">
+                  <span
+                    className={`shrink-0 rounded px-1.5 py-0.5 text-[10.5px] font-medium ${
+                      p.scoreCheckup.techMissing > 0 ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"
+                    }`}
+                  >
+                    {p.scoreCheckup.techMissing > 0 ? `缺 ${p.scoreCheckup.techMissing} 分` : "通过"}
+                  </span>
+                  <span className="min-w-0 flex-1 text-card-foreground">评分点覆盖</span>
+                  <span className="shrink-0 text-[11px] text-muted-foreground">
+                    {p.scoreCheckup.techLanded} / {p.scoreCheckup.techTotal} 分
+                  </span>
+                </li>
+                <li className="flex items-center gap-2 px-3.5 py-2 text-[12px]">
+                  <span
+                    className={`shrink-0 rounded px-1.5 py-0.5 text-[10.5px] font-medium ${
+                      p.coveredClauseCount < p.outlineClauseTotal ? "bg-warning/10 text-warning" : "bg-primary/10 text-primary"
+                    }`}
+                  >
+                    {p.coveredClauseCount < p.outlineClauseTotal ? `差 ${p.outlineClauseTotal - p.coveredClauseCount} 条` : "通过"}
+                  </span>
+                  <span className="min-w-0 flex-1 text-card-foreground">条款覆盖</span>
+                  <span className="shrink-0 text-[11px] text-muted-foreground">
+                    {p.coveredClauseCount} / {p.outlineClauseTotal} 条
+                  </span>
+                </li>
+              </ul>
+            </section>
           </div>
           <aside className="flex flex-col gap-4">
             {/* UX-v2（prototype/bid/outline.html 右栏首位）：评分点覆盖热力表——真数据来自

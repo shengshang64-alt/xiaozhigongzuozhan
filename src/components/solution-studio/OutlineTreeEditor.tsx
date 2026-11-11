@@ -12,6 +12,9 @@ type OutlineTreeEditorProps = {
   onAddRoot: () => void
   /** 标书第十三轮：顶层章「商务/技术」归属切换（方案编制页不传则不显示徽标） */
   onSetPart?: (id: string, part: OutlinePart) => void
+  /** UX-v2：③大纲编制 用——点选节点后在中栏编辑（不传则保持原行为，无选中态） */
+  selectedId?: string | null
+  onSelect?: (id: string) => void
 }
 
 function NodeRow({
@@ -26,6 +29,8 @@ function NodeRow({
   onMove,
   onAddChild,
   onSetPart,
+  selected,
+  onSelect,
 }: {
   node: OutlineNode
   depth: number
@@ -38,15 +43,19 @@ function NodeRow({
   onMove: OutlineTreeEditorProps["onMove"]
   onAddChild: OutlineTreeEditorProps["onAddChild"]
   onSetPart?: OutlineTreeEditorProps["onSetPart"]
+  /** UX-v2：当前选中行高亮（不传则不参与） */
+  selected?: boolean
+  onSelect?: OutlineTreeEditorProps["onSelect"]
 }) {
   const no = prefix ? `${prefix}.${index + 1}` : `${index + 1}`
   const isBiz = depth === 0 && node.part === "biz"
   return (
     <li>
       <div
-        className={`group flex items-center gap-2 rounded-md border border-transparent px-2 py-1.5 transition-colors hover:border-border hover:bg-secondary/60 ${
-          depth === 0 ? "mt-1" : ""
-        }`}
+        onClick={() => onSelect?.(node.id)}
+        className={`group flex items-center gap-2 rounded-md border px-2 py-1.5 transition-colors hover:border-border hover:bg-secondary/60 ${
+          selected ? "border-primary/40 bg-primary/10" : "border-transparent"
+        } ${depth === 0 ? "mt-1" : ""} ${onSelect ? "cursor-pointer" : ""}`}
       >
         {depth === 0 && node.children?.length > 0 && onToggleCollapse ? (
           <button
@@ -117,6 +126,8 @@ function NodeRow({
               onMove={onMove}
               onAddChild={onAddChild}
               onSetPart={onSetPart}
+              selected={selected}
+              onSelect={onSelect}
             />
           ))}
         </ul>
@@ -130,7 +141,7 @@ function NodeRow({
   )
 }
 
-export function OutlineTreeEditor({ nodes, onRename, onRemove, onMove, onAddChild, onAddRoot, onSetPart }: OutlineTreeEditorProps) {
+export function OutlineTreeEditor({ nodes, onRename, onRemove, onMove, onAddChild, onAddRoot, onSetPart, selectedId, onSelect }: OutlineTreeEditorProps) {
   // 删除大纲节点（含其下级）前走模态确认，确认状态挂在顶层
   const [pendingRemoveNode, setPendingRemoveNode] = useState<{ id: string; title: string } | null>(null)
   const requestDelete = (id: string, title: string) => setPendingRemoveNode({ id, title })
@@ -194,6 +205,17 @@ export function OutlineTreeEditor({ nodes, onRename, onRemove, onMove, onAddChil
               onMove={onMove}
               onAddChild={onAddChild}
               onSetPart={onSetPart}
+              selected={selectedId === n.id}
+              onSelect={(id) => {
+                onSelect?.(id)
+                // 点选时若该章已折叠，自动展开（原型：点章节即看到其下的节）
+                setCollapsedIds((prev) => {
+                  if (!prev.has(id)) return prev
+                  const next = new Set(prev)
+                  next.delete(id)
+                  return next
+                })
+              }}
             />
           ))
         )}
