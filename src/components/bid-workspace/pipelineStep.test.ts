@@ -15,9 +15,10 @@ describe("pipelineStep", () => {
     expect(stepGoLabel(9999)).toBe("相关环节")
   })
 
-  it("COMPOSE_STEP 指向真实存在的编制步骤且名称含「投标文件编制」", () => {
+  it("COMPOSE_STEP 指向真实存在的正文步骤（UX-v2 七步：④ 正文编写）", () => {
     expect(PIPELINE_STEPS.some((s) => s.step === COMPOSE_STEP)).toBe(true)
-    expect(stepGoLabel(COMPOSE_STEP)).toContain("投标文件编制")
+    expect(COMPOSE_STEP).toBe(4)
+    expect(stepGoLabel(COMPOSE_STEP)).toContain("正文编写")
   })
 
   it("composeChaptersHint 用单一真源步骤名拼引导语", () => {
@@ -26,9 +27,9 @@ describe("pipelineStep", () => {
     expect(hint).toContain(stepGoLabel(COMPOSE_STEP))
   })
 
-  it("PARSE_STEP 指向真实存在的解析步骤且名称含「AI 解析报告」", () => {
+  it("PARSE_STEP 指向真实存在的解析步骤且名称含「解析确认」", () => {
     expect(PIPELINE_STEPS.some((s) => s.step === PARSE_STEP)).toBe(true)
-    expect(stepGoLabel(PARSE_STEP)).toContain("AI 解析报告")
+    expect(stepGoLabel(PARSE_STEP)).toContain("解析确认")
   })
 
   it("checklistParseHint 用单一真源解析步骤名拼引导语", () => {

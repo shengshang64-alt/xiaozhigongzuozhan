@@ -13,8 +13,11 @@ const COMPOSE = sourceText("src/components/bid-workspace/ComposeStep.tsx")
 const TREE = sourceText("src/components/bid-workspace/BidChapterNavTree.tsx")
 
 describe("编制阶段重新生成大纲接线守卫", () => {
-  it("分支条件允许编制阶段打开大纲视图", () => {
-    expect(COMPOSE).toContain("{!hasChapters || outlineViewOpen ? (")
+  it("③大纲编制 / ④正文编写 由页面按步骤指定（view prop），不再靠内部开关切换", () => {
+    // UX-v2 七步对齐：页面传 view="outline" / view="draft"，组件内 showOutline 决定渲染哪屏
+    expect(COMPOSE).toContain("showOutline")
+    expect(COMPOSE).toContain('p.view === "outline"')
+    expect(COMPOSE).toContain("view?: \"outline\" | \"draft\"")
   })
 
   it("大纲目录面板头带重生成入口，且接了回调", () => {

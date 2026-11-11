@@ -213,7 +213,13 @@ type ComposeStepProps = Pick<
   | "setBidSourceMode"
   | "setBidExternalText"
   | "handleBidExternalFile"
->
+> & {
+  /**
+   * UX-v2 七步语义对齐：本组件承载 ③大纲编制 与 ④正文编写 两个步骤屏，由页面按
+   * activeStep 指定。不传时退回旧行为（无章节 → 大纲屏；有章节 → 正文屏）。
+   */
+  view?: "outline" | "draft"
+}
 
 const LEVEL_OPTIONS: { value: 0 | 1 | 2 | 3; label: string }[] = [
   { value: 0, label: "不指定" },
@@ -264,6 +270,13 @@ export function ComposeStep(p: ComposeStepProps) {
   const locked = p.isArchivedLocked
   // 大纲「重新生成」覆盖前的二次确认（本地 UI 状态）
   const [regenConfirmOpen, setRegenConfirmOpen] = useState(false)
+  /**
+   * UX-v2 七步语义对齐（2026-11-11）：本组件现在承载两个独立步骤屏——
+   *   ③ 大纲编制（view="outline"）：左大纲树 / 中确认动作 / 右评分点覆盖
+   *   ④ 正文编写（view="draft"）：左章节树 / 中正文 / 右废标·一致性·写作体检
+   * 由页面按 activeStep 传入；未传时退回旧行为（见下方 showOutline 推导）。
+   * 「偏离与响应表」已从本组件的 Tab 提升为独立的 ⑤偏离表 步骤屏（页面层渲染）。
+   */
   // 用户反馈（2026-10-15）：大纲确认后进入逐章编制，大纲面板整块被条件渲染掉，想重生成大纲只能
   // 退回解析环节。这里加一个"大纲视图开关"：编制阶段也能展开大纲编辑视图（改完再确认）。
   const [outlineViewOpen, setOutlineViewOpen] = useState(false)
@@ -451,6 +464,8 @@ export function ComposeStep(p: ComposeStepProps) {
   }
   if (!proj) return null
   const hasChapters = proj.bid_chapters.length > 0
+  /** ③大纲编制 还是 ④正文编写：页面按 activeStep 指定；不传则按有无章节回落（兼容旧调用） */
+  const showOutline = p.view === "outline" || (p.view == null && (!hasChapters || outlineViewOpen))
   // 切片A4：failedCount（hooks 在上方已声明）
   const failedCount = proj.bid_chapters.filter((c) => !c.part?.startsWith("biz") && c.gen_status === "failed").length
   // R301：技术章生成失败归因（复用 SolutionStudio 纯函数），供「生成总览」列出「哪些章因同一原因失败」
@@ -736,7 +751,7 @@ export function ComposeStep(p: ComposeStepProps) {
         </div>
       )}
 
-      {!hasChapters || outlineViewOpen ? (
+      {showOutline ? (
         /* UX-v2：③ 大纲编制按 prototype/bid/outline.html 复刻三栏——
            左：大纲树（条款覆盖 + 树编辑器）；中：确认/重生成动作；右：评分点覆盖热力表。
            原为两栏（左树 + 右条款覆盖），缺原型右栏的评分点覆盖表，本轮补上。 */

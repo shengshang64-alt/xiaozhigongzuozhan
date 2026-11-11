@@ -12,23 +12,26 @@
 // 时长是拍脑袋演示值。第 3 步只显示真实章进度。
 import { Check } from "lucide-react"
 import type { BidProjectRecord } from "@/pages/BidWorkspace/bidTypes"
-import { PIPELINE_STEPS, stepGateConfirmed } from "@/pages/BidWorkspace/bidTypes"
+import { findGateRecord, PIPELINE_STEPS, stepGateConfirmed } from "@/pages/BidWorkspace/bidTypes"
 
 /** 检查交卷闸门是否已确认（stage_gates 是 { gates } 对象，委托 bidTypes 权威实现） */
 function isGateConfirmed(step: number, project: BidProjectRecord | null): boolean {
   return stepGateConfirmed(step, project?.stage_gates ?? null)
 }
 
-/** 检查某步是否完成 */
+/** 检查某步是否完成（UX-v2 七步语义；判据全部取项目档案真值） */
 function stepDone(step: number, project: BidProjectRecord | null): boolean {
   if (!project) return false
+  const chapters = project.bid_chapters ?? []
   switch (step) {
     case 1: return (project.tender_text ?? "").trim().length > 0
     case 2: return !!project.parse_report
-    case 3: return project.bid_chapters.some((c) => (c.content ?? "").trim().length > 0)
-    case 4: return !!project.dup_report
+    case 3:
+      // 大纲编制完成 = 有大纲且已确认（未确认不能进正文，与 ④ 的前置条件同源）
+      return ((project.bid_outline?.length ?? 0) > 0 || chapters.length > 0) && !!findGateRecord(project.stage_gates, "compose")?.confirmed_at
+    case 4: return chapters.some((c) => (c.content ?? "").trim().length > 0)
     case 5: return !!project.void_check
-    case 6: return !!project.ai_review
+    case 6: return !!project.dup_report && !!project.void_check && !!project.ai_review
     case 7: return project.stage === "archived"
     default: return false
   }

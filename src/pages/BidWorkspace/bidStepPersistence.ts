@@ -18,12 +18,27 @@
 
 const KEY_PREFIX = "bid_step_"
 
+/**
+ * 步骤语义版本（UX-v2 七步对齐 · 2026-11-11）
+ *
+ * 旧七步 → 新七步的语义变了（旧 3「投标文件编制」拆成 ③大纲编制 + ④正文编写；
+ * 旧 4/5/6 查重/废标/评标 合并进新 ⑥交卷自查）。存量 localStorage 按旧语义存的
+ * 步骤号直接读会落到错误屏上，因此按项目存一个语义版本：版本不符即丢弃旧记录、
+ * 退回「按数据推断」，用户无需手动清缓存。
+ */
+const STEP_SEMANTICS_VERSION = "v2"
+
 /** 合法步骤范围：与 BidWorkspacePage.tsx 的 activeStep === 1..7 一一对应 */
 export const MIN_BID_STEP = 1
 export const MAX_BID_STEP = 7
 
 function storageKeyFor(projectId: string): string {
   return `${KEY_PREFIX}${projectId}`
+}
+
+/** 语义版本键（与步骤记录分开存，版本不符时只丢步骤、不碰其它本地数据） */
+function versionKeyFor(projectId: string): string {
+  return `${KEY_PREFIX}ver_${projectId}`
 }
 
 function clampStep(n: number): number | null {
@@ -33,12 +48,14 @@ function clampStep(n: number): number | null {
   return i
 }
 
-/** 读该项目上次停留的步骤；无记录 / 脏值 / 存储不可用 → null */
+/** 读该项目上次停留的步骤；无记录 / 脏值 / 语义版本不符 / 存储不可用 → null */
 export function readBidStep(projectId: string | null | undefined): number | null {
   const id = String(projectId ?? "").trim()
   if (!id) return null
   try {
     if (typeof window === "undefined" || !window.localStorage) return null
+    // UX-v2：旧语义的步骤号（v1）直接丢弃，避免落到错误屏
+    if (window.localStorage.getItem(versionKeyFor(id)) !== STEP_SEMANTICS_VERSION) return null
     const raw = window.localStorage.getItem(storageKeyFor(id))
     if (!raw) return null
     return clampStep(Number(raw))
@@ -55,6 +72,7 @@ export function writeBidStep(projectId: string | null | undefined, step: number)
   try {
     if (typeof window === "undefined" || !window.localStorage) return
     window.localStorage.setItem(storageKeyFor(id), String(s))
+    window.localStorage.setItem(versionKeyFor(id), STEP_SEMANTICS_VERSION)
   } catch {
     /* 隐私模式 / 配额满 → 仅本次会话生效 */
   }

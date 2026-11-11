@@ -121,18 +121,17 @@ describe("BidPipelineStepperEnhanced", () => {
   // -----------------------------------------------------------
   // 1. 基础渲染
   // -----------------------------------------------------------
-  it("渲染全部 7 个流程步骤", () => {
+  it("渲染全部 7 个流程步骤（UX-v2：与 prototype/bid/*.html 七步逐字一致）", () => {
     renderStepper({ activeStep: 1 })
 
-    // 通过步骤标签文本查找（与 bidTypes.PIPELINE_STEPS 实际标签逐字一致），每步一个
     const stepLabels = [
-      "招标文件",
-      "AI 解析报告",
-      "投标文件编制",
-      "标书查重",
-      "废标项检查",
-      "模拟评标",
-      "归档导出",
+      "导入招标",
+      "解析确认",
+      "大纲编制",
+      "正文编写",
+      "偏离表",
+      "交卷自查",
+      "组卷导出",
     ]
     for (const label of stepLabels) {
       expect(screen.getByText(label)).toBeInTheDocument()
@@ -147,7 +146,7 @@ describe("BidPipelineStepperEnhanced", () => {
     const project = makeProject({ tender_text: "有内容" })
     renderStepper({ activeStep: 2, project })
 
-    const step1Label = screen.getByText("招标文件")
+    const step1Label = screen.getByText("导入招标")
     const step = step1Label.closest("button")!
     // 圆圈：24px 圆形（rounded-full），主色底（原型 .step.done .n → 本站主色 token）
     const circle = step.querySelector("span.rounded-full")!
@@ -182,7 +181,7 @@ describe("BidPipelineStepperEnhanced", () => {
     })
     renderStepper({ activeStep: 3, project })
 
-    const currentLabel = screen.getByText("投标文件编制")
+    const currentLabel = screen.getByText("大纲编制")
     const step = currentLabel.closest("button")!
     const circle = step.querySelector("span.rounded-full")!
     expect(circle).toHaveClass("bg-primary")
@@ -198,7 +197,7 @@ describe("BidPipelineStepperEnhanced", () => {
     const requestStep = vi.fn()
     renderStepper({ activeStep: 1, requestStep })
 
-    fireEvent.click(screen.getByText("AI 解析报告").closest("button")!)
+    fireEvent.click(screen.getByText("解析确认").closest("button")!)
     expect(requestStep).toHaveBeenCalledWith(2)
   })
 

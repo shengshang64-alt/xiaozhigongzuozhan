@@ -14,6 +14,9 @@ import { ComposeStep } from "@/components/bid-workspace/ComposeStep"
 import { DraftMergePanel } from "@/components/bid-workspace/DraftMergePanel"
 import { DupCheckPanel } from "@/components/bid-workspace/DupCheckPanel"
 import { DefensePanel } from "@/components/bid-workspace/DefensePanel"
+import { DeviationPanel } from "@/components/bid-workspace/DeviationPanel"
+import { TechParamResponsePanel } from "@/components/bid-workspace/TechParamResponsePanel"
+import { SubjectiveScorePanel } from "@/components/bid-workspace/SubjectiveScorePanel"
 import { DeptChecklistPanel } from "@/components/bid-workspace/DeptChecklistPanel"
 import { MockEvalPanel } from "@/components/bid-workspace/MockEvalPanel"
 import { OpportunityLinkBar } from "@/components/bid-workspace/OpportunityLinkBar"
@@ -33,7 +36,10 @@ import type { useBidWorkspace } from "./useBidWorkspace"
 
 type Step5Tab = { key: string; label: string; node: ReactNode }
 
-/** 第 5 步三块检查的分页签：只做展示分组，各面板自身的 props / 状态完全不变 */
+/**
+ * 步骤内的分页签：只做展示分组，各面板自身的 props / 状态完全不变。
+ * UX-v2：⑥ 交卷自查把原第 4/5/6 步（查重 / 废标·合规·部门 / 模拟评标）收进一个步骤的多个 Tab。
+ */
 function Step5Tabs({ tabs }: { tabs: Step5Tab[] }) {
   const [activeKey, setActiveKey] = useState(tabs[0]?.key ?? "")
   const current = tabs.find((t) => t.key === activeKey)
@@ -66,9 +72,11 @@ function Step5Tabs({ tabs }: { tabs: Step5Tab[] }) {
   )
 }
 
+/** 兼容别名：⑥ 交卷自查 与旧第 5 步共用同一套 Tab 布局 */
+const Step6Tabs = Step5Tabs
+
 export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
-  return (
-    <div className="animate-in fade-in duration-500 text-foreground">
+  return (    <div className="animate-in fade-in duration-500 text-foreground">
       <BidToolbar
         mainView={p.mainView}
         setMainView={p.setMainView}
@@ -466,6 +474,8 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               addBizAssemblyItems={p.addBizAssemblyItems}
               // UX-v2：③ 大纲编制右栏评分点覆盖热力表（buildScoreCheckup 真值）
               scoreCheckup={p.scoreCheckup}
+              // UX-v2 七步语义对齐：本步只渲染「大纲屏」；正文屏在 ④
+              view="outline"
               formatSettings={p.formatSettings}
               effectiveFormatSettings={p.effectiveFormatSettings}
               formatCheckItems={p.formatCheckItems}
@@ -580,25 +590,232 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
             />
             </>
           )}
+
+          {/* ---------------- UX-v2 ④ 正文编写（prototype/bid/draft.html） ----------------
+              左章节树 / 中正文 / 右废标风险·一致性·写作体检，全部由 ComposeStep 承载。 */}
           {p.activeStep === 4 && (
-            <DupCheckPanel
+            <ComposeStep
               activeProject={p.activeProject}
-              dupLoading={p.dupLoading}
-              requestStep={p.requestStep}
-              runDupCheck={p.runDupCheck}
-              jumpToChapter={p.jumpToChapter}
+              outlineDraft={p.outlineDraft}
+              outlineLoading={p.outlineLoading}
+              generateOutline={p.generateOutline}
+              outlineCriticalConfirmOpen={p.outlineCriticalConfirmOpen}
+              outlineCriticalConfirmText={p.outlineCriticalConfirmText}
+              confirmGenerateOutlineCritical={p.confirmGenerateOutlineCritical}
+              cancelGenerateOutlineCritical={p.cancelGenerateOutlineCritical}
+              outlineLevel={p.outlineLevel}
+              setOutlineLevel={p.setOutlineLevel}
+              targetPages={p.targetPages}
+              setTargetPages={p.setTargetPages}
+              estimatedPages={p.estimatedPages}
+              figuresEnabled={p.figuresEnabled}
+              setFiguresEnabled={p.setFiguresEnabled}
+              maxFigures={p.maxFigures}
+              setMaxFigures={p.setMaxFigures}
+              figureTemplates={p.figureTemplates}
+              figureUploadBusy={p.figureUploadBusy}
+              uploadChapterFigure={p.uploadChapterFigure}
+              insertFigureTemplate={p.insertFigureTemplate}
+              removeFigureTemplateById={p.removeFigureTemplateById}
+              orchestrationSummary={p.orchestrationSummary}
+              orchestrationBusy={p.orchestrationBusy}
+              orchestrationProgress={p.orchestrationProgress}
+              startOrchestration={p.startOrchestration}
+              sectionWords={p.sectionWords}
+              setSectionWords={p.setSectionWords}
+              genOptions={p.genOptions}
+              setClauseResponse={p.setClauseResponse}
+              setMaterialBoost={p.setMaterialBoost}
+              setGenerateDemo={p.setGenerateDemo}
+              demoScoreSummary={p.demoScoreSummary}
+              setWordRefine={p.setWordRefine}
+              setAutoConsistencyAudit={p.setAutoConsistencyAudit}
+              setComplianceMode={p.setComplianceMode}
+              setIncludeBiz={p.setIncludeBiz}
+              scope={p.scope}
+              setScope={p.setScope}
+              bizRemoveCount={p.bizRemoveCount}
+              confirmRemoveBizChapters={p.confirmRemoveBizChapters}
+              cancelRemoveBizChapters={p.cancelRemoveBizChapters}
+              fillBizSkeletons={p.fillBizSkeletons}
+              emptyBizChapters={p.emptyBizChapters}
+              addBizAssemblyItems={p.addBizAssemblyItems}
+              scoreCheckup={p.scoreCheckup}
+              formatSettings={p.formatSettings}
+              effectiveFormatSettings={p.effectiveFormatSettings}
+              formatCheckItems={p.formatCheckItems}
+              setFormatSettingsPatch={p.setFormatSettingsPatch}
+              setFormatMarginsPatch={p.setFormatMarginsPatch}
+              setFormatHeadingLevel={p.setFormatHeadingLevel}
+              setFormatBodyPatch={p.setFormatBodyPatch}
+              setFormatTablePatch={p.setFormatTablePatch}
+              toggleFormatCheckItem={p.toggleFormatCheckItem}
+              setAllFormatCheckItems={p.setAllFormatCheckItems}
+              identityWords={p.identityWords}
+              setIdentityWords={p.setIdentityWords}
+              globalFactsSource={p.globalFactsSource}
+              factDraft={p.factDraft}
+              setFactDraft={p.setFactDraft}
+              factAiBusy={p.factAiBusy}
+              startGenerateFactSettings={p.startGenerateFactSettings}
+              saveGlobalFacts={p.saveGlobalFacts}
+              settingsSaved={p.settingsSaved}
+              leafTarget={p.leafTarget}
+              totalAdjustProgress={p.totalAdjustProgress}
+              outlineMissingTitles={p.outlineMissingTitles}
+              goParseStep={p.goParseStep}
+              outlineRename={p.outlineRename}
+              outlineRemove={p.outlineRemove}
+              outlineAddChild={p.outlineAddChild}
+              outlineAddRoot={p.outlineAddRoot}
+              outlineSetPart={p.outlineSetPart}
+              outlineMove={p.outlineMove}
+              confirmOutline={p.confirmOutline}
+              importDialogOpen={p.importDialogOpen}
+              setImportDialogOpen={p.setImportDialogOpen}
+              importCandidates={p.importCandidates}
+              importLoading={p.importLoading}
+              openImportDialog={p.openImportDialog}
+              importFromSolution={p.importFromSolution}
+              activeChapter={p.activeChapter}
+              activeChapterId={p.activeChapterId}
+              selectChapter={p.selectChapter}
+              editingContent={p.editingContent}
+              setEditingContent={p.setEditingContent}
+              autoSaveState={p.autoSaveState}
+              chapterBusy={p.chapterBusy}
+              refMaterialsDraft={p.refMaterialsDraft}
+              refFileBusy={p.refFileBusy}
+              saveMaterialLibrary={p.saveMaterialLibrary}
+              applyLibraryDefaults={p.applyLibraryDefaults}
+              importLibraryFile={p.importLibraryFile}
+              classifyLibraryDraft={p.classifyLibraryDraft}
+              generateChapter={p.generateChapter}
+              regenerateChapter={p.regenerateChapter}
+              regenerateSection={p.regenerateSection}
+              resizeSection={p.resizeSection}
               isArchivedLocked={p.isArchivedLocked}
-              intraDupThreshold={p.intraDupThreshold}
-              setIntraDupThreshold={p.setIntraDupThreshold}
+              continueChapter={p.continueChapter}
+              refineChapter={p.refineChapter}
+              bulkGenerating={p.bulkGenerating}
+              genProgress={p.genProgress}
+              startBulkGenerate={p.startBulkGenerate}
+              cancelBulkGenerate={p.cancelBulkGenerate}
+              doneChapterCount={p.doneChapterCount}
+              techChapterTotal={p.techChapterTotal}
+              chapterBudgets={p.chapterBudgets}
+              supplementState={p.supplementState}
+              sectionGenState={p.sectionGenState}
+              pageCap={p.pageCap}
+              pageInfo={p.pageInfo}
+              startFillPages={p.startFillPages}
+              pageFillBusy={p.pageFillBusy}
+              startWordRefineAll={p.startWordRefineAll}
+              wordRefineBusy={p.wordRefineBusy}
+              figureBackfillBusy={p.figureBackfillBusy}
+              figureBackfillProgress={p.figureBackfillProgress}
+              figureBackfillPending={p.figureBackfillPending}
+              startFigureBackfill={p.startFigureBackfill}
+              contentFocus={p.contentFocus}
+              focusSectionInChapter={p.focusSectionInChapter}
+              focusPositionInChapter={p.focusPositionInChapter}
+              outlineClauseTotal={p.outlineClauseTotal}
+              coveredClauseCount={p.coveredClauseCount}
+              uncoveredClauses={p.uncoveredClauses}
+              addClauseToOutline={p.addClauseToOutline}
+              addAllClausesToOutline={p.addAllClausesToOutline}
+              outlineChapterDrift={p.outlineChapterDrift}
+              syncOutlineChapters={p.syncOutlineChapters}
+              jumpToResponseNode={p.jumpToResponseNode}
+              clauseGranularity={p.clauseGranularity}
+              setClauseGranularity={p.setClauseGranularity}
+              deviationClauseCount={p.deviationClauseCount}
+              deviationSourceLabel={p.deviationSourceLabel}
+              mapLoading={p.mapLoading}
+              generateDeviationTable={p.generateDeviationTable}
+              deviationTable={p.deviationTable}
+              deviationSummary={p.deviationSummary}
+              exportDeviationWord={p.exportDeviationWord}
+              exportBusy={p.exportBusy}
+              bidOutlineSkills={p.bidOutlineSkills}
+              bidChapterSkills={p.bidChapterSkills}
+              deviationSkills={p.deviationSkills}
+              techParamCoverage={p.techParamCoverage}
+              addUncoveredTechParamsToOutline={p.addUncoveredTechParamsToOutline}
+              requestStep={p.requestStep}
+              bidSourceMode={p.bidSourceMode}
+              bidExternalText={p.bidExternalText}
+              bidExternalBusy={p.bidExternalBusy}
+              setBidSourceMode={p.setBidSourceMode}
+              setBidExternalText={p.setBidExternalText}
+              handleBidExternalFile={p.handleBidExternalFile}
+              // UX-v2 七步语义对齐：偏离/主观分/参数响应已移到 ⑤，但 ComposeStep 的
+              // props 面仍声明这几项（生成承诺函属正文动作，留在这里）
+              generateCommitmentLetter={p.generateCommitmentLetter}
+              setSubjectiveConfirmation={p.setSubjectiveConfirmation}
+              exportTechParamWord={p.exportTechParamWord}
+              // UX-v2 七步语义对齐：本步只渲染「正文屏」；大纲屏在 ③
+              view="draft"
             />
           )}
+
+          {/* ---------------- UX-v2 ⑤ 偏离表（prototype/bid/deviation.html） ----------------
+              原第 3 步内的「偏离与响应表」Tab 提升为独立步骤：技术偏离 + 技术参数响应 + 主观分确认。 */}
           {p.activeStep === 5 && (
-            <Step5Tabs
-              tabs={[
-                {
-                  key: "void",
-                  label: "废标检查",
-                  node: (
+            <div className="mx-auto mt-4 max-w-7xl space-y-4 px-4">
+              <DeviationPanel
+                clauseGranularity={p.clauseGranularity}
+                setClauseGranularity={p.setClauseGranularity}
+                deviationClauseCount={p.deviationClauseCount}
+                deviationSourceLabel={p.deviationSourceLabel}
+                mapLoading={p.mapLoading}
+                generateDeviationTable={p.generateDeviationTable}
+                deviationTable={p.deviationTable}
+                deviationSummary={p.deviationSummary}
+                doneChapterCount={p.doneChapterCount}
+                jumpToResponseNode={p.jumpToResponseNode}
+                exportDeviationWord={p.exportDeviationWord}
+                exportBusy={p.exportBusy}
+                deviationSkills={p.deviationSkills}
+                techParamCoverage={p.techParamCoverage}
+                addUncoveredTechParamsToOutline={p.addUncoveredTechParamsToOutline}
+              />
+              <TechParamResponsePanel
+                key={p.activeProject.id}
+                tenderText={p.activeProject.tender_text ?? ""}
+                report={p.activeProject.parse_report ?? null}
+                onExport={p.exportTechParamWord}
+                exportBusy={p.exportBusy === "deviation"}
+                restoredTables={p.activeProject?.tender_tables ?? null}
+              />
+              <SubjectiveScorePanel
+                project={p.activeProject}
+                onConfirm={p.setSubjectiveConfirmation}
+                onJumpToChapter={p.jumpToResponseNode}
+                archived={p.isArchivedLocked}
+              />
+            </div>
+          )}
+
+          {/* ---------------- UX-v2 ⑥ 交卷自查（prototype/bid/check.html） ----------------
+              原第 4/5/6 步三合一：标书查重 · 废标/合规/部门检查 · 模拟评标。 */}
+          {p.activeStep === 6 && (
+            <div className="mx-auto mt-4 max-w-7xl px-4">
+              <Step6Tabs
+                tabs={[
+                  { key: "dup", label: "标书查重", node: (
+                    <DupCheckPanel
+                      activeProject={p.activeProject}
+                      dupLoading={p.dupLoading}
+                      requestStep={p.requestStep}
+                      runDupCheck={p.runDupCheck}
+                      jumpToChapter={p.jumpToChapter}
+                      isArchivedLocked={p.isArchivedLocked}
+                      intraDupThreshold={p.intraDupThreshold}
+                      setIntraDupThreshold={p.setIntraDupThreshold}
+                    />
+                  ) },
+                  { key: "void", label: "废标检查", node: (
                     <VoidCheckPanel
                       activeProject={p.activeProject}
                       voidLoading={p.voidLoading}
@@ -607,8 +824,8 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                       toggleVoidManual={p.toggleVoidManual}
                       setVoidManualStatus={p.setVoidManualStatus}
                       setVoidReviewStatus={p.setVoidReviewStatus}
-              jumpToResponseNode={p.jumpToResponseNode}
-              voidMissingTitles={p.voidMissingTitles}
+                      jumpToResponseNode={p.jumpToResponseNode}
+                      voidMissingTitles={p.voidMissingTitles}
                       goParseStep={p.goParseStep}
                       isArchivedLocked={p.isArchivedLocked}
                       bidSourceMode={p.bidSourceMode}
@@ -617,13 +834,8 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                       startSealCheck={p.startSealCheck}
                       stageHistory={p.stageHistory}
                     />
-                  ),
-                },
-                {
-                  key: "compliance",
-                  label: "合规检查",
-                  node: (
-                    // T18+：文本审计卡同步挂第5步——错别字/逻辑检查只依赖正文成稿（比第6步准入门槛低），成稿即可审
+                  ) },
+                  { key: "compliance", label: "合规检查", node: (
                     <SubmissionCheckPanel
                       activeProject={p.activeProject}
                       requestStep={p.requestStep}
@@ -649,78 +861,71 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                       startFixTypos={p.startFixTypos}
                       jumpToAuditChapter={p.jumpToAuditChapter}
                     />
-                  ),
-                },
-                {
-                  key: "dept",
-                  label: "部门清单",
-                  node: (
-                    // 部门检查清单：三份参照清单（招标书 / 投标文件 / 解决方案）原样导入，人工勾选 + 交叉检查 + 签名留痕。
-                    // 落既有 checklists 集合的项目级副本（零 schema 变更），零 AI、不做自动判定。
+                  ) },
+                  { key: "dept", label: "部门清单", node: (
                     <DeptChecklistPanel
                       key={`dept-check-${p.activeProject.id}`}
                       projectId={p.activeProject.id}
                       projectName={p.activeProject.project_name}
                       locked={p.isArchivedLocked}
                     />
-                  ),
-                },
-              ]}
-            />
-          )}
-          {p.activeStep === 6 && (
-            <>
-              <p className="mx-auto mt-4 max-w-7xl px-4 text-xs text-muted-foreground">
-                本步只做模拟评标、报价测算和答辩准备；废标/合规检查在第 5 步。
-              </p>
-              <MockEvalPanel
-                activeProject={p.activeProject}
-                evalLoading={p.evalLoading}
-                requestStep={p.requestStep}
-                startAiReview={p.startAiReview}
-                initManualReview={p.initManualReview}
-                setManualScore={p.setManualScore}
-                setManualComment={p.setManualComment}
-                evalMissingTitles={p.evalMissingTitles}
-                goParseStep={p.goParseStep}
-                evalPathBusy={p.evalPathBusy}
-                evalPathFailed={p.evalPathFailed}
-                startEvalPathRerun={p.startEvalPathRerun}
-                isArchivedLocked={p.isArchivedLocked}
+                  ) },
+                  { key: "eval", label: "模拟评标", node: (
+                    <MockEvalPanel
+                      activeProject={p.activeProject}
+                      evalLoading={p.evalLoading}
+                      requestStep={p.requestStep}
+                      startAiReview={p.startAiReview}
+                      initManualReview={p.initManualReview}
+                      setManualScore={p.setManualScore}
+                      setManualComment={p.setManualComment}
+                      evalMissingTitles={p.evalMissingTitles}
+                      goParseStep={p.goParseStep}
+                      evalPathBusy={p.evalPathBusy}
+                      evalPathFailed={p.evalPathFailed}
+                      startEvalPathRerun={p.startEvalPathRerun}
+                      isArchivedLocked={p.isArchivedLocked}
+                    />
+                  ) },
+                  // 原第 6 步的报价测算与答辩准备一并保留（原属于「模拟评标」步骤的配套）
+                  { key: "price", label: "报价测算", node: (
+                    <PriceScorePanel
+                      key={p.activeProject?.id ?? "none"}
+                      activeProject={p.activeProject}
+                      quoteRefs={p.quoteRefs}
+                      goParseStep={p.goParseStep}
+                    />
+                  ) },
+                  { key: "defense", label: "答辩准备", node: (
+                    <DefensePanel
+                      activeProject={p.activeProject}
+                      defense={p.defense}
+                      defenseBusy={p.defenseBusy}
+                      answerBusyId={p.answerBusyId}
+                      pptSending={p.pptSending}
+                      defenseConfirm={p.defenseConfirm}
+                      setDefenseConfirm={p.setDefenseConfirm}
+                      confirmDefenseRegenerate={p.confirmDefenseRegenerate}
+                      defenseQuestionsReady={p.defenseQuestionsReady}
+                      defenseOutlineReady={p.defenseOutlineReady}
+                      defenseSpeechReady={p.defenseSpeechReady}
+                      defenseAnsweredCount={p.defenseAnsweredCount}
+                      startGenerateDefenseQuestions={p.startGenerateDefenseQuestions}
+                      startGenerateFullAnswer={p.startGenerateFullAnswer}
+                      updateDefenseQuestion={p.updateDefenseQuestion}
+                      startGenerateDefenseOutline={p.startGenerateDefenseOutline}
+                      updateDefenseOutlinePage={p.updateDefenseOutlinePage}
+                      sendOutlineToPpt={p.sendOutlineToPpt}
+                      startGenerateSpeechNotes={p.startGenerateSpeechNotes}
+                      updateSpeechNotes={p.updateSpeechNotes}
+                      setActiveStep={p.setActiveStep}
+                      defenseSkills={p.defenseSkills}
+                      isArchivedLocked={p.isArchivedLocked}
+                    />
+                  ) },
+                ]}
               />
-              {/* R38（B12）：价格分测算——R35 算法层 + R36 临界价闭式解接进第 6 步（本地零 AI、零新集合） */}
-              <PriceScorePanel
-                key={p.activeProject?.id ?? "none"}
-                activeProject={p.activeProject}
-                quoteRefs={p.quoteRefs}
-                goParseStep={p.goParseStep}
-              />
-              <DefensePanel
-                activeProject={p.activeProject}
-                defense={p.defense}
-                defenseBusy={p.defenseBusy}
-                answerBusyId={p.answerBusyId}
-                pptSending={p.pptSending}
-                defenseConfirm={p.defenseConfirm}
-                setDefenseConfirm={p.setDefenseConfirm}
-                confirmDefenseRegenerate={p.confirmDefenseRegenerate}
-                defenseQuestionsReady={p.defenseQuestionsReady}
-                defenseOutlineReady={p.defenseOutlineReady}
-                defenseSpeechReady={p.defenseSpeechReady}
-                defenseAnsweredCount={p.defenseAnsweredCount}
-                startGenerateDefenseQuestions={p.startGenerateDefenseQuestions}
-                startGenerateFullAnswer={p.startGenerateFullAnswer}
-                updateDefenseQuestion={p.updateDefenseQuestion}
-                startGenerateDefenseOutline={p.startGenerateDefenseOutline}
-                updateDefenseOutlinePage={p.updateDefenseOutlinePage}
-                sendOutlineToPpt={p.sendOutlineToPpt}
-                startGenerateSpeechNotes={p.startGenerateSpeechNotes}
-                updateSpeechNotes={p.updateSpeechNotes}
-                setActiveStep={p.setActiveStep}
-                defenseSkills={p.defenseSkills}
-                isArchivedLocked={p.isArchivedLocked}
-              />
-            </>
+            </div>
           )}
           {p.activeStep === 7 && (
             <ArchivePanel

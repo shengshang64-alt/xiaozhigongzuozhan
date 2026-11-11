@@ -6116,22 +6116,40 @@ export function gateCondition(rec: Partial<BidProjectRecord> | null, kind: GateK
   return rec.ai_review ? { met: true, missing: "" } : { met: false, missing: "还没有模拟评标报告" }
 }
 
-/** 流水线步骤 → 闸门映射（步骤图标右上角小勾徽标用；该步对应闸门已确认即显示） */
-export const STEP_GATE_MAP: Record<number, GateKind> = { 2: "parse", 3: "compose", 4: "check", 5: "check", 6: "eval" }
+/**
+ * 流水线步骤 → 闸门映射（步骤图标右上角小勾徽标用；该步对应闸门已确认即显示）
+ *
+ * UX-v2 七步语义对齐（2026-11-11）：步骤从旧的「招标文件/AI解析/投标文件编制/查重/废标/评标/归档」
+ * 改为原型 bid/*.html 的七步「导入招标/解析确认/大纲编制/正文编写/偏离表/交卷自查/组卷导出」。
+ * 闸门语义随步骤归位：②=parse，④=compose（确认大纲放行正文），⑤=check（偏离表/应答齐套），⑥=eval。
+ */
+export const STEP_GATE_MAP: Record<number, GateKind> = { 2: "parse", 4: "compose", 5: "check", 6: "eval" }
 
 export function stepGateConfirmed(step: number, gates: StageGates | null | undefined): boolean {
   const kind = STEP_GATE_MAP[step]
   return kind ? !!findGateRecord(gates, kind) : false
 }
 
+/**
+ * 投标七步流程（UX-v2：与 prototype/bid/{import,parse,outline,draft,deviation,check,export}.html 逐字一致）
+ *
+ * 步骤语义（改编号前务必读）：
+ *   ① 导入招标  上传/粘贴招标文件 + 包件勾选 + 同编号拦截
+ *   ② 解析确认  评分办法 / 资质 / 废标条款 / 技术参数 / 时间节点 四类结果逐条确认
+ *   ③ 大纲编制  左大纲树 + 中章节编辑 + 右评分点覆盖热力表；**大纲不确认不放行正文**
+ *   ④ 正文编写  左章节树 + 中正文 + 右废标风险/一致性/写作体检
+ *   ⑤ 偏离表    技术偏离 + 技术参数响应 + 主观分确认（原第 3 步内的「偏离与响应表」Tab 独立成步）
+ *   ⑥ 交卷自查  查重 + 废标项检查 + 模拟评标（原第 4/5/6 步三合一，对应原型「交卷自查」闸门）
+ *   ⑦ 组卷导出  组卷顺序 / 版式 / 清单 / 导出 / 归档复盘
+ */
 export const PIPELINE_STEPS: { step: number; label: string; short: string }[] = [
-  { step: 1, label: "招标文件", short: "上传或粘贴招标文件" },
-  { step: 2, label: "AI 解析报告", short: "评分办法 / 资质 / 废标条款" },
-  { step: 3, label: "投标文件编制", short: "大纲、逐章正文与响应对照" },
-  { step: 4, label: "标书查重", short: "与历史标书对比相似段落" },
-  { step: 5, label: "废标项检查", short: "逐条比对废标条款响应" },
-  { step: 6, label: "模拟评标", short: "AI 评分 + 人工打分对比" },
-  { step: 7, label: "归档导出", short: "导出全套投标文档" },
+  { step: 1, label: "导入招标", short: "上传与校验：招标文件、包件勾选、同编号拦截" },
+  { step: 2, label: "解析确认", short: "评分办法 / 资质 / 废标条款 / 技术参数 / 时间节点" },
+  { step: 3, label: "大纲编制", short: "大纲树与评分点覆盖，确认后才放行正文" },
+  { step: 4, label: "正文编写", short: "逐章生成与编辑，右侧废标风险 / 一致性 / 写作体检" },
+  { step: 5, label: "偏离表", short: "技术偏离 + 技术参数响应 + 主观分确认" },
+  { step: 6, label: "交卷自查", short: "查重 · 废标项检查 · 模拟评标，全过才解锁导出" },
+  { step: 7, label: "组卷导出", short: "组卷顺序 / 版式 / 清单 / 导出与归档复盘" },
 ]
 
 // ------------------------------ 第十一轮改造 3：步骤准入按产物放行 ------------------------------
