@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react"
-import { Loader2, ScanSearch } from "lucide-react"
+import { AlertTriangle, Loader2, ScanSearch } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
 import { PageHeader } from "@/components/shell/PageHeader"
@@ -763,6 +763,64 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               原第 3 步内的「偏离与响应表」Tab 提升为独立步骤：技术偏离 + 技术参数响应 + 主观分确认。 */}
           {p.activeStep === 5 && (
             <div className="mx-auto mt-4 max-w-7xl space-y-4 px-4">
+              {/* 页头（原型 deviation.html .ph）：应答率 / 负偏离 / 未应答三件真值 */}
+              <header className="border-b border-border pb-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-lg font-semibold tracking-tight text-foreground">⑤ 偏离表</h1>
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium tabular-nums text-primary">
+                    技术偏离 {p.deviationSummary.total} 条
+                  </span>
+                  {p.deviationSummary.needs_review > 0 && (
+                    <span className="rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium tabular-nums text-warning">
+                      待人工核对 {p.deviationSummary.needs_review}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  招标原文逐字保留；应答与偏离结论按系统分组，导出即交付物，与本屏写作过程分离
+                </p>
+              </header>
+
+              {/* 数据条（原型 .databar）：全部为 deviationSummary 真值 */}
+              <div className="flex flex-wrap items-center rounded-lg border border-border bg-card px-1 py-2 text-xs shadow-sm">
+                <span className="border-r border-border/60 px-3.5 text-muted-foreground">
+                  参数总数 <b className="font-mono text-[15px] tabular-nums text-card-foreground">{p.deviationSummary.total}</b>
+                </span>
+                <span className="border-r border-border/60 px-3.5 text-muted-foreground">
+                  完全响应 <b className="font-mono text-[15px] tabular-nums text-primary">{p.deviationSummary.full}</b>
+                </span>
+                <span className="border-r border-border/60 px-3.5 text-muted-foreground">
+                  部分响应 <b className="font-mono text-[15px] tabular-nums text-warning">{p.deviationSummary.partial}</b>
+                </span>
+                <span className="border-r border-border/60 px-3.5 text-muted-foreground">
+                  负偏离 <b className="font-mono text-[15px] tabular-nums text-destructive">{p.deviationSummary.deviation}</b>
+                </span>
+                <span className="px-3.5 text-muted-foreground">
+                  技术参数覆盖 <b className="font-mono text-[15px] tabular-nums text-card-foreground">
+                    {p.techParamCoverage.covered}/{p.techParamCoverage.total}
+                  </b>
+                </span>
+              </div>
+
+              {/* 未覆盖警示（原型 .alert--red 同位） */}
+              {p.techParamCoverage.uncovered > 0 && (
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+                  <span className="min-w-0 flex-1 leading-relaxed text-card-foreground">
+                    还有 <b className="text-destructive">{p.techParamCoverage.uncovered}</b> 项技术参数未进偏离表也未建大纲节点；
+                    负偏离每项扣 {p.techParamCoverage.perItemPenalty} 分。⑥ 交卷自查前请处理完。
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => p.addUncoveredTechParamsToOutline()}
+                    className="h-7 shrink-0 border-destructive/40 px-2 text-xs text-destructive hover:bg-destructive/10"
+                  >
+                    补入未覆盖（{p.techParamCoverage.uncovered}）
+                  </Button>
+                </div>
+              )}
+
               <DeviationPanel
                 clauseGranularity={p.clauseGranularity}
                 setClauseGranularity={p.setClauseGranularity}
