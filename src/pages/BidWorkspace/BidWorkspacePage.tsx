@@ -82,50 +82,54 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
 
       {p.mode === "detail" && p.activeProject ? (
         <main>
-          {/* UX-R3 S10：项目信息栏拆两行——原来 7 个元素挤在一行（商机关联/开标时间/WarRoom/⋯），
-              现在：第一行项目名 + 状态徽标 + 主操作；第二行开标时间 + 关联商机 + 次要操作 */}
-          <div className="mx-auto mt-5 max-w-7xl px-4">
-            <div className="rounded-2xl border border-border bg-card px-4 py-2.5 shadow-md">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                <h1 className="min-w-0 truncate text-base font-semibold tracking-tight text-foreground">
-                  {p.activeProject.project_name}
-                </h1>
-                <span
-                  className="shrink-0 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary"
-                  title="当前所处阶段"
-                >
-                  {displayStageLabel(p.activeProject)}
-                </span>
-                {p.isArchivedLocked && (
-                  <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-                    已归档 · 只读
+          {/* UX-v2：项目页头按 prototype/bid/draft.html 的 .ph 结构重排——
+              第一行 h1 + 状态徽标 + 右侧动作（作战室）；
+              第二行 meta 行（开标提示/开标日/商机关联）用小字 kv 排布，不再两行大卡拼贴。
+              UX-R3 S10 的两行拆分保留，只是把视觉密度收回原型口径。 */}
+          <div className="mx-auto mt-4 max-w-7xl px-4">
+            <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight text-foreground" title={p.activeProject.project_name}>
+                    {p.activeProject.project_name}
+                  </h1>
+                  <span
+                    className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
+                    title="当前所处阶段"
+                  >
+                    {displayStageLabel(p.activeProject)}
                   </span>
-                )}
-                <div className="ml-auto shrink-0">
-                  <BidWarRoom activeProject={p.activeProject} missCount={p.uncoveredClauses.length} riskCount={p.voidCriticalUnresolved} />
+                  {p.isArchivedLocked && (
+                    <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                      已归档 · 只读
+                    </span>
+                  )}
+                </div>
+                {/* meta 行：开标时间 / 关联商机（均为真值可编辑） */}
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
+                  <BidOpenDateBar
+                    key={p.activeProject.id}
+                    variant="inline"
+                    activeProject={p.activeProject}
+                    isArchivedLocked={p.isArchivedLocked}
+                    updateProject={p.updateProject}
+                  />
+                  <span aria-hidden="true" className="hidden h-3.5 w-px shrink-0 bg-border sm:block" />
+                  <OpportunityLinkBar
+                    variant="inline"
+                    activeProject={p.activeProject}
+                    activeOppOptions={p.activeOppOptions}
+                    oppOptionsCapped={p.oppOptionsCapped}
+                    linkOpportunity={p.linkOpportunity}
+                    linkedOpportunityName={p.linkedOpportunityName}
+                    isArchivedLocked={p.isArchivedLocked}
+                  />
                 </div>
               </div>
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                {/* R198 §3.5：开标时间就地补录/修改/清除（key 绑项目 id，切项目重挂载避免陈旧草稿） */}
-                <BidOpenDateBar
-                  key={p.activeProject.id}
-                  variant="inline"
-                  activeProject={p.activeProject}
-                  isArchivedLocked={p.isArchivedLocked}
-                  updateProject={p.updateProject}
-                />
-                <span aria-hidden="true" className="hidden h-5 w-px shrink-0 bg-border lg:block" />
-                <OpportunityLinkBar
-                  variant="inline"
-                  activeProject={p.activeProject}
-                  activeOppOptions={p.activeOppOptions}
-                  oppOptionsCapped={p.oppOptionsCapped}
-                  linkOpportunity={p.linkOpportunity}
-                  linkedOpportunityName={p.linkedOpportunityName}
-                  isArchivedLocked={p.isArchivedLocked}
-                />
+              <div className="shrink-0">
+                <BidWarRoom activeProject={p.activeProject} missCount={p.uncoveredClauses.length} riskCount={p.voidCriticalUnresolved} />
               </div>
-            </div>
+            </header>
           </div>
           {/* UX-v2 拆屏（2026-11-11）：步骤条只管步骤与闸门；章节树/快捷动作/商务组卷
               全部由 ComposeStep 左栏 BidChapterNavTree 承担，不再渲染通栏「章节导航」。
@@ -256,14 +260,21 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
           )}
           {p.activeStep === 3 && (
             <>
-            <details className="mb-3 rounded-2xl border border-border bg-card px-4 py-3 text-[13px] text-foreground shadow-sm">
+            {/* UX-v2：大纲体检按原型 draft.html 收成一行摘要条（原来是与页面抢视觉的
+                rounded-2xl 大折叠块）。计数为真值；0 分未落点 · 0 条建议时降为中性灰。 */}
+            <details className="mx-auto mb-3 max-w-7xl rounded-lg border border-border bg-card px-4 py-2 text-xs shadow-sm">
               <summary
-                className="cursor-pointer font-semibold text-foreground"
+                className="flex cursor-pointer list-none items-center gap-2 text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden"
                 title="大纲体检：残句治理 / 判定纠偏 R-020 / 目录比对 R-023 / 评分覆盖体检 / 评分策略建议 / 底稿增量合并"
               >
-                {`大纲体检 · 差 ${p.scoreCheckup?.techMissing ?? 0} 分未落点 · ${p.scoringSuggestions?.length ?? 0} 条建议`}
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${(p.scoringSuggestions?.length ?? 0) > 0 || (p.scoreCheckup?.techMissing ?? 0) > 0 ? "bg-warning" : "bg-primary"}`} />
+                <span className="font-medium text-foreground">大纲体检</span>
+                <span className="tabular-nums">
+                  差 {p.scoreCheckup?.techMissing ?? 0} 分未落点 · {p.scoringSuggestions?.length ?? 0} 条建议
+                </span>
+                <span className="ml-auto shrink-0 text-[11px]">展开明细</span>
               </summary>
-              <div className="mt-2 space-y-3">
+              <div className="mt-2.5 space-y-3 border-t border-border pt-2.5">
                 {p.outlineResidueFixes && p.outlineResidueFixes.length > 0 && (
                   <details open className="rounded-xl border border-primary/25 bg-primary/5 px-3 py-2">
                     <summary className="cursor-pointer font-semibold text-foreground" title="残句治理">
