@@ -194,8 +194,10 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
             <section className="pb-10">
               <header className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-md">
                 <div className="min-w-0">
-                  <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">AI 解析报告</h1>
-                  <p className="mt-0.5 text-xs text-muted-foreground">先看下面这一条结论，再决定下一步。明细按组收着。</p>
+                  <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">② 解析确认</h1>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    先看下面这一条结论，再决定下一步：四类解析结果（废标条款 / 评分办法 / 技术参数 / 时间节点）逐条确认后才放行 ③ 大纲编制。
+                  </p>
                 </div>
                 <Button
                   variant="outline"
@@ -859,6 +861,46 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               原第 4/5/6 步三合一：标书查重 · 废标/合规/部门检查 · 模拟评标。 */}
           {p.activeStep === 6 && (
             <div className="mx-auto mt-4 max-w-7xl px-4">
+              {/* 页头（原型 check.html .ph）：只放能对上的真值——废标阻断数、闸门确认进度、查重/评标是否已跑。
+                  原型这里的「废标/一致性/暗标/格式 四类闸门」是它自己的闸门模型，现网是
+                  「解析/大纲/编制/检查/评标」五类 stage_gates，口径不同不硬凑，按现网真实闸门展示。 */}
+              <header className="border-b border-border pb-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-lg font-semibold tracking-tight text-foreground">⑥ 交卷自查</h1>
+                  {p.voidCriticalUnresolved > 0 ? (
+                    <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium tabular-nums text-destructive">
+                      {p.voidCriticalUnresolved} 项阻断
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                      无废标阻断
+                    </span>
+                  )}
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">
+                    闸门 {p.gatesUnconfirmed > 0 ? `待确认 ${p.gatesUnconfirmed}` : "全部已确认"}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  查重 · 废标项检查 · 合规/部门清单 · 模拟评标 · 报价测算 · 答辩准备；全部过闸后才解锁 ⑦ 组卷导出
+                </p>
+              </header>
+              {p.voidCriticalUnresolved > 0 && (
+                <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+                  <span className="min-w-0 flex-1 leading-relaxed text-card-foreground">
+                    还有 <b className="text-destructive">{p.voidCriticalUnresolved}</b> 条废标级条款未核销——
+                    未逐条应答的废标条款按无效投标处理，请在 ⑦ 组卷导出前处理完。
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => p.requestStep(5)}
+                    className="h-7 shrink-0 border-destructive/40 px-2 text-xs text-destructive hover:bg-destructive/10"
+                  >
+                    回 ⑤ 偏离表处理
+                  </Button>
+                </div>
+              )}
               <Step6Tabs
                 tabs={[
                   { key: "dup", label: "标书查重", node: (
