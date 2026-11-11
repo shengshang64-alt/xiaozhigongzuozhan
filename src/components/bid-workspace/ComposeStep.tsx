@@ -9,6 +9,7 @@ import { ChapterEditor } from "@/components/solution-studio/ChapterEditor"
 import { OutlineTreeEditor } from "@/components/solution-studio/OutlineTreeEditor"
 import { ChapterBudgetBar } from "@/components/bid-workspace/ChapterBudgetBar"
 import { BidChapterNavTree } from "@/components/bid-workspace/BidChapterNavTree"
+import { ConsistencyRail, ProseCheckRail, VoidRiskRail } from "@/components/bid-workspace/ComposeRightRail"
 import { DeviationPanel } from "@/components/bid-workspace/DeviationPanel"
 import { TechParamResponsePanel } from "@/components/bid-workspace/TechParamResponsePanel"
 import { SubjectiveScorePanel } from "@/components/bid-workspace/SubjectiveScorePanel"
@@ -1383,8 +1384,21 @@ export function ComposeStep(p: ComposeStepProps) {
             </div>
             {/* R204 切片 0 可折叠 · R212 切片0.5B 右栏双 Tab：评分映射 / 素材弹药（引用即复制，零 AI 零新 collection） */}
             {!asideCollapsed && (
-            <div id="score-mapping-aside" className="hidden xl:sticky xl:top-20 xl:block">
-              <div className="mb-2 flex items-center gap-1 rounded-lg border border-border bg-card p-1 shadow-sm">
+            <div id="score-mapping-aside" className="hidden space-y-4 xl:sticky xl:top-20 xl:block">
+              {/* UX-v2（prototype/bid/draft.html 右栏 1:1）：三块真数据体检卡常驻——
+                  ① 废标风险（void_check 逐条判定）② 一致性检查（跨章数字比对）③ 写作体检（本章文风扫描）。
+                  原来的「评分映射 / 素材弹药」双 Tab 仍在，但收进下方折叠块，不再与体检卡抢右栏主位。 */}
+              <VoidRiskRail items={proj.void_check?.items ?? []} onGoVoidCheck={() => p.requestStep(5)} />
+              <ConsistencyRail chapters={proj.bid_chapters} onSelectChapter={p.selectChapter} />
+              <ProseCheckRail chapter={p.activeChapter} onGoChapter={() => {}} />
+
+              <details className="rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
+                <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                  评分映射 / 素材弹药
+                </summary>
+                <div className="mt-2">
+                  <div className="mb-2 flex items-center gap-1 rounded-lg border border-border bg-card p-1">
                 <button
                   type="button"
                   onClick={() => setAsideTab("score")}
@@ -1405,7 +1419,7 @@ export function ComposeStep(p: ComposeStepProps) {
                 >
                   素材弹药
                 </button>
-              </div>
+                  </div>
               {asideTab === "material" ? (
                 <BidMaterialAmmoPanel
                   siblings={proj.bid_chapters
@@ -1432,12 +1446,17 @@ export function ComposeStep(p: ComposeStepProps) {
                   onGoVoidCheck={() => p.requestStep(5)}
                 />
               )}
+                </div>
+              </details>
             </div>
             )}
           </div>
 
-          {/* 窄于 xl 时评分点面板降级到编辑器下方（保持功能可见） */}
-          <div className="mt-4 xl:hidden">
+          {/* 窄于 xl 时：三块体检卡 + 评分点面板降级到编辑器下方（保持功能可见） */}
+          <div className="mt-4 space-y-4 xl:hidden">
+            <VoidRiskRail items={proj.void_check?.items ?? []} onGoVoidCheck={() => p.requestStep(5)} />
+            <ConsistencyRail chapters={proj.bid_chapters} onSelectChapter={p.selectChapter} />
+            <ProseCheckRail chapter={p.activeChapter} onGoChapter={() => {}} />
             <ScoreMappingPanel
               report={proj.parse_report ?? null}
               chapters={proj.bid_chapters}
