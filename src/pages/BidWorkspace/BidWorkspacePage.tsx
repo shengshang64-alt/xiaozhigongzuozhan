@@ -805,6 +805,17 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                 <span className="border-r border-border/60 px-3.5 text-muted-foreground">
                   负偏离 <b className="font-mono text-[15px] tabular-nums text-destructive">{p.deviationSummary.deviation}</b>
                 </span>
+                {/* 原型 .databar 的「未应答」项：现网真值取技术参数未落点数（既未进偏离表也未建节点） */}
+                <span className="border-r border-border/60 px-3.5 text-muted-foreground">
+                  未应答{" "}
+                  <b
+                    className={`font-mono text-[15px] tabular-nums ${
+                      p.techParamCoverage.uncovered > 0 ? "text-destructive" : "text-primary"
+                    }`}
+                  >
+                    {p.techParamCoverage.uncovered}
+                  </b>
+                </span>
                 <span className="px-3.5 text-muted-foreground">
                   技术参数覆盖 <b className="font-mono text-[15px] tabular-nums text-card-foreground">
                     {p.techParamCoverage.covered}/{p.techParamCoverage.total}
