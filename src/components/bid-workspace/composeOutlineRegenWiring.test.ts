@@ -35,10 +35,12 @@ describe("编制阶段重新生成大纲接线守卫", () => {
     expect(TREE).toContain("(isCurrent || expandAllSections) &&")
   })
 
-  it("已有章节时能返回逐章编制，确认大纲后自动回到该视图", () => {
-    expect(COMPOSE).toContain("返回逐章编制")
-    // 两条确认路径（直接确认 / 覆盖正文的二次确认）都要回到逐章编制视图
-    const backCount = (COMPOSE.match(/setOutlineViewOpen\(false\)/g) ?? []).length
-    expect(backCount).toBeGreaterThanOrEqual(3)
+  it("③④ 两屏由步骤条跳转切换（原「返回逐章编制」按钮已按原型删除）", () => {
+    // UX-v2：大纲屏与正文屏是两个独立步骤（③/④），切换走 requestStep，不再页内开关
+    const PAGE = sourceText("src/pages/BidWorkspace/BidWorkspacePage.tsx")
+    expect(PAGE).toContain('view="outline"')
+    expect(PAGE).toContain('view="draft"')
+    // ComposeStep 内不再有旧的页内返回按钮
+    expect(COMPOSE.includes("返回逐章编制")).toBe(false)
   })
 })

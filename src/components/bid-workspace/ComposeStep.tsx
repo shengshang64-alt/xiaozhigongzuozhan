@@ -526,23 +526,88 @@ export function ComposeStep(p: ComposeStepProps) {
       <header className="rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h1 className="shrink-0 text-sm font-semibold tracking-tight text-foreground">③ 投标文件编制</h1>
-            <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium tabular-nums text-primary">
-              已写 {(proj.bid_chapters ?? []).filter((c) => (c.content ?? "").trim().length > 0).length}/{(proj.bid_chapters ?? []).length} 章
-            </span>
-            <span
-              className="hidden min-w-0 truncate text-xs text-muted-foreground sm:block"
-              title={
-                hasParse
-                  ? "未上传底稿时，按招标文件解析出的响应文件组成与评分要求自动编排全部内容；可从方案编制引入底稿"
-                  : "尚未完成招标文件解析，建议先回到「AI 解析报告」环节，大纲才能对准评分办法"
-              }
-            >
-              {hasParse
-                ? "未上传底稿时按解析出的响应文件组成与评分要求自动编排；可从方案编制引入底稿"
-                : "尚未完成招标文件解析，建议先回「AI 解析报告」再编制"}
-            </span>
+            <h1 className="shrink-0 text-sm font-semibold tracking-tight text-foreground">
+              {showOutline ? "③ 大纲编制" : "④ 正文编写"}
+            </h1>
+            {showOutline ? (
+              <>
+                <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium tabular-nums text-primary">
+                  {outlineTree.length} 章 ·{" "}
+                  {outlineTree.reduce((s, n) => s + (n.children?.length ?? 0), 0)} 节
+                </span>
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${
+                    p.scoreCheckup.techMissing > 0 ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"
+                  }`}
+                >
+                  评分点 {p.scoreCheckup.techLanded}/{p.scoreCheckup.techTotal} 分
+                  {p.scoreCheckup.techMissing > 0 ? ` · 差 ${p.scoreCheckup.techMissing}` : ""}
+                </span>
+                <span className="hidden min-w-0 truncate text-xs text-muted-foreground sm:block">
+                  大纲确认前不放行正文；改动确认后会触发正文重建的二次确认
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium tabular-nums text-primary">
+                  已写 {(proj.bid_chapters ?? []).filter((c) => (c.content ?? "").trim().length > 0).length}/
+                  {(proj.bid_chapters ?? []).length} 章
+                </span>
+                <span
+                  className="hidden min-w-0 truncate text-xs text-muted-foreground sm:block"
+                  title={
+                    hasParse
+                      ? "未上传底稿时，按招标文件解析出的响应文件组成与评分要求自动编排全部内容；可从方案编制引入底稿"
+                      : "尚未完成招标文件解析，建议先回到「AI 解析报告」环节，大纲才能对准评分办法"
+                  }
+                >
+                  {hasParse
+                    ? "未上传底稿时按解析出的响应文件组成与评分要求自动编排；可从方案编制引入底稿"
+                    : "尚未完成招标文件解析，建议先回「AI 解析报告」再编制"}
+                </span>
+              </>
+            )}
           </div>
+          {/* 原型 .ph-actions：③ 屏的主操作是「确认大纲并生成正文」+「重新生成大纲」 */}
+          {showOutline && outlineTree.length > 0 && (
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                disabled={p.outlineLoading || locked}
+                title={locked ? "已归档项目为只读" : undefined}
+                onClick={() => setRegenConfirmOpen(true)}
+                className="h-8 border-primary/40 text-xs text-primary hover:bg-primary/10"
+              >
+                <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${p.outlineLoading ? "animate-spin" : ""}`} />
+                重新生成大纲
+              </Button>
+              <Button
+                size="sm"
+                disabled={locked || p.scoreCheckup.techMissing > 0}
+                title={
+                  locked
+                    ? "已归档项目为只读"
+                    : p.scoreCheckup.techMissing > 0
+                      ? `还有 ${p.scoreCheckup.techMissing} 分评分点未落点，补齐后再确认（补完再点）`
+                      : "按当前大纲重建章节清单，之后进入 ④ 正文编写"
+                }
+                onClick={() => {
+                  const done = (proj?.bid_chapters ?? []).filter((c) => (c.content ?? "").trim().length > 0)
+                  if (done.length > 0) {
+                    setConfirmOutlineGuard({
+                      chapters: done.length,
+                      words: done.reduce((a, c) => a + (c.content ?? "").length, 0),
+                    })
+                    return
+                  }
+                  p.confirmOutline()
+                }}
+                className="h-8 bg-primary text-xs text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-50"
+              >
+                确认大纲并生成正文
+              </Button>
+            </div>
+          )}
           {hasChapters && p.bidSourceMode !== "external" && (
             <div className="flex shrink-0 flex-wrap items-center gap-2">
               <Button
@@ -824,49 +889,6 @@ export function ComposeStep(p: ComposeStepProps) {
                 onSelect={setOutlineSelId}
               />
             </div>
-            {p.outlineDraft.length > 0 && (
-              <div className="mt-4 flex gap-2">
-                <Button
-                  onClick={() => {
-                    // R294：已有正文时拦一道二次确认（confirmOutline 全量重建章节清单，会清空既有正文）
-                    const done = (proj?.bid_chapters ?? []).filter((c) => (c.content ?? "").trim().length > 0)
-                    if (done.length > 0) {
-                      setConfirmOutlineGuard({
-                        chapters: done.length,
-                        words: done.reduce((a, c) => a + (c.content ?? "").length, 0),
-                      })
-                      return
-                    }
-                    p.confirmOutline()
-                    setOutlineViewOpen(false) // 确认后回到逐章编制视图（编制阶段从大纲视图进来的）
-                  }}
-                  disabled={locked}
-                  title={locked ? "已归档项目为只读" : undefined}
-                  className="flex-1 bg-primary text-primary-foreground shadow-md hover:bg-primary/90 focus-visible:shadow-[var(--focus-ring)]"
-                >
-                  确认大纲，开始逐章编制
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={p.outlineLoading || locked}
-                  title={locked ? "已归档项目为只读" : undefined}
-                  onClick={() => setRegenConfirmOpen(true)}
-                  className="shrink-0 border-primary/40 text-primary hover:bg-primary/10"
-                >
-                  <RefreshCw className={`mr-1.5 h-4 w-4 ${p.outlineLoading ? "animate-spin" : ""}`} />
-                  重新生成
-                </Button>
-                {hasChapters && (
-                  <Button
-                    variant="outline"
-                    onClick={() => setOutlineViewOpen(false)}
-                    className="shrink-0 border-border text-muted-foreground hover:text-foreground"
-                  >
-                    返回逐章编制
-                  </Button>
-                )}
-              </div>
-            )}
           </div>
           {/* 中栏（原型 outline.html split--3col 中间）：章节编辑 + 编号与层级校验 */}
           <div className="flex flex-col gap-4">
@@ -1440,9 +1462,10 @@ export function ComposeStep(p: ComposeStepProps) {
                 addBizAssemblyItems={p.addBizAssemblyItems}
               />
             </div>
-            <div>
+            {/* 中栏写作卡（原型 draft.html：单卡片 = card-h 章名+字数 / card-b tight 工具栏 / card-b 正文） */}
+            <div className="rounded-lg border border-border bg-card shadow-sm">
               {p.activeChapter?.part !== "biz" && (
-                <>
+                <div className="border-b border-border/60 px-3 py-2">
                   <ChapterBudgetBar
                     activeChapter={p.activeChapter}
                     charCount={activeCharCount}
@@ -1450,22 +1473,22 @@ export function ComposeStep(p: ComposeStepProps) {
                     supplementState={p.supplementState}
                   />
                   {p.activeChapter?.underlength && (
-                    <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2">
+                    <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-2.5 py-1.5">
                       <span className="badge-warning">偏短</span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-[11.5px] text-muted-foreground">
                         本章成稿字数低于预算六成，可对当前章「扩写」或「继续生成」补足，达标后徽标自动消失
                       </span>
                     </div>
                   )}
-                </>
+                </div>
               )}
-              {/* 切片A3：预览/编辑切换栏 */}
+              {/* 预览 / 编辑切换（原型工具栏右端的位置） */}
               {p.activeChapter && (p.editingContent ?? "").trim().length > 0 && p.activeChapter?.part !== "biz" && (
-                <div className="mt-3 mb-1 flex items-center gap-1">
+                <div className="flex items-center gap-1 border-b border-border/60 px-3 py-1.5">
                   <Button
                     size="sm"
                     variant={viewMode === "preview" ? "default" : "ghost"}
-                    className="h-7 gap-1 text-xs"
+                    className="h-6.5 gap-1 px-2 text-[11.5px]"
                     onClick={() => setViewMode("preview")}
                   >
                     <Eye className="h-3 w-3" />
@@ -1474,18 +1497,22 @@ export function ComposeStep(p: ComposeStepProps) {
                   <Button
                     size="sm"
                     variant={viewMode === "edit" ? "default" : "ghost"}
-                    className="h-7 gap-1 text-xs"
+                    className="h-6.5 gap-1 px-2 text-[11.5px]"
                     onClick={() => setViewMode("edit")}
                     disabled={locked}
                   >
                     <PenLine className="h-3 w-3" />
                     编辑
                   </Button>
+                  <div className="flex-1" />
+                  <span className="text-[11px] text-muted-foreground">
+                    {p.autoSaveState === "saving" ? "自动保存中…" : p.autoSaveState === "saved" ? "已自动保存" : ""}
+                  </span>
                 </div>
               )}
               {/* Word 样式连续预览：与整本「Word 预览」同一渲染管线（A4 版式 / 字体字号 / 首行缩进 / 小节编号），导航点小节可定位 */}
               {viewMode === "preview" && p.activeChapter && (p.editingContent ?? "").trim().length > 0 && p.activeChapter?.part !== "biz" ? (
-                <div ref={previewScrollRef} className="mt-1 max-h-[72vh] overflow-auto rounded-lg">
+                <div ref={previewScrollRef} className="max-h-[72vh] overflow-auto p-2">
                   <BidWordPreview
                     docTitle={p.activeProject?.project_name || "投标文件"}
                     format={p.effectiveFormatSettings}
@@ -1500,7 +1527,7 @@ export function ComposeStep(p: ComposeStepProps) {
                   />
                 </div>
               ) : (
-              <div className={`rounded-lg transition-colors ${focusFlash ? "bg-primary/15" : ""}`}>
+              <div className={`p-1 transition-colors ${focusFlash ? "bg-primary/15" : ""}`}>
                 <ChapterEditor
                   activeChapter={p.activeChapter}
                   activeChapterId={p.activeChapterId}
@@ -1532,6 +1559,31 @@ export function ComposeStep(p: ComposeStepProps) {
               </div>
               )}
             </div>
+            {/* UX-v2：④ 写作卡底部（原型 draft.html card-f：字数 · 页数 · 自动保存时刻） */}
+            {p.activeChapter && p.activeChapter.part !== "biz" && (
+              <div className="flex flex-wrap items-center gap-2 border-t border-border bg-muted/30 px-3 py-2 text-[11.5px] text-muted-foreground">
+                <span className="tabular-nums">
+                  本章 <b className="font-mono text-card-foreground">{activeCharCount.toLocaleString("zh-CN")}</b> 字
+                  {activeBudget > 0 && (
+                    <> / 预算 <span className="font-mono">{activeBudget.toLocaleString("zh-CN")}</span> 字</>
+                  )}
+                </span>
+                {activeBudget > 0 && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span className="tabular-nums">预计 {Math.max(1, Math.round(activeCharCount / 950))} 页</span>
+                  </>
+                )}
+                <div className="flex-1" />
+                {p.supplementState?.nodeId === p.activeChapterId && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-primary">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    自动补足 第 {p.supplementState.round} 轮
+                  </span>
+                )}
+                <span>{p.autoSaveState === "saving" ? "自动保存中…" : p.autoSaveState === "saved" ? "已自动保存" : "自动保存已开启"}</span>
+              </div>
+            )}
             {/* R204 切片 0 可折叠 · R212 切片0.5B 右栏双 Tab：评分映射 / 素材弹药（引用即复制，零 AI 零新 collection） */}
             {!asideCollapsed && (
             <div id="score-mapping-aside" className="hidden space-y-4 xl:sticky xl:top-20 xl:block">
