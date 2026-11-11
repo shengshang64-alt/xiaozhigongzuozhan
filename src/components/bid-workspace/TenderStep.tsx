@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ImportRecognizePanel } from "@/components/bid-workspace/ImportRecognizePanel"
+import { TenderLotsCard } from "@/components/bid-workspace/TenderLotsCard"
 import type { UseBidWorkspace } from "@/pages/BidWorkspace/useBidWorkspace"
 import { classifyTenderTable, summarizeTenderTables } from "@/pages/BidWorkspace/tenderTables"
 import { TENDER_FILE_ROLE_HINTS, TENDER_FILE_ROLE_LABELS, TENDER_FILE_ROLES, type TenderFileRole } from "@/pages/BidWorkspace/tenderFiles"
@@ -33,6 +34,8 @@ type TenderStepProps = Pick<
   | "isArchivedLocked"
   /** UX-v2：①「同编号拦截」用——全部项目列表（在组件内筛同编号） */
   | "projects"
+  /** UX-v2 ①：包件选择写回 parse_report.lots_scope（既有字段，②③ 的 lots 过滤一直读它） */
+  | "updateParseReport"
 >
 
 export function TenderStep({
@@ -58,6 +61,7 @@ export function TenderStep({
   setActiveStep,
   isArchivedLocked,
   projects,
+  updateParseReport,
 }: TenderStepProps) {
   // UX-v2 ①：同编号拦截——把「除本项目外、编号相同」的项目挑出来（无编号或无同名时为空）
   const duplicateTenderProjects = (() => {
@@ -261,6 +265,16 @@ export function TenderStep({
                 合并文本里每份文件前有「〖附件N｜角色｜文件名〗」来源标记；删除或调序按文件块重建，块内正文与手工修订都会保留。
               </p>
             </div>
+          )}
+
+          {/* UX-v2 ① 左栏「包件」（原型 import.html 左栏第 3 块）：拆 ≥2 包才出现，
+              勾选写回 parse_report.lots_scope.selected（解析报告/大纲的 lots 过滤读同一份） */}
+          {activeProject && (
+            <TenderLotsCard
+              project={activeProject}
+              onChangeLots={updateParseReport}
+              locked={isArchivedLocked}
+            />
           )}
 
           <div className="rounded-lg border border-border bg-card p-4 shadow-md">

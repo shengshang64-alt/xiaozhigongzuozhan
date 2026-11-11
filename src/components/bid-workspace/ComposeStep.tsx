@@ -962,6 +962,59 @@ export function ComposeStep(p: ComposeStepProps) {
                 </li>
               </ul>
             </section>
+            {/* 原型 outline.html 中栏第三卡「生成方式」：原型是 AI/模板/手工 三选一分段控件，
+                现网大纲只有「AI 以评分办法为纲生成 + 手工增删改」这一条真实链路（没有「从模板生成大纲」
+                的独立能力），故不做看起来能切其实无效的假分段控件，改为**如实说明当前大纲是怎么来的**：
+                来源构成（招标目录命中 / 评分项派生）与生成依据（解析出的评分点数 + 是否用了范本）。 */}
+            <section className="rounded-lg border border-border bg-card shadow-sm">
+              <header className="flex items-center gap-2 border-b border-border px-3.5 py-2.5">
+                <h3 className="text-[13.5px] font-semibold text-card-foreground">生成方式</h3>
+                <div className="flex-1" />
+                <span className="text-[11.5px] text-muted-foreground">当前大纲的来源</span>
+              </header>
+              <div className="flex flex-col gap-2 px-3.5 py-2.5">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10.5px] font-medium text-primary">
+                    AI 生成
+                  </span>
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10.5px] text-muted-foreground">
+                    手工增删改
+                  </span>
+                  <span
+                    className="rounded bg-muted px-1.5 py-0.5 text-[10.5px] text-muted-foreground/70"
+                    title="现网没有「从范本直接生成大纲」的独立通道：上传的范本只作为结构章法参考参与 AI 生成"
+                  >
+                    从模板（作为参考参与生成）
+                  </span>
+                </div>
+                <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+                  当前大纲由解析出的{' '}
+                  <b className="text-card-foreground">{p.scoreCheckup.rows.length}</b> 个评分点
+                  {outlineReqActive ? '、招标规定的投标文件目录' : ''}
+                  合并生成，已按章号顺序编号；来源分布见下表。
+                </p>
+                <ul className="divide-y divide-border/60">
+                  <li className="flex items-center gap-2 py-1.5 text-[11.5px]">
+                    <span className="min-w-0 flex-1 text-muted-foreground">招标目录命中</span>
+                    <span className="shrink-0 font-mono tabular-nums text-card-foreground">
+                      {outlineTree.filter((n) => n.origin === "tender").length} 章
+                    </span>
+                  </li>
+                  <li className="flex items-center gap-2 py-1.5 text-[11.5px]">
+                    <span className="min-w-0 flex-1 text-muted-foreground">评分项派生</span>
+                    <span className="shrink-0 font-mono tabular-nums text-card-foreground">
+                      {outlineTree.filter((n) => n.origin === "scoring").length} 章
+                    </span>
+                  </li>
+                  <li className="flex items-center gap-2 py-1.5 text-[11.5px]">
+                    <span className="min-w-0 flex-1 text-muted-foreground">手工新增 / 其他</span>
+                    <span className="shrink-0 font-mono tabular-nums text-card-foreground">
+                      {outlineTree.filter((n) => !n.origin).length} 章
+                    </span>
+                  </li>
+                </ul>
+              </div>
+            </section>
           </div>
           <aside className="flex flex-col gap-4">
             {/* UX-v2（prototype/bid/outline.html 右栏首位）：评分点覆盖热力表——真数据来自
