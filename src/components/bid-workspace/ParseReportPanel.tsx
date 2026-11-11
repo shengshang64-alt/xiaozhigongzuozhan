@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { ClipboardList } from "lucide-react"
 import { formatCount } from "@/lib/money"
 import {
@@ -71,6 +71,9 @@ type ParseReportPanelProps = {
   onContinue?: () => void
   /** 额外分组页签（外部面板，如条款覆盖矩阵 / 评分项核对）。只影响呈现，不改报告数据。 */
   extraTabs?: { id: string; label: string; node: ReactNode }[]
+  /** UX-v2 ② 解析确认：从上方「解析目录」点条目 → 打开明细并选中该分区。
+   *  nonce 每次点击自增，同一个 key 连点也能再次定位（纯呈现层指令，不改报告数据）。 */
+  focusItem?: { key: string; nonce: number } | null
 }
 
 /**
@@ -96,6 +99,7 @@ export function ParseReportPanel({
   onExportPurchaseList,
   onContinue,
   extraTabs,
+  focusItem,
 }: ParseReportPanelProps) {
   const summaryColumns = useMemo(() => buildParseSummary(report), [report])
   const parseHealth = useMemo(() => summarizeParseHealth(report), [report])
@@ -163,9 +167,27 @@ export function ParseReportPanel({
     implicitVoid: voidCount,
     paramNeedsAttention: paramSummary.overall === "reject" || paramSummary.overall === "caution",
   })
-  const [ui, setUi] = useState<ParsePanelUi | null>(null)
-  const active = ui && ui.stamp === stamp ? ui : defaults
-  const patchUi = (patch: Partial<ParsePanelUi>) => setUi({ ...active, ...patch, stamp })
+  const [ui, setUi] = useState<{ nonce: number; value: ParsePanelUi | null }>({ nonce: 0, value: null })
+  // UX-v2 ② 解析确认：「解析目录」点条目 → 打开「解析项明细 · 逐项查看」并选中该分区。
+  // 这里不写 effect（同步 setState 的 effect 会触发级联渲染，且 rules-of-hooks 规则直接报错），
+  // 而是**按 nonce 派生**：新的 focus 请求到达时先用派生的 UI，用户一操作 patchUi 就把
+  // 当时的 nonce 一起记下——之后同一次请求不再覆盖用户的手动切换。
+  const nonce = focusItem?.nonce ?? 0
+  const requested: ParsePanelUi | null =
+    ui.nonce === nonce
+      ? ui.value
+      : focusItem
+        ? { stamp, group: "items", view: "detail", selectedKey: focusItem.key || defaults.selectedKey }
+        : null
+  const active = requested && requested.stamp === stamp ? requested : defaults
+  const patchUi = (patch: Partial<ParsePanelUi>) => setUi({ nonce, value: { ...active, ...patch, stamp } })
+
+  // 纯 DOM 副作用：用户是在 380px 左栏点的，明细在本屏下方，不滚过去会以为没反应。
+  const rootRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!focusItem) return
+    rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }, [focusItem])
 
   const lotsSelected = report?.lots_scope?.selected ?? []
   const lotsLimited = lotsChips != null && lotsSelected.length > 0 && lotsSelected.length < lotsChips.nos.length
@@ -251,7 +273,7 @@ export function ParseReportPanel({
   const basis = sections.find((s) => s.key === "compilation_basis") ?? null
 
   return (
-    <div className="flex flex-col gap-4">
+    <div ref={rootRef} className="flex flex-col gap-4">
       <ParseHealthBar
         title={verdict.title}
         detail={verdict.detail}

@@ -160,6 +160,47 @@ export function writeComplianceProgress(projectId: string, map: ComplianceProgre
   } catch {
     /* 隐私模式 / 配额超：静默降级为仅本次会话生效 */
   }
+  emitComplianceProgress(projectId, map)
+}
+
+// ---------------------------------------------------------------------------
+// UX-v2 ② 解析确认：同一份覆盖进度被两处同时编辑（② 的废标逐条确认表、条款覆盖矩阵 Tab）。
+// 它们是同一个 localStorage 键的两张脸，各自 useState 会互相覆盖（A 改完、B 再改，A 的改动被 B
+// 的旧快照抹掉）。这里加一个进程内订阅，让同屏两个消费者拿同一份最新值；写失败（隐私模式）时
+// 内存广播仍生效，行为与「仅本次会话生效」的既定降级一致。
+// ---------------------------------------------------------------------------
+
+type ComplianceListener = (projectId: string, map: ComplianceProgressMap) => void
+
+const complianceListeners = new Set<ComplianceListener>()
+/** 每个项目最近一次广播的值——useSyncExternalStore 的快照必须**引用稳定**，
+ *  否则每次 getSnapshot 都解析一遍 localStorage 会返回新对象、触发无限重渲染。 */
+const complianceSnapshots = new Map<string, ComplianceProgressMap>()
+
+/** 订阅覆盖进度变更（返回取消订阅函数）。只在浏览器内使用，SSR/单测无订阅者时为 no-op。 */
+export function subscribeComplianceProgress(listener: ComplianceListener): () => void {
+  complianceListeners.add(listener)
+  return () => complianceListeners.delete(listener)
+}
+
+/** useSyncExternalStore 的 getSnapshot：首次读 localStorage 并缓存，写入时更新缓存引用。 */
+export function complianceProgressSnapshot(projectId: string): ComplianceProgressMap {
+  const cached = complianceSnapshots.get(projectId)
+  if (cached) return cached
+  const fresh = readComplianceProgress(projectId)
+  complianceSnapshots.set(projectId, fresh)
+  return fresh
+}
+
+function emitComplianceProgress(projectId: string, map: ComplianceProgressMap): void {
+  complianceSnapshots.set(projectId, map)
+  for (const l of complianceListeners) {
+    try {
+      l(projectId, map)
+    } catch {
+      /* 单个订阅者抛错不能影响其他订阅者与写入方 */
+    }
+  }
 }
 
 // ------------------------------ 关键项判定与按类汇总（R133，纯函数） ------------------------------

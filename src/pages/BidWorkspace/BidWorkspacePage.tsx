@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react"
-import { AlertTriangle, Loader2, ScanSearch } from "lucide-react"
+import { AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
 import { PageHeader } from "@/components/shell/PageHeader"
@@ -21,6 +21,7 @@ import { DeptChecklistPanel } from "@/components/bid-workspace/DeptChecklistPane
 import { MockEvalPanel } from "@/components/bid-workspace/MockEvalPanel"
 import { OpportunityLinkBar } from "@/components/bid-workspace/OpportunityLinkBar"
 import { ParseConfigDialog } from "@/components/bid-workspace/ParseConfigDialog"
+import { ParseConfirmEmpty, ParseConfirmScreen } from "@/components/bid-workspace/ParseConfirmScreen"
 import { PriceScorePanel } from "@/components/bid-workspace/PriceScorePanel"
 import { ParseReportPanel } from "@/components/bid-workspace/ParseReportPanel"
 import { BidPipelineStepperEnhanced } from "@/components/bid-workspace/BidPipelineStepperEnhanced"
@@ -76,6 +77,8 @@ function Step5Tabs({ tabs }: { tabs: Step5Tab[] }) {
 const Step6Tabs = Step5Tabs
 
 export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
+  // UX-v2 ② 解析确认：目录点条目 → 下方解析明细定位到该分区（nonce 保证同一条目连点也能再触发）
+  const [parseFocus, setParseFocus] = useState<{ key: string; nonce: number } | null>(null)
   return (    <div className="animate-in fade-in duration-500 text-foreground">
       <BidToolbar
         mainView={p.mainView}
@@ -192,31 +195,31 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
             />
           )}
           {p.activeStep === 2 && (
-            <section className="pb-10">
-              <header className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-md">
-                <div className="min-w-0">
-                  <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">② 解析确认</h1>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    先看下面这一条结论，再决定下一步：四类解析结果（废标条款 / 评分办法 / 技术参数 / 时间节点）逐条确认后才放行 ③ 大纲编制。
-                  </p>
+            <section className="mx-auto mt-4 max-w-7xl px-4 pb-10">
+              {/* UX-v2 ② 解析确认（prototype/bid/parse.html）：四类结果卡 + 评分分布 + 解析目录
+                  + 解析质量 + 废标逐条确认表。数字全部为解析报告/招标原文的本地派生，无真值给「—」。 */}
+              {p.activeProject.parse_report ? (
+                <ParseConfirmScreen
+                  project={p.activeProject}
+                  onReparse={p.startParse}
+                  parseLoading={p.parseLoading}
+                  parseProgress={p.parseChunkProgress}
+                  onContinue={() => p.requestStep(3)}
+                  onFocusItem={(key) => setParseFocus((prev) => ({ key, nonce: (prev?.nonce ?? 0) + 1 }))}
+                  archived={p.isArchivedLocked}
+                />
+              ) : (
+                <ParseConfirmEmpty onReparse={p.startParse} parseLoading={p.parseLoading} />
+              )}
+
+              {/* 解析明细（既有能力全保留，收在本屏下方）：21 项分组、单项重解析、条款覆盖矩阵、评分项核对 */}
+              <div className="mt-5">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <h2 className="text-sm font-semibold text-foreground">解析明细</h2>
+                  <span className="text-[11.5px] text-muted-foreground">
+                    逐项查看与修改、单项重解析、条款覆盖矩阵、评分项核对都在这里
+                  </span>
                 </div>
-                <Button
-                  variant="outline"
-                  onClick={p.startParse}
-                  disabled={p.parseLoading || p.isArchivedLocked}
-                  className="shrink-0 border-primary/40 text-primary hover:bg-primary/10"
-                >
-                  {p.parseLoading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ScanSearch className="mr-1.5 h-4 w-4" />}
-                  {p.parseLoading
-                    ? p.parseChunkProgress
-                      ? `正在解析第 ${p.parseChunkProgress.current}/${p.parseChunkProgress.total} 项…`
-                      : "解析中…"
-                    : p.activeProject.parse_report
-                      ? "重新解析"
-                      : "运行 AI 解析"}
-                </Button>
-              </header>
-              <div className="mt-4">
                 <ParseReportPanel
                   key={p.activeProject.id}
                   report={p.activeProject.parse_report}
@@ -235,6 +238,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                   restoredTables={p.activeProject.tender_tables ?? null}
                   onExportPurchaseList={p.exportPurchaseListWord}
                   onContinue={() => p.requestStep(3)}
+                  focusItem={parseFocus}
                   extraTabs={[
                     {
                       // R005（B-1 阶段一）：实质性条款覆盖矩阵——解析报告本地推导，零 AI 费用
