@@ -12,6 +12,7 @@ import { BidWarRoom } from "@/components/bid-workspace/BidWarRoom"
 import { ComplianceMatrixPanel } from "@/components/bid-workspace/ComplianceMatrixPanel"
 import { ComposeStep } from "@/components/bid-workspace/ComposeStep"
 import { DraftMergePanel } from "@/components/bid-workspace/DraftMergePanel"
+import { ExportComposeScreen } from "@/components/bid-workspace/ExportComposeScreen"
 import { DupCheckPanel } from "@/components/bid-workspace/DupCheckPanel"
 import { DefensePanel } from "@/components/bid-workspace/DefensePanel"
 import { DeviationPanel } from "@/components/bid-workspace/DeviationPanel"
@@ -1033,7 +1034,32 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
             </div>
           )}
           {p.activeStep === 7 && (
-            <ArchivePanel
+            <>
+              {/* UX-v2 ⑦ 组卷导出（prototype/bid/export.html 三栏）：组卷顺序 / 版式设置 / 导出清单。
+                  组卷顺序=导出真正写入的章序，版式设置直接写 format_settings，清单不预填体积。 */}
+              <ExportComposeScreen
+                activeProject={p.activeProject}
+                coverage={p.techParamCoverage}
+                deviationRows={p.deviationSummary.total}
+                formatSettings={p.effectiveFormatSettings}
+                isArchivedLocked={p.isArchivedLocked}
+                exportBusy={p.exportBusy}
+                allGatesConfirmed={p.allGatesConfirmed}
+                gatesUnconfirmed={p.gatesUnconfirmed}
+                onSetFormatSettings={p.setFormatSettingsPatch}
+                onRequestStep={p.requestStep}
+                onExportAll={() => void p.exportAllDocs()}
+                onExport={(key) => {
+                  if (key === "bid") void p.exportBidWord()
+                  else if (key === "techparam") void p.exportTechParamWord()
+                  else if (key === "deviation") void p.exportDeviationWord()
+                  else if (key === "purchase") void p.exportPurchaseListWord()
+                  else if (key === "parse") void p.exportReport("parse")
+                  else if (key === "check") void p.exportReport("dup_void")
+                  else void p.exportReport("eval")
+                }}
+              />
+              <ArchivePanel
               activeProject={p.activeProject}
               requestStep={p.requestStep}
               exportBusy={p.exportBusy}
@@ -1073,6 +1099,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               resetConfirmOpen={p.resetConfirmOpen}
               setResetConfirmOpen={p.setResetConfirmOpen}
             />
+            </>
           )}
         </main>
       ) : p.mainView === "tools" ? (
