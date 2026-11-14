@@ -34,6 +34,7 @@ import { ratingSelectionText } from "./ratingCoverage"
 import { parseMappingTab, type MappingTab } from "./mappingTabs"
 import { StandardChaptersDialog } from "@/components/solution-studio/StandardChaptersDialog"
 import { useStandardChapters } from "@/pages/SolutionStudio/useStandardChapters"
+import { useChecklistPptOutline } from "@/pages/PptQuote/useChecklistPptOutline"
 import type { UseProductMapping } from "./useProductMapping"
 
 // ---------------------------------------------------------------------------
@@ -499,8 +500,36 @@ function CompareWorkSection({ p }: { p: UseProductMapping }) {
 /** ③ 结果屏：覆盖视角清单 + 命名 + 导出与保存（原型 result.html「结果区成为视觉主角」） */
 function ResultExportSection({ p }: { p: UseProductMapping }) {
   const chapters = useStandardChapters()
+  const pptOutline = useChecklistPptOutline()
   const skeletonRef = useRef<HTMLInputElement | null>(null)
   const navigate = useNavigate()
+  const collectChapterLines = () => {
+    const fromChecked = p.checklistLines.filter((l) => l.checked !== false)
+    const seen = new Set(fromChecked.map((l) => (l.product_name || "") + "::" + (l.module_name || "")))
+    const unmatched = p.rows
+      .filter((r) => !r.product_id && r.resolution !== "ignore" && (r.raw || r.norm))
+      .map((r) => {
+        const name = (r.raw || r.norm).trim()
+        return {
+          line_id: r.row_id,
+          category: "",
+          product_line: "",
+          product_name: name,
+          module_name: "",
+          module_func: "",
+          unit: "套",
+          qty: 1,
+          unit_price: 0,
+          source: "external" as const,
+          rating_hits: [] as string[],
+          remark: "",
+          product_id: "",
+          checked: true,
+        }
+      })
+      .filter((l) => !seen.has(l.product_name + "::"))
+    return [...fromChecked, ...unmatched]
+  }
   return (
     <Card className="shadow-sm">
       <CardContent className="p-5">
@@ -565,36 +594,29 @@ function ResultExportSection({ p }: { p: UseProductMapping }) {
             data-testid="preview-standard-chapters-mapping"
             disabled={chapters.busy || p.checklistLines.filter((l) => l.checked !== false).length < 1}
             onClick={() => {
-              const fromChecked = p.checklistLines.filter((l) => l.checked !== false)
-              const seen = new Set(fromChecked.map((l) => (l.product_name || "") + "::" + (l.module_name || "")))
-              const unmatched = p.rows
-                .filter((r) => !r.product_id && r.resolution !== "ignore" && (r.raw || r.norm))
-                .map((r) => {
-                  const name = (r.raw || r.norm).trim()
-                  return {
-                    line_id: r.row_id,
-                    category: "",
-                    product_line: "",
-                    product_name: name,
-                    module_name: "",
-                    module_func: "",
-                    unit: "套",
-                    qty: 1,
-                    unit_price: 0,
-                    source: "external" as const,
-                    rating_hits: [] as string[],
-                    remark: "",
-                    product_id: "",
-                    checked: true,
-                  }
-                })
-                .filter((l) => !seen.has(l.product_name + "::"))
-              void chapters.openFromLines([...fromChecked, ...unmatched], { title: p.name || "对照结果" })
+              void chapters.openFromLines(collectChapterLines(), { title: p.name || "对照结果" })
             }}
           >
             预览标准章节
           </Button>
-          <StandardChaptersDialog preview={chapters.preview} busy={chapters.busy} onClose={chapters.closePreview} />
+          <Button
+            variant="outline"
+            data-testid="generate-ppt-outline-mapping"
+            disabled={chapters.busy || pptOutline.busy || p.checklistLines.filter((l) => l.checked !== false).length < 1}
+            onClick={() => {
+              void pptOutline.openFromLines(collectChapterLines(), { title: p.name || "对照结果" })
+            }}
+            title="按已确认模块整理标准章节并生成 PPT 大纲，打开向导停在大纲确认步"
+          >
+            {pptOutline.busy ? "正在整理 PPT 大纲…" : "生成 PPT 大纲"}
+          </Button>
+          <StandardChaptersDialog
+            preview={chapters.preview}
+            busy={chapters.busy}
+            onClose={chapters.closePreview}
+            onGeneratePptOutline={(preview) => pptOutline.openFromPreview(preview, { topic: p.name || "对照结果" })}
+            pptBusy={pptOutline.busy}
+          />
           {p.lastSavedId ? (
             <>
               <Button

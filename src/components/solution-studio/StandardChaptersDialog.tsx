@@ -27,11 +27,15 @@ export function StandardChaptersDialog({
   busy,
   onClose,
   onConfirm,
+  onGeneratePptOutline,
+  pptBusy,
 }: {
   preview: StandardChapterPreview | null
   busy?: boolean
   onClose: () => void
   onConfirm?: (preview: StandardChapterPreview) => void
+  onGeneratePptOutline?: (preview: StandardChapterPreview) => void
+  pptBusy?: boolean
 }) {
   return (
     <Dialog open={Boolean(preview) || Boolean(busy)} onOpenChange={(o) => { if (!o && !busy) onClose() }}>
@@ -92,6 +96,18 @@ export function StandardChaptersDialog({
           <Button type="button" variant="outline" onClick={onClose} disabled={busy} data-testid="standard-chapters-close">
             关闭预览
           </Button>
+          {onGeneratePptOutline && preview && !busy ? (
+            <Button
+              type="button"
+              variant="outline"
+              data-testid="generate-ppt-outline-chapters"
+              disabled={pptBusy}
+              onClick={() => onGeneratePptOutline(preview)}
+              title="按已整理章节生成 PPT 大纲，打开向导并停在大纲确认步，不会立刻逐页生成"
+            >
+              {pptBusy ? "正在整理 PPT 大纲…" : "生成 PPT 大纲"}
+            </Button>
+          ) : null}
           {onConfirm && preview && !busy ? (
             <Button
               type="button"

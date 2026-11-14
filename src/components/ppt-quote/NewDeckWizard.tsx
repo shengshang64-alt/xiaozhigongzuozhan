@@ -60,6 +60,8 @@ type NewDeckWizardProps = {
   onDraftOutline?: () => Promise<unknown> | void
   onOutlineChange?: (next: SlidePlan[]) => void
   onGenerateFromOutline?: () => void
+  /** 从建设清单带入大纲时，直接停在第 4 步「大纲确认」 */
+  initialStep?: 1 | 2 | 3 | 4
 }
 
 const inputCls =
@@ -109,6 +111,7 @@ export function NewDeckWizard({
   onDraftOutline = async () => {},
   onOutlineChange = () => {},
   onGenerateFromOutline = () => {},
+  initialStep,
 }: NewDeckWizardProps) {
   // A2-8：汇报时长 onBlur clamp + 必填项空值行内提示
   const [durationHint, setDurationHint] = useState("")
@@ -116,7 +119,7 @@ export function NewDeckWizard({
   // 2026-10-30 四步向导：1 基本信息 → 2 参考素材 → 3 公司模板 → 4 大纲确认
   // 设计取舍：保留原有"单页也能一键直出"的快捷路径（点「直接生成」跳过步骤），
   // 因为老用户已习惯一键出稿；四步是给"要严格控制结构"的场景用的。
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(initialStep ?? (outlineDraft?.length ? 4 : 1))
 
   const steps: { n: 1 | 2 | 3 | 4; label: string; hint: string }[] = [
     { n: 1, label: "基本信息", hint: "主题、受众、目的、页数" },
@@ -226,7 +229,7 @@ export function NewDeckWizard({
       )}
 
       {step === 4 && (
-        <div className="mt-4 rounded-lg border border-border bg-card p-4 shadow-md lg:p-5">
+        <div className="mt-4 rounded-lg border border-border bg-card p-4 shadow-md lg:p-5" data-testid="deck-outline-step">
           <h2 className="mb-3 text-sm font-semibold text-foreground">大纲确认</h2>
           {outlineDraft ? (
             <DeckOutlineStep

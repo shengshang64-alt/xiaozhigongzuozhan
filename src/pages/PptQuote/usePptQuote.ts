@@ -99,6 +99,7 @@ import {
   type PageAtomMap,
 } from "./deckAtomInject"
 import { attachSourceRefs, hasMaterials } from "./deckMaterialStore"
+import { CHECKLIST_PPT_FROM, consumeChecklistPptOutline } from "./checklistPptHandoff"
 import { parseTemplateOutline, recommendMapping, resolveMapping, type TemplateOutline } from "./templateLayouts"
 // 2026-11-04 B 项：大纲返回后按页型配额做确定性校正（模型执行率低，光靠提示词不够）
 import { enforceOutlineKindQuota } from "./deckOutlineQuota"
@@ -960,13 +961,27 @@ export function usePptQuote() {
       let slides: Slide[] = []
       let placeholderCount = 0
 
+      let baseMaterial = ctx.materialText || ""
+      let pageAtoms: PageAtomMap = new Map()
+      if (wMaterial) {
+        try {
+          const mat = await fetchMaterialParts(wMaterial)
+          baseMaterial = mat.base
+          pageAtoms = mat.atoms
+          ctx.materialText = baseMaterial
+        } catch {
+          toast.error("素材读取失败，将不使用素材直接生成")
+        }
+      }
+
       // 逐页生成 + Schema 校验 + 单页重试（1 页/批，单页失败只影响该页）
+      // 与一键直出 generateByPages 同一套：fetchMaterialParts + withPageAtoms
       const results = await generateSlidesByPage({
         plan,
         allTitles,
         concurrency: 2,
         maxAttempts: 2,
-        buildMessages: (one) => buildSlideContentMessages(ctx, one, allTitles),
+        buildMessages: (one) => buildSlideContentMessages(withPageAtoms(ctx, baseMaterial, pageAtoms, one.title), one, allTitles),
         callLlm: (msgs) => llmGenerate(msgs, MAX_TOKENS_LONGFORM, "ppt-deck", activeModelRef.current),
         onProgress: (done, total, title, retrying) =>
           setDeckProgress(
@@ -1039,7 +1054,7 @@ export function usePptQuote() {
       }
       return rec
     },
-    [applyDeckState, autoFigureMode, autoFigureProvider, userId, wAudience, wDeckName, wDeckType, wDuration, wMaterial, wTopic],
+    [applyDeckState, autoFigureMode, autoFigureProvider, fetchMaterialParts, userId, wAudience, wDeckName, wDeckType, wDuration, wMaterial, wTopic],
   )
 
   /** 第一步：只生成大纲（不建 deck，不逐页生成） */
@@ -1056,9 +1071,11 @@ export function usePptQuote() {
     try {
       if (wMaterial) {
         try {
-          ctx.materialText = await fetchMaterialText(wMaterial)
+          const mat = await fetchMaterialParts(wMaterial)
+          // 大纲阶段只用共用 base；知识原子留给逐页生成时 withPageAtoms 按页注入
+          ctx.materialText = mat.base
         } catch {
-          toast.error("素材读取失败，将不使用素材生成大纲")
+          toast.error("素材读取失败，将不使用素材直接生成")
         }
       }
       const outlineText = await llmGenerate(
@@ -1084,7 +1101,7 @@ export function usePptQuote() {
       setDeckGenerating(false)
       setDeckProgress("")
     }
-  }, [wTopic, targetPageCount, wDeckType, wAudience, wKeyPoints, wMaterial, fetchMaterialText])
+  }, [wTopic, targetPageCount, wDeckType, wAudience, wKeyPoints, wMaterial, fetchMaterialParts])
 
   /** 第二步：按用户确认（可能已编辑）的大纲逐页生成 */
   const generateFromOutline = useCallback(
@@ -1102,13 +1119,7 @@ export function usePptQuote() {
           keyPoints: wKeyPoints,
           materialText: "",
         }
-        if (wMaterial) {
-          try {
-            ctx.materialText = await fetchMaterialText(wMaterial)
-          } catch {
-            /* 已提示过，不阻断 */
-          }
-        }
+        // 素材由 runDeckGeneration 按页读取（fetchMaterialParts + withPageAtoms），此处不再拼成长文本
         await runDeckGeneration(ctx, plan)
         setDraftOutline(null)
       } catch (e) {
@@ -1118,7 +1129,7 @@ export function usePptQuote() {
         setDeckProgress("")
       }
     },
-    [runDeckGeneration, wTopic, wDeckType, wAudience, wKeyPoints, wMaterial, fetchMaterialText, handleGenError],
+    [runDeckGeneration, wTopic, wDeckType, wAudience, wKeyPoints, wMaterial, handleGenError],
   )
 
   // ------------------------------ 逐页编辑 ------------------------------
@@ -2414,6 +2425,20 @@ export function usePptQuote() {
             openDeck(sanitizeDeck(rec))
           })
           .catch(() => toast.error("未找到对应 PPT"))
+      }
+    }
+    if (searchParams.get("from") === CHECKLIST_PPT_FROM) {
+      const incoming = consumeChecklistPptOutline()
+      if (incoming) {
+        flushDeckPersist()
+        setWDeckName(incoming.deckName)
+        setWTopic(incoming.topic)
+        setWKeyPoints(incoming.keyPoints ?? "")
+        setWMaterial(null)
+        setDraftOutline(incoming.plan)
+        applyDeckState(null)
+        setActiveView("deck")
+        setDeckMode("wizard")
       }
     }
     const quoteId = searchParams.get("quote")

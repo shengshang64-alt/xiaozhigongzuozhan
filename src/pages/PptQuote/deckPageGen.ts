@@ -16,6 +16,7 @@ import type { LlmMessage } from "@/lib/llm"
 import type { Slide, SlidePlan } from "./pptQuoteTypes"
 import { normalizeSlides } from "./pptQuoteTypes"
 import { safeParse, SlideContentListSchema, type SlideContentZ } from "./deckSchema"
+import { GAP_SLIDE_BODY, isGapSlidePlan } from "./standardChaptersToDeckPlan"
 
 export type PageGenResult =
   | { plan: SlidePlan; slide: Slide; attempts: number }
@@ -172,11 +173,29 @@ function extractContent(text: string): { ok: true; data: SlideContentZ } | { ok:
  * 失败语义：某页尝试完 maxAttempts 仍不合法 → 该页 slide=null（调用方补占位），
  * 其余页不受影响。**绝不因为一页坏而丢整册。**
  */
+/** 缺项页不走模型，只落下标缺说明。 */
+export function gapSlideFromPlan(plan: SlidePlan): Slide {
+  const reason = (plan.intent || GAP_SLIDE_BODY).trim() || GAP_SLIDE_BODY
+  return {
+    id: plan.id || "gap",
+    title: plan.title,
+    bullets: [reason],
+    notes: GAP_SLIDE_BODY,
+    layout: "bullets",
+    kind: plan.kind,
+  }
+}
+
 export async function generateSlidesByPage(opts: PageGenOptions): Promise<PageGenResult[]> {
   const concurrency = Math.max(1, opts.concurrency ?? 2)
   const maxAttempts = Math.max(1, opts.maxAttempts ?? 2)
   let done = 0
   return mapWithConcurrency(opts.plan, concurrency, async (plan) => {
+    if (isGapSlidePlan(plan)) {
+      done += 1
+      opts.onProgress?.(done, opts.plan.length, plan.title, false)
+      return { plan, slide: gapSlideFromPlan(plan), attempts: 0 }
+    }
     let lastError = "未知错误"
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       opts.onProgress?.(done, opts.plan.length, plan.title, attempt > 0)

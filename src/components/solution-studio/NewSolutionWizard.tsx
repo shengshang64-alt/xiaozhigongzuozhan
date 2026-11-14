@@ -22,6 +22,7 @@ import { SkillPickerFor } from "@/components/common/SkillPicker"
 import type { UseSolutionStudio } from "@/pages/SolutionStudio/useSolutionStudio"
 import { StandardChaptersDialog } from "@/components/solution-studio/StandardChaptersDialog"
 import { useStandardChapters } from "@/pages/SolutionStudio/useStandardChapters"
+import { useChecklistPptOutline } from "@/pages/PptQuote/useChecklistPptOutline"
 import { linesFromSystemNames } from "@/pages/SolutionStudio/standardChapters"
 import { BUDGET_RANGES, HOSPITAL_LEVELS, SYSTEM_OPTIONS } from "@/pages/SolutionStudio/solutionTypes"
 import { calcTotal, fmtMoney, type ChecklistRecord } from "@/pages/SolutionStudio/checklistTypes"
@@ -79,6 +80,7 @@ function FieldLabel({ text, required }: { text: string; required?: boolean }) {
 
 export function NewSolutionWizard(p: NewSolutionWizardProps) {
   const chapters = useStandardChapters()
+  const pptOutline = useChecklistPptOutline()
   const info = p.formInfo
   const setInfo = p.setFormInfo
   const linkedChecklist = p.checklistOptions.find((c) => c.id === p.formChecklistId) ?? null
@@ -477,6 +479,24 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
               </Button>
               <Button
                 variant="outline"
+                data-testid="generate-ppt-outline-wizard"
+                disabled={p.outlineLoading || chapters.busy || pptOutline.busy}
+                onClick={() => {
+                  const items = linkedChecklist?.items?.length
+                    ? linkedChecklist.items
+                    : linesFromSystemNames(p.formInfo.systems)
+                  void pptOutline.openFromLines(items, {
+                    typeKey: p.formTypeKey,
+                    title: linkedChecklist?.checklist_name || "方案建设系统",
+                  })
+                }}
+                title="按已确认模块整理标准章节并生成 PPT 大纲，打开向导停在大纲确认步"
+                className="border-primary/40 text-primary hover:bg-primary/10"
+              >
+                {pptOutline.busy ? "正在整理 PPT 大纲…" : "生成 PPT 大纲"}
+              </Button>
+              <Button
+                variant="outline"
                 onClick={p.assembleOutlineFromChecklist}
                 disabled={p.outlineLoading}
                 title="不走大模型、零费用：按清单命中的系统直接铺出标准方案章节骨架，可再编辑"
@@ -530,6 +550,10 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
         p.applyStandardChapterPreview(preview)
         chapters.closePreview()
       }}
+      onGeneratePptOutline={(preview) =>
+        pptOutline.openFromPreview(preview, { topic: linkedChecklist?.checklist_name || "方案建设系统" })
+      }
+      pptBusy={pptOutline.busy}
     />
     </>
   )

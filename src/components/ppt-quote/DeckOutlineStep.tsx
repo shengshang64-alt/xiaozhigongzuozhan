@@ -99,7 +99,12 @@ export function DeckOutlineStep({
       {/* 页面列表 */}
       <ul className="divide-y divide-border/60 rounded-md border border-border/60">
         {outline.map((p, i) => (
-          <li key={p.id || i} className="px-3 py-2">
+          <li
+            key={p.id || i}
+            className="px-3 py-2"
+            data-testid={p.gap || /缺项/.test(p.title) ? "ppt-outline-gap-page" : "ppt-outline-page"}
+            data-gap={p.gap || /缺项/.test(p.title) ? "true" : "false"}
+          >
             <div className="flex items-start gap-2">
               <span className="mt-1 w-6 shrink-0 text-center text-[11px] font-mono text-muted-foreground">{i + 1}</span>
               <div className="min-w-0 flex-1 space-y-1">
@@ -123,6 +128,11 @@ export function DeckOutlineStep({
                     ))}
                   </select>
                   {p.role && <span className="badge-neutral text-[10px]">{ROLE_LABEL_CN[p.role]}</span>}
+                  {p.gap || /缺项/.test(p.title) ? (
+                    <span className="rounded-md border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
+                      缺项
+                    </span>
+                  ) : null}
                   {p.sourceRefs?.length ? (
                     <button
                       type="button"

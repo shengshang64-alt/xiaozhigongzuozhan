@@ -806,6 +806,11 @@ export type SlidePlan = {
    * 逐页生成时作为兜底值传下去；模型自己给了更贴切的 imageHint 时优先用模型的。
    */
   imageHint?: string
+  /**
+   * 缺项页：知识库暂无足够依据。
+   * 逐页生成时跳过模型，只保留「需补齐素材」的说明，禁止编造正文。
+   */
+  gap?: boolean
 }
 
 /** kind → 中文名（提示用） */
@@ -855,6 +860,7 @@ export function normalizeSlidePlan(raw: unknown, expect: number): SlidePlan[] {
       ...(refsRaw.length ? { sourceRefs: refsRaw.slice(0, 8) } : {}),
       ...(imageHint ? { imageHint } : {}),
       estimatedContent: Number(rec.estimatedContent) > 0 ? Math.min(2000, Number(rec.estimatedContent)) : 0,
+      ...(rec.gap === true || /缺项/.test(title) ? { gap: true as const } : {}),
     })
     if (out.length >= expect + 4) return
   })

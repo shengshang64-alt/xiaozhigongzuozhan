@@ -22,6 +22,7 @@ import type { UseChecklist } from "@/pages/SolutionStudio/checklistLogic"
 import { findMutexConflicts, mutexWarningText } from "@/pages/SolutionStudio/mutexModules"
 import { StandardChaptersDialog } from "@/components/solution-studio/StandardChaptersDialog"
 import { useStandardChapters } from "@/pages/SolutionStudio/useStandardChapters"
+import { useChecklistPptOutline } from "@/pages/PptQuote/useChecklistPptOutline"
 import {
   buildAmountBreakdown,
   buildChecklistSteps,
@@ -58,6 +59,7 @@ export function ChecklistWorkbench({
 }) {
   const navigate = useNavigate()
   const chapters = useStandardChapters()
+  const pptOutline = useChecklistPptOutline()
   const rec = ck.activeChecklist
   const items = rec?.items ?? []
   const checkedItems = items.filter((l) => l.checked !== false)
@@ -343,6 +345,26 @@ export function ChecklistWorkbench({
                 </>
               )}
             </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              data-testid="generate-ppt-outline"
+              disabled={!rec || checkedItems.length < 1 || chapters.busy || pptOutline.busy}
+              onClick={() => {
+                if (!rec) {
+                  toast.message("请先选择或生成清单")
+                  return
+                }
+                if (checkedItems.length < 1) {
+                  toast.message("请至少勾选 1 项模块再生成 PPT 大纲")
+                  return
+                }
+                void pptOutline.openFromLines(checkedItems, { title: rec.checklist_name || "建设清单" })
+              }}
+              title="按已确认模块整理标准章节并生成 PPT 大纲，打开向导停在大纲确认步"
+            >
+              {pptOutline.busy ? "正在整理 PPT 大纲…" : "生成 PPT 大纲"}
+            </Button>
             <ChecklistAmountCard
               breakdown={breakdown}
               checkedCount={checkedItems.length}
@@ -358,7 +380,13 @@ export function ChecklistWorkbench({
                 onStartSolution(rec.id)
               }}
             />
-            <StandardChaptersDialog preview={chapters.preview} busy={chapters.busy} onClose={chapters.closePreview} />
+            <StandardChaptersDialog
+              preview={chapters.preview}
+              busy={chapters.busy}
+              onClose={chapters.closePreview}
+              onGeneratePptOutline={(preview) => pptOutline.openFromPreview(preview, { topic: rec?.checklist_name || "建设清单" })}
+              pptBusy={pptOutline.busy}
+            />
             {(() => {
               const warn = mutexWarningText(
                 findMutexConflicts(

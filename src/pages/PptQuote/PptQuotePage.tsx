@@ -161,6 +161,7 @@ export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
           /* PPT 编辑器屏：向导（新建会话）或已打开讲稿的编辑工作台；都没有时给创建入口 */
           p.deckMode === "wizard" ? (
             <NewDeckWizard
+              key={p.draftOutline?.length ? "outline" : "fresh"}
               wDeckName={p.wDeckName}
               setWDeckName={p.setWDeckName}
               wDeckType={p.wDeckType}
@@ -206,6 +207,7 @@ export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
               onDraftOutline={p.draftDeckOutline}
               onOutlineChange={p.setDraftOutline}
               onGenerateFromOutline={() => void p.generateFromOutline(p.draftOutline ?? [])}
+              initialStep={p.draftOutline?.length ? 4 : 1}
             />
           ) : p.activeDeck ? (
             <DeckEditorWorkspace
