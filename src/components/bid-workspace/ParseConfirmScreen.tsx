@@ -26,7 +26,6 @@ import {
   type ConfirmTone,
   type QualityStat,
 } from "@/pages/BidWorkspace/parseConfirmModel"
-import { bidOpenDateStatus } from "@/components/bid-workspace/bidOpenDate"
 import { projectBudgetWan } from "@/components/bid-workspace/bidListCardModel"
 import type { BidProjectRecord } from "@/pages/BidWorkspace/bidTypes"
 
@@ -200,14 +199,10 @@ export function ParseConfirmScreen({
     write(next)
   }
 
-  // ---- 页头 meta（全部真值；没有的字段整条不渲染） ----
-  const openStatus = bidOpenDateStatus(project.bid_open_date)
+  // ---- 页头 meta：医院 / 编号 / 开标已在项目页头，这里只补预算 ----
   const budgetWan = projectBudgetWan(project)
   const fileNames = (project.tender_files ?? []).map((f) => f.name).filter(Boolean)
   const descBits = [
-    project.hospital,
-    project.tender_no ? `编号 ${project.tender_no}` : "",
-    openStatus.daysLeft != null && openStatus.daysLeft >= 0 ? openStatus.label : "",
     budgetWan != null ? `预算 ${budgetWan.toFixed(1)} 万` : "",
   ].filter(Boolean)
 

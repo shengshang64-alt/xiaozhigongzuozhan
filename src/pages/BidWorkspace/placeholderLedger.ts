@@ -37,3 +37,18 @@ export function placeholderLedgerHits(chapters: Chapter[]): FormatCheckHit[] {
   }
   return hits
 }
+
+/** 正文里未填占位的总处数（各形态合计；与台账同一把尺子） */
+export function placeholderLeftoverCount(chapters: Chapter[]): number {
+  let n = 0
+  for (const ch of chapters) {
+    const content = ch.content ?? ""
+    if (!content.trim()) continue
+    for (const re of PLACEHOLDER_RES) {
+      const copy = new RegExp(re.source, re.flags)
+      const all = content.match(copy)
+      if (all) n += all.length
+    }
+  }
+  return n
+}

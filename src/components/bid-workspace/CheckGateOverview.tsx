@@ -12,6 +12,9 @@ import {
   type IssueRow,
 } from "@/pages/BidWorkspace/checkGateModel"
 import type { BidProjectRecord, FormatSettings } from "@/pages/BidWorkspace/bidTypes"
+import { BidSandboxToolsNote } from "@/components/bid-workspace/BidSandboxToolsNote"
+import { buildIncompleteWorkSummary } from "@/pages/BidWorkspace/incompleteWork"
+import type { ScoreCheckup } from "@/pages/BidWorkspace/scoreCoverageCheckup"
 
 // ---------------------------------------------------------------------------
 // ⑥ 交卷自查 · 闸门总览（UX-v2：prototype/bid/check.html 的 .grid.g2 四闸门 + 问题清单）
@@ -90,6 +93,7 @@ function GateCard({ gate, onGo }: { gate: Gate; onGo: (step: number) => void }) 
 export function CheckGateOverview({
   project,
   format,
+  scoreCheckup,
   deviationUncovered,
   deviationTotal,
   onGo,
@@ -99,6 +103,7 @@ export function CheckGateOverview({
 }: {
   project: BidProjectRecord
   format: FormatSettings
+  scoreCheckup: ScoreCheckup
   deviationUncovered: number
   deviationTotal: number
   onGo: (step: number) => void
@@ -112,9 +117,54 @@ export function CheckGateOverview({
     [project, format, deviationUncovered, deviationTotal],
   )
   const shownIssues = model.issues.slice(0, 8)
+  const incomplete = useMemo(
+    () =>
+      buildIncompleteWorkSummary({
+        chapters: project.bid_chapters,
+        scoreCheckup,
+        deviationUncovered,
+        deviationTotal,
+      }),
+    [project.bid_chapters, scoreCheckup, deviationUncovered, deviationTotal],
+  )
+  const incompletePending = incomplete.filter((i) => !i.done)
 
   return (
     <div className="flex flex-col gap-3">
+      {/* 交卷前还没写完：待填写 / 评分点 / 偏离表，不替代下面的质量闸门 */}
+      <section className="rounded-lg border border-border bg-card shadow-sm">
+        <header className="flex flex-wrap items-center gap-2 border-b border-border px-3.5 py-2.5">
+          <h3 className="text-[13.5px] font-semibold text-card-foreground">还没写完</h3>
+          <span className="text-[11.5px] text-muted-foreground">待填写、未覆盖评分点、偏离表未应答</span>
+          <div className="flex-1" />
+          {incompletePending.length > 0 ? (
+            <span className="rounded bg-warning/10 px-1.5 py-0.5 text-[10.5px] font-medium text-warning">
+              {incompletePending.length} 项待处理
+            </span>
+          ) : (
+            <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10.5px] font-medium text-primary">都已齐</span>
+          )}
+        </header>
+        <ul className="divide-y divide-border/60">
+          {incomplete.map((item) => (
+            <li key={item.key} className="flex flex-wrap items-center gap-2 px-3.5 py-2 text-[12px]">
+              <span className={`mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full ${item.done ? "bg-primary" : "bg-warning"}`} />
+              <span className="min-w-0 flex-1 leading-relaxed text-card-foreground">{item.detail}</span>
+              {!item.done && (
+                <button
+                  type="button"
+                  onClick={() => onGo(item.step)}
+                  className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-primary hover:bg-primary/10"
+                >
+                  {item.step === 5 ? "去 ⑤ 偏离表" : "去 ④ 正文"}
+                  <ArrowRight className="h-3 w-3" />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      </section>
+
       {/* 阻断横幅（原型 .alert--red 同位）：有阻断就无法导出 */}
       {model.blockCount > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3.5 py-2.5 text-xs">
@@ -230,6 +280,7 @@ export function CheckGateOverview({
           </Button>
         </footer>
       </section>
+      <BidSandboxToolsNote />
     </div>
   )
 }

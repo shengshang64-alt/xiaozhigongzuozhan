@@ -33,7 +33,7 @@ import { StandardsPickerDialog } from "@/components/bid-workspace/StandardsPicke
 import { SubmissionCheckPanel } from "@/components/bid-workspace/SubmissionCheckPanel"
 import { TenderStep } from "@/components/bid-workspace/TenderStep"
 import { VoidCheckPanel } from "@/components/bid-workspace/VoidCheckPanel"
-import { displayStageLabel, effectiveHospital } from "@/pages/BidWorkspace/bidTypes"
+import { displayStageLabel, effectiveHospital, PIPELINE_STEPS } from "@/pages/BidWorkspace/bidTypes"
 import type { useBidWorkspace } from "./useBidWorkspace"
 
 type Step5Tab = { key: string; label: string; node: ReactNode; group?: string }
@@ -221,11 +221,27 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               全部由 ComposeStep 左栏 BidChapterNavTree 承担，不再渲染通栏「章节导航」。
               与项目卡同容器对齐（原裸奔全宽导致首尾步骤被视口裁切） */}
           <div className="mx-auto mt-2.5 max-w-7xl px-4">
-            <BidPipelineStepperEnhanced
-              activeStep={p.activeStep}
-              requestStep={p.requestStep}
-              activeProject={p.activeProject}
-            />
+            {p.workbenchView === "pipeline" ? (
+              <BidPipelineStepperEnhanced
+                activeStep={p.activeStep}
+                requestStep={p.requestStep}
+                activeProject={p.activeProject}
+              />
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3.5 py-2 text-xs shadow-sm">
+                <span className="min-w-0 text-muted-foreground">
+                  当前在{p.workbenchView === "rehearse" ? "模拟答辩 / 开标准备" : "归档复盘"}
+                  {PIPELINE_STEPS[p.activeStep - 1] ? `，主流程停在「${PIPELINE_STEPS[p.activeStep - 1].label}」` : ""}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => p.setWorkbenchView("pipeline")}
+                  className="shrink-0 rounded-md px-2 py-1 font-medium text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  返回主流程
+                </button>
+              </div>
+            )}
           </div>
           {/* 循环 5 A3：归档只读硬锁横幅——导出与查看保留，解除归档后可编辑 */}
           {p.isArchivedLocked && (
@@ -1117,6 +1133,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                     <CheckGateOverview
                       project={p.activeProject}
                       format={p.effectiveFormatSettings}
+                      scoreCheckup={p.scoreCheckup}
                       deviationUncovered={p.techParamCoverage.uncovered}
                       deviationTotal={p.techParamCoverage.total}
                       onGo={(step) => p.requestStep(step)}

@@ -78,6 +78,20 @@ describe("⑥ 闸门总览 · 接线", () => {
   it("「重新检查」走本地格式体检重算（零 AI 不扣费），不是 AI 体检", () => {
     expect(PAGE).toContain("onRunSubmissionCheck={() => p.refreshFormatReport()}")
   })
+
+  it("交卷自查标明标书检查与格式刷新是不绑当前项目的沙箱", () => {
+    expect(SCREEN).toContain("BidSandboxToolsNote")
+    const note = sourceText("src/components/bid-workspace/BidSandboxToolsNote.tsx")
+    expect(note).toContain("/bid-check")
+    expect(note).toContain("/format-tool")
+    expect(note).toContain("不绑定当前项目")
+  })
+
+  it("闸门总览第一屏含「还没写完」总清单，并接入评分点体检", () => {
+    expect(SCREEN).toContain("还没写完")
+    expect(SCREEN).toContain("buildIncompleteWorkSummary")
+    expect(PAGE).toContain("scoreCheckup={p.scoreCheckup}")
+  })
 })
 
 describe("⑥ 闸门总览 · 铁律扫描", () => {

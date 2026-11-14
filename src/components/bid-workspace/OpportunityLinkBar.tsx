@@ -17,7 +17,7 @@ type OpportunityLinkBarProps = Pick<
 }
 
 const selectClass =
-  "h-9 min-w-52 rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+  "h-9 min-w-28 rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
 
 /** 流水线头部信息区：项目基本信息 + 关联商机下拉（第四轮改造） */
 export function OpportunityLinkBar({ activeProject, activeOppOptions, oppOptionsCapped, linkOpportunity, linkedOpportunityName, isArchivedLocked, warRoomSlot, variant = "bar" }: OpportunityLinkBarProps) {
@@ -59,10 +59,10 @@ export function OpportunityLinkBar({ activeProject, activeOppOptions, oppOptions
             value={proj.opportunity_id ?? ""}
             onChange={(e) => linkOpportunity(e.target.value)}
             disabled={isArchivedLocked}
-            title={isArchivedLocked ? "已归档项目为只读，解除归档后可修改关联商机" : undefined}
+            title={isArchivedLocked ? "已归档项目为只读，解除归档后可修改关联商机" : "可在客户管理创建商机后选择"}
             className={selectClass}
           >
-            <option value="">未关联（可在客户管理创建商机后选择）</option>
+            <option value="">未关联</option>
             {activeOppOptions.map((o) => (
               <option key={o.id} value={o.id}>
                 {o.customer_name ? `${o.customer_name} · ${o.opp_name}` : o.opp_name}

@@ -553,6 +553,16 @@ export function ComposeStep(p: ComposeStepProps) {
                   已写 {(proj.bid_chapters ?? []).filter((c) => (c.content ?? "").trim().length > 0).length}/
                   {(proj.bid_chapters ?? []).length} 章
                 </span>
+                {p.scoreCheckup.hasScoring && (
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${
+                      p.scoreCheckup.missingRows.length > 0 ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"
+                    }`}
+                  >
+                    评分点 {p.scoreCheckup.techLanded}/{p.scoreCheckup.techTotal} 分
+                    {p.scoreCheckup.missingRows.length > 0 ? ` · 未覆盖 ${p.scoreCheckup.missingRows.length} 项` : ""}
+                  </span>
+                )}
                 <span
                   className="hidden min-w-0 truncate text-xs text-muted-foreground sm:block"
                   title={
@@ -645,6 +655,13 @@ export function ComposeStep(p: ComposeStepProps) {
             </div>
           )}
         </div>
+        {!showOutline && p.scoreCheckup.missingRows.length > 0 && (
+          <p className="mt-2 text-xs leading-relaxed text-destructive">
+            还有 {p.scoreCheckup.missingRows.length} 个评分点未写上（差 {p.scoreCheckup.techMissing} 分），优先写：
+            {p.scoreCheckup.missingRows.slice(0, 3).map((r) => r.name).filter(Boolean).join("、")}
+            {p.scoreCheckup.missingRows.length > 3 ? " 等" : ""}
+          </p>
+        )}
         {!showOutline && (
           <>
         <details className="group mt-4">
