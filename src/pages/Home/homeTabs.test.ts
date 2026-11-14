@@ -61,6 +61,7 @@ describe("④ 拆屏零丢失：每个原有模块都还能在某个 Tab 里被�
     const page = readSrc("./HomePage.tsx")
     for (const mod of [
       "CompactWelcomeBar",
+      "BidAttentionBoard",
       "NewKeyMetrics",
       "PriorityTasksBoard",
       "CompactProgressPanel",

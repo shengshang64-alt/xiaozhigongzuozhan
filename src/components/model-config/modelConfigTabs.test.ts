@@ -83,22 +83,18 @@ describe("② 三屏不许抄原型演示数（打回判据）", () => {
     }
   })
 
-  it("无真源时用「—」占位，不填 0（0 会被读成「统计过，结果是零」）", () => {
+  it("健康看板以失败告警为主，不摆无数据的指标壳", () => {
     const health = read("src/components/model-config/HealthBoard.tsx")
-    expect(health).toContain('value="—"')
-    expect(health).toContain("暂无调用台账")
-    expect(health).toContain("暂无费用采集")
-    // 通道卡的「今日调用」同样必须是 —
+    expect(health).toContain("失败告警")
+    expect(health).toContain("按次台账")
+    expect(health).not.toContain('value="—"')
+    expect(health).not.toContain("本期调用")
+    expect(health).not.toContain("调用量趋势")
+    expect(health).not.toContain("暂无功能维度数据")
+    expect(health).not.toMatch(/height:\s*\d+%/)
     const channels = read("src/components/model-config/ModelChannelsScreen.tsx")
     expect(channels).toContain("网关不落按次调用台账")
     expect(channels).toContain("还没测过")
-  })
-
-  it("趋势与功能维度走空态，不画假柱", () => {
-    const src = read("src/components/model-config/HealthBoard.tsx")
-    expect(src).toContain("暂无调用量数据")
-    expect(src).toContain("暂无功能维度数据")
-    expect(src).not.toMatch(/height:\s*\d+%/)
   })
 })
 

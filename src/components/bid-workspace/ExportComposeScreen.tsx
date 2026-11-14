@@ -10,6 +10,7 @@ import {
   RotateCcw,
   SlidersHorizontal,
 } from "lucide-react"
+import { BidSandboxToolsNote } from "@/components/bid-workspace/BidSandboxToolsNote"
 import { Button } from "@/components/ui/button"
 import { buildCatalogIndex } from "@/pages/BidWorkspace/composeGates"
 import {
@@ -206,6 +207,8 @@ export function ExportComposeScreen({
           </Button>
         </div>
       </header>
+
+      <BidSandboxToolsNote />
 
       {/* 三栏（原型 .split--3） */}
       <div className="mt-3 grid grid-cols-1 items-start gap-3.5 lg:grid-cols-2 xl:grid-cols-3">

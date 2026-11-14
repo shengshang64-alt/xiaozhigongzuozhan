@@ -11,7 +11,7 @@ export type HomeTab = "overview" | "todos" | "calendar" | "review"
 
 /** 顺序即 Tab 顺序，与原型 manifest 的 home 模块四屏一致 */
 export const HOME_TABS: { key: HomeTab; label: string; hint: string }[] = [
-  { key: "overview", label: "总览", hint: "今天必须处理什么 · 卡在哪 · 下一步点哪里" },
+  { key: "overview", label: "总览", hint: "今天该跟哪几个标 · 卡在哪 · 下一步点哪里" },
   { key: "todos", label: "待办中心", hint: "全部待办分桶管理，完成 / 新增都在这" },
   { key: "calendar", label: "投标节点", hint: "未来 60 天开标 / 截标节点与补录提示" },
   { key: "review", label: "投标复盘", hint: "有真结果才出漏斗与归因，不造中标率" },

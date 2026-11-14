@@ -81,3 +81,13 @@ describe("⑦ 组卷导出 · 铁律扫描", () => {
     expect(SCREEN.includes("拆后")).toBe(false)
   })
 })
+
+describe("⑦ 组卷导出 · 沙箱工具入口", () => {
+  it("说明标书检查与格式刷新不绑定当前项目", () => {
+    expect(SCREEN).toContain("BidSandboxToolsNote")
+    const note = sourceText("src/components/bid-workspace/BidSandboxToolsNote.tsx")
+    expect(note).toContain("/bid-check")
+    expect(note).toContain("/format-tool")
+    expect(note).toContain("不绑定当前项目")
+  })
+})

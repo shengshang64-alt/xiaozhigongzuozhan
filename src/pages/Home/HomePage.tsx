@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom"
 import { ChevronDown } from "lucide-react"
 import { ActiveWorkSection } from "@/components/home/ActiveWorkSection"
 import { ActivityFeedSection } from "@/components/home/ActivityFeedSection"
+import { BidAttentionBoard } from "@/components/home/BidAttentionBoard"
 import { BidNodesCard } from "@/components/home/BidNodesCard"
 import { BidReviewCard } from "@/components/home/BidReviewCard"
 import { OppsCard } from "@/components/home/CustomerOverviewSection"
@@ -85,6 +86,8 @@ function OverviewTab(p: ReturnType<typeof useHome>) {
           p.qualRisk.urgent > 0 ? `资质${p.qualRisk.line}（投标核验）` : "",
         ].filter(Boolean)}
       />
+
+      <BidAttentionBoard todayMs={todayStartMs(nowTick)} />
 
       <NewKeyMetrics
         metrics={metrics}
