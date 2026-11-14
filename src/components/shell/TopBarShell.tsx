@@ -4,30 +4,8 @@ import { Menu, Palette } from "lucide-react"
 import { RhAccountMenu } from "@/components/rh/RhAccountMenu"
 import { AppearanceDialog } from "@/components/shell/AppearanceDialog"
 import { GlobalCommandPalette } from "@/components/shell/GlobalCommandPalette"
-import { Badge } from "@/components/ui/badge"
-import { isLocalDeployHost, type RhAccountInfo } from "@/lib/rhLogin"
-import { getCachedTeamProfile, TEAM_ROLE_LABELS, type TeamRole } from "@/lib/teamAuth"
+import { type RhAccountInfo } from "@/lib/rhLogin"
 import { labelFor } from "@/lib/routeRegistry"
-
-// 角色徽标配色：viewer 用醒目「只读」色提醒权限受限，admin 高亮，editor 中性。
-const ROLE_BADGE_VARIANT: Record<TeamRole, "success" | "neutral" | "warning"> = {
-  admin: "success",
-  editor: "neutral",
-  viewer: "warning",
-}
-
-/** R-201 阶段A：本地团队域显示当前登录者姓名+角色徽标；线上域/未登录返回 null。 */
-function TeamIdentityBadge() {
-  if (!isLocalDeployHost()) return null
-  const profile = getCachedTeamProfile()
-  if (!profile) return null
-  return (
-    <div className="hidden items-center gap-2 rounded-[9px] border border-border bg-secondary/40 px-2.5 py-1 sm:flex">
-      <span className="max-w-[10rem] truncate text-[13px] font-medium text-foreground">{profile.name}</span>
-      <Badge variant={ROLE_BADGE_VARIANT[profile.role]}>{TEAM_ROLE_LABELS[profile.role]}</Badge>
-    </div>
-  )
-}
 
 type TopBarShellProps = {
   onAccountChange: (account: RhAccountInfo | null) => void
@@ -56,14 +34,11 @@ export function TopBarShell({ onAccountChange, onToggleSidebar }: TopBarShellPro
         </button>
       )}
 
-      <div className="flex min-w-0 items-center gap-2 text-[13px] text-muted-foreground">
-        <span className="hidden sm:inline">售前工作台</span>
-        <span className="hidden text-muted-foreground/60 sm:inline">/</span>
+      <div className="min-w-0 text-[13px]">
         <span className="truncate font-semibold text-foreground">{currentTitle}</span>
       </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-2">
-        <TeamIdentityBadge />
         <button
           type="button"
           onClick={() => setAppearanceOpen(true)}

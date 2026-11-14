@@ -20,6 +20,7 @@ import {
   RH_MENU_LINKS,
   type RhAccountInfo,
 } from "@/lib/rhLogin"
+import { getCachedTeamProfile, TEAM_ROLE_LABELS } from "@/lib/teamAuth"
 
 type RhAccountMenuProps = {
   /** 页面需要按登录态渲染其他内容时(比如需要登录才能生成), 用这个回调同步账号状态。 */
@@ -95,6 +96,10 @@ export function RhAccountMenu({ onAccountChange, className }: RhAccountMenuProps
   // 不提供登录按钮、充值入口、退出登录等任何账号操作。
   if (isLocalDeployHost()) {
     const localDisplayName = account?.displayName ?? "本地用户"
+    const roleLabel = (() => {
+      const profile = getCachedTeamProfile()
+      return profile ? TEAM_ROLE_LABELS[profile.role] : null
+    })()
     return (
       <span
         className={`inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-sm text-card-foreground shadow-sm ${className ?? ""}`}
@@ -103,6 +108,11 @@ export function RhAccountMenu({ onAccountChange, className }: RhAccountMenuProps
           {localDisplayName.slice(0, 1)}
         </span>
         <span className="max-w-[8rem] truncate">{localDisplayName}</span>
+        {roleLabel && (
+          <span className="hidden rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground sm:inline">
+            {roleLabel}
+          </span>
+        )}
       </span>
     )
   }

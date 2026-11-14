@@ -7,7 +7,7 @@
  * 「标书工作 / 标书工作台」两种写法；标签栏显示标签名后，这种漂移会直接出现在页签上。
  */
 import { describe, expect, it } from "vitest"
-import { HOME_PATH, NAV_GROUPS, ROUTES, ROUTE_BY_PATH, hasRoute, labelFor, preloadRoute } from "./routeRegistry"
+import { HOME_PATH, NAV_GROUPS, NAV_MORE_PATHS, NAV_SIDEBAR_HIDDEN, ROUTES, ROUTE_BY_PATH, hasRoute, labelFor, preloadRoute } from "./routeRegistry"
 
 describe("routeRegistry 一致性", () => {
   it("路径唯一，且都带文案/图标/组件/加载器", () => {
@@ -48,4 +48,18 @@ describe("routeRegistry 一致性", () => {
       preloadRoute("/knowledge")
     }).not.toThrow()
   })
+
+  it("「更多」与侧栏隐藏名单都指向已注册路径，且不与分组脱节", () => {
+    const grouped = new Set(NAV_GROUPS.flatMap((g) => g.paths))
+    for (const p of NAV_MORE_PATHS) {
+      expect(ROUTE_BY_PATH[p], `更多名单引用了不存在的路径 ${p}`).toBeTruthy()
+      expect(grouped.has(p), `${p} 收进更多但仍应挂在分组里`).toBe(true)
+    }
+    for (const p of NAV_SIDEBAR_HIDDEN) {
+      expect(ROUTE_BY_PATH[p], `侧栏隐藏名单引用了不存在的路径 ${p}`).toBeTruthy()
+      expect(grouped.has(p), `${p} 从侧栏隐藏但仍应挂在分组里`).toBe(true)
+      expect((NAV_MORE_PATHS as readonly string[]).includes(p), `${p} 不应同时出现在更多和隐藏名单`).toBe(false)
+    }
+  })
+
 })

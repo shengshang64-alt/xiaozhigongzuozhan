@@ -24,15 +24,7 @@ export function OpportunityLinkBar({ activeProject, activeOppOptions, oppOptions
   if (!activeProject) return null
   const proj = activeProject
   const inline = variant === "inline"
-  return (
-    <div className={inline ? "contents" : "mx-auto mt-3 max-w-7xl px-4"}>
-      <div
-        className={
-          inline
-            ? "flex min-w-0 flex-1 flex-wrap items-center justify-between gap-3"
-            : "flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-sm"
-        }
-      >
+  const identity = (
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
             <Hospital className="h-4 w-4" />
@@ -46,7 +38,18 @@ export function OpportunityLinkBar({ activeProject, activeOppOptions, oppOptions
             </p>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+  )
+  return (
+    <div className={inline ? "contents" : "mx-auto mt-3 max-w-7xl px-4"}>
+      <div
+        className={
+          inline
+            ? "flex min-w-0 flex-wrap items-center gap-2"
+            : "flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-sm"
+        }
+      >
+        {!inline && identity}
+        <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-2">
           {warRoomSlot}
           <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
             <Link2 className="h-3.5 w-3.5 text-primary" />

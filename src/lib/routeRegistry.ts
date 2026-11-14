@@ -113,11 +113,17 @@ export const NAV_GROUPS: { title: string; paths: string[] }[] = [
   // 用一线售前能听懂的动词短语：哪里看线索、哪里写材料、哪里沉淀资产。
   // AI 动态（模型调用记录/用量）属于"沉淀·团队"——元功能，不放"客户·线索"。
   { title: "客户 · 线索", paths: ["/", "/customer-management", "/intel-center"] },
-  { title: "方案 · 标书 · 汇报", paths: ["/solution-studio", "/product-mapping", "/ppt-quote", "/materials", "/bid-workspace", "/bid-check", "/format-tool"] },
+  { title: "方案 · 标书 · 汇报", paths: ["/solution-studio", "/bid-workspace", "/materials", "/ppt-quote", "/product-mapping", "/bid-check", "/format-tool"] },
   // UX-R2（docs/ux-review-2026-11 §二十三·减法项）：AI 动态并入情报中心的「行业前沿」来源过滤；
   // 路由与页面保留（防外链失效），只从侧栏导航移除。
   { title: "沉淀 · 团队", paths: ["/knowledge", "/qual-certs", "/competitors", "/assistant", "/model-config", "/team"] },
 ]
+
+/** 侧栏默认收进「更多」的低频入口。路由与分组仍保留；当前页若在其中则自动展开。 */
+export const NAV_MORE_PATHS = ["/product-mapping", "/bid-check", "/format-tool"] as const
+
+/** 侧栏不展示：浮窗已提供入口，全屏对话从浮窗放大进入。路由与分组保留。 */
+export const NAV_SIDEBAR_HIDDEN = ["/assistant"] as const
 
 // ---------------------------------------------------------------------------
 // 预加载（原 lib/routePreload.ts 迁入：LOADERS 与路由表同源后不必再维护第二份）

@@ -62,6 +62,9 @@ export function FloatingAssistant() {
     dragRef.current = null
   }
 
+  // 已在全屏对话页时不再叠一个右下角按钮，避免和页面本身重复。
+  if (loc.pathname === "/assistant" && !open) return null
+
   return (
     <>
       {open ? (

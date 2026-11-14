@@ -1,22 +1,69 @@
+import { useEffect, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
-import { Layers } from "lucide-react"
+import { ChevronDown, Layers, MoreHorizontal } from "lucide-react"
 import { preloadRoute } from "@/lib/routePreload"
-import { NAV_GROUPS, ROUTE_BY_PATH } from "@/lib/routeRegistry"
+import {
+  NAV_GROUPS,
+  NAV_MORE_PATHS,
+  NAV_SIDEBAR_HIDDEN,
+  ROUTE_BY_PATH,
+  type RouteMeta,
+} from "@/lib/routeRegistry"
 import { decodeRhToken, isLocalDeployHost, type RhAccountInfo } from "@/lib/rhLogin"
 import { getCachedTeamProfile } from "@/lib/teamAuth"
 
-// 导航分组与文案、图标全部取自 lib/routeRegistry（唯一真源）。
-// 原先这里另存一份 NAV_SECTIONS 文案/图标，与 App.tsx 的 lazy 列表、TopBarShell 的标题映射
-// 三处手工同步，已经漂移出「标书工作 / 标书工作台」这类不一致；标签栏要显示标签名，
-// 更需要唯一口径，故本文件只保留分组顺序（NAV_GROUPS），条目一律从注册表取。
+const MORE_SET = new Set<string>(NAV_MORE_PATHS)
+const HIDDEN_SET = new Set<string>(NAV_SIDEBAR_HIDDEN)
+
 const NAV_SECTIONS = NAV_GROUPS.map((group) => ({
   title: group.title,
   items: group.paths.map((path) => ROUTE_BY_PATH[path]).filter(Boolean),
 }))
 
+const MORE_ITEMS = NAV_GROUPS.flatMap((group) => group.paths)
+  .map((path) => ROUTE_BY_PATH[path])
+  .filter((item): item is RouteMeta => Boolean(item) && MORE_SET.has(item.path))
+
 type SidebarNavProps = {
   accountInfo: RhAccountInfo | null
   collapsed?: boolean
+}
+
+function NavItem({
+  item,
+  pathname,
+  collapsed,
+  onNavigate,
+}: {
+  item: RouteMeta
+  pathname: string
+  collapsed: boolean
+  onNavigate: (path: string) => void
+}) {
+  const Icon = item.icon
+  const active = pathname === item.path
+  return (
+    <button
+      type="button"
+      title={item.label}
+      onClick={() => onNavigate(item.path)}
+      onMouseEnter={() => preloadRoute(item.path)}
+      className={
+        "group relative flex items-center gap-2.5 rounded-[9px] text-[13.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring " +
+        (collapsed ? "justify-center px-0 py-[11px]" : "px-2.5 py-[9px]") +
+        " " +
+        (active
+          ? "bg-gradient-to-r from-primary/35 to-primary/10 font-medium text-white"
+          : "text-[#9BB8BD] hover:bg-white/[.06] hover:text-[#DCEEEC]")
+      }
+    >
+      {active && (
+        <span className="absolute -left-2.5 bottom-2 top-2 w-[3px] rounded-r-[3px] bg-primary" />
+      )}
+      <Icon className={"h-[19px] w-[19px] shrink-0 " + (active ? "text-[#22B8CE]" : "text-[#7FA09B] group-hover:text-[#9BB8BD]")} />
+      {!collapsed && <span className="truncate">{item.label}</span>}
+    </button>
+  )
 }
 
 export function SidebarNav({ accountInfo, collapsed = false }: SidebarNavProps) {
@@ -33,6 +80,13 @@ export function SidebarNav({ accountInfo, collapsed = false }: SidebarNavProps) 
     tokenPayload?.username ||
     null
   const avatarInitial = displayName ? displayName.slice(0, 1).toUpperCase() : "访"
+
+  const moreItems = MORE_ITEMS.filter((it) => !it.adminOnly || showAdminOnly)
+  const moreActive = moreItems.some((it) => it.path === pathname)
+  const [moreOpen, setMoreOpen] = useState(moreActive)
+  useEffect(() => {
+    if (moreActive) setMoreOpen(true)
+  }, [moreActive])
 
   return (
     <aside
@@ -61,7 +115,12 @@ export function SidebarNav({ accountInfo, collapsed = false }: SidebarNavProps) 
       {/* Nav */}
       <nav className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-1.5 pt-2.5">
         {NAV_SECTIONS.map((section) => {
-          const items = section.items.filter((it) => !it.adminOnly || showAdminOnly)
+          const items = section.items.filter(
+            (it) =>
+              (!it.adminOnly || showAdminOnly) &&
+              !HIDDEN_SET.has(it.path) &&
+              !MORE_SET.has(it.path),
+          )
           if (items.length === 0) return null
           return (
           <div key={section.title} className="mb-1">
@@ -71,37 +130,59 @@ export function SidebarNav({ accountInfo, collapsed = false }: SidebarNavProps) 
               </p>
             )}
             <div className="flex flex-col gap-0.5">
-              {items.map((item) => {
-                const Icon = item.icon
-                const active = pathname === item.path
-                return (
-                  <button
-                    key={item.path}
-                    type="button"
-                    title={item.label}
-                    onClick={() => navigate(item.path)}
-                    onMouseEnter={() => preloadRoute(item.path)}
-                    className={
-                      "group relative flex items-center gap-2.5 rounded-[9px] text-[13.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring " +
-                      (collapsed ? "justify-center px-0 py-[11px]" : "px-2.5 py-[9px]") +
-                      " " +
-                      (active
-                        ? "bg-gradient-to-r from-primary/35 to-primary/10 font-medium text-white"
-                        : "text-[#9BB8BD] hover:bg-white/[.06] hover:text-[#DCEEEC]")
-                    }
-                  >
-                    {active && (
-                      <span className="absolute -left-2.5 bottom-2 top-2 w-[3px] rounded-r-[3px] bg-primary" />
-                    )}
-                    <Icon className={"h-[19px] w-[19px] shrink-0 " + (active ? "text-[#22B8CE]" : "text-[#7FA09B] group-hover:text-[#9BB8BD]")} />
-                    {!collapsed && <span className="truncate">{item.label}</span>}
-                  </button>
-                )
-              })}
+              {items.map((item) => (
+                <NavItem
+                  key={item.path}
+                  item={item}
+                  pathname={pathname}
+                  collapsed={collapsed}
+                  onNavigate={navigate}
+                />
+              ))}
             </div>
           </div>
           )
         })}
+        {moreItems.length > 0 && (
+          <div className="mb-1">
+            <button
+              type="button"
+              aria-expanded={moreOpen}
+              aria-controls="sidebar-nav-more"
+              title="更多"
+              onClick={() => setMoreOpen((v) => !v)}
+              className={
+                "group relative flex w-full items-center gap-2.5 rounded-[9px] text-[13.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring " +
+                (collapsed ? "justify-center px-0 py-[11px]" : "px-2.5 py-[9px]") +
+                " " +
+                (moreActive
+                  ? "font-medium text-white"
+                  : "text-[#9BB8BD] hover:bg-white/[.06] hover:text-[#DCEEEC]")
+              }
+            >
+              <MoreHorizontal className={"h-[19px] w-[19px] shrink-0 " + (moreActive ? "text-[#22B8CE]" : "text-[#7FA09B] group-hover:text-[#9BB8BD]")} />
+              {!collapsed && (
+                <>
+                  <span className="min-w-0 flex-1 truncate text-left">更多</span>
+                  <ChevronDown className={"h-3.5 w-3.5 shrink-0 text-[#7FA09B] transition-transform " + (moreOpen ? "rotate-180" : "")} />
+                </>
+              )}
+            </button>
+            {moreOpen && (
+              <div id="sidebar-nav-more" className="mt-0.5 flex flex-col gap-0.5">
+                {moreItems.map((item) => (
+                  <NavItem
+                    key={item.path}
+                    item={item}
+                    pathname={pathname}
+                    collapsed={collapsed}
+                    onNavigate={navigate}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </nav>
 
       {/* Account footer */}

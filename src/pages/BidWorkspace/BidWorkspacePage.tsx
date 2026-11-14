@@ -1,5 +1,5 @@
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react"
-import { AlertTriangle } from "lucide-react"
+import { AlertTriangle, MoreHorizontal } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
@@ -33,7 +33,7 @@ import { StandardsPickerDialog } from "@/components/bid-workspace/StandardsPicke
 import { SubmissionCheckPanel } from "@/components/bid-workspace/SubmissionCheckPanel"
 import { TenderStep } from "@/components/bid-workspace/TenderStep"
 import { VoidCheckPanel } from "@/components/bid-workspace/VoidCheckPanel"
-import { displayStageLabel } from "@/pages/BidWorkspace/bidTypes"
+import { displayStageLabel, effectiveHospital } from "@/pages/BidWorkspace/bidTypes"
 import type { useBidWorkspace } from "./useBidWorkspace"
 
 type Step5Tab = { key: string; label: string; node: ReactNode; group?: string }
@@ -122,10 +122,8 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
 
       {p.mode === "detail" && p.activeProject ? (
         <main>
-          {/* UX-v2：项目页头按 prototype/bid/draft.html 的 .ph 结构重排——
-              第一行 h1 + 状态徽标 + 右侧动作（作战室）；
-              第二行 meta 行（开标提示/开标日/商机关联）用小字 kv 排布，不再两行大卡拼贴。
-              UX-R3 S10 的两行拆分保留，只是把视觉密度收回原型口径。 */}
+          {/* 2026-11-14：页头分层——工作面用分段开关，作战室/项目管理改为轻量图标；
+              项目名称只出现一次，医院与招标编号收到标题下一行。 */}
           <div className="mx-auto mt-4 max-w-7xl px-4">
             <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-3">
               <div className="min-w-0 flex-1">
@@ -145,7 +143,11 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                     </span>
                   )}
                 </div>
-                {/* meta 行：开标时间 / 关联商机（均为真值可编辑） */}
+                {(effectiveHospital(p.activeProject) || p.activeProject.tender_no) && (
+                  <p className="mt-1 truncate text-xs text-muted-foreground">
+                    {[effectiveHospital(p.activeProject), p.activeProject.tender_no].filter(Boolean).join(" · ")}
+                  </p>
+                )}
                 <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
                   <BidOpenDateBar
                     key={p.activeProject.id}
@@ -167,28 +169,34 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <Button
-                  size="sm"
-                  variant={p.workbenchView === "rehearse" ? "default" : "outline"}
-                  className="h-8 px-2.5 text-xs"
-                  onClick={() => p.setWorkbenchView("rehearse")}
-                >
-                  模拟答辩
-                </Button>
-                <Button
-                  size="sm"
-                  variant={p.workbenchView === "archive" ? "default" : "outline"}
-                  className="h-8 px-2.5 text-xs"
-                  onClick={() => p.setWorkbenchView("archive")}
-                >
-                  归档复盘
-                </Button>
+                <nav className="flex items-center gap-0.5 rounded-full bg-muted p-0.5" aria-label="工作面">
+                  {([
+                    { key: "pipeline", label: "主流程" },
+                    { key: "rehearse", label: "模拟答辩" },
+                    { key: "archive", label: "归档复盘" },
+                  ] as const).map((item) => {
+                    const active = p.workbenchView === item.key
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => p.setWorkbenchView(item.key)}
+                        className={
+                          "rounded-full px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary " +
+                          (active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")
+                        }
+                      >
+                        {item.label}
+                      </button>
+                    )
+                  })}
+                </nav>
                 <BidWarRoom activeProject={p.activeProject} missCount={p.uncoveredClauses.length} riskCount={p.voidCriticalUnresolved} />
-                {/* 低频高危操作（归档 / 重置）收进项目管理菜单，不再混在导出页底部 */}
+                {/* 低频高危操作（归档 / 重置）收进项目管理菜单 */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button size="sm" variant="outline" className="h-8 px-2.5 text-xs" aria-label="项目管理">
-                      项目管理
+                    <Button size="sm" variant="ghost" className="h-8 w-8 px-0" aria-label="项目管理" title="项目管理">
+                      <MoreHorizontal className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-44">

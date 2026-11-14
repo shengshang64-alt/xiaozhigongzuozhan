@@ -293,9 +293,8 @@ export function BidWarRoom({ activeProject, missCount = 0, riskCount = 0 }: { ac
   return (
     <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (next) kickLoad() }}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline" className="shrink-0 border-primary/40 text-primary hover:bg-primary/10">
-          <Radar className="mr-1.5 h-4 w-4" />
-          作战室
+        <Button size="sm" variant="ghost" className="h-8 w-8 shrink-0 px-0" aria-label="作战室" title="作战室">
+          <Radar className="h-4 w-4" />
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-4xl">

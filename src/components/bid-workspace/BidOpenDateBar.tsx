@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { CalendarClock, Check, Pencil, Trash2, X } from "lucide-react"
+import { CalendarClock, Check, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -76,42 +76,28 @@ export function BidOpenDateBar({ activeProject, isArchivedLocked, updateProject,
             : "flex flex-wrap items-center gap-2.5 rounded-lg border border-border bg-card px-4 py-2.5 shadow-sm"
         }
       >
-        <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs ${CHIP[status.tone]}`}>
-          <CalendarClock className="h-3.5 w-3.5" />
-          {status.label}
-        </span>
-
         {!editing ? (
-          <>
+          <button
+            type="button"
+            onClick={() => { if (!isArchivedLocked) setEditing(true) }}
+            disabled={isArchivedLocked}
+            title={lockTitle ?? "点击修改开标时间"}
+            className="flex flex-wrap items-center gap-2.5 rounded-md px-0.5 py-0.5 text-left disabled:cursor-not-allowed disabled:opacity-60 hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs ${CHIP[status.tone]}`}>
+              <CalendarClock className="h-3.5 w-3.5" />
+              {status.label}
+            </span>
             <span className="text-xs text-muted-foreground">
               开标时间：<span className="font-medium text-foreground">{saved}</span>
             </span>
-            <div className="ml-auto flex items-center gap-1.5">
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={isArchivedLocked}
-                title={lockTitle}
-                onClick={() => setEditing(true)}
-                className="border-border text-muted-foreground hover:text-foreground"
-              >
-                <Pencil className="mr-1 h-3.5 w-3.5" />
-                修改
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={isArchivedLocked}
-                title={lockTitle}
-                onClick={clear}
-                className="text-muted-foreground hover:text-destructive"
-              >
-                <Trash2 className="mr-1 h-3.5 w-3.5" />
-                清除
-              </Button>
-            </div>
-          </>
+          </button>
         ) : (
+          <>
+            <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs ${CHIP[status.tone]}`}>
+              <CalendarClock className="h-3.5 w-3.5" />
+              {status.label}
+            </span>
           <div className="flex flex-1 flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-foreground">开标时间</span>
             <Input
@@ -152,8 +138,22 @@ export function BidOpenDateBar({ activeProject, isArchivedLocked, updateProject,
                   取消
                 </Button>
               )}
+              {saved && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={isArchivedLocked}
+                  title={lockTitle}
+                  onClick={clear}
+                  className="text-muted-foreground hover:text-destructive"
+                >
+                  <Trash2 className="mr-1 h-3.5 w-3.5" />
+                  清除
+                </Button>
+              )}
             </div>
           </div>
+          </>
         )}
       </div>
     </div>
