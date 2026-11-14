@@ -28,9 +28,22 @@ vi.mock("@/pages/BidWorkspace/bidFiles", () => ({
 }))
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { MemoryRouter } from "react-router-dom"
 import userEvent from "@testing-library/user-event"
 import "@testing-library/jest-dom/vitest"
 import { BidProjectList } from "./BidProjectList"
+
+/**
+ * 2026-11-11：BidReviewSummary 的「投标复盘 →」改成 react-router 的 <Link>（原裸 <a href="/review">
+ * 是死链），因此 BidProjectList 子树现在依赖 Router context —— 必须包 MemoryRouter 渲染。
+ */
+function renderList(props: Parameters<typeof BidProjectList>[0]) {
+  return render(
+    <MemoryRouter>
+      <BidProjectList {...props} />
+    </MemoryRouter>,
+  )
+}
 
 function makeProps(overrides: Record<string, unknown> = {}) {
   return {
@@ -77,7 +90,7 @@ describe("新建投标项目弹窗：导入招标文件自动识别", () => {
     const setFormHospital = vi.fn()
     const setFormBidOpenDate = vi.fn()
     const props = makeProps({ setFormProjectName, setFormTenderNo, setFormHospital, setFormBidOpenDate })
-    render(<BidProjectList {...props} />)
+    renderList(props)
 
     expect(screen.getByText("导入招标文件自动识别")).toBeInTheDocument()
     // Dialog 走 Radix portal 渲染，节点不在 render 的 container 内，只能从 document 查
@@ -97,7 +110,7 @@ describe("新建投标项目弹窗：导入招标文件自动识别", () => {
     const mod = await import("@/pages/BidWorkspace/bidFiles")
     vi.mocked(mod.extractTenderFileText).mockResolvedValueOnce("目录\n第一章 招标公告\n第二章 投标人须知")
     const setFormProjectName = vi.fn()
-    render(<BidProjectList {...makeProps({ setFormProjectName })} />)
+    renderList(makeProps({ setFormProjectName }))
 
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
     await userEvent.upload(input, new File(["x"], "tender.docx", DOCX))
@@ -109,7 +122,7 @@ describe("新建投标项目弹窗：导入招标文件自动识别", () => {
   it("文件解析失败时把原因显示出来（如扫描件 PDF）", async () => {
     const mod = await import("@/pages/BidWorkspace/bidFiles")
     vi.mocked(mod.extractTenderFileText).mockRejectedValueOnce(new Error("该 PDF 没有文字层（疑似扫描件），请改用粘贴文本"))
-    render(<BidProjectList {...makeProps()} />)
+    renderList(makeProps())
 
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
     await userEvent.upload(input, new File(["x"], "scan.pdf", PDF))

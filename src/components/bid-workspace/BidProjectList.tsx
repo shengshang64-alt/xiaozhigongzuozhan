@@ -301,15 +301,18 @@ function ProjectCard({
   onPurge: (rec: BidProjectRecord) => void
 }) {
   const riskBadges = view === "trash" ? [] : riskBadgesOf(proj)
+  // 2026-11-11：正文字数原来在 JSX 里调了两次 draftCharCount(proj)（一次判断、一次格式化），
+  // 而它要 reduce 全部章节正文并逐条 replace(/\s/g)，在有 20+ 章的项目上是 O(全文) 的重复扫描
+  // ——首屏 200 张卡就是 400 次全量遍历。提到组件顶部算一次即可。
+  const draftChars = view === "trash" ? 0 : draftCharCount(proj)
   return (
+    // 2026-11-11 无障碍修复：原来整卡是 <article role="button" tabIndex={0}>，里面又放了
+    // 归档/删除两个真 <button> —— 交互控件嵌套交互控件，属非法 ARIA，读屏会读成
+    // 「按钮 归档项目 按钮」，且内层按钮的语义被外层吞掉。卡片本身不再冒充按钮：
+    // 鼠标点击区域保留（onClick 在 article 上），键盘可达性交给标题处的真 <button>。
     <article
-      role="button"
-      tabIndex={0}
       onClick={() => onOpen(proj)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") onOpen(proj)
-      }}
-      className="group flex h-full cursor-pointer flex-col rounded-lg border border-border bg-card p-5 text-left shadow-md transition-all hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      className="group flex h-full cursor-pointer flex-col rounded-lg border border-border bg-card p-5 text-left shadow-md transition-all hover:-translate-y-0.5 hover:shadow-lg"
     >
       <div className="flex items-center justify-between gap-2">
         <span className="rounded border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground">标书</span>
@@ -321,7 +324,23 @@ function ProjectCard({
           </span>
         )}
       </div>
-      <h3 className="mt-2 min-w-0 truncate text-base font-semibold text-foreground">{proj.project_name}</h3>
+      <h3
+        className="mt-2 min-w-0 truncate text-base font-semibold text-foreground"
+        title={proj.project_name}
+      >
+        {/* 键盘可达入口：卡片整体是 article（鼠标区），真正的可聚焦控件放在标题上，
+            这样 Tab 能进、Enter 能开，且与内层归档/删除按钮并列而非嵌套。 */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpen(proj)
+          }}
+          className="block w-full truncate rounded text-left focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+        >
+          {proj.project_name}
+        </button>
+      </h3>
       <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
         {[proj.tender_no || null, effectiveHospital(proj) || null, formatBudgetPhrase(proj)].filter(Boolean).join(" · ") || "采购人未填写"}
       </p>
@@ -340,7 +359,7 @@ function ProjectCard({
         {view !== "trash" && (
           <span className="text-xs text-muted-foreground">
             {progressStatusLabel(proj)}
-            {draftCharCount(proj) > 0 ? ` · ${draftCharCount(proj).toLocaleString("zh-CN")} 字` : ""}
+            {draftChars > 0 ? ` · ${draftChars.toLocaleString("zh-CN")} 字` : ""}
           </span>
         )}
       </div>

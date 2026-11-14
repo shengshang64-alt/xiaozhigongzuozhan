@@ -118,8 +118,11 @@ export function BidWarRoom({ activeProject, missCount = 0, riskCount = 0 }: { ac
 
   useEffect(() => {
     if (!open) return
-    // 只要是 idle/error 才发起请求；done 时不重复拉取
-    if (qualState === "done") return
+    // 修复（2026-11-11，无限重试）：原判据只拦 done（`if (qualState === "done") return`），
+    // 于是 error 态下每轮 effect 都会再发一次请求 → loading → error → deps 变化 → 再发…
+    // 服务端 5xx / 断网时会在打开作战室期间无限空转请求（信号灯永远停在「核验中」）。
+    // 只有 idle 才发起；error 态由信号灯上的「点击重试」显式置回 idle 再拉。
+    if (qualState !== "idle") return
     const controller = new AbortController()
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setQualState("loading")

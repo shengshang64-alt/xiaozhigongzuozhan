@@ -1,12 +1,11 @@
-import { useState, type ReactNode } from "react"
+import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react"
 import { AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
-import { PageHeader } from "@/components/shell/PageHeader"
 import { ArchivePanel } from "@/components/bid-workspace/ArchivePanel"
 import { BidOpenDateBar } from "@/components/bid-workspace/BidOpenDateBar"
 import { BidProjectList } from "@/components/bid-workspace/BidProjectList"
-import { BidReviewSummary } from "@/components/bid-workspace/BidReviewSummary"
 import { BidToolbar } from "@/components/bid-workspace/BidToolbar"
 import { BidWarRoom } from "@/components/bid-workspace/BidWarRoom"
 import { ComplianceMatrixPanel } from "@/components/bid-workspace/ComplianceMatrixPanel"
@@ -37,36 +36,59 @@ import { VoidCheckPanel } from "@/components/bid-workspace/VoidCheckPanel"
 import { displayStageLabel } from "@/pages/BidWorkspace/bidTypes"
 import type { useBidWorkspace } from "./useBidWorkspace"
 
-type Step5Tab = { key: string; label: string; node: ReactNode }
+type Step5Tab = { key: string; label: string; node: ReactNode; group?: string }
 
 /**
  * 步骤内的分页签：只做展示分组，各面板自身的 props / 状态完全不变。
  * UX-v2：⑥ 交卷自查把原第 4/5/6 步（查重 / 废标·合规·部门 / 模拟评标）收进一个步骤的多个 Tab。
+ * 分组（可选 group）：相邻相同 group 的 Tab 归为一组，组前显示小标题；Tab 顺序与标签不变。
+ * 键盘：左右方向键在 Tab 间切换（ARIA tablist 约定）。
  */
 function Step5Tabs({ tabs }: { tabs: Step5Tab[] }) {
   const [activeKey, setActiveKey] = useState(tabs[0]?.key ?? "")
   const current = tabs.find((t) => t.key === activeKey)
 
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return
+    const idx = tabs.findIndex((t) => t.key === activeKey)
+    if (idx < 0) return
+    const next = e.key === "ArrowRight" ? (idx + 1) % tabs.length : (idx - 1 + tabs.length) % tabs.length
+    setActiveKey(tabs[next].key)
+  }
+
   return (
     <div>
-      <div role="tablist" className="mx-auto mt-4 flex max-w-7xl flex-wrap items-center gap-1 px-4">
-        {tabs.map((t) => {
+      <div
+        role="tablist"
+        aria-label="交卷自查分组"
+        onKeyDown={onKeyDown}
+        className="mx-auto mt-4 flex max-w-7xl flex-wrap items-end gap-x-1 gap-y-2 px-4"
+      >
+        {tabs.map((t, i) => {
           const isActive = current !== undefined && t.key === current.key
+          const showGroup = t.group !== undefined && (i === 0 || tabs[i - 1].group !== t.group)
           return (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => setActiveKey(t.key)}
-              className={
-                isActive
-                  ? "border-b-2 border-primary px-3 py-2 text-sm font-medium text-foreground"
-                  : "border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
-              }
-            >
-              {t.label}
-            </button>
+            <div key={t.key} className="flex items-end gap-1">
+              {showGroup && (
+                <span className="mb-2 mr-1 whitespace-nowrap rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                  {t.group}
+                </span>
+              )}
+              <button
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                tabIndex={isActive ? 0 : -1}
+                onClick={() => setActiveKey(t.key)}
+                className={
+                  isActive
+                    ? "border-b-2 border-primary px-3 py-2 text-sm font-medium text-foreground"
+                    : "border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
+                }
+              >
+                {t.label}
+              </button>
+            </div>
           )
         })}
       </div>
@@ -81,6 +103,11 @@ const Step6Tabs = Step5Tabs
 export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
   // UX-v2 ② 解析确认：目录点条目 → 下方解析明细定位到该分区（nonce 保证同一条目连点也能再触发）
   const [parseFocus, setParseFocus] = useState<{ key: string; nonce: number } | null>(null)
+  // 解析明细默认折叠；目录条目每次点击（parseFocus 变化）都自动展开
+  const [parseDetailsOpen, setParseDetailsOpen] = useState(false)
+  useEffect(() => {
+    if (parseFocus) setParseDetailsOpen(true)
+  }, [parseFocus])
   return (    <div className="animate-in fade-in duration-500 text-foreground">
       <BidToolbar
         mainView={p.mainView}
@@ -139,8 +166,30 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                   />
                 </div>
               </div>
-              <div className="shrink-0">
+              <div className="flex shrink-0 items-center gap-2">
                 <BidWarRoom activeProject={p.activeProject} missCount={p.uncoveredClauses.length} riskCount={p.voidCriticalUnresolved} />
+                {/* 低频高危操作（归档 / 重置）收进项目管理菜单，不再混在导出页底部 */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant="outline" className="h-8 px-2.5 text-xs" aria-label="项目管理">
+                      项目管理
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    {p.isArchivedLocked || p.activeProject.stage === "archived" ? (
+                      <DropdownMenuItem onSelect={() => p.unarchiveActiveProject()}>解除归档</DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem onSelect={() => p.archiveProject()}>标记项目归档</DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem
+                      disabled={p.isArchivedLocked}
+                      onSelect={() => p.setResetConfirmOpen(true)}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      重置为初始状态
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </header>
           </div>
@@ -215,14 +264,23 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                 <ParseConfirmEmpty onReparse={p.startParse} parseLoading={p.parseLoading} />
               )}
 
-              {/* 解析明细（既有能力全保留，收在本屏下方）：21 项分组、单项重解析、条款覆盖矩阵、评分项核对 */}
-              <div className="mt-5">
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <h2 className="text-sm font-semibold text-foreground">解析明细</h2>
+              {/* 解析明细（既有能力全保留）：默认折叠，避免与上方确认屏两套视图同时抢眼。
+                  点击目录条目会自动展开并定位到对应分区。 */}
+              <details
+                className="mt-5 rounded-lg border border-border bg-card shadow-sm"
+                open={parseDetailsOpen}
+                onToggle={(e) => setParseDetailsOpen((e.target as HTMLDetailsElement).open)}
+              >
+                <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-4 py-3 text-sm [&::-webkit-details-marker]:hidden">
+                  <span className="font-semibold text-foreground">解析明细</span>
                   <span className="text-[11.5px] text-muted-foreground">
-                    逐项查看与修改、单项重解析、条款覆盖矩阵、评分项核对都在这里
+                    逐项查看与修改、单项重解析、条款覆盖矩阵、评分项核对（需要时再展开）
                   </span>
-                </div>
+                  <span className="ml-auto shrink-0 text-[11px] text-primary">
+                    {parseDetailsOpen ? "收起" : "展开"}
+                  </span>
+                </summary>
+                <div className="border-t border-border px-4 pb-4 pt-3">
                 <ParseReportPanel
                   key={p.activeProject.id}
                   report={p.activeProject.parse_report}
@@ -273,7 +331,8 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                     },
                   ]}
                 />
-              </div>
+                </div>
+              </details>
             </section>
           )}
           {p.activeStep === 3 && (
@@ -410,14 +469,19 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                   </details>
                 )}
                 {p.demoScoreSummary.hasDemo && (
-                  <div>
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       onClick={p.insertDemoSkeleton}
-                      className="rounded-lg bg-primary px-3 py-1 text-xs text-primary-foreground"
+                      disabled={p.isArchivedLocked}
+                      title="在对应章节末尾追加占位段落（本地生成，不调用 AI，已有骨架的章不会重复追加）"
+                      className="rounded-lg bg-primary px-3 py-1 text-xs text-primary-foreground disabled:opacity-50"
                     >
-                      {`一键插入演示准备骨架（${p.demoScoreSummary.count} 个演示节点）`}
+                      {`为 ${p.demoScoreSummary.count} 个演示/答辩评分节点追加占位骨架`}
                     </button>
+                    <span className="text-[11px] text-muted-foreground">
+                      仅追加占位文字，请按项目实际填实后再交卷
+                    </span>
                   </div>
                 )}
             {/* R245 用户 P0 需求 R-001：底稿增量合并——上传商务同事已写好的标书，逐章匹配大纲后原文保留 / 带参考重写 / 缺失补齐 */}
@@ -922,7 +986,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               )}
               <Step6Tabs
                 tabs={[
-                  { key: "gates", label: "闸门总览", node: (
+                  { key: "gates", label: "闸门总览", group: "必过项", node: (
                     <CheckGateOverview
                       project={p.activeProject}
                       format={p.effectiveFormatSettings}
@@ -934,7 +998,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                       isArchivedLocked={p.isArchivedLocked}
                     />
                   ) },
-                  { key: "dup", label: "标书查重", node: (
+                  { key: "dup", label: "标书查重", group: "必过项", node: (
                     <DupCheckPanel
                       activeProject={p.activeProject}
                       dupLoading={p.dupLoading}
@@ -946,7 +1010,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                       setIntraDupThreshold={p.setIntraDupThreshold}
                     />
                   ) },
-                  { key: "void", label: "废标检查", node: (
+                  { key: "void", label: "废标检查", group: "必过项", node: (
                     <VoidCheckPanel
                       activeProject={p.activeProject}
                       voidLoading={p.voidLoading}
@@ -966,7 +1030,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                       stageHistory={p.stageHistory}
                     />
                   ) },
-                  { key: "compliance", label: "合规检查", node: (
+                  { key: "compliance", label: "合规检查", group: "必过项", node: (
                     <SubmissionCheckPanel
                       activeProject={p.activeProject}
                       requestStep={p.requestStep}
@@ -993,7 +1057,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                       jumpToAuditChapter={p.jumpToAuditChapter}
                     />
                   ) },
-                  { key: "dept", label: "部门清单", node: (
+                  { key: "dept", label: "部门清单", group: "参考项", node: (
                     <DeptChecklistPanel
                       key={`dept-check-${p.activeProject.id}`}
                       projectId={p.activeProject.id}
@@ -1001,7 +1065,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                       locked={p.isArchivedLocked}
                     />
                   ) },
-                  { key: "eval", label: "模拟评标", node: (
+                  { key: "eval", label: "模拟评标", group: "参考项", node: (
                     <MockEvalPanel
                       activeProject={p.activeProject}
                       evalLoading={p.evalLoading}
@@ -1019,7 +1083,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                     />
                   ) },
                   // 原第 6 步的报价测算与答辩准备一并保留（原属于「模拟评标」步骤的配套）
-                  { key: "price", label: "报价测算", node: (
+                  { key: "price", label: "报价测算", group: "辅助工具", node: (
                     <PriceScorePanel
                       key={p.activeProject?.id ?? "none"}
                       activeProject={p.activeProject}
@@ -1027,7 +1091,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                       goParseStep={p.goParseStep}
                     />
                   ) },
-                  { key: "defense", label: "答辩准备", node: (
+                  { key: "defense", label: "答辩准备", group: "辅助工具", node: (
                     <DefensePanel
                       activeProject={p.activeProject}
                       defense={p.defense}
@@ -1165,14 +1229,16 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
         />
       ) : (
         <main>
-          <PageHeader
-            title="标书工作"
-            desc="标书生成、查重与废标项检查，全流程覆盖投标关键节点"
-          />
-          {/* R006（B-3 阶段一）：投标复盘汇总——纯统计零 AI */}
-          <BidReviewSummary projects={p.projects} />
+          {/* 修复（2026-11-11，列表视图重复标题与重复复盘条）：
+              这一屏原来先渲染 PageHeader「标书工作」+ 一次 BidReviewSummary，紧接着
+              BidProjectList 内部又有一整套 hero（含第二个 h1「投标项目」）和第二个
+              BidReviewSummary（同一份数据、同一个空态条），实测同屏 **2 个 h1**、
+              「投标复盘」入口出现两次，首屏被两条重复说明挤掉约 190px。
+              现在：页面级标题交给列表 hero 唯一承载（顶栏面包屑已显示「标书工作台」），
+              复盘条由 BidProjectList 按原型口径渲染在主列表之后，两处都只留一份。 */}
           <BidProjectList
             projects={p.projects}
+            allProjects={p.allProjects}
             projectsCapped={p.projectsCapped}
             listLoading={p.listLoading}
             searchKeyword={p.searchKeyword}

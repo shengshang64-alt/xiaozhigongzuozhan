@@ -10278,6 +10278,10 @@ const kbEmptyHintShown = new Set<string>()
     backToList,
     // 项目列表
     projects: filteredProjects,
+    // 修复（2026-11-11）：列表页数据条（进行中/已归档/回收站/本周需开标）必须按**全量**统计，
+    // 不能拿 filteredProjects（已被 listView + 搜索词过滤）当分母——否则「已归档」「回收站」
+    // 恒为 0、搜索时全部分项一起缩水，与同屏下方真实区块自相矛盾。
+    allProjects: projects,
     projectsCapped,
     listLoading,
     searchKeyword,

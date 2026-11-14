@@ -1,7 +1,9 @@
 import { useMemo } from "react"
+import { Link } from "react-router-dom"
 import { TrendingUp } from "lucide-react"
 import type { BidProjectRecord } from "@/pages/BidWorkspace/bidTypes"
 import { formatMoney } from "@/lib/money"
+import { homeTabHref } from "@/pages/Home/homeTabs"
 
 // R006（B-3 阶段一）：投标复盘汇总——纯统计零 AI。bid_result/bid_amount(万元)/lost_reason 字段
 // 早已存在，本组件只做聚合展示；落标原因结构化表单列为阶段二。
@@ -71,9 +73,13 @@ export function BidReviewSummary({ projects }: { projects: BidProjectRecord[] })
         <div className="min-w-0 flex-1">
           暂无已结束项目（已结束 {stats.finished} · 中标 {stats.won} · 落标 {stats.lost}），出结果后这里会生成复盘：中标率、中标金额、落标原因 Top3。
         </div>
-        <a href="/review" className="shrink-0 text-xs font-medium text-primary hover:underline">
+        {/* 修复（2026-11-11）：原 <a href="/review"> 是死链——仓内没有 /review 路由，
+            点进去落到「页面不存在」；且裸 <a> 会整页刷新、丢掉多标签保活状态。
+            真正的复盘屏是工作台的 ?tab=review（见 pages/Home/homeTabs.ts），
+            地址口径统一走 homeTabHref("review")，不再手写字符串。 */}
+        <Link to={homeTabHref("review")} className="shrink-0 text-xs font-medium text-primary hover:underline">
           投标复盘 →
-        </a>
+        </Link>
       </div>
     )
   }

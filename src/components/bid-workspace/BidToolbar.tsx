@@ -23,7 +23,10 @@ export function BidToolbar({
   handleSelectModel,
 }: BidToolbarProps) {
   return (
-    <div className="sticky top-14 z-30 -mx-4 -mt-4 mb-5 flex items-center gap-2 border-b border-border bg-background/85 px-4 py-2 backdrop-blur lg:-mx-6 lg:-mt-6 lg:px-6">
+    // 2026-11-11：粘性 top 由硬编码 top-14(56px) 改为「顶栏 60px + 标签栏实际高度」。
+    // 实测：顶栏实际 60px（sticky top-0 h-[60px]），而 top-14 只有 56px —— 工具条会向上
+    // 压进顶栏下沿 4px；且多标签时标签栏占 38px，工具条 sticky 到 56px 会被标签栏整条盖住。
+    <div className="sticky top-[calc(60px+var(--xz-tabs-h,0px))] z-30 -mx-4 -mt-4 mb-5 flex items-center gap-2 border-b border-border bg-background/85 px-4 py-2 backdrop-blur lg:-mx-6 lg:-mt-6 lg:px-6">
       {mode === "detail" && (
         <button
           type="button"

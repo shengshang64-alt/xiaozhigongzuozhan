@@ -1,4 +1,4 @@
-import { Archive, ArrowRight, ClipboardList, Download, FileCheck2, Loader2, RotateCcw, Scale, Table2 } from "lucide-react"
+import { ArrowRight, ClipboardList, Download, FileCheck2, Loader2, Scale, Table2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { GateChecklist } from "@/components/bid-workspace/GateChecklist"
@@ -54,7 +54,7 @@ type ArchivePanelProps = Pick<
 >
 
 export function ArchivePanel(p: ArchivePanelProps) {
-  const { activeProject, exportBusy, exportBidWord, exportReport, exportDeviationWord, exportAllDocs, archiveProject, unarchiveActiveProject, allGatesConfirmed, gatesUnconfirmed } = p
+  const { activeProject, exportBusy, exportBidWord, exportReport, exportDeviationWord, exportAllDocs, allGatesConfirmed, gatesUnconfirmed } = p
   if (!activeProject) return null
   const proj = activeProject
   // 循环 6 A1：归档判定与 isArchivedLocked 同口径（archived 位或 stage 任一命中），兼容存量单口径数据
@@ -112,24 +112,11 @@ export function ArchivePanel(p: ArchivePanelProps) {
               一键导出全套投标文档（Word 格式，本地生成不经过服务器）。归档后项目仍可随时查看、继续导出，环节结果全部保留。
             </p>
           </div>
-          {/* 循环 6 A1：已归档时按钮变「解除归档」（走既有 unarchiveActiveProject），未归档时「标记项目归档」 */}
-          {archived ? (
-            <Button
-              onClick={unarchiveActiveProject}
-              variant="outline"
-              className="shrink-0 border-primary/40 text-primary shadow-md hover:bg-primary/10 focus-visible:shadow-[var(--focus-ring)]"
-            >
-              <Archive className="mr-1.5 h-4 w-4" />
-              解除归档
-            </Button>
-          ) : (
-            <Button
-              onClick={archiveProject}
-              className="shrink-0 bg-primary text-primary-foreground shadow-md hover:bg-primary/90 focus-visible:shadow-[var(--focus-ring)]"
-            >
-              <Archive className="mr-1.5 h-4 w-4" />
-              标记项目归档
-            </Button>
+          {/* 归档 / 解除归档已移到页头「项目管理」菜单（BidWorkspacePage），此处不再重复放按钮 */}
+          {archived && (
+            <span className="shrink-0 rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
+              已归档 · 只读
+            </span>
           )}
         </div>
       </header>
@@ -251,25 +238,7 @@ export function ArchivePanel(p: ArchivePanelProps) {
         />
       </div>
 
-      {/* 第十一轮改造 5：危险区——重置项目为初始状态 */}
-      <div className="mt-5 flex flex-wrap items-center gap-3 rounded-lg border border-destructive/30 bg-card px-5 py-4 shadow-md">
-        <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold text-destructive">重置项目</h2>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            清空解析报告、大纲、全部章节正文、偏离表与检查 / 评标报告，回到刚建项目的状态（招标文件文本保留）。重置前会自动保存一份全量备份，可随时在上方工作记录中恢复。
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          onClick={() => p.setResetConfirmOpen(true)}
-          disabled={p.isArchivedLocked}
-          title={p.isArchivedLocked ? "已归档项目不可重置，请先解除归档" : undefined}
-          className="shrink-0 border-destructive/40 text-destructive hover:bg-destructive/10"
-        >
-          <RotateCcw className="mr-1.5 h-4 w-4" />
-          重置为初始状态
-        </Button>
-      </div>
+      {/* 危险操作「重置为初始状态」已移到页头「项目管理」菜单；此处仅保留二次确认框 */}
 
       <footer className="mt-10 rounded-lg border border-border bg-card p-5 text-center shadow-md">
         <p className="text-sm font-medium text-foreground">
