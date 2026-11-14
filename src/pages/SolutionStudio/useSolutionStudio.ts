@@ -44,6 +44,7 @@ import { useChecklist } from "./checklistLogic"
 import { snapshotFromChecklist, type ChecklistRecord } from "./checklistTypes"
 import { checklistToOutlineSkeleton, SKELETON_TEMPLATES } from "./checklistToOutline"
 import { systemsChapterBodyFromPreview, type StandardChapterPreview } from "./standardChapters"
+import { STANDARD_CHAPTERS_SOLUTION_FROM, consumeStandardChaptersSolution } from "./standardChaptersSolutionHandoff"
 import { bulkResumeNotice, deriveSolutionDocStatus, shouldRecoverStaleGenerating } from "./bulkResume"
 import { parseSolutionStudioTab, type SolutionStudioTab } from "./solutionStudioTabs"
 import {
@@ -996,6 +997,29 @@ export function useSolutionStudio() {
       setSearchParams(params, { replace: true })
     })
   }, [searchParams, checklist.checklistsLoading, checklist.myChecklists, startSolutionFromChecklist, setSearchParams])
+
+  // t149：标准章节预览确认后，打开新建向导第 3 步带入大纲骨架，不 PATCH 已有方案
+  const chaptersSolutionLinkRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (searchParams.get("from") !== STANDARD_CHAPTERS_SOLUTION_FROM) return
+    if (chaptersSolutionLinkRef.current) return
+    const incoming = consumeStandardChaptersSolution()
+    if (!incoming) return
+    chaptersSolutionLinkRef.current = incoming.solutionName || "standard-chapters"
+    openNewWizard()
+    setFormTypeKey(incoming.preview.typeKey || "standard")
+    setFormSolutionName(incoming.solutionName)
+    setFormHospital(incoming.hospital || incoming.solutionName)
+    if (incoming.checklistId) {
+      setFormChecklistId(incoming.checklistId)
+      const rec = checklist.myChecklists.find((c) => c.id === incoming.checklistId)
+      if (rec) applyChecklistPrefill(rec)
+    }
+    applyStandardChapterPreview(incoming.preview)
+    const params = new URLSearchParams(searchParams)
+    params.delete("from")
+    setSearchParams(params, { replace: true })
+  }, [searchParams, checklist.myChecklists, applyChecklistPrefill, applyStandardChapterPreview, openNewWizard, setSearchParams])
 
   const deleteSolution = useCallback(
     async (rec: SolutionRecord) => {

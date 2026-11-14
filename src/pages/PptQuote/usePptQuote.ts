@@ -100,6 +100,7 @@ import {
 } from "./deckAtomInject"
 import { attachSourceRefs, hasMaterials } from "./deckMaterialStore"
 import { CHECKLIST_PPT_FROM, consumeChecklistPptOutline } from "./checklistPptHandoff"
+import { CHECKLIST_QUOTE_FROM, consumeChecklistQuote } from "./checklistQuoteHandoff"
 import { parseTemplateOutline, recommendMapping, resolveMapping, type TemplateOutline } from "./templateLayouts"
 // 2026-11-04 B 项：大纲返回后按页型配额做确定性校正（模型执行率低，光靠提示词不够）
 import { enforceOutlineKindQuota } from "./deckOutlineQuota"
@@ -2406,6 +2407,7 @@ export function usePptQuote() {
   const [searchParams] = useSearchParams()
   const deckDeepLinkIdRef = useRef<string | null>(null)
   const quoteDeepLinkIdRef = useRef<string | null>(null)
+  const createAndImportQuoteFromChecklistRef = useRef<(checklistId: string, quoteName: string) => Promise<void> | void>(undefined)
   useEffect(() => {
     const deckId = searchParams.get("deck")
     if (deckId && deckDeepLinkIdRef.current !== deckId) {
@@ -2439,6 +2441,12 @@ export function usePptQuote() {
         applyDeckState(null)
         setActiveView("deck")
         setDeckMode("wizard")
+      }
+    }
+    if (searchParams.get("from") === CHECKLIST_QUOTE_FROM) {
+      const incoming = consumeChecklistQuote()
+      if (incoming) {
+        void createAndImportQuoteFromChecklistRef.current?.(incoming.checklistId, incoming.quoteName)
       }
     }
     const quoteId = searchParams.get("quote")
@@ -2923,8 +2931,8 @@ export function usePptQuote() {
 
   /** 从一份建设清单导入报价（zeroPrice 开关控制价格是否后置录入） */
   const importFromChecklist = useCallback(
-    (checklistId: string, opts: { zeroPrice: boolean }) => {
-      const rec = checklists.find((c) => c.id === checklistId)
+    (checklistId: string, opts: { zeroPrice: boolean }, recOverride?: ChecklistRecord | null) => {
+      const rec = recOverride ?? checklists.find((c) => c.id === checklistId)
       if (!rec) {
         toast.error("未找到建设清单")
         return
@@ -2976,6 +2984,49 @@ export function usePptQuote() {
     },
     [checkProducts, checklists, mutateQuote],
   )
+
+  const createAndImportQuoteFromChecklist = useCallback(
+    async (checklistId: string, quoteName: string) => {
+      if (quoteCreating) return
+      const name = (quoteName || "").trim() || "建设清单报价"
+      setQuoteCreating(true)
+      try {
+        // 直接按 id 拉取，避免列表缓存尚未包含刚保存的清单
+        const checklistRec = await apiFetch<ChecklistRecord>(`/api/checklists/${encodeURIComponent(checklistId)}`)
+        if (userId) await loadChecklists(userId, true)
+        await loadCheckProducts()
+        const created = await apiFetch<QuoteRecord>("/api/quotes", {
+          method: "POST",
+          body: JSON.stringify({
+            rh_user_id: userId,
+            quote_name: name,
+            ref_type: "checklist",
+            ref_id: checklistId,
+            ref_name: name,
+            opportunity_id: "",
+            opportunity_name: "",
+            groups: makeDefaultGroups(),
+            tax_note: "软件与服务按 6% 增值税计，硬件按 13% 计；报价有效期 30 天，最终以合同为准。",
+            version: "v1",
+          }),
+        })
+        const rec = sanitizeQuote(created)
+        setQuoteList((prev) => [rec, ...prev])
+        applyQuoteState(rec)
+        setQuoteMode("editor")
+        setActiveView("quote")
+        resetSyncOppAmount()
+        // 导入该清单条目：沿用清单已有单价，缺价保持 0，不编造
+        importFromChecklist(checklistId, { zeroPrice: false }, checklistRec)
+      } catch {
+        toast.error("从建设清单创建报价失败，请稍后重试")
+      } finally {
+        setQuoteCreating(false)
+      }
+    },
+    [applyQuoteState, importFromChecklist, loadCheckProducts, loadChecklists, quoteCreating, resetSyncOppAmount, userId],
+  )
+  createAndImportQuoteFromChecklistRef.current = createAndImportQuoteFromChecklist
 
   /** 手工添加一行（归入当前分组，无 product_id，标记为 external） */
   const addManualItem = useCallback(

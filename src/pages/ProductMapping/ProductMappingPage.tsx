@@ -35,6 +35,8 @@ import { parseMappingTab, type MappingTab } from "./mappingTabs"
 import { StandardChaptersDialog } from "@/components/solution-studio/StandardChaptersDialog"
 import { useStandardChapters } from "@/pages/SolutionStudio/useStandardChapters"
 import { useChecklistPptOutline } from "@/pages/PptQuote/useChecklistPptOutline"
+import { stashStandardChaptersSolution, standardChaptersSolutionPath } from "@/pages/SolutionStudio/standardChaptersSolutionHandoff"
+import { stashChecklistQuote, checklistQuotePath } from "@/pages/PptQuote/checklistQuoteHandoff"
 import type { UseProductMapping } from "./useProductMapping"
 
 // ---------------------------------------------------------------------------
@@ -616,6 +618,16 @@ function ResultExportSection({ p }: { p: UseProductMapping }) {
             onClose={chapters.closePreview}
             onGeneratePptOutline={(preview) => pptOutline.openFromPreview(preview, { topic: p.name || "对照结果" })}
             pptBusy={pptOutline.busy}
+            onConfirm={(preview) => {
+              const title = p.name.trim() || "对照结果"
+              stashStandardChaptersSolution({
+                preview,
+                solutionName: title,
+                hospital: p.hospital.trim() || title,
+                checklistId: p.lastSavedId || "",
+              })
+              navigate(standardChaptersSolutionPath())
+            }}
           />
           {p.lastSavedId ? (
             <>
@@ -630,6 +642,16 @@ function ResultExportSection({ p }: { p: UseProductMapping }) {
                 onClick={() => navigate(`/solution-studio?checklist=${encodeURIComponent(p.lastSavedId)}&startSolution=1`)}
               >
                 生成方案
+              </Button>
+              <Button
+                variant="outline"
+                data-testid="generate-quote-mapping"
+                onClick={() => {
+                  stashChecklistQuote({ checklistId: p.lastSavedId, quoteName: p.name.trim() || "建设清单报价" })
+                  navigate(checklistQuotePath())
+                }}
+              >
+                生成报价
               </Button>
             </>
           ) : null}

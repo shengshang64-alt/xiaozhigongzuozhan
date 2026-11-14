@@ -12,11 +12,13 @@ import type { UseChecklist } from "@/pages/SolutionStudio/checklistLogic"
 export function ChecklistView({
   ck,
   onStartSolution,
+  onStartSolutionWithChapters,
   preferredChecklistId,
   outlineGeneratedFor,
 }: {
   ck: UseChecklist
   onStartSolution: (checklistId: string) => void
+  onStartSolutionWithChapters?: (checklistId: string, preview: import("@/pages/SolutionStudio/standardChapters").StandardChapterPreview) => void
   preferredChecklistId?: string | null
   outlineGeneratedFor?: ReadonlySet<string>
 }) {
@@ -49,7 +51,7 @@ export function ChecklistView({
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <ChecklistWorkbench ck={ck} onStartSolution={onStartSolution} outlineGenerated={outlineGenerated} />
+      <ChecklistWorkbench ck={ck} onStartSolution={onStartSolution} onStartSolutionWithChapters={onStartSolutionWithChapters} outlineGenerated={outlineGenerated} />
 
       <NewChecklistWizard ck={ck} />
 

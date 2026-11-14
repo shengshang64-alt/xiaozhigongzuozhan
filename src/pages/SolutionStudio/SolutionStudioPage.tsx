@@ -44,7 +44,19 @@ export function SolutionStudioPage(p: ReturnType<typeof useSolutionStudio>) {
 
       {p.studioTab === "checklist" ? (
         <main>
-          <ChecklistView ck={p.checklist} onStartSolution={p.startSolutionFromChecklist} preferredChecklistId={p.preferredChecklistId} />
+          <ChecklistView
+            ck={p.checklist}
+            onStartSolution={p.startSolutionFromChecklist}
+            onStartSolutionWithChapters={(id, preview) => {
+              p.startSolutionFromChecklist(id)
+              const rec = p.checklist.myChecklists.find((c) => c.id === id)
+              p.setFormTypeKey(preview.typeKey || "standard")
+              p.setFormSolutionName(rec?.checklist_name || "建设清单方案")
+              if (rec?.hospital) p.setFormHospital(rec.hospital)
+              p.applyStandardChapterPreview(preview)
+            }}
+            preferredChecklistId={p.preferredChecklistId}
+          />
         </main>
       ) : p.studioTab === "editor" ? (
         p.activeSolution ? (

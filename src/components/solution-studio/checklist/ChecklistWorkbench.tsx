@@ -23,6 +23,8 @@ import { findMutexConflicts, mutexWarningText } from "@/pages/SolutionStudio/mut
 import { StandardChaptersDialog } from "@/components/solution-studio/StandardChaptersDialog"
 import { useStandardChapters } from "@/pages/SolutionStudio/useStandardChapters"
 import { useChecklistPptOutline } from "@/pages/PptQuote/useChecklistPptOutline"
+import { stashChecklistQuote, checklistQuotePath } from "@/pages/PptQuote/checklistQuoteHandoff"
+import type { StandardChapterPreview } from "@/pages/SolutionStudio/standardChapters"
 import {
   buildAmountBreakdown,
   buildChecklistSteps,
@@ -47,12 +49,14 @@ const PAGE_DESC = (
 export function ChecklistWorkbench({
   ck,
   onStartSolution,
+  onStartSolutionWithChapters,
   outlineGenerated = false,
   onImportRequest,
   onExportRequest,
 }: {
   ck: UseChecklist
   onStartSolution: (checklistId: string) => void
+  onStartSolutionWithChapters?: (checklistId: string, preview: StandardChapterPreview) => void
   outlineGenerated?: boolean
   onImportRequest?: () => void
   onExportRequest?: () => void
@@ -365,6 +369,23 @@ export function ChecklistWorkbench({
             >
               {pptOutline.busy ? "正在整理 PPT 大纲…" : "生成 PPT 大纲"}
             </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              data-testid="generate-quote"
+              disabled={!rec}
+              onClick={() => {
+                if (!rec) {
+                  toast.message("请先选择或生成清单")
+                  return
+                }
+                stashChecklistQuote({ checklistId: rec.id, quoteName: rec.checklist_name || "建设清单报价" })
+                navigate(checklistQuotePath())
+              }}
+              title="新建一份报价并导入本清单已勾选条目，不会覆盖已有报价"
+            >
+              生成报价
+            </Button>
             <ChecklistAmountCard
               breakdown={breakdown}
               checkedCount={checkedItems.length}
@@ -386,6 +407,11 @@ export function ChecklistWorkbench({
               onClose={chapters.closePreview}
               onGeneratePptOutline={(preview) => pptOutline.openFromPreview(preview, { topic: rec?.checklist_name || "建设清单" })}
               pptBusy={pptOutline.busy}
+              onConfirm={
+                rec && onStartSolutionWithChapters
+                  ? (preview) => onStartSolutionWithChapters(rec.id, preview)
+                  : undefined
+              }
             />
             {(() => {
               const warn = mutexWarningText(

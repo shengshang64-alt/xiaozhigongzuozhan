@@ -525,7 +525,7 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
             </div>
           )}
           {p.wizardStep === 3 && (
-            <Button onClick={() => void p.confirmOutline()} disabled={p.outlineLoading || p.confirming} className="bg-primary text-primary-foreground shadow-sm hover:bg-primary/90">
+            <Button data-testid="confirm-outline-create" onClick={() => void p.confirmOutline()} disabled={p.outlineLoading || p.confirming} className="bg-primary text-primary-foreground shadow-sm hover:bg-primary/90">
               {p.confirming ? (
                 <>
                   <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />

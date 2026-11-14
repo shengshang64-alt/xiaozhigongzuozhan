@@ -835,7 +835,28 @@ export function useProductMapping() {
           checked: ed.checked ?? true,
         })
       }
-      if (!r.product_id) continue
+      if (!r.product_id) {
+        const name = (r.raw || r.norm || "").trim()
+        if (!name) continue
+        // 未匹配行也落入已确认清单，便于缺项追踪；价格沿用已填或 0，不编造单价
+        out.push({
+          line_id: r.row_id,
+          category: "未匹配",
+          product_line: "",
+          product_name: name,
+          module_name: "",
+          module_func: "",
+          unit: "套",
+          qty: ed.qty ?? 1,
+          unit_price: Number(ed.unit_price) || 0,
+          source: "external",
+          rating_hits: [],
+          remark: "对照未匹配，未编造单价",
+          product_id: "",
+          checked: ed.checked ?? true,
+        })
+        continue
+      }
       // 多对多：一行命中的每个公司模块各生成一条清单行（主干行沿用 row_id 兼容行编辑）
       const ids = rowProductIds(r)
       ids.forEach((pid, idx) => {
