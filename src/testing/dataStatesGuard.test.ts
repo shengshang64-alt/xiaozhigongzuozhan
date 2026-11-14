@@ -119,7 +119,7 @@ describe("失败不许伪装成空态（防回潮）", () => {
   it("已修的两处真实缺陷不许回退：素材选择器 / 知识库检索必须用 ErrorState", () => {
     const mustUse = [
       "src/components/ppt-quote/MaterialPickerDialog.tsx",
-      "src/components/knowledge/KbContentSearchPanel.tsx",
+      "src/components/knowledge/KbSearchScreen.tsx",
     ]
     for (const rel of mustUse) {
       const code = readFileSync(path.join(REPO_ROOT, rel), "utf-8")

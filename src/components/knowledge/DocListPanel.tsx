@@ -15,6 +15,7 @@ import { localDateStamp } from "@/lib/dateStamp"
 import type { DocSortKey, LibTab } from "@/pages/Knowledge/useKnowledge"
 import type { KbTrashItem } from "@/pages/Knowledge/kbTrash"
 import type { KbDocRow } from "@/lib/kbCore"
+import type { KbDocMeta } from "@/components/knowledge/kbDocMeta"
 import { listDeletedKbDocs, notifyKbMutation, restoreKbDoc } from "@/lib/kbCore"
 
 type DocListPanelProps = {
@@ -56,6 +57,19 @@ type DocListPanelProps = {
   onPurgeTrash: (item: KbTrashItem) => void
   /** P1-7：服务端回收站恢复成功后刷新主列表（useKnowledge.refreshDocs） */
   onListRefresh?: () => void
+  // -------------------------------------------------------------------------
+  // UX-v2（prototype/kb/browse.html 文档卡）：补三���原型有、这里原来没有的信号
+  // -------------------------------------------------------------------------
+  /** 文档 → 其知识原子被引用次数（无引用数据时该键不存在，不渲染徽标） */
+  citationByDoc?: Record<string, number>
+  /** 「在项目中引用」：复制一条可追溯的引用文本 */
+  onCiteDoc?: (doc: KbDocRow) => void
+  /** 「抽为原子」：把这篇文档拆成知识原子候选 */
+  onExtractDoc?: (doc: KbDocRow) => void
+  /** 正在抽取的文档 id（该行显示进度且按钮禁用） */
+  extractingDocId?: string | null
+  /** 抽取阶段提示（如「调用模型抽取 · 3/12 段」） */
+  extractHint?: string | null
 }
 
 /** 每窗渲染行数：约 3 屏高度，兼顾滚动流畅与 DOM 规模 */
@@ -110,6 +124,11 @@ export function DocListPanel({
   onRestoreTrash,
   onPurgeTrash,
   onListRefresh,
+  citationByDoc,
+  onCiteDoc,
+  onExtractDoc,
+  extractingDocId,
+  extractHint,
 }: DocListPanelProps) {
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false)
   // P1-7：服务端回收站状态——弹层打开时拉取软删除行；恢复成功后经 onKbMutation
@@ -434,6 +453,17 @@ export function DocListPanel({
                     <span className={`min-w-0 flex-1 truncate text-sm font-semibold ${active ? "text-primary" : "text-foreground"}`}>
                       {doc.title}
                     </span>
+                    {(() => {
+                      // UX-v2：「被引用 N 次」是原型强调的高价值信号。
+                      // 没有引用数据时**不渲染**（不写「被引用 0 次」——那是假结论）。
+                      const c = citationByDoc?.[doc.id] ?? 0
+                      if (c <= 0) return null
+                      return (
+                        <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                          被引用 {c} 次
+                        </span>
+                      )
+                    })()}
                     {policy.is_sensitive ? (
                       <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive">
                         <ShieldAlert className="h-3 w-3" />
@@ -446,7 +476,10 @@ export function DocListPanel({
                       </span>
                     ) : null}
                   </span>
-                  {firstLine ? <span className="mt-1.5 block truncate text-xs text-muted-foreground">{firstLine}</span> : null}
+                  {firstLine ? (
+                    // UX-v2：原型文档卡的摘要是两行截断（line-clamp-2），原来只截一行
+                    <span className="mt-1.5 block line-clamp-2 text-xs leading-relaxed text-muted-foreground">{firstLine}</span>
+                  ) : null}
                   {/* 循环 10 小改 5：消费 keywords 字段——行内关键词徽标（最多 3 + 「+N」），搜索命中词加 primary 描边 */}
                   {doc.keywords && doc.keywords.length > 0 && (
                     <span className="mt-1.5 flex flex-wrap gap-1">
@@ -485,6 +518,60 @@ export function DocListPanel({
                     <span className="ml-auto shrink-0">{formatTime(doc.updated)}</span>
                   </span>
                 </button>
+                {/* UX-v2（prototype/kb/browse.html 文档卡底部）：三个动作 + 归位信息。
+                    不能塞进上面那个 <button> 里（按钮嵌套按钮是非法 HTML，且行点击会吞掉点击）。 */}
+                {!batchMode ? (
+                  <div className="mt-2 flex items-center gap-1.5 border-t border-border/60 pt-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => selectDoc(doc)}
+                    >
+                      打开
+                    </Button>
+                    {onCiteDoc ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                        title="复制一条可追溯的引用（标题 · 目录 · 更新时间），粘贴到方案或标书对应章节"
+                        onClick={() => onCiteDoc(doc)}
+                      >
+                        在项目中引用
+                      </Button>
+                    ) : null}
+                    {onExtractDoc ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                        disabled={extractingDocId === doc.id}
+                        title="把这篇文档拆成「一句话事实」候选原子，进入原子审核队列"
+                        onClick={() => onExtractDoc(doc)}
+                      >
+                        {extractingDocId === doc.id ? "抽取中…" : "抽为原子"}
+                      </Button>
+                    ) : null}
+                    <div className="grow" />
+                    <span className="shrink-0 text-[11px] text-muted-foreground">
+                      {extractingDocId === doc.id && extractHint ? (
+                        <span className="text-primary">{extractHint}</span>
+                      ) : (
+                        <>
+                          {doc.kb_audience === "client_facing"
+                            ? "可对客"
+                            : doc.kb_audience === "internal_only"
+                              ? "仅内部"
+                              : "可对客性未归位"}
+                          {Number((doc as KbDocMeta).atom_count ?? 0) > 0
+                            ? ` · 已抽 ${Number((doc as KbDocMeta).atom_count)} 条原子`
+                            : ""}
+                        </>
+                      )}
+                    </span>
+                  </div>
+                ) : null}
                 {!batchMode && editable ? (
                   <span className="absolute right-2 top-2 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                     <button
