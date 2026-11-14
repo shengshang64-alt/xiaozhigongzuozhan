@@ -5,7 +5,7 @@
 //   客户详情 = 档案 / 联系人 / 商机 / 跟进时间线独立内容区（不再只是窄侧栏）；
 //   商机看板 = 阶段看板 + 丢单复盘（开商机卡 → 客户详情 Tab）；
 //   跟进队列 = 按「从未跟进 / 超90 / 60–90 / 30–60 天」分组，去跟进跳详情；
-//   导入与体检 = 数据体检入口（既有弹窗承接）+ 文件导入如实「暂未提供」。
+//   导入与体检 = 数据体检入口（既有弹窗承接）+ 经营数据瘦模板导入（先预览再写入）。
 // 零能力丢失：列表/表格/看板/详情/体检/批量补全全部保留，只重新归位。
 import { useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
@@ -16,6 +16,7 @@ import { CustomerHealthPanel } from "@/components/customer-management/CustomerHe
 import { CustomerSubtabs } from "@/components/customer-management/CustomerSubtabs"
 import { FollowupQueueScreen } from "@/components/customer-management/FollowupQueueScreen"
 import { ImportCheckupScreen } from "@/components/customer-management/ImportCheckupScreen"
+import { ProjectBackfillDialog } from "@/components/customer-management/ProjectBackfillDialog"
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
 import { PageHeader } from "@/components/shell/PageHeader"
 import { CrmToolbar } from "@/components/customer-management/CrmToolbar"
@@ -168,6 +169,8 @@ export function CustomerManagementPage(p: ReturnType<typeof useCustomerManagemen
         handleSelectModel={p.handleSelectModel}
         onNewCustomer={p.openNewCustomer}
         onNewOpportunity={() => p.openNewOpportunity()}
+        onOpenCheckup={() => setCheckupOpen(true)}
+        onProjectBackfill={p.openProjectBackfill}
       />
 
       <PageHeader
@@ -228,7 +231,16 @@ export function CustomerManagementPage(p: ReturnType<typeof useCustomerManagemen
             onNewCustomer={p.openNewCustomer}
           />
         ) : tab === "import" ? (
-          <ImportCheckupScreen onOpenCheckup={() => setCheckupOpen(true)} onNewCustomer={p.openNewCustomer} />
+          <ImportCheckupScreen
+            onOpenCheckup={() => setCheckupOpen(true)}
+            onNewCustomer={p.openNewCustomer}
+            preview={p.leanImportPreview}
+            parsing={p.leanImportParsing}
+            applying={p.leanImportApplying}
+            onPreviewRows={p.previewLeanImportRows}
+            onApply={() => void p.applyLeanImport()}
+            onClearPreview={p.clearLeanImportPreview}
+          />
         ) : (
           /* 客户列表 Tab：统计行 + 列表/表格双视图（原第三视图收进本 Tab）+ 健康度总览 */
           <div className="pb-10">
@@ -371,6 +383,16 @@ export function CustomerManagementPage(p: ReturnType<typeof useCustomerManagemen
         saving={p.savingStage}
       />
 
+      <ProjectBackfillDialog
+        open={p.backfillOpen}
+        onOpenChange={(open) => (open ? p.openProjectBackfill() : p.closeProjectBackfill())}
+        loading={p.backfillLoading}
+        applying={p.backfillApplying}
+        preview={p.backfillPreview}
+        error={p.backfillError}
+        onRefresh={() => void p.refreshProjectBackfill()}
+        onApply={() => void p.applyProjectBackfill()}
+      />
       <CostConfirmDialog {...p.costConfirm} />
       <CustomerDataCheckupDialog
         open={checkupOpen}

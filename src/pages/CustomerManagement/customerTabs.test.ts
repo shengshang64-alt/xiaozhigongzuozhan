@@ -4,13 +4,20 @@
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
-import { CUSTOMER_TABS, customerTabHref, parseCustomerTab, type CustomerTab } from "./customerTabs"
+import { CUSTOMER_PRIMARY_TABS, CUSTOMER_TABS, customerTabHref, parseCustomerTab, type CustomerTab } from "./customerTabs"
 
 const readSrc = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf-8")
 
 describe("① Tab 口径：顺序与屏名对齐原型 manifest 的 customer 五屏", () => {
   it("顺序固定为 客户列表 → 客户详情 → 商机看板 → 跟进队列 → 导入与体检", () => {
     expect(CUSTOMER_TABS.map((t) => t.key)).toEqual(["list", "detail", "board", "followup", "import"])
+  })
+
+  it("日常主栏只留前四屏，「导入与体检」靠书签或列表入口打开", () => {
+    expect(CUSTOMER_PRIMARY_TABS.map((t) => t.key)).toEqual(["list", "detail", "board", "followup"])
+    const sub = readSrc("../../components/customer-management/CustomerSubtabs.tsx")
+    expect(sub).toContain("CUSTOMER_PRIMARY_TABS")
+    expect(sub).toContain('active === "import"')
   })
 
   it("屏名与原型 manifest 的 tab 字段逐字一致", () => {
@@ -93,9 +100,11 @@ describe("④ 拆屏零丢失：既有能力全部保留并归位", () => {
     expect(queue).toContain("86_400_000")
   })
 
-  it("导入与体检：文件导入如实「暂未提供」，不造假上传；体检入口接既有弹窗", () => {
+  it("导入与体检：瘦模板先预览再写入，体检入口接既有弹窗", () => {
     const imp = readSrc("../../components/customer-management/ImportCheckupScreen.tsx")
-    expect(imp).toContain("暂未提供")
+    expect(imp).toContain("经营数据瘦模板导入")
     expect(imp).toContain("onOpenCheckup")
+    expect(imp).toContain("leanImportTemplateCsv")
+    expect(imp).not.toContain("暂未提供")
   })
 })

@@ -1,6 +1,6 @@
 // UX-R2: 客户管理 已按 docs/ux-review-2026-11 修复 2026-11-07（右栏默认健康度总览 / 缺 N 项可点击补全 / 模型提示收敛小黄点 / 批量补全先确认）
 import { Link } from "react-router-dom"
-import { Plus, Target } from "lucide-react"
+import { FolderInput, Plus, ShieldCheck, Target } from "lucide-react"
 import { ModelSelect, NO_MODEL_CONFIGURED_HINT } from "@/components/model-config/ModelSelect"
 import type { ModelRef } from "@/lib/modelGateway"
 
@@ -10,6 +10,8 @@ type CrmToolbarProps = {
   handleSelectModel: (key: string) => void
   onNewCustomer: () => void
   onNewOpportunity: () => void
+  onOpenCheckup: () => void
+  onProjectBackfill: () => void
 }
 
 export function CrmToolbar({
@@ -18,6 +20,8 @@ export function CrmToolbar({
   handleSelectModel,
   onNewCustomer,
   onNewOpportunity,
+  onOpenCheckup,
+  onProjectBackfill,
 }: CrmToolbarProps) {
   return (
     // 2026-11-11：粘性 top 改按「顶栏 60px + 标签栏实际高度」，修掉 56px 硬编码压顶栏 / 被标签栏盖住
@@ -38,6 +42,22 @@ export function CrmToolbar({
           </Link>
         ) : null}
         <ModelSelect models={modelOptions} valueKey={selectedModelKey} onChange={handleSelectModel} />
+        <button
+          type="button"
+          onClick={onProjectBackfill}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-card-foreground shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <FolderInput className="h-4 w-4 text-primary" />
+          从项目回填
+        </button>
+        <button
+          type="button"
+          onClick={onOpenCheckup}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-card-foreground shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <ShieldCheck className="h-4 w-4 text-primary" />
+          数据体检
+        </button>
         <button
           type="button"
           onClick={onNewOpportunity}

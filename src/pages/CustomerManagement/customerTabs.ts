@@ -15,8 +15,11 @@ export const CUSTOMER_TABS: { key: CustomerTab; label: string; hint: string }[] 
   { key: "detail", label: "客户详情", hint: "档案 / 联系人 / 商机 / 跟进时间线" },
   { key: "board", label: "商机看板", hint: "按阶段推进商机，丢单复盘同屏" },
   { key: "followup", label: "跟进队列", hint: "按未跟进时长分组，超期先唤醒" },
-  { key: "import", label: "导入与体检", hint: "数据体检与批量补全入口" },
+  { key: "import", label: "导入与体检", hint: "数据体检与经营数据瘦模板导入" },
 ]
+
+/** 日常主栏不放「导入与体检」；?tab=import 书签仍可打开该屏 */
+export const CUSTOMER_PRIMARY_TABS = CUSTOMER_TABS.filter((t) => t.key !== "import")
 
 /** 解析 ?tab=；非法/缺省一律落「客户列表」（保持旧书签与旧链接行为不变） */
 export function parseCustomerTab(raw: string | null): CustomerTab {

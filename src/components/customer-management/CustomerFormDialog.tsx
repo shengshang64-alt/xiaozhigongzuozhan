@@ -164,7 +164,7 @@ export function CustomerFormDialog({
         <DialogHeader>
           <DialogTitle>{isEdit ? "编辑客户档案" : "新建客户"}</DialogTitle>
           <DialogDescription>
-            输入医院名称后可用 AI 自动匹配档案初稿，或点「抓取医院官网补全」让系统抓取官网/概况页正文再提取字段，也可粘贴一段医院介绍文字提取；带「AI 提供需核实」标记的字段请逐项核对，人工修改后标记自动清除。
+            输入医院名称后可用 AI 自动匹配档案初稿，或点「抓取医院官网补全」检索官网、卫健委、政府公开信息和可抓到的公众号再提取字段；也可粘贴介绍或公众号直链。带「AI 提供需核实」标记的字段请逐项核对，人工修改后标记自动清除。微信文章若有防盗链或需登录可能抓不到。
           </DialogDescription>
         </DialogHeader>
 
@@ -197,7 +197,7 @@ export function CustomerFormDialog({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 <FileText className="h-3.5 w-3.5 text-primary" />
-                粘贴文本提取：把医院官网介绍或公开资料粘进来，AI 提取各字段填入表单
+                粘贴文本提取：把医院官网、卫健委公示或公开资料粘进来，AI 只摘录正文里明确出现的字段
               </div>
               <SkillPickerFor scope="customer-profile" source={profileSkills} />
             </div>
@@ -243,7 +243,7 @@ export function CustomerFormDialog({
                 type="button"
                 onClick={onFetchSite}
                 disabled={busy || !draft.hospital_name.trim()}
-                title={draft.hospital_name.trim() ? "自动发现并抓取医院官网/概况页正文，再提取字段（部分老站编码或需JS渲染的站点可能抓不到，可改用粘贴文本）" : "请先填写医院名称"}
+                title={draft.hospital_name.trim() ? "检索官网、卫健委、政府公开信息和可抓到的公众号，再提取空着的公开字段（结果标「AI 提供需核实」；公众号若防盗链/需登录会跳过）" : "请先填写医院名称"}
                 className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-sm transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 {fetchingSite ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Globe className="h-3.5 w-3.5" />}

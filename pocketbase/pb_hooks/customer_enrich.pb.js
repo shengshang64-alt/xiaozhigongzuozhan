@@ -7,8 +7,8 @@
 //       前端（useCustomerManagement.runFetchSite）复用 buildExtractMessages/parseProfileJson。
 // 约定：Goja 回调自持 helper，不跨文件共享；鉴权沿用 X-Rh-User-Id 头（与 intel fetch-url 一致）。
 // 编码：utf-8 页直接取正文；GBK/GB2312/GB18030 老站回传原始字节(base64)，由前端 TextDecoder 解码（见返回体 binSections）。
-//       医院门诊量/床位/领导常在子页：本 handler 会多页抓取（概况/领导二级详情/信息公开）+ 百科/公示/年报兜底，
-//       按段配额不互相截断。抓取为尽力而为，结果需人工核实（前端已用 ai_generated_fields 标注）。
+//       医院门诊量/床位/领导常在子页：本 handler 会多页抓取（概况/领导二级详情/信息公开），并始终检索卫健委/政府公示、百科、年报与可抓到的微信公众号，
+//       给公开源预留字数配额，避免官网页过长挤掉这些来源。抓取为尽力而为，结果需人工核实（前端已用 ai_generated_fields 标注）。
 
 // POST /api/customers/fetch-site  body: { name: string, website?: string }
 // 返回: { ok, url, introUrl, title, text, message? }
@@ -335,89 +335,130 @@ routerAdd("POST", "/api/customers/fetch-site", (e) => {
 
     if (!site) {
       site = discoverSite(name)
-      if (!site) return e.json(200, { ok: false, code: "no_site", message: "未提供官网且自动发现失败，请先在档案填写官网或用「AI匹配」补全官网后重试" })
     }
 
-    var homeObj = fetchPageObj(site)
-    if (!homeObj || !homeObj.html) return e.json(200, { ok: false, code: "fetch_failed", url: site, message: "官网打不开或超时：" + site })
-    var homeHtml = homeObj.html
+    var homeObj = site ? fetchPageObj(site) : null
+    var officialError = ""
+    if (site && (!homeObj || !homeObj.html)) {
+      officialError = "官网打不开或超时：" + site
+      homeObj = null
+    }
+    var homeHtml = (homeObj && homeObj.html) ? homeObj.html : ""
 
     var title = ""
-    var tm = homeHtml.match(/<title[^>]*>([\s\S]{1,300}?)<\/title>/i)
+    var tm = homeHtml ? homeHtml.match(/<title[^>]*>([\s\S]{1,300}?)<\/title>/i) : null
     if (tm) title = unesc(tm[1]).replace(/\s+/g, " ").trim()
 
     var text = ""
     var binSections = []
     var sources = []
-    var TOTAL = 16000
+    var sourceNotes = []
+    var TOTAL = 20000
+    var OFFICIAL_CAP = 12000
 
-    // 按段配额累加：utf8 段清洗后并入 text；非 utf8 段回推原始字节交由前端解码（不占用 text 预算）
-    var pushObj = function (label, obj, budget) {
-      if (!obj) return
+    // 按段配额累加：utf8 段清洗后并入 text；非 utf8 段回推原始字节交由前端解码（不占用 text 预算）。
+    // cap 用于官网段：给卫健委/政府/百科/年报/公众号预留字数，避免官网页过长挤掉公开源。
+    var pushObj = function (label, obj, budget, cap) {
+      var limit = (typeof cap === "number") ? cap : TOTAL
+      if (!obj) return false
       if (obj.enc && obj.enc !== "utf8") {
-        if (obj.b64) { binSections.push({ label: label, encoding: obj.enc, bytesB64: obj.b64 }); if (sources.indexOf(label) < 0) sources.push(label) }
-        return
+        if (obj.b64) { binSections.push({ label: label, encoding: obj.enc, bytesB64: obj.b64 }); if (sources.indexOf(label) < 0) sources.push(label); return true }
+        return false
       }
-      if (!obj.html || text.length >= TOTAL) return
+      if (!obj.html || text.length >= limit) return false
       var bM = obj.html.match(/<body[^>]*>([\s\S]*)<\/body>/i)
-      var t = cleanText(bM ? bM[1] : obj.html, Math.min(budget, TOTAL - text.length))
-      if (t && t.length > 15) { text += (text ? "\n" : "") + "【" + label + "】\n" + t; if (sources.indexOf(label) < 0) sources.push(label) }
+      var t = cleanText(bM ? bM[1] : obj.html, Math.min(budget, limit - text.length))
+      if (t && t.length > 15) { text += (text ? "\n" : "") + "【" + label + "】\n" + t; if (sources.indexOf(label) < 0) sources.push(label); return true }
+      return false
     }
 
     // 概况（首页正文兜底 + 最多 2 个概况内链）。
     // href 兜底规则必须覆盖「gaikuang/gaishu/gk/jj/overview」：GBK 老站中文标签在未解码的 HTML
     // 里是乱码，只能靠 href 拼音命中；实测广德市人民医院官网的简介页是 /gaikuang，
     // 旧规则只认 gywm|yygk|about|jianjie，导致载有床位/门诊量的简介页从未被抓取。
-    var introUrls = findLinksByHints(homeHtml, site, /医院概况|医院简介|医院介绍|走进医院|走进我们|医院情况|概况|简介|About/i, /gywm|yygk|about|jianjie|introduce|profile|gaikuang|gaishu|gk-|overview|jianjie|jj-|yyjj/i, 2)
-    var introOk = false
-    for (var ii = 0; ii < introUrls.length; ii++) {
-      var iobj = fetchPageObj(introUrls[ii])
-      if (iobj && (iobj.b64 || (iobj.html && iobj.html.length > 200))) { var before = text.length; pushObj("医院概况", iobj, 6000); if (text.length > before || iobj.b64) introOk = true }
-    }
-    if (!introOk) pushObj("官网首页", homeObj, 3000)
-
-    // 领导班子（列表页 + 跟进二级详情页，喂给 leadership[]）
-    var leaderUrls = findLinksByHints(homeHtml, site, /领导班子|现任领导|领导团队|医院领导|党政领导|领导之窗/, /ldjs|lingdao|lead|leader|executive/i, 2)
-    var leaderPages = 0
-    for (var li = 0; li < leaderUrls.length && leaderPages < 6; li++) {
-      var lobj = fetchPageObj(leaderUrls[li])
-      if (!lobj) continue
-      pushObj("领导班子", lobj, 3000); leaderPages++
-      if (!lobj.html) continue
-      var sub = findLinksByHints(lobj.html, leaderUrls[li], /院长|书记|副院长|总会计师|纪委书记|党委副书记|主任|委员/, /detail|content|show|news|item|\.html|p-\d/i, 6)
-      for (var si = 0; si < sub.length && leaderPages < 6; si++) {
-        var sobj = fetchPageObj(sub[si])
-        if (sobj && (sobj.b64 || (sobj.html && sobj.html.length > 200))) { pushObj("领导班子", sobj, 1500); leaderPages++ }
+    var introUrls = []
+    if (homeHtml) {
+      introUrls = findLinksByHints(homeHtml, site, /医院概况|医院简介|医院介绍|走进医院|走进我们|医院情况|概况|简介|About/i, /gywm|yygk|about|jianjie|introduce|profile|gaikuang|gaishu|gk-|overview|jianjie|jj-|yyjj/i, 2)
+      var introOk = false
+      for (var ii = 0; ii < introUrls.length; ii++) {
+        var iobj = fetchPageObj(introUrls[ii])
+        if (iobj && (iobj.b64 || (iobj.html && iobj.html.length > 200))) { var before = text.length; if (pushObj("医院概况", iobj, 6000, OFFICIAL_CAP) || iobj.b64) introOk = true; if (text.length > before || iobj.b64) introOk = true }
       }
+      if (!introOk && homeObj) pushObj("官网首页", homeObj, 3000, OFFICIAL_CAP)
+
+      // 领导班子（列表页 + 跟进二级详情页，喂给 leadership[]）
+      var leaderUrls = findLinksByHints(homeHtml, site, /领导班子|现任领导|领导团队|医院领导|党政领导|领导之窗/, /ldjs|lingdao|lead|leader|executive/i, 2)
+      var leaderPages = 0
+      for (var li = 0; li < leaderUrls.length && leaderPages < 6; li++) {
+        var lobj = fetchPageObj(leaderUrls[li])
+        if (!lobj) continue
+        pushObj("领导班子", lobj, 3000, OFFICIAL_CAP); leaderPages++
+        if (!lobj.html) continue
+        var sub = findLinksByHints(lobj.html, leaderUrls[li], /院长|书记|副院长|总会计师|纪委书记|党委副书记|主任|委员/, /detail|content|show|news|item|\.html|p-\d/i, 6)
+        for (var si = 0; si < sub.length && leaderPages < 6; si++) {
+          var sobj = fetchPageObj(sub[si])
+          if (sobj && (sobj.b64 || (sobj.html && sobj.html.length > 200))) { pushObj("领导班子", sobj, 1500, OFFICIAL_CAP); leaderPages++ }
+        }
+      }
+
+      // 信息公开/预决算（年收入）——来源标签统一为「年报」
+      var finUrls = findLinksByHints(homeHtml, site, /信息公开|预决算|部门决算|决算公开|财务公开|年度预算|预算决算/, /xxgk|ysjs|juesuan|budget|finance|annual|report/i, 2)
+      for (var fi = 0; fi < finUrls.length; fi++) pushObj("年报", fetchPageObj(finUrls[fi]), 2500, OFFICIAL_CAP)
     }
 
-    // 信息公开/预决算（年收入）
-    var finUrls = findLinksByHints(homeHtml, site, /信息公开|预决算|部门决算|决算公开|财务公开|年度预算|预算决算/, /xxgk|ysjs|juesuan|budget|finance|annual|report/i, 2)
-    for (var fi = 0; fi < finUrls.length; fi++) pushObj("信息公开·预决算", fetchPageObj(finUrls[fi]), 2500)
-
-    // 多来源兜底（best-effort：百科/公示/年报），失败只跳过、不阻塞官网主路径。
-    // 2026-10-29 修复：原先取「第一条非排除结果」，实测搜「医院名 百度百科」首条是「XX市」城市词条，
-    // 抓回来毫无医院信息。改为遍历结果、要求标题命中医院名（titleMatchesHospital）后再抓。
-    var searchFetch = function (query, label) {
+    // 公开源检索：不再等官网页用尽配额才跑。失败只跳过、不阻塞主路径。
+    // 标题须 titleMatchesHospital 才抓。discoverSite 仍排除微信；公众号走下面的专用检索。
+    var searchFetch = function (query, label, budget) {
       try {
         var results = bingResults(query)
         for (var ri = 0; ri < results.length; ri++) {
           var u = results[ri].url
           if (/bing\.com|microsoft|\.msn\.|aiqicha|qcc|tianyancha|360\.com|so\.com|weixin|toutiao|zhihu|\/privacy|\/settings|\/account/i.test(u)) continue
           if (!titleMatchesHospital(results[ri].title, name)) continue
-          pushObj(label, fetchPageObj(u), 2500)
-          return
+          if (pushObj(label, fetchPageObj(u), budget || 2500)) return true
         }
       } catch (_) {}
+      return false
     }
-    if (text.length < TOTAL) searchFetch(name + " 门诊量 床位 职工 简介", "数据")
-    if (text.length < TOTAL) searchFetch(name + " 百度百科", "百科")
-    if (text.length < TOTAL) searchFetch(name + " 卫生健康委 医院等级 评审 公示", "公示")
-    if (text.length < TOTAL) searchFetch(name + " 部门决算 预算公开 收支", "年报")
+    searchFetch(name + " 卫生健康委员会 医院等级 评审 公示", "卫健委公示", 2000)
+    if (sources.indexOf("卫健委公示") < 0) searchFetch(name + " 卫生健康委员会 简介", "卫健委公示", 2000)
+    searchFetch(name + " site:gov.cn 等级 床位", "政府公开", 2000)
+    searchFetch(name + " 百度百科", "百科", 2000)
+    if (sources.indexOf("百科") < 0) searchFetch(name + " 医院等级", "百科", 2000)
+    searchFetch(name + " 部门决算 预算公开 收支", "年报", 2000)
+
+    // 微信公众号单独检索，不走 discoverSite 的 weixin 排除。抓取失败（防盗链/登录墙）只跳过，不假装抓到。
+    try {
+      var wxResults = bingResults(name + " site:mp.weixin.qq.com 简介 OR 官方")
+      var wxAttempted = 0
+      var wxOk = false
+      for (var wi = 0; wi < wxResults.length; wi++) {
+        var wu = wxResults[wi].url
+        if (!/mp\.weixin\.qq\.com/i.test(wu)) continue
+        if (!titleMatchesHospital(wxResults[wi].title, name)) continue
+        wxAttempted++
+        var wobj = fetchPageObj(wu)
+        if (!wobj) continue
+        var wraw = String(wobj.html || "")
+        if (/环境异常|完成验证|请在微信客户端|请使用微信打开|当前环境异常/i.test(wraw) && !/id=["']js_content|rich_media_content|id=["']img-content/i.test(wraw)) {
+          continue
+        }
+        if (pushObj("微信公众号", wobj, 2000)) { wxOk = true; break }
+      }
+      if (!wxOk) {
+        if (wxAttempted > 0) sourceNotes.push("微信公众号未能抓取（防盗链或需登录），已跳过")
+        else sourceNotes.push("未检索到可核对的微信公众号文章，已跳过")
+      }
+    } catch (_) {
+      sourceNotes.push("微信公众号未能抓取，已跳过")
+    }
+    if (officialError) sourceNotes.push(officialError)
 
     text = text.slice(0, TOTAL)
     if ((!text || text.length < 30) && binSections.length === 0) {
-      return e.json(200, { ok: false, code: "thin_page", url: site, message: "已打开官网但正文过少（可能是图片站/需JS渲染），可改用「AI匹配」或粘贴简介文本" })
+      if (!site) return e.json(200, { ok: false, code: "no_site", message: "未提供官网且自动发现失败，公开渠道也未抓到可用正文，请先填写官网或粘贴简介文本", sources: sources, sourceNotes: sourceNotes })
+      if (officialError) return e.json(200, { ok: false, code: "fetch_failed", url: site, message: officialError, sources: sources, sourceNotes: sourceNotes })
+      return e.json(200, { ok: false, code: "thin_page", url: site, message: "已打开页面但正文过少（可能是图片站/需JS渲染），可改用「AI匹配」或粘贴简介文本", sources: sources, sourceNotes: sourceNotes })
     }
 
     $app.logger().info("customer fetch-site ok", "user", userId, "name", name, "url", site, "intro", introUrls[0] || "-", "len", text.length, "bin", binSections.length)
@@ -482,7 +523,7 @@ routerAdd("POST", "/api/customers/fetch-site", (e) => {
     }
     } catch (exLeads) { leadsError = String(exLeads && exLeads.message || exLeads) }
 
-    return e.json(200, { ok: true, url: site, introUrl: introUrls[0] || "", title: title.slice(0, 200), text: text, binSections: binSections, sources: sources, images: images, leads: leads, leadsError: leadsError })
+    return e.json(200, { ok: true, url: site || "", introUrl: introUrls[0] || "", title: title.slice(0, 200), text: text, binSections: binSections, sources: sources, sourceNotes: sourceNotes, images: images, leads: leads, leadsError: leadsError })
   } catch (ex) {
     $app.logger().error("customer fetch-site failed", "err", String(ex))
     return e.json(500, { error: "fetch_site_failed", message: "抓取官网失败：" + String(ex).slice(0, 200), fingerprint: "cfs-" + Math.floor(Math.random() * 1e9).toString(36) })

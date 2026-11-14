@@ -166,7 +166,7 @@ export function CustomerListPanel({
                 type="button"
                 onClick={() => setEnrichConfirm({ scope: "batch" })}
                 disabled={customers.length === 0}
-                title="补齐缺失最多的前 3 家客户——点击后先出确认窗，说清影响范围与耗时"
+                title="优先补齐缺失最多的前 3 家：抓取官网、卫健委、政府公开信息和可抓到的公众号，只填空字段，结果带来源并标「AI 提供需核实」"
                 className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-primary/10 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 <Wand2 className="h-3.5 w-3.5" />
@@ -177,7 +177,7 @@ export function CustomerListPanel({
                 type="button"
                 onClick={() => setEnrichConfirm({ scope: "full" })}
                 disabled={customers.length === 0}
-                title="对全部客户依次执行补全（串行、耗时长，可随时停止）——点击后先出确认窗"
+                title="对已加载客户依次补全（串行、可停止）：跑官网、卫健委、政府公开信息和可抓到的公众号；请勿在未核对时对全量真实客户执行"
                 className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 <Wand2 className="h-3.5 w-3.5" />
@@ -449,12 +449,12 @@ export function CustomerListPanel({
             <DialogTitle>{enrichConfirm?.scope === "full" ? "全量补全确认" : "批量补全确认"}</DialogTitle>
           </DialogHeader>
           <p className="text-sm leading-relaxed text-foreground">
-            {enrichScopeCopy}，AI 抓取官网/百科/公示等来源补全空白字段。
+            {enrichScopeCopy}。将检索医院官网、当地卫健委、政府公开信息、权威网站和可抓到的微信公众号，只补空着的公开字段；已人工核实的字段不会覆盖，联系人与跟进不会由 AI 填写。
           </p>
           <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
-            <li>· 已填字段不会被覆盖</li>
-            <li>· AI 补全结果均标记「AI 提供需核实」，请逐项核对</li>
-            <li>· 执行中可随时点「停止」中断</li>
+            <li>· 结果会带来源标签，并一律标记「AI 提供需核实」，请逐项核对</li>
+            <li>· 微信公众号若遇防盗链或需登录，会如实说明并跳过，不假装抓到</li>
+            <li>· 已核实字段不覆盖；执行中可随时点「停止」中断</li>
           </ul>
           <div className="mt-3 flex justify-end gap-2">
             <button

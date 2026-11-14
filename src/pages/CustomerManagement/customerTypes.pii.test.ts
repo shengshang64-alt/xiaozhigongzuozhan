@@ -5,7 +5,7 @@
  * **发往第三方云模型或对外引用前一律 redactPii**，但有两个入口当年漏了：
  *   ① 情报 AI 摘要打标：content_snippet 前 1500 字原样发模型；
  *      真实样本（_r69_intel.json）里就有「供应商联系电话：13330076038」「联系方式：0832-22561202」。
- *   ② 客户官网抽取：rawText 前 16000 字原样发模型，官网公告常带联系人手机/座机/身份证。
+ *   ② 客户官网抽取：rawText 前 20000 字原样发模型，官网公告常带联系人手机/座机/身份证。
  * 这两处都是「发出去就收不回」的单向泄漏，且不像界面问题那样能被肉眼发现。
  *
  * 本文件直接断言**最终 messages**（而不是中间变量）：只有这样才能证明真的没发出去。
@@ -49,9 +49,18 @@ describe("客户官网抽取：进模型前必须脱敏", () => {
     expect(text).toContain("138****5678")
   })
 
-  it("仍然受 16000 字上限约束（脱敏在前、截断在后，顺序不能反）", () => {
-    const text = payload(buildExtractMessages(RAW_WITH_PII))
-    expect(text.length).toBeLessThan(16000 + 200)
+  it("仍然受 20000 字上限约束（先截断再脱敏）", () => {
+    const huge = `${"某市第一人民医院公开信息。".repeat(3000)}联系电话：13812345678`
+    const text = payload(buildExtractMessages(huge))
+    expect(text).not.toContain("13812345678")
+    expect(text.length).toBeLessThan(20000 + 2000)
+  })
+
+  it("抽取提示要求只摘录正文、优先卫健委/政府公开、不编造联系人", () => {
+    const text = payload(buildExtractMessages("某医院简介"))
+    expect(text).toContain("卫健委公示")
+    expect(text).toContain("政府公开")
+    expect(text).toContain("绝不编造信息化负责人")
   })
 
   it("无 PII 的纯文本原样透传（不做多余改写）", () => {

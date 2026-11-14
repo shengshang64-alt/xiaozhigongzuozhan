@@ -50,6 +50,18 @@ import {
   type RefOption,
   type SolutionLiteRow,
 } from "./customerTypes"
+import {
+  BACKFILL_STAGE,
+  backfillCustomerNotes,
+  previewProjectBackfill,
+  type BackfillPreview,
+  type BackfillProjectInput,
+} from "./projectBackfill"
+import {
+  previewLeanImport,
+  type LeanImportPreview,
+  type LeanImportRow,
+} from "./leanImport"
 
 // ---------------------------------------------------------------------------
 // 数据请求（走 __pb 代理自定义路由）
@@ -961,12 +973,13 @@ export function useCustomerManagement() {
     const name = customerDraft.hospital_name.trim()
     setFetchingSite(true)
     try {
-      const r = await apiFetch<{ ok: boolean; url?: string; introUrl?: string; text?: string; message?: string }>(
+      const r = await apiFetch<{ ok: boolean; url?: string; introUrl?: string; text?: string; message?: string; sources?: string[]; sourceNotes?: string[] }>(
         "/api/customers/fetch-site",
         { method: "POST", body: JSON.stringify({ name, website: customerDraft.website.trim() }) },
       )
       if (!r.ok || !r.text) {
-        toast.error(r.message || "抓取官网失败，可改用「AI 匹配」或粘贴官网简介文本")
+        const notes = r.sourceNotes && r.sourceNotes.length ? ` ${r.sourceNotes.join("；")}` : ""
+        toast.error((r.message || "抓取公开信息失败，可改用「AI 匹配」或粘贴简介文本") + notes)
         return
       }
       if (!customerDraft.website.trim() && r.url) setDraftField("website", r.url)
@@ -1040,13 +1053,13 @@ ${lead.url}`,
     name: string,
     website: string,
     direct: boolean,
-  ): Promise<{ ok: boolean; url?: string; text?: string; message?: string; sources?: string[]; leads?: CustomerLead[] }> => {
+  ): Promise<{ ok: boolean; url?: string; text?: string; message?: string; sources?: string[]; sourceNotes?: string[]; leads?: CustomerLead[] }> => {
     try {
       const r = await apiFetch<{
-        ok: boolean; url?: string; text?: string; message?: string; sources?: string[]; binSections?: BinSection[]; leads?: CustomerLead[]
+        ok: boolean; url?: string; text?: string; message?: string; sources?: string[]; sourceNotes?: string[]; binSections?: BinSection[]; leads?: CustomerLead[]
       }>("/api/customers/fetch-site", { method: "POST", body: JSON.stringify({ name, website, direct }) })
       if (r.ok) r.text = decodeBinSections(r.text || "", r.binSections)
-      return { ok: r.ok, url: r.url, text: r.text, message: r.message, sources: r.sources, leads: Array.isArray(r.leads) ? r.leads : [] }
+      return { ok: r.ok, url: r.url, text: r.text, message: r.message, sources: r.sources, sourceNotes: r.sourceNotes, leads: Array.isArray(r.leads) ? r.leads : [] }
     } catch {
       return { ok: false, message: "网络异常，抓取失败" }
     }
@@ -1091,7 +1104,7 @@ ${lead.url}`,
   }, [requireLogin, articleUrl, costConfirm, costText, customerDraft.hospital_name, fetchSiteText, extractFromText])
 
   // 批量补全单个客户：抓官网→抽取→仅回填当前为空的字段→PATCH 写库；返回本次实际补上的字段数
-  const enrichCustomerRow = useCallback(async (row: CustomerRow): Promise<{ filled: number; note: string; sources?: string[] }> => {
+  const enrichCustomerRow = useCallback(async (row: CustomerRow): Promise<{ filled: number; note: string; sources?: string[]; sourceNotes?: string[] }> => {
     const fetched = await fetchSiteText(row.hospital_name, row.website, false)
     // 2026-10-07 用户需求：抓官网时同步的「信息化商机线索」落到详情面板（官网公告/招标栏目 + 政府网站检索）
     if (fetched.ok && fetched.leads?.length) {
@@ -1099,9 +1112,9 @@ ${lead.url}`,
     } else if (fetched.ok) {
       setSiteLeads({ customerId: row.id, leads: [] })
     }
-    if (!fetched.ok || !fetched.text) return { filled: 0, note: fetched.message || "官网抓取失败", sources: fetched.sources }
+    if (!fetched.ok || !fetched.text) return { filled: 0, note: fetched.message || "公开信息抓取失败", sources: fetched.sources, sourceNotes: fetched.sourceNotes }
     const profile = await extractProfileFromText(fetched.text)
-    if (!profile) return { filled: 0, note: "正文未能抽取到可核实字段", sources: fetched.sources }
+    if (!profile) return { filled: 0, note: "正文未能抽取到可核实字段", sources: fetched.sources, sourceNotes: fetched.sourceNotes }
 
     const derived = deriveFlatFromLeadership(profile.leadership)
     const patch: Record<string, unknown> = {}
@@ -1147,14 +1160,14 @@ ${lead.url}`,
     }
 
     const filled = Object.keys(patch).filter((k) => k !== "ai_generated_fields").length
-    if (filled === 0) return { filled: 0, note: "无新增可填字段（已有信息保持不变）", sources: fetched.sources }
+    if (filled === 0) return { filled: 0, note: "无新增可填字段（已有信息保持不变）", sources: fetched.sources, sourceNotes: fetched.sourceNotes }
     patch.ai_generated_fields = Array.from(marks)
     const updated = await apiFetch<CustomerRow>(`/api/customers/${row.id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
     })
     setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
-    return { filled, note: `补全 ${filled} 项`, sources: fetched.sources }
+    return { filled, note: `补全 ${filled} 项`, sources: fetched.sources, sourceNotes: fetched.sourceNotes }
   }, [fetchSiteText, extractProfileFromText])
 
   // 批量补全入口：默认先处理前 limit 家（缺省全部）；串行、可中途取消；只填空字段、已核实字段不覆盖
@@ -1189,7 +1202,7 @@ ${lead.url}`,
         setBatchProgress({ done: i + 1, total: slice.length })
       }
       if (batchCancelRef.current) toast.info(`批量补全已停止，共补上 ${totalFilled} 个字段`)
-      else toast.success(`批量补全完成，共补上 ${totalFilled} 个字段（均标记「AI 提供需核实」，请逐项核对）`)
+      else toast.success(`批量补全完成，共补上 ${totalFilled} 个字段（来源含官网、卫健委、政府公开及可抓到的公众号，均标记「AI 提供需核实」，请逐项核对）`)
     } finally {
       setBatchEnriching(false)
     }
@@ -1218,9 +1231,11 @@ ${lead.url}`,
           const r = await enrichCustomerRow(row)
           if (r.filled > 0) {
             const src = r.sources && r.sources.length ? `（来源：${r.sources.join("、")}）` : ""
-            toast.success(`已为「${row.hospital_name}」补全 ${r.filled} 项${src}，均标记「AI 提供需核实」，请逐项核对`)
+            const notes = r.sourceNotes && r.sourceNotes.length ? ` ${r.sourceNotes.join("；")}` : ""
+            toast.success(`已为「${row.hospital_name}」补全 ${r.filled} 项${src}，均标记「AI 提供需核实」，请逐项核对。${notes}`)
           } else {
-            toast.info(r.note)
+            const notes = r.sourceNotes && r.sourceNotes.length ? ` ${r.sourceNotes.join("；")}` : ""
+            toast.info(`${r.note}${notes}`)
           }
         } catch {
           toast.error("补全失败，请稍后重试")
@@ -1281,6 +1296,295 @@ ${lead.url}`,
       setSavingCustomer(false)
     }
   }, [userId, customerDraft, customerAiFields, editingCustomerId, selectCustomer])
+
+
+  // ------------------------------ 从项目回填 / 瘦模板导入（t135） ------------------------------
+  const [backfillOpen, setBackfillOpen] = useState(false)
+  const [backfillLoading, setBackfillLoading] = useState(false)
+  const [backfillApplying, setBackfillApplying] = useState(false)
+  const [backfillPreview, setBackfillPreview] = useState<BackfillPreview | null>(null)
+  const [backfillError, setBackfillError] = useState("")
+  const [leanImportPreview, setLeanImportPreview] = useState<LeanImportPreview | null>(null)
+  const [leanImportParsing, setLeanImportParsing] = useState(false)
+  const [leanImportApplying, setLeanImportApplying] = useState(false)
+
+  const fetchAllPages = useCallback(async <T,>(pathWithUser: string): Promise<T[]> => {
+    const items: T[] = []
+    let page = 1
+    const perPage = 200
+    while (page <= 20) {
+      const res = await apiFetch<ListResponse<T>>(`${pathWithUser}&page=${page}&perPage=${perPage}`).catch(() => null)
+      const batch = res?.items ?? []
+      items.push(...batch)
+      if (batch.length < perPage) break
+      page += 1
+    }
+    return items
+  }, [])
+
+  const refreshProjectBackfill = useCallback(async () => {
+    if (!userId) {
+      setBackfillError("请先登录")
+      return
+    }
+    setBackfillLoading(true)
+    setBackfillError("")
+    try {
+      const enc = encodeURIComponent(userId)
+      const [custs, opps, bids, sols, quotes] = await Promise.all([
+        fetchAllPages<{ id: string; hospital_name: string }>(`/api/customers?rh_user_id=${enc}`),
+        fetchAllPages<{ id: string; customer_id: string; opp_name: string; ref_type?: string; ref_id?: string }>(`/api/opportunities?rh_user_id=${enc}`),
+        fetchAllPages<{ id: string; project_name: string; hospital: string; opportunity_id?: string; deleted_at?: string }>(`/api/bid_projects?rh_user_id=${enc}`),
+        fetchAllPages<{ id: string; solution_name: string; hospital: string }>(`/api/solutions?rh_user_id=${enc}`),
+        fetchAllPages<{ id: string; quote_name: string; ref_name: string; opportunity_id?: string }>(`/api/quotes?rh_user_id=${enc}`),
+      ])
+      const projects: BackfillProjectInput[] = [
+        ...bids.map((b) => ({
+          id: b.id,
+          source: "bid" as const,
+          name: b.project_name ?? "",
+          hospital: b.hospital ?? "",
+          opportunity_id: b.opportunity_id ?? "",
+          deleted_at: b.deleted_at ?? "",
+        })),
+        ...sols.map((s) => ({
+          id: s.id,
+          source: "solution" as const,
+          name: s.solution_name ?? "",
+          hospital: s.hospital ?? "",
+        })),
+        ...quotes.map((q) => ({
+          id: q.id,
+          source: "quote" as const,
+          name: q.quote_name ?? "",
+          hospital: q.ref_name ?? "",
+          opportunity_id: q.opportunity_id ?? "",
+        })),
+      ]
+      setBackfillPreview(previewProjectBackfill(projects, custs, opps))
+    } catch {
+      setBackfillError("汇总项目失败，请稍后重试")
+      setBackfillPreview(null)
+    } finally {
+      setBackfillLoading(false)
+    }
+  }, [userId, fetchAllPages])
+
+  const openProjectBackfill = useCallback(() => {
+    if (!requireLogin()) return
+    setBackfillOpen(true)
+    void refreshProjectBackfill()
+  }, [requireLogin, refreshProjectBackfill])
+
+  const closeProjectBackfill = useCallback(() => {
+    if (backfillApplying) return
+    setBackfillOpen(false)
+  }, [backfillApplying])
+
+  const applyProjectBackfill = useCallback(async () => {
+    if (!userId || !backfillPreview) return
+    setBackfillApplying(true)
+    try {
+      const createdByHospital = new Map<string, CustomerRow>()
+      let createdCustomers = 0
+      let linked = 0
+      const ensureCustomer = async (hospital: string, source: BackfillProjectInput["source"]) => {
+        const hit = createdByHospital.get(hospital.trim())
+        if (hit) return hit
+        const rec = await apiFetch<CustomerRow>("/api/customers", {
+          method: "POST",
+          body: JSON.stringify({
+            hospital_name: hospital.trim(),
+            notes: backfillCustomerNotes([source]),
+          }),
+        })
+        createdByHospital.set(hospital.trim(), rec)
+        setCustomers((prev) => (prev.some((c) => c.id === rec.id) ? prev : [rec, ...prev]))
+        createdCustomers += 1
+        return rec
+      }
+      const ensureOpportunity = async (
+        customer: { id: string; hospital_name: string },
+        project: BackfillProjectInput,
+        reuseId?: string,
+      ) => {
+        if (reuseId) return reuseId
+        const rec = await apiFetch<OpportunityRow>("/api/opportunities", {
+          method: "POST",
+          body: JSON.stringify({
+            customer_id: customer.id,
+            customer_name: customer.hospital_name,
+            opp_name: project.name.trim() || `${project.hospital.trim() || "未命名医院"}项目`,
+            stage: BACKFILL_STAGE[project.source],
+            ref_type: project.source,
+            ref_id: project.id,
+            ref_name: project.name,
+            notes: backfillCustomerNotes([project.source]),
+          }),
+        })
+        setOpportunities((prev) => (prev.some((o) => o.id === rec.id) ? prev : [rec, ...prev]))
+        return rec.id
+      }
+      const writeOpportunityId = async (project: BackfillProjectInput, opportunityId: string, opportunityName: string) => {
+        if (project.source === "bid") {
+          await apiFetch(`/api/bid_projects/${project.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ opportunity_id: opportunityId }),
+          })
+          setBidProjects((prev) => prev.map((b) => (b.id === project.id ? { ...b, opportunity_id: opportunityId } : b)))
+        } else if (project.source === "quote") {
+          await apiFetch(`/api/quotes/${project.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ opportunity_id: opportunityId, opportunity_name: opportunityName }),
+          })
+        }
+      }
+
+      for (const item of backfillPreview.create) {
+        const customer = await ensureCustomer(item.project.hospital, item.project.source)
+        const oppId = await ensureOpportunity(customer, item.project)
+        if (item.canWriteOpportunityId) await writeOpportunityId(item.project, oppId, item.project.name)
+        linked += 1
+      }
+      for (const item of backfillPreview.link) {
+        if (!item.customer) continue
+        const oppId = await ensureOpportunity(item.customer, item.project, item.reuseOpportunity?.id)
+        if (item.canWriteOpportunityId) await writeOpportunityId(item.project, oppId, item.project.name)
+        linked += 1
+      }
+      toast.success(`回填完成：新建档案 ${createdCustomers} 家，处理商机 ${linked} 条。待确认项未写入，请人工核对后再处理。`)
+      await refreshProjectBackfill()
+    } catch {
+      toast.error("回填写入失败，请稍后重试")
+    } finally {
+      setBackfillApplying(false)
+    }
+  }, [userId, backfillPreview, refreshProjectBackfill])
+
+  const previewLeanImportRows = useCallback(async (rows: LeanImportRow[], parseErrors: string[]) => {
+    if (!userId) {
+      const preview = previewLeanImport(rows, [], [])
+      preview.errors = [...parseErrors, ...preview.errors, "请先登录后再预览导入"]
+      setLeanImportPreview(preview)
+      return
+    }
+    setLeanImportParsing(true)
+    try {
+      const enc = encodeURIComponent(userId)
+      const [custs, opps] = await Promise.all([
+        fetchAllPages<{ id: string; hospital_name: string; contacts?: { name: string; title: string; phone: string }[]; last_follow_at?: string }>(`/api/customers?rh_user_id=${enc}`),
+        fetchAllPages<{ id: string; customer_id: string; opp_name: string }>(`/api/opportunities?rh_user_id=${enc}`),
+      ])
+      const preview = previewLeanImport(rows, custs, opps)
+      preview.errors = [...parseErrors, ...preview.errors]
+      setLeanImportPreview(preview)
+    } catch {
+      const preview = previewLeanImport(rows, [], [])
+      preview.errors = [...parseErrors, ...preview.errors, "拉取已有客户失败，预览可能不准确，请稍后重试"]
+      setLeanImportPreview(preview)
+    } finally {
+      setLeanImportParsing(false)
+    }
+  }, [userId, fetchAllPages])
+
+  const clearLeanImportPreview = useCallback(() => setLeanImportPreview(null), [])
+
+  const applyLeanImport = useCallback(async () => {
+    if (!userId || !leanImportPreview) return
+    setLeanImportApplying(true)
+    try {
+      let created = 0
+      let updated = 0
+      const writeItem = async (item: (typeof leanImportPreview.create)[number], isNew: boolean) => {
+        let customer = item.customer
+        if (isNew || !customer) {
+          const rec = await apiFetch<CustomerRow>("/api/customers", {
+            method: "POST",
+            body: JSON.stringify({
+              hospital_name: item.hospitalName,
+              contacts: item.contactsToAdd,
+              last_follow_at: item.lastFollowAt || "",
+              notes: "来源：经营数据导入",
+            }),
+          })
+          customer = rec
+          setCustomers((prev) => (prev.some((c) => c.id === rec.id) ? prev : [rec, ...prev]))
+          created += 1
+        } else if (item.contactsToAdd.length || item.lastFollowAt) {
+          const mergedContacts = [...(customer.contacts ?? []), ...item.contactsToAdd]
+          const patch: Record<string, unknown> = {}
+          if (item.contactsToAdd.length) patch.contacts = mergedContacts
+          if (item.lastFollowAt) patch.last_follow_at = item.lastFollowAt
+          const rec = await apiFetch<CustomerRow>(`/api/customers/${customer.id}`, {
+            method: "PATCH",
+            body: JSON.stringify(patch),
+          })
+          customer = rec
+          setCustomers((prev) => prev.map((c) => (c.id === rec.id ? rec : c)))
+          updated += 1
+        } else {
+          updated += 1
+        }
+        const oppIdByName = new Map(
+          opportunities.filter((o) => o.customer_id === customer!.id).map((o) => [o.opp_name.trim(), o.id]),
+        )
+        for (const opp of item.oppsToAdd) {
+          if (oppIdByName.has(opp.oppName)) continue
+          const rec = await apiFetch<OpportunityRow>("/api/opportunities", {
+            method: "POST",
+            body: JSON.stringify({
+              customer_id: customer.id,
+              customer_name: customer.hospital_name,
+              opp_name: opp.oppName,
+              stage: opp.stage || "lead",
+              notes: "来源：经营数据导入",
+            }),
+          })
+          oppIdByName.set(opp.oppName, rec.id)
+          setOpportunities((prev) => (prev.some((o) => o.id === rec.id) ? prev : [rec, ...prev]))
+        }
+        for (const fol of item.followsToAdd) {
+          const oppId = fol.oppName ? oppIdByName.get(fol.oppName) ?? "" : ""
+          const rec = await apiFetch<FollowRecordRow>("/api/follow_records", {
+            method: "POST",
+            body: JSON.stringify({
+              rh_user_id: userId,
+              customer_id: customer.id,
+              opportunity_id: oppId,
+              record_type: "其他",
+              content: fol.content,
+              stage_change: "",
+            }),
+          })
+          setAllFollowRecords((prev) => [rec, ...prev])
+          if (fol.nextFollow && oppId) {
+            await apiFetch(`/api/opportunities/${oppId}`, {
+              method: "PATCH",
+              body: JSON.stringify({ next_follow_date: fol.nextFollow }),
+            }).catch(() => null)
+            setOpportunities((prev) => prev.map((o) => (o.id === oppId ? { ...o, next_follow_date: fol.nextFollow } : o)))
+          }
+        }
+        if (item.lastFollowAt) {
+          await apiFetch(`/api/customers/${customer.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ last_follow_at: item.lastFollowAt }),
+          }).catch(() => null)
+          setCustomers((prev) => prev.map((c) => (c.id === customer!.id ? { ...c, last_follow_at: item.lastFollowAt! } : c)))
+        }
+      }
+      for (const item of leanImportPreview.create) await writeItem(item, true)
+      for (const item of leanImportPreview.update) await writeItem(item, false)
+      toast.success(`导入完成：新建 ${created} 家，更新 ${updated} 家。待确认项未写入。`)
+      setLeanImportPreview(null)
+    } catch {
+      toast.error("导入写入失败，请稍后重试")
+    } finally {
+      setLeanImportApplying(false)
+    }
+  }, [userId, leanImportPreview, opportunities])
+
+
 
   // ------------------------------ 联系人 ------------------------------
   const [contactName, setContactName] = useState("")
@@ -1998,6 +2302,22 @@ ${lead.url}`,
     deleteOppRefCounts,
     deleteRefsChecking,
     checkOpportunityDeleteRefs,
+    // t135 从项目回填 / 瘦模板导入
+    backfillOpen,
+    backfillLoading,
+    backfillApplying,
+    backfillPreview,
+    backfillError,
+    openProjectBackfill,
+    closeProjectBackfill,
+    refreshProjectBackfill,
+    applyProjectBackfill,
+    leanImportPreview,
+    leanImportParsing,
+    leanImportApplying,
+    previewLeanImportRows,
+    applyLeanImport,
+    clearLeanImportPreview,
     // 看板
     boardGroups,
   }

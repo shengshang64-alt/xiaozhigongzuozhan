@@ -354,17 +354,27 @@ export function buildProfileMessages(hospitalName: string): LlmMessage[] {
   ]
 }
 
+const EXTRACT_SYSTEM_PROMPT = `你是医疗信息化行业的资深售前顾问。用户给你的是已按来源标注的公开资料正文（例如【官网首页】【医院概况】【卫健委公示】【政府公开】【百科】【年报】【微信公众号】）。你只从这段正文里摘录医院公开档案，只输出一个 JSON 对象，不要输出任何其他文字、解释或 markdown 围栏之外的内容。JSON 结构：${PROFILE_JSON_SPEC}
+硬性要求：
+1. 只摘录正文里明确出现的公开信息，凡是正文没写到的字段一律填 null，严禁用常识补全或编造精确数字、人名、电话、联系人；
+2. 来源冲突时优先采信【卫健委公示】【政府公开】，其次官网与年报，再次百科与公众号；
+3. 门诊量、床位数、年营业收入只填整数，不要带单位；年营业收入统一换算成“万元”（1亿元=10000万元）；数量级都没把握就填 null；
+4. president/party_secretary/it_lead 只在正文明确点名时填写姓名；信息化负责人极少公开，多数应填 null；绝不编造信息化负责人、电话或联系人（本任务也不提取联系人电话）；
+5. key_departments 只收录正文明确提到的重点专科或特色科室，没有则 null；
+6. leadership 只收录正文里明确出现「姓名+职务」配对的人，不得推测或补全未点名的人；president/party_secretary 若已在 leadership 中出现，也要照常填入对应姓名；
+7. 所有文本字段用简体中文。`
+
 export function buildExtractMessages(rawText: string): LlmMessage[] {
-  // 2026-11-04（审计 P1）：这段是医院官网抓下来的整页正文，最多 16000 字，会被原样发往
+  // 2026-11-04（审计 P1）：这段是医院官网与公开渠道抓下来的正文，最多 20000 字，会被原样发往
   // **第三方云模型**。官网新闻/公告里经常带联系人手机、座机、邮箱、身份证号（表彰/公示类尤其多），
   // 发出去就收不回。全站口径（kbPolicy / 竞品取证 / 知识库问答）都是「原文进 AI 前一律 redactPii」，
   // 此入口当年漏了。掩码保留头尾，不影响模型识别医院/科室/领导姓名（姓名本身不是 PII 掩码对象）。
-  const safeText = redactPii(rawText.slice(0, 16000))
+  const safeText = redactPii(rawText.slice(0, 20000))
   return [
-    { role: "system", content: PROFILE_SYSTEM_PROMPT },
+    { role: "system", content: EXTRACT_SYSTEM_PROMPT },
     {
       role: "user",
-      content: `请从下面这段文字里提取医院档案信息（文字里明确提到的才填，没提到的一律填 null）：\n\n${safeText}`,
+      content: `请从下面这段文字里提取医院档案信息（文字里明确提到的才填，没提到的一律填 null；来源冲突时优先【卫健委公示】【政府公开】；绝不编造信息化负责人、电话、联系人）：\n\n${safeText}`,
     },
   ]
 }
