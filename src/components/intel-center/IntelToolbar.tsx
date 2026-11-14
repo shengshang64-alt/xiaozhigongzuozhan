@@ -46,7 +46,8 @@ export function IntelToolbar({
   const secondaryBtn =
     "flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm text-card-foreground shadow-sm transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
   return (
-    <div className="sticky top-14 z-30 -mx-4 -mt-4 mb-5 flex flex-wrap items-center gap-2 border-b border-border bg-background/85 px-4 py-2 backdrop-blur lg:-mx-6 lg:-mt-6 lg:px-6">
+    // 2026-11-11：粘性 top 改按「顶栏 60px + 标签栏实际高度」，修掉 56px 硬编码压顶栏 / 被标签栏盖住
+    <div className="sticky top-[calc(60px+var(--xz-tabs-h,0px))] z-30 -mx-4 -mt-4 mb-5 flex flex-wrap items-center gap-2 border-b border-border bg-background/85 px-4 py-2 backdrop-blur lg:-mx-6 lg:-mt-6 lg:px-6">
       <button
         type="button"
         onClick={onOpenEntry}

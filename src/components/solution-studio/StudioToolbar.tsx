@@ -18,7 +18,8 @@ export function StudioToolbar({
   onSelectModel,
 }: StudioToolbarProps) {
   return (
-    <div className="sticky top-14 z-30 -mx-4 -mt-4 mb-5 flex items-center gap-2 border-b border-border bg-background/85 px-4 py-2 backdrop-blur lg:-mx-6 lg:-mt-6 lg:px-6">
+    // 2026-11-11：粘性 top 改按「顶栏 60px + 标签栏实际高度」，修掉 56px 硬编码压顶栏 / 被标签栏盖住
+    <div className="sticky top-[calc(60px+var(--xz-tabs-h,0px))] z-30 -mx-4 -mt-4 mb-5 flex items-center gap-2 border-b border-border bg-background/85 px-4 py-2 backdrop-blur lg:-mx-6 lg:-mt-6 lg:px-6">
       {inEditor && (
         <button
           type="button"

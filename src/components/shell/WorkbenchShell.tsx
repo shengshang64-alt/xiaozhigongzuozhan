@@ -1,4 +1,4 @@
-import { createContext, useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react"
+import { createContext, useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { Toaster } from "sonner"
 import { ErrorBoundary } from "@/components/common/ErrorBoundary"
@@ -127,7 +127,15 @@ export function WorkbenchShell() {
     <ShellAccountContext.Provider value={accountInfo}>
       {/* R-201 阶段A：本地自用域整站登录门禁（未登录时不挂载工作台子树） */}
       <TeamAuthGate>
-        <div className="flex min-h-screen bg-background text-foreground">
+        <div
+          className="flex min-h-screen bg-background text-foreground"
+          // 2026-11-11：粘性层高口径集中到一个 CSS 变量，避免各页工具条硬编码 top 值而互相压字。
+          // 页内工具条（BidToolbar / CrmToolbar / …）一律用
+          // `sticky top-[calc(60px+var(--xz-tabs-h,0px))]`：上层是 h-[60px] 顶栏，
+          // 标签栏只有「已打开 ≥2 个标签」时才渲染（38px），所以高度必须由这里按实际渲染结果下发，
+          // 不能在工具条里写死——否则单标签时多出 38px 空洞，多标签时工具条又会被标签栏盖住 42px。
+          style={{ "--xz-tabs-h": tabs.items.length > 1 ? "38px" : "0px" } as CSSProperties}
+        >
           <SidebarNav accountInfo={accountInfo} collapsed={collapsed} />
           <div className="flex min-w-0 flex-1 flex-col">
             <TopBarShell

@@ -54,16 +54,22 @@ export function WorkspaceTabs({
   return (
     <>
       {/* 2026-10-31 移动端修复：overflow-x-auto 在 sticky + flex 子项下不总能约束 scrollWidth，
-          实测文档仍被撑到 630px（视口 390）。外层再包一个 overflow-hidden 兜底，
-          标签栏自身继续横向滚动，但绝不把整页顶宽。 */}
-      <div className="min-w-0 max-w-full overflow-hidden">
+          实测文档仍被撑到 630px（视口 390）。因此保留一层宽度兜底。
+          2026-11-11 修复（粘性栏滚走）：兜底容器此前是**独立一层**、且带 overflow-hidden。
+          两个原因都会让内层 position:sticky 失效：
+            ① overflow-hidden 让该层成为滚动容器 → sticky 相对它定位；
+            ② 即便换成不建滚动容器的 overflow-clip，该层高度也只有标签栏自身 38px，
+               sticky 只能在 0 像素范围内「粘」住。
+          实测：滚动 400px 后标签栏 top=-340，已滚出视口，切标签必须先把页面滚回顶部。
+          现把兜底与粘性合并到同一层（父级是整列内容区，高度足够），内层继续横向滚动。 */}
+      <div className="sticky top-[60px] z-30 min-w-0 max-w-full overflow-x-clip">
       <div
         role="tablist"
         aria-label="已打开的页面"
         // 2026-10-31 移动端修复：加 max-w-full + min-w-0。
         // overflow-x-auto 只在自身内容超宽时生效，但若不限制自身宽度，
         // 它会被父级 flex 容器的 min-width:auto 撑开，把整页顶出横向滚动（实测 630px）。
-        className="sticky top-[60px] z-30 flex h-[38px] min-w-0 max-w-full items-stretch gap-1 overflow-x-auto overscroll-x-contain border-b border-border bg-card/70 px-2 backdrop-blur"
+        className="flex h-[38px] min-w-0 max-w-full items-stretch gap-1 overflow-x-auto overscroll-x-contain border-b border-border bg-card/70 px-2 backdrop-blur"
       >
         {tabs.items.map((path) => {
           const meta = ROUTE_BY_PATH[path]

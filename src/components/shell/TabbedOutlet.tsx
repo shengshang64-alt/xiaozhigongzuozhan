@@ -69,7 +69,11 @@ export function TabbedOutlet({ tabs, pathname }: TabbedOutletProps) {
             key={path}
             hidden={!active}
             data-tab-panel={path}
-            {...(!active ? { inert: "" as unknown as boolean, "aria-hidden": true } : {})}
+            // 修复（2026-11-11）：原写法 `inert: "" as unknown as boolean` 传的是空字符串，
+            // React 19 会打警告「Received an empty string for a boolean attribute」并把它当 false
+            // ——等于 inert 从未生效（隐藏标签页里的控件仍可被 Tab 聚焦）。@types/react 19 已支持
+            // boolean 形态，直接传 true 才是真正生效的隐藏语义。实测来源：浏览器 console 报错。
+            {...(!active ? { inert: true, "aria-hidden": true } : {})}
           >
             <ErrorBoundary key={`eb-${path}`}>
               <Suspense fallback={<RouteFallback />}>
