@@ -189,6 +189,15 @@ export function BidCheckPage(vm: BidCheckVm) {
     void doExport(kind)
   }
 
+  // 地址栏若已是 ?tab=upload（或其它非缺省 tab），派生逻辑不会在跑完后自动切走。
+  // 开始时先落到「检查中」，成功后进「检查报告」，失败则回到新建检查。
+  const startCheck = () => {
+    setSearchParams({ tab: "running" }, { replace: true })
+    void run().then((ok) => {
+      setSearchParams(ok ? { tab: "report" } : {}, { replace: true })
+    })
+  }
+
   // 原「检查结果」Tab 角标的 issueCount 随双 Tab 一起退役；三栏视图内的问题计数由 ReadingView 自行汇总
 
   return (
@@ -405,8 +414,8 @@ export function BidCheckPage(vm: BidCheckVm) {
                 {reviewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 AI 复核
               </Button>
-              {/* UX-v2：点击后不写地址——缺省派生会自动 走 检查中 → 检查报告 */}
-              <Button onClick={run} disabled={running || source.kind === "none"}>
+              {/* 开跑即写入 ?tab=running，完成后进 ?tab=report（避免停在 ?tab=upload） */}
+              <Button onClick={startCheck} disabled={running || source.kind === "none"}>
                 {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}
                 开始检查
               </Button>

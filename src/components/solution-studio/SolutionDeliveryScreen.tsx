@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/shell/PageHeader"
 import { RequirementCoverageCard } from "@/components/solution-studio/RequirementCoverageCard"
 import { SolutionDeliveryCheckCard } from "@/components/solution-studio/SolutionDeliveryCheckCard"
 import { SolutionSelfCheckOverviewCard } from "@/components/solution-studio/SolutionSelfCheckOverviewCard"
-import { auditRequirementCoverage, type RequirementCoverageResult } from "@/pages/SolutionStudio/requirementCoverage"
+import { auditRequirementCoverage, requirementCoveragePercent, type RequirementCoverageResult } from "@/pages/SolutionStudio/requirementCoverage"
 import { auditSolutionDelivery } from "@/pages/SolutionStudio/solDeliveryCheck"
 import { summarizeGenFailures } from "@/pages/SolutionStudio/genFailureSummary"
 import type { UseSolutionStudio } from "@/pages/SolutionStudio/useSolutionStudio"
@@ -83,10 +83,10 @@ function buildGates(args: {
   if (!coverage) {
     gates.push({ label: `需求覆盖率 ≥ ${GATE_LINE}%`, sub: "未关联建设清单，没有需求条目可核对", state: "na" })
   } else {
-    const pct = Math.round((coverage.counts.full / coverage.total) * 100)
+    const pct = requirementCoveragePercent(coverage)
     gates.push({
       label: `需求覆盖率 ≥ ${GATE_LINE}%`,
-      sub: `当前 ${pct}%（${coverage.counts.full}/${coverage.total} 条已落实），差 ${coverage.pending} 条`,
+      sub: `当前 ${pct}%（全部落实 ${coverage.counts.full}/${coverage.total}，部分落实 ${coverage.counts.partial}），差 ${coverage.pending} 条`,
       state: pct >= GATE_LINE ? "pass" : "fail",
     })
   }

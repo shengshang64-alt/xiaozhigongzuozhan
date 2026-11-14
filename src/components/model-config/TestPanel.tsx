@@ -69,9 +69,15 @@ export function TestPanel({ targetLabel, running, result, onRerun }: TestPanelPr
               </button>
             </div>
             {result.ok ? (
-              <div className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-background px-3 py-2.5 text-sm leading-relaxed text-foreground shadow-sm">
-                {result.reply}
-              </div>
+              (result.reply ?? "").trim() ? (
+                <div className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-background px-3 py-2.5 text-sm leading-relaxed text-foreground shadow-sm">
+                  {result.reply}
+                </div>
+              ) : (
+                <p className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2.5 text-sm leading-relaxed text-amber-700">
+                  通道通了，但没有返回可见正文
+                </p>
+              )
             ) : (
               <p className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm leading-relaxed text-destructive">
                 {result.message || "测试失败，请稍后重试"}

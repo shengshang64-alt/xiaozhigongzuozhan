@@ -489,9 +489,7 @@ export function ModelTestScreen({ p, onGoChannels }: Props) {
                   {resultOk ? (
                     emptyReply ? (
                       <div className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-[12.5px] leading-relaxed text-warning">
-                        接口返回成功但正文为空——通道是通的，只是这个模型没产出可见内容。常见于推理型模型把
-                        <span className="font-mono"> max_tokens </span>
-                        全用在思考上（测试固定 200）。想验证它能否出话，请在业务页用更大的输出上限试一次。
+                        通道通了，但没有返回可见正文。常见于推理型模型把额度用在思考上；可稍后在业务页再用一次确认它能否出话。
                       </div>
                     ) : (
                       <div className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border bg-background px-3 py-2 text-[12.5px] leading-relaxed text-foreground">

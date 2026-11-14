@@ -97,3 +97,13 @@ describe("④ 拆屏零丢失", () => {
     expect(page).toContain("完整报告属当次会话")
   })
 })
+
+describe("检查跑完自动进入报告页", () => {
+  it("开始检查会先写 ?tab=running，成功后写 ?tab=report（不依赖缺省派生）", () => {
+    const page = readSrc("./BidCheckPage.tsx")
+    expect(page).toContain("const startCheck")
+    expect(page).toContain('setSearchParams({ tab: "running" }')
+    expect(page).toContain('setSearchParams(ok ? { tab: "report" } : {}')
+    expect(page).toContain("onClick={startCheck}")
+  })
+})

@@ -7,6 +7,7 @@ import {
   REQUIREMENT_COVERAGE_ORDER,
   auditRequirementCoverage,
   buildRequirementPendingText,
+  requirementCoveragePercent,
   type RequirementCoverageLevel,
 } from "@/pages/SolutionStudio/requirementCoverage"
 import type { Chapter, ChecklistSnapshot } from "@/pages/SolutionStudio/solutionTypes"
@@ -57,7 +58,7 @@ export function RequirementCoverageRail({ snapshot, chapters, onSelectChapter }:
   const requirementLines = snapshot?.customer_requirements
   const result = useMemo(() => auditRequirementCoverage(requirementLines, chapters), [requirementLines, chapters])
   const noSnapshot = !requirementLines?.length || result.total === 0
-  const pct = noSnapshot ? 0 : Math.round((result.counts.full / result.total) * 100)
+  const pct = noSnapshot ? 0 : requirementCoveragePercent(result)
   const noBody = result.generatedChapters === 0
   const pendingRows = noSnapshot ? [] : result.rows.filter((r) => PENDING_LEVELS.includes(r.level))
   const listName = (snapshot?.checklist_name ?? "").trim()
@@ -89,7 +90,7 @@ export function RequirementCoverageRail({ snapshot, chapters, onSelectChapter }:
                 background: `conic-gradient(hsl(var(--primary)) 0 ${pct}%, hsl(var(--muted)) ${pct}% 100%)`,
               }}
               role="img"
-              aria-label={`需求覆盖率 ${pct}%：已落实 ${result.counts.full} / 共 ${result.total} 条`}
+              aria-label={`需求覆盖率 ${pct}%：全部落实 ${result.counts.full}、部分落实 ${result.counts.partial}、共 ${result.total} 条`}
             >
               <div className="absolute inset-[14px] flex flex-col items-center justify-center rounded-full bg-card">
                 <b className="text-base tabular-nums text-card-foreground">{pct}%</b>
@@ -111,7 +112,7 @@ export function RequirementCoverageRail({ snapshot, chapters, onSelectChapter }:
           <p className="mt-2.5 border-t border-border pt-2.5 text-[11px] leading-relaxed text-muted-foreground">
             {noBody
               ? `关联「${listName || "建设清单"}」；正文尚未生成（0/${result.chapterCount} 章），当前为大纲级预判，逐章生成后自动复核。`
-              : `本地逐字核对（零费用），正文已生成 ${result.generatedChapters}/${result.chapterCount} 章；「未落实」可能是换了说法，点开确认再补写。`}
+              : `本地逐字核对（零费用），正文已生成 ${result.generatedChapters}/${result.chapterCount} 章；覆盖率按各条要点在正文中的命中比例计算，不是只数「全部落实」。「未落实」可能是换了说法，点开确认再补写。`}
           </p>
 
           {pendingRows.length > 0 && (

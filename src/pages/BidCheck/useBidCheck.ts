@@ -117,7 +117,7 @@ export function useBidCheck() {
   const run = useCallback(async () => {
     if (source.kind === "none") {
       toast.error("请先上传文件或选择标书项目")
-      return
+      return false
     }
     setRunning(true)
     try {
@@ -137,8 +137,10 @@ export function useBidCheck() {
       if (s.fail > 0) toast.warning(`检查完成：${s.fail} 项命中必改、${s.warn} 项建议整改`)
       else if (s.warn > 0) toast.success(`检查完成：${s.warn} 项建议整改，无必改项`)
       else toast.success("检查完成：未发现需整改问题")
+      return true
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "检查失败，请稍后重试")
+      return false
     } finally {
       setRunning(false)
     }

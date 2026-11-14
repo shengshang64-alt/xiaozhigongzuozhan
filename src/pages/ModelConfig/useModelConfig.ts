@@ -346,7 +346,8 @@ export function useModelConfig() {
         elapsedMs: typeof r.elapsedMs === "number" ? r.elapsedMs : null,
         message: r.ok ? "" : r.message ?? "",
       })
-      if (r.ok) toast.success("测试成功，模型可用")
+      if (r.ok && (r.reply ?? "").trim()) toast.success("测试成功，模型可用")
+      else if (r.ok) toast.success("通道通了，但没有返回可见正文")
       else if (!r.needLogin) toast.error(r.message || "测试失败")
       else {
         setNeedsRhLogin(true)

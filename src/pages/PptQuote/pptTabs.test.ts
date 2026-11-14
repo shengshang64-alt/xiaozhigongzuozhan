@@ -113,3 +113,13 @@ describe("④ 拆屏零丢失 + 会话同步", () => {
     expect(preview.includes("发送记录")).toBe(true) // 以「未提供」口径出现，而非假列表
   })
 })
+
+describe("新建 PPT 必须切到编辑器屏", () => {
+  it("列表/空态的新建入口会 goTab(deck-editor)，不能只改 deckMode", () => {
+    const page = readSrc("./PptQuotePage.tsx")
+    expect(page).toContain("openNewDeckToWizard")
+    expect(page).toContain('goTab("deck-editor")')
+    expect(page).toContain("onNew={openNewDeckToWizard}")
+    expect(page).toContain("onClick={openNewDeckToWizard}")
+  })
+})

@@ -79,6 +79,12 @@ export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
     p.backToQuoteList()
     goTab("quote-list")
   }
+  // 向导只在 tab===deck-editor 时渲染。若地址栏已是 ?tab=deck-list（或从列表屏点「新建」），
+  // 只改 deckMode 而不同步 tab，页面会停在空列表，看起来像按钮没反应。
+  const openNewDeckToWizard = () => {
+    p.openNewDeckWizard()
+    goTab("deck-editor")
+  }
 
   // 统计卡为全量口径（不受搜索过滤影响），对齐原型 stat-row；只出现在两个列表屏
   const pptStats = useMemo(() => {
@@ -268,7 +274,7 @@ export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
               <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
                 从「汇报 PPT」列表打开一份讲稿进入逐页编辑，或新建一份（向导会带你过素材 / 模板 / 大纲四步）。
               </p>
-              <Button size="sm" className="mt-4 bg-primary text-primary-foreground hover:bg-primary/90" onClick={p.openNewDeckWizard}>
+              <Button size="sm" className="mt-4 bg-primary text-primary-foreground hover:bg-primary/90" onClick={openNewDeckToWizard}>
                 新建讲稿
               </Button>
             </div>
@@ -353,7 +359,7 @@ export function PptQuotePage(p: ReturnType<typeof usePptQuote>) {
             listLoading={p.deckListLoading}
             search={p.deckSearch}
             setSearch={p.setDeckSearch}
-            onNew={p.openNewDeckWizard}
+            onNew={openNewDeckToWizard}
             onOpen={openDeckToEditor}
             onDelete={p.deleteDeck}
           />

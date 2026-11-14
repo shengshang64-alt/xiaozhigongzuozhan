@@ -4,6 +4,7 @@ import {
   REQUIREMENT_COVERAGE_LABEL,
   auditRequirementCoverage,
   buildRequirementPendingText,
+  requirementCoveragePercent,
   requirementMatchKeys,
 } from "./requirementCoverage"
 import type { Chapter } from "./solutionTypes"
@@ -211,5 +212,28 @@ describe("泛化要点（模板词）降权", () => {
     const code = readFileSync(new URL("../../components/solution-studio/RequirementCoverageCard.tsx", import.meta.url), "utf-8")
     expect(code).toContain("result.boilerplateKeys")
     expect(code).toContain("不计入逐字核对")
+  })
+})
+
+describe("requirementCoveragePercent（要点命中进度）", () => {
+  it("全部落实记 100%，空清单为 0", () => {
+    const full = auditRequirementCoverage(
+      ["门诊输液系统"],
+      [ch({ title: "分系统设计", content: "门诊输液系统建设方案。" })],
+    )
+    expect(requirementCoveragePercent(full)).toBe(100)
+    expect(requirementCoveragePercent(auditRequirementCoverage(undefined, undefined))).toBe(0)
+  })
+
+  it("部分落实按该条已命中要点比例计入，仅大纲或未落实计 0，不把部分命中显示成 0%", () => {
+    const r = auditRequirementCoverage(
+      [ITEM, "智慧服务三级评测陪跑服务"],
+      [ch({ node_id: "a", title: "分系统设计", content: "一体化医院信息管理系统涵盖门诊输液流程。" })],
+    )
+    expect(r.counts.partial).toBeGreaterThan(0)
+    expect(r.counts.full).toBe(0)
+    const pct = requirementCoveragePercent(r)
+    expect(pct).toBeGreaterThan(0)
+    expect(pct).toBeLessThan(100)
   })
 })

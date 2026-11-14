@@ -34,7 +34,7 @@ export const PERSONAL_CONFIG_UNAVAILABLE_ERR = "personal_config_unavailable"
 // 无可用个人备用通道且本地自用域（平台令牌恒空必然 412）时的可执行引导文案（不含内部字段名）
 const PERSONAL_CONFIG_UNAVAILABLE_HINT =
   "当前所选模型的个人配置不可用（可能已删除、缺少 API Key 或没有启用模型），也没有其他可用的已启用通道。请在顶部模型选择器切换到其他已配置的模型后重试。"
-export const TEST_PROMPT = "请用一句话介绍你自己"
+export const TEST_PROMPT = "请只回复三个字：已连通。不要输出思考过程或其它内容。"
 
 // R78-B15:真正的对话可用性探针提示词 (比单纯的/test 更真实)
 export const DIALOG_PROBE_PROMPT = "你好，请简述你的角色和能力范围，不超过 20 字。"

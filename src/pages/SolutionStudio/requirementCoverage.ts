@@ -196,3 +196,19 @@ export function buildRequirementPendingText(result: RequirementCoverageResult): 
   if (!blocks.length) return ""
   return `【客户建设需求条目待补清单】共 ${result.pending} / ${result.total} 条\n${blocks.join("\n")}`
 }
+
+/**
+ * 覆盖率：按条平均「正文已命中要点数 / 该条要点数」。
+ * 全部落实记 100%，部分落实按比例计入，仅在大纲或未落实记 0%（大纲命中未进正文，不算落实）。
+ * 不用「全部落实条数 / 总条数」：一章已写、若干条只部分命中时也会显示 0%，看起来像统计没刷新。
+ */
+export function requirementCoveragePercent(result: RequirementCoverageResult): number {
+  if (!result.total) return 0
+  let sum = 0
+  for (const row of result.rows) {
+    if (!row.keys.length) continue
+    const hit = row.keys.length - row.missingKeys.length
+    sum += hit / row.keys.length
+  }
+  return Math.round((sum / result.total) * 100)
+}
