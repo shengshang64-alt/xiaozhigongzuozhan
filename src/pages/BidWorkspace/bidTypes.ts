@@ -6060,6 +6060,26 @@ export function gatesUnconfirmedCount(gates: StageGates | null | undefined): num
   return GATE_KINDS.filter((k) => !findGateRecord(gates, k)).length
 }
 
+/** 交卷放行闸门：解析 / 大纲 / 编制 / 检查。模拟评标（eval）属于开标准备，不挡组卷导出。 */
+export const SUBMISSION_GATE_KINDS: GateKind[] = ["parse", "outline", "compose", "check"]
+
+export function submissionGatesConfirmed(gates: StageGates | null | undefined): boolean {
+  return SUBMISSION_GATE_KINDS.every((k) => !!findGateRecord(gates, k))
+}
+
+export function submissionGatesUnconfirmedCount(gates: StageGates | null | undefined): number {
+  return SUBMISSION_GATE_KINDS.filter((k) => !findGateRecord(gates, k)).length
+}
+
+export function hasChapterContent(proj: Partial<BidProjectRecord> | null | undefined): boolean {
+  return (proj?.bid_chapters ?? []).some((c) => (c.content ?? "").trim().length > 0)
+}
+
+export function hasDeviationRows(proj: Partial<BidProjectRecord> | null | undefined): boolean {
+  const table = normalizeDeviationTable(proj?.response_map)
+  return !!table && table.rows.length > 0
+}
+
 export type GateCondition = { met: boolean; missing: string }
 
 /** r277 切片2：质量闸黑名单——这些废标级本地检查仍有命中时 check 闸不满足（可强制放行留痕） */
@@ -6121,9 +6141,10 @@ export function gateCondition(rec: Partial<BidProjectRecord> | null, kind: GateK
  *
  * UX-v2 七步语义对齐（2026-11-11）：步骤从旧的「招标文件/AI解析/投标文件编制/查重/废标/评标/归档」
  * 改为原型 bid/*.html 的七步「导入招标/解析确认/大纲编制/正文编写/偏离表/交卷自查/组卷导出」。
- * 闸门语义随步骤归位：②=parse，④=compose（确认大纲放行正文），⑤=check（偏离表/应答齐套），⑥=eval。
+ * 闸门语义随步骤归位：②=parse，③=outline（确认大纲放行正文），④=compose（正文齐套），⑥=check（交卷自查）。
+ * ⑤ 偏离表无独立交卷闸门；eval 归模拟答辩 / 开标准备，不挂在第 6 步、不挡导出。
  */
-export const STEP_GATE_MAP: Record<number, GateKind> = { 2: "parse", 4: "compose", 5: "check", 6: "eval" }
+export const STEP_GATE_MAP: Record<number, GateKind> = { 2: "parse", 3: "outline", 4: "compose", 6: "check" }
 
 export function stepGateConfirmed(step: number, gates: StageGates | null | undefined): boolean {
   const kind = STEP_GATE_MAP[step]
@@ -6148,24 +6169,25 @@ export const PIPELINE_STEPS: { step: number; label: string; short: string }[] = 
   { step: 3, label: "大纲编制", short: "大纲树与评分点覆盖，确认后才放行正文" },
   { step: 4, label: "正文编写", short: "逐章生成与编辑，右侧废标风险 / 一致性 / 写作体检" },
   { step: 5, label: "偏离表", short: "技术偏离 + 技术参数响应 + 主观分确认" },
-  { step: 6, label: "交卷自查", short: "查重 · 废标项检查 · 模拟评标，全过才解锁导出" },
-  { step: 7, label: "组卷导出", short: "组卷顺序 / 版式 / 清单 / 导出与归档复盘" },
+  { step: 6, label: "交卷自查", short: "查重 · 废标项 · 合规闸门，全过才解锁导出" },
+  { step: 7, label: "组卷导出", short: "组卷顺序 / 版式 / 清单 / 导出" },
 ]
 
 // ------------------------------ 第十一轮改造 3：步骤准入按产物放行 ------------------------------
 
 /**
- * 步骤准入条件（按产物，不要求当前环节全部完成）：
- * 解析报告存在→可进大纲/编制；≥1 章有正文→可进检查；检查报告存在→可进评标；归档步骤不拦。
- * 返回空串=放行；返回文案=缺少的产物说明（点击步骤时 toast 提示）。
+ * 步骤准入条件（按新七步产物放行，不要求当前环节全部完成）：
+ * 解析确认通过→可进大纲；大纲确认（已建章节清单）→可进正文（不要求已有正文）；
+ * 至少 1 章有正文→可进偏离表；有正文或偏离表→可进交卷自查 / 组卷导出（检查在第 6 步内跑，不挡进门）；
+ * 组卷导出按钮另受交卷闸门约束。返回空串=放行；返回文案=缺少的产物说明。
  */
 export function stepEntryMissing(step: number, proj: Partial<BidProjectRecord> | null): string {
-  if (!proj) return ""
+  if (!proj) return step <= 1 ? "" : "请先打开一个投标项目，再进入后续步骤"
   if (step === 2) {
-    return (proj.tender_text ?? "").trim() ? "" : "请先在第 1 步导入招标文件文本，才能进入 AI 解析"
+    return (proj.tender_text ?? "").trim() ? "" : "请先在第 1 步导入招标文件文本，才能进入解析确认"
   }
   if (step === 3) {
-    if (!proj.parse_report) return "还没有 AI 解析报告，解析报告就绪后即可进入大纲与编制"
+    if (!proj.parse_report) return "还没有解析报告，请先在第 2 步完成解析确认，才能进入大纲编制"
     // 2026-10-23（P0-4 整改）：必选项解析失败时**不允许进入编制**。
     // 走查实测：某项目解析报告缺资格性审查/符合性检查/无效标/投标目录（响应要求仅 5 个字、目录为空），
     // 第 2 步明确报「必选项解析失败」，第 3 步却照样生成 49 页正文——用残缺解析生成的标书从根上就是错的。
@@ -6173,19 +6195,25 @@ export function stepEntryMissing(step: number, proj: Partial<BidProjectRecord> |
     const failed = requiredParseFailures(proj.parse_report.sections ?? [])
     if (failed.length) {
       const names = failed.slice(0, 4).map((f) => f.title).join("、")
-      return `必选项解析失败：${names}${failed.length > 4 ? ` 等 ${failed.length} 项` : ""}。请先回「AI 解析报告」逐项重新解析——用残缺解析生成的标书从根上就是错的`
+      return `必选项解析失败：${names}${failed.length > 4 ? ` 等 ${failed.length} 项` : ""}。请先回「解析确认」逐项重新解析——用残缺解析生成的标书从根上就是错的`
     }
     return ""
   }
-  if (step === 4 || step === 5) {
-    return (proj.bid_chapters ?? []).some((c) => (c.content ?? "").trim())
+  if (step === 4) {
+    return (proj.bid_chapters ?? []).length > 0
       ? ""
-      : "至少 1 个章节有正文后才能进入检查环节"
+      : "请先在第 3 步确认大纲，才能进入正文编写"
   }
-  if (step === 6) {
-    return proj.dup_report || proj.void_check
+  if (step === 5) {
+    return hasChapterContent(proj)
       ? ""
-      : "查重或废标检查报告就绪后即可进入模拟评标"
+      : "请先在第 4 步写入至少 1 章正文，才能进入偏离表"
+  }
+  if (step === 6 || step === 7) {
+    if (hasChapterContent(proj) || hasDeviationRows(proj)) return ""
+    return step === 6
+      ? "请先完成正文编写或偏离表，才能进入交卷自查"
+      : "请先完成正文编写或偏离表，才能进入组卷导出"
   }
   return ""
 }

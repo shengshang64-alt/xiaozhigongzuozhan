@@ -568,7 +568,7 @@ export function ComposeStep(p: ComposeStepProps) {
               </>
             )}
           </div>
-          {/* 原型 .ph-actions：③ 屏的主操作是「确认大纲并生成正文」+「重新生成大纲」 */}
+          {/* 原型 .ph-actions：③ 屏的主操作是「确认大纲，放行正文」+「重新生成大纲」 */}
           {showOutline && outlineTree.length > 0 && (
             <div className="flex shrink-0 flex-wrap items-center gap-2">
               <Button
@@ -604,11 +604,11 @@ export function ComposeStep(p: ComposeStepProps) {
                 }}
                 className="h-8 bg-primary text-xs text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-50"
               >
-                确认大纲并生成正文
+                确认大纲，放行正文
               </Button>
             </div>
           )}
-          {hasChapters && p.bidSourceMode !== "external" && (
+          {!showOutline && hasChapters && p.bidSourceMode !== "external" && (
             <div className="flex shrink-0 flex-wrap items-center gap-2">
               <Button
                 variant="outline"
@@ -645,6 +645,8 @@ export function ComposeStep(p: ComposeStepProps) {
             </div>
           )}
         </div>
+        {!showOutline && (
+          <>
         <details className="group mt-4">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
             <span className="flex min-w-0 items-center gap-2">
@@ -832,6 +834,8 @@ export function ComposeStep(p: ComposeStepProps) {
             <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
             全文校正中 第 {p.totalAdjustProgress.current} / {p.totalAdjustProgress.total} 章
           </div>
+        )}
+          </>
         )}
       </header>
 

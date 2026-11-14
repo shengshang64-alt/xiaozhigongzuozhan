@@ -12,7 +12,7 @@
 // 时长是拍脑袋演示值。第 3 步只显示真实章进度。
 import { Check } from "lucide-react"
 import type { BidProjectRecord } from "@/pages/BidWorkspace/bidTypes"
-import { findGateRecord, PIPELINE_STEPS, stepGateConfirmed } from "@/pages/BidWorkspace/bidTypes"
+import { findGateRecord, hasDeviationRows, PIPELINE_STEPS, stepGateConfirmed } from "@/pages/BidWorkspace/bidTypes"
 
 /** 检查交卷闸门是否已确认（stage_gates 是 { gates } 对象，委托 bidTypes 权威实现） */
 function isGateConfirmed(step: number, project: BidProjectRecord | null): boolean {
@@ -27,12 +27,12 @@ function stepDone(step: number, project: BidProjectRecord | null): boolean {
     case 1: return (project.tender_text ?? "").trim().length > 0
     case 2: return !!project.parse_report
     case 3:
-      // 大纲编制完成 = 有大纲且已确认（未确认不能进正文，与 ④ 的前置条件同源）
-      return ((project.bid_outline?.length ?? 0) > 0 || chapters.length > 0) && !!findGateRecord(project.stage_gates, "compose")?.confirmed_at
+      // 大纲编制完成 = 已确认大纲（建成章节清单或留下大纲闸门）
+      return chapters.length > 0 || !!findGateRecord(project.stage_gates, "outline")?.confirmed_at
     case 4: return chapters.some((c) => (c.content ?? "").trim().length > 0)
-    case 5: return !!project.void_check
-    case 6: return !!project.dup_report && !!project.void_check && !!project.ai_review
-    case 7: return project.stage === "archived"
+    case 5: return hasDeviationRows(project)
+    case 6: return !!project.dup_report && !!project.void_check
+    case 7: return false
     default: return false
   }
 }
@@ -61,9 +61,13 @@ export function BidPipelineStepperEnhanced({
         const isCurrent = step.step === activeStep
         const gateOk = isCompleted && isGateConfirmed(step.step, activeProject)
         // 第 3 步：真实章进度（唯一有真进度数据的步骤）
-        const statusText =
-          step.step === 3 && (chapters?.length ?? 0) > 0
-            ? `已写 ${doneChapters}/${chapters?.length} 章`
+        const outlineConfirmed =
+          step.step === 3 &&
+          ((chapters?.length ?? 0) > 0 || !!findGateRecord(activeProject?.stage_gates, "outline")?.confirmed_at)
+        const statusText = outlineConfirmed
+          ? "已确认大纲"
+          : step.step === 3 && isCurrent
+            ? "待确认"
             : isCompleted
               ? "已完成"
               : isCurrent

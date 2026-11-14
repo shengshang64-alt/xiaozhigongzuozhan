@@ -58,8 +58,19 @@ describe("⑥ 闸门总览 · 接线", () => {
     expect(dupAt).toBeGreaterThan(gatesAt)
   })
 
-  it("原有七个 Tab 一个不少", () => {
-    ;["标书查重", "废标检查", "合规检查", "部门清单", "模拟评标", "报价测算", "答辩准备"].forEach((label) => {
+  it("⑥ 只保留交卷必过项四个 Tab", () => {
+    ;["闸门总览", "标书查重", "废标检查", "合规检查"].forEach((label) => {
+      expect(PAGE).toContain(`label: "${label}"`)
+    })
+    const step6 = PAGE.slice(PAGE.indexOf("{p.activeStep === 6 && ("), PAGE.indexOf("{p.activeStep === 7 && ("))
+    ;["部门清单", "模拟评标", "报价测算", "答辩准备"].forEach((label) => {
+      expect(step6).not.toContain(`label: "${label}"`)
+    })
+  })
+
+  it("评标、报价、答辩、部门清单独立到模拟答辩工作面", () => {
+    expect(PAGE).toContain("模拟答辩 / 开标准备")
+    ;["部门清单", "模拟评标", "报价测算", "答辩准备"].forEach((label) => {
       expect(PAGE).toContain(`label: "${label}"`)
     })
   })

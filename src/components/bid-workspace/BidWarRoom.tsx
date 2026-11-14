@@ -363,7 +363,7 @@ export function BidWarRoom({ activeProject, missCount = 0, riskCount = 0 }: { ac
                   ? "尚未生成大纲，先到「方案编制」确认大纲。"
                   : chapterStat.doneTotal < chapterStat.planTotal
                     ? `还有 ${chapterStat.planTotal - chapterStat.doneTotal} 章待编制。`
-                    : "技术章已全部成稿，可进入检查环节。"}
+                    : "技术章已全部成稿，可进入偏离表或交卷自查。"}
               </p>
             </SectionCard>
 

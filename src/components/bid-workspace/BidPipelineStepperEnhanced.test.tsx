@@ -159,13 +159,14 @@ describe("BidPipelineStepperEnhanced", () => {
   // -----------------------------------------------------------
   // 3. 第 3 步显示真实章进度（唯一有真进度数据的步骤；不编造百分比与时长）
   // -----------------------------------------------------------
-  it("第 3 步显示真实章进度（已写 N/M 章）", () => {
+  it("第 3 步在已建章节清单时显示「已确认大纲」，不再用正文进度", () => {
     const project = makeProject({
       bid_chapters: makeChapters(4, 2),
     })
     renderStepper({ activeStep: 3, project })
 
-    expect(screen.getByText("已写 2/4 章")).toBeInTheDocument()
+    expect(screen.getByText("已确认大纲")).toBeInTheDocument()
+    expect(screen.queryByText("已写 2/4 章")).not.toBeInTheDocument()
     // 拍脑袋的时长演示值（“3 小时 / 45 分钟”）已按铁律删除
     expect(screen.queryByText("3 小时")).not.toBeInTheDocument()
   })

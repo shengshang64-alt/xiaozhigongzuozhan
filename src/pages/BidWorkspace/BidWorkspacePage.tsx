@@ -167,6 +167,22 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                <Button
+                  size="sm"
+                  variant={p.workbenchView === "rehearse" ? "default" : "outline"}
+                  className="h-8 px-2.5 text-xs"
+                  onClick={() => p.setWorkbenchView("rehearse")}
+                >
+                  模拟答辩
+                </Button>
+                <Button
+                  size="sm"
+                  variant={p.workbenchView === "archive" ? "default" : "outline"}
+                  className="h-8 px-2.5 text-xs"
+                  onClick={() => p.setWorkbenchView("archive")}
+                >
+                  归档复盘
+                </Button>
                 <BidWarRoom activeProject={p.activeProject} missCount={p.uncoveredClauses.length} riskCount={p.voidCriticalUnresolved} />
                 {/* 低频高危操作（归档 / 重置）收进项目管理菜单，不再混在导出页底部 */}
                 <DropdownMenu>
@@ -219,6 +235,109 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
               </Button>
             </div>
           )}
+          {p.workbenchView === "rehearse" ? (
+            <div className="mx-auto mt-4 max-w-7xl px-4 pb-10">
+              <header className="border-b border-border pb-3">
+                <h1 className="text-lg font-semibold tracking-tight text-foreground">模拟答辩 / 开标准备</h1>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  模拟评标、报价测算、答辩准备和部门清单是标书成型之后的开标准备，不挡交卷导出。
+                </p>
+              </header>
+              <Step6Tabs
+                tabs={[
+                  { key: "dept", label: "部门清单", group: "参考项", node: (
+                    <DeptChecklistPanel
+                      key={`dept-check-${p.activeProject.id}`}
+                      projectId={p.activeProject.id}
+                      projectName={p.activeProject.project_name}
+                      locked={p.isArchivedLocked}
+                    />
+                  ) },
+                  { key: "eval", label: "模拟评标", group: "参考项", node: (
+                    <MockEvalPanel
+                      activeProject={p.activeProject}
+                      evalLoading={p.evalLoading}
+                      requestStep={p.requestStep}
+                      startAiReview={p.startAiReview}
+                      initManualReview={p.initManualReview}
+                      setManualScore={p.setManualScore}
+                      setManualComment={p.setManualComment}
+                      evalMissingTitles={p.evalMissingTitles}
+                      goParseStep={p.goParseStep}
+                      evalPathBusy={p.evalPathBusy}
+                      evalPathFailed={p.evalPathFailed}
+                      startEvalPathRerun={p.startEvalPathRerun}
+                      isArchivedLocked={p.isArchivedLocked}
+                    />
+                  ) },
+                  // 原第 6 步的报价测算与答辩准备一并保留（原属于「模拟评标」步骤的配套）
+                  { key: "price", label: "报价测算", group: "辅助工具", node: (
+                    <PriceScorePanel
+                      key={p.activeProject?.id ?? "none"}
+                      activeProject={p.activeProject}
+                      quoteRefs={p.quoteRefs}
+                      goParseStep={p.goParseStep}
+                    />
+                  ) },
+                  { key: "defense", label: "答辩准备", group: "辅助工具", node: (
+                    <DefensePanel
+                      activeProject={p.activeProject}
+                      defense={p.defense}
+                      defenseBusy={p.defenseBusy}
+                      answerBusyId={p.answerBusyId}
+                      pptSending={p.pptSending}
+                      defenseConfirm={p.defenseConfirm}
+                      setDefenseConfirm={p.setDefenseConfirm}
+                      confirmDefenseRegenerate={p.confirmDefenseRegenerate}
+                      defenseQuestionsReady={p.defenseQuestionsReady}
+                      defenseOutlineReady={p.defenseOutlineReady}
+                      defenseSpeechReady={p.defenseSpeechReady}
+                      defenseAnsweredCount={p.defenseAnsweredCount}
+                      startGenerateDefenseQuestions={p.startGenerateDefenseQuestions}
+                      startGenerateFullAnswer={p.startGenerateFullAnswer}
+                      updateDefenseQuestion={p.updateDefenseQuestion}
+                      startGenerateDefenseOutline={p.startGenerateDefenseOutline}
+                      updateDefenseOutlinePage={p.updateDefenseOutlinePage}
+                      sendOutlineToPpt={p.sendOutlineToPpt}
+                      startGenerateSpeechNotes={p.startGenerateSpeechNotes}
+                      updateSpeechNotes={p.updateSpeechNotes}
+                      setActiveStep={p.setActiveStep}
+                      defenseSkills={p.defenseSkills}
+                      isArchivedLocked={p.isArchivedLocked}
+                    />
+                  ) },
+                ]}
+              />
+            </div>
+          ) : p.workbenchView === "archive" ? (
+                          <ArchivePanel
+              activeProject={p.activeProject}
+              isArchivedLocked={p.isArchivedLocked}
+              resultFormOpen={p.resultFormOpen}
+              openResultForm={p.openResultForm}
+              closeResultForm={p.closeResultForm}
+              resultDraft={p.resultDraft}
+              setResultDraft={p.setResultDraft}
+              bidAmountDraft={p.bidAmountDraft}
+              setBidAmountDraft={p.setBidAmountDraft}
+              resultLostReasonDraft={p.resultLostReasonDraft}
+              setResultLostReasonDraft={p.setResultLostReasonDraft}
+              resultSaving={p.resultSaving}
+              submitBidResult={p.submitBidResult}
+              retrySyncResult={p.retrySyncResult}
+              syncFailedStep={p.syncFailedStep}
+              linkedOpportunityName={p.linkedOpportunityName}
+              stageHistory={p.stageHistory}
+              stageHistoryLoading={p.stageHistoryLoading}
+              loadStageHistory={p.loadStageHistory}
+              restoreSnapshot={p.restoreSnapshot}
+              snapshotBusyId={p.snapshotBusyId}
+              resetProject={p.resetProject}
+              resetConfirmOpen={p.resetConfirmOpen}
+              setResetConfirmOpen={p.setResetConfirmOpen}
+            />
+          ) : (
+            <>
           {p.activeStep === 1 && (
             <TenderStep
               activeProject={p.activeProject}
@@ -964,7 +1083,7 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  查重 · 废标项检查 · 合规/部门清单 · 模拟评标 · 报价测算 · 答辩准备；全部过闸后才解锁 ⑦ 组卷导出
+                  查重 · 废标项检查 · 合规检查；交卷闸门全部确认后才解锁 ⑦ 组卷导出
                 </p>
               </header>
               {p.voidCriticalUnresolved > 0 && (
@@ -1057,67 +1176,6 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                       jumpToAuditChapter={p.jumpToAuditChapter}
                     />
                   ) },
-                  { key: "dept", label: "部门清单", group: "参考项", node: (
-                    <DeptChecklistPanel
-                      key={`dept-check-${p.activeProject.id}`}
-                      projectId={p.activeProject.id}
-                      projectName={p.activeProject.project_name}
-                      locked={p.isArchivedLocked}
-                    />
-                  ) },
-                  { key: "eval", label: "模拟评标", group: "参考项", node: (
-                    <MockEvalPanel
-                      activeProject={p.activeProject}
-                      evalLoading={p.evalLoading}
-                      requestStep={p.requestStep}
-                      startAiReview={p.startAiReview}
-                      initManualReview={p.initManualReview}
-                      setManualScore={p.setManualScore}
-                      setManualComment={p.setManualComment}
-                      evalMissingTitles={p.evalMissingTitles}
-                      goParseStep={p.goParseStep}
-                      evalPathBusy={p.evalPathBusy}
-                      evalPathFailed={p.evalPathFailed}
-                      startEvalPathRerun={p.startEvalPathRerun}
-                      isArchivedLocked={p.isArchivedLocked}
-                    />
-                  ) },
-                  // 原第 6 步的报价测算与答辩准备一并保留（原属于「模拟评标」步骤的配套）
-                  { key: "price", label: "报价测算", group: "辅助工具", node: (
-                    <PriceScorePanel
-                      key={p.activeProject?.id ?? "none"}
-                      activeProject={p.activeProject}
-                      quoteRefs={p.quoteRefs}
-                      goParseStep={p.goParseStep}
-                    />
-                  ) },
-                  { key: "defense", label: "答辩准备", group: "辅助工具", node: (
-                    <DefensePanel
-                      activeProject={p.activeProject}
-                      defense={p.defense}
-                      defenseBusy={p.defenseBusy}
-                      answerBusyId={p.answerBusyId}
-                      pptSending={p.pptSending}
-                      defenseConfirm={p.defenseConfirm}
-                      setDefenseConfirm={p.setDefenseConfirm}
-                      confirmDefenseRegenerate={p.confirmDefenseRegenerate}
-                      defenseQuestionsReady={p.defenseQuestionsReady}
-                      defenseOutlineReady={p.defenseOutlineReady}
-                      defenseSpeechReady={p.defenseSpeechReady}
-                      defenseAnsweredCount={p.defenseAnsweredCount}
-                      startGenerateDefenseQuestions={p.startGenerateDefenseQuestions}
-                      startGenerateFullAnswer={p.startGenerateFullAnswer}
-                      updateDefenseQuestion={p.updateDefenseQuestion}
-                      startGenerateDefenseOutline={p.startGenerateDefenseOutline}
-                      updateDefenseOutlinePage={p.updateDefenseOutlinePage}
-                      sendOutlineToPpt={p.sendOutlineToPpt}
-                      startGenerateSpeechNotes={p.startGenerateSpeechNotes}
-                      updateSpeechNotes={p.updateSpeechNotes}
-                      setActiveStep={p.setActiveStep}
-                      defenseSkills={p.defenseSkills}
-                      isArchivedLocked={p.isArchivedLocked}
-                    />
-                  ) },
                 ]}
               />
             </div>
@@ -1148,46 +1206,9 @@ export function BidWorkspacePage(p: ReturnType<typeof useBidWorkspace>) {
                   else void p.exportReport("eval")
                 }}
               />
-              <ArchivePanel
-              activeProject={p.activeProject}
-              requestStep={p.requestStep}
-              exportBusy={p.exportBusy}
-              exportBidWord={p.exportBidWord}
-              exportReport={p.exportReport}
-              exportDeviationWord={p.exportDeviationWord}
-              exportAllDocs={p.exportAllDocs}
-              splitProseLongParagraphs={p.splitProseLongParagraphs}
-              archiveProject={p.archiveProject}
-              unarchiveActiveProject={p.unarchiveActiveProject}
-              isArchivedLocked={p.isArchivedLocked}
-              confirmGate={p.confirmGate}
-              resetGate={p.resetGate}
-              voidCriticalUnresolved={p.voidCriticalUnresolved}
-              gatesUnconfirmed={p.gatesUnconfirmed}
-              allGatesConfirmed={p.allGatesConfirmed}
-              resultFormOpen={p.resultFormOpen}
-              openResultForm={p.openResultForm}
-              closeResultForm={p.closeResultForm}
-              resultDraft={p.resultDraft}
-              setResultDraft={p.setResultDraft}
-              bidAmountDraft={p.bidAmountDraft}
-              setBidAmountDraft={p.setBidAmountDraft}
-              resultLostReasonDraft={p.resultLostReasonDraft}
-              setResultLostReasonDraft={p.setResultLostReasonDraft}
-              resultSaving={p.resultSaving}
-              submitBidResult={p.submitBidResult}
-              retrySyncResult={p.retrySyncResult}
-              syncFailedStep={p.syncFailedStep}
-              linkedOpportunityName={p.linkedOpportunityName}
-              stageHistory={p.stageHistory}
-              stageHistoryLoading={p.stageHistoryLoading}
-              loadStageHistory={p.loadStageHistory}
-              restoreSnapshot={p.restoreSnapshot}
-              snapshotBusyId={p.snapshotBusyId}
-              resetProject={p.resetProject}
-              resetConfirmOpen={p.resetConfirmOpen}
-              setResetConfirmOpen={p.setResetConfirmOpen}
-            />
+
+            </>
+          )}
             </>
           )}
         </main>

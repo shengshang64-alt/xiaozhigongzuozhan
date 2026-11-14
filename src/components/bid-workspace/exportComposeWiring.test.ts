@@ -51,11 +51,21 @@ describe("⑦ 组卷导出 · 三栏与原型一一对应", () => {
     expect(SCREEN).toContain("onRequestStep(3)")
   })
 
-  it("既有归档/结果登记/快照/重置能力仍挂在第 7 步（不丢）", () => {
+  it("组卷导出仍挂在第 7 步；归档复盘独立工作面，不叠进第 7 步", () => {
     expect(PAGE).toContain("<ExportComposeScreen")
+    expect(PAGE).toContain("void p.exportBidWord()")
+    expect(PAGE).toContain("onExportAll={() => void p.exportAllDocs()}")
     expect(PAGE).toContain("<ArchivePanel")
-    expect(PAGE).toContain("exportBidWord={p.exportBidWord}")
     expect(PAGE).toContain("restoreSnapshot={p.restoreSnapshot}")
+    const archiveStart = PAGE.indexOf("<ArchivePanel")
+    const archiveEnd = PAGE.indexOf("/>", archiveStart)
+    const archiveBlock = PAGE.slice(archiveStart, archiveEnd)
+    expect(archiveBlock.includes("exportBidWord")).toBe(false)
+    expect(archiveBlock.includes("exportAllDocs")).toBe(false)
+    const step7Start = PAGE.indexOf("{p.activeStep === 7 &&")
+    const step7 = PAGE.slice(step7Start, step7Start + 2500)
+    expect(step7).toContain("<ExportComposeScreen")
+    expect(step7.includes("<ArchivePanel")).toBe(false)
   })
 })
 

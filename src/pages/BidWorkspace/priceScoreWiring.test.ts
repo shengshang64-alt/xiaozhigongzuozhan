@@ -78,16 +78,16 @@ describe("视图模型 → 面板（R38）", () => {
 })
 
 describe("页面挂载与取数（R38）", () => {
-  it("面板挂在第 6 步模拟评标之下，取 activeProject + 报价单快照，并按项目重挂载", () => {
+  it("面板挂在模拟答辩 / 开标准备工作面，取 activeProject + 报价单快照，并按项目重挂载", () => {
     const code = read(PAGE)
     expect(code).toContain('import { PriceScorePanel } from "@/components/bid-workspace/PriceScorePanel"')
-    const step6 = code.slice(code.indexOf("p.activeStep === 6"))
-    const at = step6.indexOf("<PriceScorePanel")
-    expect(at).toBeGreaterThan(step6.indexOf("<MockEvalPanel"))
-    expect(step6.slice(at, at + 420)).toContain('key={p.activeProject?.id ?? "none"}')
-    expect(step6.slice(at, at + 420)).toContain("activeProject={p.activeProject}")
-    expect(step6.slice(at, at + 420)).toContain("quoteRefs={p.quoteRefs}")
-    expect(step6.slice(at, at + 420)).toContain("goParseStep={p.goParseStep}")
+    const rehearse = code.slice(code.indexOf('p.workbenchView === "rehearse"'))
+    const at = rehearse.indexOf("<PriceScorePanel")
+    expect(at).toBeGreaterThan(rehearse.indexOf("<MockEvalPanel"))
+    expect(rehearse.slice(at, at + 420)).toContain('key={p.activeProject?.id ?? "none"}')
+    expect(rehearse.slice(at, at + 420)).toContain("activeProject={p.activeProject}")
+    expect(rehearse.slice(at, at + 420)).toContain("quoteRefs={p.quoteRefs}")
+    expect(rehearse.slice(at, at + 420)).toContain("goParseStep={p.goParseStep}")
   })
 
   it("hook 把报价单快照并置 state 并导出（ref 只服务同步体检，渲染层读不到）", () => {

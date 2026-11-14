@@ -206,8 +206,9 @@ import {
   INTRA_DUP_THRESHOLD_DEFAULT,
   FORMAT_CHECK_KEYS,
   formatCheckReport,
-  gatesAllConfirmed,
-  gatesUnconfirmedCount,
+  submissionGatesConfirmed,
+  submissionGatesUnconfirmedCount,
+  daysUntilLocalDay,
   GATE_KINDS,
   GATE_LABEL,
   hasAnySection,
@@ -1666,6 +1667,7 @@ export function useBidWorkspace() {
 
   // ------------------------------ 顶层视图 ------------------------------
   const [mainView, setMainView] = useState<"projects" | "tools">("projects")
+  const [workbenchView, setWorkbenchView] = useState<"pipeline" | "rehearse" | "archive">("pipeline")
   const [mode, setMode] = useState<"list" | "detail">("list")
   // 2026-10-27 P0 修复（章程「不丢状态」）：步骤按项目持久化，刷新/切回不再回落。
   // 实现要点：**保持 setActiveStep 为 useState 原生 setter**，不改变它的身份。
@@ -3416,6 +3418,12 @@ export function useBidWorkspace() {
       flushRefMat()
       flushSettingsPatch()
       applyProjectState(rec)
+      {
+        const days = daysUntilLocalDay(rec.bid_open_date)
+        const opened = days !== null && days < 0
+        const pending = !rec.bid_result || rec.bid_result === "pending"
+        setWorkbenchView(opened && pending ? "archive" : "pipeline")
+      }
       // r89-guard-kb-cold-01：进项目即后台预热 KB 缓存，护栏路免冷加载
       void prewarmKbCache(userId)
       setCoverageAudit(null) // 循环 5 A2：覆盖审计仅会话内有效，切项目即清空
@@ -3521,6 +3529,7 @@ export function useBidWorkspace() {
     flushSettingsPatch()
     cancelBulkRef.current = true
     setMode("list")
+    setWorkbenchView("pipeline")
     setActiveProject(null)
     activeProjectRef.current = null
     setStageHistory([])
@@ -5431,9 +5440,13 @@ export function useBidWorkspace() {
       gen_status: "pending" as const,
       ...(n.part ? { part: n.part } : {}),
     }))
-    updateProject({ bid_outline: filled, bid_chapters: chapters, response_map: null })
+    const prevGates = activeProjectRef.current?.stage_gates?.gates ?? []
+    const gates = prevGates.filter((g) => g.gate !== "outline")
+    gates.push({ gate: "outline", confirmed_at: new Date().toISOString(), notes: "", forced: false })
+    updateProject({ bid_outline: filled, bid_chapters: chapters, response_map: null, stage_gates: { gates } })
     writeStageSnapshot("outline", "大纲已确认并生成章节清单", { outline: outlineDraft })
     setActiveChapterId(chapters[0]?.node_id ?? null)
+    setActiveStep(4)
     setEditingContent("")
     const bizCount = chapters.filter((c) => isBizPart(c)).length
     toast.success(
@@ -5468,7 +5481,7 @@ export function useBidWorkspace() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [outlineDraft, updateProject, writeStageSnapshot])
+  }, [outlineDraft, setActiveStep, updateProject, writeStageSnapshot])
 
   /** 第3轮 G3：★/▲ 实质性条款逐字承诺函（纯本地零 AI）——读 star_clauses 分区切分条款，
    *  逐字引用 + 模板承诺语生成正文，作为商务章并入投标正文与大纲（part=biz 不参与正文生成、随全套导出）。 */
@@ -9680,8 +9693,8 @@ const kbEmptyHintShown = new Set<string>()
 
   // ------------------------------ 第九轮改造 1：交卷闸门（确认留痕，不拦导航只拦导出） ------------------------------
   const stageGates = activeProject?.stage_gates ?? emptyStageGates()
-  const gatesUnconfirmed = GATE_KINDS.filter((k) => !findGateRecord(stageGates, k)).length
-  const allGatesConfirmed = gatesUnconfirmed === 0
+  const gatesUnconfirmed = submissionGatesUnconfirmedCount(stageGates)
+  const allGatesConfirmed = submissionGatesConfirmed(stageGates)
   /** 闸门 check 条件附加提示用：废标检查 critical 且未核销的条数（只提示不拦确认） */
   const voidCriticalUnresolved = useMemo(() => {
     const items = activeProject?.void_check?.items ?? []
@@ -9716,13 +9729,13 @@ const kbEmptyHintShown = new Set<string>()
     [blockIfArchived, updateProject],
   )
 
-  /** 全套导出：五闸门全部确认后才可用；按「投标文件→偏离表→解析→检查→评标」顺序导出已就绪文档 */
+  /** 全套导出：交卷闸门（解析/大纲/编制/检查，不含模拟评标）全部确认后才可用 */
   const exportAllDocs = useCallback(async () => {
     flushEditingContent()
     const cur = activeProjectRef.current
     if (!cur) return
-    if (!gatesAllConfirmed(cur.stage_gates)) {
-      toast.error(`还有 ${gatesUnconfirmedCount(cur.stage_gates)} 个交卷闸门未确认，确认后才能导出全套文档`)
+    if (!submissionGatesConfirmed(cur.stage_gates)) {
+      toast.error(`还有 ${submissionGatesUnconfirmedCount(cur.stage_gates)} 个交卷闸门未确认，确认后才能导出全套文档`)
       return
     }
     setExportBusy("all")
@@ -9750,6 +9763,7 @@ const kbEmptyHintShown = new Set<string>()
       toast.error(missing)
       return
     }
+    setWorkbenchView("pipeline")
     setActiveStep(step)
   }, [])
 
@@ -10271,6 +10285,8 @@ const kbEmptyHintShown = new Set<string>()
     costConfirm,
     // 视图
     mainView,
+    workbenchView,
+    setWorkbenchView,
     setMainView,
     mode,
     activeStep,
