@@ -93,3 +93,19 @@ describe("周报选材", () => {
     expect(out.map((it) => it.id)).toEqual(["deadline", "confirmed"])
   })
 })
+
+
+describe("今日工作话题权重", () => {
+  it("评级政策高于纯硬件招标，纯 AI 泛资讯排在软件招标之后", () => {
+    const out = selectDailyIntel([
+      row({ id: "hw", title: "某医院国产化台式电脑采购", item_type: "bid" }),
+      row({ id: "rate", title: "国家卫健委电子病历评级通知", item_type: "policy" }),
+      row({ id: "ai", title: "大模型概念股集体走强", item_type: "media" }),
+      row({ id: "sw", title: "医院电子病历系统升级采购", item_type: "bid" }),
+    ], NOW)
+    const ids = out.top.map((it) => it.id)
+    expect(ids.indexOf("rate")).toBeLessThan(ids.indexOf("hw"))
+    expect(ids.indexOf("sw")).toBeLessThan(ids.indexOf("ai"))
+    expect(out.top.find((it) => it.id === "sw")?.priority_reason).toContain("软件信息化招标")
+  })
+})

@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
-import { INTEL_TABS, intelTabHref, parseIntelTab, type IntelTab } from "./intelTabs"
+import { INTEL_TABS, INTEL_VISIBLE_TABS, intelTabHref, parseIntelTab, type IntelTab } from "./intelTabs"
 
 const readSrc = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf-8")
 
@@ -98,5 +98,29 @@ describe("④ 拆屏零丢失：既有能力全部保留并归位", () => {
     // 原双模式的状态机（useState + setViewMode）删除；viewMode 改为 ?tab= 派生
     expect(page.includes("setViewMode")).toBe(false)
     expect(page).toContain('const viewMode: "todo" | "browse" = tab === "browse" ? "browse" : "todo"')
+  })
+})
+
+describe("⑤ 主 Tab 栏不展示详情，但 ?tab=detail 仍可解析", () => {
+  it("可见 Tab 为 审阅 / 浏览 / 行业前沿 / 数据源，不含详情", () => {
+    expect(INTEL_VISIBLE_TABS.map((t) => t.key)).toEqual(["review", "browse", "industry", "sources"])
+    expect(INTEL_TABS.map((t) => t.key)).toContain("detail")
+  })
+
+  it("旧链接 ?tab=detail 仍解析为详情", () => {
+    expect(parseIntelTab("detail")).toBe("detail")
+    expect(intelTabHref("detail")).toBe("/intel-center?tab=detail")
+  })
+})
+
+describe("⑥ t137 审阅第一屏与浏览 chip", () => {
+  it("页面挂上要闻组件，浏览类型 chips 不再含无效的行业前沿 tech", () => {
+    const src = readSrc("./IntelCenterPage.tsx")
+    expect(src).toContain("IntelHeadlines")
+    expect(src).not.toContain('{ key: "tech", label: "行业前沿" }')
+  })
+  it("今日工作文案不再写来源可信度", () => {
+    const src = readSrc("../../components/intel-center/IntelDailyBrief.tsx")
+    expect(src).not.toContain("来源可信度")
   })
 })

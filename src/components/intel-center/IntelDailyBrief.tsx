@@ -24,7 +24,7 @@ export function IntelDailyBrief({ work, onOpenDetail, onConfirm, onIgnore }: Pro
       <header className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
         <CalendarClock className="h-4 w-4 text-primary" />
         <h2 className="text-sm font-semibold text-foreground">今日工作</h2>
-        <span className="text-xs text-muted-foreground">按截止时间、关注方向与来源可信度排序，非 AI 生成</span>
+        <span className="text-xs text-muted-foreground">按截止时间、关注方向与重点话题排序，非 AI 生成</span>
         <div className="ml-auto flex items-center gap-1.5 text-xs">
           <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary">必看 {work.top.length}</span>
           <span className="rounded-full bg-warning/10 px-2 py-0.5 text-warning">临期 {work.deadlines.length}</span>

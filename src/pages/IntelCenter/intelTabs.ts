@@ -30,3 +30,6 @@ export function parseIntelTab(raw: string | null): IntelTab {
 export function intelTabHref(tab: IntelTab): string {
   return tab === "review" ? "/intel-center" : `/intel-center?tab=${tab}`
 }
+
+/** 主 Tab 栏展示用：详情不单独成 Tab，?tab=detail 仍可解析进入整屏阅读 */
+export const INTEL_VISIBLE_TABS = INTEL_TABS.filter((t) => t.key !== "detail")

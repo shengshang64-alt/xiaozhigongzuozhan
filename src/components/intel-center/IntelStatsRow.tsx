@@ -1,20 +1,16 @@
-import { Database, Inbox, Rss, Star } from "lucide-react"
-
-// UX-R2: 情报中心 已按 docs/ux-review-2026-11 修复 2026-11-07
-// （指标卡语义化：去掉「x/y」「构成」这类并列纯数字，每张卡一句话语义 + 可点击行动；
-//   「待我确认」计数来自 per_page=1 轻量探针，确认/忽略/批量操作后自动刷新）
+import { CalendarClock, Inbox, Rss } from "lucide-react"
 
 type IntelStatsRowProps = {
+  pendingRecentTotal: number
+  pendingTotal: number
+  deadlineBidCount: number
+  deadlineKnown: boolean
   enabledCount: number
   sourceCount: number
-  errorCount: number
-  /** 当前筛选口径的服务端总数（浏览模式的量级） */
-  totalItems: number
-  /** 待我确认（per_page=1 探针的真实总数） */
-  pendingTotal: number
-  starredCount: number
+  enabledErrorCount: number
+  silentEmptyCount: number
   onOpenTodo: () => void
-  onOpenBrowse: () => void
+  onOpenDeadlines: () => void
   onOpenSources: () => void
 }
 
@@ -26,7 +22,6 @@ function StatCard({
   hint,
   hintClass,
   onClick,
-  pressed,
   tone = "neutral",
 }: {
   icon: React.ReactNode
@@ -36,16 +31,13 @@ function StatCard({
   hint: string
   hintClass?: string
   onClick?: () => void
-  pressed?: boolean
   tone?: "neutral" | "danger" | "primary"
 }) {
   const toneValue = tone === "danger" ? "text-destructive" : tone === "primary" ? "text-primary" : "text-foreground"
   const base =
     "rounded-xl border bg-card p-4 text-left shadow-md transition-shadow lg:p-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-  const interactive = onClick
-    ? " hover:shadow-lg cursor-pointer focus-visible:ring-2"
-    : " cursor-default"
-  const wrap = `${base} ${interactive} ${pressed ? "border-primary/60 ring-1 ring-primary/40" : "border-border"}`
+  const interactive = onClick ? " hover:shadow-lg cursor-pointer focus-visible:ring-2" : " cursor-default"
+  const wrap = `${base} ${interactive} border-border`
   const body = (
     <>
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -60,7 +52,7 @@ function StatCard({
     </>
   )
   return onClick ? (
-    <button type="button" onClick={onClick} aria-pressed={pressed} title={hint} className={wrap}>
+    <button type="button" onClick={onClick} title={hint} className={wrap}>
       {body}
     </button>
   ) : (
@@ -69,52 +61,56 @@ function StatCard({
 }
 
 export function IntelStatsRow({
+  pendingRecentTotal,
+  pendingTotal,
+  deadlineBidCount,
+  deadlineKnown,
   enabledCount,
   sourceCount,
-  errorCount,
-  totalItems,
-  pendingTotal,
-  starredCount,
+  enabledErrorCount,
+  silentEmptyCount,
   onOpenTodo,
-  onOpenBrowse,
+  onOpenDeadlines,
   onOpenSources,
 }: IntelStatsRowProps) {
+  const backlog = Math.max(0, pendingTotal - pendingRecentTotal)
+  const sourceHint = enabledErrorCount > 0
+    ? `启用中 ${enabledErrorCount} 个源抓取失败${silentEmptyCount > 0 ? `；另有静默空源 ${silentEmptyCount} 个` : ""}`
+    : silentEmptyCount > 0
+      ? `启用源运行中，另有静默空源 ${silentEmptyCount} 个`
+      : "启用中的源运行正常，点击管理"
+  const deadlineHint = deadlineKnown
+    ? "点击查看近 7 天截止的招标（仅统计已抽到截止日的条目）"
+    : "尚未抽到截止日，数是 0 不是漏算；可在更多操作里用「修复数据」补齐"
+
   return (
-    <div className="mb-4 grid grid-cols-2 gap-4 xl:grid-cols-4">
+    <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
       <StatCard
         icon={<Inbox className="h-3.5 w-3.5" />}
-        label="待我确认"
-        value={pendingTotal}
+        label="近 7 天新增待看"
+        value={pendingRecentTotal}
         unit="条"
-        hint={pendingTotal > 0 ? "点击进入待办模式，逐条处理" : "没有待确认的情报，轻松"}
-        hintClass={pendingTotal > 0 ? "text-primary" : undefined}
-        tone={pendingTotal > 0 ? "primary" : "neutral"}
+        hint={backlog > 0 ? `历史待确认积压 ${pendingTotal} 条` : pendingRecentTotal > 0 ? "点击查看待确认" : "近 7 天没有新的待确认"}
+        hintClass={backlog > 0 || pendingRecentTotal > 0 ? "text-primary" : undefined}
+        tone={pendingRecentTotal > 0 ? "primary" : "neutral"}
         onClick={onOpenTodo}
-        pressed
       />
       <StatCard
-        icon={<Database className="h-3.5 w-3.5" />}
-        label="当前筛选结果"
-        value={totalItems}
+        icon={<CalendarClock className="h-3.5 w-3.5" />}
+        label="7 天内截止招标"
+        value={deadlineBidCount}
         unit="条"
-        hint="点击进入浏览模式查看全部"
-        onClick={onOpenBrowse}
+        hint={deadlineHint}
+        onClick={onOpenDeadlines}
       />
       <StatCard
         icon={<Rss className="h-3.5 w-3.5" />}
         label="信息源"
         value={`${enabledCount}/${sourceCount}`}
-        hint={errorCount > 0 ? `${errorCount} 个源抓取失败，点击去处理` : "全部源运行正常，点击管理"}
-        hintClass={errorCount > 0 ? "text-destructive" : undefined}
-        tone={errorCount > 0 ? "danger" : "neutral"}
+        hint={sourceHint}
+        hintClass={enabledErrorCount > 0 ? "text-destructive" : undefined}
+        tone={enabledErrorCount > 0 ? "danger" : "neutral"}
         onClick={onOpenSources}
-      />
-      <StatCard
-        icon={<Star className="h-3.5 w-3.5" />}
-        label="我的收藏"
-        value={starredCount}
-        unit="条"
-        hint="确认/收藏每人独立状态"
       />
     </div>
   )

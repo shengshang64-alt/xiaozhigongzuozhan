@@ -11,6 +11,7 @@ import { AiHotPage } from "@/pages/AiHot/AiHotPage"
 import { useAiHot } from "@/pages/AiHot/useAiHot"
 import { IntelToolbar } from "@/components/intel-center/IntelToolbar"
 import { IntelStatsRow } from "@/components/intel-center/IntelStatsRow"
+import { IntelHeadlines } from "@/components/intel-center/IntelHeadlines"
 import { IntelSubtabs } from "@/components/intel-center/IntelSubtabs"
 import { IntelItemCard } from "@/components/intel-center/IntelItemCard"
 import { IntelBrowseRow } from "@/components/intel-center/IntelBrowseRow"
@@ -24,6 +25,7 @@ import { DataTable, type DataTableColumn } from "@/components/ui/DataTable"
 import { localDateStamp } from "@/lib/dateStamp"
 import { ITEM_STATUS_LABEL, SOURCE_TYPE_LABEL, type IntelItemRow, type IntelSourceType, type IntelListSortKey, type useIntelCenter } from "./useIntelCenter"
 import { parseIntelTab, type IntelTab } from "./intelTabs"
+import { summarizeSourceHealth, type HeadlineColumnKey } from "./intelTopics"
 import { shouldScrollDetailIntoView } from "./detailScroll"
 import { describeAutoFetch, describeWaitForNextRound } from "./intelAutoFetchCopy"
 
@@ -44,9 +46,9 @@ const TYPE_ITEMS: { key: "all" | IntelSourceType; label: string }[] = [
   { key: "bid", label: "招标中标" },
   { key: "competitor", label: "竞品" },
   { key: "media", label: "行业媒体" },
-  // UX-R2（docs/ux-review-2026-11 §二十三·减法项）：AI 动态并入——原 AI 动态内容按此类型过滤
-  { key: "tech", label: "行业前沿" },
+  // t137：隐藏 item_type=tech 的「行业前沿」chip（后端白名单不认 tech，点了等于不过滤）
 ]
+
 const STATUS_ITEMS: { key: "active" | "pending" | "confirmed" | "ignored"; label: string }[] = [
   { key: "pending", label: "待确认" },
   { key: "confirmed", label: "已确认" },
@@ -96,6 +98,26 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
   const tab = parseIntelTab(searchParams.get("tab"))
   const goTab = (next: IntelTab) => setSearchParams(next === "review" ? {} : { tab: next }, { replace: true })
   const viewMode: "todo" | "browse" = tab === "browse" ? "browse" : "todo"
+  const sourceHealth = summarizeSourceHealth(p.sources)
+  const openHeadlineAll = (key: HeadlineColumnKey) => {
+    p.handleTypeTab(key)
+    p.handleSinceChange("30")
+    p.handleStatusTab("active")
+    goTab("browse")
+  }
+  const openRecentPending = () => {
+    p.handleTypeTab("all")
+    p.handleStatusTab("pending")
+    p.handleSinceChange("7")
+    goTab("browse")
+  }
+  const openDeadlineBids = () => {
+    p.handleTypeTab("bid")
+    p.handleStatusTab("active")
+    p.handleSinceChange("all")
+    goTab("browse")
+  }
+  const remainingPending = Math.max(0, p.highlightPendingCount - p.dailyWork.top.length)
   // UX-R2：高级筛选抽屉（时间/标签/地区/来源/排序收拢）
   const [advancedOpen, setAdvancedOpen] = useState(false)
   // UX-R2：确认/忽略后的滑出动画——条目状态已变但仍保留渲染 300ms 播退出动画
@@ -182,17 +204,28 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
         <IntelSubtabs active={tab} />
 
         {tab === "review" ? (
-          <IntelStatsRow
-            enabledCount={enabledCount}
-            sourceCount={p.sources.length}
-            errorCount={errorCount}
-            totalItems={p.totalItems}
-            pendingTotal={p.pendingTotal}
-            starredCount={p.starredIds.length}
-            onOpenTodo={() => goTab("review")}
-            onOpenBrowse={() => goTab("browse")}
-            onOpenSources={() => goTab("sources")}
-          />
+          <>
+            <div className="mb-4">
+              <IntelHeadlines
+                columns={p.headlineColumns}
+                onOpenDetail={p.openDetail}
+                onViewAll={openHeadlineAll}
+              />
+            </div>
+            <IntelStatsRow
+              pendingRecentTotal={p.pendingRecentTotal}
+              pendingTotal={p.pendingTotal}
+              deadlineBidCount={p.deadlineBidCount}
+              deadlineKnown={p.deadlineBidCount > 0}
+              enabledCount={sourceHealth.enabledCount}
+              sourceCount={sourceHealth.sourceCount}
+              enabledErrorCount={sourceHealth.enabledErrorCount}
+              silentEmptyCount={sourceHealth.silentEmptyCount}
+              onOpenTodo={openRecentPending}
+              onOpenDeadlines={openDeadlineBids}
+              onOpenSources={() => goTab("sources")}
+            />
+          </>
         ) : null}
 
         {/* UX-v2：数据源与抓取说明收进「数据源」Tab（原首页 ⓘ 弹层与状态块一并归位） */}
@@ -363,12 +396,14 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
         {tab === "review" || tab === "browse" ? (
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
           <section className="min-w-0 space-y-4">
+            {tab === "review" ? (
             <IntelDailyBrief
               work={p.dailyWork}
               onOpenDetail={p.openDetail}
               onConfirm={p.confirmItem}
               onIgnore={p.ignoreItem}
             />
+            ) : null}
 
             {/* UX-R2：循环 12 存量不相关情报引导横幅（原位保留） */}
             {p.cleanupSuggested && (
@@ -444,43 +479,27 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
             )}
 
             {viewMode === "todo" ? (
-              /* UX-R2：待办模式——只看待确认，大卡片 + 实心确认按钮 + 滑出动画 */
-              todoItems.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-card py-14 text-center shadow-md">
-                  <CheckCircle2 className="h-8 w-8 text-emerald-500" />
-                  <p className="text-sm font-medium text-foreground">待办清空了，一条待确认的情报都没有</p>
-                  <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
-                    新情报抓取入库后会出现在这里；想浏览已确认/已忽略的历史情报，切到「浏览」Tab
-                  </p>
-                  <Button type="button" size="sm" variant="outline" onClick={() => goTab("browse")}>
-                    切到浏览模式
-                  </Button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
-                  {todoItems.map((item) => (
-                    <IntelItemCard
-                      key={item.id}
-                      item={item}
-                      starred={p.isStarred(item.id)}
-                      aiTagging={p.aiTagging(item.id)}
-                      focused={p.isItemFocused(item)}
-                      lead={p.isLead(item.id)}
-                      onToggleLead={p.toggleLead}
-                      onOpenDetail={p.openDetail}
-                      onConfirm={handleTodoConfirm}
-                      onIgnore={handleTodoIgnore}
-                      onAiTag={p.aiTagItem}
-                      onToggleStar={p.toggleStar}
-                      batchMode={p.batchMode}
-                      selected={p.batchSelectedIds.includes(item.id)}
-                      onToggleSelect={p.toggleBatchSelect}
-                      todoMode
-                      exiting={exitingIds.includes(item.id)}
-                    />
-                  ))}
-                </div>
-              )
+              /* t137：去掉与今日工作重复的待确认大卡片，改成一行入口去浏览处理 */
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-4 py-3 shadow-md">
+                <p className="text-sm text-foreground">
+                  {remainingPending > 0
+                    ? `今日必看之外，近 30 天还有 ${remainingPending} 条未处理`
+                    : "近 30 天待分诊已包含在今日工作里"}
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    p.handleTypeTab("all")
+                    p.handleStatusTab("pending")
+                    p.handleSinceChange("30")
+                    goTab("browse")
+                  }}
+                >
+                  还有 {remainingPending} 条未处理 → 去浏览处理
+                </Button>
+              </div>
             ) : (
               <>
                 {/* UX-R2：浏览模式——紧凑行式列表（约 64px/行），保留表格视图切换 */}
@@ -590,28 +609,73 @@ export function IntelCenterPage(p: ReturnType<typeof useIntelCenter>) {
           </section>
 
           <aside ref={detailRef} className="scroll-mt-24 space-y-4">
-            <div className="lg:sticky lg:top-[7.5rem] lg:max-h-[calc(100vh-9rem)]">
-              <IntelDetailPanel
-                item={p.detailItem}
-                starred={p.detailItem ? p.isStarred(p.detailItem.id) : false}
-                aiTagging={p.detailItem ? p.aiTagging(p.detailItem.id) : false}
-                lead={p.detailItem ? p.isLead(p.detailItem.id) : false}
-                onClose={p.closeDetail}
-                onConfirm={p.confirmItem}
-                onIgnore={p.ignoreItem}
-                onAiTag={p.aiTagItem}
-                onToggleStar={p.toggleStar}
-                onToggleLead={p.toggleLead}
-                onCreateBidTask={p.createBidTask}
-                onConvertToOpp={p.convertToOpportunity}
-                onSaveStructured={p.saveStructured}
-              />
+            <div className="lg:sticky lg:top-[7.5rem] lg:max-h-[calc(100vh-9rem)] space-y-4">
+              {p.detailItem ? (
+                <>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => goTab("detail")}
+                      className="text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    >
+                      全屏阅读
+                    </button>
+                  </div>
+                  <IntelDetailPanel
+                    item={p.detailItem}
+                    starred={p.isStarred(p.detailItem.id)}
+                    aiTagging={p.aiTagging(p.detailItem.id)}
+                    lead={p.isLead(p.detailItem.id)}
+                    onClose={p.closeDetail}
+                    onConfirm={p.confirmItem}
+                    onIgnore={p.ignoreItem}
+                    onAiTag={p.aiTagItem}
+                    onToggleStar={p.toggleStar}
+                    onToggleLead={p.toggleLead}
+                    onCreateBidTask={p.createBidTask}
+                    onConvertToOpp={p.convertToOpportunity}
+                    onSaveStructured={p.saveStructured}
+                  />
+                </>
+              ) : (
+                <div className="rounded-lg border border-border bg-card p-4 shadow-md">
+                  <h2 className="text-sm font-semibold text-foreground">本周要点 / 临期</h2>
+                  <p className="mt-1 text-[11px] text-muted-foreground">未选中条目时显示要点，不再留空详情</p>
+                  {p.dailyWork.top.length === 0 ? (
+                    <p className="mt-3 text-xs text-muted-foreground">近 30 天暂无必看要点</p>
+                  ) : (
+                    <ul className="mt-3 space-y-2">
+                      {p.dailyWork.top.slice(0, 5).map((item) => (
+                        <li key={item.id}>
+                          <button type="button" onClick={() => p.openDetail(item)} className="line-clamp-2 text-left text-xs font-medium text-foreground hover:text-primary">
+                            {item.title}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <h3 className="mt-4 text-xs font-semibold text-muted-foreground">临期招标</h3>
+                  {p.dailyWork.deadlines.length === 0 ? (
+                    <p className="mt-2 text-xs text-muted-foreground">未抽到 7 天内截止日，可在更多操作里用「修复数据」补齐</p>
+                  ) : (
+                    <ul className="mt-2 space-y-2">
+                      {p.dailyWork.deadlines.slice(0, 5).map((item) => (
+                        <li key={item.id}>
+                          <button type="button" onClick={() => p.openDetail(item)} className="line-clamp-2 text-left text-xs font-medium text-foreground hover:text-primary">
+                            {item.title}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="rounded-lg border border-border bg-card p-4 shadow-md">
               <h2 className="text-sm font-semibold text-foreground">我的收藏</h2>
               <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                已收藏 {p.starredIds.length} 条情报。在情报卡片上点星标即可收藏。
+                已收藏 {p.starredIds.length} 条情报。在情报卡片或详情里点星标即可收藏。
               </p>
             </div>
 

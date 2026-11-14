@@ -7,7 +7,12 @@ import { decodeRhToken, vibexAuthHeaders, type RhAccountInfo } from "@/lib/rhLog
 import { buildIntelToOppQuery } from "@/lib/intelToOpp"
 import { cleanIntelBody, cleanIntelLine, looksJunkIntel } from "./intelBodyClean"
 import { groupIntelItems } from "./intelDedup"
-import { selectDailyIntel, selectWeeklyIntelItems } from "./intelDaily"
+import { intelDeadlineKind, selectDailyIntel, selectWeeklyIntelItems } from "./intelDaily"
+import {
+  buildIntelItemsQueryString,
+  intelSinceDate,
+  selectHeadlineColumns,
+} from "./intelTopics"
 import { triggerBlobDownload } from "@/lib/download"
 import {
   canProceedToDelete,
@@ -216,9 +221,10 @@ interface AiTagResult {
   item_type: IntelSourceType
   region: string
   tags: string[]
+  topic?: string
 }
 
-function parseAiTagResult(text: string): AiTagResult | null {
+export function parseAiTagResult(text: string): AiTagResult | null {
   let raw = text.trim()
   const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/)
   if (fence) raw = fence[1].trim()
@@ -233,12 +239,15 @@ function parseAiTagResult(text: string): AiTagResult | null {
     if (!summary) return null
     const tp = String(obj.item_type ?? "")
     const itemType: IntelSourceType =
-      tp === "policy" || tp === "competitor" || tp === "bid" ? tp : "policy"
+      tp === "policy" || tp === "competitor" || tp === "bid" || tp === "media" || tp === "tech"
+        ? tp
+        : "media"
     const region = String(obj.region ?? "").trim().slice(0, 30)
     const tags = Array.isArray(obj.tags)
       ? obj.tags.map((t) => String(t).trim().slice(0, 12)).filter(Boolean).slice(0, 5)
       : []
-    return { summary, item_type: itemType, region, tags }
+    const topic = String((obj as { topic?: unknown }).topic ?? "").trim().slice(0, 20)
+    return { summary, item_type: itemType, region, tags, topic: topic || undefined }
   } catch {
     return null
   }
@@ -257,7 +266,7 @@ export function buildTagMessages(item: IntelItemRow): LlmMessage[] {
     {
       role: "system",
       content:
-        "你是医疗行业售前情报分析师。用户给你一条从政府网站或行业资讯站抓取的情报条目，请完成摘要与打标，只输出一个 JSON 对象，不要输出任何其他文字。JSON 结构：{\"summary\":\"不超过120字的中文摘要，说清这条情报对医疗信息化售前工作的意义\",\"item_type\":\"policy 或 competitor 或 bid\",\"region\":\"涉及的省市地区名，全国层面填 全国，无法判断填空字符串\",\"tags\":[\"最多5个中文标签，如 医保支付、电子病历、招标采购\"]}",
+        "你是医疗行业售前情报分析师。用户给你一条从政府网站或行业资讯站抓取的情报条目，请完成摘要与打标，只输出一个 JSON 对象，不要输出任何其他文字。JSON 结构：{\"summary\":\"不超过120字的中文摘要，说清这条情报对医疗信息化售前工作的意义\",\"item_type\":\"policy 或 competitor 或 bid 或 media 或 tech\",\"topic\":\"重点话题，如 评级、等保、HIS、医保信息化，没有则填空字符串\",\"region\":\"涉及的省市地区名，全国层面填 全国，无法判断填空字符串\",\"tags\":[\"最多5个中文标签，如 医保支付、电子病历、招标采购\"]}",
     },
     {
       role: "user",
@@ -364,6 +373,9 @@ export function useIntelCenter() {
   // UX-R2（docs/ux-review-2026-11 §三）：语义化指标卡「待我确认」——per_page=1 轻量探针只取 totalItems，
   // 确认/忽略/批量操作后刷新；与列表请求互不影响（零后端改动）
   const [pendingTotal, setPendingTotal] = useState(0)
+  const [pendingRecentTotal, setPendingRecentTotal] = useState(0)
+  const [highlightItems, setHighlightItems] = useState<IntelItemRow[]>([])
+  const [highlightLoading, setHighlightLoading] = useState(false)
   const [allTags, setAllTags] = useState<string[]>([])
   const [hasMore, setHasMore] = useState(false)
 
@@ -694,11 +706,28 @@ export function useIntelCenter() {
     return groupIntelItems(arr)
   }, [itemList, isItemFocused, listSortKey])
 
-  // 今日工作（2026-11-02）：必看/临期/待分诊，基于已去重且当前筛选可见的条目
+  // 今日工作与要闻：独立查询近 30 天（最多两页 50 条），不再用已加载的 10 条计算
+  const highlightDisplay = useMemo(() => groupIntelItems(highlightItems), [highlightItems])
   const dailyWork = useMemo(
-    () => selectDailyIntel(displayItems, new Date(), isItemFocused, 10),
-    [displayItems, isItemFocused],
+    () => selectDailyIntel(highlightDisplay, new Date(), isItemFocused, 10),
+    [highlightDisplay, isItemFocused],
   )
+  const headlineColumns = useMemo(
+    () => selectHeadlineColumns(highlightDisplay, 5),
+    [highlightDisplay],
+  )
+  const highlightPendingCount = useMemo(
+    () => highlightDisplay.filter((it) => (it.my_status || it.item_status || "pending") === "pending").length,
+    [highlightDisplay],
+  )
+  const deadlineBidCount = useMemo(() => {
+    const now = new Date()
+    return highlightDisplay.filter((it) => {
+      if (it.item_type !== "bid") return false
+      const kind = intelDeadlineKind(it.structured?.deadline ?? "", now)
+      return kind === "today" || kind === "week"
+    }).length
+  }, [highlightDisplay])
 
   // 区域下拉选项：全部 + 我的区域（非空置顶）+ 已加载条目出现过的区域去重
   // 循环 12：省份级固定筛选清单（按省筛政策/需求）；计划单列市在服务端归并到归属省；
@@ -1300,14 +1329,35 @@ export function useIntelCenter() {
     }
   }, [patchItemLocal, requireLogin])
 
+  const loadHighlightPool = useCallback(async () => {
+    setHighlightLoading(true)
+    try {
+      const since30 = intelSinceDate(30)
+      const since7 = intelSinceDate(7)
+      const [page1, page2, recent, allPending] = await Promise.all([
+        apiFetch<ItemsResponse>(`/api/intel/items?${buildIntelItemsQueryString({ item_status: "pending,confirmed", since: since30, page: 1, per_page: 50 })}`),
+        apiFetch<ItemsResponse>(`/api/intel/items?${buildIntelItemsQueryString({ item_status: "pending,confirmed", since: since30, page: 2, per_page: 50 })}`),
+        apiFetch<ItemsResponse>(`/api/intel/items?${buildIntelItemsQueryString({ item_status: "pending", since: since7, page: 1, per_page: 1 })}`),
+        apiFetch<ItemsResponse>(`/api/intel/items?${buildIntelItemsQueryString({ item_status: "pending", page: 1, per_page: 1 })}`),
+      ])
+      setHighlightItems([...(page1.items ?? []), ...(page2.items ?? [])])
+      setPendingRecentTotal(recent.totalItems ?? 0)
+      setPendingTotal(allPending.totalItems ?? 0)
+    } catch (err) {
+      const e = err as Error & { httpStatus?: number }
+      if (e.httpStatus === 401) setNeedsRhLogin(true)
+    } finally {
+      setHighlightLoading(false)
+    }
+  }, [])
+
   const refreshPendingTotal = useCallback(async () => {
     try {
-      const d = await apiFetch<{ totalItems?: number }>("/api/intel/items?item_status=pending&per_page=1")
-      setPendingTotal(d.totalItems ?? 0)
+      await loadHighlightPool()
     } catch {
       /* 探针失败不打扰页面，保留上次计数 */
     }
-  }, [])
+  }, [loadHighlightPool])
 
   const setItemStatus = useCallback(
     async (item: IntelItemRow, nextStatus: "confirmed" | "ignored") => {
@@ -1767,7 +1817,12 @@ export function useIntelCenter() {
     setReportLoading(true)
     setReportText("")
     try {
-      const weekItems = selectWeeklyIntelItems(itemList, new Date(), isItemFocused, 20)
+      const since7 = intelSinceDate(7)
+      const [w1, w2] = await Promise.all([
+        apiFetch<ItemsResponse>(`/api/intel/items?${buildIntelItemsQueryString({ item_status: "pending,confirmed", since: since7, page: 1, per_page: 50 })}`),
+        apiFetch<ItemsResponse>(`/api/intel/items?${buildIntelItemsQueryString({ item_status: "pending,confirmed", since: since7, page: 2, per_page: 50 })}`),
+      ])
+      const weekItems = selectWeeklyIntelItems([...(w1.items ?? []), ...(w2.items ?? [])], new Date(), isItemFocused, 20)
       if (weekItems.length === 0) {
         setReportText("近 7 天没有可汇总的情报（已忽略条目不计入）。可调整筛选时间范围，或先到信息源管理补充采集源。")
         return
@@ -1810,7 +1865,7 @@ export function useIntelCenter() {
     } finally {
       setReportLoading(false)
     }
-  }, [itemList, isItemFocused])
+  }, [isItemFocused])
 
   const generateWeeklyReport = useCallback(() => {
     if (!requireLogin()) return
@@ -1864,8 +1919,13 @@ export function useIntelCenter() {
     prefsSourceNames,
     // 关注置顶
     displayItems,
-    // 今日工作队列
+    // 今日工作队列 / 要闻（独立查询）
     dailyWork,
+    headlineColumns,
+    highlightPendingCount,
+    highlightLoading,
+    pendingRecentTotal,
+    deadlineBidCount,
     // 循环 10 小改 1：排序口径
     listSortKey,
     setListSortKey,

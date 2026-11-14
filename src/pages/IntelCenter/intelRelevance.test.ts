@@ -153,3 +153,30 @@ describe("isIntelRelevant · v3.1/3.2 镜像追平（infraNonMedical 数据中�
     expect(explainIntelRelevance("数据中心光网互联方案")).toEqual({ verdict: "irrelevant", reason: "infra-hardware" })
   })
 })
+
+
+describe("isIntelRelevant · v4 设备采购规则 + v5 收紧", () => {
+  it("设备词 + 采购公告形态同时命中才拒，单看设备词不误杀安全议题", () => {
+    expect(isIntelRelevant("某医院呼吸机采购项目招标公告")).toBe(false)
+    expect(isIntelRelevant("医疗设备联网安全与等保测评")).toBe(true)
+  })
+
+  it("通用强词必须带医疗语境；监狱/环卫等黑名单直接拒", () => {
+    expect(isIntelRelevant("某监狱国产化电脑采购")).toBe(false)
+    expect(isIntelRelevant("智慧环卫平台开发项目招标")).toBe(false)
+    expect(isIntelRelevant("信件报刊分发智慧管理平台中选")).toBe(false)
+    expect(isIntelRelevant("医院信息系统升级改造")).toBe(true)
+    expect(isIntelRelevant("医疗卫生行业信创替代方案专题")).toBe(true)
+    expect(isIntelRelevant("疫苗接种点信息系统建设项目")).toBe(true)
+  })
+
+  it("弱判定里的院排除法院/光荣院等", () => {
+    expect(isIntelRelevant("某法院涉人工智能纠纷意见")).toBe(false)
+    expect(isIntelRelevant("光荣院信息系统及设备采购")).toBe(false)
+  })
+
+  it("explain 能给出设备采购与离题机构理由", () => {
+    expect(explainIntelRelevance("某医院呼吸机采购项目招标公告").reason).toBe("device-procurement")
+    expect(explainIntelRelevance("某监狱国产化电脑采购").reason).toBe("off-topic-org")
+  })
+})

@@ -1,6 +1,7 @@
 // 今日工作队列（2026-11-02）：确定性优先级与截止日解析，零 AI 费用。
 // 规则只负责「谁先处理」，不替用户判真假；每条推荐都带可解释理由。
 import { isIntelFutureDate } from "./intelDateQuality"
+import { classifyBidKind, hasFocusTopic, isPureAiGeneric, matchIntelTopics } from "./intelTopics"
 import type { IntelItemRow } from "./useIntelCenter"
 
 export type IntelDeadlineKind = "overdue" | "today" | "week" | "later" | "none"
@@ -65,6 +66,25 @@ function score(item: IntelItemRow, now: Date, focused: boolean): { score: number
     score += 40
     reasons.push("关注方向")
   }
+  const topics = matchIntelTopics(item.title)
+  if (topics.includes("评级测评") || topics.includes("政策规划")) {
+    score += 25
+    reasons.push("重点政策/评级")
+  }
+  const bidKind = classifyBidKind(item.title, type)
+  if (type === "bid" && bidKind === "software") {
+    score += 15
+    reasons.push("软件信息化招标")
+  } else if (type === "bid" && bidKind === "hardware") {
+    score -= 30
+    reasons.push("纯硬件招标")
+  }
+  if (isPureAiGeneric(item.title, type)) {
+    score -= 20
+  } else if (hasFocusTopic(item.title) && type === "media") {
+    score += 8
+  }
+
   if (item.structured?.buyer) score += 5
   if (item.structured?.code) score += 5
   if (item.summary) score += 3

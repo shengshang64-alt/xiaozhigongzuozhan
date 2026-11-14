@@ -42,6 +42,25 @@ const STRONG_T =
   /电子病历|智慧医院|互联网医院|智慧医疗|智慧服务|智慧病房|智慧管理|智慧后勤|卫生信息化|医疗信息化|医院信息化|区域卫生信息|全民健康信息|数字医院|数字健康|互联网\+医疗|AI\+医疗|AI医疗|医疗健康信息|远程医疗|医院信息|医疗信息|临床信息系统|医院信息系统|医疗信息系统|医院数据中心|医疗数据中心|集成平台|一体化系统|一体化平台|信息平台|信息系统|信息中心|信创|国产化|CDSS|临床决策|医疗大模型|医疗人工智能|医疗AI|医学人工智能|医疗知识图谱|医院物联网|医疗物联网|移动护理|移动查房|掌上医院|电子病历评级|电子病历分级|电子病历应用水平|互联互通测评|互联互通评级|互联互通标准化成熟度|智慧服务评级|智慧服务分级|智慧服务测评|智慧管理评级|智慧管理分级|医院信息标准化|医院信息互联互通|智慧医院分级|DRG|DIP|医保信息化|医保信息平台|医保信息系统|医保电子凭证|健康医疗大数据|医疗大数据|华为医疗|腾讯健康|京东健康|阿里云医疗|百度灵医|东软集团|卫宁健康|创业慧康|东华医为|和仁科技|麦迪科技|万达信息|久远银海|嘉和美康|讯飞医疗|\bHIS\b|\bEMR\b|\bLIS\b|\bPACS\b|\bCDR\b|\bHRP\b|\bMMIT\b/i
 const CLINICAL_NOISE =
   /养生|食疗|药膳|疫苗|辟谣|义诊|科普|健康指南|健康提醒|健康素养|天气预报|寒潮|降温|高温|节气|停诊|排班|义卖|锦旗|感谢信|坚守|抢救|成功救治|假日门诊|节假日门诊|门诊时间|就诊提示|挂号|流感|中暑|献血|急救常识|用药提醒|成功开展|首例手术|救治|竞赛|巡讲|先进事迹|技能大赛|比武|圆满收官|圆满举办|成功举办|顺利举办|落幕/i
+
+const DEVICE_PROCUREMENT =
+  /内窥镜|支气管镜|扫描仪|正电子发射|磁共振|超声|呼吸机|监护仪|麻醉机|药柜|纯水|合成模块|试剂|耗材|器械|检验设备|影像设备|屏蔽改造|设备机房|标识标牌|窗帘|家具/i
+const PROCUREMENT_FORM =
+  /招标公告|中标(结果)?公告|成交公告|询价公告|竞争性磋商|竞争性谈判|单一来源|采购公告|更正公告|废标公告|采购项目|重新招标|变更公告/i
+const OFF_TOPIC_ORG = /监狱|戒毒|公安|派出所|看守所|环卫|殡葬/i
+const MED_CTX =
+  /医|卫生|卫健|健康|患者|诊|药|病|护理|临床|疾控|妇幼|保健|疫苗|接种|\bHIS\b|\bEMR\b|\bPACS\b|\bLIS\b|\bHRP\b|DRG|DIP|医保/i
+const GENERIC_STRONG = /一体化平台|信息平台|信息系统|信息中心|信创|国产化|集采/i
+
+function isGenericStrongWithoutMedCtx(title: string): boolean {
+  const t = String(title || "")
+  const hasGeneric = GENERIC_STRONG.test(t) || (/智慧管理/.test(t) && !/智慧管理(?:评级|分级)/.test(t))
+  if (!hasGeneric) return false
+  const stripped = t.replace(/一体化平台|信息平台|信息系统|信息中心|信创|国产化|智慧管理|集采/g, "")
+  if (STRONG_T.test(stripped)) return false
+  return !MED_CTX.test(t)
+}
+
 const MED_HIT = /医|院|卫|健康/i
 const IT_HIT =
   /信息化|数字化|智慧|智能|系统|平台|软件|数据|信创|国产化|人工智能|\bAI\b|大数据|云计算|云化|上云|等保|网络安全|信息安全|集成|接口|机房|弱电|电子|互联网|线上|运维|测评|评级|分级评价|应用水平|解决方案|中台/i
@@ -60,10 +79,13 @@ export function isIntelRelevant(title: string, _snippet = ""): boolean {
   const tForIndustry = t.replace(/医学院|医科大学|医学高等专科/g, "医院")
   if (OTHER_INDUSTRY.test(tForIndustry)) return false
   if (INFRA_NON_MEDICAL.test(t)) return false
-  if (STRONG_T.test(t)) return true
+  if (OFF_TOPIC_ORG.test(t)) return false
+  if (STRONG_T.test(t) && !isGenericStrongWithoutMedCtx(t)) return true
   if (CLINICAL_NOISE.test(t)) return false
   if (FACILITY_NOISE.test(t)) return false
-  return MED_HIT.test(t) && IT_HIT.test(t)
+  if (DEVICE_PROCUREMENT.test(t) && PROCUREMENT_FORM.test(t)) return false
+  const tForMed = t.replace(/法院|检察院|光荣院|养老院|学院|研究院/g, "")
+  return MED_HIT.test(tForMed) && IT_HIT.test(t)
 }
 
 /** 反向判定，供 cleanup 预览「这条会被清理吗？」使用。 */
@@ -74,7 +96,7 @@ export function isIntelIrrelevant(title: string, snippet = ""): boolean {
 /** 展示层用途：告诉用户某条命中了哪一类判定，便于反馈「为什么这条被过滤」。 */
 export function explainIntelRelevance(title: string): {
   verdict: "relevant" | "irrelevant"
-  reason: "noise" | "strong" | "other-industry" | "infra-hardware" | "clinical-noise" | "facility-procurement" | "loose-medical" | "empty" | "no-signal"
+  reason: "noise" | "strong" | "other-industry" | "infra-hardware" | "clinical-noise" | "facility-procurement" | "device-procurement" | "off-topic-org" | "loose-medical" | "empty" | "no-signal"
 } {
   const t = String(title || "")
   if (!t) return { verdict: "irrelevant", reason: "empty" }
@@ -83,9 +105,12 @@ export function explainIntelRelevance(title: string): {
     return { verdict: "irrelevant", reason: "other-industry" }
   }
   if (INFRA_NON_MEDICAL.test(t)) return { verdict: "irrelevant", reason: "infra-hardware" }
-  if (STRONG_T.test(t)) return { verdict: "relevant", reason: "strong" }
+  if (OFF_TOPIC_ORG.test(t)) return { verdict: "irrelevant", reason: "off-topic-org" }
+  if (STRONG_T.test(t) && !isGenericStrongWithoutMedCtx(t)) return { verdict: "relevant", reason: "strong" }
   if (CLINICAL_NOISE.test(t)) return { verdict: "irrelevant", reason: "clinical-noise" }
   if (FACILITY_NOISE.test(t)) return { verdict: "irrelevant", reason: "facility-procurement" }
-  if (MED_HIT.test(t) && IT_HIT.test(t)) return { verdict: "relevant", reason: "loose-medical" }
+  if (DEVICE_PROCUREMENT.test(t) && PROCUREMENT_FORM.test(t)) return { verdict: "irrelevant", reason: "device-procurement" }
+  const tForMed = t.replace(/法院|检察院|光荣院|养老院|学院|研究院/g, "")
+  if (MED_HIT.test(tForMed) && IT_HIT.test(t)) return { verdict: "relevant", reason: "loose-medical" }
   return { verdict: "irrelevant", reason: "no-signal" }
 }

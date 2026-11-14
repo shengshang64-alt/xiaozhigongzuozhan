@@ -311,7 +311,17 @@ routerAdd("POST", "/api/intel/tick", (e) => {
       // 强词=医疗IT主题词表（评级/系统/平台/厂商），命中即收；临床词无法误导。
       // v3.1：去掉裸「数据中心」「互联互通」（保留 医院数据中心/医疗数据中心/互联互通测评/评级/标准化成熟度/医院信息互联互通 等带语境形态）
       var strongT = /电子病历|智慧医院|互联网医院|智慧医疗|智慧服务|智慧病房|智慧管理|智慧后勤|卫生信息化|医疗信息化|医院信息化|区域卫生信息|全民健康信息|数字医院|数字健康|互联网\+医疗|AI\+医疗|AI医疗|医疗健康信息|远程医疗|医院信息|医疗信息|临床信息系统|医院信息系统|医疗信息系统|医院数据中心|医疗数据中心|集成平台|一体化系统|一体化平台|信息平台|信息系统|信息中心|信创|国产化|CDSS|临床决策|医疗大模型|医疗人工智能|医疗AI|医学人工智能|医疗知识图谱|医院物联网|医疗物联网|移动护理|移动查房|掌上医院|电子病历评级|电子病历分级|电子病历应用水平|互联互通测评|互联互通评级|互联互通标准化成熟度|智慧服务评级|智慧服务分级|智慧服务测评|智慧管理评级|智慧管理分级|医院信息标准化|医院信息互联互通|智慧医院分级|DRG|DIP|医保信息化|医保信息平台|医保信息系统|医保电子凭证|健康医疗大数据|医疗大数据|华为医疗|腾讯健康|京东健康|阿里云医疗|百度灵医|东软集团|卫宁健康|创业慧康|东华医为|和仁科技|麦迪科技|万达信息|久远银海|嘉和美康|讯飞医疗|药品集采|集中带量采购|带量采购|集采|医保支付|医保目录|医保谈判|医疗服务价格|公立医院绩效考核|绩效考核|国考|医保改革|医疗改革|医保基金|双通道|按病种付费|检查检验结果互认|\bHIS\b|\bEMR\b|\bLIS\b|\bPACS\b|\bCDR\b|\bHRP\b|\bMMIT\b/i
-      if (strongT.test(t)) return true
+      var offTopicOrg = /监狱|戒毒|公安|派出所|看守所|环卫|殡葬/
+      if (offTopicOrg.test(t)) return false
+      var medCtx = /医|卫生|卫健|健康|患者|诊|药|病|护理|临床|疾控|妇幼|保健|疫苗|接种|\bHIS\b|\bEMR\b|\bPACS\b|\bLIS\b|\bHRP\b|DRG|DIP|医保/i
+      var genericStrongHit = /一体化平台|信息平台|信息系统|信息中心|信创|国产化|集采/.test(t) || (/智慧管理/.test(t) && !/智慧管理(评级|分级)/.test(t))
+      if (strongT.test(t)) {
+        if (genericStrongHit && !medCtx.test(t)) {
+          var tStripped = t.replace(/一体化平台|信息平台|信息系统|信息中心|信创|国产化|智慧管理|集采/g, "")
+          if (!strongT.test(tStripped)) { /* fall through：通用强词且无医疗语境 */ }
+          else return true
+        } else return true
+      }
       // 纯临床/生活健康内容（患者救治、养生科普、号表通知等）→ 拒：是「医疗新闻」不是「医疗信息化」。
       // v3.1：补行业活动噪声（竞赛/巡讲/事迹/收官/落幕等——健康报、人民网源的高频杂音）
       var clinicalNoise = /养生|食疗|药膳|疫苗|辟谣|义诊|科普|健康指南|健康提醒|健康素养|天气预报|寒潮|降温|高温|节气|停诊|排班|义卖|锦旗|感谢信|坚守|抢救|成功救治|假日门诊|节假日门诊|门诊时间|就诊提示|挂号|流感|中暑|献血|急救常识|用药提醒|成功开展|首例手术|救治|竞赛|巡讲|先进事迹|技能大赛|比武|圆满收官|圆满举办|成功举办|顺利举办|落幕/i
@@ -326,7 +336,8 @@ routerAdd("POST", "/api/intel/tick", (e) => {
       var procurementForm = /招标公告|中标(结果)?公告|成交公告|询价公告|竞争性磋商|竞争性谈判|单一来源|采购公告|更正公告|废标公告|采购项目|重新招标|变更公告/i
       if (deviceProcurement.test(t) && procurementForm.test(t)) return false
       // 弱判定：医疗词 AND 医疗IT词 双命中才收（单独临床词不再放行）
-      var medHit = /医|院|卫|健康/i.test(t)
+      var tForMed = t.replace(/法院|检察院|光荣院|养老院|学院|研究院/g, "")
+      var medHit = /医|院|卫|健康/i.test(tForMed)
       var itHit = /信息化|数字化|智慧|智能|系统|平台|软件|数据|信创|国产化|人工智能|\bAI\b|大数据|云计算|云化|上云|等保|网络安全|信息安全|集成|接口|机房|弱电|电子|互联网|线上|运维|测评|评级|分级评价|应用水平|解决方案|中台/i.test(t)
       return medHit && itHit
     }
@@ -396,7 +407,7 @@ routerAdd("POST", "/api/intel/tick", (e) => {
           return htmlToArticle(raw)
         } catch (e) { return "" }
       }
-      var __TAG_BANK = ["电子病历", "智慧医院", "互联网医院", "医疗信息化", "医院信息化", "区域卫生", "医共体", "医联体", "公共卫生", "疾控", "DRG", "DIP", "医保", "远程医疗", "医学影像", "检验", "临床", "护理", "手术机器人", "人工智能", "大模型", "医疗AI", "数字化", "信息化", "信创", "国产化", "数据中心", "云平台", "大数据", "5G", "智慧病房", "分级诊疗", "公立医院", "药品追溯", "药店", "处方", "集采", "中标", "招标", "采购", "政策", "规划", "标准", "指南", "解决方案"]
+      var __TAG_BANK = ["电子病历", "互联互通", "评级", "等保", "网络安全", "数据安全", "HIS", "EMR", "LIS", "PACS", "HRP", "集成平台", "智慧服务", "智慧管理", "医保信息化", "智慧医院", "互联网医院", "医疗信息化", "医院信息化", "区域卫生", "医共体", "医联体", "公共卫生", "疾控", "DRG", "DIP", "医保", "远程医疗", "医学影像", "检验", "临床", "护理", "手术机器人", "人工智能", "大模型", "医疗AI", "数字化", "信息化", "信创", "国产化", "数据中心", "云平台", "大数据", "5G", "智慧病房", "分级诊疗", "公立医院", "药品追溯", "药店", "处方", "集采", "中标", "招标", "采购", "政策", "规划", "标准", "指南", "解决方案"]
       var extractTags = function (text) {
         var t = String(text || "")
         var out = []
@@ -516,16 +527,29 @@ routerAdd("POST", "/api/intel/tick", (e) => {
       var url = String(src.get("url") || "")
       var res = null
       try {
-        res = $http.send({
-          url: url,
-          method: "GET",
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "zh-CN,zh;q=0.9"
-          },
-          timeout: 15
-        })
+        // t137：政府站列表页也走 r.jina.ai（正文代理此前已有，列表页直连易 412）。需重载 PocketBase 后才生效。
+        var listViaJina = false
+        if (/\.gov\.cn/i.test(url)) {
+          try {
+            var jList = $http.send({ url: "https://r.jina.ai/" + url, method: "GET", headers: __UA, timeout: 15 })
+            if (jList && jList.statusCode === 200 && typeof jList.raw === "string" && jList.raw.length > 240) {
+              res = jList
+              listViaJina = true
+            }
+          } catch (eJinList) { /* 列表代理失败再直连 */ }
+        }
+        if (!listViaJina) {
+          res = $http.send({
+            url: url,
+            method: "GET",
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+              "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+              "Accept-Language": "zh-CN,zh;q=0.9"
+            },
+            timeout: 15
+          })
+        }
       } catch (err) {
         var emsg = String((err && err.message) || err || "")
         __intelNoteFetchError(src, (/timeout|deadline/i.test(emsg) ? "抓取超时（15s），该网站可能无法访问" : "无法连接：" + emsg).slice(0, 400))
@@ -1259,7 +1283,7 @@ routerAdd("POST", "/api/intel/fetch-now", (e) => {
         return htmlToArticle(raw)
       } catch (e) { return "" }
     }
-    var __TAG_BANK = ["电子病历", "智慧医院", "互联网医院", "医疗信息化", "医院信息化", "区域卫生", "医共体", "医联体", "公共卫生", "疾控", "DRG", "DIP", "医保", "远程医疗", "医学影像", "检验", "临床", "护理", "手术机器人", "人工智能", "大模型", "医疗AI", "数字化", "信息化", "信创", "国产化", "数据中心", "云平台", "大数据", "5G", "智慧病房", "分级诊疗", "公立医院", "药品追溯", "药店", "处方", "集采", "中标", "招标", "采购", "政策", "规划", "标准", "指南", "解决方案"]
+    var __TAG_BANK = ["电子病历", "互联互通", "评级", "等保", "网络安全", "数据安全", "HIS", "EMR", "LIS", "PACS", "HRP", "集成平台", "智慧服务", "智慧管理", "医保信息化", "智慧医院", "互联网医院", "医疗信息化", "医院信息化", "区域卫生", "医共体", "医联体", "公共卫生", "疾控", "DRG", "DIP", "医保", "远程医疗", "医学影像", "检验", "临床", "护理", "手术机器人", "人工智能", "大模型", "医疗AI", "数字化", "信息化", "信创", "国产化", "数据中心", "云平台", "大数据", "5G", "智慧病房", "分级诊疗", "公立医院", "药品追溯", "药店", "处方", "集采", "中标", "招标", "采购", "政策", "规划", "标准", "指南", "解决方案"]
     var extractTags = function (text) {
       var t = String(text || "")
       var out = []
@@ -1372,7 +1396,17 @@ routerAdd("POST", "/api/intel/fetch-now", (e) => {
       // 强词=医疗IT主题词表（评级/系统/平台/厂商），命中即收；临床词无法误导。
       // v3.1：去掉裸「数据中心」「互联互通」（保留 医院数据中心/医疗数据中心/互联互通测评/评级/标准化成熟度/医院信息互联互通 等带语境形态）
       var strongT = /电子病历|智慧医院|互联网医院|智慧医疗|智慧服务|智慧病房|智慧管理|智慧后勤|卫生信息化|医疗信息化|医院信息化|区域卫生信息|全民健康信息|数字医院|数字健康|互联网\+医疗|AI\+医疗|AI医疗|医疗健康信息|远程医疗|医院信息|医疗信息|临床信息系统|医院信息系统|医疗信息系统|医院数据中心|医疗数据中心|集成平台|一体化系统|一体化平台|信息平台|信息系统|信息中心|信创|国产化|CDSS|临床决策|医疗大模型|医疗人工智能|医疗AI|医学人工智能|医疗知识图谱|医院物联网|医疗物联网|移动护理|移动查房|掌上医院|电子病历评级|电子病历分级|电子病历应用水平|互联互通测评|互联互通评级|互联互通标准化成熟度|智慧服务评级|智慧服务分级|智慧服务测评|智慧管理评级|智慧管理分级|医院信息标准化|医院信息互联互通|智慧医院分级|DRG|DIP|医保信息化|医保信息平台|医保信息系统|医保电子凭证|健康医疗大数据|医疗大数据|华为医疗|腾讯健康|京东健康|阿里云医疗|百度灵医|东软集团|卫宁健康|创业慧康|东华医为|和仁科技|麦迪科技|万达信息|久远银海|嘉和美康|讯飞医疗|药品集采|集中带量采购|带量采购|集采|医保支付|医保目录|医保谈判|医疗服务价格|公立医院绩效考核|绩效考核|国考|医保改革|医疗改革|医保基金|双通道|按病种付费|检查检验结果互认|\bHIS\b|\bEMR\b|\bLIS\b|\bPACS\b|\bCDR\b|\bHRP\b|\bMMIT\b/i
-      if (strongT.test(t)) return true
+      var offTopicOrg = /监狱|戒毒|公安|派出所|看守所|环卫|殡葬/
+      if (offTopicOrg.test(t)) return false
+      var medCtx = /医|卫生|卫健|健康|患者|诊|药|病|护理|临床|疾控|妇幼|保健|疫苗|接种|\bHIS\b|\bEMR\b|\bPACS\b|\bLIS\b|\bHRP\b|DRG|DIP|医保/i
+      var genericStrongHit = /一体化平台|信息平台|信息系统|信息中心|信创|国产化|集采/.test(t) || (/智慧管理/.test(t) && !/智慧管理(评级|分级)/.test(t))
+      if (strongT.test(t)) {
+        if (genericStrongHit && !medCtx.test(t)) {
+          var tStripped = t.replace(/一体化平台|信息平台|信息系统|信息中心|信创|国产化|智慧管理|集采/g, "")
+          if (!strongT.test(tStripped)) { /* fall through：通用强词且无医疗语境 */ }
+          else return true
+        } else return true
+      }
       // 纯临床/生活健康内容（患者救治、养生科普、号表通知等）→ 拒：是「医疗新闻」不是「医疗信息化」。
       // v3.1：补行业活动噪声（竞赛/巡讲/事迹/收官/落幕等——健康报、人民网源的高频杂音）
       var clinicalNoise = /养生|食疗|药膳|疫苗|辟谣|义诊|科普|健康指南|健康提醒|健康素养|天气预报|寒潮|降温|高温|节气|停诊|排班|义卖|锦旗|感谢信|坚守|抢救|成功救治|假日门诊|节假日门诊|门诊时间|就诊提示|挂号|流感|中暑|献血|急救常识|用药提醒|成功开展|首例手术|救治|竞赛|巡讲|先进事迹|技能大赛|比武|圆满收官|圆满举办|成功举办|顺利举办|落幕/i
@@ -1387,7 +1421,8 @@ routerAdd("POST", "/api/intel/fetch-now", (e) => {
       var procurementForm = /招标公告|中标(结果)?公告|成交公告|询价公告|竞争性磋商|竞争性谈判|单一来源|采购公告|更正公告|废标公告|采购项目|重新招标|变更公告/i
       if (deviceProcurement.test(t) && procurementForm.test(t)) return false
       // 弱判定：医疗词 AND 医疗IT词 双命中才收（单独临床词不再放行）
-      var medHit = /医|院|卫|健康/i.test(t)
+      var tForMed = t.replace(/法院|检察院|光荣院|养老院|学院|研究院/g, "")
+      var medHit = /医|院|卫|健康/i.test(tForMed)
       var itHit = /信息化|数字化|智慧|智能|系统|平台|软件|数据|信创|国产化|人工智能|\bAI\b|大数据|云计算|云化|上云|等保|网络安全|信息安全|集成|接口|机房|弱电|电子|互联网|线上|运维|测评|评级|分级评价|应用水平|解决方案|中台/i.test(t)
       return medHit && itHit
     }
@@ -1397,16 +1432,29 @@ routerAdd("POST", "/api/intel/fetch-now", (e) => {
     var url = String(src.get("url") || "")
     var res = null
     try {
-      res = $http.send({
-        url: url,
-        method: "GET",
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "Accept-Language": "zh-CN,zh;q=0.9"
-        },
-        timeout: 15
-      })
+        // t137：政府站列表页也走 r.jina.ai（正文代理此前已有，列表页直连易 412）。需重载 PocketBase 后才生效。
+        var listViaJina = false
+        if (/\.gov\.cn/i.test(url)) {
+          try {
+            var jList = $http.send({ url: "https://r.jina.ai/" + url, method: "GET", headers: __UA, timeout: 15 })
+            if (jList && jList.statusCode === 200 && typeof jList.raw === "string" && jList.raw.length > 240) {
+              res = jList
+              listViaJina = true
+            }
+          } catch (eJinList2) { /* 列表代理失败再直连 */ }
+        }
+        if (!listViaJina) {
+          res = $http.send({
+            url: url,
+            method: "GET",
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+              "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+              "Accept-Language": "zh-CN,zh;q=0.9"
+            },
+            timeout: 15
+          })
+        }
     } catch (err2) {
       var emsg = String((err2 && err2.message) || err2 || "")
       var failMsg = /timeout|deadline/i.test(emsg) ? "抓取超时（15s），该网站可能无法访问" : "无法连接该网站：" + emsg.slice(0, 200)
@@ -1865,7 +1913,17 @@ routerAdd("GET", "/api/intel/items", (e) => {
       // 强词=医疗IT主题词表（评级/系统/平台/厂商），命中即收；临床词无法误导。
       // v3.1：去掉裸「数据中心」「互联互通」（保留 医院数据中心/医疗数据中心/互联互通测评/评级/标准化成熟度/医院信息互联互通 等带语境形态）
       var strongT = /电子病历|智慧医院|互联网医院|智慧医疗|智慧服务|智慧病房|智慧管理|智慧后勤|卫生信息化|医疗信息化|医院信息化|区域卫生信息|全民健康信息|数字医院|数字健康|互联网\+医疗|AI\+医疗|AI医疗|医疗健康信息|远程医疗|医院信息|医疗信息|临床信息系统|医院信息系统|医疗信息系统|医院数据中心|医疗数据中心|集成平台|一体化系统|一体化平台|信息平台|信息系统|信息中心|信创|国产化|CDSS|临床决策|医疗大模型|医疗人工智能|医疗AI|医学人工智能|医疗知识图谱|医院物联网|医疗物联网|移动护理|移动查房|掌上医院|电子病历评级|电子病历分级|电子病历应用水平|互联互通测评|互联互通评级|互联互通标准化成熟度|智慧服务评级|智慧服务分级|智慧服务测评|智慧管理评级|智慧管理分级|医院信息标准化|医院信息互联互通|智慧医院分级|DRG|DIP|医保信息化|医保信息平台|医保信息系统|医保电子凭证|健康医疗大数据|医疗大数据|华为医疗|腾讯健康|京东健康|阿里云医疗|百度灵医|东软集团|卫宁健康|创业慧康|东华医为|和仁科技|麦迪科技|万达信息|久远银海|嘉和美康|讯飞医疗|药品集采|集中带量采购|带量采购|集采|医保支付|医保目录|医保谈判|医疗服务价格|公立医院绩效考核|绩效考核|国考|医保改革|医疗改革|医保基金|双通道|按病种付费|检查检验结果互认|\bHIS\b|\bEMR\b|\bLIS\b|\bPACS\b|\bCDR\b|\bHRP\b|\bMMIT\b/i
-      if (strongT.test(t)) return true
+      var offTopicOrg = /监狱|戒毒|公安|派出所|看守所|环卫|殡葬/
+      if (offTopicOrg.test(t)) return false
+      var medCtx = /医|卫生|卫健|健康|患者|诊|药|病|护理|临床|疾控|妇幼|保健|疫苗|接种|\bHIS\b|\bEMR\b|\bPACS\b|\bLIS\b|\bHRP\b|DRG|DIP|医保/i
+      var genericStrongHit = /一体化平台|信息平台|信息系统|信息中心|信创|国产化|集采/.test(t) || (/智慧管理/.test(t) && !/智慧管理(评级|分级)/.test(t))
+      if (strongT.test(t)) {
+        if (genericStrongHit && !medCtx.test(t)) {
+          var tStripped = t.replace(/一体化平台|信息平台|信息系统|信息中心|信创|国产化|智慧管理|集采/g, "")
+          if (!strongT.test(tStripped)) { /* fall through：通用强词且无医疗语境 */ }
+          else return true
+        } else return true
+      }
       // 纯临床/生活健康内容（患者救治、养生科普、号表通知等）→ 拒：是「医疗新闻」不是「医疗信息化」。
       // v3.1：补行业活动噪声（竞赛/巡讲/事迹/收官/落幕等——健康报、人民网源的高频杂音）
       var clinicalNoise = /养生|食疗|药膳|疫苗|辟谣|义诊|科普|健康指南|健康提醒|健康素养|天气预报|寒潮|降温|高温|节气|停诊|排班|义卖|锦旗|感谢信|坚守|抢救|成功救治|假日门诊|节假日门诊|门诊时间|就诊提示|挂号|流感|中暑|献血|急救常识|用药提醒|成功开展|首例手术|救治|竞赛|巡讲|先进事迹|技能大赛|比武|圆满收官|圆满举办|成功举办|顺利举办|落幕/i
@@ -1880,7 +1938,8 @@ routerAdd("GET", "/api/intel/items", (e) => {
       var procurementForm = /招标公告|中标(结果)?公告|成交公告|询价公告|竞争性磋商|竞争性谈判|单一来源|采购公告|更正公告|废标公告|采购项目|重新招标|变更公告/i
       if (deviceProcurement.test(t) && procurementForm.test(t)) return false
       // 弱判定：医疗词 AND 医疗IT词 双命中才收（单独临床词不再放行）
-      var medHit = /医|院|卫|健康/i.test(t)
+      var tForMed = t.replace(/法院|检察院|光荣院|养老院|学院|研究院/g, "")
+      var medHit = /医|院|卫|健康/i.test(tForMed)
       var itHit = /信息化|数字化|智慧|智能|系统|平台|软件|数据|信创|国产化|人工智能|\bAI\b|大数据|云计算|云化|上云|等保|网络安全|信息安全|集成|接口|机房|弱电|电子|互联网|线上|运维|测评|评级|分级评价|应用水平|解决方案|中台/i.test(t)
       return medHit && itHit
     }
@@ -2179,7 +2238,17 @@ routerAdd("POST", "/api/intel/cleanup-irrelevant", (e) => {
       var infraNonMedical = /数据中心(互联|虚拟化|管理|服务|双活|光网)|（DCS）|（DME）|（HCI）|\(DCS\)|\(DME\)|\(HCI\)|IDC(数据中心|机房|服务)|智算中心|算力中心/i
       if (infraNonMedical.test(t)) return true
       var strongT = /电子病历|智慧医院|互联网医院|智慧医疗|智慧服务|智慧病房|智慧管理|智慧后勤|卫生信息化|医疗信息化|医院信息化|区域卫生信息|全民健康信息|数字医院|数字健康|互联网\+医疗|AI\+医疗|AI医疗|医疗健康信息|远程医疗|医院信息|医疗信息|临床信息系统|医院信息系统|医疗信息系统|医院数据中心|医疗数据中心|集成平台|一体化系统|一体化平台|信息平台|信息系统|信息中心|信创|国产化|CDSS|临床决策|医疗大模型|医疗人工智能|医疗AI|医学人工智能|医疗知识图谱|医院物联网|医疗物联网|移动护理|移动查房|掌上医院|电子病历评级|电子病历分级|电子病历应用水平|互联互通测评|互联互通评级|互联互通标准化成熟度|智慧服务评级|智慧服务分级|智慧服务测评|智慧管理评级|智慧管理分级|医院信息标准化|医院信息互联互通|智慧医院分级|DRG|DIP|医保信息化|医保信息平台|医保信息系统|医保电子凭证|健康医疗大数据|医疗大数据|华为医疗|腾讯健康|京东健康|阿里云医疗|百度灵医|东软集团|卫宁健康|创业慧康|东华医为|和仁科技|麦迪科技|万达信息|久远银海|嘉和美康|讯飞医疗|药品集采|集中带量采购|带量采购|集采|医保支付|医保目录|医保谈判|医疗服务价格|公立医院绩效考核|绩效考核|国考|医保改革|医疗改革|医保基金|双通道|按病种付费|检查检验结果互认|\bHIS\b|\bEMR\b|\bLIS\b|\bPACS\b|\bCDR\b|\bHRP\b|\bMMIT\b/i
-      if (strongT.test(t)) return false
+      var offTopicOrg = /监狱|戒毒|公安|派出所|看守所|环卫|殡葬/
+      if (offTopicOrg.test(t)) return true
+      var medCtx = /医|卫生|卫健|健康|患者|诊|药|病|护理|临床|疾控|妇幼|保健|疫苗|接种|\bHIS\b|\bEMR\b|\bPACS\b|\bLIS\b|\bHRP\b|DRG|DIP|医保/i
+      var genericStrongHit = /一体化平台|信息平台|信息系统|信息中心|信创|国产化|集采/.test(t) || (/智慧管理/.test(t) && !/智慧管理(评级|分级)/.test(t))
+      if (strongT.test(t)) {
+        if (genericStrongHit && !medCtx.test(t)) {
+          var tStripped = t.replace(/一体化平台|信息平台|信息系统|信息中心|信创|国产化|智慧管理|集采/g, "")
+          if (!strongT.test(tStripped)) { /* fall through */ }
+          else return false
+        } else return false
+      }
       var clinicalNoise = /养生|食疗|药膳|疫苗|辟谣|义诊|科普|健康指南|健康提醒|健康素养|天气预报|寒潮|降温|高温|节气|停诊|排班|义卖|锦旗|感谢信|坚守|抢救|成功救治|假日门诊|节假日门诊|门诊时间|就诊提示|挂号|流感|中暑|献血|急救常识|用药提醒|成功开展|首例手术|救治|竞赛|巡讲|先进事迹|技能大赛|比武|圆满收官|圆满举办|成功举办|顺利举办|落幕/i
       if (clinicalNoise.test(t)) return true
       // v3.2（2026-10-08 R209 与采集过滤同口径）：工程/物业/设备采购 → 不相关
@@ -2190,7 +2259,8 @@ routerAdd("POST", "/api/intel/cleanup-irrelevant", (e) => {
       var deviceProcurement = /内窥镜|支气管镜|扫描仪|正电子发射|磁共振|超声|呼吸机|监护仪|麻醉机|药柜|纯水|合成模块|试剂|耗材|器械|检验设备|影像设备|屏蔽改造|设备机房|标识标牌|窗帘|家具/i
       var procurementForm = /招标公告|中标(结果)?公告|成交公告|询价公告|竞争性磋商|竞争性谈判|单一来源|采购公告|更正公告|废标公告|采购项目|重新招标|变更公告/i
       if (deviceProcurement.test(t) && procurementForm.test(t)) return true
-      var medHit = /医|院|卫|健康/i.test(t)
+      var tForMed = t.replace(/法院|检察院|光荣院|养老院|学院|研究院/g, "")
+      var medHit = /医|院|卫|健康/i.test(tForMed)
       var itHit = /信息化|数字化|智慧|智能|系统|平台|软件|数据|信创|国产化|人工智能|\bAI\b|大数据|云计算|云化|上云|等保|网络安全|信息安全|集成|接口|机房|弱电|电子|互联网|线上|运维|测评|评级|分级评价|应用水平|解决方案|中台/i.test(t)
       return !(medHit && itHit)
     }
@@ -2602,7 +2672,7 @@ routerAdd("POST", "/api/intel/enrich", (e) => {
         return htmlToArticle(raw)
       } catch (e2) { return "" }
     }
-    var __TAG_BANK = ["电子病历", "智慧医院", "互联网医院", "医疗信息化", "医院信息化", "区域卫生", "医共体", "医联体", "公共卫生", "疾控", "DRG", "DIP", "医保", "远程医疗", "医学影像", "检验", "临床", "护理", "手术机器人", "人工智能", "大模型", "医疗AI", "数字化", "信息化", "信创", "国产化", "数据中心", "云平台", "大数据", "5G", "智慧病房", "分级诊疗", "公立医院", "药品追溯", "药店", "处方", "集采", "中标", "招标", "采购", "政策", "规划", "标准", "指南", "解决方案"]
+    var __TAG_BANK = ["电子病历", "互联互通", "评级", "等保", "网络安全", "数据安全", "HIS", "EMR", "LIS", "PACS", "HRP", "集成平台", "智慧服务", "智慧管理", "医保信息化", "智慧医院", "互联网医院", "医疗信息化", "医院信息化", "区域卫生", "医共体", "医联体", "公共卫生", "疾控", "DRG", "DIP", "医保", "远程医疗", "医学影像", "检验", "临床", "护理", "手术机器人", "人工智能", "大模型", "医疗AI", "数字化", "信息化", "信创", "国产化", "数据中心", "云平台", "大数据", "5G", "智慧病房", "分级诊疗", "公立医院", "药品追溯", "药店", "处方", "集采", "中标", "招标", "采购", "政策", "规划", "标准", "指南", "解决方案"]
     var extractTags = function (text) {
       var t = String(text || "")
       var out = []
