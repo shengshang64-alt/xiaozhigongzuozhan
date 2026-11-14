@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ArrowLeft, ArrowRight, Layers, Loader2, Sparkles } from "lucide-react"
+import { ArrowLeft, ArrowRight, BookOpen, Layers, Loader2, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -20,6 +20,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { OutlineTreeEditor } from "@/components/solution-studio/OutlineTreeEditor"
 import { SkillPickerFor } from "@/components/common/SkillPicker"
 import type { UseSolutionStudio } from "@/pages/SolutionStudio/useSolutionStudio"
+import { StandardChaptersDialog } from "@/components/solution-studio/StandardChaptersDialog"
+import { useStandardChapters } from "@/pages/SolutionStudio/useStandardChapters"
+import { linesFromSystemNames } from "@/pages/SolutionStudio/standardChapters"
 import { BUDGET_RANGES, HOSPITAL_LEVELS, SYSTEM_OPTIONS } from "@/pages/SolutionStudio/solutionTypes"
 import { calcTotal, fmtMoney, type ChecklistRecord } from "@/pages/SolutionStudio/checklistTypes"
 
@@ -47,6 +50,7 @@ type NewSolutionWizardProps = Pick<
   | "confirming"
   | "submitWizardInfo"
   | "assembleOutlineFromChecklist"
+  | "applyStandardChapterPreview"
   | "confirmOutline"
   | "outlineRename"
   | "outlineRemove"
@@ -74,6 +78,7 @@ function FieldLabel({ text, required }: { text: string; required?: boolean }) {
 }
 
 export function NewSolutionWizard(p: NewSolutionWizardProps) {
+  const chapters = useStandardChapters()
   const info = p.formInfo
   const setInfo = p.setFormInfo
   const linkedChecklist = p.checklistOptions.find((c) => c.id === p.formChecklistId) ?? null
@@ -123,6 +128,7 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
     p.submitWizardInfo()
   }
   return (
+    <>
     <Dialog open={p.wizardOpen} onOpenChange={(open) => !open && p.closeWizard()}>
       <DialogContent
         className="max-h-[90vh] max-w-3xl overflow-y-auto"
@@ -452,6 +458,25 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
               <SkillPickerFor scope="solution-outline" source={p.outlineSkills} align="right" />
               <Button
                 variant="outline"
+                data-testid="preview-standard-chapters-wizard"
+                disabled={p.outlineLoading || chapters.busy}
+                onClick={() => {
+                  const items = linkedChecklist?.items?.length
+                    ? linkedChecklist.items
+                    : linesFromSystemNames(p.formInfo.systems)
+                  void chapters.openFromLines(items, {
+                    typeKey: p.formTypeKey,
+                    title: linkedChecklist?.checklist_name || "方案建设系统",
+                  })
+                }}
+                title="按模块检索已审核知识原子，先预览来源和缺项，再决定是否带入大纲"
+                className="border-primary/40 text-primary hover:bg-primary/10"
+              >
+                <BookOpen className="mr-1.5 h-4 w-4" />
+                预览标准章节
+              </Button>
+              <Button
+                variant="outline"
                 onClick={p.assembleOutlineFromChecklist}
                 disabled={p.outlineLoading}
                 title="不走大模型、零费用：按清单命中的系统直接铺出标准方案章节骨架，可再编辑"
@@ -497,5 +522,15 @@ export function NewSolutionWizard(p: NewSolutionWizardProps) {
         </div>
       </DialogContent>
     </Dialog>
+    <StandardChaptersDialog
+      preview={chapters.preview}
+      busy={chapters.busy}
+      onClose={chapters.closePreview}
+      onConfirm={(preview) => {
+        p.applyStandardChapterPreview(preview)
+        chapters.closePreview()
+      }}
+    />
+    </>
   )
 }

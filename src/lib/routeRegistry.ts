@@ -67,7 +67,7 @@ const ROUTE_DEFS: RouteDef[] = [
   def("/ai-hot", "AI 动态", Flame, () => import("@/pages/AiHot/index.tsx")),
   def("/customer-management", "客户管理", Users, () => import("@/pages/CustomerManagement/index.tsx")),
   def("/solution-studio", "方案工作室", FileText, () => import("@/pages/SolutionStudio/index.tsx")),
-  def("/product-mapping", "产品映射", ArrowLeftRight, () => import("@/pages/ProductMapping/index.tsx")),
+  def("/product-mapping", "建设清单工作台", ArrowLeftRight, () => import("@/pages/ProductMapping/index.tsx")),
   def("/ppt-quote", "PPT 与报价", Monitor, () => import("@/pages/PptQuote/index.tsx")),
   def("/materials", "素材库", Images, () => import("@/pages/MaterialLibrary/index.tsx")),
   def("/bid-workspace", "标书工作台", FileCheck2, () => import("@/pages/BidWorkspace/index.tsx")),
@@ -113,14 +113,14 @@ export const NAV_GROUPS: { title: string; paths: string[] }[] = [
   // 用一线售前能听懂的动词短语：哪里看线索、哪里写材料、哪里沉淀资产。
   // AI 动态（模型调用记录/用量）属于"沉淀·团队"——元功能，不放"客户·线索"。
   { title: "客户 · 线索", paths: ["/", "/customer-management", "/intel-center"] },
-  { title: "方案 · 标书 · 汇报", paths: ["/solution-studio", "/bid-workspace", "/materials", "/ppt-quote", "/product-mapping", "/bid-check", "/format-tool"] },
+  { title: "方案 · 标书 · 汇报", paths: ["/product-mapping", "/solution-studio", "/bid-workspace", "/materials", "/ppt-quote", "/bid-check", "/format-tool"] },
   // UX-R2（docs/ux-review-2026-11 §二十三·减法项）：AI 动态并入情报中心的「行业前沿」来源过滤；
   // 路由与页面保留（防外链失效），只从侧栏导航移除。
   { title: "沉淀 · 团队", paths: ["/knowledge", "/qual-certs", "/competitors", "/assistant", "/model-config", "/team"] },
 ]
 
 /** 侧栏默认收进「更多」的低频入口。路由与分组仍保留；当前页若在其中则自动展开。 */
-export const NAV_MORE_PATHS = ["/product-mapping", "/bid-check", "/format-tool"] as const
+export const NAV_MORE_PATHS = ["/bid-check", "/format-tool"] as const
 
 /** 侧栏不展示：浮窗已提供入口，全屏对话从浮窗放大进入。路由与分组保留。 */
 export const NAV_SIDEBAR_HIDDEN = ["/assistant"] as const

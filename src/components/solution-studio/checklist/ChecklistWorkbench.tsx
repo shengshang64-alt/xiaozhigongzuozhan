@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react"
-import { FileSpreadsheet, Plus } from "lucide-react"
+import { useNavigate } from "react-router-dom"
+import { BookOpen, FileSpreadsheet, Plus } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -18,6 +19,9 @@ import { ProductLibraryPanel } from "@/components/solution-studio/checklist/Prod
 import { ChecklistAmountCard } from "./ChecklistAmountCard"
 import { ChecklistSteps } from "./ChecklistSteps"
 import type { UseChecklist } from "@/pages/SolutionStudio/checklistLogic"
+import { findMutexConflicts, mutexWarningText } from "@/pages/SolutionStudio/mutexModules"
+import { StandardChaptersDialog } from "@/components/solution-studio/StandardChaptersDialog"
+import { useStandardChapters } from "@/pages/SolutionStudio/useStandardChapters"
 import {
   buildAmountBreakdown,
   buildChecklistSteps,
@@ -52,6 +56,8 @@ export function ChecklistWorkbench({
   onImportRequest?: () => void
   onExportRequest?: () => void
 }) {
+  const navigate = useNavigate()
+  const chapters = useStandardChapters()
   const rec = ck.activeChecklist
   const items = rec?.items ?? []
   const checkedItems = items.filter((l) => l.checked !== false)
@@ -154,6 +160,9 @@ export function ChecklistWorkbench({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={() => navigate("/product-mapping")}>
+            去建设清单工作台对照
+          </Button>
           <Button variant="outline" onClick={openImport}>
             导入需求原文
           </Button>
@@ -308,6 +317,32 @@ export function ChecklistWorkbench({
           </section>
 
           <div id="ck-amount-card" className="flex flex-col gap-3">
+            <Button
+              variant="outline"
+              className="w-full"
+              data-testid="preview-standard-chapters"
+              disabled={!rec || checkedItems.length < 1 || chapters.busy}
+              onClick={() => {
+                if (!rec) {
+                  toast.message("请先选择或生成清单")
+                  return
+                }
+                if (checkedItems.length < 1) {
+                  toast.message("请至少勾选 1 项模块再预览标准章节")
+                  return
+                }
+                void chapters.openFromLines(checkedItems, { title: rec.checklist_name || "建设清单" })
+              }}
+            >
+              {chapters.busy ? (
+                <span>正在整理标准章节…</span>
+              ) : (
+                <>
+                  <BookOpen className="mr-1 h-4 w-4" />
+                  预览标准章节
+                </>
+              )}
+            </Button>
             <ChecklistAmountCard
               breakdown={breakdown}
               checkedCount={checkedItems.length}
@@ -323,6 +358,21 @@ export function ChecklistWorkbench({
                 onStartSolution(rec.id)
               }}
             />
+            <StandardChaptersDialog preview={chapters.preview} busy={chapters.busy} onClose={chapters.closePreview} />
+            {(() => {
+              const warn = mutexWarningText(
+                findMutexConflicts(
+                  checkedItems.map((l) => l.module_name),
+                  ck.companyProducts.map((p) => ({ module_name: p.module_name, remark: p.description, description: p.description })),
+                ),
+              )
+              return warn ? (
+                <div className="flex gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900">
+                  <span className="mt-0.5 font-semibold">!</span>
+                  <div>{warn}</div>
+                </div>
+              ) : null
+            })()}
             {uncheckedItems.length > 0 ? (
               <div className="flex gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900">
                 <span className="mt-0.5 font-semibold">!</span>

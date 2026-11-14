@@ -14,7 +14,7 @@ export function MappingSubtabs({
 }) {
   const current = MAPPING_TABS.find((t) => t.key === active)
   return (
-    <nav aria-label="产品映射子屏" className="-mt-0.5 mb-4 flex flex-wrap items-center gap-0.5 border-b border-border">
+    <nav aria-label="建设清单工作台子屏" className="-mt-0.5 mb-4 flex flex-wrap items-center gap-0.5 border-b border-border">
       {MAPPING_TABS.map((t) => {
         const on = t.key === active
         return (

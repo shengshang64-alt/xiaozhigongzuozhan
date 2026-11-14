@@ -42,7 +42,8 @@ import { buildSelfCheckOverview } from "./solSelfCheckOverview"
 import { DEFAULT_EXPORT_TEMPLATE, buildExportFrontMatter, readSolutionExportTemplate, writeSolutionExportTemplate, type SolutionExportTemplate } from "./exportTemplate"
 import { useChecklist } from "./checklistLogic"
 import { snapshotFromChecklist, type ChecklistRecord } from "./checklistTypes"
-import { checklistToOutlineSkeleton } from "./checklistToOutline"
+import { checklistToOutlineSkeleton, SKELETON_TEMPLATES } from "./checklistToOutline"
+import { systemsChapterBodyFromPreview, type StandardChapterPreview } from "./standardChapters"
 import { bulkResumeNotice, deriveSolutionDocStatus, shouldRecoverStaleGenerating } from "./bulkResume"
 import { parseSolutionStudioTab, type SolutionStudioTab } from "./solutionStudioTabs"
 import {
@@ -237,6 +238,7 @@ export function useSolutionStudio() {
   // 方案列表要各拉一遍。一个路由 + ?tab= 切换，与模型配置 / 素材库同款。
   const [searchParams, setSearchParams] = useSearchParams()
   const studioTab = parseSolutionStudioTab(searchParams.get("tab"))
+  const preferredChecklistId = searchParams.get("checklist")
   /** 编辑器会话写入地址（tab=editor + solution=<id>）：刷新 / 分享链接可还原当前方案 */
   const setEditorUrl = useCallback(
     (solutionId?: string) => {
@@ -685,6 +687,16 @@ export function useSolutionStudio() {
     toast.success(`已按清单 ${formInfo.systems.length} 个系统组装标准方案骨架，可继续调整再确认`)
   }, [formInfo.systems, formTypeKey])
 
+  const pendingSystemsChapterBodyRef = useRef("")
+  const applyStandardChapterPreview = useCallback((preview: StandardChapterPreview) => {
+    setOutlineDraft(preview.outline)
+    pendingSystemsChapterBodyRef.current = systemsChapterBodyFromPreview(preview)
+    setWizardStep(3)
+    toast.success(
+      `已带入大纲骨架：已整理 ${preview.stats.ok} 个模块，缺项 ${preview.stats.missing} 个（未编造）。尚未创建方案，不会覆盖已有正文。`,
+    )
+  }, [])
+
   // 大纲树编辑操作（向导第三步）
   const outlineRename = useCallback((id: string, title: string) => {
     setOutlineDraft((prev) => renameNodeInTree(prev, id, title))
@@ -714,11 +726,16 @@ export function useSolutionStudio() {
     }
     confirmingRef.current = true
     setConfirming(true)
+    const sysTitle =
+      (SKELETON_TEMPLATES[formTypeKey as keyof typeof SKELETON_TEMPLATES] ?? SKELETON_TEMPLATES.standard).find(
+        (d) => d.systemsChapter,
+      )?.title
+    const systemsBody = pendingSystemsChapterBodyRef.current
     const chapters: Chapter[] = outlineDraft.map((n) => ({
       node_id: n.id,
       title: n.title,
       sections: (n.children ?? []).map((c) => c.title),
-      content: "",
+      content: n.title === sysTitle && systemsBody ? systemsBody : "",
       gen_status: "pending" as const,
     }))
     const solutionName = formSolutionName.trim() || `${formHospital.trim()}${typeLabel(formTypeKey)}`
@@ -745,6 +762,7 @@ export function useSolutionStudio() {
         }),
       })
       setSolutions((prev) => [record, ...prev.filter((s) => s.id !== record.id)])
+      pendingSystemsChapterBodyRef.current = ""
       setWizardOpen(false)
       applySolutionState(record)
       setActiveChapterId(record.chapters[0]?.node_id ?? null)
@@ -962,6 +980,22 @@ export function useSolutionStudio() {
       // 医院与商机已预置，选完类型点「下一步」即在第 2 步看到预置值。
     })
   }, [searchParams, listLoading, openNewWizard])
+
+  // 建设清单工作台「带到方案建设清单 / 生成方案」：?checklist=<id>&startSolution=1
+  const startSolutionDeepLinkRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (searchParams.get("startSolution") !== "1") return
+    const id = searchParams.get("checklist")
+    if (!id || startSolutionDeepLinkRef.current === id || checklist.checklistsLoading) return
+    if (!checklist.myChecklists.some((c) => c.id === id)) return
+    startSolutionDeepLinkRef.current = id
+    void Promise.resolve().then(() => {
+      startSolutionFromChecklist(id)
+      const params = new URLSearchParams(searchParams)
+      params.delete("startSolution")
+      setSearchParams(params, { replace: true })
+    })
+  }, [searchParams, checklist.checklistsLoading, checklist.myChecklists, startSolutionFromChecklist, setSearchParams])
 
   const deleteSolution = useCallback(
     async (rec: SolutionRecord) => {
@@ -1950,6 +1984,7 @@ export function useSolutionStudio() {
     setFormChecklistId,
     handlePickChecklist,
     startSolutionFromChecklist,
+    preferredChecklistId,
     // 列表
     solutions: filteredSolutions,
     solutionStats,
@@ -1985,6 +2020,7 @@ export function useSolutionStudio() {
     confirming,
     submitWizardInfo,
     assembleOutlineFromChecklist,
+    applyStandardChapterPreview,
     confirmOutline,
     outlineRename,
     outlineRemove,

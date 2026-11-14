@@ -14,21 +14,14 @@ export const ONE_LINK_SHEET_KEYWORDS = ["按公司规范", "公司规范"]
 const TIER_OUTPATIENT_PREFIXES = ["门诊量", "门量", "门诊人数"]
 const TIER_BED_PREFIXES = ["床位", "床"]
 
-/** 评级勾选列 → 评级体系：前缀最长匹配优先（「五级四甲」属智慧管理，不能落到「五乙」上） */
+/** 评级勾选列 → 评级体系：只认原子列（病历 / 互联互通 / 智慧服务 / 智慧管理）。
+ *  组合列「五级四甲」等是并集公式，不写入 sm，筛选用原子标签求并集。 */
 const TAG_COLUMN_PREFIXES: { prefix: string; key: RatingGroupKey }[] = [
   { prefix: "病历", key: "emr" },
   { prefix: "电子病历", key: "emr" },
   { prefix: "互联互通", key: "hpc" },
   { prefix: "智慧服务", key: "ss" },
   { prefix: "智慧管理", key: "sm" },
-  // 智慧管理在标准表里简写为「五级四乙 / 五级四甲 / 六级四甲 / 六级五乙」
-  { prefix: "五级四", key: "sm" },
-  { prefix: "六级四", key: "sm" },
-  { prefix: "六级五", key: "sm" },
-  { prefix: "五乙", key: "hpc" },
-  { prefix: "五甲", key: "hpc" },
-  { prefix: "四乙", key: "hpc" },
-  { prefix: "四甲", key: "hpc" },
 ]
 
 /** 导入解析出的单行（字段口径与 CheckProduct 对齐，额外带标准表原文列） */

@@ -1,5 +1,8 @@
 import type { CheckProduct } from "@/pages/SolutionStudio/checklistTypes"
 import { RATING_GROUPS, type RatingGroupKey } from "@/pages/SolutionStudio/checklistTypes"
+import { normalizeLevel } from "@/pages/SolutionStudio/ratingTags"
+
+export { normalizeLevel } from "@/pages/SolutionStudio/ratingTags"
 
 // ---------------------------------------------------------------------------
 // 评级筛选（2026-10-29）
@@ -66,56 +69,6 @@ export function ratingSelectionText(sel: RatingSelection): string {
     parts.push(labels.join("、"))
   }
   return parts.join("；")
-}
-
-/**
- * 评级档位值归一化（2026-10-29）
- *
- * 起因：公司库里的 rating_tags 存的是导入时的**列头原文**，与 RATING_GROUPS 的标准码不一致：
- *   emr 实际存 "病历五级"，标准码是 "5"
- *   hpc 实际存 "互联互通四甲"，标准码是 "4A"
- *   sm  实际存 "五级四甲"，标准码是 "3"
- * 直接比对导致「选中电子病历 5 级」一个模块都命中不了（实测评级必选 0 项）。
- * 这里把两种写法都折叠成同一个规范键，命中判断与展示都用它。
- */
-const LEVEL_ALIASES: Record<RatingGroupKey, Record<string, string>> = {
-  emr: {
-    "病历四级": "4", 四: "4", "4": "4",
-    "病历五级": "5", 五: "5", "5": "5",
-    "病历六级": "6", 六: "6", "6": "6",
-    "病历七级": "7", 七: "7", "7": "7",
-  },
-  hpc: {
-    "互联互通四级乙等": "4B", "四级乙等": "4B", 四乙: "4B", "4B": "4B",
-    "互联互通四级甲等": "4A", "四级甲等": "4A", 四甲: "4A", "4A": "4A",
-    "互联互通五级乙等": "5B", "五级乙等": "5B", 五乙: "5B", "5B": "5B",
-    "互联互通五级甲等": "5A", "五级甲等": "5A", 五甲: "5A", "5A": "5A",
-  },
-  ss: {
-    "智慧服务一级": "1", "一级": "1", "1": "1",
-    "智慧服务二级": "2", "二级": "2", "2": "2",
-    "智慧服务三级": "3", "三级": "3", "3": "3",
-    "智慧服务四级": "4", "四级": "4", "4": "4",
-  },
-  sm: {
-    // 智慧管理标准表的简写是「五级四甲=3 级」这类组合，取其中的等级位
-    "五级四乙": "3", "五级四甲": "3", 四级乙等: "2", 四级甲等: "2",
-    "六级四甲": "3", "六级五乙": "3",
-    "智慧管理一级": "1", "智慧管理二级": "2", "智慧管理三级": "3",
-    "1": "1", "2": "2", "3": "3",
-  },
-}
-
-/** 把档位值（标准码或导入原文）折叠成规范码；无法识别时原样返回（去空白小写） */
-export function normalizeLevel(group: RatingGroupKey, value: string): string {
-  const raw = String(value ?? "").trim()
-  if (!raw) return ""
-  const alias = LEVEL_ALIASES[group]
-  if (alias[raw]) return alias[raw]
-  // 兜底：去掉「电子病历/互联互通/智慧服务/智慧管理」前缀再试一次
-  const stripped = raw.replace(/^(电子病历|互联互通|智慧服务|智慧管理)/, "")
-  if (stripped && alias[stripped]) return alias[stripped]
-  return raw.replace(/\s+/g, "").toLowerCase()
 }
 
 /** 该产品是否命中任一被选中的评级档位 */

@@ -11,7 +11,7 @@ export type MappingTab = "upload" | "compare" | "result" | "library"
 
 /** 顺序即 Tab 顺序，与原型 manifest 的 mapping 模块四屏一致（屏名逐字照抄 tab 字段） */
 export const MAPPING_TABS: { key: MappingTab; label: string; hint: string }[] = [
-  { key: "upload", label: "① 选择清单", hint: "上传业主清单 / 粘贴条目 / 关联招标采购清单" },
+  { key: "upload", label: "① 选择清单", hint: "上传业主清单、Word/PDF 或粘贴条目，先预览再对照" },
   { key: "compare", label: "② 对照", hint: "记忆库 → 离线规则自动对照，AI 语义兜底" },
   { key: "result", label: "③ 结果", hint: "覆盖视角 + 评级筛选 + 导出与保存" },
   { key: "library", label: "产品库", hint: "公司库 / 记忆库 / 导入 ONE-LINK 资产页" },

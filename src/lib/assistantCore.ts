@@ -128,7 +128,7 @@ export function memoryRowsDedupeKey(group: string, content: string): string {
 export const PAGE_NAMES: Record<string, string> = {
   "/": "工作台首页",
   "/solution-studio": "方案编制页",
-  "/product-mapping": "产品映射页",
+  "/product-mapping": "建设清单工作台页",
   "/bid-workspace": "标书工作页",
   "/bid-check": "标书检查页",
   "/ppt-quote": "PPT 与报价页",

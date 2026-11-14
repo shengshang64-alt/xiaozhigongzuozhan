@@ -119,8 +119,20 @@ describe("评级命中判定", () => {
     expect(productMatchesRating(realHpc, { hpc: ["4B"] })).toBe(true)
     expect(productMatchesRating(realHpc, { hpc: ["5A"] })).toBe(false)
 
-    const realSm = mk({ id: "r3", module_name: "护理病历系统", rating_tags: { sm: ["五级四甲", "六级四甲"] } })
-    expect(productMatchesRating(realSm, { sm: ["3"] })).toBe(true)
+    // 组合列不是智慧管理：误写入 sm 的「五级四甲」不得命中智慧管理 3 级
+    const comboMisfiled = mk({ id: "r3", module_name: "护理病历系统", rating_tags: { sm: ["五级四甲", "六级四甲"] } })
+    expect(productMatchesRating(comboMisfiled, { sm: ["3"] })).toBe(false)
+
+    // 五级四甲 = 病历五级 OR 互联互通四甲
+    const onlyEmr = mk({ id: "r4", module_name: "门诊医生工作站", rating_tags: { emr: ["病历五级"] } })
+    const onlyHpc = mk({ id: "r5", module_name: "集成平台", rating_tags: { hpc: ["互联互通四甲"] } })
+    const comboSel: RatingSelection = { emr: ["5"], hpc: ["4A"] }
+    expect(productMatchesRating(onlyEmr, comboSel)).toBe(true)
+    expect(productMatchesRating(onlyHpc, comboSel)).toBe(true)
+    expect(productMatchesRating(EMR4_ONLY, comboSel)).toBe(false)
+
+    const ss5 = mk({ id: "r6", module_name: "智慧服务模块", rating_tags: { ss: ["智慧服务五级"] } })
+    expect(productMatchesRating(ss5, { ss: ["5"] })).toBe(true)
   })
 
   it("1f. 评级文本展示不出现「电子病历病历五级」这类重复前缀", () => {

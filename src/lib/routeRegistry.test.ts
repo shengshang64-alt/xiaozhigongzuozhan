@@ -62,4 +62,15 @@ describe("routeRegistry 一致性", () => {
     }
   })
 
+  it("建设清单工作台是「方案 · 标书 · 汇报」主路径，排在方案工作室前面，且不收进更多", () => {
+    const group = NAV_GROUPS.find((g) => g.title === "方案 · 标书 · 汇报")
+    expect(group, "缺少方案 · 标书 · 汇报分组").toBeTruthy()
+    const paths = group!.paths
+    expect(paths.indexOf("/product-mapping")).toBeGreaterThanOrEqual(0)
+    expect(paths.indexOf("/product-mapping")).toBeLessThan(paths.indexOf("/solution-studio"))
+    expect(NAV_MORE_PATHS).toEqual(["/bid-check", "/format-tool"])
+    expect((NAV_MORE_PATHS as readonly string[]).includes("/product-mapping")).toBe(false)
+    expect(labelFor("/product-mapping")).toBe("建设清单工作台")
+  })
+
 })

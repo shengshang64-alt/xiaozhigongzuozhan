@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { SkillPickerFor } from "@/components/common/SkillPicker"
 import { RATING_GROUPS, calcTotal, fmtMoney } from "@/pages/SolutionStudio/checklistTypes"
+import { RATING_COMBO_PRESETS, isComboTargetsActive } from "@/pages/SolutionStudio/ratingTags"
 import type { UseChecklist } from "@/pages/SolutionStudio/checklistLogic"
 import { MatchKindBadge, RatingHitsBadges, SourceBadge } from "./ChecklistBadges"
 
@@ -176,6 +177,29 @@ export function NewChecklistWizard({ ck }: { ck: UseChecklist }) {
 
         {ck.ckStep === "targets" && (
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="sm:col-span-2 rounded-xl border border-border bg-secondary/40 p-4">
+              <p className="text-sm font-medium text-foreground">组合预设</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">一键选中对应病历档 + 互联互通档，筛选按并集（不是智慧管理）。必选模块会默认带出，可选模块请在下一步勾选。</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {RATING_COMBO_PRESETS.map((preset) => {
+                  const on = isComboTargetsActive(ck.ckTargets, preset)
+                  return (
+                    <button
+                      key={preset.key}
+                      type="button"
+                      onClick={() => ck.applyComboTarget(preset)}
+                      className={`rounded-full border px-3 py-1.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                        on
+                          ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                          : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-card-foreground"
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
             {RATING_GROUPS.map((g) => (
               <div key={g.key} className="rounded-xl border border-border bg-secondary/40 p-4">
                 <p className="text-sm font-medium text-foreground">{g.label}</p>
@@ -214,7 +238,7 @@ export function NewChecklistWizard({ ck }: { ck: UseChecklist }) {
           <div className="mt-4">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs text-muted-foreground">
-                已勾选 {checkedCount} / {ck.ckLines.length} 项 · 合计 {fmtMoney(calcTotal(ck.ckLines))}
+                已勾选 {checkedCount} / {ck.ckLines.length} 项（可选模块需手动勾选）· 合计 {fmtMoney(calcTotal(ck.ckLines))}
               </p>
               <div className="flex items-center gap-2">
                 <Select value={addProductId} onValueChange={setAddProductId}>

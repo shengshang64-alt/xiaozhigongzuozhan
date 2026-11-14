@@ -6,11 +6,12 @@
 // 沿用既有对照与记忆库能力，不重写算法；无结果时 ②③ 给出指向 ① 的空态。
 import { useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
-import { ArrowLeftRight, Brain, Database, Download, FileUp, ListChecks, Loader2, Save, ShieldCheck, Sparkles, Table2, Trash2, Upload } from "lucide-react"
+import { ArrowLeftRight, Brain, Database, Download, FileText, FileUp, ListChecks, Loader2, Save, ShieldCheck, Sparkles, Table2, Trash2, Upload } from "lucide-react"
 import { CompanyLibraryDialog } from "./CompanyLibraryDialog"
 import { CompareTable } from "./CompareTable"
 import { MappingMemoryDialog } from "./MappingMemoryDialog"
 import { UploadWizardDialog } from "./UploadWizardDialog"
+import { RequirementExtractDialog } from "./RequirementExtractDialog"
 import { MappingSubtabs } from "@/components/product-mapping/MappingSubtabs"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -28,8 +29,11 @@ import { Card, CardContent } from "@/components/ui/card"
 import { CostConfirmDialog } from "@/components/rh/CostConfirmDialog"
 import { SkillPickerFor } from "@/components/common/SkillPicker"
 import { calcTotal, fmtMoney, RATING_GROUPS, type ChecklistLine } from "@/pages/SolutionStudio/checklistTypes"
+import { RATING_COMBO_PRESETS, isComboPresetActive } from "@/pages/SolutionStudio/ratingTags"
 import { ratingSelectionText } from "./ratingCoverage"
 import { parseMappingTab, type MappingTab } from "./mappingTabs"
+import { StandardChaptersDialog } from "@/components/solution-studio/StandardChaptersDialog"
+import { useStandardChapters } from "@/pages/SolutionStudio/useStandardChapters"
 import type { UseProductMapping } from "./useProductMapping"
 
 // ---------------------------------------------------------------------------
@@ -62,6 +66,7 @@ function NumCell({ value, ariaLabel, onCommit }: { value: number; ariaLabel: str
 // UX-R2（docs/ux-review-2026-11 §十六）：来源卡数据——上传 Excel / 粘贴文本 / 从招标文件 / 从方案需求
 const SOURCE_CARDS: { key: string; tab: UseProductMapping["sourceTab"]; title: string; desc: string; icon: typeof FileUp }[] = [
   { key: "upload", tab: "paste", title: "上传 Excel", desc: "原表所有列保留进对照表", icon: FileUp },
+  { key: "docx", tab: "paste", title: "上传 Word / PDF", desc: "建设要求、评级文件、招标正文先预览再对照", icon: FileText },
   { key: "paste", tab: "paste", title: "粘贴文本", desc: "每行一个系统 / 模块条目", icon: Table2 },
   { key: "bid", tab: "bid", title: "从招标文件", desc: "一键导入采购清单", icon: FileUp },
   { key: "solution", tab: "solution", title: "从方案 / 需求", desc: "带建设清单快照的方案", icon: ListChecks },
@@ -69,6 +74,7 @@ const SOURCE_CARDS: { key: string; tab: UseProductMapping["sourceTab"]; title: s
 
 function SourcePanel({ p }: { p: UseProductMapping }) {
   const fileRef = useRef<HTMLInputElement | null>(null)
+  const docRef = useRef<HTMLInputElement | null>(null)
   const navigate = useNavigate()
   const [bidId, setBidId] = useState("")
   const [solId, setSolId] = useState("")
@@ -77,8 +83,20 @@ function SourcePanel({ p }: { p: UseProductMapping }) {
   return (
     <Card className="mb-5 shadow-sm">
       <CardContent className="p-5">
+        <input
+          ref={docRef}
+          type="file"
+          accept=".docx,.pdf,.txt,.md"
+          className="hidden"
+          data-testid="req-extract-file"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file) void p.openRequirementFile(file)
+            e.target.value = ""
+          }}
+        />
         {/* UX-R2（docs/ux-review-2026-11 §十六）：来源入口改为并排来源卡，激活卡下方显示对应表单 */}
-        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
           {SOURCE_CARDS.map((c) => {
             const active = p.sourceTab === c.tab && (c.tab !== "paste" || sourceCard === c.key)
             return (
@@ -90,6 +108,7 @@ function SourcePanel({ p }: { p: UseProductMapping }) {
                   p.setSourceTab(c.tab)
                   setSourceCard(c.key)
                   if (c.key === "upload") fileRef.current?.click()
+                  if (c.key === "docx") docRef.current?.click()
                 }}
                 className={`rounded-lg border-2 p-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                   active ? "border-primary bg-primary/5" : "border-border bg-card hover:border-primary/40"
@@ -103,7 +122,21 @@ function SourcePanel({ p }: { p: UseProductMapping }) {
           })}
         </div>
 
-        {(p.sourceTab === "paste" && sourceCard !== "upload") && (
+        {p.sourceTab === "paste" && sourceCard === "docx" && (
+          <div className="mb-3">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <Button onClick={() => docRef.current?.click()} disabled={p.productsLoading || p.extractBusy} data-testid="req-extract-upload-btn">
+                {p.extractBusy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <FileText className="mr-1 h-4 w-4" />}
+                上传 Word / PDF
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                支持业主建设要求、评级文件、招标正文：先预览抽出的条目和评级目标，确认后再进入对照。Excel 请走「上传 Excel」。
+              </span>
+            </div>
+          </div>
+        )}
+
+        {(p.sourceTab === "paste" && sourceCard !== "upload" && sourceCard !== "docx") && (
           <div>
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <Button onClick={() => fileRef.current?.click()} disabled={p.productsLoading}>
@@ -141,6 +174,14 @@ function SourcePanel({ p }: { p: UseProductMapping }) {
                 {p.busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1 h-4 w-4" />}
                 按粘贴文本对照
               </Button>
+              <Button
+                variant="outline"
+                data-testid="req-extract-from-paste"
+                onClick={() => p.previewRequirementText(p.rawText)}
+                disabled={p.busy || p.productsLoading || p.extractBusy || !p.rawText.trim()}
+              >
+                预览抽取条目
+              </Button>
             </div>
           </div>
         )}
@@ -171,7 +212,7 @@ function SourcePanel({ p }: { p: UseProductMapping }) {
               }}
             >
               <Sparkles className="mr-1 h-4 w-4" />
-              导入采购清单并对照
+              预览采购清单 / 功能需求并对照
             </Button>
           </div>
         )}
@@ -306,7 +347,7 @@ function RatingFilterBar({ p }: { p: UseProductMapping }) {
           <ShieldCheck className="h-3.5 w-3.5 text-primary" />
           评级要求
         </span>
-        <span className="text-[11px] text-muted-foreground">选中后按评级筛模块，「必选」强制带出</span>
+        <span className="text-[11px] text-muted-foreground">选中后按评级筛模块，「必选」默认带出；可选项由下方开关决定</span>
         {hasSel && (
           <button type="button" onClick={p.clearRating} className="text-[11px] text-primary hover:underline">
             清除
@@ -319,9 +360,36 @@ function RatingFilterBar({ p }: { p: UseProductMapping }) {
             onChange={(e) => p.setIncludeRatingOptional(e.target.checked)}
             className="h-3 w-3 accent-primary"
           />
-          含「可选」评级模块
+          含「可选」评级模块（关闭后只带出必选，可选项请自行勾选）
         </label>
       </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <span className="w-20 shrink-0 text-[11px] text-muted-foreground">组合预设</span>
+        {RATING_COMBO_PRESETS.map((preset) => {
+          const on = isComboPresetActive(p.ratingSel, preset)
+          return (
+            <button
+              key={preset.key}
+              type="button"
+              onClick={() => p.applyComboPreset(preset)}
+              aria-pressed={on}
+              className={`rounded-full border px-2 py-0.5 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                on
+                  ? "border-primary bg-primary/10 font-medium text-primary"
+                  : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+              }`}
+            >
+              {preset.label}
+            </button>
+          )
+        })}
+        <span className="text-[11px] text-muted-foreground">等于选中对应病历档 + 互联互通档，按并集筛选</span>
+      </div>
+
+      {p.mutexWarning ? (
+        <p className="mt-2 text-[11px] text-amber-700">{p.mutexWarning}</p>
+      ) : null}
 
       <div className="mt-2 space-y-1.5">
         {RATING_GROUPS.map((g) => {
@@ -430,7 +498,9 @@ function CompareWorkSection({ p }: { p: UseProductMapping }) {
 
 /** ③ 结果屏：覆盖视角清单 + 命名 + 导出与保存（原型 result.html「结果区成为视觉主角」） */
 function ResultExportSection({ p }: { p: UseProductMapping }) {
+  const chapters = useStandardChapters()
   const skeletonRef = useRef<HTMLInputElement | null>(null)
+  const navigate = useNavigate()
   return (
     <Card className="shadow-sm">
       <CardContent className="p-5">
@@ -490,6 +560,57 @@ function ResultExportSection({ p }: { p: UseProductMapping }) {
             {p.saving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />}
             保存到建设清单
           </Button>
+          <Button
+            variant="outline"
+            data-testid="preview-standard-chapters-mapping"
+            disabled={chapters.busy || p.checklistLines.filter((l) => l.checked !== false).length < 1}
+            onClick={() => {
+              const fromChecked = p.checklistLines.filter((l) => l.checked !== false)
+              const seen = new Set(fromChecked.map((l) => (l.product_name || "") + "::" + (l.module_name || "")))
+              const unmatched = p.rows
+                .filter((r) => !r.product_id && r.resolution !== "ignore" && (r.raw || r.norm))
+                .map((r) => {
+                  const name = (r.raw || r.norm).trim()
+                  return {
+                    line_id: r.row_id,
+                    category: "",
+                    product_line: "",
+                    product_name: name,
+                    module_name: "",
+                    module_func: "",
+                    unit: "套",
+                    qty: 1,
+                    unit_price: 0,
+                    source: "external" as const,
+                    rating_hits: [] as string[],
+                    remark: "",
+                    product_id: "",
+                    checked: true,
+                  }
+                })
+                .filter((l) => !seen.has(l.product_name + "::"))
+              void chapters.openFromLines([...fromChecked, ...unmatched], { title: p.name || "对照结果" })
+            }}
+          >
+            预览标准章节
+          </Button>
+          <StandardChaptersDialog preview={chapters.preview} busy={chapters.busy} onClose={chapters.closePreview} />
+          {p.lastSavedId ? (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/solution-studio?tab=checklist&checklist=${encodeURIComponent(p.lastSavedId)}`)}
+              >
+                带到方案建设清单
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/solution-studio?checklist=${encodeURIComponent(p.lastSavedId)}&startSolution=1`)}
+              >
+                生成方案
+              </Button>
+            </>
+          ) : null}
         </div>
       </CardContent>
     </Card>
@@ -503,7 +624,7 @@ function EmptyStepHint({ onGoUpload }: { onGoUpload: () => void }) {
       <ArrowLeftRight className="mx-auto h-8 w-8 text-muted-foreground/60" />
       <h2 className="mt-3 text-sm font-semibold text-card-foreground">还没有可对照的清单</h2>
       <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-        先在「① 选择清单」上传业主清单 / 粘贴条目 / 关联招标采购清单，系统按「记忆库 → 离线规则」自动对照后，这里就是工作区。
+        先在「① 选择清单」上传业主清单、Word/PDF 或粘贴条目，也可关联招标采购清单。系统先预览抽取结果，再按「记忆库 → 离线规则」对照。
       </p>
       <Button size="sm" className="mt-4 bg-primary text-primary-foreground hover:bg-primary/90" onClick={onGoUpload}>
         去①选择清单
@@ -591,10 +712,10 @@ export function ProductMappingPage(p: UseProductMapping) {
   return (
     <div className="animate-in fade-in duration-500 text-foreground">
       <header className="mb-5">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">产品映射</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">建设清单工作台</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          上传业主清单（Excel 原表保留），系统按「记忆库 → 离线规则」自动对照公司 ONE-LINK 标准清单；
-          匹配不上的人工指定并自动记忆，下次同类条目自动命中。支持对照表与目录覆盖视角导出。
+          售前主路径：对照 → 确认 → 审核。先把业主要求对照到公司标准清单，确认并审核后，再交给方案、PPT、报价调用。
+          匹配不上的条目请人工指定，系统会记住你的口径，下次同类条目自动命中。
         </p>
       </header>
 
@@ -615,7 +736,7 @@ export function ProductMappingPage(p: UseProductMapping) {
             <EmptyStepHint onGoUpload={() => goTab("upload")} />
           )
         ) : tab === "result" ? (
-          p.hasResult ? (
+          p.hasResult || p.hasRatingFilter ? (
             <ResultExportSection p={p} />
           ) : (
             <EmptyStepHint onGoUpload={() => goTab("upload")} />
@@ -631,6 +752,17 @@ export function ProductMappingPage(p: UseProductMapping) {
       <CostConfirmDialog {...p.costConfirm} />
 
       <UploadWizardDialog file={p.wizardFile} onClose={p.closeWizard} onConfirm={p.confirmWizard} />
+      <RequirementExtractDialog
+        preview={p.extractPreview}
+        busy={p.extractBusy}
+        onClose={p.closeExtractPreview}
+        onConfirm={(payload) => {
+          const hasItems = payload.items.length > 0
+          p.confirmExtractPreview(payload)
+          if (hasItems) goTab("compare")
+          else goTab("result")
+        }}
+      />
 
       <MappingMemoryDialog
         open={memoryOpen}
@@ -645,7 +777,7 @@ export function ProductMappingPage(p: UseProductMapping) {
             <DialogTitle>确认导入 ONE-LINK 标准清单？</DialogTitle>
             <DialogDescription>
               工作表「{p.oneLinkSummary?.sheet ?? ""}」共解析出 {p.oneLinkSummary?.rowCount ?? 0} 个模块行、{p.oneLinkSummary?.productCount ?? 0} 个产品。
-              确认后将写入公司标准库（check_products），已存在的映射记忆与对照结果不受影响。
+              确认后按「产品 + 模块」身份更新公司标准库：已有行做更新，新行才新增；新表价格为空时不覆盖已有价格。已存在的映射记忆与对照结果会保留。
             </DialogDescription>
           </DialogHeader>
           {p.oneLinkSummary && p.oneLinkSummary.filledColumns.length > 0 && (

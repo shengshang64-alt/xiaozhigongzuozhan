@@ -60,7 +60,8 @@ describe("parseOneLinkWorkbook", () => {
   it("评级勾选列并集为 rating_tags，0 与空视为未勾选", async () => {
     const { rows } = await parseOneLinkWorkbook(buildWorkbookBuffer())
     expect(rows[1].rating_tags.emr).toEqual(["病历四级", "病历五级"])
-    expect(rows[1].rating_tags.sm).toEqual(["五级四甲"])
+    // 组合列「五级四甲」不再写入 sm
+    expect(rows[1].rating_tags.sm).toBeUndefined()
     expect(rows[0].rating_tags).toEqual({})
     expect(rows[2].rating_tags).toEqual({})
   })

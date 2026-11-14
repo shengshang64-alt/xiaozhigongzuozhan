@@ -32,13 +32,27 @@ import {
   type MappingCompareRow,
 } from "./mappingCore"
 import type { OneLinkParseSummary } from "./oneLinkImport"
+import { planLibraryDedupe, planLibraryUpsert } from "./companyLibrarySync"
 import type { ParsedCustomerTable } from "./uploadWizard"
+import {
+  bidRequirementLinesFromReport,
+  buildRequirementPreview,
+  ratingSelectionIsActive,
+  type RequirementExtractPreview,
+  type RequirementItem,
+} from "./requirementExtract"
+import { readRequirementFile } from "./requirementFileExtract"
 import {
   buildRatingCoverageRows,
   coverageStats,
   type RatingSelection,
 } from "./ratingCoverage"
 import type { RatingGroupKey } from "@/pages/SolutionStudio/checklistTypes"
+import {
+  toggleComboPreset,
+  type RatingComboPreset,
+} from "@/pages/SolutionStudio/ratingTags"
+import { findMutexConflicts, mutexWarningText } from "@/pages/SolutionStudio/mutexModules"
 
 // ---------------------------------------------------------------------------
 // 产品映射 Logic 层：三来源建设清单 → 与 ONE-LINK 公司库逐条一一对照 → 公司格式导出 / 落库
@@ -150,6 +164,9 @@ export function useProductMapping() {
   const [sourceColumns, setSourceColumns] = useState<string[]>([])
   // 上传向导：待解析文件（非空即打开 UploadWizardDialog）
   const [wizardFile, setWizardFile] = useState<File | null>(null)
+  // Word/PDF/文本抽取预览（确认前不进入对照、不写已保存清单）
+  const [extractPreview, setExtractPreview] = useState<RequirementExtractPreview | null>(null)
+  const [extractBusy, setExtractBusy] = useState(false)
   // 最近一次对照的 AI 上下文（招标「建设内容」摘要），手动触发 AI 时沿用
   const aiContextRef = useRef("")
 
@@ -207,9 +224,12 @@ export function useProductMapping() {
   const loadMappings = useCallback(async () => {
     try {
       const data = await pbJsonRequest<ListResponse<CheckMapping>>("/api/check_mappings?page=1&perPage=200")
-      setMappings(data.items ?? [])
+      const items = data.items ?? []
+      setMappings(items)
+      return items
     } catch {
       setMappings([])
+      return [] as CheckMapping[]
     }
   }, [])
 
@@ -405,17 +425,32 @@ export function useProductMapping() {
   const importFromBid = useCallback(
     (bid: BidRow | undefined) => {
       if (!bid) return
-      const lines = bidLinesFromReport(bid.parse_report)
-      if (!lines.length) {
-        toast.error("该招标项目暂无「采购需求结构 / 采购清单」，请先到标书工作台解析该项目")
+      const purchase = bidLinesFromReport(bid.parse_report)
+      const req = bidRequirementLinesFromReport(bid.parse_report)
+      const extraItems = [
+        ...purchase.map((raw) => ({ raw })),
+        ...req.items.map((i) => ({ raw: i.raw, norm: i.norm })),
+      ]
+      const context = bidContextFromReport(bid.parse_report) || req.context
+      const preview = buildRequirementPreview({
+        text: context,
+        fileName: bid.project_name || "招标项目",
+        extraItems,
+        context,
+      })
+      if (!preview.items.length && !ratingSelectionIsActive(preview.rating.selection)) {
+        toast.error(
+          "该招标项目暂无「采购清单」或「功能需求/建设内容」，请先到标书工作台解析，或直接上传招标 Word/PDF",
+        )
         return
       }
       if (!hospital.trim()) setHospital(bid.hospital ?? "")
       if (!name.trim()) setName(`${bid.project_name} 产品映射`)
-      startMatch(lines, lines.join("\n"), bidContextFromReport(bid.parse_report))
+      setExtractPreview(preview)
     },
-    [hospital, name, startMatch],
+    [hospital, name],
   )
+
 
   const importFromSolution = useCallback(
     (sol: SolutionRow | undefined) => {
@@ -611,22 +646,51 @@ export function useProductMapping() {
     if (!payloads.length) return
     setOneLinkBusy(true)
     try {
-      let done = 0
-      for (let i = 0; i < payloads.length; i += 12) {
-        const chunk = payloads.slice(i, i + 12)
-        await Promise.all(chunk.map((body) => pbJsonRequest("/api/check_products", { method: "POST", body: JSON.stringify(body) })))
-        done += chunk.length
+      const current = await loadProducts()
+      const latestMappings = await loadMappings()
+      const runChunk = async <T,>(rows: T[], worker: (row: T) => Promise<void>) => {
+        for (let i = 0; i < rows.length; i += 12) {
+          const chunk = rows.slice(i, i + 12)
+          await Promise.all(chunk.map((row) => worker(row)))
+        }
       }
+      // 先去重再更新，避免更新落在随后要删除的重复行上
+      const dedupe = planLibraryDedupe(current, latestMappings)
+      await runChunk(dedupe.mappingRetargets, async (r) => {
+        await pbJsonRequest(`/api/check_mappings/${r.mappingId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ product_id: r.to }),
+        })
+      })
+      await runChunk(dedupe.retireIds, async (id) => {
+        await pbJsonRequest(`/api/check_products/${id}`, { method: "DELETE" })
+      })
+      const afterDedupe = dedupe.retireIds.length ? await loadProducts() : current
+      if (dedupe.mappingRetargets.length) await loadMappings()
+      const plan = planLibraryUpsert(afterDedupe, payloads)
+      await runChunk(plan.items, async (item) => {
+        if (item.action === "create") {
+          await pbJsonRequest("/api/check_products", { method: "POST", body: JSON.stringify(item.incoming) })
+        } else if (item.existing && item.patch) {
+          await pbJsonRequest(`/api/check_products/${item.existing.id}`, {
+            method: "PATCH",
+            body: JSON.stringify(item.patch),
+          })
+        }
+      })
       await loadProducts()
       pendingOneLinkRef.current = []
       setOneLinkSummary(null)
-      toast.success(`已导入 ${done} 条 ONE-LINK 标准模块到公司库`)
+      const bits = [`已更新 ${plan.update} 条`, `新增 ${plan.create} 条`]
+      if (plan.pricePreserved) bits.push(`空价格保留原价 ${plan.pricePreserved} 条`)
+      if (dedupe.retireIds.length) bits.push(`合并重复 ${dedupe.retireIds.length} 条`)
+      toast.success(bits.join("，"))
     } catch {
       toast.error("导入写入失败，请稍后重试")
     } finally {
       setOneLinkBusy(false)
     }
-  }, [loadProducts])
+  }, [loadProducts, loadMappings])
 
   const cancelOneLink = useCallback(() => {
     pendingOneLinkRef.current = []
@@ -650,7 +714,65 @@ export function useProductMapping() {
     })
   }, [])
 
+  const applyComboPreset = useCallback((preset: RatingComboPreset) => {
+    setRatingSel((prev) => toggleComboPreset(prev, preset))
+  }, [])
+
   const clearRating = useCallback(() => setRatingSel({}), [])
+
+  const closeExtractPreview = useCallback(() => {
+    if (!extractBusy) setExtractPreview(null)
+  }, [extractBusy])
+
+  const openRequirementFile = useCallback(async (file: File) => {
+    setExtractBusy(true)
+    setExtractPreview(null)
+    try {
+      const raw = await readRequirementFile(file)
+      const preview = buildRequirementPreview({
+        text: raw.text,
+        tables: raw.tables,
+        fileName: raw.fileName,
+        context: raw.text,
+      })
+      if (!preview.items.length && !ratingSelectionIsActive(preview.rating.selection)) {
+        toast.error(preview.warnings[0] || "未能从文件抽出条目或评级目标")
+        return
+      }
+      setExtractPreview(preview)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "文件解析失败")
+    } finally {
+      setExtractBusy(false)
+    }
+  }, [])
+
+  const previewRequirementText = useCallback((text: string) => {
+    const preview = buildRequirementPreview({ text, fileName: "粘贴文本", context: text })
+    if (!preview.items.length && !ratingSelectionIsActive(preview.rating.selection)) {
+      toast.error("未能从文本抽出条目或评级目标，请按每行一条粘贴，或检查是否包含评级目标 / 系统清单")
+      return
+    }
+    setExtractPreview(preview)
+  }, [])
+
+  const applyRatingSelection = useCallback((sel: RatingSelection) => {
+    setRatingSel(sel)
+  }, [])
+
+  const confirmExtractPreview = useCallback(
+    (payload: { items: RequirementItem[]; ratingSel: RatingSelection; context: string }) => {
+      setExtractPreview(null)
+      if (ratingSelectionIsActive(payload.ratingSel)) setRatingSel(payload.ratingSel)
+      if (payload.items.length) {
+        startMatchItems(
+          payload.items.map((x) => ({ norm: x.norm, raw: x.raw, cells: x.cells })),
+          { srcText: payload.items.map((x) => x.raw).join("\n"), context: payload.context },
+        )
+      }
+    },
+    [startMatchItems],
+  )
 
   /** 评级覆盖行（界面预览 + 导出共用同一份数据，避免两处口径漂移） */
   const ratingCoverageRows = useMemo(
@@ -728,6 +850,20 @@ export function useProductMapping() {
     }
     return out
   }, [rows, companyProducts, lineEdits, rowNotes])
+
+  const mutexWarning = useMemo(() => {
+    const names = [
+      ...checklistLines.filter((l) => l.checked !== false).map((l) => l.module_name),
+      ...ratingCoverageRows.map((r) => r.moduleName),
+    ]
+    const productsForMutex = companyProducts.map((p) => ({
+      module_name: p.module_name,
+      remark: p.description,
+      description: p.description,
+    }))
+    return mutexWarningText(findMutexConflicts(names, productsForMutex))
+  }, [checklistLines, ratingCoverageRows, companyProducts])
+
 
   const matchedCount = useMemo(
     () => rows.filter((r) => (r.product_id || (r.custom_names?.length ?? 0) > 0) && r.resolution === "company").length,
@@ -1050,11 +1186,13 @@ export function useProductMapping() {
     // 评级筛选（2026-10-29）
     ratingSel,
     toggleRating,
+    applyComboPreset,
     clearRating,
     includeRatingOptional,
     setIncludeRatingOptional,
     ratingCoverageRows,
     ratingStats,
+    mutexWarning,
     exportRatingCoverage,
     exportCoverage,
     exportSkeleton,
@@ -1072,6 +1210,14 @@ export function useProductMapping() {
     matchSkills,
     hasResult: rows.length > 0,
     lastSavedId,
+    hasRatingFilter: ratingSelectionIsActive(ratingSel),
+    extractPreview,
+    extractBusy,
+    openRequirementFile,
+    previewRequirementText,
+    closeExtractPreview,
+    confirmExtractPreview,
+    applyRatingSelection,
   }
 }
 

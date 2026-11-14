@@ -22,6 +22,8 @@ import {
   type ProductDraft,
   type TechParam,
 } from "./checklistTypes"
+import { toggleComboTargets, type RatingComboPreset } from "./ratingTags"
+import { findMutexConflicts, mutexWarningText } from "./mutexModules"
 
 // ---------------------------------------------------------------------------
 // 建设清单 Logic 层：产品库 / 两路径清单向导 / 清单详情 / 映射库沉淀
@@ -533,6 +535,10 @@ export function useChecklist(deps: {
     setCkTargets((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]))
   }, [])
 
+  const applyComboTarget = useCallback((preset: RatingComboPreset) => {
+    setCkTargets((prev) => toggleComboTargets(prev, preset))
+  }, [])
+
   const companyCoversName = useCallback(
     (productName: string) => {
       const norm = nameNorm(productName)
@@ -568,13 +574,30 @@ export function useChecklist(deps: {
     setCkLines(lines)
     if (!ckName.trim()) setCkName(`${ckHospital.trim() || "医院"}建设清单`)
     setCkStep("autocheck")
+    const checkedCount = lines.filter((l) => l.checked !== false).length
+    const optionalCount = lines.filter((l) => l.checked === false).length
     const externalCount = lines.filter((l) => l.source === "external").length
-    toast.success(`已自动勾选 ${lines.length} 项，其中外购 ${externalCount} 项，可人工调整`)
+    toast.success(`已带出 ${lines.length} 项（默认勾选 ${checkedCount} 项，可选 ${optionalCount} 项待确认），其中外购 ${externalCount} 项`)
+    const conflicts = findMutexConflicts(
+      lines.filter((l) => l.checked !== false).map((l) => l.module_name),
+      companyProducts.map((p) => ({ module_name: p.module_name, remark: p.description, description: p.description })),
+    )
+    const warn = mutexWarningText(conflicts)
+    if (warn) toast(warn)
   }, [ckTargets, companyProducts, industryProducts, companyCoversName, ckName, ckHospital])
 
   const toggleLineChecked = useCallback((lineId: string) => {
-    setCkLines((prev) => prev.map((l) => (l.line_id === lineId ? { ...l, checked: !l.checked } : l)))
-  }, [])
+    setCkLines((prev) => {
+      const next = prev.map((l) => (l.line_id === lineId ? { ...l, checked: !l.checked } : l))
+      const conflicts = findMutexConflicts(
+        next.filter((l) => l.checked !== false).map((l) => l.module_name),
+        companyProducts.map((p) => ({ module_name: p.module_name, remark: p.description, description: p.description })),
+      )
+      const warn = mutexWarningText(conflicts)
+      if (warn) toast(warn)
+      return next
+    })
+  }, [companyProducts])
 
   const updateWizardLine = useCallback((lineId: string, patch: Partial<ChecklistLine>) => {
     setCkLines((prev) => prev.map((l) => (l.line_id === lineId ? { ...l, ...patch } : l)))
@@ -965,6 +988,15 @@ export function useChecklist(deps: {
       const cur = activeChecklist
       if (!cur) return
       const items = (cur.items ?? []).map((l) => (l.line_id === lineId ? { ...l, ...patch } : l))
+      if (Object.prototype.hasOwnProperty.call(patch, "checked")) {
+        const warn = mutexWarningText(
+          findMutexConflicts(
+            items.filter((l) => l.checked !== false).map((l) => l.module_name),
+            companyProducts.map((p) => ({ module_name: p.module_name, remark: p.description, description: p.description })),
+          ),
+        )
+        if (warn) toast(warn)
+      }
       const next = { ...cur, items, total_amount: calcTotal(items) }
       setMyChecklists((prev) => prev.map((c) => (c.id === cur.id ? next : c)))
       // 500ms 防抖归并：行内表格连续键入不再每键 PATCH，本地 state 立即更新
@@ -978,7 +1010,7 @@ export function useChecklist(deps: {
         if (pending) void persistChecklist(pending.rec, pending.patch)
       }, 500)
     },
-    [activeChecklist, persistChecklist],
+    [activeChecklist, persistChecklist, companyProducts],
   )
 
   const addActiveLineFromProduct = useCallback(
@@ -1150,6 +1182,7 @@ export function useChecklist(deps: {
     setCkStep,
     ckTargets,
     toggleTarget,
+    applyComboTarget,
     applyAutoCheck,
     ckLines,
     toggleLineChecked,

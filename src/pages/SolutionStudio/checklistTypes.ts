@@ -1,5 +1,6 @@
 import { centsToYuan, formatMoney, productCents } from "@/lib/money"
 import type { ChecklistSnapshot } from "./solutionTypes"
+import { tagsHitNormalized } from "./ratingTags"
 
 // ---------------------------------------------------------------------------
 // 建设清单：领域类型、评级常量与纯函数（Logic 层专用，无 JSX）
@@ -34,7 +35,7 @@ export const RATING_GROUPS: {
     key: "ss",
     label: "智慧服务分级评估",
     short: "智慧服务",
-    levels: ["1", "2", "3", "4"].map((v) => ({ value: v, label: `${v} 级` })),
+    levels: ["1", "2", "3", "4", "5"].map((v) => ({ value: v, label: `${v} 级` })),
   },
   {
     key: "sm",
@@ -225,15 +226,7 @@ export function targetsLabel(codes: string[]): string {
 
 /** 产品评级标签是否命中任一目标，返回命中的目标码列表 */
 export function tagsHitTargets(tags: RatingTags | undefined, targets: string[]): string[] {
-  const hits: string[] = []
-  for (const code of targets ?? []) {
-    const [groupKey, level] = code.split(":") as [RatingGroupKey | undefined, string | undefined]
-    if (!groupKey || !level) continue
-    const list = tags?.[groupKey]
-    if (!list?.length) continue
-    if (list.includes("*") || list.includes(level)) hits.push(code)
-  }
-  return hits
+  return tagsHitNormalized(tags, targets)
 }
 
 /** 客户清单条目归一化：去序号、去括号规格后缀、去版本后缀、压缩空白 */
@@ -335,7 +328,8 @@ export function productToLine(p: CheckProduct, source: "company" | "external", r
     rating_hits: ratingHits,
     remark: source === "external" ? "公司暂无该产品，评级要求外购" : "",
     product_id: p.id ?? "",
-    checked: true,
+    // 必选（及未填建议）默认勾选；可选留给用户确认后再勾
+    checked: source === "external" || String(p.recommendation ?? "").trim() !== "可选",
   }
 }
 

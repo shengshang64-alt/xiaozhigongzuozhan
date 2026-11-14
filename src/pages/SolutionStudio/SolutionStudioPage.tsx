@@ -44,7 +44,7 @@ export function SolutionStudioPage(p: ReturnType<typeof useSolutionStudio>) {
 
       {p.studioTab === "checklist" ? (
         <main>
-          <ChecklistView ck={p.checklist} onStartSolution={p.startSolutionFromChecklist} />
+          <ChecklistView ck={p.checklist} onStartSolution={p.startSolutionFromChecklist} preferredChecklistId={p.preferredChecklistId} />
         </main>
       ) : p.studioTab === "editor" ? (
         p.activeSolution ? (

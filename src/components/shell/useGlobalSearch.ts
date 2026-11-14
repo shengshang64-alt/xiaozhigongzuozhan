@@ -32,7 +32,7 @@ export type PageNavItem = { path: string; label: string; keywords: string[] }
 export const PAGE_NAV: PageNavItem[] = [
   { path: "/", label: "工作台首页", keywords: ["首页", "home", "工作台", "总览", "待办"] },
   { path: "/solution-studio", label: "方案编制", keywords: ["方案", "solution", "编制", "文档"] },
-  { path: "/product-mapping", label: "产品映射", keywords: ["产品映射", "ONE-LINK", "对照", "映射", "建设清单"] },
+  { path: "/product-mapping", label: "建设清单工作台", keywords: ["建设清单工作台", "产品映射", "ONE-LINK", "对照", "映射", "建设清单"] },
   { path: "/bid-workspace", label: "标书工作", keywords: ["标书", "投标", "招标", "bid", "tender"] },
   { path: "/bid-check", label: "标书检查", keywords: ["检查", "暗标", "合规", "废标", "体检", "check"] },
   { path: "/ppt-quote", label: "PPT 与报价", keywords: ["ppt", "报价", "幻灯片", "quote", "幻灯"] },
